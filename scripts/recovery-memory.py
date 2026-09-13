@@ -53,8 +53,10 @@ let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asC
         # refused virtual-field shape. Do not invent an effect summary by name.
         count = 1 if family == 'clones' and refused else operations
         shape = 4 if family == 'clones' else (1 if refused else 0)
-        setup = aggregate.source(count, shape, 1).split('let block :=', 1)[0]
-        construct = 'let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];'
+        setup, construction = aggregate.source(count, shape, 1).split('let block :=', 1)
+        # Reuse the producer's actual materialization, including entry captures.
+        # Its constructor statement contains no nested statement separators.
+        construct = 'let block :=' + construction.split(';', 1)[0] + ';'
         call = '[block value: proto value: ' + ('expected' if family == 'clones' else 'observer') + ']'
         expected, identity = 'expected', True
     else:

@@ -750,3 +750,45 @@ and stable pending storage after collection. Compiler-refused factories retain
 3,823 to 18,273 bytes of cold input payloads in this matrix, until retirement.
 Full combined production and cost verification remain pending; these checks do
 not promote the closure consumer.
+
+The [combined production proof](../measurements/74u-hot-aggregate-scratch-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases, with 277 current source
+hashes matching. It includes deferred closure preparation, aggregate preparation
+controls and verified numeric scratch reuse. The [90 normal-driver checks](../measurements/74u-hot-normal-driver-correctness.json)
+also pass with matching production source, fixture and published-prefix hashes.
+The independent aggregate control matrix is still running. Closure timing may
+now compare this exact normal floor and verified driver; no default promotion
+or profitability claim follows from the passing correctness gate.
+
+
+### Normal-floor comparison after hot preparation
+
+The [complete hot-preparation comparison](../measurements/74u-hot-normal-exploratory-timing.json)
+passes all 144 processes and 72 paired result checks, with unchanged production,
+verification, source and installed-prefix hashes. All 72 interval gates reject
+host qualification; the matrix is explicitly unqualified under the waiver.
+Positive percentages below mean reduced time on the current floor.
+
+| Uses | Eliminated closure: execution / including GC | Escaping closure: execution / including GC |
+| --- | --- | --- |
+| 1 | -13.22% / -13.95% | -17.22% / -24.13% |
+| 3 | +9.87% / +12.76% | -7.64% / -8.44% |
+| 4 | +0.26% / -1.77% | +4.50% / +5.50% |
+| 8 | +8.92% / +7.05% | +4.21% / +5.36% |
+| 16 | +9.57% / -1.34% | +6.25% / -2.76% |
+| 32 | +19.61% / +13.16% | +19.62% / +17.29% |
+
+Three of four 32-use pairs improve including GC in each successful shape; the
+fourth regresses 5.45%/2.98%. Every other size has mixed GC pair directions.
+Compiler-refused controls also vary widely. At 32 uses, cold execution medians
+improve 21.59%/9.06%, while materialization changes only +2.30%/+0.17%. Peak RSS
+has no consistent gain. This compares off/on in the current implementation; it
+is not a controlled before/after attribution to preparation deferral.
+
+These results continue to favor longer regions over one-use closures, but do
+not justify promoting all admitted regions or choosing a smaller threshold.
+Keep application, churn and retained-resource acceptance open. The separate
+aggregate source failure was an invalid fixture/probe pairing: returning the
+second argument violates the borrowed numeric probe's existing non-alias rule.
+A captured-result fixture correction is being tested without changing runtime
+code or weakening that assertion; this closure cost matrix remains valid.

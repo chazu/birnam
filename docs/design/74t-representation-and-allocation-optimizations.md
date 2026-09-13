@@ -1856,6 +1856,61 @@ passes the policy test, 546 workspace tests (19 ignored) and 202 release runtime
 tests (15 ignored). Full production, expanded installed-source and application
 comparison verification remain pending; no timing conclusion follows yet.
 
+The expanded discarded-clone source case initially returned its second argument,
+which the borrowed numeric probe explicitly forbids. The captured-result fixture
+returns the same expected Integer from an entry capture and supplies the ordinary
+observer as the unused argument. It preserves distinctness from both arguments;
+the existing probe and every allocation/identity assertion remain unchanged.
+The [corrected default debug matrix](../measurements/74t-aggregate-captured-default-debug.json)
+passes all 30 cases, including admitted clone chains and private-layout refusal.
+
+The source-validation driver is independently hashed from its prerequisite
+production proof. That production gate included its file hash but did not execute
+this additional driver. Only this driver's hash may differ; every runtime,
+compiler, probe, other prerequisite source, selected floor and installed artifact
+must still match. Receipts retain both driver hashes and every actual generated
+fixture. This records a corrected validation producer, not a rerun or weakening
+of the original full production gate. Remaining control/profile matrices are
+running before aggregate/application acceptance.
+
+All eight corrected source matrices now pass: 240 processes across debug/release
+and default, clones-disabled, fields-disabled and both-disabled configurations.
+Every actual floor, prerequisite source (apart from the independently checked
+fixture driver), current/prior driver and installation hash has been audited.
+The receipts are `74t-aggregate-captured-{configuration}-{profile}.json` under
+`docs/measurements`. These prove selected consumers omit exactly the expected
+physical allocations while identity, ordered method effects, private-layout
+refusal and canonical readmission remain intact. The following 24 ordinary
+application checks and idle-memory matrix are still running separately.
+
+
+### Retained process memory at explicit host checkpoints
+
+The [idle-memory feasibility check](../measurements/74t-idle-memory-feasibility.json)
+confirms that `vmmap -summary` can inspect an owned normal-release REPL after an
+Id completion marker, while it waits for further input. The process then exits
+normally on EOF. This is a tool feasibility result, not an optimization or
+memory-saving claim.
+
+Use the same verified source factories for paired disabled/enabled runs. Send
+one complete REPL phase at a time and await its answer/identity check and marker
+before sampling: setup; materialized but cold; warmed and collected; repeated
+execution and collection; eviction while a live Block still owns code; then
+release of fixture-owned Blocks and collection. Keep sampling outside timing.
+Compare repeated post-GC checkpoints for growth and include refused factories
+and repeated materialization/eviction. Prefix, floor, sources, fixture and sampler
+hashes must be retained, and existing consumer counters remain separate evidence
+that the intended pass actually executes.
+
+Retain the full memory report plus current physical footprint, peak footprint,
+resident/dirty/swapped totals and allocator allocated/retained values. Those are
+whole-process observations with platform rounding and allocator retention. They
+do not establish exact compiler metadata or relocated code bytes. In particular,
+this vendored libtcc allocates relocated units through `tcc_malloc` on this host;
+an arbitrary `VM_ALLOCATE` row cannot be labelled optimizer code. Exact private
+unit size requires independent compiler-owned accounting. No ABI extension or
+changed execution semantics is authorized merely to obtain a memory number.
+
 The `recovery-memory.py` sampler now uses the existing numeric, loop, aggregate
 and closure source factories with admitted and refused controls. Its new Id
 wrapper retains fixture references in explicit Cells, verifies returned values
@@ -1889,3 +1944,11 @@ floor. Integration with the corrected aggregate generator must preserve its
 actual capture list when materializing the sampler's clone factory; hardcoding
 an empty capture list would invalidate that new fixture. Validate the integrated
 sampler separately before drawing current-source memory conclusions.
+
+The [integrated fixture check](../measurements/74t-memory-integrated-fixture-correctness.json)
+passes all 20 processes and 140 host-return checkpoints after retaining the
+aggregate producer's actual constructor and capture list. Results, required
+aliases, continued invocation after eviction and normal process exit pass on the
+unchanged normal release installation. This is driver correctness only. The
+previous memory matrix remains bound to its original producer; a new current-
+source memory comparison requires a consolidated production proof.

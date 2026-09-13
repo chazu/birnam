@@ -1,0 +1,872 @@
+{
+  "status": "passed",
+  "scope": "Focused Id driver correctness only on the normal release installation; no memory or timing measurements and no replacement for full production verification.",
+  "script_sha256": "d155a767ec42c66c0fe2838f99df303d9dbdeaa7b2d481a4eadc86d78a33c24e",
+  "installed_sha256": {
+    "/tmp/birnam-74u-hot-prefix/bin/birnam": "b05e60072cfb34e262aeb02e52d4f8994a02550d7a80969773863002bea49af2",
+    "/tmp/birnam-74u-hot-prefix/lib/libbirnam_id.dylib": "bc2a2b6a8ded0917b1b50a6ee413b8ac034e8b14145eb8cac774d2cba00ea8ad",
+    "/tmp/birnam-74u-hot-prefix/share/birnam/rust-install.json": "77d61caef677ede27a0ff53208cfa364db9e4b48a8b204506d1312bd1d462822"
+  },
+  "rows": [
+    {
+      "family": "unboxed",
+      "refused": false,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let shape := [[System getEnv: \"BIRNAM_NUMERIC_SHAPE\"] asInteger]; let batches := [[System getEnv: \"BIRNAM_NUMERIC_BATCHES\"] asInteger]; let sources := #[ [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer asCell]] [:a :b | let first := [a + b]; let answer := first; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; first] ]; let source := [sources at: shape]; let input := 11;[System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: input value: 3];   [[result = 59] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "unboxed",
+      "refused": false,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let shape := [[System getEnv: \"BIRNAM_NUMERIC_SHAPE\"] asInteger]; let batches := [[System getEnv: \"BIRNAM_NUMERIC_BATCHES\"] asInteger]; let sources := #[ [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer asCell]] [:a :b | let first := [a + b]; let answer := first; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; first] ]; let source := [sources at: shape]; let input := 11;[System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: input value: 3];   [[result = 59] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "unboxed",
+      "refused": true,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let shape := [[System getEnv: \"BIRNAM_NUMERIC_SHAPE\"] asInteger]; let batches := [[System getEnv: \"BIRNAM_NUMERIC_BATCHES\"] asInteger]; let sources := #[ [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer asCell]] [:a :b | let first := [a + b]; let answer := first; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; first] ]; let source := [sources at: shape]; let input := 11.5;[System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: input value: 3];   [[result = 59.5] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "unboxed",
+      "refused": true,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let shape := [[System getEnv: \"BIRNAM_NUMERIC_SHAPE\"] asInteger]; let batches := [[System getEnv: \"BIRNAM_NUMERIC_BATCHES\"] asInteger]; let sources := #[ [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer + b]] [:a :b | let answer := [a + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; [answer asCell]] [:a :b | let first := [a + b]; let answer := first; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; let answer := [answer + b]; first] ]; let source := [sources at: shape]; let input := 11.5;[System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: input value: 3];   [[result = 59.5] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "loop",
+      "refused": false,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let numericSource := [:a :b | let first := [a + a]; let answer := [first + b]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; [answer + a]]; let numeric := [Codegen materializeResumable: [[numericSource codeObject] withoutSourceProvenance] captures: #[]]; let stop := [:again :calc :index :previous | previous]; let loopSource := [:again :calc :index :previous |   let result := [calc value: 11 value: 3];   [[result == previous] ifTrue: [| [OS exit: 1]] ifFalse: [| nil]];   let next := [[index < 127] ifTrue: [| again] ifFalse: [| stop]];   [next value: again value: calc value: [index + 1] value: result] ]; let loop := [Codegen materializeResumable: [[loopSource codeObject] withoutSourceProvenance] captures: #[stop]]; let runSource := [:numeric | [loop value: loop value: numeric value: 0 value: nil]]; let run := [Codegen materializeResumable: [[runSource codeObject] withoutSourceProvenance] captures: #[loop]]; let block := run; [held set: block]; [invoke set: [|   let result := [run value: numeric];   [[result = 179] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "loop",
+      "refused": false,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let numericSource := [:a :b | let first := [a + a]; let answer := [first + b]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; [answer + a]]; let numeric := [Codegen materializeResumable: [[numericSource codeObject] withoutSourceProvenance] captures: #[]]; let stop := [:again :calc :index :previous | previous]; let loopSource := [:again :calc :index :previous |   let result := [calc value: 11 value: 3];   [[result == previous] ifTrue: [| [OS exit: 1]] ifFalse: [| nil]];   let next := [[index < 127] ifTrue: [| again] ifFalse: [| stop]];   [next value: again value: calc value: [index + 1] value: result] ]; let loop := [Codegen materializeResumable: [[loopSource codeObject] withoutSourceProvenance] captures: #[stop]]; let runSource := [:numeric | [loop value: loop value: numeric value: 0 value: nil]]; let run := [Codegen materializeResumable: [[runSource codeObject] withoutSourceProvenance] captures: #[loop]]; let block := run; [held set: block]; [invoke set: [|   let result := [run value: numeric];   [[result = 179] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "loop",
+      "refused": true,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let numericSource := [:a :b | let first := [a + a]; let answer := [first + b]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; [answer + a]]; let numeric := [Codegen materializeResumable: [[numericSource codeObject] withoutSourceProvenance] captures: #[]]; let runSource := [:numeric |   let result := [nil asCell];   [128 timesRepeat: [| [result set: [numeric value: 11 value: 3]]]];   [result value] ]; let run := [Codegen materializeResumable: [[runSource codeObject] withoutSourceProvenance] captures: #[]]; let block := run; [held set: block]; [invoke set: [|   let result := [run value: numeric];   [[result = 179] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "loop",
+      "refused": true,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let numericSource := [:a :b | let first := [a + a]; let answer := [first + b]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; let answer := [answer + a]; [answer + a]]; let numeric := [Codegen materializeResumable: [[numericSource codeObject] withoutSourceProvenance] captures: #[]]; let runSource := [:numeric |   let result := [nil asCell];   [128 timesRepeat: [| [result set: [numeric value: 11 value: 3]]]];   [result value] ]; let run := [Codegen materializeResumable: [[runSource codeObject] withoutSourceProvenance] captures: #[]]; let block := run; [held set: block]; [invoke set: [|   let result := [run value: numeric];   [[result = 179] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "clones",
+      "refused": false,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; expected]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; [held set: block]; [invoke set: [|   let result := [block value: proto value: expected];   [[result == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "clones",
+      "refused": false,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; expected]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; [held set: block]; [invoke set: [|   let result := [block value: proto value: expected];   [[result == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "clones",
+      "refused": true,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; expected]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; [held set: block]; [invoke set: [|   let result := [block value: proto value: expected];   [[result == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "clones",
+      "refused": true,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; expected]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; [held set: block]; [invoke set: [|   let result := [block value: proto value: expected];   [[result == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "fields",
+      "refused": false,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; answer]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: proto value: observer];   [[result == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "fields",
+      "refused": false,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; answer]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: proto value: observer];   [[result == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "fields",
+      "refused": true,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; [copy name]]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: proto value: observer];   [[result == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "fields",
+      "refused": true,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; [copy name]]; [System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: proto value: observer];   [[result == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "closure",
+      "refused": false,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let shape := [[System getEnv: \"BIRNAM_CLOSURE_SHAPE\"] asInteger]; let batches := [[System getEnv: \"BIRNAM_CLOSURE_BATCHES\"] asInteger]; let sources := #[ [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; answer] [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; closure] [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; closure] [:input | let closure := [| [input value]]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; answer] ]; let source := [sources at: shape]; let input := [73 asCell];[System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: input];   [[result == input] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "closure",
+      "refused": false,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let shape := [[System getEnv: \"BIRNAM_CLOSURE_SHAPE\"] asInteger]; let batches := [[System getEnv: \"BIRNAM_CLOSURE_BATCHES\"] asInteger]; let sources := #[ [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; answer] [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; closure] [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; closure] [:input | let closure := [| [input value]]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; answer] ]; let source := [sources at: shape]; let input := [73 asCell];[System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: input];   [[result == input] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "closure",
+      "refused": true,
+      "enabled": false,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let shape := [[System getEnv: \"BIRNAM_CLOSURE_SHAPE\"] asInteger]; let batches := [[System getEnv: \"BIRNAM_CLOSURE_BATCHES\"] asInteger]; let sources := #[ [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; answer] [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; closure] [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; closure] [:input | let closure := [| [input value]]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; answer] ]; let source := [sources at: shape]; let input := [73 asCell];[System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: input];   [[result = 73] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    },
+    {
+      "family": "closure",
+      "refused": true,
+      "enabled": true,
+      "phases": [
+        {
+          "name": "setup",
+          "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let held := [nil asCell]; let invoke := [nil asCell]; let lastAnswer := [nil asCell]; [System load: \"modules/os.birnam\"]; [System preciseGc: true]; let shape := [[System getEnv: \"BIRNAM_CLOSURE_SHAPE\"] asInteger]; let batches := [[System getEnv: \"BIRNAM_CLOSURE_BATCHES\"] asInteger]; let sources := #[ [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; answer] [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; closure] [:input | let closure := [| input]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; closure] [:input | let closure := [| [input value]]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; let answer := [closure value]; answer] ]; let source := [sources at: shape]; let input := [73 asCell];[System gc]; [System println: \"memory-checkpoint setup\"];\n",
+          "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> memory-checkpoint setup\nanObject\nbirnam> "
+        },
+        {
+          "name": "cold",
+          "input": "[[| let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; [held set: block]; [invoke set: [|   let result := [block value: input];   [[result = 73] ifTrue: [| nil] ifFalse: [| [OS exit: 81]]];   [lastAnswer set: result] ]]; nil ] value]; [System gc]; [System println: \"memory-checkpoint cold\"];\n",
+          "output": "memory-checkpoint cold\nanObject\nbirnam> "
+        },
+        {
+          "name": "warm",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint warm\"];\n",
+          "output": "memory-checkpoint warm\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-1",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-1\"];\n",
+          "output": "memory-checkpoint steady-1\nanObject\nbirnam> "
+        },
+        {
+          "name": "steady-2",
+          "input": "[128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint steady-2\"];\n",
+          "output": "memory-checkpoint steady-2\nanObject\nbirnam> "
+        },
+        {
+          "name": "evicted-live",
+          "input": "[Codegen evictMaterializations]; [System gc]; [128 timesRepeat: [| [[invoke value] value]]]; [System gc]; [System println: \"memory-checkpoint evicted-live\"];\n",
+          "output": "memory-checkpoint evicted-live\nanObject\nbirnam> "
+        },
+        {
+          "name": "released",
+          "input": "[held set: nil]; [invoke set: nil]; [lastAnswer set: nil]; [Codegen evictMaterializations]; [System gc]; [System println: \"memory-checkpoint released\"];\n",
+          "output": "memory-checkpoint released\nanObject\nbirnam> "
+        }
+      ],
+      "exit_code": 0
+    }
+  ]
+}
