@@ -12,8 +12,11 @@ enum Change {
     Collect,
     Declaration,
     OperatorRestore,
+    Capture,
+    Suspend,
 }
 thread_local! {
+    static SUPPLIED: Cell<Oop> = const { Cell::new(core::ptr::null_mut()) };
     static ITERATION: Cell<usize> = const { Cell::new(0) };
     static LIMIT: Cell<usize> = const { Cell::new(0) };
     static CHANGE: Cell<Change> = const { Cell::new(Change::None) };
@@ -41,6 +44,13 @@ unsafe extern "C" fn next(_: Oop, args: *const Oop, count: usize) -> Oop {
             _ => 36,
         };
         assert_eq!(r.integer_value(args[1]), expected);
+        if n == 3 && matches!(CHANGE.get(), Change::Capture | Change::Suspend) {
+            assert_eq!(
+                args[1],
+                SUPPLIED.get(),
+                "resume must preserve supplied result identity"
+            );
+        }
         assert_ne!(
             args[1],
             ANSWER.get(),
@@ -68,6 +78,18 @@ unsafe extern "C" fn next(_: Oop, args: *const Oop, count: usize) -> Oop {
                     r.gc_collect_from_native_range(0, 0);
                 }
                 Change::Declaration => unsafe { DECLARATION.get().unwrap()(0) },
+                Change::Capture | Change::Suspend => {
+                    let objects = unsafe { (*r.state.get()).execution.objects().unwrap() };
+                    r.add_method(
+                        objects.machine_vtable,
+                        objects.call_site,
+                        if CHANGE.get() == Change::Capture {
+                            capture_call
+                        } else {
+                            control::suspend_call
+                        },
+                    );
+                }
                 Change::None => {}
             }
         }
@@ -284,3 +306,5 @@ fn loop_invariant_numeric_work_preserves_inputs_methods_lookup_gc_and_fresh_resu
         }
     }
 }
+
+mod control;

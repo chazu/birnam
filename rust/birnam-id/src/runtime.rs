@@ -2409,6 +2409,13 @@ impl Runtime {
         state
             .block_vtable_catalog
             .retain(|entry| entry.code_generation_identity != code_generation_identity);
+        // Descriptor owners can outlive registration. Remove retired candidates
+        // explicitly, and release native/loader owners outside the registry borrow.
+        let retired = self
+            .native_tier
+            .borrow_mut()
+            .retire_generation(code_generation_identity);
+        drop(retired);
         CodeGenerationRetirement::Retired
     }
 

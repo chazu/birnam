@@ -37,6 +37,13 @@ pub(super) struct Registry {
     closure_resume: Option<closure_elision::Resume>,
 }
 
+/// Detached owners drop after the registry borrow has ended. Active selections
+/// keep their independent Rc leases if a caller still owns one.
+pub(super) struct RetiredRecords {
+    _records: Vec<Record>,
+    _closures: Vec<closure_elision::Record>,
+}
+
 struct Record {
     descriptor: Weak<FrameDescriptor>,
     pending: Option<Rc<Prepared>>,
@@ -328,6 +335,38 @@ impl Registry {
                 disabled: false,
             },
         );
+    }
+
+    /// Successful registration retirement is stronger than descriptor liveness:
+    /// diagnostic/optimizer metadata may still own the immutable descriptor.
+    pub(super) fn retire_generation(&mut self, generation: u64) -> RetiredRecords {
+        let retired = |descriptor: &Weak<FrameDescriptor>| {
+            descriptor
+                .upgrade()
+                .is_none_or(|d| d.identity().generation == generation)
+        };
+        let keys = self
+            .records
+            .iter()
+            .filter_map(|(&key, record)| retired(&record.descriptor).then_some(key))
+            .collect::<Vec<_>>();
+        let records = keys
+            .into_iter()
+            .filter_map(|key| self.records.remove(&key))
+            .collect();
+        let keys = self
+            .closures
+            .iter()
+            .filter_map(|(&key, record)| retired(&record.descriptor).then_some(key))
+            .collect::<Vec<_>>();
+        let closures = keys
+            .into_iter()
+            .filter_map(|key| self.closures.remove(&key))
+            .collect();
+        RetiredRecords {
+            _records: records,
+            _closures: closures,
+        }
     }
 
     pub(super) fn prune(&mut self) {

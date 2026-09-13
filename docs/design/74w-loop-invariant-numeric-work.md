@@ -96,3 +96,31 @@ verified floor hashes. That full gate, actual loop capture/suspend/retirement
 coverage, bounded cache/resource acceptance and qualified profitability remain
 required. This checkpoint neither enables the consumer by default nor completes
 the loop family or any of the other three families.
+
+## Capture, suspension and retirement checkpoint
+
+The [focused control receipt](../measurements/74w-loop-control-correctness.json)
+passes 542 workspace tests (19 ignored), the release loop checks, and 64
+registered-loop configurations per profile. The matrix covers baseline/enabled
+reuse, boxed/unboxed arithmetic, ordinary/planned tail entry, both GC modes,
+capture/suspension and retirement while paused. After three iterations it requires
+six skipped kernel operations in enabled mode and actual arithmetic-consumer
+hits, then stops before any later loop effect. Resumption preserves the exact
+supplied result identity, rejects repeated consumption, restores all code-pin
+counts and reestablishes loop evidence before further arithmetic reuse.
+
+This test initially found that successful generation retirement left native-tier
+candidates alive while a descriptor owner remained. Descriptor lifetime alone is
+insufficient to determine registration lifetime. Successful retirement now removes
+matching native and closure records explicitly, releasing detached native/loader
+owners outside the registry borrow. Rejected retirement leaves those records
+intact. Weak-owner checks prove that the retired numeric kernel is released while
+the paused caller's native candidate remains owned until execution completes;
+retirement of that caller then releases its candidate too.
+
+The fresh [debug](../measurements/74w-loop-control-source-debug.json) and
+[release](../measurements/74w-loop-control-source-release.json) source matrices
+retain all 32 cases per profile with matching source and floor hashes. Full
+production verification of this lifecycle fix, broader installed-source control
+coverage, bounded resource acceptance and profitability remain required. The
+consumer stays disabled by default and the four-family objective remains open.
