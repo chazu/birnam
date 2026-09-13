@@ -37,6 +37,10 @@ impl Runtime {
                 super::closure_timing_probe::measure as Method,
             ),
             (
+                b"sequence:input:other:calls:escape:".as_slice(),
+                super::closure_timing_probe::sequence as Method,
+            ),
+            (
                 b"checkApi:input:operation:".as_slice(),
                 super::closure_api_probe::check as Method,
             ),
@@ -185,6 +189,7 @@ unsafe extern "C" fn run(probe: Oop, args: *const Oop, count: usize) -> Oop {
         let target = r
             .materialize_registered_target(entry, block, &[input, probe])
             .unwrap();
+        let calls_before = super::native_tier::closure_elision::completed_calls();
         let paused = r
             .drive_stackless_with_resolver(
                 machine,
@@ -196,6 +201,18 @@ unsafe extern "C" fn run(probe: Oop, args: *const Oop, count: usize) -> Oop {
                 },
             )
             .unwrap();
+        let expected_calls = if std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION")
+            .is_some_and(|v| v == "1")
+            && !std::env::var_os("BIRNAM_DEV_CLOSURE_FORCE_RECOVERY").is_some_and(|v| v == "1")
+        {
+            3
+        } else {
+            0
+        };
+        assert_eq!(
+            super::native_tier::closure_elision::completed_calls() - calls_before,
+            expected_calls
+        );
         let _paused = ScopedOopRootGuard::new(r, paused);
         assert_eq!(PROBE.with_borrow(|p| p.as_ref().unwrap().observations), 1);
         let pins = r.stackless_registration_diagnostics();

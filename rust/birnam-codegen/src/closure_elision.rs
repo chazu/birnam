@@ -8,6 +8,8 @@ use crate::resumable::{
     self, ColoredEdge, LogicalProgram, OperationKind, PhysicalLayout, Terminator,
 };
 use crate::small_callee;
+mod sequence;
+pub use sequence::{Invocation, MAX_CALLS};
 
 pub const MAX_SLOTS: usize = 128;
 pub const MAX_PROGRAM_BYTES: usize = 65_536;
@@ -57,6 +59,8 @@ pub struct Plan {
     /// constructor work, callee entry/return driving and the initial PC token.
     pub before_constructor_boxes: Vec<u32>,
     pub after_constructor_boxes: Vec<u32>,
+    /// Further immediate calls sharing this literal's virtual identity.
+    pub following: Vec<Invocation>,
 }
 
 impl Plan {
@@ -263,7 +267,7 @@ impl Plan {
         } else {
             None
         };
-        Ok(Self {
+        let mut plan = Self {
             node_index,
             literal_value,
             literal_slot,
@@ -281,7 +285,10 @@ impl Plan {
             continuation_aliases,
             before_constructor_boxes: before_boxes,
             after_constructor_boxes: after_boxes,
-        })
+            following: Vec::new(),
+        };
+        plan.following = sequence::derive(program, layout, &plan, &values, &nested_layout);
+        Ok(plan)
     }
 }
 

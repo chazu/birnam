@@ -28,7 +28,7 @@ def sources():
         "compatibility_authority.py", "rust-cutover-verify.sh",
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
         "closure-elision-smoke.sh",
-        "closure-control-smoke.sh",
+        "closure-control-smoke.sh", "closure-sequence-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
     )]
     paths += [ROOT / path for path in (
@@ -160,7 +160,7 @@ def main():
                 ("birnam_id", "dense-recovery", "production_recovery_admits_id_recipe"),
             ]
             if args.closures:
-                checks.append(("birnam_codegen", "closure-plan", "closure_elision::tests"))
+                checks.append(("birnam_codegen", "closure-plan", "closure_elision::"))
                 checks.append(("birnam_id", "closure-context", "closure_context_requires_active_nil"))
                 checks.append(("birnam_id", "closure-staging", "disabled_closure_mode_skips_preparation"))
             if args.numeric:

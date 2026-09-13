@@ -2,6 +2,7 @@
 # Real installed Codegen with an explicitly selected test-only floor bridge.
 # The production floor and installation remain intact and separately verified.
 set -euo pipefail
+unset BIRNAM_DEV_CLOSURE_FORCE_AT
 cd "$(dirname "$0")/.."
 prefix=${1:?installed prefix required}
 work=$(mktemp -d "${TMPDIR:-/tmp}/birnam-closure-control.XXXXXX")
@@ -18,6 +19,7 @@ for profile in debug release; do
   CARGO_TARGET_DIR="$PWD/.cargo-target/74t-closure-control-target" mise exec -- \
     cargo build --locked --offline -p birnam-id --features ffi-test-hooks "${flags[@]}"
   floor="$PWD/.cargo-target/74t-closure-control-target/$profile/libbirnam_id.dylib"
+  python3 scripts/closure-sequence-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/sequence-$profile.json"
   for shape in 0 1 2 3; do
     for enabled in 0 1; do
       BIRNAM_ID_DYLIB="$floor" BIRNAM_TEST_CLOSURE_CONTROL=1 BIRNAM_DEV_CLOSURE_ELISION=$enabled \
@@ -58,7 +60,7 @@ for mode in ('baseline', 'enabled', 'forced'):
     begin = lines.index('closure-control: begin measured control')
     end = lines.index('closure-control: end measured control')
     diagnostics = [line for line in lines[begin + 1:end] if line.startswith('closure-elision: ')]
-    expected = ([] if mode == 'baseline' else ['closure-elision: hit materialized=true']
+    expected = ([] if mode == 'baseline' else ['closure-elision: hit materialized=true', 'closure-elision: completed calls=3']
                 if mode == 'enabled' else ['closure-elision: forced constructor recovery'])
     assert diagnostics == expected, (mode, diagnostics)
     outputs[mode] = [line for line in lines if not line.startswith('closure-elision: ')]

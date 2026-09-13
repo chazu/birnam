@@ -58,9 +58,11 @@ retains the exact constructor declaration with its image pin while rechecking
 its semantic answer on every use. Full verification passes. The repeated
 unqualified matrix after early native-callee refusal shows about 19–25%
 closure execution overhead and 20% repeated-refusal overhead. Profitability
-remains unproven. [74U](74u-repeated-closure-invocation-regions.md) specifies the
-next extension: multiple immediate invocations sharing one virtual closure,
-with precise recovery at supported call boundaries.
+remains unproven. [74U](74u-repeated-closure-invocation-regions.md) now implements
+up to 32 immediate invocations sharing one virtual closure, with recovery at
+every admitted call boundary. Full verification passes 528 workspace tests
+and the expanded source/control matrices. Later-target mutation, dedicated
+resource cases and profitability remain open; the consumer stays default-off.
 None of those four full families is complete yet.
 
 ## Direction

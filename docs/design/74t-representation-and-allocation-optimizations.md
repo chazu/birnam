@@ -1459,3 +1459,30 @@ retain one virtual closure across several immediate, proven invocations. This
 addresses the existing multiple-use obligation and offers a region large
 enough to test whether admission costs can be repaid. It does not remove the
 remaining cold/resource/application gates or complete any full family by itself.
+
+### Repeated closure invocations: initial compiler/runtime delivery
+
+[74U](74u-repeated-closure-invocation-regions.md) now implements one virtual
+closure across up to 32 immediate calls. Compiler-derived metadata retains
+original input identities, changed arguments and results, physical stores,
+index allocations and complete V2 transitions. The runtime admits a prefix
+under current constructor/callee and control authority, budgets every original
+allocation before elision, and recovers one shared identity before unsupported
+or escaping continuations. It unwinds the original C locals before the final
+observing successor. Forced recovery can select each admitted call boundary.
+
+The [correctness receipt](../measurements/74u-sequence-correctness.json) passes
+61 commands, 528 workspace tests (19 ignored), 40 sequence comparison groups
+(640 process executions) across both GC modes and debug/release, eight
+strengthened capture/suspension groups requiring three substitutions before
+pause, the existing measurement/live-API matrices, collecting nested observers,
+and full installed/image/cold-archive/relocation gates. Source hashes match.
+The 33-use fixture verifies recovery after the 32-call bound; allocation charges,
+physical savings and completed-call counts are checked for normal and every
+supported forced exit, including escaping closures and shared captures.
+
+This is a correctness checkpoint, with no performance claim or promotion.
+Later-target mutation and partial admission, dedicated collection-threshold
+and finalizer cases, resource acceptance and profitability remain next within
+74U. The full numeric/loop/aggregate/closure and application obligations remain
+open; no full family is marked complete.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+unset BIRNAM_DEV_CLOSURE_FORCE_AT
 cd "$(dirname "$0")/.."
 prefix=${1:?installed prefix required}
 work=$(mktemp -d "${TMPDIR:-/tmp}/birnam-closure-smoke.XXXXXX")
@@ -16,14 +17,15 @@ from pathlib import Path
 import sys
 work = Path(sys.argv[1])
 lines = (work / 'enabled.combined').read_text().splitlines(keepends=True)
-(work / 'enabled').write_text(''.join(line for line in lines if not line.startswith('closure-elision: hit ')))
-(work / 'enabled.err').write_text(''.join(line for line in lines if line.startswith('closure-elision: hit ')))
+(work / 'enabled').write_text(''.join(line for line in lines if not line.startswith(('closure-elision: hit ', 'closure-elision: completed calls='))))
+(work / 'enabled.err').write_text(''.join(line for line in lines if line.startswith(('closure-elision: hit ', 'closure-elision: completed calls='))))
 if sys.argv[2] == 'closure-observation':
     begin = lines.index('closure-observation: begin collecting caller\n')
     end = lines.index('closure-observation: end collecting caller\n')
     observed = lines[begin + 1:end]
     assert 'closure-elision: hit materialized=true\n' in observed, observed
     assert 'closure-elision: hit materialized=false\n' in observed, observed
+    assert observed.count('closure-elision: completed calls=3\n') == 2, observed
 PY
 BIRNAM_DEV_CLOSURE_ELISION=1 BIRNAM_DEV_CLOSURE_REPORT=1 BIRNAM_DEV_CLOSURE_FORCE_RECOVERY=1 \
   "$prefix/bin/birnam" "scripts/fixtures/$fixture.birnam" >"$work/recovery" 2>"$work/recovery.err"

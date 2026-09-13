@@ -5,12 +5,16 @@
 let source := [:input :other :argument :observer |
     let closure := [:arg | let first := input; let second := other; arg];
     let alias := closure;
+    let firstResult := [closure value: argument];
+    let secondResult := [alias value: other];
     let result := [closure value: argument];
     let observed := [observer value: closure value: alias value: result];
     alias];
 let factory := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
 let directSource := [:input :observer |
     let closure := [| input];
+    let firstResult := [closure value];
+    let secondResult := [closure value];
     let result := [closure value];
     let observed := [observer value: result];
     result];

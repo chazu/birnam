@@ -5,6 +5,67 @@ use std::time::Instant;
 
 thread_local! { static EFFECTS: Cell<usize> = const { Cell::new(0) }; }
 
+/// Real source factories; all assertions run outside any performance claim.
+pub(super) unsafe extern "C" fn sequence(_: Oop, args: *const Oop, count: usize) -> Oop {
+    assert_eq!(count, 5);
+    let a = unsafe { core::slice::from_raw_parts(args, count) };
+    with_active(|r| {
+        let (factory, input, other) = (a[0], a[1], a[2]);
+        let calls = r.integer_value(a[3]) as usize;
+        let escaping = r.integer_value(a[4]) != 0;
+        assert!((1..=33).contains(&calls));
+        let selector = r.intern(b"value:value:").unwrap();
+        let mut answer = r.canonical().nil;
+        let invoke = || {
+            let answer = r.send_slice(factory, selector, &[input, other]);
+            if escaping {
+                assert_eq!(
+                    unsafe { (*r.state.get()).heap.read_payload_word(answer, 1) },
+                    Some(input.addr())
+                );
+            } else {
+                assert_eq!(answer, if (calls - 1) % 3 == 0 { input } else { other });
+            }
+            answer
+        };
+        for batch in 0..12 {
+            for _ in 0..8 {
+                answer = invoke();
+            }
+            if batch != 11 {
+                r.gc_collect_from_native_range(0, 0);
+            }
+        }
+        r.gc_collect_from_native_range(0, 0);
+        let before = counters();
+        let completed_before = super::native_tier::closure_elision::completed_calls();
+        let allocated_before = unsafe { (*r.state.get()).heap.bytes_since_collection() };
+        for _ in 0..8 {
+            answer = invoke();
+        }
+        let heap = unsafe { &(*r.state.get()).heap };
+        assert!(heap.bytes_since_collection() < crate::gc::AUTO_COLLECTION_THRESHOLD);
+        let bytes = heap.bytes_since_collection() - allocated_before;
+        let saved = heap.allocation_count() - heap.physical_allocation_count();
+        let after = counters();
+        let completed = super::native_tier::closure_elision::completed_calls() - completed_before;
+        println!(
+            "closure-sequence calls={calls} escaping={} invocations=8 bytes={bytes} physical_saved={saved} attempts={} hits={} materialized={} completed_calls={completed}",
+            usize::from(escaping),
+            after.0 - before.0,
+            after.1 - before.1,
+            after.2 - before.2
+        );
+        if escaping {
+            assert_eq!(
+                r.send_slice(answer, r.intern(b"value:").unwrap(), &[other]),
+                other
+            );
+        }
+        r.canonical().nil
+    })
+}
+
 pub(super) unsafe extern "C" fn prepare(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 2);
     with_active(|r| {

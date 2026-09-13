@@ -1,7 +1,6 @@
 # 74U — Repeated invocation of one private closure
 
-Status: implementation contract for the next 74T scope extension. Not yet
-implemented or promoted. The full numeric, loop, aggregate and closure/capture
+Status: initial compiler/runtime implementation verified; not promoted. The full numeric, loop, aggregate and closure/capture
 objective remains owned by 74T and `birnam-sik`.
 
 ## Problem and intended behavior
@@ -119,3 +118,47 @@ at PC zero.
 The implementation must supply executable evidence for these requirements.
 Passing the compiler tests alone does not complete this extension, and passing
 the extension does not complete the full four-family roadmap.
+
+## Initial implementation evidence
+
+The compiler now derives a bounded `following` sequence alongside the original
+constructor plan. Its differential tests cover 1, 2, 3, 32 and 33 uses, capture
+and argument results, escaping aliases, prior call results, colored slot reuse,
+physical stores and exact baseline-emitter index sequences. Observing operations
+and changed call shapes terminate the extension; selector spelling grants no
+authority. The 33-use case retains an ordinary continuation after call 32.
+
+The runtime admits a prefix using current lookup, registered callee leases,
+receiver capture-layout checks and exact leaf plans. It budgets original Block,
+caller/callee index and intermediate PC-token charges before recording one
+virtual identity. An inadmissible later callee or insufficient budget retains
+a shorter prefix. Each call publishes its original action and applies canonical
+V2 completion. The final continuation recovers all remaining aliases before
+unwinding through Resume. `BIRNAM_DEV_CLOSURE_FORCE_AT` selects a zero-based
+call boundary for forced recovery; existing forced-first-call behavior remains.
+
+A test-floor source runner checks allocation charges, physical savings, completed
+substitutions and materialization across both GC modes, escaping/non-escaping
+results and every admitted forced-exit index. The existing collecting-successor
+fixture now performs three outer substitutions and three nested substitutions.
+The explicit capture/suspension fixture also performs three substitutions and
+requires that exact count before pausing, in addition to its prior alias, shared
+Cell, supplied-result, collection and native-pin checks.
+
+The initial verification attempt caught a diagnostic-filter mistake: accepting
+every `closure-elision:` line as a diagnostic also removed the fixture's ordinary
+result line. The filter now recognizes only hit and completed-call diagnostics.
+The [failed receipt](../measurements/74u-sequence-initial-verification.json) is
+retained separately. The [corrected full verification](../measurements/74u-sequence-correctness.json)
+passes all 61 commands: 528 workspace tests (19 ignored), 40 sequence comparison
+groups covering 640 baseline/optimized/forced process executions, eight existing
+measurement groups, eight strengthened capture/suspension groups, 32 live-API
+groups, and installed-prefix, image, cold-archive and relocation verification.
+The retained source hashes match the tested files. The earlier
+[development receipt](../measurements/74u-sequence-development.json) was a focused
+run with an older verified Codegen prefix and a newly built test floor; it is
+not the production provenance claim.
+
+The consumer remains experimental and disabled by default. Later-target
+mutation/partial-admission cases, dedicated allocation-threshold/finalizer
+coverage for long regions, resource acceptance and profitability remain open.
