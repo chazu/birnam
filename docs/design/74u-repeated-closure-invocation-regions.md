@@ -448,3 +448,26 @@ region must still read current controls. Forced recovery at every call position
 must continue to pass. This removes repeated control lookup without caching
 mutable Id method, layout or capture answers. Correctness and a new paired
 matrix are required before attributing any gain to it or promoting the pass.
+
+### Recovery controls read once per region
+
+The consumer now reads both developer recovery controls after all region
+admission checks and before charging the virtual allocation. Each selected
+call compares its index with that captured setting. The next constructor
+region reads the environment again; there is no process-wide control cache
+and no change to Id lookup or capture validation. The admitted interval cannot
+run foreign observing code or collect, so moving these host control reads
+does not cross an Id observation boundary.
+
+The [focused sequence receipt](../measurements/74u-control-hoist-sequence-development.json)
+passes 20 source executions with three-/33-call factories, escaping and
+non-escaping results, and forced positions zero through two. The
+[measurement receipt](../measurements/74u-control-hoist-measurement-development.json)
+passes all 24 one-/three-/32-use accounting cases. These development checks use
+the new debug feature floor and the release prefix from the completed timing
+matrix. The [full correctness receipt](../measurements/74u-control-hoist-correctness.json)
+passes all 61 commands, 528 workspace tests (19 ignored), production verification
+and all ten source matrices with 1,248 process rows. Every supported forced
+position passes in both profiles and GC modes. All 244 source hashes match,
+and every matrix floor hash agrees with its profile's independent controls.
+Retiming follows this checkpoint; correctness alone does not establish a speedup.
