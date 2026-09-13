@@ -365,3 +365,28 @@ The next performance step is a separate profile of the admitted numeric path
 and its refusal controls, followed by focused fixes supported by that profile
 and a quiet comparison. The unboxed consumer remains disabled by default;
 physical allocation savings alone have not demonstrated a net speed benefit.
+
+### Diagnostic native profiles
+
+The [paired diagnostic profiles](../measurements/74v-unboxed-numeric-diagnostic-profile.json)
+use the exact retained cost floor and installed prefix, running the 32-operation
+final-result fixture twelve times per mode. Sampling begins after the first
+64,000-call measurement, on an explicitly verified child PID. Both processes
+finish normally and all twelve counter pairs pass. The receipt retains the
+fixture, driver, process identity, binary hashes, full sample trees and output.
+No timing qualification or speed comparison is inferred from these sampled runs.
+
+Allocation and collection dominate both samples. Collection appears in 1,115
+baseline samples and 1,070 enabled samples; these are inclusive observations,
+not independent time measurements. The enabled snapshot-preparation routine
+appears in 24 samples. Source inspection confirms that each numeric snapshot
+currently allocates an Rc and a separate payload Vec. Compact raw payloads are a
+concrete candidate for reducing that overhead, but this component is small in
+these samples and cannot explain the whole noisy timing difference.
+
+The existing native Frame regions also retain their original housekeeping index
+boxes. Their allocation and subsequent collection remain substantial shared
+work. Any later attempt to eliminate those physical allocations must preserve
+original charges, collector/finalizer observations and late-bound publication;
+it needs its own admission and differential evidence. Arithmetic kernel work
+alone is not the dominant cost shown here.
