@@ -425,4 +425,3 @@ The early-result recovery cases have the same absolute savings. Each difference
 is exactly eight bytes per still-private numeric snapshot. These measurements
 establish lower owned journal storage, not a net speedup or promotion. Full
 production verification and paired performance acceptance remain pending.
-

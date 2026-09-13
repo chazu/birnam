@@ -176,3 +176,11 @@ The combined production checkpoint includes the compact snapshot representation
 from 74V and this measurement bridge. Its full gate will replace the compact-only
 queued gate, which was cancelled before it started. Focused validation precedes
 that combined run; no full production or timing result is asserted here yet.
+
+The [release source matrix](../measurements/74w-loop-measure-release.json) passes
+all 96 cases with matching current source, floor and installed-prefix hashes.
+Every enabled case retains one owner and one cached input/result set. Owned reuse
+storage is 192, 400 and 656 bytes for three, sixteen and 32 operations respectively,
+including the test masks. Capacity stays constant across measured loops and GC.
+The independent-call controls retain the last stamp but reuse zero operations.
+The corresponding debug matrix and combined full gate remain pending.
