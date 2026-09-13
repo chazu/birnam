@@ -274,3 +274,18 @@ post-resume state. The same daemon was resumed after the rejected attempt.
 No benchmark process remains active from these attempts. A sufficiently quiet
 host window is still required for the full production matrix and the subsequent
 closure, unboxed and application/resource timing decisions.
+
+### Continued work without quiet-host admission
+
+The user subsequently waived the quiet-window requirement for now. The normal
+loop driver accepts `--exploratory`: it skips preflight waits, continues through
+rejected diagnostic intervals, and always records `qualified: false`. Ordinary
+qualified mode retains the original gates. Execution, source and artifact
+verification still fail normally on errors.
+
+The [updated driver verification](../measurements/74w-loop-exploratory-driver-correctness.json)
+passes all 96 test/normal-floor cases. A [48-process exploratory smoke matrix](../measurements/74w-loop-exploratory-mode-smoke.json)
+covers every operation count, shape, representation and reuse setting. It records
+24 diagnostic intervals, performs no host-admission waits and remains explicitly
+unqualified even though those short intervals did not fail. Full exploratory
+cost matrices can now proceed without treating host load as a work blocker.

@@ -83,6 +83,7 @@ def main():
     parser.add_argument('--batches', type=int, default=500)
     parser.add_argument('--pairs', type=int, default=4)
     parser.add_argument('--wait-seconds', type=int, default=120)
+    parser.add_argument('--exploratory', action='store_true', help='skip quiet-host admission and retain unqualified timings')
     args = parser.parse_args()
     if not 1 <= args.batches <= 500 or not 1 <= args.pairs <= 8 or args.wait_seconds < 0:
         parser.error('invalid measurement bounds')
@@ -126,6 +127,7 @@ def main():
                     if r['counters'] == counters} != cases:
                 parser.error('Id-driven correctness coordinates are incomplete')
     result = dict(status='running', qualified=False, verification=args.verify, sources=inputs,
+                  exploratory_requested=args.exploratory,
                   correctness_sha256=sha(args.receipt), installed_sha256=binaries, prefix=str(prefix),
                   fixture_sha256=fixture_hashes, batches=2 if args.verify else args.batches,
                   pairs=1 if args.verify else args.pairs, rows=[], gates=[],
@@ -160,11 +162,12 @@ def main():
 
     try:
         check()
+        save()
         with tempfile.TemporaryDirectory(prefix='birnam-production-loop-') as work:
             fixture, monitor_path = Path(work) / 'loop.birnam', Path(work) / 'interval.log'
             for n, s, u in product((3, 16, 32), range(4), (0, 1)):
                 for pair in range(result['pairs']):
-                    if not args.verify and not gate(['--wait', f'production-loop-{n}-{s}-{u}-{pair}']):
+                    if not args.verify and not args.exploratory and not gate(['--wait', f'production-loop-{n}-{s}-{u}-{pair}']):
                         result['status'] = 'not_qualified'; return 2
                     monitor = None
                     with monitor_path.open('w') as log:
@@ -202,7 +205,7 @@ def main():
                     if not args.verify:
                         accepted = gate(['--samples', monitor_path, 'production-loop'])
                         result['gates'][-1]['samples'] = monitor_path.read_text()
-                        if not accepted:
+                        if not accepted and not args.exploratory:
                             result['status'] = 'not_qualified'; return 2
         check()
         result['comparisons'] = []
@@ -216,7 +219,7 @@ def main():
                 if changes:
                     result['comparisons'].append(dict(operations=n, shape=s, unboxed=u, metric=metric,
                                                      paired_reduction_percent=changes, median_reduction_percent=statistics.median(changes)))
-        result.update(status='passed', qualified=not args.verify)
+        result.update(status='passed', qualified=not args.verify and not args.exploratory)
         return 0
     except BaseException as error:
         result.update(status='failed', error=str(error)); raise

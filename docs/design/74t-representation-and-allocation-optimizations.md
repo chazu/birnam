@@ -5,6 +5,12 @@ implement all four remaining families in [74Q](74q-optimization-roadmap.md).
 Recovery infrastructure alone does not complete a family. The outstanding 74S
 application timing gate remains separate.
 
+The user has waived the quiet-host requirement for continued work for now.
+Proceed with exploratory cost measurements and implementation without waiting
+for host admission. Retain the observations and their uncertainty; do not label
+them host-qualified. Semantic, identity, GC, control, ABI and lifetime correctness
+requirements remain unchanged.
+
 ## Contract
 
 Preserve ordinary Id meaning, mutable method lookup, object identity, shared
