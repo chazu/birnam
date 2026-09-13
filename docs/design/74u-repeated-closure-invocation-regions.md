@@ -696,3 +696,57 @@ the derived descriptor against the still-live registered descriptor, and release
 pending inputs on success, refusal or retirement. Keep current default-off policy
 while verifying cold/refusal cost, resource bounds and source recovery. This is
 preparation deferral, not permission to weaken admission or native ownership.
+
+### Defer closure plan derivation to the existing hot threshold
+
+Staging currently lowers, colors and derives closure plans even if the factory
+never reaches the 64 constructor visits required for execution. Replace that
+prepared staging payload with bounded owned portable bytes and selection data.
+A validated portable-node scan may reject literal-free programs; it grants no
+optimization authority. Full lowering, coloring, plan construction and derived
+descriptor checks remain mandatory at the existing threshold.
+
+Pending source, selector and registered-descriptor payloads share a 4 MiB
+runtime-local reservation budget. Each source or descriptor is at most 256 KiB.
+Reservations follow actual owners across staging, registration, selection and
+retirement; shared pending sources are charged once. The budget excludes existing
+record headers, allocator bookkeeping and prepared-plan storage, which retain
+their separate bounded record/plan limits. Disabled closure staging creates no
+pending pool. Budget exhaustion or unsupported input selects ordinary code.
+
+At registration retain the ordinary validated descriptor bytes alongside a weak
+reference to its descriptor. On the hot visit, verify the exact current descriptor
+owner, derive the plan from the owned bytes, and compare descriptor bytes exactly.
+Keep preparation callback-free and retain existing roots, Frame state and code
+ownership. A failed derivation removes the record and releases its inputs without
+repeated compilation. Success keeps the prepared plan and releases pending owners;
+a still-open staging owner releases its shared source at the normal end of staging.
+Native constructor discovery and callee admission keep their existing checks.
+
+Verify cold visits perform no derivation; threshold success, malformed/stale
+descriptor rejection, bounded reservations, early retirement and disabled staging.
+Then retain the full source/control/GC/retirement matrix and update preparation
+counter expectations to distinguish staging from hot derivation. Keep execution
+and literal-callee defaults unchanged while measuring cold/refusal and resource
+costs. This branch also carries the separately tested aggregate preparation
+controls; combine with verified numeric scratch before the final production gate.
+
+This defers the runtime's independent derivation. The compiler still derives a
+plan while emitting the baseline constructor hook; its cost is retained in the
+materialization measurement. Compiler-refused bodies may never invoke that hook,
+so their pending inputs can remain until descriptor retirement. Report those
+bytes explicitly and enforce the shared budget instead of reporting zero
+metadata for such bodies. Eligible factories release their pending payload after
+the hot derivation; steady execution must neither rederive plans nor grow the
+pending budget.
+
+The [focused checkpoint](../measurements/74u-hot-focused-correctness.json)
+passes 551 workspace tests (19 ignored), 207 release runtime tests (15 ignored),
+four pending-owner/threshold/refusal/retirement tests and the explicit disabled-
+pool check. All 48 source measurement, 16 mutation and 24 literal V2 control
+cases pass. Measurement asserts no runtime derivation during materialization,
+one hot derivation for each eligible factory, no repeated steady derivation,
+and stable pending storage after collection. Compiler-refused factories retain
+3,823 to 18,273 bytes of cold input payloads in this matrix, until retirement.
+Full combined production and cost verification remain pending; these checks do
+not promote the closure consumer.

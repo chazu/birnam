@@ -4,6 +4,7 @@ use crate::execution::{DecodedAction, ExecutionError, ResumableEntryCapability, 
 use crate::runtime::current_thread_token;
 use birnam_codegen::closure_elision::{Plan, Value};
 use core::cell::Cell;
+pub(super) mod pending;
 mod region;
 
 pub(super) struct Prepared {
@@ -12,6 +13,8 @@ pub(super) struct Prepared {
 }
 impl Prepared {
     pub(super) fn new(bytes: &[u8], row: selection::Row<'_>) -> Option<Self> {
+        #[cfg(test)]
+        DERIVATIONS.set(DERIVATIONS.get() + 1);
         #[cfg(feature = "ffi-test-hooks")]
         let _preparation = PreparationTime::start();
         let program = resumable::lower_portable_block(bytes).ok()?;
@@ -36,18 +39,76 @@ impl Prepared {
 }
 pub(super) struct Record {
     pub(super) descriptor: Weak<FrameDescriptor>,
-    prepared: Rc<Prepared>,
+    preparation: Preparation,
     visits: Cell<usize>,
     constructor: Option<Rc<crate::loader::BlockConstructionSummary>>,
 }
+enum Preparation {
+    Pending {
+        input: Rc<pending::Pending>,
+        expected: pending::Expected,
+    },
+    Ready(Rc<Prepared>),
+    Refused,
+}
+enum Visit {
+    Cold,
+    Ready(Rc<Prepared>),
+    Refused,
+}
 impl Record {
-    pub(super) fn new(prepared: Rc<Prepared>, descriptor: &Arc<FrameDescriptor>) -> Self {
-        Self {
+    pub(super) fn new(
+        input: Rc<pending::Pending>,
+        descriptor: &Arc<FrameDescriptor>,
+        bytes: &[u8],
+    ) -> Option<Self> {
+        let expected = input.expected(bytes)?;
+        Some(Self {
             descriptor: Arc::downgrade(descriptor),
-            prepared,
+            preparation: Preparation::Pending { input, expected },
             visits: Cell::new(0),
             constructor: None,
+        })
+    }
+
+    fn ready(&self) -> Option<&Rc<Prepared>> {
+        match &self.preparation {
+            Preparation::Ready(prepared) => Some(prepared),
+            _ => None,
         }
+    }
+
+    pub(super) fn expired_pending(&self) -> bool {
+        matches!(self.preparation, Preparation::Pending { .. })
+            && self.descriptor.strong_count() == 0
+    }
+
+    fn visit(&mut self) -> Visit {
+        let visits = self.visits.get().saturating_add(1);
+        self.visits.set(visits);
+        if visits < HOT_ENTRIES {
+            return Visit::Cold;
+        }
+        self.prepare().map_or(Visit::Refused, Visit::Ready)
+    }
+
+    // Pure host compilation only: no Id allocation, callback or code loading.
+    fn prepare(&mut self) -> Option<Rc<Prepared>> {
+        if let Some(prepared) = self.ready() {
+            return Some(prepared.clone());
+        }
+        let Preparation::Pending { input, expected } =
+            core::mem::replace(&mut self.preparation, Preparation::Refused)
+        else {
+            return None;
+        };
+        let prepared = input.prepare()?;
+        if prepared.descriptor.as_slice() != expected.bytes.as_ref() {
+            return None;
+        }
+        let prepared = Rc::new(prepared);
+        self.preparation = Preparation::Ready(prepared.clone());
+        Some(prepared)
     }
 }
 struct EntryLease<'a>(&'a Runtime, ResumableEntryCapability);
@@ -71,6 +132,7 @@ impl Drop for EntryLease<'_> {
 #[cfg(test)]
 thread_local! {
     pub(super) static ENABLED: Cell<bool> = const { Cell::new(false) };
+    static DERIVATIONS: Cell<usize> = const { Cell::new(0) };
 }
 #[cfg(any(test, feature = "ffi-test-hooks"))]
 thread_local! {
@@ -134,14 +196,21 @@ impl Record {
     // spare Vec capacity, BTree nodes, reference counts and allocator metadata.
     fn metadata_payload_bytes(&self) -> usize {
         use core::mem::{size_of, size_of_val};
-        let p = &self.prepared.plan;
+        let prepared = match &self.preparation {
+            Preparation::Ready(prepared) => prepared,
+            Preparation::Pending { input, expected } => {
+                return size_of::<Self>() + input.payload_bytes() + expected.bytes.len();
+            }
+            Preparation::Refused => return size_of::<Self>(),
+        };
+        let p = &prepared.plan;
         size_of::<Self>()
             + size_of::<Prepared>()
             + self
                 .constructor
                 .as_ref()
                 .map_or(0, |_| size_of::<crate::loader::BlockConstructionSummary>())
-            + self.prepared.descriptor.len()
+            + prepared.descriptor.len()
             + p.program.len()
             + size_of_val(p.following.as_slice())
             + p.following
@@ -188,6 +257,22 @@ pub(super) fn enabled() -> bool {
 }
 
 impl Runtime {
+    #[cfg(feature = "ffi-test-hooks")]
+    pub(in crate::runtime) fn closure_pending_resources(&self) -> (usize, usize) {
+        let registry = self.native_tier.borrow();
+        (
+            registry
+                .closures
+                .values()
+                .filter(|record| matches!(record.preparation, Preparation::Pending { .. }))
+                .count(),
+            registry
+                .closure_pending_budget
+                .as_ref()
+                .map_or(0, pending::Budget::bytes),
+        )
+    }
+
     #[cfg(feature = "ffi-test-hooks")]
     pub(in crate::runtime) fn closure_metadata_payload_bytes(&self) -> usize {
         self.native_tier
@@ -264,10 +349,10 @@ impl Runtime {
             (frame, descriptor)
         };
         let (prepared, constructor_summary) = {
-            let registry = self.native_tier.borrow();
+            let mut registry = self.native_tier.borrow_mut();
             let record = registry
                 .closures
-                .get(&(Arc::as_ptr(&descriptor) as usize))?;
+                .get_mut(&(Arc::as_ptr(&descriptor) as usize))?;
             if !record
                 .descriptor
                 .upgrade()
@@ -275,12 +360,19 @@ impl Runtime {
             {
                 return None;
             }
-            let visits = record.visits.get().saturating_add(1);
-            record.visits.set(visits);
-            if visits < HOT_ENTRIES {
-                return None;
-            }
-            (record.prepared.clone(), record.constructor.clone())
+            let prepared = match record.visit() {
+                Visit::Cold => return None,
+                Visit::Ready(prepared) => prepared,
+                Visit::Refused => {
+                    let retired = registry
+                        .closures
+                        .remove(&(Arc::as_ptr(&descriptor) as usize));
+                    drop(registry);
+                    drop(retired);
+                    return None;
+                }
+            };
+            (prepared, record.constructor.clone())
         };
         let plan = &prepared.plan;
         plan.continuation.as_ref()?;
@@ -320,7 +412,10 @@ impl Runtime {
                 let record = registry
                     .closures
                     .get_mut(&(Arc::as_ptr(&descriptor) as usize))?;
-                if !Rc::ptr_eq(&record.prepared, &prepared) {
+                if !record
+                    .ready()
+                    .is_some_and(|current| Rc::ptr_eq(current, &prepared))
+                {
                     return None;
                 }
                 record.constructor.replace(summary.clone())

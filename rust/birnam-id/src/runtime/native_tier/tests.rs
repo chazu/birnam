@@ -81,6 +81,7 @@ fn disabled_closure_mode_skips_preparation_without_changing_ordinary_staging() {
     let mut registry = Registry::default();
     registry.stage(&programs, &bindings, &selected, &manifest, authority);
     assert_eq!(registry.staged_closures.capacity(), 0);
+    assert!(registry.closure_pending_budget.is_none());
     let ordinary: Vec<_> = registry
         .staged
         .iter()
@@ -103,7 +104,7 @@ fn disabled_closure_mode_skips_preparation_without_changing_ordinary_staging() {
             assert_eq!(registry.staged_closures.iter().flatten().count(), 1);
             for (index, prepared) in registry.staged_closures.iter().enumerate() {
                 if let Some(prepared) = prepared {
-                    assert_eq!(prepared.descriptor, descriptors[index]);
+                    assert_eq!(prepared.prepare().unwrap().descriptor, descriptors[index]);
                 }
             }
         } else {

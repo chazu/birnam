@@ -55,8 +55,15 @@ def check_pair(off, on, batches):
     assert a["effects"] == b["effects"] == (calls * uses if shape == 2 else 0)
     assert off["prepare"]["floor_preparations"] == off["prepare"]["floor_preparation_ns"] == 0
     assert off["prepare"]["metadata_payload_before"] == off["prepare"]["metadata_payload_after"] == 0
-    assert on["prepare"]["floor_preparations"] > 0
+    assert on["prepare"]["floor_preparations"] == on["prepare"]["floor_preparation_ns"] == 0
     before, after = (on["prepare"][name] for name in ("metadata_payload_before", "metadata_payload_after"))
-    assert after > before if shape < 3 else after == before
+    assert after > before
+    assert a["cold_floor_preparations"] == 0
+    assert b["cold_floor_preparations"] == (1 if shape < 3 else 0)
+    for key in ("cold_pending_bytes_before", "cold_pending_bytes_after", "pending_bytes"):
+        assert a[key] == 0 and 0 <= b[key] <= 4 * 1024 * 1024
+    assert on["prepare"]["pending_bytes_after"] > on["prepare"]["pending_bytes_before"]
+    assert b["cold_pending_bytes_after"] < b["cold_pending_bytes_before"] if shape < 3 else b["cold_pending_bytes_after"] == b["cold_pending_bytes_before"]
+    assert b["cold_pending_records_before"] - b["cold_pending_records_after"] == (1 if shape < 3 else 0)
     for row in (a, b):
         assert row["cold_ns"] > 0 and row["ns"] > 0 and row["gc_ns"] > 0
