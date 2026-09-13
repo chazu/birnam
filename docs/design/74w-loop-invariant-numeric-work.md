@@ -139,3 +139,40 @@ image, cold-archive and relocation checks pass.
 This verifies integration of the default-off loop consumer and retirement fix.
 It does not establish profitability, non-tail or mutual-recursive loop coverage,
 application/resource acceptance, or completion of the full loop family.
+
+## Loop cost and retained-cache protocol
+
+`scripts/loop-measurement-smoke.py` checks actual installed Id loops with three,
+sixteen and 32 arithmetic operations per iteration. Each size has fixed inputs,
+one changing input, all-changing inputs and independent-call controls. Both GC
+modes and boxed/unboxed execution are paired with loop reuse disabled/enabled.
+Every loop checks fresh result identity; the test floor also checks the final
+answer before and after collection. Each pair requires identical allocation
+charges, saved-box counts and actual fused/unboxed operation counts. Reuse counts
+must be exact: 127 times the chain length for fully invariant inputs, 127 for the
+partially invariant chain and zero for changing or independent-call controls.
+These counts are per complete 128-iteration loop, with no reuse between separate
+loop invocations.
+
+The test floor records the first complete loop separately from steady execution
+and collection. The first-loop interval includes hot kernel preparation but
+excludes CodeObject materialization. It checks owner counts and retained cache
+capacity after every measured loop and collection. Reuse storage includes inline
+state, raw-vector capacity and the test-only dependency-mask vector; it excludes
+shared descriptors, executable pages and allocator bookkeeping. An independent
+call may retain its most recent stamp, but cannot reuse that stamp unless the
+next call proves an actual consecutive self-tail iteration. Zero reuse, rather
+than absence of cached state, is the required independent-call property.
+
+`scripts/loop-timing.py` requires a complete, source-matching production receipt
+containing all 192 measurement cases. It builds a fresh release installation and
+uses the unchanged preflight and interval host gates. Four alternating pairs and
+500 loops per process are the defaults. It reports execution, execution plus GC,
+first-loop cost, process wall time and peak RSS separately. The test floor's
+counter overhead is present in both sides of each pair. These source-fixture
+measurements cannot establish application performance or promotion by themselves.
+
+The combined production checkpoint includes the compact snapshot representation
+from 74V and this measurement bridge. Its full gate will replace the compact-only
+queued gate, which was cancelled before it started. Focused validation precedes
+that combined run; no full production or timing result is asserted here yet.

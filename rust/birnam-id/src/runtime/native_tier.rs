@@ -14,6 +14,8 @@ use birnam_codegen::{
 pub(in crate::runtime) mod closure_elision;
 mod discarded_clone;
 mod fused_numeric;
+#[cfg(feature = "ffi-test-hooks")]
+pub(super) use fused_numeric::HITS as FUSED_NUMERIC_HITS;
 mod regions;
 pub(in crate::runtime) mod unboxed_numeric;
 mod virtual_aggregate;
@@ -188,6 +190,17 @@ thread_local! {
 }
 
 impl Registry {
+    #[cfg(feature = "ffi-test-hooks")]
+    pub(super) fn loop_resources(&self) -> (usize, usize, usize) {
+        self.records
+            .values()
+            .filter_map(|r| r.numeric_candidate.as_ref())
+            .fold((0, 0, 0), |(owners, cached, bytes), chain| {
+                let current = chain.loop_resources();
+                (owners + current.0, cached + current.1, bytes + current.2)
+            })
+    }
+
     /// Recovery-map payload and existing native owners. Does not claim libtcc
     /// executable size or total process memory; the compiler owns those bytes.
     #[cfg(feature = "ffi-test-hooks")]

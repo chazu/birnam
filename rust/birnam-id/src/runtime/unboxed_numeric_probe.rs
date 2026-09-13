@@ -4,6 +4,7 @@ use super::native_tier::unboxed_numeric::{COMPLETED, MATERIALIZED};
 use super::*;
 
 mod control;
+mod loop_measure;
 mod measure;
 pub(super) use control::{active as control_active, after_action};
 
@@ -29,6 +30,12 @@ impl Runtime {
             measure::run,
         );
         self.add_method(vt, self.intern(b"loopReused").unwrap(), loop_reused);
+        self.add_method(
+            vt,
+            self.intern(b"measureLoop:numeric:operations:shape:batches:")
+                .unwrap(),
+            loop_measure::run,
+        );
         let object = self.allocate_instance(vt, 0);
         self.export(b"UnboxedNumericProbe", object).unwrap();
     }
