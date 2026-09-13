@@ -155,7 +155,11 @@ passes 32 differential groups across debug/release and both GC modes: callback
 traces match baseline, relevant replacements refuse, and restoring the API
 restores optimization. The full gate still passes 526 workspace tests, plus
 the live-API and continuation matrices. Preparation/execution/refusal cost
-measurement is next.
+measurement now has a verified source harness. Its first retained matrix is
+unqualified on battery and shows a large admission regression; profiling points
+to repeated loader discovery. An exact-constructor declaration cache retains
+a native-image pin and rechecks current semantics on every use. Correctness
+verification and retiming are in progress in 74T.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.

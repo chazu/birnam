@@ -34,6 +34,7 @@ pub(super) struct Record {
     pub(super) descriptor: Weak<FrameDescriptor>,
     prepared: Rc<Prepared>,
     visits: Cell<usize>,
+    constructor: Option<Rc<crate::loader::BlockConstructionSummary>>,
 }
 impl Record {
     pub(super) fn new(prepared: Rc<Prepared>, descriptor: &Arc<FrameDescriptor>) -> Self {
@@ -41,6 +42,7 @@ impl Record {
             descriptor: Arc::downgrade(descriptor),
             prepared,
             visits: Cell::new(0),
+            constructor: None,
         }
     }
 }
@@ -75,6 +77,7 @@ thread_local! {
 #[cfg(feature = "ffi-test-hooks")]
 thread_local! {
     static ATTEMPTS: Cell<usize> = const { Cell::new(0) };
+    static CONSTRUCTOR_DISCOVERIES: Cell<usize> = const { Cell::new(0) };
     static PREPARATIONS: Cell<usize> = const { Cell::new(0) };
     static PREPARATION_NS: Cell<u128> = const { Cell::new(0) };
 }
@@ -105,6 +108,11 @@ pub(in crate::runtime) fn counters() -> (usize, usize, usize, usize, u128) {
 }
 
 #[cfg(feature = "ffi-test-hooks")]
+pub(in crate::runtime) fn constructor_discoveries() -> usize {
+    CONSTRUCTOR_DISCOVERIES.get()
+}
+
+#[cfg(feature = "ffi-test-hooks")]
 impl Record {
     // Serialized/element payload plus inline plan/record storage. This excludes
     // spare Vec capacity, BTree nodes, reference counts and allocator metadata.
@@ -113,6 +121,10 @@ impl Record {
         let p = &self.prepared.plan;
         size_of::<Self>()
             + size_of::<Prepared>()
+            + self
+                .constructor
+                .as_ref()
+                .map_or(0, |_| size_of::<crate::loader::BlockConstructionSummary>())
             + self.prepared.descriptor.len()
             + p.program.len()
             + size_of_val(p.capture_sources.as_slice())
@@ -220,7 +232,7 @@ impl Runtime {
             }
             (frame, descriptor)
         };
-        let prepared = {
+        let (prepared, constructor_summary) = {
             let registry = self.native_tier.borrow();
             let record = registry
                 .closures
@@ -237,14 +249,39 @@ impl Runtime {
             if visits < HOT_ENTRIES {
                 return None;
             }
-            record.prepared.clone()
+            (record.prepared.clone(), record.constructor.clone())
         };
         let plan = &prepared.plan;
         let edge = plan.continuation.as_ref()?;
         if plan.node_index != node_index || captures.len() != plan.capture_sources.len() {
             return None;
         }
-        let summary = crate::loader::BlockConstructionSummary::discover(constructor)?;
+        // Cache only the resident declaration and its native-image pin, never
+        // its answer. The bounded, weak-descriptor record owns one entry; the
+        // selected Rc keeps the image live if that record is replaced/pruned.
+        let summary = if let Some(summary) = constructor_summary.filter(|s| s.matches(constructor))
+        {
+            summary
+        } else {
+            #[cfg(feature = "ffi-test-hooks")]
+            CONSTRUCTOR_DISCOVERIES.set(CONSTRUCTOR_DISCOVERIES.get() + 1);
+            let summary = Rc::new(crate::loader::BlockConstructionSummary::discover(
+                constructor,
+            )?);
+            let previous = {
+                let mut registry = self.native_tier.borrow_mut();
+                let record = registry
+                    .closures
+                    .get_mut(&(Arc::as_ptr(&descriptor) as usize))?;
+                if !Rc::ptr_eq(&record.prepared, &prepared) {
+                    return None;
+                }
+                record.constructor.replace(summary.clone())
+            };
+            // Release an old native pin outside the registry borrow.
+            drop(previous);
+            summary
+        };
         if !unsafe {
             summary.warm(
                 nil,

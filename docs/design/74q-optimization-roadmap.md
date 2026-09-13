@@ -51,7 +51,11 @@ disabled staging also skips closure-plan preparation. The resulting source
 passes 526 workspace tests and full production verification. Live API overrides
 also pass 32 baseline/optimized comparisons with exact callback traces and
 restored admission across debug/release and both GC modes. Enabled-mode
-preparation, repeated-refusal costs and performance acceptance remain open.
+preparation and performance acceptance remain open. The first retained closure
+cost matrix confirms a large unqualified regression despite correct allocation
+savings. Profiles identify repeated loader discovery; a bounded cache now
+retains the exact constructor declaration with its image pin while rechecking
+its semantic answer on every use. Verification and retiming are tracked in 74T.
 None of those four full families is complete yet.
 
 ## Direction

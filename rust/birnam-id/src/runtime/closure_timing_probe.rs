@@ -1,5 +1,5 @@
 //! Measurements use the actual source compiler/consumer and explicit GC batches.
-use super::native_tier::closure_elision::counters;
+use super::native_tier::closure_elision::{constructor_discoveries, counters};
 use super::*;
 use std::time::Instant;
 
@@ -75,6 +75,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         }
         r.gc_collect_from_native_range(0, 0);
         let before = counters();
+        let discoveries_before = constructor_discoveries();
         EFFECTS.set(0);
         let mut ns = 0;
         let mut gc_ns = 0;
@@ -98,6 +99,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             gc_ns += start.elapsed().as_nanos();
         }
         let after = counters();
+        let discoveries = constructor_discoveries() - discoveries_before;
         let calls = batches * 128;
         let attempts = after.0 - before.0;
         let hits = after.1 - before.1;
@@ -105,7 +107,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let effects = EFFECTS.get();
         assert_eq!(effects, if shape == 2 { calls } else { 0 });
         println!(
-            "closure-measure shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects}"
+            "closure-measure shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries}"
         );
         r.canonical().nil
     })

@@ -1332,3 +1332,41 @@ measurement smoke groups, continuation and live-API matrices, and full installed
 image, cold-archive and relocation verification. It contains no qualified timing
 claim. The consumer remains experimental and disabled by default; performance
 measurements are the next step, with all four families still in progress.
+
+### Closure loader-cost diagnosis and pinned declarations
+
+The first [retained source timing matrix](../measurements/74t-closure-exploratory-timing.json)
+uses a fresh release installation, four alternating pairs per shape and 64,000
+measured calls per process. AC admission fails on battery; the interval check
+passes, but the entire matrix remains unqualified. Execution takes about 5.30
+times baseline for eliminated closures, 5.37 times for escaping closures, and
+5.82 times for a repeatedly replaced callee. Including collection gives about
+2.79, 2.71 and 2.86 times baseline respectively. Physical allocation savings and
+logical allocation charges match the expected counts. The observing-callee
+control has no attempted optimization and does not show a comparable regression.
+These are instrumented fixture costs, not application performance claims.
+
+The [diagnostic profiles](../measurements/74t-closure-loader-profile.json) identify
+repeated resident-image discovery as the dominant admission cost: 488 of 648
+samples within successful admission, and 488 of 543 within repeated refusal.
+These separate sampling runs include compilation and collection elsewhere in
+the process; those sample ratios describe only the named admission subtree.
+A deterministic counter check confirms the problem: 256 warmed invocations
+perform 256 discoveries. The new regression requires zero discoveries after
+warmup for all four source shapes, alongside the original semantic assertions.
+
+Each bounded closure record now retains at most one exact constructor
+declaration and its native-image pin. A changed constructor address requires
+fresh discovery. Missing declarations are not permanently cached. The selected
+reference keeps its pin through use, even if the record is evicted; dead weak
+descriptor records and bounded-record eviction release cached ownership. This
+cache contains no Id objects, semantic answers or callable callee entries.
+The declaration is queried again at every use, preserving current API, program,
+capture, carrier and owner checks; ordinary lookup, layout, Frame, GC and native
+generation admission remain unchanged. Old image pins are released outside the
+registry borrow. The [pinned-constructor correctness receipt](../measurements/74t-closure-pinned-constructor.json)
+passes all 61 commands, 526 workspace tests (19 ignored), eight measurement
+comparison groups, eight continuation groups, 32 live-API groups, and the
+installed, image, cold-archive and relocation gates. Source hashes match.
+The consumer stays experimental and default-off pending a repeated cost matrix
+and the remaining closure/resource acceptance work.

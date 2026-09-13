@@ -30,6 +30,10 @@ impl BlockConstructionSummary {
         })
     }
 
+    pub(crate) fn matches(&self, constructor: *const c_void) -> bool {
+        self.constructor == constructor
+    }
+
     /// No result is cached: carrier, code meaning and the producer's current
     /// API must still agree at the actual constructor boundary. Caller holds
     /// all input objects live and separately proves allocation/GC eligibility.

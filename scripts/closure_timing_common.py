@@ -17,6 +17,7 @@ def check_pair(off, on, batches):
     assert a["shape"] == b["shape"]
     shape = a["shape"]
     assert a["calls"] == b["calls"] == calls
+    assert a["constructor_discoveries"] == b["constructor_discoveries"] == 0
     assert a["allocation_bytes"] == b["allocation_bytes"] > 0
     assert a["attempts"] == a["hits"] == a["materialized"] == a["physical_saved"] == 0
     assert b["attempts"] == (calls if shape < 3 else 0)
