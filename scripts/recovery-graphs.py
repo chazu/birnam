@@ -28,7 +28,7 @@ def sources():
     paths += [ROOT / "scripts" / name for name in (
         "compatibility_authority.py", "rust-cutover-verify.sh",
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
-        "closure-elision-smoke.sh",
+        "closure-elision-smoke.sh", "closure-literals-smoke.py",
         "closure-control-smoke.sh", "closure-sequence-smoke.py",
         "unboxed-numeric-smoke.py", "unboxed-numeric-control-smoke.py",
         "unboxed-numeric-measurement-smoke.py", "unboxed_numeric_timing_common.py",
@@ -46,7 +46,7 @@ def sources():
         "abi/native-field-projection-v1.md", "scripts/fixtures/field-projection.c",
         "abi/native-block-construction-v1.md", "scripts/fixtures/native-block-construction.c",
         "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
-        "scripts/fixtures/closure-elision.birnam",
+        "scripts/fixtures/closure-elision.birnam", "scripts/fixtures/closure-literals.birnam",
         "scripts/fixtures/closure-observation.birnam",
         "scripts/fixtures/closure-control.birnam",
         "scripts/fixtures/closure-live-api.birnam",
@@ -174,6 +174,7 @@ def main():
             ]
             if args.closures:
                 checks.append(("birnam_codegen", "closure-plan", "closure_elision::"))
+                checks.append(("birnam_id", "literal-callee", "runtime::native_tier::leaf_tests::literal_tests"))
                 checks.append(("birnam_id", "closure-context", "closure_context_requires_active_nil"))
                 checks.append(("birnam_id", "closure-staging", "disabled_closure_mode_skips_preparation"))
             if args.numeric:
@@ -228,7 +229,7 @@ def main():
                     finally:
                         env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
                         env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
-                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure")
+                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals")
                                 for profile in ("debug", "release")}
                     paths = list(Path(evidence).glob("*.json"))
                     if {p.name for p in paths} != expected:
@@ -240,6 +241,18 @@ def main():
                         hashes = {m["floor_sha256"] for name, m in matrices.items() if name.endswith(f"-{profile}.json")}
                         if len(hashes) != 1 or next(iter(hashes)) not in output:
                             raise RuntimeError("source matrix floor differs from control verification")
+                    expected_measurements = {(u, s, e) for u in (1, 3, 4, 8, 16, 32) for s in range(4) for e in (0, 1)}
+                    for profile in ("debug", "release"):
+                        rows = matrices[f"measure-{profile}.json"]["rows"]
+                        if len(rows) != 48 or {(r["uses"], r["shape"], r["enabled"]) for r in rows} != expected_measurements:
+                            raise RuntimeError("incomplete closure profitability-threshold measurement matrix")
+                    expected_literals = {(p, l, e, f) for p in (0, 1)
+                                         for l, e, f in ((0, 1, -1), (1, 0, -1), (1, 1, -1),
+                                                         (1, 1, 0), (1, 1, 1), (1, 1, 2))}
+                    for profile in ("debug", "release"):
+                        rows = matrices[f"literals-{profile}.json"]["rows"]
+                        if len(rows) != 12 or {(r["precise"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literals:
+                            raise RuntimeError("incomplete fresh literal closure result matrix")
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:
                         expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant") for p in ("debug", "release")}

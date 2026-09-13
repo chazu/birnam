@@ -16,17 +16,23 @@ def main():
     parser.add_argument("--floor", type=Path, required=True)
     parser.add_argument("--profile", choices=("debug", "release"), required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--uses", type=int, nargs="+", choices=range(1, 33), default=[1, 3, 4, 8, 16, 32])
     args = parser.parse_args()
+    args.uses = list(dict.fromkeys(args.uses))
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
     env.update(BIRNAM_ID_DYLIB=str(args.floor.resolve()), BIRNAM_TEST_CLOSURE_CONTROL="1",
                BIRNAM_DEV_CLOSURE_FORCE_RECOVERY="0", BIRNAM_DEV_CLOSURE_FORCE_AT="-1",
                BIRNAM_DEV_CLOSURE_REPORT="0", BIRNAM_CLOSURE_BATCHES="2")
-    receipt = {"status": "running", "scope": __doc__,
+    root = Path(__file__).resolve().parent.parent
+    paths = [Path(__file__).resolve(), root / "scripts/closure_timing_common.py",
+             root / "rust/birnam-id/src/runtime/closure_timing_probe.rs"]
+    hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+    receipt = {"status": "running", "uses": args.uses, "source_sha256": hashes, "scope": __doc__,
                "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(), "rows": []}
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-closure-measurement-") as work:
             fixture = Path(work) / "measurement.birnam"
-            for uses in (1, 3, 32):
+            for uses in args.uses:
                 code = source(uses)
                 fixture.write_text(code)
                 env["BIRNAM_CLOSURE_USES"] = str(uses)
@@ -44,6 +50,8 @@ def main():
                                                    source_sha256=hashlib.sha256(code.encode()).hexdigest()))
                     check_pair(pair[0], pair[1], 2)
                     print(f"closure-timing-smoke: profile={args.profile} shape={shape} uses={uses} counter/allocation/result checks passed; timings unqualified", flush=True)
+        assert hashlib.sha256(args.floor.read_bytes()).hexdigest() == receipt["floor_sha256"]
+        assert all(hashlib.sha256((root / name).read_bytes()).hexdigest() == digest for name, digest in hashes.items())
         receipt["status"] = "passed"
     except BaseException as error:
         receipt.update(status="failed", error=str(error))

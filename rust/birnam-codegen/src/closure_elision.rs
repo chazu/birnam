@@ -28,6 +28,8 @@ pub enum Refusal {
 pub enum Value {
     Input(u32),
     Closure,
+    /// Fresh result of a preceding invocation in this region.
+    Result(u32),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,7 +43,7 @@ pub struct Plan {
     /// repeated references; neither Cells nor other captures are copied.
     pub capture_sources: Vec<u32>,
     pub argument_sources: Vec<u32>,
-    pub return_source: u32,
+    pub return_source: Option<u32>,
     pub selector: Vec<u8>,
     pub call_site: u32,
     pub callee: small_callee::Plan,
@@ -133,7 +135,9 @@ impl Plan {
                         resumable::color_slots(&nested_program).map_err(|_| Refusal::Callee)?;
                     let callee = small_callee::compile(&nested_program, &nested_layout)
                         .map_err(|_| Refusal::Callee)?;
-                    if callee.return_entry_slot() == nested_layout.entry_receiver_slot as usize {
+                    if callee.return_entry_slot()
+                        == Some(nested_layout.entry_receiver_slot as usize)
+                    {
                         return Err(Refusal::IdentityExposure);
                     }
                     let mut capture_sources = Vec::new();
@@ -224,18 +228,24 @@ impl Plan {
             };
             argument_sources.push(source);
         }
-        let returned = callee.return_entry_slot() as u32;
-        let return_source = if let Some(index) = nested_layout
-            .entry_capture_slots
-            .iter()
-            .position(|s| *s == returned)
-        {
-            capture_sources[index]
+        let return_source = if let Some(returned) = callee.return_entry_slot() {
+            let returned = returned as u32;
+            Some(
+                if let Some(index) = nested_layout
+                    .entry_capture_slots
+                    .iter()
+                    .position(|s| *s == returned)
+                {
+                    capture_sources[index]
+                } else {
+                    let index = returned
+                        .checked_sub(nested_layout.entry_argument_start)
+                        .ok_or(Refusal::Callee)? as usize;
+                    *argument_sources.get(index).ok_or(Refusal::Callee)?
+                },
+            )
         } else {
-            let index = returned
-                .checked_sub(nested_layout.entry_argument_start)
-                .ok_or(Refusal::Callee)? as usize;
-            *argument_sources.get(index).ok_or(Refusal::Callee)?
+            None
         };
         let window = layout.call_window_start.ok_or(Refusal::InvalidLayout)?;
         after_boxes.extend([window, slot(receiver)?, window + 1]);
@@ -361,7 +371,7 @@ mod tests {
                 assert_eq!(plan.capture_sources.len(), usize::from(captured));
                 assert_eq!(
                     plan.return_source,
-                    layout.entry_argument_start + u32::from(!captured)
+                    Some(layout.entry_argument_start + u32::from(!captured))
                 );
                 assert_eq!(plan.argument_sources, [layout.entry_argument_start + 1]);
                 assert_eq!(plan.callee.alias_count(), 1);
@@ -373,7 +383,7 @@ mod tests {
                 let mut words: Vec<_> = (1..=layout.slot_count as usize).collect();
                 let inputs = words.clone();
                 let mut constructor_entry = None;
-                let input = words[plan.return_source as usize];
+                let input = words[plan.return_source.unwrap() as usize];
                 for op in &program.blocks[0].operations {
                     let dest = layout.value_slots[op.result.0 as usize] as usize;
                     match &op.kind {
@@ -392,6 +402,7 @@ mod tests {
                     substituted[slot as usize] = match value {
                         Value::Input(s) => inputs[s as usize],
                         Value::Closure => CLOSURE,
+                        Value::Result(_) => panic!("entry-only fixture"),
                     };
                 }
                 assert_eq!(
@@ -558,7 +569,7 @@ mod tests {
         let observer = send(Expr::Global(b"saved"), vec![]);
         for inner in [
             observer,
-            Expr::SmallInt(1),
+            Expr::Nil,
             Expr::Block(Box::new(Block {
                 params: vec![],
                 body: vec![Statement::Expr(Expr::Nil)],

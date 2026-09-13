@@ -517,6 +517,30 @@ The consumer stays disabled by default. One-use regions clearly regress, and
 three-use regions do not establish a useful gain in combined execution and collection.
 Intermediate use counts must establish a profitable admission threshold before
 promotion. Broader callee bodies and preparation/metadata/application acceptance
-remain open. The separate 74V compiler work supplies numeric-result recovery
-aliases toward actual unboxed intermediate execution; its runtime integration
-is still required, along with the remaining loop and aggregate obligations.
+remain open. The separate 74V consumer now executes unboxed numeric intermediates with
+V2 recovery; its performance and resource acceptance remain open. Loop and
+aggregate acceptance also remain part of the full four-family objective.
+
+
+## Intermediate-use profitability experiment
+
+The measurement harness now covers one, three, four, eight, sixteen and 32
+immediate invocations, retaining the same four successful/escaping/refusal
+shapes. The test floor and source generator accept every count from one through
+32, within the existing compiler limit. A custom count still requires its own
+complete counter matrix before the timing runner will accept it.
+
+The [debug](../measurements/74u-closure-threshold-debug.json) and
+[release](../measurements/74u-closure-threshold-release.json) counter matrices
+each pass 48 fresh source processes. Allocation charges, saved closures, shared
+captures, materialization, replacement effects and restored admission match the
+existing requirements. Both receipts retain the source and floor hashes. These
+short runs are correctness evidence, not qualified timing results.
+
+Full verification now requires all 48 measurement rows per profile. The default
+timing sweep covers the six counts with alternating baseline/enabled pairs and
+unchanged host gates. Its successful-path execution and collection-inclusive
+results, cold preparation, refusal controls and resource costs will determine
+an admission threshold. No threshold is selected or consumer enabled by this
+harness change; broader closure bodies and application/resource acceptance
+remain required.

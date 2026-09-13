@@ -157,6 +157,7 @@ fn repeated_closure_plans_match_physical_execution_and_baseline_indices() {
                         planned[destination as usize] = match value {
                             Value::Input(s) => inputs[s as usize],
                             Value::Closure => CLOSURE,
+                            Value::Result(_) => panic!("entry-only fixture"),
                         };
                     }
                     assert_eq!(planned, words, "all prefix stores at call {call}");
@@ -182,7 +183,7 @@ fn repeated_closure_plans_match_physical_execution_and_baseline_indices() {
                     } else {
                         actual[0]
                     };
-                    assert_eq!(inputs[returned as usize], result);
+                    assert_eq!(inputs[returned.unwrap() as usize], result);
                     assert_eq!(words[slot(*receiver)], CLOSURE);
                     let window = plan.call_window_start as usize;
                     words[window] = CLOSURE;
@@ -260,4 +261,85 @@ fn repeated_closure_extension_stops_before_observation_and_changed_call_shapes()
             .following
             .is_empty()
     );
+}
+
+#[test]
+fn literal_closure_results_retain_distinct_origins_and_stop_before_dependent_arguments() {
+    for dependent_argument in [false, true] {
+        let send = |argument| Expr::Send {
+            receiver: Box::new(Expr::Global(b"closure")),
+            selector: Cow::Borrowed(b"value:"),
+            args: vec![Expr::Global(argument)],
+            source: b"",
+        };
+        let bytes = portable::encode_block(
+            &Block {
+                params: vec![b"input"],
+                body: vec![
+                    Statement::Let {
+                        name: b"closure",
+                        value: Expr::Block(Box::new(Block {
+                            params: vec![b"unused"],
+                            body: vec![Statement::Expr(Expr::SmallInt(42))],
+                        })),
+                    },
+                    Statement::Let {
+                        name: b"first",
+                        value: send(b"input"),
+                    },
+                    Statement::Let {
+                        name: b"second",
+                        value: send(if dependent_argument {
+                            b"first"
+                        } else {
+                            b"input"
+                        }),
+                    },
+                    Statement::Let {
+                        name: b"retained",
+                        value: Expr::Global(b"first"),
+                    },
+                    Statement::Let {
+                        name: b"third",
+                        value: send(b"input"),
+                    },
+                    Statement::Expr(Expr::Global(b"retained")),
+                ],
+            },
+            &[],
+        )
+        .unwrap();
+        let program = resumable::lower_portable_block(&bytes).unwrap();
+        let layout = resumable::color_slots(&program).unwrap();
+        let plan = Plan::derive(&program, &layout).unwrap();
+        assert_eq!(plan.return_source, None);
+        assert!(plan.callee.return_allocation().is_some());
+        if dependent_argument {
+            assert!(
+                plan.following.is_empty(),
+                "future result must not read a stale original input"
+            );
+        } else {
+            assert_eq!(plan.following.len(), 2);
+            assert!(
+                plan.following[0]
+                    .stores
+                    .iter()
+                    .any(|(_, value)| *value == Value::Result(0))
+            );
+            assert!(
+                plan.following[1]
+                    .stores
+                    .iter()
+                    .any(|(_, value)| *value == Value::Result(1))
+            );
+            assert!(
+                plan.following[1]
+                    .stores
+                    .iter()
+                    .any(|(_, value)| *value == Value::Result(0)),
+                "an alias of the first result stays distinct from the second"
+            );
+        }
+    }
 }

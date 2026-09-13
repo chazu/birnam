@@ -6,7 +6,7 @@ pub(super) struct Call<'a> {
     pub pc: u32,
     pub selector: &'a [u8],
     pub arguments: &'a [u32],
-    pub returned: u32,
+    pub returned: Option<u32>,
     pub stores: &'a [(u32, Value)],
     pub boxes: &'a [u32],
     pub aliases: &'a [bool],

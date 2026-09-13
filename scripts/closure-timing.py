@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--batches", type=int, default=500)
     parser.add_argument("--pairs", type=int, default=4)
-    parser.add_argument("--uses", type=int, nargs="+", choices=(1, 3, 32), default=[1])
+    parser.add_argument("--uses", type=int, nargs="+", choices=range(1, 33), default=[1, 3, 4, 8, 16, 32])
     parser.add_argument("--wait-seconds", type=int, default=120)
     parser.add_argument("--exploratory", action="store_true", help="retain unqualified diagnostic timings when host admission fails")
     args = parser.parse_args()
@@ -45,7 +45,7 @@ def main():
     for uses in args.uses:
         digest = hashlib.sha256(source(uses).encode()).hexdigest()
         rows = [r for r in measurement["rows"] if r["uses"] == uses and r["source_sha256"] == digest]
-        if {(r["shape"], r["enabled"]) for r in rows} != set(product(range(4), (0, 1))):
+        if len(rows) != 8 or {(r["shape"], r["enabled"]) for r in rows} != set(product(range(4), (0, 1))):
             parser.error("requested repeated-use source lacks counter verification")
     floor = ROOT / ".cargo-target/74t-closure-control-target/release/libbirnam_id.dylib"
     digests = set(re.findall(r"profile=release .*?floor_sha256=([a-f0-9]{64})", output))
@@ -71,7 +71,7 @@ def main():
               "floor": {"path": str(floor), "sha256": sha(floor)}, "prefix": str(prefix),
               "batches": args.batches, "pairs": args.pairs, "uses": args.uses, "rows": [],
               "fixture_sha256": {str(uses): sha(path) for uses, path in fixtures.items()},
-              "scope": "Instrumented test floor with real release installed Codegen and source factories. Each factory invokes one closure uses times (1, 3 or 32); completed_calls counts optimized invocations. Shapes: 0 captured Cell return with eliminated closure, 1 escaping closure, 2 warmed then replaced callee, 3 observing callee refused by compiler. Precise GC; 128 factory calls then separately timed collection per batch. Id allocation charges must match; physical_saved counts deferred Block allocations before collection. Materialization timing excludes source parsing and CodeObject creation; cold_ns covers first 128 factory calls. Floor preparation time is a subset of materialization. Metadata is process-wide inline record/plan plus used element payload, excluding Vec spare capacity, BTree nodes, Rc and allocator/loader costs. Journal bytes include retained capacity and shared snapshots. No RSS or application-wide claim. Probe counters and per-factory result checks are inside measured execution; process wall time is separately retained."}
+              "scope": "Instrumented test floor with real release installed Codegen and source factories. Each factory invokes one closure uses times (1 through 32); completed_calls counts optimized invocations. Shapes: 0 captured Cell return with eliminated closure, 1 escaping closure, 2 warmed then replaced callee, 3 observing callee refused by compiler. Precise GC; 128 factory calls then separately timed collection per batch. Id allocation charges must match; physical_saved counts deferred Block allocations before collection. Materialization timing excludes source parsing and CodeObject creation; cold_ns covers first 128 factory calls. Floor preparation time is a subset of materialization. Metadata is process-wide inline record/plan plus used element payload, excluding Vec spare capacity, BTree nodes, Rc and allocator/loader costs. Journal bytes include retained capacity and shared snapshots. No RSS or application-wide claim. Probe counters and per-factory result checks are inside measured execution; process wall time is separately retained."}
 
     def save():
         args.output.parent.mkdir(parents=True, exist_ok=True)
