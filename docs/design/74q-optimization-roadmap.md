@@ -26,15 +26,18 @@ The collection-workload ablation and diagnostic counters are retained in 74T:
 that workload recorded no closure-consumer activity, so its noisy regression
 cannot justify changing closure admission policy.
 
-Next, finish consolidated native-storage verification and the queued repeated
-memory/source checks. Add application coverage that actually uses aggregate regions. Use their exact verified floors to select further cost reductions.
+Next, finish the queued repeated memory/source checks and diagnose the
+intermittent disabled-pass identity failure found by the isolated Error projection
+extension. Its report workload records successful field substitutions, but the
+new module is not ready for integration or timing while that failure is unresolved. Use their exact verified floors to select further cost reductions.
 Then close the application/cold/resource gaps with individual and combined
 configurations. Native-unit counts, journal capacity and scratch bytes are
 partial resource observations. A first 20-process/140-snapshot normal-floor
 memory matrix is retained, with an independently verified integrated sampler;
 its single pairs do not establish savings or leaks. Test-only private native Unit
 allocation accounting has passed focused tests and 174 source cases in isolation;
-its consolidated production gate is running. These private relocated allocation
+its consolidated 73-command/3,164-case production gate passed, and the accounting
+is integrated on main with all 284 source hashes matching. These private relocated allocation
 bytes exclude the separate baseline TCC module and other compiler metadata. Supported cases must pass the acceptance contract
 below before promotion. None of the four full families is complete yet.
 
