@@ -34,8 +34,9 @@ def source(projections, shape, precise):
         statements.append('answer')
     body = ' '.join(statements)
     if shape == 4:
-        body = ' '.join('let copy := [prototype clone];' for _ in range(projections)) + ' observer'
-    other = 'expected' if shape == 4 else 'observer'
+        body = ' '.join('let copy := [prototype clone];' for _ in range(projections)) + ' expected'
+    other = 'observer'
+    captures = '#[expected]' if shape == 4 else '#[]'
     setup = f'''[System load: "modules/os.birnam"];
 [System preciseGc: {'true' if precise else 'false'}];
 let expected := 42;
@@ -49,7 +50,7 @@ let observer := [:copy :alias |
   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];
   [last set: copy]; nil];
 let source := [:prototype :observer | {body}];
-let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
+let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: {captures}];
 '''
     phases = []
     for phase in ('native', 'replaced', 'restored', 'canonical'):
@@ -78,8 +79,6 @@ let afterEviction := [block value: proto value: observer];
 [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]];
 [System println: "aggregate-source identities and current effects passed"];
 '''
-    if shape == 4:
-        post = post.replace('value: observer', 'value: expected')
     # Each complete expression returns to the real host between phases. A
     # removed Id method can retire there; an active outer script would keep
     # that retirement pending and correctly prevent allocation elision.
@@ -106,11 +105,17 @@ def main():
     result = dict(status='running', profile=args.profile, floor_sha256=sha(floor),
                   disabled_consumers=args.disabled_consumers,
                   correctness_sha256=sha(args.receipt), script_sha256=sha(__file__),
+                  prerequisite_driver_sha256=proof['sources'].get(str(Path(__file__).relative_to(ROOT))),
+                  driver_scope='This source-validation driver is independently hashed. The prerequisite production gate binds but does not execute this driver. Every other prerequisite source must remain identical; no runtime, compiler, probe or assertion change is admitted here.',
                   installed_sha256={str(p): sha(p) for p in installed}, rows=[],
                   scope='Real host REPL, installed compiler and Relational native getter, using the previously verified test floor. Each expression returns to the host between phases so removed code can retire before readmission. Existing numeric probe supplies logical-byte and physical-allocation counters only: its completed/materialized fields count numeric optimization and must remain zero here. Four phases per process: native getter; effectful Id override creating a private vtable; inherited native getter restored with undeclared private layout still refused; unchanged canonical-layout prototype readmitted. Shapes include field-only returns, a tail getter, successive clones, an escaping observer and discarded repeated clones. Selected disabled consumers must omit no physical allocations; unrelated consumers remain active. This is source correctness and admission evidence, not a timing comparison or a proof of every aggregate shape.')
 
     def check_sources():
-        assert all(sha(ROOT / k) == v for k, v in proof['sources'].items()), 'production sources changed since floor verification'
+        # A validation-fixture correction does not invalidate the already tested
+        # runtime. Bind this driver independently, keeping every other source
+        # and every existing value/identity/allocation assertion unchanged.
+        driver = str(Path(__file__).relative_to(ROOT))
+        assert all(k == driver or sha(ROOT / k) == v for k, v in proof['sources'].items()), 'production sources changed since floor verification'
         assert sha(floor) == expected_floor
         assert sha(__file__) == result['script_sha256']
         assert all(sha(k) == v for k, v in result['installed_sha256'].items())

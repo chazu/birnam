@@ -40,9 +40,11 @@ def sources():
         "closure-measurement-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
         "closure-production-timing.py", "unboxed-bounded-timing.py",
-        "aggregate-source-smoke.py", "recovery-applications.py",
+        "aggregate-source-smoke.py", "recovery-applications.py", "recovery-memory.py",
     )]
     paths += [ROOT / path for path in (
+        "vendor/libtcc-src/tcc.h", "vendor/libtcc-src/config.h",
+        "vendor/libtcc-src/tccrun.c", "vendor/libtcc-src/libtcc.c",
         "abi/native-numeric-semantics-v1.md", "scripts/fixtures/numeric-semantics.c",
         "scripts/fixtures/numeric-specialization.birnam",
         "scripts/fixtures/native-numeric-api-context.c",
@@ -139,6 +141,9 @@ def main():
                 raise RuntimeError("changed compatibility authority: " + name)
             receipt["authorities"][name] = sha(ROOT / name)
         for profile in ("debug", "release"):
+            run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
+                 "-p", "birnam-native-compiler", "--features", "resource-metrics"]
+                + (["--release"] if profile == "release" else []), profile + "-native-resource-ownership")
             if args.closures:
                 run(["mise", "exec", "--", "cargo", "build", "--locked", "--offline",
                      "-p", "birnam-id", "-p", "birnam-prelude", "-p", "birnam-collection",

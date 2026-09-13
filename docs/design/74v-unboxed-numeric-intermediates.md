@@ -608,3 +608,13 @@ unchanged result/allocation/recovery counters for final and earlier results and
 refused inputs, plus stable scratch and journal capacity after collection. This
 is measurement correctness, not a speedup result. Full production/source
 verification is running against this committed implementation.
+
+### Batched snapshot production verification
+
+The [complete production proof](../measurements/74v-batch-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases. All 278 prerequisite
+source hashes match the committed implementation. This includes V2 recovery,
+mutation, identity, allocation/finalizer, image and native ownership gates.
+The implementation remains default-off. Its next step is the same bounded
+120-process exploratory comparison against this exact verified test floor;
+quiet-host admission is waived, and no speedup is claimed from correctness.
