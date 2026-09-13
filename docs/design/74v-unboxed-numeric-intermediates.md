@@ -274,3 +274,50 @@ matrices, this checkpoint adds 1,188 fresh source-process comparisons. The
 feature-enabled runtime test suite also passes 195 tests, with 15 ignored. Full
 production verification of this extended checkpoint remains required before
 integration or a performance/promotion claim.
+
+### Cost measurement protocol
+
+The numeric cost probe now measures real source Blocks with three, sixteen and
+32 arithmetic operations. Each size has five paired baseline/enabled cases:
+a tail result, a warmed operator replaced with subtraction, a mixed Float input,
+a compiler-refused Cell result, and an early intermediate returned after the
+remaining arithmetic. The mutation case restores the original method and requires
+immediate readmission. Every invocation checks the expected answer; the paired
+checks require equal logical allocation charges and exact completed-operation,
+materialization and saved-box counts.
+
+Preparation is timed separately from the first 128 calls and from steady batches
+of 128 calls. Each batch ends with separately timed collection. This keeps the
+cost of preserving original collector observations visible alongside execution.
+The probe checks that steady execution adds no recovery maps or native owners.
+Map storage includes owned vector capacity and the Rc header, excluding allocator
+bookkeeping and other native-tier structures. Journal storage includes retained
+capacity. Native-unit counts measure owners, not executable bytes. Darwin
+`time -l` additionally records whole-process peak RSS in bytes, including startup
+and collection, without attributing that entire footprint to recovery metadata.
+
+`scripts/unboxed-numeric-measurement-smoke.py` verifies all 30 source processes
+per profile before timing. Full `recovery-graphs.py --unboxed --verify` retains
+both matrices beside the ordinary, captured-input and V2 control matrices and
+requires their runtime hashes to match. The timing runner,
+`scripts/unboxed-numeric-timing.py`, requires that complete production receipt,
+matching source and floor hashes, and the requested fixture's counter evidence.
+It then builds a fresh release installation and runs four alternating pairs by
+default, with 500 batches per process. Preparation, cold execution, steady
+execution, execution including collection, process wall time and peak RSS are
+reported separately. Existing AC/load admission and interval gates remain intact;
+`--exploratory` retains explicitly unqualified results when those gates fail.
+
+These measurements cover bounded source fixtures. A passed counter matrix does
+not establish profitability, application acceptance, or promotion of the
+experimental consumer. Full arithmetic, loop, aggregate and closure acceptance
+remain open.
+
+The initial [debug](../measurements/74v-unboxed-measurement-debug.json) and
+[release](../measurements/74v-unboxed-measurement-release.json) matrices each pass
+all 30 processes with matching source/floor hashes and positive RSS readings.
+For the two measured 32-operation successful cases, the release probe retains
+5,112/5,792 bytes of recovery maps and 98,304 bytes of journal capacity after
+collection. Native-unit counts equal the baseline. These short counter checks
+supply no qualified timing claim; the extended production gate and paired cost
+measurements follow this checkpoint.

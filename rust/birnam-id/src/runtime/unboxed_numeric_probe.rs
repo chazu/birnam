@@ -4,6 +4,7 @@ use super::native_tier::unboxed_numeric::{COMPLETED, MATERIALIZED};
 use super::*;
 
 mod control;
+mod measure;
 pub(super) use control::{active as control_active, after_action};
 
 impl Runtime {
@@ -15,6 +16,17 @@ impl Runtime {
             self.intern(b"control:input:other:expected:at:capture:")
                 .unwrap(),
             control::run,
+        );
+        self.add_method(
+            vt,
+            self.intern(b"prepare:captures:").unwrap(),
+            measure::prepare,
+        );
+        self.add_method(
+            vt,
+            self.intern(b"measure:input:other:operations:shape:batches:")
+                .unwrap(),
+            measure::run,
         );
         let object = self.allocate_instance(vt, 0);
         self.export(b"UnboxedNumericProbe", object).unwrap();
