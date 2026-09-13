@@ -1305,3 +1305,30 @@ real compiled execution. Enabled preparation, steady execution, cold/metadata
 costs and repeated-refusal measurements remain the next evidence needed for
 closure promotion. Broader shapes, resource acceptance and the full numeric,
 loop and aggregate requirements remain in progress.
+
+### Source closure cost measurement harness
+
+The opt-in test floor now measures real source factories in four paired modes:
+return the captured Cell, return the escaping closure, replace the warmed
+callee, and refuse an observing callee at compilation. Debug/release smoke
+checks require exact hit/refusal/materialization counts, matching logical
+allocation charges, one saved physical Block per eligible nonescaping call,
+and exact results and replacement effects. Production floors expose neither
+this probe nor its counters.
+
+`scripts/closure-timing.py` requires a matching full correctness receipt and
+verified test-floor hash, builds a fresh release installation, and records
+alternating process pairs. It separates execution, collection, first-128-call
+cost, materialization and process wall time. Preparation counters and scoped
+metadata payload estimates supplement allocation and journal storage counts;
+they are not RSS measurements. Probe assertions and counters remain in the
+measured execution. Source and installed binary hashes are checked again after
+timing. Host admission thresholds remain unchanged; explicit exploratory runs
+retain unqualified results when admission fails.
+
+The [measurement correctness receipt](../measurements/74t-closure-measurement.json)
+passes all 61 commands, 526 workspace tests (19 ignored), all eight new paired
+measurement smoke groups, continuation and live-API matrices, and full installed,
+image, cold-archive and relocation verification. It contains no qualified timing
+claim. The consumer remains experimental and disabled by default; performance
+measurements are the next step, with all four families still in progress.

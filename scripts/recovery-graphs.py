@@ -29,6 +29,7 @@ def sources():
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
         "closure-elision-smoke.sh",
         "closure-control-smoke.sh",
+        "closure-timing.py", "closure_timing_common.py",
     )]
     paths += [ROOT / path for path in (
         "abi/native-numeric-semantics-v1.md", "scripts/fixtures/numeric-semantics.c",
@@ -41,6 +42,7 @@ def sources():
         "scripts/fixtures/closure-observation.birnam",
         "scripts/fixtures/closure-control.birnam",
         "scripts/fixtures/closure-live-api.birnam",
+        "scripts/fixtures/closure-timing.birnam",
         "scripts/fixtures/closure-api-context.c",
     )]
     for folder in ("rust", "src/id", "modules"):

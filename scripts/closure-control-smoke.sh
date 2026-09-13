@@ -18,6 +18,22 @@ for profile in debug release; do
   CARGO_TARGET_DIR="$PWD/.cargo-target/74t-closure-control-target" mise exec -- \
     cargo build --locked --offline -p birnam-id --features ffi-test-hooks "${flags[@]}"
   floor="$PWD/.cargo-target/74t-closure-control-target/$profile/libbirnam_id.dylib"
+  for shape in 0 1 2 3; do
+    for enabled in 0 1; do
+      BIRNAM_ID_DYLIB="$floor" BIRNAM_TEST_CLOSURE_CONTROL=1 BIRNAM_DEV_CLOSURE_ELISION=$enabled \
+        BIRNAM_DEV_CLOSURE_FORCE_RECOVERY=0 BIRNAM_DEV_CLOSURE_REPORT=0 \
+        BIRNAM_CLOSURE_SHAPE=$shape BIRNAM_CLOSURE_BATCHES=2 \
+        "$prefix/bin/birnam" scripts/fixtures/closure-timing.birnam >"$work/measure-$enabled"
+    done
+    PYTHONPATH="$PWD/scripts" python3 - "$work" "$profile" "$shape" <<'PY'
+from pathlib import Path
+import sys
+from closure_timing_common import parse_output, check_pair
+work = Path(sys.argv[1])
+check_pair(parse_output((work / 'measure-0').read_text()), parse_output((work / 'measure-1').read_text()), 2)
+print('closure-timing-smoke: profile=' + sys.argv[2], 'shape=' + sys.argv[3], 'counter/allocation/result checks passed; timings unqualified')
+PY
+  done
   for precise in 0 1; do
     for control in capture suspend; do
       for mode in baseline enabled forced; do

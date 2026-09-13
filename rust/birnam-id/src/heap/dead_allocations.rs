@@ -200,14 +200,14 @@ impl Heap {
         })
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn physical_allocation_count(&self) -> usize {
         self.blocks.len()
     }
 
     /// Owned journal storage, excluding allocator bookkeeping. Shared snapshots
     /// count once; retained vector capacity counts even after reclamation.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn dead_allocation_storage_bytes(&self) -> usize {
         let mut seen = std::collections::HashSet::new();
         self.deferred_allocations.capacity() * core::mem::size_of::<(DeferredAllocation, usize)>()

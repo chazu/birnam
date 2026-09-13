@@ -11,6 +11,8 @@ pub(super) struct Prepared {
 }
 impl Prepared {
     pub(super) fn new(bytes: &[u8], row: selection::Row<'_>) -> Option<Self> {
+        #[cfg(feature = "ffi-test-hooks")]
+        let _preparation = PreparationTime::start();
         let program = resumable::lower_portable_block(bytes).ok()?;
         // Avoid deriving/coloring another plan for ordinary literal-free code.
         if !program.blocks.first()?.operations.iter().any(|op| {
@@ -63,8 +65,72 @@ impl Drop for EntryLease<'_> {
 #[cfg(test)]
 thread_local! {
     pub(super) static ENABLED: Cell<bool> = const { Cell::new(false) };
+}
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+thread_local! {
     pub(super) static HITS: Cell<usize> = const { Cell::new(0) };
     pub(super) static MATERIALIZED: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(feature = "ffi-test-hooks")]
+thread_local! {
+    static ATTEMPTS: Cell<usize> = const { Cell::new(0) };
+    static PREPARATIONS: Cell<usize> = const { Cell::new(0) };
+    static PREPARATION_NS: Cell<u128> = const { Cell::new(0) };
+}
+#[cfg(feature = "ffi-test-hooks")]
+struct PreparationTime(std::time::Instant);
+#[cfg(feature = "ffi-test-hooks")]
+impl PreparationTime {
+    fn start() -> Self {
+        PREPARATIONS.set(PREPARATIONS.get() + 1);
+        Self(std::time::Instant::now())
+    }
+}
+#[cfg(feature = "ffi-test-hooks")]
+impl Drop for PreparationTime {
+    fn drop(&mut self) {
+        PREPARATION_NS.set(PREPARATION_NS.get() + self.0.elapsed().as_nanos());
+    }
+}
+#[cfg(feature = "ffi-test-hooks")]
+pub(in crate::runtime) fn counters() -> (usize, usize, usize, usize, u128) {
+    (
+        ATTEMPTS.get(),
+        HITS.get(),
+        MATERIALIZED.get(),
+        PREPARATIONS.get(),
+        PREPARATION_NS.get(),
+    )
+}
+
+#[cfg(feature = "ffi-test-hooks")]
+impl Record {
+    // Serialized/element payload plus inline plan/record storage. This excludes
+    // spare Vec capacity, BTree nodes, reference counts and allocator metadata.
+    fn metadata_payload_bytes(&self) -> usize {
+        use core::mem::{size_of, size_of_val};
+        let p = &self.prepared.plan;
+        size_of::<Self>()
+            + size_of::<Prepared>()
+            + self.prepared.descriptor.len()
+            + p.program.len()
+            + size_of_val(p.capture_sources.as_slice())
+            + size_of_val(p.argument_sources.as_slice())
+            + p.selector.len()
+            + size_of_val(p.callee.recovery_sources())
+            + size_of_val(p.callee.boxed_indices())
+            + size_of_val(p.invocation_aliases.as_slice())
+            + size_of_val(p.constructor_stores.as_slice())
+            + p.continuation.as_ref().map_or(0, |e| {
+                size_of_val(e.copies.as_slice()) + size_of_val(e.clear_bitmap_words.as_slice())
+            })
+            + p.continuation_aliases
+                .as_ref()
+                .map_or(0, |a| size_of_val(a.as_slice()))
+            + size_of_val(p.before_constructor_boxes.as_slice())
+            + size_of_val(p.after_constructor_boxes.as_slice())
+    }
 }
 
 pub(super) fn enabled() -> bool {
@@ -79,6 +145,15 @@ pub(super) fn enabled() -> bool {
 }
 
 impl Runtime {
+    #[cfg(feature = "ffi-test-hooks")]
+    pub(in crate::runtime) fn closure_metadata_payload_bytes(&self) -> usize {
+        self.native_tier
+            .borrow()
+            .closures
+            .values()
+            .map(Record::metadata_payload_bytes)
+            .sum()
+    }
     pub(in crate::runtime) fn finish_closure_inline(
         &self,
         machine: Oop,
@@ -118,6 +193,8 @@ impl Runtime {
         materialized: bool,
         codegen_api: &birnam_abi::IdApi,
     ) -> Option<Result<Oop, ExecutionError>> {
+        #[cfg(feature = "ffi-test-hooks")]
+        ATTEMPTS.set(ATTEMPTS.get() + 1);
         if !enabled()
             || !crate::public_api::closure_codegen_context_matches(
                 codegen_api,
@@ -367,12 +444,12 @@ impl Runtime {
                         arena.write_oop(frame, slot, block)?;
                     }
                 }
-                #[cfg(test)]
+                #[cfg(any(test, feature = "ffi-test-hooks"))]
                 MATERIALIZED.set(MATERIALIZED.get() + 1);
             }
             drop(lease);
             drop(_read);
-            #[cfg(test)]
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             HITS.set(HITS.get() + 1);
             // Unwind the original C literal's capture locals before the driver
             // allocates the successor token or enters an observing PC. Calling

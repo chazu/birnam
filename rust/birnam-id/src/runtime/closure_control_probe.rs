@@ -29,6 +29,14 @@ impl Runtime {
             (b"inspect:alias:supplied:".as_slice(), observe as Method),
             (b"checkpoint".as_slice(), checkpoint as Method),
             (
+                b"prepare:captures:".as_slice(),
+                super::closure_timing_probe::prepare as Method,
+            ),
+            (
+                b"measure:input:shape:batches:".as_slice(),
+                super::closure_timing_probe::measure as Method,
+            ),
+            (
                 b"checkApi:input:operation:".as_slice(),
                 super::closure_api_probe::check as Method,
             ),

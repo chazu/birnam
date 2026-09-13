@@ -35,6 +35,8 @@ mod architectural_fit_experiment;
 mod closure_api_probe;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_control_probe;
+#[cfg(feature = "ffi-test-hooks")]
+mod closure_timing_probe;
 #[cfg(test)]
 mod deopt_experiment;
 mod dispatch_cache;
