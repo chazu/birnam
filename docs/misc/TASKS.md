@@ -203,8 +203,9 @@ actual invariant arithmetic reuse across successive self-tail iterations and
 native-tier retirement cleanup. Its corrected full gate passes 69 commands,
 262 matching source hashes and 2,852 source cases. The loop consumer remains
 disabled pending profitability and application/resource acceptance.
-Closure literal-result support is committed on `codex/74x-closure-literals`:
-544 workspace tests and 24 installed cases pass; its full gate is running.
+[74X](../design/74x-closure-literal-results.md) literal callees are integrated on
+main after full verification: 71 commands, 265 matching source hashes and 2,924
+source cases. The separate literal-result V2 control gate remains live.
 The separate literal-control branch adds actual capture/suspension of distinct
 results and their aliases, with both GC modes and forced recovery at each call.
 Broader aggregate acceptance, closure promotion and performance/resource/

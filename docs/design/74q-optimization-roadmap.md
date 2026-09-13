@@ -104,6 +104,12 @@ regions still regress and three-use regions are near break-even; a measured
 profitability threshold and broader acceptance remain required before promotion.
 Broader preparation/metadata/resource
 acceptance, closure bodies and profitability remain open; the consumer stays default-off.
+[74X](74x-closure-literal-results.md) adds fresh Integer literal results to the
+bounded closure consumer, preserving distinct result identities and earlier
+aliases. Its initial implementation is integrated on main after all 71 production
+commands and 2,924 source cases pass with matching hashes. Literal-result V2
+capture/suspension has a separate verification checkpoint. Both literal-callee
+staging and closure elimination remain disabled by default.
 None of those four full families is complete yet.
 
 ## Direction

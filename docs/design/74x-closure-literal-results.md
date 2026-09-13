@@ -99,3 +99,17 @@ production gate now requires both complete literal-control matrices alongside
 the existing control coverage; that updated gate remains pending. These checks
 complete the focused capture/suspension obligation for this body shape, not
 performance acceptance or the broader closure family.
+
+## Full production verification of literal callees
+
+The [production receipt](../measurements/74x-closure-literals-production-correctness.json)
+passes all 71 commands, with all 265 source hashes matching the tested checkpoint.
+It retains 1,320 closure source cases and 1,604 numeric/loop cases (2,924 total),
+including all 24 literal-body cases. Every matrix matches the independently
+built debug or release control floor. Production installation, native execution,
+image, cold-archive and relocation checks pass.
+
+This verifies the initial default-off literal-callee implementation. The separate
+literal-result capture/suspension extension has its own checkpoint and gate.
+Profitability, preparation/resource/application acceptance and closure promotion
+remain open; this receipt does not complete the full closure family.
