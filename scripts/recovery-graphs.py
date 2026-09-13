@@ -32,7 +32,7 @@ def sources():
         "closure-control-smoke.sh", "closure-sequence-smoke.py",
         "unboxed-numeric-smoke.py", "unboxed-numeric-control-smoke.py",
         "unboxed-numeric-measurement-smoke.py", "unboxed_numeric_timing_common.py",
-        "unboxed-numeric-timing.py",
+        "unboxed-numeric-timing.py", "loop-invariant-numeric-smoke.py",
         "closure-sequence-mutation-smoke.py",
         "closure-budget-smoke.py",
         "closure-journal-smoke.py",
@@ -193,6 +193,9 @@ def main():
                     ("birnam_codegen", "tail-entry-plan", "tail_entry::tests"),
                     ("birnam_id", "tail-entry-arena", "execution::tail_entry::tests"),
                     ("birnam_id", "tail-entry-loop", "runtime::native_tier::leaf_tests::tail_entry_tests"),
+                    ("birnam_id", "loop-invariant-kernel", "runtime::numeric::chain::loop_reuse::tests"),
+                    ("birnam_id", "loop-iteration-evidence", "execution::loop_iteration::tests"),
+                    ("birnam_id", "loop-invariant-consumer", "runtime::native_tier::leaf_tests::loop_invariant_tests"),
                 ]
             if args.allocations:
                 checks += [
@@ -239,7 +242,7 @@ def main():
                             raise RuntimeError("source matrix floor differs from control verification")
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:
-                        expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure") for p in ("debug", "release")}
+                        expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant") for p in ("debug", "release")}
                         paths = list(unboxed_evidence.glob("*.json"))
                         if {p.name for p in paths} != expected_unboxed:
                             raise RuntimeError("missing source unboxed matrix receipts")
@@ -267,6 +270,12 @@ def main():
                             expected_rows = {(n, s, e) for n in (3, 16, 32) for s in range(5) for e in (0, 1)}
                             if len(measure["rows"]) != 30 or {(r["operations"], r["shape"], r["enabled"]) for r in measure["rows"]} != expected_rows:
                                 raise RuntimeError("incomplete source unboxed measurement matrix")
+                            loop = unboxed[f"loop-invariant-{profile}.json"]
+                            if loop["status"] != "passed" or loop["floor_sha256"] != expected_floor:
+                                raise RuntimeError("source loop invariant matrix failed or floor differs")
+                            expected_loop = {(s, p, u, e) for s in range(4) for p in (0, 1) for u in (0, 1) for e in (0, 1)}
+                            if len(loop["rows"]) != 32 or {(r["shape"], r["precise"], r["unboxed"], r["enabled"]) for r in loop["rows"]} != expected_loop:
+                                raise RuntimeError("incomplete source loop invariant matrix")
                         receipt["unboxed_source_matrices"] = unboxed
             else:
                 run(["mise", "run", "verify"], "production-verification")

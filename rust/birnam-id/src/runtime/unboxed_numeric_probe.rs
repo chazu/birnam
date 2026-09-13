@@ -28,6 +28,7 @@ impl Runtime {
                 .unwrap(),
             measure::run,
         );
+        self.add_method(vt, self.intern(b"loopReused").unwrap(), loop_reused);
         let object = self.allocate_instance(vt, 0);
         self.export(b"UnboxedNumericProbe", object).unwrap();
     }
@@ -78,5 +79,12 @@ unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
         assert_eq!(r.integer_value(answer), expected);
         drop(root);
         r.canonical().nil
+    })
+}
+
+unsafe extern "C" fn loop_reused(_: Oop, _: *const Oop, count: usize) -> Oop {
+    assert_eq!(count, 0);
+    with_active(|r| {
+        r.make_integer(super::numeric::loop_reuse::PREDICTED_OPERATIONS_REUSED.get() as i64)
     })
 }

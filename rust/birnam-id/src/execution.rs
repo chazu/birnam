@@ -20,6 +20,8 @@ use crate::raw::{AddressMap, MethodAddress};
 #[cfg(test)]
 #[path = "execution/inline_recovery_experiment.rs"]
 mod inline_recovery_experiment;
+#[path = "execution/loop_iteration.rs"]
+pub(crate) mod loop_iteration;
 #[path = "execution/recovery.rs"]
 mod recovery;
 #[path = "execution/tail_entry.rs"]
@@ -841,6 +843,7 @@ pub(crate) struct RuntimeExecutionDiagnostics {
 
 struct ArenaSlot {
     generation: u64,
+    self_tail_entry: bool,
     live: bool,
     descriptor: Option<Arc<FrameDescriptor>>,
     program_counter: usize,
@@ -886,6 +889,7 @@ impl ArenaSlot {
     fn new() -> Self {
         Self {
             generation: 1,
+            self_tail_entry: false,
             live: false,
             descriptor: None,
             program_counter: 0,
@@ -1026,6 +1030,7 @@ impl FrameArena {
         slot.transfer_scratch.resize(scratch_count, 0);
         slot.return_destination = return_destination;
         slot.resumable_entry = resumable_entry;
+        slot.self_tail_entry = false;
         slot.live = true;
         self.stack.push(index);
         self.high_water_live_frames = self.high_water_live_frames.max(self.stack.len());
@@ -1099,15 +1104,21 @@ impl FrameArena {
         self.validate_push(&descriptor, program_counter, initial_oops)?;
         let current = self.current_handle().ok_or(FrameError::StaleHandle)?;
         let return_destination = self.return_destination(current)?;
+        let self_tail = Arc::ptr_eq(
+            self.require_live(current)?.descriptor.as_ref().unwrap(),
+            &descriptor,
+        );
         self.pop()?;
-        self.push_validated(
+        let next = self.push_validated(
             descriptor,
             program_counter,
             nil,
             initial_oops,
             return_destination,
             resumable_entry,
-        )
+        )?;
+        self.slots[next.index].self_tail_entry = self_tail;
+        Ok(next)
     }
 
     pub(crate) fn current_handle(&self) -> Option<FrameHandle> {
@@ -1196,6 +1207,7 @@ impl FrameArena {
             slot.resumable_entry = frame.resumable_entry;
             slot.words = frame.words;
             slot.transfer_scratch = frame.transfer_scratch;
+            slot.self_tail_entry = false;
             slot.live = true;
             self.stack.push(index);
         }

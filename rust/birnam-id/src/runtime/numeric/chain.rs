@@ -12,6 +12,7 @@ use birnam_codegen::numeric_chain::{Input, Operator, Template, Value};
 use birnam_native_compiler::Unit;
 use std::cell::RefCell;
 use std::ffi::CString;
+pub(in crate::runtime) mod loop_reuse;
 
 // A small per-runtime pool avoids allocating temporary host arrays on each
 // invocation. Leases own the pool so cache clearing and nested drives cannot
@@ -55,6 +56,7 @@ pub(in crate::runtime) struct CompiledChain {
     bindings: Vec<Binding>,
     kernel: unsafe extern "C" fn(*const i64, *mut i64) -> usize,
     _unit: Unit,
+    loop_reuse: Option<loop_reuse::Reuse>,
 }
 
 /// A prediction's native declaration is an owned lookup hint. Its current
@@ -72,19 +74,41 @@ impl CompiledChain {
             .map(|binding| binding.operator)
             .collect::<Vec<_>>();
         let plan = template.instantiate(&operators)?;
-        let source = CString::new(plan.emit()).ok()?;
+        let reuse_enabled = loop_reuse::enabled();
+        let source = CString::new(if reuse_enabled {
+            plan.emit_loop_reuse()
+        } else {
+            plan.emit()
+        })
+        .ok()?;
         // The validated emitter makes bounded accesses and has no callbacks.
         let unit = unsafe { Unit::compile(&source, &[]) }?;
         let kernel = unsafe { core::mem::transmute(unit.symbol(c"numeric_chain")?.as_ptr()) };
+        let loop_reuse = if reuse_enabled {
+            let reuse_kernel = unsafe {
+                core::mem::transmute::<*mut core::ffi::c_void, loop_reuse::Kernel>(
+                    unit.symbol(c"numeric_chain_reuse")?.as_ptr(),
+                )
+            };
+            Some(loop_reuse::Reuse::new(reuse_kernel, &plan))
+        } else {
+            None
+        };
         Some(Self {
             template,
             bindings,
             kernel,
             _unit: unit,
+            loop_reuse,
         })
     }
 
-    fn predict(self: &Rc<Self>, key: usize, mut buffers: BufferLease) -> Option<Ticket> {
+    fn predict(
+        self: &Rc<Self>,
+        key: usize,
+        mut buffers: BufferLease,
+        stamp: Option<crate::execution::loop_iteration::Stamp>,
+    ) -> Option<Ticket> {
         if buffers.values.inputs.len() != self.template.inputs().len()
             || buffers.values.outputs.len() != self.bindings.len()
         {
@@ -92,13 +116,17 @@ impl CompiledChain {
         }
         // Both disjoint arrays have the exact extents validated by Plan.
         // This owner pins the unit until the call has returned.
-        if unsafe {
-            (self.kernel)(
-                buffers.values.inputs.as_ptr(),
-                buffers.values.outputs.as_mut_ptr(),
-            )
-        } != 0
-        {
+        let success = if let Some(reuse) = &self.loop_reuse {
+            reuse.predict(self.kernel, stamp, &mut buffers.values)
+        } else {
+            unsafe {
+                (self.kernel)(
+                    buffers.values.inputs.as_ptr(),
+                    buffers.values.outputs.as_mut_ptr(),
+                ) == 0
+            }
+        };
+        if !success {
             return None;
         }
         Some(Ticket {
@@ -260,8 +288,18 @@ impl Runtime {
                 };
             }
         }
+        let stamp = || {
+            let state = unsafe { &*self.state.get() };
+            state
+                .execution
+                .machine(owner, capability)
+                .ok()?
+                .arena()
+                .caller_loop_stamp()
+        };
         if let Some(compiled) = compiled {
-            return compiled.predict(key, buffers);
+            let loop_stamp = compiled.loop_reuse.as_ref().and_then(|_| stamp());
+            return compiled.predict(key, buffers, loop_stamp);
         }
         // Dictionary lookup is only needed to prepare a new kernel. A cached
         // binding is just a prediction: actual dispatch and native-context
@@ -301,7 +339,8 @@ impl Runtime {
             })
             .collect::<Option<Vec<_>>>()?;
         let compiled = self.native_tier.borrow_mut().numeric_chain(key, bindings)?;
-        compiled.predict(key, buffers)
+        let loop_stamp = compiled.loop_reuse.as_ref().and_then(|_| stamp());
+        compiled.predict(key, buffers, loop_stamp)
     }
 }
 
