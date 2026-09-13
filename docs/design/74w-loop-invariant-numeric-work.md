@@ -124,3 +124,18 @@ retain all 32 cases per profile with matching source and floor hashes. Full
 production verification of this lifecycle fix, broader installed-source control
 coverage, bounded resource acceptance and profitability remain required. The
 consumer stays disabled by default and the four-family objective remains open.
+
+## Full production verification
+
+The [corrected production receipt](../measurements/74w-loop-control-production-correctness.json)
+passes all 69 commands, with all 262 source hashes matching the tested checkout.
+It retains 1,248 closure cases and 1,604 numeric/loop cases (2,852 total),
+including all 64 installed loop cases. Every matrix matches the independently
+verified debug or release control floor. The focused control tests cover actual
+capture/suspension, resumption, rejection of repeated use and native-generation
+retirement, including release of the retired arithmetic cache. Native-prefix,
+image, cold-archive and relocation checks pass.
+
+This verifies integration of the default-off loop consumer and retirement fix.
+It does not establish profitability, non-tail or mutual-recursive loop coverage,
+application/resource acceptance, or completion of the full loop family.
