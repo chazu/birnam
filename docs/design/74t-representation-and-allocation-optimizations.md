@@ -1588,3 +1588,12 @@ optimizer cost. Those controls now read once per admitted region. The
 passes all 61 commands, 528 workspace tests (19 ignored), all ten source matrices
 with 1,248 process rows, and the production gates. All source/floor hashes match;
 every supported forced position remains verified. Retiming is next.
+
+The [qualified control-hoist repeat](../measurements/74u-control-hoist-qualified-timing.json)
+now passes both unchanged host gates and all 96 matrix rows. At 32 uses,
+eliminated/escaping closure execution time falls 46.10%/45.16%, or 33.29%/34.64%
+including collection. The authorized `rk` pause was resumed and verified.
+One-use regions still regress by 38-43%; three uses are near execution break-even.
+The pass remains disabled pending a measured threshold, broader bodies and
+application/resource acceptance. 74U retains the full paired and cold/preparation
+results, including the preceding unqualified run and all refusal controls.

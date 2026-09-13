@@ -471,3 +471,52 @@ and all ten source matrices with 1,248 process rows. Every supported forced
 position passes in both profiles and GC modes. All 244 source hashes match,
 and every matrix floor hash agrees with its profile's independent controls.
 Retiming follows this checkpoint; correctness alone does not establish a speedup.
+
+### Qualified timings after hoisting recovery controls
+
+The [first repeat](../measurements/74u-control-hoist-timing.json) retains the same
+96-process matrix after `9a296a21`. It is unqualified because `rk` used 113.1%
+of one core at preflight. Its interval gate passed (109 intervals, median idle
+57.46%, one low interval). At 32 uses it shows 45.57% / 46.83% less execution
+time for eliminated / escaping closures, and 31.36% / 38.16% less time including
+collection. The complete negative short-region and refusal results are retained.
+
+Using the user's existing authorization, the
+[process-control wrapper](../measurements/74u-control-hoist-qualified-process-control.json)
+verified `rk` PID 84695 by executable and start time, paused it for the controlled
+repeat, and resumed the same process afterward. Its resumed state was verified.
+The [qualified repeat](../measurements/74u-control-hoist-qualified-timing.json)
+passes both unchanged gates: AC power, preflight median idle 66.86% and hottest
+process 49.7%; 111 measurement intervals, median idle 59.78%, eleven below 30%.
+All 96 rows and paired allocation/counter checks pass, with unchanged source,
+floor, generated-fixture and installed-binary hashes.
+
+Median paired reduction in execution time (negative values are overhead):
+
+| Uses per closure | Eliminated closure | Escaping closure | Replaced native callee | Compiler refusal |
+| --- | --- | --- | --- | --- |
+| 1 | -38.09% | -43.41% | -19.12% | -4.63% |
+| 3 | -0.10% | 1.23% | -14.83% | 3.57% |
+| 32 | 46.10% | 45.16% | -1.83% | 0.42% |
+
+All four 32-use successful pairs improve: eliminated closures reduce execution
+time by 43.80–46.67%, and escaping closures by 43.45–46.93%. Including collection,
+median reductions are 33.29% and 34.64%; cold execution reductions are 21.35%
+and 20.60%. The escaping case still materializes exactly one closure per factory,
+so these gains are not solely from removing a physical allocation.
+
+The 32-use captured-Cell-return case takes a median 26,970 ns per baseline
+factory and 14,690 ns enabled. Enabled materialization is about 2.577 ms,
+with a 106.3 us floor-preparation subset; paired materialization overhead is
+5.95%. Reported metadata remains 21,445 bytes and journal peak 12,288 bytes per
+128-factory batch. Earlier metadata/resource exclusions still apply. This is a
+qualified instrumented-fixture result, not full application/resource acceptance
+or a production-default claim.
+
+The consumer stays disabled by default. One-use regions clearly regress, and
+three-use regions do not establish a useful gain in combined execution and collection.
+Intermediate use counts must establish a profitable admission threshold before
+promotion. Broader callee bodies and preparation/metadata/application acceptance
+remain open. The separate 74V compiler work supplies numeric-result recovery
+aliases toward actual unboxed intermediate execution; its runtime integration
+is still required, along with the remaining loop and aggregate obligations.
