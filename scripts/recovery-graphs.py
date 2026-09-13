@@ -37,6 +37,7 @@ def sources():
         "abi/native-block-construction-v1.md", "scripts/fixtures/native-block-construction.c",
         "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
         "scripts/fixtures/closure-elision.birnam",
+        "scripts/fixtures/closure-observation.birnam",
     )]
     for folder in ("rust", "src/id", "modules"):
         paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
@@ -51,7 +52,7 @@ def main():
     parser.add_argument("--tails", action="store_true", help="registered tail-loop entry verification")
     parser.add_argument("--allocations", action="store_true", help="discarded aggregate allocation and GC verification")
     parser.add_argument("--fields", action="store_true", help="live aggregate projection and physical recovery verification")
-    parser.add_argument("--closures", action="store_true", help="source closure provenance and literal PC emission; runtime elimination still pending")
+    parser.add_argument("--closures", action="store_true", help="experimental source closure elimination and recovery verification")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.closures:
@@ -148,6 +149,7 @@ def main():
             ]
             if args.closures:
                 checks.append(("birnam_codegen", "closure-plan", "closure_elision::tests"))
+                checks.append(("birnam_id", "closure-context", "closure_context_requires_active_nil"))
             if args.numeric:
                 checks += [
                     ("birnam_codegen", "numeric-plan", "numeric_chain::"),

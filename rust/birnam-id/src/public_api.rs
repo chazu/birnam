@@ -423,12 +423,11 @@ pub(crate) fn block_construction_context(symbol_vtable: Oop) -> [usize; 10] {
     ]
 }
 
-pub(crate) fn closure_codegen_context_matches(api: &IdApi) -> bool {
-    let canonical = runtime().canonical();
+pub(crate) fn closure_codegen_context_matches(api: &IdApi, nil: Oop) -> bool {
     api.send as usize == api_send as *const () as usize
         && api.intern as usize == api_intern as *const () as usize
         && api.mkSmallInt as usize == api_make_smallint as *const () as usize
-        && api.nilObj == canonical.nil
+        && api.nilObj == nil
 }
 
 fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
@@ -508,6 +507,43 @@ pub(crate) fn export_name_at(index: usize) -> Oop {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn closure_context_requires_active_nil_and_exact_codegen_operations() {
+        // This guard must be usable with the owner-checked active runtime; it
+        // must neither consult the singleton nor call an instrumented operation.
+        let bootstrap = build_bootstrap();
+        let other = build_bootstrap();
+        let nil = bootstrap.runtime.canonical().nil;
+        let mut table = table_for(&bootstrap);
+        assert!(closure_codegen_context_matches(&table, nil));
+        assert!(!closure_codegen_context_matches(
+            &table,
+            other.runtime.canonical().nil
+        ));
+        unsafe extern "C" fn send(_: Oop, _: Oop, _: *const Oop, _: usize) -> Oop {
+            panic!("guard must not send");
+        }
+        unsafe extern "C" fn intern(_: *const core::ffi::c_char) -> Oop {
+            panic!("guard must not intern");
+        }
+        unsafe extern "C" fn integer(_: i64) -> Oop {
+            panic!("guard must not allocate");
+        }
+        table.send = send;
+        assert!(!closure_codegen_context_matches(&table, nil));
+        table.send = api_send;
+        table.intern = intern;
+        assert!(!closure_codegen_context_matches(&table, nil));
+        table.intern = api_intern;
+        table.mkSmallInt = integer;
+        assert!(!closure_codegen_context_matches(&table, nil));
+        table.mkSmallInt = api_make_smallint;
+        table.nilObj = other.runtime.canonical().nil;
+        assert!(!closure_codegen_context_matches(&table, nil));
+        table.nilObj = nil;
+        assert!(closure_codegen_context_matches(&table, nil));
+    }
 
     #[test]
     fn complete_table_has_bootstrap_identities_and_no_null_function_slots() {

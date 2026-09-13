@@ -112,7 +112,10 @@ impl Runtime {
         #[cfg(test)]
         let enabled = ENABLED.get();
         if !enabled
-            || !crate::public_api::closure_codegen_context_matches(codegen_api)
+            || !crate::public_api::closure_codegen_context_matches(
+                codegen_api,
+                self.canonical().nil,
+            )
             || !fused_numeric::controls(self, machine)
             || self.native_tier.borrow().closure_resume.is_some()
         {

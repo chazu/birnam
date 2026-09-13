@@ -28,14 +28,18 @@ timings are recorded in 74T; broader acceptance remains open. A live aggregate
 field-replacement consumer is enabled for bounded regions with at least three
 current declared projections, with untraced scratch reuse and bounded refusal
 retries. Enabled-source qualified matrices and their variation are recorded in
-74T; the focused repeat has 3.2–6.3% median field-only fixture gains. Closure
-elimination and broader acceptance remain outstanding. Source closure provenance
+74T; the focused repeat has 3.2–6.3% median field-only fixture gains. Production
+closure promotion and broader acceptance remain outstanding. Source closure provenance
 and literal-aware PC emission now have compiler tests and full production gates;
 exact warm constructor declarations and runtime admission also pass real-module
 and installed-prefix checks. An experimental source-created closure consumer
 now eliminates allocation and substitutes captures, with escaping and forced
 recovery exercised end to end. It is disabled by default; continuation-control
 coverage, broader shapes and performance acceptance remain open.
+Collecting successor observation now passes with actual outer and nested
+optimization hits under both precise and conservative GC, preserving recovered
+closure aliases, multiple captures, argument identity and eviction survival.
+The corresponding full production gate passes 525 tests, 19 ignored.
 None of those four full families is complete yet.
 
 ## Direction

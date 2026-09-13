@@ -1125,3 +1125,47 @@ includes suspension/capture, collecting observation and forced exits across more
 boundaries, Codegen API instrumentation controls, metadata/cold/refusal cost,
 qualified timings and broader closure shapes. The full numeric, loop, aggregate
 and closure acceptance objective remains open.
+
+### Collecting closure observation and active runtime context
+
+The closure admission guard now compares the Codegen API's nil identity with
+the owner-checked active Runtime. It no longer reads the process singleton to
+perform that comparison. A regression uses two independent heaps and replaced
+send/intern/integer callbacks to require refusal without invoking any callback.
+This preserves the same production API authority while permitting isolated
+runtime verification without initializing a global floor.
+
+The installed `closure-observation.birnam` fixture exercises a caller whose
+recovered closure remains live across an observing successor. Its callee takes
+an argument and captures two original Cells. The observer verifies both closure
+aliases, capture order and returned argument identity, enters another optimized
+factory, evicts materializations, collects, and invokes the same closure again.
+The caller must subsequently return that same identity. Repeated execution
+checks fresh identities and exact effect counts; mutation through the original
+Cell remains visible through the recovered capture.
+
+Warmup is separate from the first collecting call. Evicting on every warmup
+iteration prevented the initial fixture from exercising the intended candidate.
+The smoke verifier now requires both an outer materialization hit and a nested
+allocation-elision hit between explicit collecting-call markers. This prevents
+successful baseline fallback or unrelated warmup hits from satisfying the test.
+Ordinary, optimized and forced-constructor-recovery outputs must match under
+both conservative and precise collection. The fixture proves live identity and
+ownership survival; it does not establish dead-object retention equivalence or
+quiescent native-unit retirement.
+
+Verification is recorded in
+[74t-closure-observation.json](../measurements/74t-closure-observation.json).
+All 55 commands pass, including debug/release probes and the full production
+gate with 525 workspace tests, 19 ignored, installed-prefix, image, cold-archive
+and relocation checks. The retained source hashes match the tested files.
+Closure elimination remains experimental and disabled by default. The next
+control proof must drive an explicit host-owned Machine: after an optimized
+constructor and a collecting observer, replace the next ordinary Call
+publication with capture or suspension, collect while paused, then restore or
+resume with a supplied result. Compare every recovered alias, shared Cell,
+effect count and active/continuation generation pin with ordinary execution.
+The installed source fixture alone cannot prove that host control lifecycle.
+Further forced boundaries, API instrumentation, broader bodies and qualified
+cold/metadata/refusal/application measurements remain required, alongside the
+other three families' full acceptance obligations.

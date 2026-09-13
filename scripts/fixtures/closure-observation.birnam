@@ -1,0 +1,59 @@
+// Recover before the caller's observing successor, including nested entry and
+// collection while the recovered closure is still live in the caller Frame.
+[System load: "modules/os.birnam"];
+[System preciseGc: [[System getEnv: "BIRNAM_CLOSURE_PRECISE"] = "1"]];
+let source := [:input :other :argument :observer |
+    let closure := [:arg | let first := input; let second := other; arg];
+    let alias := closure;
+    let result := [closure value: argument];
+    let observed := [observer value: closure value: alias value: result];
+    alias];
+let factory := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
+let directSource := [:input :observer |
+    let closure := [| input];
+    let result := [closure value];
+    let observed := [observer value: result];
+    result];
+let direct := [Codegen materializeResumable: [[directSource codeObject] withoutSourceProvenance] captures: #[]];
+let input := [73 asCell];
+let other := [91 asCell];
+let argument := [107 asCell];
+let effects := [0 asCell];
+let nestedEffects := [0 asCell];
+let last := [nil asCell];
+let warmObserver := [:closure :alias :result | result];
+[128 timesRepeat: [| [factory value: input value: other value: argument value: warmObserver]]];
+let nestedObserver := [:result |
+    [nestedEffects inc];
+    [System gc];
+    [[result == input] ifTrue: [| nil] ifFalse: [| [OS exit: 21]]];
+    result];
+// Warm the independent nested factory before entering it from a live caller.
+[128 timesRepeat: [| [direct value: input value: nestedObserver]]];
+[nestedEffects set: 0];
+let observer := [:closure :alias :result |
+    [effects inc];
+    [[closure == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 22]]];
+    [[closure == [last value]] ifTrue: [| [OS exit: 23]] ifFalse: [| nil]];
+    [last set: closure];
+    [[result == argument] ifTrue: [| nil] ifFalse: [| [OS exit: 24]]];
+    [[[closure captureAt: 0] == input] ifTrue: [| nil] ifFalse: [| [OS exit: 25]]];
+    [[[closure captureAt: 1] == other] ifTrue: [| nil] ifFalse: [| [OS exit: 26]]];
+    [direct value: input value: nestedObserver];
+    [Codegen evictMaterializations];
+    [System gc];
+    [[closure == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 27]]];
+    [[[closure value: argument] == argument] ifTrue: [| nil] ifFalse: [| [OS exit: 28]]];
+    closure];
+[System println: "closure-observation: begin collecting caller"];
+let first := [factory value: input value: other value: argument value: observer];
+[[first == [last value]] ifTrue: [| nil] ifFalse: [| [OS exit: 33]]];
+[System println: "closure-observation: end collecting caller"];
+[255 timesRepeat: [|
+    let recovered := [factory value: input value: other value: argument value: observer];
+    [[recovered == [last value]] ifTrue: [| nil] ifFalse: [| [OS exit: 29]]]]];
+[[[effects value] = 256] ifTrue: [| nil] ifFalse: [| [OS exit: 30]]];
+[[[nestedEffects value] = 256] ifTrue: [| nil] ifFalse: [| [OS exit: 31]]];
+[input set: 149];
+[[[[[last value] captureAt: 0] value] = 149] ifTrue: [| nil] ifFalse: [| [OS exit: 32]]];
+[System println: "closure-observation: live aliases, captures, arguments, nested entry, ordered effects and collecting eviction passed"];

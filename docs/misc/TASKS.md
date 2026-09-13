@@ -139,7 +139,10 @@ and floor admission also pass debug/release/installed checks, including changed
 API and ownership and an absent Block family. An experimental closure consumer
 now eliminates source-created Block allocation and substitutes captures, with
 escaping/forced recovery, method replacement and shared Cell checks. It remains
-disabled by default; its source passes 524 tests and all production gates.
+disabled by default. Collecting successor and nested-entry tests now require
+actual optimization hits under precise and conservative GC, preserving closure
+aliases, capture/argument identities and eviction survival. Its source passes
+525 tests and all production gates; capture/suspend recovery remains next.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.
