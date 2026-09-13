@@ -1856,6 +1856,33 @@ passes the policy test, 546 workspace tests (19 ignored) and 202 release runtime
 tests (15 ignored). Full production, expanded installed-source and application
 comparison verification remain pending; no timing conclusion follows yet.
 
+The expanded discarded-clone source case initially returned its second argument,
+which the borrowed numeric probe explicitly forbids. The captured-result fixture
+returns the same expected Integer from an entry capture and supplies the ordinary
+observer as the unused argument. It preserves distinctness from both arguments;
+the existing probe and every allocation/identity assertion remain unchanged.
+The [corrected default debug matrix](../measurements/74t-aggregate-captured-default-debug.json)
+passes all 30 cases, including admitted clone chains and private-layout refusal.
+
+The source-validation driver is independently hashed from its prerequisite
+production proof. That production gate included its file hash but did not execute
+this additional driver. Only this driver's hash may differ; every runtime,
+compiler, probe, other prerequisite source, selected floor and installed artifact
+must still match. Receipts retain both driver hashes and every actual generated
+fixture. This records a corrected validation producer, not a rerun or weakening
+of the original full production gate. Remaining control/profile matrices are
+running before aggregate/application acceptance.
+
+All eight corrected source matrices now pass: 240 processes across debug/release
+and default, clones-disabled, fields-disabled and both-disabled configurations.
+Every actual floor, prerequisite source (apart from the independently checked
+fixture driver), current/prior driver and installation hash has been audited.
+The receipts are `74t-aggregate-captured-{configuration}-{profile}.json` under
+`docs/measurements`. These prove selected consumers omit exactly the expected
+physical allocations while identity, ordered method effects, private-layout
+refusal and canonical readmission remain intact. The following 24 ordinary
+application checks and idle-memory matrix are still running separately.
+
 
 ### Retained process memory at explicit host checkpoints
 
