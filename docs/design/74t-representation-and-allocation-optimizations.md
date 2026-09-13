@@ -1794,3 +1794,25 @@ elimination caused the earlier combined regression, establish the magnitude
 under controlled load, or justify attributing mixed literal/loop results to their
 consumers. The diagnostic hypotheses are repeated refused-candidate checks,
 unprofitable short successful regions, preparation work and unrelated host load.
+
+The [four subsequent profiles](../measurements/74t-collections-closure-profiles.json)
+use the normal floor in default/closure/closure/default order, extending only the
+batch count to 25 for sampling after warmup. Allocation, collection and symbol
+interning dominate; no sampled stack includes closure admission, preparation or
+region execution. These diagnostic runs do not reproduce the earlier consistent
+slowdown. Symbol absence alone is insufficient, so a separate
+[counter experiment](../measurements/74t-collections-closure-counters.json) adds a
+test-floor-only reporting method, retaining its exact patch, source/floor hashes
+and original five-batch application fixture with boundary reports.
+
+All four counter runs report zero closure preparations, attempts, hits,
+materializations, completed substitutions, constructor queries and metadata,
+before warmup, after warmup, after measurement and after final collection.
+A known three-use closure positive control reports actual preparations, hits and
+completed substitutions through the same counter method. This rejects repeated
+runtime refusal, short successful regions and runtime preparation as explanations
+for this workload's apparent closure-switch regression. Compiler flag-dependent
+work and host variation are not excluded. No closure policy change follows from
+these noisy application timings; profitability decisions must use workloads that
+actually exercise the consumer. The diagnostic method remains isolated from the
+production floor, and no runtime fix is claimed.
