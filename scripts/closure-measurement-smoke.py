@@ -26,6 +26,9 @@ def main():
     root = Path(__file__).resolve().parent.parent
     paths = [Path(__file__).resolve(), root / "scripts/closure_timing_common.py",
              root / "rust/birnam-id/src/runtime/closure_timing_probe.rs"]
+    paths += sorted(p for p in (root / "rust/birnam-native-compiler").rglob("*") if p.is_file())
+    paths += [root / "rust/birnam-id/Cargo.toml"]
+    paths += [root / "vendor/libtcc-src" / name for name in ("tcc.h", "config.h", "tccrun.c", "libtcc.c")]
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
     receipt = {"status": "running", "uses": args.uses, "source_sha256": hashes, "scope": __doc__,
                "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(), "rows": []}

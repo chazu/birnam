@@ -159,6 +159,8 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let queries_before = constructor_queries();
         let completed_before = super::native_tier::closure_elision::completed_calls();
         let pending = r.closure_pending_resources();
+        let native_storage = birnam_native_compiler::Unit::resource_totals();
+        let (private_native_units, private_relocated_bytes) = native_storage;
         EFFECTS.set(0);
         let mut ns = 0;
         let mut gc_ns = 0;
@@ -180,6 +182,11 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             let start = Instant::now();
             r.gc_collect_from_native_range(0, 0);
             gc_ns += start.elapsed().as_nanos();
+            assert_eq!(
+                birnam_native_compiler::Unit::resource_totals(),
+                native_storage,
+                "private native ownership and relocated storage stay stable after collection"
+            );
             assert_eq!(
                 r.closure_pending_resources(),
                 pending,
@@ -220,7 +227,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             assert_eq!(EFFECTS.get(), effects);
         }
         println!(
-            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits} cold_floor_preparations={cold_preparations} cold_pending_records_before={} cold_pending_bytes_before={} cold_pending_records_after={} cold_pending_bytes_after={} pending_records={} pending_bytes={}",
+            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits} cold_floor_preparations={cold_preparations} cold_pending_records_before={} cold_pending_bytes_before={} cold_pending_records_after={} cold_pending_bytes_after={} pending_records={} pending_bytes={} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
             cold_pending_before.0,
             cold_pending_before.1,
             cold_pending_after.0,

@@ -46,6 +46,8 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         );
         let resources = r.native_tier.borrow().loop_resources();
         let units = r.native_tier.borrow().unboxed_resources();
+        let native_storage = birnam_native_compiler::Unit::resource_totals();
+        let (private_native_units, private_relocated_bytes) = native_storage;
         let mut ns = 0;
         let mut gc_ns = 0;
         let mut allocation_bytes = 0;
@@ -65,6 +67,11 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
             let start = Instant::now();
             r.gc_collect_from_native_range(0, 0);
             gc_ns += start.elapsed().as_nanos();
+            assert_eq!(
+                birnam_native_compiler::Unit::resource_totals(),
+                native_storage,
+                "private native ownership and relocated storage stay stable after collection"
+            );
             assert!(r.is_integer(answer));
             assert_eq!(r.integer_value(answer), expected);
             assert_eq!(
@@ -85,7 +92,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         let journal_retained_bytes =
             unsafe { (*r.state.get()).heap.dead_allocation_storage_bytes() };
         println!(
-            "loop-measure operations={operations} shape={shape} iterations={} answer={expected} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} reused={reused} fused={fused} completed={completed} owners={} cached={} cache_bytes={} native_units={} numeric_units={} journal_peak_bytes={journal_peak_bytes} journal_retained_bytes={journal_retained_bytes}",
+            "loop-measure operations={operations} shape={shape} iterations={} answer={expected} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} reused={reused} fused={fused} completed={completed} owners={} cached={} cache_bytes={} native_units={} numeric_units={} journal_peak_bytes={journal_peak_bytes} journal_retained_bytes={journal_retained_bytes} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
             batches * 128,
             resources.0,
             resources.1,

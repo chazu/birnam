@@ -42,6 +42,10 @@ def parse_output(output):
 
 def check_pair(off, on, batches):
     a, b = off["measure"], on["measure"]
+    for row in (a, b):
+        assert row["private_native_units"] >= row["native_units"] + row["numeric_units"]
+        assert (row["private_relocated_bytes"] > 0) == (row["private_native_units"] > 0)
+        assert row["private_relocated_bytes"] >= row["private_native_units"]
     shape, operations = a["shape"], a["operations"]
     assert (b["shape"], b["operations"]) == (shape, operations)
     calls = batches * 128

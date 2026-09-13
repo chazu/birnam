@@ -1989,3 +1989,55 @@ application refusal/control coverage. Application workloads that actually admit
 aggregate regions are still required for benefit attribution. The instrumentation
 remains on its isolated diagnostic branch, with receipts and conclusions retained
 separately from the normal-floor implementation.
+
+### Private relocated allocation accounting
+
+Add a read-only, test-feature compiler query for `TCCState.run_size`, using the
+same vendored C header and configuration as libtcc. This reports the compiler's
+relocated allocation, including code, data and alignment storage; it is not
+instruction bytes or all compiler metadata. Keep ordinary builds unchanged and
+make no IdApi, Method, descriptor or image extension.
+
+Count live `Unit` owners and their relocated allocations in that compiler
+instance, including owners retained after cache removal. Update counts only
+when a successful Unit is created and immediately before its owned state is
+deleted. Query under the existing compiler mutex and never retain that lock
+through native execution. Test executable correctness, stable per-unit size,
+large data storage, failed compilation and ownership across Rc cache eviction.
+Measurement probes sample these totals outside execution/GC timing and check
+steady ownership after collection. Whole-process sampling remains complementary
+and includes allocations outside this private compiler instance.
+
+The [focused native-storage proof](../measurements/74t-native-storage-focused-correctness.json)
+passes two compiler ownership/storage tests, 556 default workspace tests
+(19 ignored), 212 release runtime tests (15 ignored), and 174 installed-source
+measurement cases: 30 numeric, 96 loop and 48 closure. Every sampled steady GC
+preserves the private compiler's owner count and relocated allocation total.
+Numeric fixtures retain 1–2 private units/49,152–98,304 bytes; loop fixtures
+retain 2–3 units/81,920–147,456 bytes. The closure fixtures report zero units in
+this private compiler instance; their baseline code resides elsewhere. Zero is
+not a claim of zero native code or zero compiler memory.
+
+These hooks are compiled only through the resource-metrics test feature (enabled
+by the test floor). Ordinary compiler builds omit the helper, counters and probe
+queries. The separately owned baseline TCC module, other compiler metadata and
+whole-process memory remain outside these exact totals. Full combined production
+verification is still required before integration of this instrumentation.
+
+The consolidated gate additionally runs compiler resource ownership tests in
+both profiles, binds the vendored relocation implementation and the integrated
+memory sampler, and retains every existing production/source check. Its current
+source set includes the corrected aggregate capture producer and verified batched
+numeric journal. Fresh repeated memory observations will use this consolidated
+proof and a matching normal release installation.
+
+The [consolidated storage production proof](../measurements/74t-consolidated-storage-production-correctness.json)
+passes all 73 commands, including debug/release compiler resource-ownership tests,
+and all 3,164 retained source cases. All 284 source hashes match. This completes
+production verification of the test-only private Unit allocation accounting,
+corrected aggregate producer and integrated sampler source set. It does not
+include the separate Error projection extension or resolve its intermittent
+identity failure. The fresh matching normal release installation is published;
+repeated memory and additional aggregate source acceptance are running separately.
+Private relocated allocation bytes still exclude the baseline TCC module and
+general compiler metadata, and no optimization default is changed.

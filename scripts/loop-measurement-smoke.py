@@ -37,6 +37,9 @@ def main():
              ROOT / 'rust/birnam-id/src/runtime/native_tier/fused_numeric.rs',
              ROOT / 'rust/birnam-id/src/runtime/unboxed_numeric_probe.rs',
              ROOT / 'rust/birnam-id/src/runtime/unboxed_numeric_probe/loop_measure.rs']
+    paths += sorted(p for p in (ROOT / "rust/birnam-native-compiler").rglob("*") if p.is_file())
+    paths += [ROOT / "rust/birnam-id/Cargo.toml"]
+    paths += [ROOT / "vendor/libtcc-src" / name for name in ("tcc.h", "config.h", "tccrun.c", "libtcc.c")]
     installed = [prefix / 'bin/birnam', prefix / 'share/birnam/rust-install.json'] + sorted((prefix / 'lib').glob('*.dylib'))
     receipt = dict(status='running', profile=args.profile, batches=args.batches, floor_sha256=sha(floor),
                    source_sha256={str(p.relative_to(ROOT)): sha(p) for p in paths},
