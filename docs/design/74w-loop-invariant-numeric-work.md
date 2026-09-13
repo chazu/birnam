@@ -250,3 +250,27 @@ alternating pairs and unchanged per-pair preflight/interval gates. Cold executio
 steady execution, collection, process wall time and peak RSS remain separate.
 The ordinary Id driver and collection boundary differ from the native probe;
 absolute durations between the two harnesses are not directly comparable.
+
+### Normal-floor admission attempts
+
+The [Id-driver correctness receipt](../measurements/74w-loop-production-driver-correctness.json)
+passes all 96 combinations on the test and normal release floors, with current
+source, fixture and installed-artifact hashes. Missing-case and wrong-floor
+verification receipts are rejected before measurement. This checkpoint is
+committed as `c285b205`.
+
+The [first normal-floor attempt](../measurements/74w-loop-production-admission-attempt.json)
+completed eight processes with passing per-pair host gates, then stopped when
+the next preflight could not admit compilation activity. Process ancestry tied
+that compilation to the `rk` daemon. A [second attempt](../measurements/74w-loop-production-paused-timing.json)
+temporarily paused that exact daemon under the existing user authorization.
+Its compiler children received no signals. Six processes completed before the
+interval gate rejected median idle of 46.30%; the required median remains 50%.
+Neither incomplete matrix establishes a production admission threshold.
+
+The [process-control receipt](../measurements/74w-loop-production-process-control.json)
+retains the guard source, daemon identity, pause/resume times and verified
+post-resume state. The same daemon was resumed after the rejected attempt.
+No benchmark process remains active from these attempts. A sufficiently quiet
+host window is still required for the full production matrix and the subsequent
+closure, unboxed and application/resource timing decisions.
