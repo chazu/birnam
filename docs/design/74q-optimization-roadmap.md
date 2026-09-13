@@ -81,7 +81,12 @@ rows with matching source/floor hashes. The repeated-use measurement harness
 now also verifies one, three and 32 uses across eliminated, escaping,
 replaced-callee and compiler-refused cases. Full verification retains ten
 matrices with 1,248 process rows, passes all 61 commands and 528 workspace tests,
-and matches all 244 source hashes. Paired repeated-use timing is next.
+and matches all 244 source hashes. The first 96-process repeated-use timing
+matrix is unqualified because of competing CPU load and still shows roughly
+11-12% successful-path execution overhead at 32 uses. Profiles identify
+repeated developer recovery-control environment reads as the largest sampled
+optimizer cost. Hoisting those reads to region admission is the next measured
+change; no promotion is justified by the current results.
 Broader preparation/metadata/resource
 acceptance, closure bodies and profitability remain open; the consumer stays default-off.
 None of those four full families is complete yet.

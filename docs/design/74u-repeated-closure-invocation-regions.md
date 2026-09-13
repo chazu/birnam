@@ -384,3 +384,67 @@ the metadata and journal figures above, exact allocation parity, all repeated
 substitutions and immediate admission after method restoration. Paired timing
 is now admitted for all three use counts; profitability and the full four-family
 acceptance obligations remain open.
+
+### First paired repeated-use timings
+
+The [paired matrix](../measurements/74u-repeated-closure-timing.json) contains
+96 processes: four alternating baseline/enabled pairs for each of three use
+counts and four shapes, with 64,000 factory invocations per process. It uses a
+fresh release installation and the feature floor from the full correctness
+receipt. Every pair passes result, allocation and optimization-counter checks;
+source, generated-fixture, floor and installation hashes remain unchanged.
+
+These timings are **unqualified**. The machine was on AC power, but a Firefox
+process used 90.9% of one core at preflight, exceeding the unchanged 80% limit.
+The subsequent interval gate passed: 124 intervals, median idle 58.20%, seven
+below 30%. The failed preflight is still disqualifying; interval admission does
+not upgrade this run.
+
+Median execution overhead relative to the paired baseline:
+
+| Uses per closure | Eliminated closure | Escaping closure | Replaced native callee | Compiler refusal |
+| --- | --- | --- | --- | --- |
+| 1 | 33.54% | 43.84% | 18.20% | 0.11% |
+| 3 | 29.36% | 29.69% | 9.48% | 0.65% |
+| 32 | 10.82% | 12.40% | 13.96% | 0.06% |
+
+Including separately timed collection, the eliminated-closure overhead is
+20.96% / 22.11% / 11.12% for one / three / 32 uses. The escaping-closure
+overhead is 16.48% / 14.02% / 8.88%. All pair values, including noisy outliers
+and the compiler-refusal controls, remain in the receipt. Repetition reduces
+the proportional successful-path overhead in this matrix but does not establish
+a profitable consumer.
+
+For captured-Cell returns, enabled median materialization time is approximately
+0.748 / 0.900 / 2.616 ms; the floor-preparation subset is 26.5 / 27.4 / 110.2 us.
+Paired materialization overhead is 2.42% / 8.71% / 6.56%, and cold execution
+overhead is 17.26% / 25.92% / 6.44%. Reported plan payload remains
+2,287 / 3,523 / 21,445 bytes, and journal peak remains 12,288 bytes per batch.
+These are instrumented fixture observations, with the earlier resource-scope
+exclusions; application and whole-process acceptance are still open.
+
+The consumer remains disabled by default. The next step is sampling the
+successful repeated-use path to identify the remaining admission/execution
+cost before changing it or expanding callee bodies. Numeric intermediate
+deferral, loop invariant-work removal and broader aggregate/closure acceptance
+remain part of the full objective.
+
+The [diagnostic profiles](../measurements/74u-repeated-closure-profile.json)
+sample one-use enabled and 32-use baseline/enabled execution after preparation.
+The wrapper repeats the same measurement twelve times to provide a sampling
+window; all twelve 32-use baseline/enabled accounting pairs pass. These are
+diagnostics, not qualified timings. In the 32-use enabled profile, 1,046 of
+1,549 samples are under `try_inline_closure`; 598 of those are in libc `getenv`.
+Callee admission accounts for 64 samples, including 12 in entry materialization.
+The one-use enabled profile has 198 `getenv` samples within 364 optimizer
+samples. Counts include each topmost matching subtree once; Rust wrappers and
+libc lookups are not double-counted.
+
+The source rereads `BIRNAM_DEV_CLOSURE_FORCE_RECOVERY` and
+`BIRNAM_DEV_CLOSURE_FORCE_AT` at every substituted call. The next change reads
+these developer controls once after region admission, before its first effect.
+An admitted region excludes observing callbacks and collection; the next
+region must still read current controls. Forced recovery at every call position
+must continue to pass. This removes repeated control lookup without caching
+mutable Id method, layout or capture answers. Correctness and a new paired
+matrix are required before attributing any gain to it or promoting the pass.

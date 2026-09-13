@@ -1575,3 +1575,13 @@ hashes match. Paired timings follow this checkpoint. The closure consumer stays
 disabled by default; raw numeric intermediate deferral, loop invariant-work
 removal, broader aggregate/closure coverage and application/resource acceptance
 remain required for the full objective.
+
+The [first repeated-use timing matrix](../measurements/74u-repeated-closure-timing.json)
+retains 96 process rows and all paired controls. Preflight failed because a
+Firefox process exceeded the unchanged CPU limit; the interval gate passed,
+but the run remains unqualified. At 32 uses, execution overhead is 10.82% for
+eliminated closures and 12.40% for escaping closures (11.12% and 8.88% including
+collection). The pass remains disabled. Diagnostic profiles recorded in 74U
+identify per-call developer-control environment reads as the largest sampled
+optimizer cost. Reading those once per admitted region is the next change,
+with forced-position correctness and retiming required before any gain claim.
