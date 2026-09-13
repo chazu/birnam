@@ -81,6 +81,7 @@ fn disabled_closure_mode_skips_preparation_without_changing_ordinary_staging() {
     let mut registry = Registry::default();
     registry.stage(&programs, &bindings, &selected, &manifest, authority);
     assert_eq!(registry.staged_closures.capacity(), 0);
+    assert!(registry.closure_pending_budget.is_none());
     let ordinary: Vec<_> = registry
         .staged
         .iter()
@@ -103,7 +104,7 @@ fn disabled_closure_mode_skips_preparation_without_changing_ordinary_staging() {
             assert_eq!(registry.staged_closures.iter().flatten().count(), 1);
             for (index, prepared) in registry.staged_closures.iter().enumerate() {
                 if let Some(prepared) = prepared {
-                    assert_eq!(prepared.descriptor, descriptors[index]);
+                    assert_eq!(prepared.prepare().unwrap().descriptor, descriptors[index]);
                 }
             }
         } else {
@@ -144,13 +145,120 @@ fn real_one_pc_leaf_preparation_uses_the_registered_driver_arity() {
     )
     .unwrap();
     assert_eq!(baseline.driver_argument_count, 0);
-    let prepared = Prepared::new(&bytes, row, baseline.driver_argument_count).unwrap();
+    let prepared = Prepared::new(
+        &bytes,
+        row,
+        baseline.driver_argument_count,
+        AggregatePolicy {
+            discarded_clones: true,
+            virtual_fields: true,
+        },
+    )
+    .unwrap();
     assert!(prepared.leaf.is_some());
     assert_eq!(prepared.descriptor, baseline.descriptor);
     assert_ne!(
         prepared.descriptor,
         resumable_descriptor::compile_portable_descriptor_v2(&logical, &layout, row, 1).unwrap()
     );
+}
+
+#[test]
+fn aggregate_preparation_controls_preserve_entries_and_descriptors() {
+    for fields in [false, true] {
+        let send = |receiver, selector| Expr::Send {
+            receiver: Box::new(Expr::Global(receiver)),
+            selector: Cow::Borrowed(selector),
+            args: vec![],
+            source: b"",
+        };
+        let mut body = vec![Statement::Let {
+            name: b"copy",
+            value: send(b"prototype", b"clone"),
+        }];
+        for _ in 0..3 {
+            body.push(Statement::Let {
+                name: if fields { b"result" } else { b"copy" },
+                value: if fields {
+                    send(b"copy", b"name")
+                } else {
+                    send(b"prototype", b"clone")
+                },
+            });
+        }
+        body.push(Statement::Expr(Expr::Global(if fields {
+            b"result"
+        } else {
+            b"answer"
+        })));
+        let bytes = portable::encode_block(
+            &Block {
+                params: vec![b"prototype", b"answer"],
+                body,
+            },
+            &[],
+        )
+        .unwrap();
+        let programs = portable_inventory::encode_closure(&[&bytes]).unwrap();
+        let bindings = code_binding_inventory::encode(&[]).unwrap();
+        let selected = selection::encode(
+            &programs,
+            &bindings,
+            &[],
+            &[selection::Disposition::Resumable],
+        )
+        .unwrap();
+        let selected = selection::inspect(&selected, &programs, &bindings).unwrap();
+        let row = selected.row(0).unwrap();
+        let baseline = birnam_codegen::resumable_block::compile_portable_materialization_block_v1(
+            &bytes,
+            row,
+            0,
+            0,
+            &[],
+        )
+        .unwrap();
+        let enabled = Prepared::new(
+            &bytes,
+            row,
+            baseline.driver_argument_count,
+            AggregatePolicy {
+                discarded_clones: true,
+                virtual_fields: true,
+            },
+        )
+        .unwrap();
+        assert!(if fields {
+            enabled.virtual_aggregate.is_some()
+        } else {
+            enabled.discarded_clone.is_some()
+        });
+        for discarded_clones in [false, true] {
+            for virtual_fields in [false, true] {
+                let prepared = Prepared::new(
+                    &bytes,
+                    row,
+                    baseline.driver_argument_count,
+                    AggregatePolicy {
+                        discarded_clones,
+                        virtual_fields,
+                    },
+                )
+                .unwrap();
+                assert_eq!(prepared.descriptor, baseline.descriptor);
+                assert_eq!(prepared.source, enabled.source);
+                assert_eq!(prepared.pcs, enabled.pcs);
+                assert_eq!(
+                    prepared.discarded_clone.is_some(),
+                    discarded_clones && enabled.discarded_clone.is_some()
+                );
+                assert_eq!(
+                    prepared.virtual_aggregate.is_some(),
+                    virtual_fields && enabled.virtual_aggregate.is_some()
+                );
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

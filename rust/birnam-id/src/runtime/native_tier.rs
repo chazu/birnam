@@ -30,11 +30,29 @@ const HOT_ENTRIES: usize = 64;
 const MAX_RECORDS: usize = 256;
 const MAX_CANDIDATE_BYTES: usize = 256 << 10;
 
+#[derive(Clone, Copy)]
+struct AggregatePolicy {
+    discarded_clones: bool,
+    virtual_fields: bool,
+}
+
+impl AggregatePolicy {
+    fn from_environment() -> Self {
+        Self {
+            discarded_clones: std::env::var_os("BIRNAM_DEV_DISCARDED_CLONES")
+                .is_none_or(|value| value != "0"),
+            virtual_fields: std::env::var_os("BIRNAM_DEV_VIRTUAL_FIELDS")
+                .is_none_or(|value| value != "0"),
+        }
+    }
+}
+
 #[derive(Default)]
 pub(super) struct Registry {
     staged: Vec<Option<Rc<Prepared>>>,
     records: BTreeMap<usize, Record>,
-    staged_closures: Vec<Option<Rc<closure_elision::Prepared>>>,
+    staged_closures: Vec<Option<Rc<closure_elision::pending::Pending>>>,
+    closure_pending_budget: Option<closure_elision::pending::Budget>,
     closures: BTreeMap<usize, closure_elision::Record>,
     closure_resume: Option<closure_elision::Resume>,
     unboxed_scratch: Option<unboxed_numeric::scratch::Pool>,
@@ -267,6 +285,14 @@ impl Registry {
         // Optimization is optional and bounded, even for a much larger valid
         // unit. Registration still accepts every ordinary manifest row.
         let closures_enabled = closure_elision::enabled();
+        if closures_enabled {
+            // Pending inputs own no native pin. Reclaim expired cold entries
+            // before charging new staging inputs against the shared budget.
+            self.closures.retain(|_, record| !record.expired_pending());
+            self.closure_pending_budget
+                .get_or_insert_with(Default::default);
+        }
+        let aggregates = AggregatePolicy::from_environment();
         for index in 0..manifest.entry_count().min(MAX_RECORDS) {
             if closures_enabled {
                 let closure = (|| {
@@ -277,9 +303,10 @@ impl Registry {
                     {
                         return None;
                     }
-                    closure_elision::Prepared::new(
+                    closure_elision::pending::Pending::new(
                         inventory.program(row.subject_index as usize)?,
                         row,
+                        self.closure_pending_budget.as_ref()?,
                     )
                 })();
                 self.staged_closures.push(closure.map(Rc::new));
@@ -297,6 +324,7 @@ impl Registry {
                     inventory.program(row.subject_index as usize)?,
                     row,
                     entry.driver_argument_count,
+                    aggregates,
                 )
             })();
             self.staged.push(prepared.map(Rc::new));
@@ -319,16 +347,14 @@ impl Registry {
             .get(index)
             .and_then(Option::as_ref)
             .cloned()
-            && prepared.descriptor == bytes
+            && let Some(record) = closure_elision::Record::new(prepared, descriptor, bytes)
         {
             self.prune();
             if self.closures.len() >= MAX_RECORDS {
                 self.closures.pop_first();
             }
-            self.closures.insert(
-                Arc::as_ptr(descriptor) as usize,
-                closure_elision::Record::new(prepared, descriptor),
-            );
+            self.closures
+                .insert(Arc::as_ptr(descriptor) as usize, record);
         }
         let Some(prepared) = self.staged.get(index).and_then(Option::as_ref).cloned() else {
             return;
@@ -438,7 +464,12 @@ impl Registry {
 }
 
 impl Prepared {
-    fn new(bytes: &[u8], row: selection::Row<'_>, driver_argument_count: u32) -> Option<Self> {
+    fn new(
+        bytes: &[u8],
+        row: selection::Row<'_>,
+        driver_argument_count: u32,
+        aggregates: AggregatePolicy,
+    ) -> Option<Self> {
         let program = resumable::lower_portable_block(bytes).ok()?;
         if program.blocks.is_empty() || program.blocks.len() > 4096 {
             return None;
@@ -535,9 +566,16 @@ impl Prepared {
             leaf: None,
             numeric: numeric_chain::Template::derive(&program, &layout).map(Rc::new),
             unboxed_numeric: unboxed_numeric::prepare_maps(&program, &layout),
-            discarded_clone: birnam_codegen::discarded_clone::Plan::derive(&program, &layout)
+            discarded_clone: aggregates
+                .discarded_clones
+                .then(|| birnam_codegen::discarded_clone::Plan::derive(&program, &layout))
+                .flatten()
                 .map(Rc::new),
-            virtual_aggregate: virtual_aggregate::prepare(&program, &layout).map(Rc::new),
+            virtual_aggregate: aggregates
+                .virtual_fields
+                .then(|| virtual_aggregate::prepare(&program, &layout))
+                .flatten()
+                .map(Rc::new),
         })
     }
 

@@ -696,3 +696,99 @@ the derived descriptor against the still-live registered descriptor, and release
 pending inputs on success, refusal or retirement. Keep current default-off policy
 while verifying cold/refusal cost, resource bounds and source recovery. This is
 preparation deferral, not permission to weaken admission or native ownership.
+
+### Defer closure plan derivation to the existing hot threshold
+
+Staging currently lowers, colors and derives closure plans even if the factory
+never reaches the 64 constructor visits required for execution. Replace that
+prepared staging payload with bounded owned portable bytes and selection data.
+A validated portable-node scan may reject literal-free programs; it grants no
+optimization authority. Full lowering, coloring, plan construction and derived
+descriptor checks remain mandatory at the existing threshold.
+
+Pending source, selector and registered-descriptor payloads share a 4 MiB
+runtime-local reservation budget. Each source or descriptor is at most 256 KiB.
+Reservations follow actual owners across staging, registration, selection and
+retirement; shared pending sources are charged once. The budget excludes existing
+record headers, allocator bookkeeping and prepared-plan storage, which retain
+their separate bounded record/plan limits. Disabled closure staging creates no
+pending pool. Budget exhaustion or unsupported input selects ordinary code.
+
+At registration retain the ordinary validated descriptor bytes alongside a weak
+reference to its descriptor. On the hot visit, verify the exact current descriptor
+owner, derive the plan from the owned bytes, and compare descriptor bytes exactly.
+Keep preparation callback-free and retain existing roots, Frame state and code
+ownership. A failed derivation removes the record and releases its inputs without
+repeated compilation. Success keeps the prepared plan and releases pending owners;
+a still-open staging owner releases its shared source at the normal end of staging.
+Native constructor discovery and callee admission keep their existing checks.
+
+Verify cold visits perform no derivation; threshold success, malformed/stale
+descriptor rejection, bounded reservations, early retirement and disabled staging.
+Then retain the full source/control/GC/retirement matrix and update preparation
+counter expectations to distinguish staging from hot derivation. Keep execution
+and literal-callee defaults unchanged while measuring cold/refusal and resource
+costs. This branch also carries the separately tested aggregate preparation
+controls; combine with verified numeric scratch before the final production gate.
+
+This defers the runtime's independent derivation. The compiler still derives a
+plan while emitting the baseline constructor hook; its cost is retained in the
+materialization measurement. Compiler-refused bodies may never invoke that hook,
+so their pending inputs can remain until descriptor retirement. Report those
+bytes explicitly and enforce the shared budget instead of reporting zero
+metadata for such bodies. Eligible factories release their pending payload after
+the hot derivation; steady execution must neither rederive plans nor grow the
+pending budget.
+
+The [focused checkpoint](../measurements/74u-hot-focused-correctness.json)
+passes 551 workspace tests (19 ignored), 207 release runtime tests (15 ignored),
+four pending-owner/threshold/refusal/retirement tests and the explicit disabled-
+pool check. All 48 source measurement, 16 mutation and 24 literal V2 control
+cases pass. Measurement asserts no runtime derivation during materialization,
+one hot derivation for each eligible factory, no repeated steady derivation,
+and stable pending storage after collection. Compiler-refused factories retain
+3,823 to 18,273 bytes of cold input payloads in this matrix, until retirement.
+Full combined production and cost verification remain pending; these checks do
+not promote the closure consumer.
+
+The [combined production proof](../measurements/74u-hot-aggregate-scratch-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases, with 277 current source
+hashes matching. It includes deferred closure preparation, aggregate preparation
+controls and verified numeric scratch reuse. The [90 normal-driver checks](../measurements/74u-hot-normal-driver-correctness.json)
+also pass with matching production source, fixture and published-prefix hashes.
+The independent aggregate control matrix is still running. Closure timing may
+now compare this exact normal floor and verified driver; no default promotion
+or profitability claim follows from the passing correctness gate.
+
+
+### Normal-floor comparison after hot preparation
+
+The [complete hot-preparation comparison](../measurements/74u-hot-normal-exploratory-timing.json)
+passes all 144 processes and 72 paired result checks, with unchanged production,
+verification, source and installed-prefix hashes. All 72 interval gates reject
+host qualification; the matrix is explicitly unqualified under the waiver.
+Positive percentages below mean reduced time on the current floor.
+
+| Uses | Eliminated closure: execution / including GC | Escaping closure: execution / including GC |
+| --- | --- | --- |
+| 1 | -13.22% / -13.95% | -17.22% / -24.13% |
+| 3 | +9.87% / +12.76% | -7.64% / -8.44% |
+| 4 | +0.26% / -1.77% | +4.50% / +5.50% |
+| 8 | +8.92% / +7.05% | +4.21% / +5.36% |
+| 16 | +9.57% / -1.34% | +6.25% / -2.76% |
+| 32 | +19.61% / +13.16% | +19.62% / +17.29% |
+
+Three of four 32-use pairs improve including GC in each successful shape; the
+fourth regresses 5.45%/2.98%. Every other size has mixed GC pair directions.
+Compiler-refused controls also vary widely. At 32 uses, cold execution medians
+improve 21.59%/9.06%, while materialization changes only +2.30%/+0.17%. Peak RSS
+has no consistent gain. This compares off/on in the current implementation; it
+is not a controlled before/after attribution to preparation deferral.
+
+These results continue to favor longer regions over one-use closures, but do
+not justify promoting all admitted regions or choosing a smaller threshold.
+Keep application, churn and retained-resource acceptance open. The separate
+aggregate source failure was an invalid fixture/probe pairing: returning the
+second argument violates the borrowed numeric probe's existing non-alias rule.
+A captured-result fixture correction is being tested without changing runtime
+code or weakening that assertion; this closure cost matrix remains valid.

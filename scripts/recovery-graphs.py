@@ -39,6 +39,8 @@ def sources():
         "closure-journal-smoke.py",
         "closure-measurement-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
+        "closure-production-timing.py", "unboxed-bounded-timing.py",
+        "aggregate-source-smoke.py", "recovery-applications.py",
     )]
     paths += [ROOT / path for path in (
         "abi/native-numeric-semantics-v1.md", "scripts/fixtures/numeric-semantics.c",

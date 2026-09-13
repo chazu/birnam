@@ -33,6 +33,9 @@ def source(projections, shape, precise):
     if shape != 1:
         statements.append('answer')
     body = ' '.join(statements)
+    if shape == 4:
+        body = ' '.join('let copy := [prototype clone];' for _ in range(projections)) + ' observer'
+    other = 'expected' if shape == 4 else 'observer'
     setup = f'''[System load: "modules/os.birnam"];
 [System preciseGc: {'true' if precise else 'false'}];
 let expected := 42;
@@ -57,10 +60,10 @@ let block := [Codegen materializeResumable: [[source codeObject] withoutSourcePr
         receiver = 'canonicalProto' if phase == 'canonical' else 'proto'
         phases.append(f'''[System println: "aggregate-phase {phase}"];
 [effects set: 0];
-[UnboxedNumericProbe run: block input: {receiver} other: observer expected: 42];
-let answer{phase} := [block value: {receiver} value: observer];
+[UnboxedNumericProbe run: block input: {receiver} other: {other} expected: 42];
+let answer{phase} := [block value: {receiver} value: {other}];
 [[answer{phase} == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]];
-[[[effects value] = {137 * projections if phase == 'replaced' else 0}]
+[[[effects value] = {137 * projections if phase == 'replaced' and shape != 4 else 0}]
  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]];
 [System gc];
 ''')
@@ -75,6 +78,8 @@ let afterEviction := [block value: proto value: observer];
 [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]];
 [System println: "aggregate-source identities and current effects passed"];
 '''
+    if shape == 4:
+        post = post.replace('value: observer', 'value: expected')
     # Each complete expression returns to the real host between phases. A
     # removed Id method can retire there; an active outer script would keep
     # that retirement pending and correctly prevent allocation elision.
@@ -88,6 +93,7 @@ def main():
     parser.add_argument('--receipt', required=True, type=Path)
     parser.add_argument('--profile', required=True, choices=('debug', 'release'))
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--disabled-consumers', nargs='+', choices=('discarded-clones', 'virtual-fields'), default=[])
     args = parser.parse_args()
     prefix, floor = args.prefix.resolve(), args.floor.resolve()
     proof = json.loads(args.receipt.read_text())
@@ -98,9 +104,10 @@ def main():
         parser.error('selected floor differs from the verified production checkpoint')
     installed = [prefix / 'bin/birnam', prefix / 'share/birnam/rust-install.json'] + sorted((prefix / 'lib').glob('*.dylib'))
     result = dict(status='running', profile=args.profile, floor_sha256=sha(floor),
+                  disabled_consumers=args.disabled_consumers,
                   correctness_sha256=sha(args.receipt), script_sha256=sha(__file__),
                   installed_sha256={str(p): sha(p) for p in installed}, rows=[],
-                  scope='Real host REPL, installed compiler and Relational native getter, using the previously verified test floor. Each expression returns to the host between phases so removed code can retire before readmission. Existing numeric probe supplies logical-byte and physical-allocation counters only: its completed/materialized fields count numeric optimization and must remain zero here. Four phases per process: native getter; effectful Id override creating a private vtable; inherited native getter restored with undeclared private layout still refused; unchanged canonical-layout prototype readmitted. This is source correctness and admission evidence, not a timing comparison or a proof of every aggregate shape.')
+                  scope='Real host REPL, installed compiler and Relational native getter, using the previously verified test floor. Each expression returns to the host between phases so removed code can retire before readmission. Existing numeric probe supplies logical-byte and physical-allocation counters only: its completed/materialized fields count numeric optimization and must remain zero here. Four phases per process: native getter; effectful Id override creating a private vtable; inherited native getter restored with undeclared private layout still refused; unchanged canonical-layout prototype readmitted. Shapes include field-only returns, a tail getter, successive clones, an escaping observer and discarded repeated clones. Selected disabled consumers must omit no physical allocations; unrelated consumers remain active. This is source correctness and admission evidence, not a timing comparison or a proof of every aggregate shape.')
 
     def check_sources():
         assert all(sha(ROOT / k) == v for k, v in proof['sources'].items()), 'production sources changed since floor verification'
@@ -110,11 +117,14 @@ def main():
 
     env = {k: v for k, v in os.environ.items() if not k.startswith(('BIRNAM_', 'DYLD_'))}
     env.update(BIRNAM_ID_DYLIB=str(floor), BIRNAM_TEST_UNBOXED_NUMERIC='1')
+    for name in args.disabled_consumers:
+        env[{'discarded-clones': 'BIRNAM_DEV_DISCARDED_CLONES',
+             'virtual-fields': 'BIRNAM_DEV_VIRTUAL_FIELDS'}[name]] = '0'
     try:
         check_sources()
         with tempfile.TemporaryDirectory(prefix='birnam-aggregate-source-') as work:
             fixture = Path(work) / 'aggregate-repl.txt'
-            for projections, shape, precise in product((1, 3, 16), range(4), (0, 1)):
+            for projections, shape, precise in product((1, 3, 16), range(5), (0, 1)):
                 code = source(projections, shape, precise)
                 fixture.write_text(code)
                 p = subprocess.run([str(prefix / 'bin/birnam'), '--repl'], input=code, cwd=ROOT, env=env,
@@ -134,6 +144,10 @@ def main():
                 assert phases == ['native', 'replaced', 'restored', 'canonical'] and len(measurements) == 4, row
                 row['measurements'] = dict(zip(phases, measurements))
                 saved = 8 * (2 if shape == 2 else 1) if projections >= 3 and shape in (0, 2) else 0
+                if 'virtual-fields' in args.disabled_consumers:
+                    saved = 0
+                if shape == 4 and projections >= 3 and 'discarded-clones' not in args.disabled_consumers:
+                    saved = 8 * projections
                 for phase, m in zip(phases, measurements):
                     assert m['invocations'] == 8 and m['answer'] == 42, row
                     assert m['completed'] == m['materialized'] == 0, row

@@ -73,6 +73,7 @@ pub(super) unsafe extern "C" fn prepare(_: Oop, args: *const Oop, count: usize) 
         let selector = r.intern(b"materializeResumable:captures:").unwrap();
         let before = counters();
         let metadata_before = r.closure_metadata_payload_bytes();
+        let pending_before = r.closure_pending_resources();
         let start = Instant::now();
         let block = r.send_slice(codegen, selector, unsafe {
             core::slice::from_raw_parts(args, count)
@@ -80,10 +81,15 @@ pub(super) unsafe extern "C" fn prepare(_: Oop, args: *const Oop, count: usize) 
         let ns = start.elapsed().as_nanos();
         let after = counters();
         let metadata = r.closure_metadata_payload_bytes();
+        let pending = r.closure_pending_resources();
         println!(
-            "closure-prepare ns={ns} floor_preparations={} floor_preparation_ns={} metadata_payload_before={metadata_before} metadata_payload_after={metadata}",
+            "closure-prepare ns={ns} floor_preparations={} floor_preparation_ns={} metadata_payload_before={metadata_before} metadata_payload_after={metadata} pending_records_before={} pending_bytes_before={} pending_records_after={} pending_bytes_after={}",
             after.3 - before.3,
-            after.4 - before.4
+            after.4 - before.4,
+            pending_before.0,
+            pending_before.1,
+            pending.0,
+            pending.1
         );
         block
     })
@@ -129,11 +135,15 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             }
             answer
         };
+        let cold_preparations_before = counters().3;
+        let cold_pending_before = r.closure_pending_resources();
         let cold_start = Instant::now();
         for _ in 0..128 {
             answer = invoke();
         }
         let cold_ns = cold_start.elapsed().as_nanos();
+        let cold_preparations = counters().3 - cold_preparations_before;
+        let cold_pending_after = r.closure_pending_resources();
         let replaced = if shape == 2 {
             let vt = unsafe { (*r.state.get()).heap.vtable_of(answer).unwrap() };
             let value = r.intern(b"value").unwrap();
@@ -148,6 +158,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let discoveries_before = constructor_discoveries();
         let queries_before = constructor_queries();
         let completed_before = super::native_tier::closure_elision::completed_calls();
+        let pending = r.closure_pending_resources();
         EFFECTS.set(0);
         let mut ns = 0;
         let mut gc_ns = 0;
@@ -169,8 +180,14 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             let start = Instant::now();
             r.gc_collect_from_native_range(0, 0);
             gc_ns += start.elapsed().as_nanos();
+            assert_eq!(
+                r.closure_pending_resources(),
+                pending,
+                "pending inputs stay bounded during steady execution"
+            );
         }
         let after = counters();
+        assert_eq!(after.3, before.3, "warmed execution derives no new plans");
         let discoveries = constructor_discoveries() - discoveries_before;
         let queries = constructor_queries() - queries_before;
         let calls = batches * 128;
@@ -203,7 +220,13 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             assert_eq!(EFFECTS.get(), effects);
         }
         println!(
-            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits}"
+            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits} cold_floor_preparations={cold_preparations} cold_pending_records_before={} cold_pending_bytes_before={} cold_pending_records_after={} cold_pending_bytes_after={} pending_records={} pending_bytes={}",
+            cold_pending_before.0,
+            cold_pending_before.1,
+            cold_pending_after.0,
+            cold_pending_after.1,
+            pending.0,
+            pending.1
         );
         r.canonical().nil
     })
