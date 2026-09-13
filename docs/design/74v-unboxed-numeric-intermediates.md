@@ -274,3 +274,14 @@ matrices, this checkpoint adds 1,188 fresh source-process comparisons. The
 feature-enabled runtime test suite also passes 195 tests, with 15 ignored. Full
 production verification of this extended checkpoint remains required before
 integration or a performance/promotion claim.
+
+### Extended production recovery verification
+
+The [extended production receipt](../measurements/74v-unboxed-control-production-correctness.json)
+passes all 63 commands with all 252 recorded source hashes matching the tested
+checkout. It retains 1,248 closure cases and 1,480 numeric cases: ordinary and
+captured-input matrices each contribute 146 processes per profile, and actual
+V2 capture/suspension contributes 448 per profile. All matrices for each profile
+match the independently tested control floor. Native-prefix, image, cold-archive
+and relocation verification also pass. This completes the extended recovery
+checkpoint, not numeric cost acceptance or the full four-family objective.
