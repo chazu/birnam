@@ -92,6 +92,48 @@ impl Plan {
         &self.operations
     }
 
+    /// Transitive input dependencies. Validated Plans have only backward edges.
+    pub fn input_dependencies(&self) -> Vec<u64> {
+        let mut masks = Vec::with_capacity(self.operations.len());
+        for operation in &self.operations {
+            let mask = |value| match value {
+                Value::Input(index) => 1u64 << index,
+                Value::Result(index) => masks[index as usize],
+            };
+            masks.push(mask(operation.left) | mask(operation.right));
+        }
+        masks
+    }
+
+    /// Append a private entry for a previously successful result vector. The
+    /// caller proves unchanged raw inputs for each zero bit in `changed`.
+    /// Changed dependencies retain the ordinary first-error execution order.
+    pub fn emit_loop_reuse(&self) -> Vec<u8> {
+        let mut source = String::from_utf8(self.emit()).expect("ASCII emitter");
+        source.push_str("unsigned long numeric_chain_reuse(const long long *in, long long *out,unsigned long long changed){\n");
+        let reference = |value| match value {
+            Value::Input(index) => format!("in[{index}]"),
+            Value::Result(index) => format!("out[{index}]"),
+        };
+        for (index, (operation, mask)) in self
+            .operations
+            .iter()
+            .zip(self.input_dependencies())
+            .enumerate()
+        {
+            source.push_str(&format!(
+                "if((changed & {mask}ULL) && !numeric_{}({}, {}, &out[{}])) return {};\n",
+                operation.operator as u32,
+                reference(operation.left),
+                reference(operation.right),
+                index,
+                index + 1,
+            ));
+        }
+        source.push_str("return 0;\n}\n");
+        source.into_bytes()
+    }
+
     /// Inputs and outputs are disjoint arrays of signed 64-bit words. Zero
     /// means success; N+1 means the first failing operation is N. Only outputs
     /// preceding that operation have been written. All intermediate values

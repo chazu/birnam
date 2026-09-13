@@ -141,6 +141,10 @@ impl ExecutionState {
         );
         slot.transfer_scratch
             .resize(admission.descriptor.max_edge_copy_count, 0);
+        slot.self_tail_entry = slot
+            .descriptor
+            .as_ref()
+            .is_some_and(|old| Arc::ptr_eq(old, &admission.descriptor));
         slot.descriptor = Some(admission.descriptor);
         slot.program_counter = 0;
         slot.root_state_program_counter = 0;
@@ -285,6 +289,10 @@ mod tests {
             assert_eq!(
                 left.recovery_experiment_logical_frames(),
                 right.recovery_experiment_logical_frames()
+            );
+            assert_eq!(
+                left.slots[handles[0].index].self_tail_entry,
+                right.slots[handles[1].index].self_tail_entry
             );
             assert_eq!(left.high_water_live_frames, right.high_water_live_frames);
             assert_eq!(

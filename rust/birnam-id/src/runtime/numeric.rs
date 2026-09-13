@@ -149,4 +149,6 @@ thread_local! {
 pub(super) mod tests;
 
 mod chain;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+pub(in crate::runtime) use chain::loop_reuse;
 pub(super) use chain::{Binding, CompiledChain, Ticket};

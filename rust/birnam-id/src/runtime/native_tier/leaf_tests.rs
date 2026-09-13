@@ -12,6 +12,7 @@ use std::borrow::Cow;
 mod discarded_clone_tests;
 mod fused_numeric_tests;
 mod graph_tests;
+mod loop_invariant_tests;
 mod numeric_tests;
 mod tail_entry_tests;
 mod unboxed_numeric_tests;

@@ -1,0 +1,98 @@
+# 74W — Reuse invariant arithmetic across actual tail-loop iterations
+
+Status: implementation in progress; default-off experiment for the remaining
+loop requirement in [74T](74t-representation-and-allocation-optimizations.md).
+
+The existing tail-entry plan removes entry-layout work. This consumer additionally
+removes arithmetic whose raw inputs remain unchanged across successive iterations
+of an actual registered Id tail loop. It does not infer a loop from selector
+spelling or replace Id control with a native loop.
+
+## Analysis and admission
+
+A numeric plan derives a 64-bit input-dependency mask for every operation. A result
+depends on the union of its operands' masks. At most 64 inputs and 32 operations
+remain supported. The ordinary kernel still performs the first evaluation. A
+second private kernel skips operations whose transitive input bits did not change;
+all other operations retain the original checked arithmetic and first-error order.
+No public ABI or canonical descriptor/image representation changes.
+
+Reuse requires the numeric invocation's immediate caller to have traversed an
+actual self-tail transition since the preceding evaluation. The execution arena
+records this private fact only after current lookup, acquisition and successful
+Frame replacement. A stamp retains the arena, Frame index/generation and exact
+parent descriptor owner. Fresh calls and continuation restoration clear the fact;
+stamps must be consecutive generations of the same parent implementation. Both
+ordinary and planned tail-entry paths record the same fact. Thus independent
+calls, merely equal input values and stale Frame identities do not establish a
+loop. Mutual recursion and non-tail loops initially refuse this admission.
+
+A compiled numeric owner retains one bounded previous-input/result buffer and
+stamp. Values are raw bits in untraced host vectors; no result Oop or shared Cell
+is cached. Each entry rereads actual numeric inputs, including payload mutations,
+and the established consumer still validates current lookup, native methods,
+declarations, API context, storage and control before executing any optimized
+result. The cache cannot authorize an operation or bypass those guards. Failed
+predictions discard the cache and fall back before performing Id effects.
+
+## Observable behavior
+
+Only successful arithmetic computation is reused. Ordinary source-PC entries,
+lookup/observation refusal, allocation charges, fresh object identities, effects,
+return values and stackless transitions remain the responsibility of the existing
+consumer. With boxed fusion every original box remains; with separately admitted
+74V unboxing, its original identity/materialization obligations still apply.
+Capture, suspension and restoration neither serialize nor restore the cache.
+Retirement destroys caches with their compiled owners; retained stamps are
+metadata owners and grant no right to execute old code.
+
+## Required evidence
+
+Compiler/native differential checks cover transitive dependency masks, partially
+changed inputs, integer extremes, division by zero, overflow, and earliest-error
+order. Arena checks distinguish actual tail recurrence from pop/push, a changed
+target, capture/restore, exhausted generations and a different arena.
+
+Installed source loops must demonstrate removed arithmetic, equal answers and
+fresh identities with varying loop inputs and invariant subexpressions. Mutation
+of inputs, operators, lookup and declarations must invalidate or refuse reuse.
+Effects occur exactly once in order; suspension/capture stops before later loop
+work. Both tail-entry configurations and boxed/unboxed arithmetic need coverage.
+Full production verification precedes paired cold/warm/resource measurements,
+including changing-input controls. No promotion or full-family completion follows
+from compiler metadata or a synthetic kernel alone.
+
+## Initial implementation evidence
+
+The compiler emits both ordinary and dependency-masked kernels, and the runtime
+retains one previous raw-input/result vector per enabled compiled owner. Production
+builds require `BIRNAM_DEV_LOOP_INVARIANTS=1` before kernel preparation. No reuse
+kernel is emitted in the default configuration. The counter exposed only by the
+test floor counts skipped kernel prediction computations; it does not by itself
+prove that the surrounding fusion or unboxing admission succeeded.
+
+The initial workspace run passes 541 tests with 19 ignored. Focused debug/release
+checks pass the native arithmetic differential, arena stamp lifecycle, existing
+tail-entry behavior and registered-loop consumer tests. The consumer matrix has
+56 baseline/enabled configurations across ordinary/planned tail entry,
+boxed/unboxed execution, unchanged and mutated inputs, operator replacement and
+restoration, observing lookup, declaration withdrawal/restoration and collection.
+It compares effect/value traces, lookup counts, fresh result identities and
+logical allocation charges (the explicitly collecting case compares traces).
+
+The [debug](../measurements/74w-loop-invariant-source-debug.json) and
+[release](../measurements/74w-loop-invariant-source-release.json) installed-source
+matrices each pass 32 processes with matching recorded source and floor hashes.
+They cover both GC modes and boxed/unboxed configurations. Across 128 actual Id
+tail-loop iterations, a fully invariant three-operation chain skips 381 kernel
+operations, a chain with a varying second operand skips 127, and all-changing
+inputs skip none. Independent repeated-call controls skip none. These source
+loops use current Codegen and ordinary Id conditionals, returning the same answers
+and preserving the preceding result's distinct identity.
+
+Full `recovery-graphs.py --unboxed --verify` now includes the three focused loop
+checks in both profiles and retains both source matrices with the independently
+verified floor hashes. That full gate, actual loop capture/suspend/retirement
+coverage, bounded cache/resource acceptance and qualified profitability remain
+required. This checkpoint neither enables the consumer by default nor completes
+the loop family or any of the other three families.
