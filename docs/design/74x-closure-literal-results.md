@@ -69,3 +69,17 @@ All 24 processes pass with matching source, selected-floor and installed-prefix
 hashes. The initial attempt with the older installed Codegen correctly produced
 no optimization hit; rebuilding the isolated compiler installation supplied the
 new constructor hook and made the actual consumer testable.
+
+## Full production verification of literal callees
+
+The [production receipt](../measurements/74x-closure-literals-production-correctness.json)
+passes all 71 commands, with all 265 source hashes matching the tested checkpoint.
+It retains 1,320 closure source cases and 1,604 numeric/loop cases (2,924 total),
+including all 24 literal-body cases. Every matrix matches the independently
+built debug or release control floor. Production installation, native execution,
+image, cold-archive and relocation checks pass.
+
+This verifies the initial default-off literal-callee implementation. The separate
+literal-result capture/suspension extension has its own checkpoint and gate.
+Profitability, preparation/resource/application acceptance and closure promotion
+remain open; this receipt does not complete the full closure family.
