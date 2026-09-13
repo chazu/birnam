@@ -599,3 +599,24 @@ and always records `qualified: false`. The user-waived exploratory threshold
 and numeric sweeps now run independently of the unchanged-input loop correctness
 gate, using their already verified checkout. No admission threshold or default
 policy is selected merely by adding this harness.
+
+The [full normal-floor exploratory matrix](../measurements/74u-closure-production-exploratory-timing.json)
+now completes 144 processes and 14,400 measured 128-invocation batches. Every
+identity, result, post-GC and source/installation check passes. This uses the
+pre-descriptor-query admission implementation. It remains unqualified.
+
+| Uses | Eliminated closure: execution / including GC | Escaping closure: execution / including GC |
+| --- | --- | --- |
+| 1 | -27.96% / -29.96% | -10.67% / -6.04% |
+| 3 | +4.28% / +5.27% | -8.56% / -7.43% |
+| 4 | +17.14% / +19.48% | -10.28% / -9.24% |
+| 8 | +10.35% / +9.75% | +7.46% / +5.58% |
+| 16 | +9.96% / +5.14% | +6.16% / +1.37% |
+| 32 | +30.89% / +24.79% | +21.52% / +14.22% |
+
+Positive values mean paired median reductions. The one-use regression remains,
+and repeated-use benefits reach the normal floor, particularly at 32 uses.
+Compiler-refusal controls are noisy: their execution/including-GC medians range
+from +6.39%/+7.35% at one use to -27.85%/-30.32% at 32 uses. The new admission
+implementation therefore still needs its own verified normal-floor comparison;
+these results alone do not select a smaller threshold or enable the consumer.
