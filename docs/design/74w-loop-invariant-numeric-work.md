@@ -315,3 +315,9 @@ forced recovery, GC, capture/suspension, native retirement, installed-prefix,
 image and cold-archive checks. A separate normal release installation has been
 built from this checkpoint. Its driver verification and exploratory comparison
 against loop reuse disabled remain required before a performance conclusion.
+
+The [normal-floor driver verification](../measurements/74w-unchanged-reuse-driver-correctness.json)
+passes all 96 current test/normal-floor cases with the new release installation.
+Exact reuse counts, result/identity checks and source/artifact digests match.
+The next matrix measures this checkpoint with diagnostics retained and host
+qualification explicitly waived.
