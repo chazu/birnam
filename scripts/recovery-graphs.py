@@ -28,7 +28,7 @@ def sources():
     paths += [ROOT / "scripts" / name for name in (
         "compatibility_authority.py", "rust-cutover-verify.sh",
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
-        "closure-elision-smoke.sh", "closure-literals-smoke.py",
+        "closure-elision-smoke.sh", "closure-literals-smoke.py", "closure-literal-control-smoke.py",
         "closure-control-smoke.sh", "closure-sequence-smoke.py",
         "unboxed-numeric-smoke.py", "unboxed-numeric-control-smoke.py",
         "unboxed-numeric-measurement-smoke.py", "unboxed_numeric_timing_common.py",
@@ -47,6 +47,7 @@ def sources():
         "abi/native-block-construction-v1.md", "scripts/fixtures/native-block-construction.c",
         "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
         "scripts/fixtures/closure-elision.birnam", "scripts/fixtures/closure-literals.birnam",
+        "scripts/fixtures/closure-literal-control.birnam",
         "scripts/fixtures/closure-observation.birnam",
         "scripts/fixtures/closure-control.birnam",
         "scripts/fixtures/closure-live-api.birnam",
@@ -229,7 +230,7 @@ def main():
                     finally:
                         env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
                         env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
-                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals")
+                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control")
                                 for profile in ("debug", "release")}
                     paths = list(Path(evidence).glob("*.json"))
                     if {p.name for p in paths} != expected:
@@ -253,6 +254,12 @@ def main():
                         rows = matrices[f"literals-{profile}.json"]["rows"]
                         if len(rows) != 12 or {(r["precise"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literals:
                             raise RuntimeError("incomplete fresh literal closure result matrix")
+                    expected_literal_control = {(p, c, l, e, f) for p, l, e, f in expected_literals
+                                                for c in ("capture", "suspend")}
+                    for profile in ("debug", "release"):
+                        rows = matrices[f"literal-control-{profile}.json"]["rows"]
+                        if len(rows) != 24 or {(r["precise"], r["control"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literal_control:
+                            raise RuntimeError("incomplete literal result capture/suspension matrix")
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:
                         expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant") for p in ("debug", "release")}

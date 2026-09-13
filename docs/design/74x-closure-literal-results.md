@@ -83,3 +83,45 @@ This verifies the initial default-off literal-callee implementation. The separat
 literal-result capture/suspension extension has its own checkpoint and gate.
 Profitability, preparation/resource/application acceptance and closure promotion
 remain open; this receipt does not complete the full closure family.
+
+## Literal results through V2 capture and suspension
+
+The extended test-floor control bridge now carries three equal-valued but
+identity-distinct literal results, an alias of the first, and the recovered
+closure through actual host-owned Machine capture/suspension. The literal body
+also retains the original captured Cell. The probe's saved identities live in
+untraced host vectors. It collects with native-stack scanning omitted, so only
+the real Frame or Continuation can retain the recovered results and closure.
+
+The observer checks all three values and exact Frame aliases before and after
+collection. While paused, the bridge evicts Codegen materializations and collects
+again, then supplies a fresh Integer with equal bits. On resumption the source
+must preserve every earlier result identity and alias and distinguish the
+supplied identity. Wrong-Machine restore, repeated restore and repeated resume
+are rejected; observer effects occur exactly twice and Frame/Continuation pins
+return to their original counts. A subsequent closure invocation returns another
+fresh identity while retaining its original captured Cell.
+
+The [debug](../measurements/74x-literal-control-debug.json) and
+[release](../measurements/74x-literal-control-release.json) matrices each pass
+24 fresh processes: both GC modes, capture/suspend, disabled literal staging,
+ordinary execution, optimized execution and forced recovery before each of the
+three calls. All source/floor/installed hashes match. The unchanged original
+closure-control behavior also passes its [12-case debug regression matrix](../measurements/74x-literal-control-legacy-debug.json).
+The workspace still passes 544 tests with 19 diagnostic tests ignored. The full
+production gate now requires both complete literal-control matrices alongside
+the existing control coverage; that updated gate remains pending. These checks
+complete the focused capture/suspension obligation for this body shape, not
+performance acceptance or the broader closure family.
+
+## Full production verification of literal-result control
+
+The [literal-control production receipt](../measurements/74x-literal-control-production-correctness.json)
+passes all 71 commands, with all 267 source hashes matching the tested checkpoint.
+It retains 2,972 source cases, including all 48 literal-result capture/suspension
+cases. Every source matrix matches its independently verified control floor.
+Installed execution, image, native lifetime, cold-archive and relocation gates
+pass. The literal-specific checks preserve distinct result identities, earlier
+aliases, supplied-result identity and shared captured Cells across paused GC and
+resumption. This completes that production control checkpoint; preparation,
+profitability and wider closure acceptance remain open.
