@@ -17,9 +17,13 @@ optimization. Identity-preserving graph recovery and a bounded production
 numeric-chain consumer are implemented. Qualified warm arithmetic gains are
 6.8–10.8% for three-operation chains and 20.5–22.8% for sixteen-operation chains
 in the enabled production-source matrix (see 74T for both qualified matrices).
-That fusion retains the original numeric boxes; deferring intermediate
-materialization until observation boundaries remains required for the full
-unboxed-arithmetic family.
+The enabled fusion retains the original numeric boxes. [74V](74v-unboxed-numeric-intermediates.md)
+now adds a default-off unboxed consumer: original allocation charges and V2
+boundaries remain, and required identities materialize before observation.
+Its complete production gate passes 538 workspace tests and 1,540 source-process
+rows, including 292 numeric baseline/enabled/forced cases. Tested three-/16-/32-
+operation chains save 2/15/31 intermediate boxes. Timing, resource/application
+acceptance and promotion remain required for the full arithmetic family.
 A registered tail-loop entry consumer is also enabled, preserving every lookup
 and control boundary; its enabled-source matrix shows a 2.18% median fixture gain.
 Application/cold/metadata acceptance and broader loop dataflow remain open.

@@ -1597,3 +1597,23 @@ One-use regions still regress by 38-43%; three uses are near execution break-eve
 The pass remains disabled pending a measured threshold, broader bodies and
 application/resource acceptance. 74U retains the full paired and cold/preparation
 results, including the preceding unqualified run and all refusal controls.
+
+
+### 74V unboxed production checkpoint
+
+[74V](74v-unboxed-numeric-intermediates.md) now executes bounded numeric chains
+with deferred intermediate boxes and original V2 Frame recovery. The consumer
+is default-off. Physical savings are 2/15/31 result boxes for tested three-/16-/32-
+operation chains, with unchanged logical charges. Real installed Prelude and
+Codegen comparisons cover every supported PC and both GC modes. A release
+function-address mismatch found by those comparisons was repaired by sharing
+one immutable owner of canonical numeric API function identities; ABI fields
+and signatures remain unchanged, and modified API contexts still refuse.
+
+The [full production receipt](../measurements/74v-unboxed-production-correctness.json)
+passes 63 commands, 538 workspace tests (19 ignored), and 1,540 retained source
+rows across twelve matching-floor matrices. A separate follow-up adds recovered
+Frame control and captured-input checks; its extended production gate and
+numeric performance/resource/application acceptance remain open. Loop invariant
+work removal, broader aggregate acceptance and closure profitability/body
+coverage remain part of the unchanged four-family objective.
