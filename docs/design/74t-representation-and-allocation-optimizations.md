@@ -1699,3 +1699,43 @@ loop and unboxed matrices and closure profitability threshold, followed by paire
 application/cold/resource acceptance. Shared symbol and dispatch work is recorded
 as context, without broadening this four-family implementation into an unrelated
 optimization pass.
+
+### Reproducible combined application acceptance
+
+`scripts/recovery-applications.py` now compares the same normal release
+installation with default settings and with all four experimental switches
+enabled. It reuses the unchanged `eval`, `collections`, `portable-collections`
+and `materialize-cold` fixtures. Existing aggregate consumers remain active in
+both configurations. The runner requires a passing production receipt, verifies
+its source hashes, checks every installed artifact against the installer
+manifest, and matches the shipped source tree to the verified checkout. It
+rechecks these inputs before each pair and after the matrix.
+
+The [application comparison correctness receipt](../measurements/74t-application-comparison-correctness.json)
+passes eight fresh processes and 40 execution samples. Each process checks its
+answer after collection; non-timing stdout agrees between configurations. The
+runner rejects missing or extra samples, missing final success, and reported
+evaluation errors. Failed and stale correctness receipts were also checked and
+rejected before executing a workload. This receipt uses `--check-only`, so it
+establishes no timing or memory improvement.
+
+For qualified measurements, omit `--check-only`. The default is four alternating
+pairs per scenario, with rotating scenario order and the unchanged preflight and
+interval host gates for each pair. The runner retains execution samples,
+materialization and warmup durations, startup-inclusive process wall time, and
+Darwin's process peak RSS. Failed host admission or interval qualification stops
+the run and preserves the observations without declaring qualification. This
+supplies the combined application/resource comparison; consumer-specific hit,
+identity, recovery and profitability matrices remain necessary to attribute
+benefits and select admission thresholds.
+
+```sh
+python3 scripts/recovery-applications.py \
+  --prefix /path/to/verified/release/prefix \
+  --receipt docs/measurements/74w-loop-cost-production-correctness.json \
+  --output docs/measurements/74t-application-qualified-timing.json
+```
+
+The selected prefix and receipt must match the current production sources.
+Measurements run after the active production gate and loop timing matrix;
+concurrent verification would invalidate the controlled comparison.
