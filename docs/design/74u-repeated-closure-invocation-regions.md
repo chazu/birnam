@@ -159,9 +159,9 @@ The retained source hashes match the tested files. The earlier
 run with an older verified Codegen prefix and a newly built test floor; it is
 not the production provenance claim.
 
-The consumer remains experimental and disabled by default. Dedicated
-allocation-threshold/finalizer coverage for long regions, resource acceptance
-and profitability remain open.
+The consumer remains experimental and disabled by default. Dedicated source
+finalizer and dead-journal lifetime coverage, resource acceptance and
+profitability remain open.
 
 ## Later-target mutation and immediate readmission
 
@@ -207,3 +207,57 @@ materializations/effects and zero physical savings; the first restored
 invocation completes three substitutions and one materialization. Release
 matrix success is retained in the full verification output. No timing or
 promotion claim is made.
+
+## Allocation-budget boundaries and collecting callbacks
+
+The source budget probe prepares a real registered factory and host-owned
+Machine, warms its closure consumer, then allocates ordinary padding to place
+the heap a chosen number of bytes below the unchanged automatic-GC threshold.
+It verifies that automatic collection is actually enabled with a live native
+stack anchor. It never disables GC or changes the threshold. The probe uses a
+private all-Oop object as the factory argument; its captured identity must
+survive ordinary or recovered closure execution.
+
+A root callback records the allocation counter and current Frame PC, PC count
+and slot count. It changes one field of the private object and marks the newly
+installed value without sending or allocating during collection. Baseline and
+optimized processes must produce identical collection counts, callback traces,
+field effects and post-invocation allocation counters. Optimizer counters must
+also prove actual full, partial and refused admission; equivalent results from
+an always-refusing consumer do not pass.
+
+The matrix covers three and 32 calls, escaping and non-escaping results, both
+GC modes, and nine initial allocation gaps from 64 to 16,384 bytes. A baseline
+run independently supplies the whole invocation's allocation extent, adding
+three cases eight bytes below, at and above that extent. The collector checks
+its threshold before an allocation, so the last allocation may leave the
+counter at or above the threshold without collecting within this invocation.
+Those boundary cases must preserve that deferred behavior too.
+
+The [initial development receipt](../measurements/74u-budget-initial-development.json)
+passes 72 precise-GC processes over the initial nine gaps. The
+[expanded development receipt](../measurements/74u-budget-development.json)
+passes 192 processes over both GC modes and all twelve gaps. These use the
+older verified Codegen prefix and newly built debug feature floor. Three-call
+factories exercise prefixes of zero, one and three calls; 32-call factories
+exercise zero, one, four, eight, seventeen and 32. Partial regions materialize
+one closure before collection; complete non-escaping regions save one physical
+allocation while preserving its logical charge. These are correctness results,
+not timing or resource-promotion evidence.
+
+The full verification runner now retains each profile's sequence, mutation
+and budget matrices as structured data in its main receipt. It requires all
+six matrices to pass and their per-profile floor hashes to agree with each
+other and the independently reported control-test floor. Dedicated source
+finalizer and journal-lifetime checks, metadata/resource acceptance and
+profitability remain open.
+
+The [full correctness receipt](../measurements/74u-budget-correctness.json)
+passes all 61 commands and production verification: 528 workspace tests
+(19 ignored), 384 budget executions in 16 comparison groups, the existing
+640 sequence and 32 mutation executions, and all control, API, installed-prefix,
+image, cold-archive and relocation gates. Its `closure_source_matrices` field
+retains all 1,056 source-process rows across six debug/release matrices. All
+241 source hashes match the tested files; each profile's three matrix floor
+hashes agree with its independently reported control-test floor. The closure
+consumer remains disabled by default, with no timing claim.

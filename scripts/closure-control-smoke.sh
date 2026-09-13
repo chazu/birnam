@@ -21,6 +21,12 @@ for profile in debug release; do
   floor="$PWD/.cargo-target/74t-closure-control-target/$profile/libbirnam_id.dylib"
   python3 scripts/closure-sequence-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/sequence-$profile.json"
   python3 scripts/closure-sequence-mutation-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/mutation-$profile.json"
+  python3 scripts/closure-budget-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/budget-$profile.json"
+  if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
+    for matrix in sequence mutation budget; do
+      cp "$work/$matrix-$profile.json" "$BIRNAM_TEST_CLOSURE_RECEIPTS/$matrix-$profile.json"
+    done
+  fi
   for shape in 0 1 2 3; do
     for enabled in 0 1; do
       BIRNAM_ID_DYLIB="$floor" BIRNAM_TEST_CLOSURE_CONTROL=1 BIRNAM_DEV_CLOSURE_ELISION=$enabled \

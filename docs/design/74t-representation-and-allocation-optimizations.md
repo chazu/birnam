@@ -1504,3 +1504,25 @@ debug counters are retained separately in 74U. Dedicated long-region
 allocation-threshold/finalizer cases, resource
 acceptance and profitability remain open, along with the broader numeric,
 loop and aggregate obligations. The closure consumer remains disabled by default.
+
+### Closure admission at automatic-collection boundaries
+
+The real source budget probe places a warmed host-owned invocation below the
+unchanged GC threshold with ordinary allocations. It compares baseline and
+optimized root-callback effects, allocation counters and the current Frame's
+PC and dimensions for three- and 32-call regions, escaping/non-escaping results
+and both GC modes. The expanded development matrix passes 192 processes and
+requires refused, partial and full admission. It includes independently measured
+whole-invocation allocation boundaries and preserves the collector's existing
+before-allocation trigger. The [full correctness receipt](../measurements/74u-budget-correctness.json)
+passes all 61 commands, 528 workspace tests (19 ignored), and 384 budget
+executions across debug/release. See 74U for the concrete prefixes and receipts.
+
+The full verifier now retains structured per-profile sequence, mutation and
+budget results (1,056 source processes) with floor hashes cross-checked against
+the control tests. All 241 recorded source hashes match.
+Dedicated source finalizer/dead-journal lifetime evidence, resource acceptance
+and profitability remain required before closure promotion. Completing the
+other families still includes deferring numeric intermediate materialization
+and removing invariant loop work, beyond the enabled fusion and tail-entry
+consumers. The four-family objective is unchanged.

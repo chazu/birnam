@@ -17,6 +17,9 @@ optimization. Identity-preserving graph recovery and a bounded production
 numeric-chain consumer are implemented. Qualified warm arithmetic gains are
 6.8–10.8% for three-operation chains and 20.5–22.8% for sixteen-operation chains
 in the enabled production-source matrix (see 74T for both qualified matrices).
+That fusion retains the original numeric boxes; deferring intermediate
+materialization until observation boundaries remains required for the full
+unboxed-arithmetic family.
 A registered tail-loop entry consumer is also enabled, preserving every lookup
 and control boundary; its enabled-source matrix shows a 2.18% median fixture gain.
 Application/cold/metadata acceptance and broader loop dataflow remain open.
@@ -65,7 +68,11 @@ and the expanded source/control matrices. Later-target mutation now passes
 32 baseline/enabled process executions across debug/release and both GC modes:
 the changed second or third target shortens the region, collecting callbacks
 observe the recovered identity, and restoring the target immediately readmits
-all three calls. Dedicated allocation-boundary/finalizer and resource cases,
+all three calls. Automatic-collection budget testing now also passes 384 source
+processes across both profiles and GC modes, preserving callback effects,
+current Frame PCs and allocation counters through refused, partial and full
+admission. The full gate retains all sequence/mutation/budget rows and their
+floor hashes. Dedicated source finalizer/journal-lifetime and resource cases,
 broader closure bodies and profitability remain open; the consumer stays default-off.
 None of those four full families is complete yet.
 

@@ -168,8 +168,12 @@ and repeated refusal about 20%.
 collecting/capture/suspension cases. Later-target mutation now passes 32 source
 processes across both GC modes and debug/release, with exact shorter prefixes,
 collecting recovery and immediate restored admission. Full verification remains
-passed at 528 workspace tests and all 61 commands. Allocation-boundary
-and finalizer cases, resource acceptance and profitability remain open; the
+passed at 528 workspace tests and all 61 commands. Automatic-collection budget
+testing also passes 384 source processes with matching callback effects,
+Frame PCs and allocation counters through refused/partial/full admission.
+The full receipt retains 1,056 sequence/mutation/budget process rows and their
+floor hashes. Dedicated source finalizer/journal-lifetime cases, resource
+acceptance and profitability remain open; the
 consumer stays disabled by default. See 74T for the full remaining scope.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of

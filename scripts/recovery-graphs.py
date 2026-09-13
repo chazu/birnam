@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 from compatibility_authority import unchanged_authority
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -30,6 +31,7 @@ def sources():
         "closure-elision-smoke.sh",
         "closure-control-smoke.sh", "closure-sequence-smoke.py",
         "closure-sequence-mutation-smoke.py",
+        "closure-budget-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
     )]
     paths += [ROOT / path for path in (
@@ -199,7 +201,28 @@ def main():
                 if not match or int(match[1]) == 0:
                     raise RuntimeError("no passing tests for " + label)
         if args.verify:
-            run(["mise", "run", "verify"], "production-verification")
+            if args.closures:
+                with tempfile.TemporaryDirectory(prefix="closure-source-", dir=work) as evidence:
+                    env["BIRNAM_TEST_CLOSURE_RECEIPTS"] = evidence
+                    try:
+                        output = run(["mise", "run", "verify"], "production-verification")
+                    finally:
+                        env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
+                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget")
+                                for profile in ("debug", "release")}
+                    paths = list(Path(evidence).glob("*.json"))
+                    if {p.name for p in paths} != expected:
+                        raise RuntimeError("missing source closure matrix receipts")
+                    matrices = {p.name: json.loads(p.read_text()) for p in sorted(paths)}
+                    if any(m["status"] != "passed" for m in matrices.values()):
+                        raise RuntimeError("source closure matrix did not pass")
+                    for profile in ("debug", "release"):
+                        hashes = {m["floor_sha256"] for name, m in matrices.items() if name.endswith(f"-{profile}.json")}
+                        if len(hashes) != 1 or next(iter(hashes)) not in output:
+                            raise RuntimeError("source matrix floor differs from control verification")
+                    receipt["closure_source_matrices"] = matrices
+            else:
+                run(["mise", "run", "verify"], "production-verification")
         if receipt["sources"] != sources():
             raise RuntimeError("sources changed during verification")
         receipt["status"] = "passed"
