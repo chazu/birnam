@@ -8,6 +8,10 @@ struct Probe {
     machine: Oop,
     closure: Oop,
     input: Oop,
+    supplied: Oop,
+    literal_mode: bool,
+    literal_results: Vec<Oop>,
+    literal_aliases: Vec<Vec<Vec<usize>>>,
     capture: bool,
     observations: usize,
     aliases: Vec<Vec<usize>>,
@@ -25,6 +29,18 @@ impl Runtime {
         for (name, method) in [
             (b"warm:input:".as_slice(), warm as Method),
             (b"run:input:capture:".as_slice(), run as Method),
+            (
+                b"runLiterals:input:capture:".as_slice(),
+                run_literals as Method,
+            ),
+            (
+                b"inspectLiterals:second:third:alias:closure:closureAlias:".as_slice(),
+                observe_literals as Method,
+            ),
+            (
+                b"inspectLiterals:second:third:alias:closure:closureAlias:supplied:".as_slice(),
+                observe_literals as Method,
+            ),
             (b"inspect:alias:".as_slice(), observe as Method),
             (b"inspect:alias:supplied:".as_slice(), observe as Method),
             (b"checkpoint".as_slice(), checkpoint as Method),
@@ -99,9 +115,9 @@ unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
     let closure = unsafe { *args };
     assert_eq!(closure, unsafe { *args.add(1) });
     with_active(|r| {
-        let Some((machine, expected, input, observations)) = PROBE.with_borrow(|p| {
+        let Some((machine, expected, input, supplied, observations)) = PROBE.with_borrow(|p| {
             p.as_ref()
-                .map(|p| (p.machine, p.closure, p.input, p.observations))
+                .map(|p| (p.machine, p.closure, p.input, p.supplied, p.observations))
         }) else {
             return closure;
         };
@@ -110,7 +126,7 @@ unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
             assert_eq!(count, 3);
             assert_eq!(
                 unsafe { *args.add(2) },
-                input,
+                supplied,
                 "resume supplies the pending Call's result"
             );
         }
@@ -146,6 +162,73 @@ unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
         }
         closure
     })
+}
+
+// Only real source Frames/Continuations retain these result Oops during GC.
+unsafe extern "C" fn observe_literals(probe: Oop, args: *const Oop, count: usize) -> Oop {
+    assert!((6..=7).contains(&count));
+    let values = unsafe { core::slice::from_raw_parts(args, count) };
+    assert_eq!(values[0], values[3]);
+    assert_ne!(values[0], values[1]);
+    assert_ne!(values[0], values[2]);
+    assert_ne!(values[1], values[2]);
+    with_active(|r| {
+        for &value in &values[..3] {
+            assert_eq!(r.integer_value(value), 42);
+        }
+        let active = PROBE.with_borrow(|p| p.as_ref().map(|p| (p.machine, p.observations)));
+        if let Some((machine, observations)) = active {
+            PROBE.with_borrow_mut(|p| {
+                let p = p.as_mut().unwrap();
+                assert!(p.literal_mode);
+                if observations == 0 {
+                    p.literal_results = values[..3].to_vec();
+                } else {
+                    assert_eq!(values[..3], p.literal_results);
+                    assert_eq!(count, 7);
+                    assert_eq!(values[6], p.supplied);
+                    assert!(
+                        !p.literal_results.contains(&values[6]),
+                        "supplied equal-valued result remains distinct"
+                    );
+                    assert_eq!(r.integer_value(values[6]), 42);
+                }
+            });
+            let cap = r.stackless_machine_capability(machine).unwrap();
+            let aliases = || unsafe {
+                let arena = (*r.state.get())
+                    .execution
+                    .machine(current_thread_token(), cap)
+                    .unwrap()
+                    .arena();
+                let frame = arena.current_handle().unwrap();
+                values[..3]
+                    .iter()
+                    .map(|value| {
+                        (0..arena.descriptor(frame).unwrap().slot_count())
+                            .filter(|&slot| arena.read_oop(frame, slot).unwrap() == *value)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let before = aliases();
+            assert!(before.iter().all(|slots| !slots.is_empty()));
+            assert!(
+                before[0].len() >= 2,
+                "first result and its source alias stay live"
+            );
+            r.gc_collect_from_native_range(0, 0);
+            assert_eq!(aliases(), before);
+            for &value in &values[..3] {
+                assert!(unsafe { (*r.state.get()).heap.contains(value) });
+                assert_eq!(r.integer_value(value), 42);
+            }
+            PROBE.with_borrow_mut(|p| p.as_mut().unwrap().literal_aliases.push(before));
+        }
+    });
+    // The closure pair (and optional supplied result) is contiguous in the
+    // original call window; no native-stack scratch roots are introduced.
+    unsafe { observe(probe, args.add(4), count - 4) }
 }
 
 unsafe extern "C" fn pause_call(machine: Oop, args: *const Oop, count: usize) -> Oop {
@@ -186,6 +269,12 @@ unsafe extern "C" fn pause_call(machine: Oop, args: *const Oop, count: usize) ->
 }
 
 unsafe extern "C" fn run(probe: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { run_control(probe, args, count, false) }
+}
+unsafe extern "C" fn run_literals(probe: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { run_control(probe, args, count, true) }
+}
+unsafe fn run_control(probe: Oop, args: *const Oop, count: usize, literal_mode: bool) -> Oop {
     assert_eq!(count, 3);
     let (block, input, mode) = unsafe { (*args, *args.add(1), *args.add(2)) };
     with_active(|r| {
@@ -197,6 +286,8 @@ unsafe extern "C" fn run(probe: Oop, args: *const Oop, count: usize) -> Oop {
         PROBE.replace(Some(Probe {
             machine,
             input,
+            supplied: input,
+            literal_mode,
             capture,
             ..Probe::default()
         }));
@@ -224,8 +315,14 @@ unsafe extern "C" fn run(probe: Oop, args: *const Oop, count: usize) -> Oop {
         let expected_calls = if std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION")
             .is_some_and(|v| v == "1")
             && !std::env::var_os("BIRNAM_DEV_CLOSURE_FORCE_RECOVERY").is_some_and(|v| v == "1")
+            && (!literal_mode
+                || std::env::var_os("BIRNAM_DEV_LITERAL_CALLEES").is_some_and(|v| v == "1"))
         {
-            3
+            std::env::var("BIRNAM_DEV_CLOSURE_FORCE_AT")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(3)
+                .min(3)
         } else {
             0
         };
@@ -249,11 +346,26 @@ unsafe extern "C" fn run(probe: Oop, args: *const Oop, count: usize) -> Oop {
         r.gc_collect_from_native_range(0, 0);
         let identity = PROBE.with_borrow(|p| p.as_ref().unwrap().closure);
         assert!(unsafe { (*r.state.get()).heap.contains(identity) });
+        let supplied = if literal_mode {
+            PROBE.with_borrow(|p| {
+                let p = p.as_ref().unwrap();
+                assert_eq!(p.literal_results.len(), 3);
+                for &value in &p.literal_results {
+                    assert!(unsafe { (*r.state.get()).heap.contains(value) });
+                    assert_eq!(r.integer_value(value), 42);
+                }
+            });
+            r.make_integer(42)
+        } else {
+            input
+        };
+        let _supplied = ScopedOopRootGuard::new(r, supplied);
+        PROBE.with_borrow_mut(|p| p.as_mut().unwrap().supplied = supplied);
         let answer = if capture {
             let wrong = r.create_stackless_machine().unwrap();
             let _wrong = ScopedOopRootGuard::new(r, wrong);
             assert_eq!(
-                r.restore_stackless_continuation(wrong, paused, input),
+                r.restore_stackless_continuation(wrong, paused, supplied),
                 Err(ExecutionError::ContinuationWrongMachine)
             );
             let cap = r.stackless_machine_capability(wrong).unwrap();
@@ -267,24 +379,31 @@ unsafe extern "C" fn run(probe: Oop, args: *const Oop, count: usize) -> Oop {
             }
             r.destroy_stackless_machine(wrong).unwrap();
             let answer = r
-                .restore_stackless_continuation(machine, paused, input)
+                .restore_stackless_continuation(machine, paused, supplied)
                 .unwrap();
             assert_eq!(
-                r.restore_stackless_continuation(machine, paused, input),
+                r.restore_stackless_continuation(machine, paused, supplied),
                 Err(ExecutionError::ContinuationConsumed)
             );
             answer
         } else {
             assert_eq!(paused, machine);
-            let answer = r.resume_stackless_machine(machine, input).unwrap();
+            let answer = r.resume_stackless_machine(machine, supplied).unwrap();
             assert_eq!(
-                r.resume_stackless_machine(machine, input),
+                r.resume_stackless_machine(machine, supplied),
                 Err(ExecutionError::MachineNotSuspended)
             );
             answer
         };
         let _answer = ScopedOopRootGuard::new(r, answer);
-        assert_eq!(answer, identity);
+        assert_eq!(
+            answer,
+            if literal_mode {
+                PROBE.with_borrow(|p| p.as_ref().unwrap().literal_results[0])
+            } else {
+                identity
+            }
+        );
         let completed = r.stackless_registration_diagnostics();
         assert_eq!(completed.active_frame_pins, baseline.active_frame_pins);
         assert_eq!(
@@ -296,10 +415,20 @@ unsafe extern "C" fn run(probe: Oop, args: *const Oop, count: usize) -> Oop {
             state.observations, 2,
             "restore cannot replay or skip the observers"
         );
-        assert_eq!(
-            r.send_slice(answer, r.intern(b"value").unwrap(), &[]),
-            input
-        );
+        let _closure = ScopedOopRootGuard::new(r, identity);
+        let returned = r.send_slice(identity, r.intern(b"value").unwrap(), &[]);
+        if literal_mode {
+            assert_eq!(state.literal_aliases.len(), 2);
+            assert_eq!(r.integer_value(returned), 42);
+            assert!(!state.literal_results.contains(&returned));
+            assert_ne!(returned, supplied);
+            println!(
+                "closure-literal-control: calls={expected_calls} fresh_results=3 supplied_distinct=true aliases={:?}",
+                state.literal_aliases
+            );
+        } else {
+            assert_eq!(returned, input);
+        }
         r.destroy_stackless_machine(machine).unwrap();
         println!(
             "closure-control: capture={capture} observations=2 aliases={:?} pins_restored=true",
