@@ -322,6 +322,7 @@ and earliest arithmetic failures. The diagnostic timing test remains ignored.
 Full production integration and before/after cost evidence follow this checkpoint;
 no speedup is inferred merely from removing the C call.
 
+
 The [full production receipt](../measurements/74w-unchanged-reuse-production-correctness.json)
 now passes all 71 commands and retains 3,164 source-process cases, with all 271
 production source hashes matching. This includes both floor profiles, mutation,

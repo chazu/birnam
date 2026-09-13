@@ -387,7 +387,7 @@ impl Runtime {
             };
             let boxes = selected.call.boxes.len()
                 + plan.callee.allocation_count()
-                + selected.callee.descriptor.driver_argument_count()
+                + selected.descriptor.driver_argument_count()
                 + if admitted.is_empty() {
                     0
                 } else {
@@ -499,7 +499,7 @@ impl Runtime {
                     // original constructor and caller prefix are not repeated.
                     return Ok(action);
                 }
-                if selected.callee.descriptor.driver_argument_count() == 1 {
+                if selected.descriptor.driver_argument_count() == 1 {
                     self.make_integer(0);
                 }
                 let mut returned = call.returned.map(|s| inputs[s as usize]).unwrap_or(nil);
