@@ -618,3 +618,26 @@ mutation, identity, allocation/finalizer, image and native ownership gates.
 The implementation remains default-off. Its next step is the same bounded
 120-process exploratory comparison against this exact verified test floor;
 quiet-host admission is waived, and no speedup is claimed from correctness.
+
+### Complete batched snapshot exploratory comparison
+
+The [batched comparison](../measurements/74v-batch-bounded-exploratory-timing.json)
+completes all 120 processes and 60 paired result/counter checks with matching
+production proof, source, floor, installation and fixture hashes. Both host
+admission checks fail; all results remain unqualified under the quiet-window
+waiver. These are within-run disabled/enabled comparisons, not a controlled
+before/after estimate of the batch representation change.
+
+| Operations | Final result: execution / including GC | Earlier result: execution / including GC |
+| --- | --- | --- |
+| 3 | -24.80% / -13.41% | -21.96% / -10.47% |
+| 16 | -3.80% / -3.47% | -9.33% / -4.46% |
+| 32 | +1.31% / +7.38% | -26.34% / -31.66% |
+
+The 32-operation final-result case has three positive pairs and one negative
+pair including collection. Every earlier-result pair still regresses at every
+size; the final two 32-operation pairs also have substantial cold/process
+variation. Short final-result chains regress, and RSS changes are inconsistent.
+Batching therefore does not justify default promotion. The long final-result
+case merits further diagnosis, while earlier-result recovery and end-to-end
+guard/journal costs remain profitability gaps.
