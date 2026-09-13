@@ -23,7 +23,7 @@ pub enum Refusal {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Value {
+pub enum Value {
     Input(u32),
     Closure,
 }
@@ -45,6 +45,10 @@ pub struct Plan {
     pub callee: small_callee::Plan,
     /// Complete physical aliases at call publication, including staging slots.
     pub invocation_aliases: Vec<bool>,
+    /// Ordered stores after the constructor, including its result but excluding
+    /// call staging. Inputs name original caller entry slots.
+    pub constructor_stores: Vec<(u32, Value)>,
+    pub call_window_start: u32,
     /// The original V2 parallel copies, result destination and clear bitmap.
     /// None is a tail invocation, which has no caller successor.
     pub continuation: Option<ColoredEdge>,
@@ -85,6 +89,7 @@ impl Plan {
         let mut literal = None;
         let mut before_boxes = Vec::new();
         let mut after_boxes = Vec::new();
+        let mut constructor_stores = Vec::new();
         for operation in &block.operations {
             let destination = slot(operation.result)?;
             let boxes = if literal.is_some() {
@@ -154,6 +159,9 @@ impl Plan {
                 _ => return Err(Refusal::ObservingOperation),
             };
             aliases[destination as usize] = value == Value::Closure;
+            if literal.is_some() {
+                constructor_stores.push((destination, value));
+            }
             if values[operation.result.0 as usize].replace(value).is_some() {
                 return Err(Refusal::InvalidLayout);
             }
@@ -267,6 +275,8 @@ impl Plan {
             call_site: call_site.0,
             callee,
             invocation_aliases: aliases,
+            constructor_stores,
+            call_window_start: window,
             continuation,
             continuation_aliases,
             before_constructor_boxes: before_boxes,
@@ -354,6 +364,8 @@ mod tests {
                 // Distinct tokens represent original object identities.
                 const CLOSURE: usize = 10_001;
                 let mut words: Vec<_> = (1..=layout.slot_count as usize).collect();
+                let inputs = words.clone();
+                let mut constructor_entry = None;
                 let input = words[plan.return_source as usize];
                 for op in &program.blocks[0].operations {
                     let dest = layout.value_slots[op.result.0 as usize] as usize;
@@ -361,10 +373,24 @@ mod tests {
                         OperationKind::Bind { source, .. } => {
                             words[dest] = words[layout.value_slots[source.0 as usize] as usize]
                         }
-                        OperationKind::PortableBlockLiteral { .. } => words[dest] = CLOSURE,
+                        OperationKind::PortableBlockLiteral { .. } => {
+                            constructor_entry = Some(words.clone());
+                            words[dest] = CLOSURE;
+                        }
                         _ => {}
                     }
                 }
+                let mut substituted = constructor_entry.unwrap();
+                for &(slot, value) in &plan.constructor_stores {
+                    substituted[slot as usize] = match value {
+                        Value::Input(s) => inputs[s as usize],
+                        Value::Closure => CLOSURE,
+                    };
+                }
+                assert_eq!(
+                    substituted, words,
+                    "constructor continuation must perform every baseline store"
+                );
                 let Terminator::Call {
                     receiver,
                     arguments,

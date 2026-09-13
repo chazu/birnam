@@ -3637,6 +3637,10 @@ impl Runtime {
             #[cfg(all(test, target_os = "macos"))]
             drop(selected);
             drop(native_selected);
+            if self.finish_closure_inline(machine, capability, action)? {
+                numeric = None;
+                continue;
+            }
             if let Some(result) = optimized_return {
                 numeric = None;
                 if let Some(answer) = self.finish_stackless_return(owner, capability, result?)? {

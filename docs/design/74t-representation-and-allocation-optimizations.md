@@ -1064,3 +1064,64 @@ path still needs current callee/Frame-control admission, complete post-construct
 slot writes and original boxes, virtual allocation accounting, and exact Block
 recovery before observation. That allocation-saving continuation is not yet
 implemented. All broader four-family acceptance obligations remain open.
+
+### Experimental source closure allocation elimination
+
+The first allocation-saving closure consumer now executes through the ordinary
+portable compiler, original generated unit and stackless driver. It is selected
+only with `BIRNAM_DEV_CLOSURE_ELISION=1` and starts after 64 eligible constructor
+entries. Default emission retains the original C body. This initial continuation
+handles a literal followed by a non-tail invocation of the proven small callee;
+tail invocation and observing callee bodies continue through ordinary execution.
+
+The generated wrapper runs the original resolver, CodeObject cache lookup and
+capture reads, then resolves the Portable Code capability once. A refusal calls
+that exact constructor without repeating capability imports. Admission checks
+the current Codegen API, Machine controls, constructor declaration, registered
+callee plan, capture identities, all-Oop layout, native retirement state and the
+complete no-collection allocation budget. The callee generation remains leased
+through substitution and recovery. Neither selector spelling nor a matching
+class name grants optimization authority.
+
+The successful path records one fresh virtual Block with the original CodeObject
+and ordered captures in untraced host storage. It retains the original allocation
+charge and index boxes, applies every post-constructor Frame store and canonical
+V2 Call completion, and preserves the reflective ReturnAction scratch state.
+Every surviving closure alias is patched to one recovered Block before the next
+PC can observe it. If no alias survives, the existing dead-allocation journal
+retains ordinary collection/accounting behavior without physical allocation.
+
+A private, single-use driver continuation records the exact Machine, Frame,
+successor PC and returned action after Call completion. The original C stack
+unwinds before the driver consumes it and enters the successor. Directly calling
+the next PC inside the constructor helper would incorrectly retain the literal's
+C capture locals across collection; the driver continuation avoids that lifetime
+extension. This state changes no serialized descriptor or IdApi field.
+
+End-to-end testing exposed an existing native preparation mismatch: actual
+one-PC Block bodies have zero driver arguments, while preparation had always
+built a one-argument descriptor. Preparation now honors the manifest's actual
+driver arity, enabling its existing leaf proof for these real callees. Other
+zero-argument native region candidates remain ineligible until their emitter
+supports that entry convention. A source-derived regression compares preparation
+with the actual production block compiler's descriptor.
+
+The [elision receipt](../measurements/74t-closure-elision.json) passes the full
+production gate: 524 workspace tests, 19 ignored, installed-prefix, image,
+cold-archive and relocation checks. The installed source fixture compares
+ordinary, enabled and forced-recovery execution over returned capture identity,
+distinct escaping closures, shared Cell mutation, method replacement effects,
+eviction and collection. Its diagnostics must prove both allocation-elision and
+escaping-materialization hits; forced constructor recovery must also execute.
+Heap tests compare recovered payloads and padding with physical allocation and
+verify that recovery does not charge twice. Compiler tests compare the complete
+constructor continuation's stores with baseline physical Frame execution.
+
+`BIRNAM_DEV_CLOSURE_FORCE_RECOVERY=1` recovers the Block before ordinary invocation,
+without repeating construction or the caller prefix. `BIRNAM_DEV_CLOSURE_REPORT=1`
+reports experimental hits/recoveries on stderr for verification; it is not a
+timing mode. No speedup or production promotion is claimed. Remaining work
+includes suspension/capture, collecting observation and forced exits across more
+boundaries, Codegen API instrumentation controls, metadata/cold/refusal cost,
+qualified timings and broader closure shapes. The full numeric, loop, aggregate
+and closure acceptance objective remains open.

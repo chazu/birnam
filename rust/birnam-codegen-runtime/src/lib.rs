@@ -1408,6 +1408,89 @@ pub unsafe extern "C" fn birnam_portable_block_new_v1(
     }
 }
 
+/// Resolve the original capability once. Refusal must not duplicate imports or
+/// other producer-API instrumentation before calling the original constructor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_portable_block_or_inline_v1(
+    machine: Oop,
+    source_method: *const c_void,
+    node: u32,
+    vtable: Oop,
+    code: Oop,
+    captures: *const Oop,
+    count: usize,
+    owner: Oop,
+    materialized: u32,
+    inlined: *mut u32,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    if inlined.is_null() || materialized > 1 {
+        return api.nilObj;
+    }
+    unsafe {
+        *inlined = 0;
+    }
+    let ordinary;
+    let owned;
+    let constructor = if materialized == 0 {
+        let Some(capability) = (unsafe { portable_code_api(api) }) else {
+            return api.nilObj;
+        };
+        ordinary = Some(capability.new_block);
+        owned = None;
+        capability.new_block as *const c_void
+    } else {
+        let Some(capability) = (unsafe { portable_code_api_v2(api) }) else {
+            return api.nilObj;
+        };
+        ordinary = None;
+        owned = Some(capability.new_materialized_block);
+        capability.new_materialized_block as *const c_void
+    };
+    type Attempt = unsafe extern "C" fn(
+        Oop,
+        *const c_void,
+        u32,
+        *const c_void,
+        Oop,
+        Oop,
+        *const Oop,
+        usize,
+        Oop,
+        u32,
+        *const IdApi,
+    ) -> Oop;
+    if let Some(address) = unsafe { floor_symbol(api, b"birnam_id_try_closure_elision_v1\0") } {
+        let attempt: Attempt = unsafe { core::mem::transmute(address) };
+        let result = unsafe {
+            attempt(
+                machine,
+                source_method,
+                node,
+                constructor,
+                vtable,
+                code,
+                captures,
+                count,
+                owner,
+                materialized,
+                api,
+            )
+        };
+        if !result.is_null() {
+            unsafe {
+                *inlined = 1;
+            }
+            return result;
+        }
+    }
+    if let Some(construct) = ordinary {
+        unsafe { construct(vtable, code, captures, count) }
+    } else {
+        unsafe { owned.expect("materialized constructor")(vtable, code, captures, count, owner) }
+    }
+}
+
 #[unsafe(export_name = "birnam_rust_codegen_portable_materialized_block_new_v2")]
 pub unsafe extern "C" fn birnam_rust_codegen_portable_materialized_block_new_v2(
     block_vtable: Oop,
@@ -1518,6 +1601,21 @@ pub unsafe extern "C" fn birnam_candidate_validate_binding(
 }
 
 unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
+    if std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION").is_some_and(|v| v == "1") {
+        let symbol = b"birnam_portable_block_or_inline_v1";
+        let name = unsafe { (api.mkString)(symbol.as_ptr(), symbol.len()) };
+        let Some(address) = (unsafe {
+            borrowed_address(
+                api,
+                birnam_portable_block_or_inline_v1 as *const () as usize,
+            )
+        }) else {
+            return false;
+        };
+        if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+            return false;
+        }
+    }
     let name = unsafe { (api.mkString)(b"birnam_global".as_ptr(), 13) };
     let Some(address) = (unsafe { borrowed_address(api, birnam_global as *const () as usize) })
     else {

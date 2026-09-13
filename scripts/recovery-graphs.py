@@ -27,6 +27,7 @@ def sources():
     paths += [ROOT / "scripts" / name for name in (
         "compatibility_authority.py", "rust-cutover-verify.sh",
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
+        "closure-elision-smoke.sh",
     )]
     paths += [ROOT / path for path in (
         "abi/native-numeric-semantics-v1.md", "scripts/fixtures/numeric-semantics.c",
@@ -35,6 +36,7 @@ def sources():
         "abi/native-field-projection-v1.md", "scripts/fixtures/field-projection.c",
         "abi/native-block-construction-v1.md", "scripts/fixtures/native-block-construction.c",
         "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
+        "scripts/fixtures/closure-elision.birnam",
     )]
     for folder in ("rust", "src/id", "modules"):
         paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
@@ -76,7 +78,7 @@ def main():
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
     receipt = {
         "design": "74T", "status": "running", "sources": sources(), "commands": [],
-        "scope": ("Source-created closure provenance and literal-aware PC emission, exact warm constructor declarations and runtime admission; closure allocation elimination not implemented"
+        "scope": ("Experimental source closure allocation elimination, guarded capture substitution and identity recovery; disabled by default and broader acceptance pending"
                   if args.closures else "Bounded production live aggregate field projection and identity recovery; broader acceptance remains open"
                   if args.fields else "Bounded repeated discarded-clone consumer and dead-allocation accounting; live aggregate replacement and remaining family obligations in progress"
                   if args.allocations else "Registered tail-loop entry plans; ordinary lookup, allocation, Frame identity and stackless control retained"

@@ -151,7 +151,7 @@ pub fn compile_portable_block_with_literals_v1(
 
     let mut c_source = resumable_c::emit_entry_thunk(symbol_index, &selector);
     c_source.extend_from_slice(
-        &resumable_c::emit_step_method_with_portable_blocks(
+        &crate::closure_elision_c::emit_selected(
             symbol_index,
             &program,
             &layout,
@@ -232,7 +232,7 @@ pub fn compile_portable_materialization_block_v1(
 
     let mut c_source = resumable_c::emit_entry_thunk(symbol_index, &selector);
     c_source.extend_from_slice(
-        &resumable_c::emit_step_method_with_portable_blocks(
+        &crate::closure_elision_c::emit_selected(
             symbol_index,
             &program,
             &layout,

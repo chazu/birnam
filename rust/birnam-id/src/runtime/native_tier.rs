@@ -11,6 +11,7 @@ use birnam_artifact::{
 use birnam_codegen::{
     frame_region, numeric_chain, resumable, resumable_c, resumable_descriptor, small_callee,
 };
+pub(in crate::runtime) mod closure_elision;
 mod discarded_clone;
 mod fused_numeric;
 mod regions;
@@ -30,6 +31,9 @@ const MAX_CANDIDATE_BYTES: usize = 256 << 10;
 pub(super) struct Registry {
     staged: Vec<Option<Rc<Prepared>>>,
     records: BTreeMap<usize, Record>,
+    staged_closures: Vec<Option<Rc<closure_elision::Prepared>>>,
+    closures: BTreeMap<usize, closure_elision::Record>,
+    closure_resume: Option<closure_elision::Resume>,
 }
 
 struct Record {
@@ -165,6 +169,7 @@ impl Registry {
         authority: [u8; 32],
     ) {
         self.staged.clear();
+        self.staged_closures.clear();
         let Ok(inventory) = portable_inventory::inspect(programs) else {
             return;
         };
@@ -177,6 +182,17 @@ impl Registry {
         // Optimization is optional and bounded, even for a much larger valid
         // unit. Registration still accepts every ordinary manifest row.
         for index in 0..manifest.entry_count().min(MAX_RECORDS) {
+            let closure = (|| {
+                let entry = manifest.entry(index)?;
+                let row = selected.row(entry.selection_row_index as usize)?;
+                if entry.lowering_version != resumable_descriptor::LOWERING_VERSION_V1
+                    || row.kind != selection::SubjectKind::BlockBody
+                {
+                    return None;
+                }
+                closure_elision::Prepared::new(inventory.program(row.subject_index as usize)?, row)
+            })();
+            self.staged_closures.push(closure.map(Rc::new));
             let prepared = (|| {
                 let entry = manifest.entry(index)?;
                 if entry.lowering_version != resumable_descriptor::LOWERING_VERSION_V1 {
@@ -186,7 +202,11 @@ impl Registry {
                 if row.kind != selection::SubjectKind::BlockBody {
                     return None;
                 }
-                Prepared::new(inventory.program(row.subject_index as usize)?, row)
+                Prepared::new(
+                    inventory.program(row.subject_index as usize)?,
+                    row,
+                    entry.driver_argument_count,
+                )
             })();
             self.staged.push(prepared.map(Rc::new));
         }
@@ -194,6 +214,7 @@ impl Registry {
 
     pub(super) fn end_stage(&mut self) {
         self.staged.clear();
+        self.staged_closures.clear();
     }
 
     pub(super) fn register(
@@ -202,6 +223,22 @@ impl Registry {
         bytes: &[u8],
         descriptor: &Arc<FrameDescriptor>,
     ) {
+        if let Some(prepared) = self
+            .staged_closures
+            .get(index)
+            .and_then(Option::as_ref)
+            .cloned()
+            && prepared.descriptor == bytes
+        {
+            self.prune();
+            if self.closures.len() >= MAX_RECORDS {
+                self.closures.pop_first();
+            }
+            self.closures.insert(
+                Arc::as_ptr(descriptor) as usize,
+                closure_elision::Record::new(prepared, descriptor),
+            );
+        }
         let Some(prepared) = self.staged.get(index).and_then(Option::as_ref).cloned() else {
             return;
         };
@@ -231,6 +268,8 @@ impl Registry {
     }
 
     pub(super) fn prune(&mut self) {
+        self.closures
+            .retain(|_, record| record.descriptor.strong_count() != 0);
         self.records
             .retain(|_, record| record.descriptor.strong_count() != 0);
     }
@@ -276,7 +315,7 @@ impl Registry {
 }
 
 impl Prepared {
-    fn new(bytes: &[u8], row: selection::Row<'_>) -> Option<Self> {
+    fn new(bytes: &[u8], row: selection::Row<'_>, driver_argument_count: u32) -> Option<Self> {
         let program = resumable::lower_portable_block(bytes).ok()?;
         if program.blocks.is_empty() || program.blocks.len() > 4096 {
             return None;
@@ -298,8 +337,13 @@ impl Prepared {
             }
         }
         let layout = resumable::color_slots(&program).ok()?;
-        let descriptor =
-            resumable_descriptor::compile_portable_descriptor_v2(&program, &layout, row, 1).ok()?;
+        let descriptor = resumable_descriptor::compile_portable_descriptor_v2(
+            &program,
+            &layout,
+            row,
+            driver_argument_count,
+        )
+        .ok()?;
         if program.blocks.len() == 1
             && let Ok(plan) = small_callee::compile(&program, &layout)
         {
@@ -313,6 +357,11 @@ impl Prepared {
                 discarded_clone: None,
                 virtual_aggregate: None,
             });
+        }
+        // Per-PC native entries currently receive a PC token. A zero-token
+        // one-PC leaf is handled above; other zero-token bodies stay baseline.
+        if driver_argument_count == 0 {
+            return None;
         }
         let regions_enabled = true;
         #[cfg(test)]

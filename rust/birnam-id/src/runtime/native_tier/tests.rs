@@ -8,6 +8,47 @@ use birnam_codegen::{Block, Expr, Statement, portable};
 use core::cell::{Cell, RefCell};
 use std::borrow::Cow;
 
+#[test]
+fn real_one_pc_leaf_preparation_uses_the_registered_driver_arity() {
+    let bytes = portable::encode_block(
+        &Block {
+            params: vec![b"input"],
+            body: vec![Statement::Expr(Expr::Global(b"input"))],
+        },
+        &[],
+    )
+    .unwrap();
+    let programs = portable_inventory::encode_closure(&[&bytes]).unwrap();
+    let bindings = code_binding_inventory::encode(&[]).unwrap();
+    let selected = selection::encode(
+        &programs,
+        &bindings,
+        &[],
+        &[selection::Disposition::Resumable],
+    )
+    .unwrap();
+    let selected = selection::inspect(&selected, &programs, &bindings).unwrap();
+    let row = selected.row(0).unwrap();
+    let logical = resumable::lower_portable_block(&bytes).unwrap();
+    let layout = resumable::color_slots(&logical).unwrap();
+    let baseline = birnam_codegen::resumable_block::compile_portable_materialization_block_v1(
+        &bytes,
+        row,
+        0,
+        0,
+        &[],
+    )
+    .unwrap();
+    assert_eq!(baseline.driver_argument_count, 0);
+    let prepared = Prepared::new(&bytes, row, baseline.driver_argument_count).unwrap();
+    assert!(prepared.leaf.is_some());
+    assert_eq!(prepared.descriptor, baseline.descriptor);
+    assert_ne!(
+        prepared.descriptor,
+        resumable_descriptor::compile_portable_descriptor_v2(&logical, &layout, row, 1).unwrap()
+    );
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Case {
     Canonical,

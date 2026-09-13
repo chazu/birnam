@@ -8,6 +8,7 @@ use std::borrow::Cow;
 
 mod c_string;
 pub mod closure_elision;
+pub mod closure_elision_c;
 pub mod discarded_clone;
 pub mod frame_region;
 pub mod numeric_chain;

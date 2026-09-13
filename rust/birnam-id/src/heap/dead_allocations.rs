@@ -22,6 +22,38 @@ impl DeadAllocation {
 }
 
 impl Heap {
+    /// Prepare an exact fresh all-Oop payload in untraced host storage. The
+    /// caller supplies constructor authority and proves layout/GC eligibility.
+    pub(crate) fn prepare_virtual_payload(
+        &self,
+        vtable: Oop,
+        words: &[Oop],
+    ) -> Option<std::rc::Rc<DeadAllocation>> {
+        if self.dead_allocations.len() >= MAX_DEAD_ALLOCATIONS {
+            return None;
+        }
+        let bytes = words.len().checked_mul(core::mem::size_of::<Oop>())?;
+        let total_size = Self::allocation_total_size(bytes)?;
+        let padded = total_size.checked_sub(VTABLE_HEADER_SIZE)?;
+        if padded > MAX_DEAD_PAYLOAD_BYTES {
+            return None;
+        }
+        // Ordinary allocation zero-initializes padding before the constructor
+        // stores its words. Equal payloads still receive distinct journal IDs.
+        let mut payload = vec![0; padded];
+        for (destination, word) in payload
+            .chunks_exact_mut(core::mem::size_of::<Oop>())
+            .zip(words)
+        {
+            destination.copy_from_slice(&(*word as usize).to_ne_bytes());
+        }
+        Some(std::rc::Rc::new(DeadAllocation {
+            vtable: vtable as usize,
+            payload,
+            total_size,
+        }))
+    }
+
     /// Preparation has no logical allocation effect. The caller must prove
     /// non-escape and absence of observation/collection through Frame retirement.
     pub(crate) fn prepare_dead_clone(&self, prototype: Oop) -> Option<std::rc::Rc<DeadAllocation>> {
@@ -195,6 +227,42 @@ impl Heap {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fresh_payload_recovery_matches_allocation_padding_and_accounting() {
+        let mut heap = super::Heap::new();
+        let vt = heap.allocate(0, super::Permanence::Permanent);
+        heap.set_vtable(vt, vt);
+        for count in [1usize, 2, 3, 4, 127, 128] {
+            let words = vec![vt; count];
+            let physical = heap.physical_allocation_count();
+            let before = heap.bytes_since_collection();
+            let snapshot = heap.prepare_virtual_payload(vt, &words).unwrap();
+            let size = snapshot.total_size();
+            let id = heap.record_virtual_clone(snapshot).unwrap();
+            assert_eq!(heap.physical_allocation_count(), physical);
+            assert_eq!(heap.bytes_since_collection(), before + size);
+            let recovered = heap.materialize_recorded_clone(id).unwrap();
+            assert_eq!(heap.bytes_since_collection(), before + size);
+            let ordinary = heap.allocate(
+                count * core::mem::size_of::<super::Oop>(),
+                super::Permanence::Collectable,
+            );
+            heap.set_vtable(ordinary, vt);
+            for (i, &word) in words.iter().enumerate() {
+                heap.write_payload_word(ordinary, i, word as usize);
+            }
+            assert_ne!(ordinary, recovered);
+            assert_eq!(heap.vtable_of(recovered), Some(vt));
+            assert_eq!(heap.payload_size(recovered), heap.payload_size(ordinary));
+            for i in 0..heap.payload_size(ordinary).unwrap() / core::mem::size_of::<super::Oop>() {
+                assert_eq!(
+                    heap.read_payload_word(recovered, i),
+                    heap.read_payload_word(ordinary, i)
+                );
+            }
+            assert_eq!(heap.materialize_recorded_clone(id), None);
+        }
+    }
     use super::*;
     #[test]
     fn dead_clone_accounting_and_settlement_preserve_exact_saved_bytes() {

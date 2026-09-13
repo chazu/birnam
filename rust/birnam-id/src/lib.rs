@@ -158,6 +158,58 @@ pub unsafe extern "C" fn birnam_id_warm_block_construction_v1(
     .unwrap_or(0)
 }
 
+/// Experimental compiler continuation at a validated constructor boundary.
+/// Null declines without mutation. Non-null is the already executed path's
+/// StepAction and must be returned by the generated PC without retrying.
+/// # Safety
+/// All arguments belong to the active generated PC and remain live throughout
+/// this call; the caller passes its actual Codegen API and resolved constructor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_id_try_closure_elision_v1(
+    machine: abi::Oop,
+    source_method: *const core::ffi::c_void,
+    node_index: u32,
+    constructor: *const core::ffi::c_void,
+    block_vtable: abi::Oop,
+    code_object: abi::Oop,
+    captures: *const abi::Oop,
+    capture_count: usize,
+    owner: abi::Oop,
+    materialized: u32,
+    codegen_api: *const birnam_abi::IdApi,
+) -> abi::Oop {
+    if codegen_api.is_null()
+        || capture_count > 128
+        || (capture_count != 0 && captures.is_null())
+        || materialized > 1
+    {
+        return core::ptr::null_mut();
+    }
+    let captures = if capture_count == 0 {
+        &[]
+    } else {
+        unsafe { core::slice::from_raw_parts(captures, capture_count) }
+    };
+    runtime::with_active_if_present(|runtime| unsafe {
+        runtime
+            .try_inline_closure(
+                machine,
+                source_method,
+                node_index,
+                constructor,
+                block_vtable,
+                code_object,
+                captures,
+                owner,
+                materialized != 0,
+                &*codegen_api,
+            )
+            .map(|result| result.unwrap_or(runtime.canonical().nil))
+            .unwrap_or(core::ptr::null_mut())
+    })
+    .unwrap_or(core::ptr::null_mut())
+}
+
 /// Test-only proof that a Rust panic cannot unwind across the C ABI.
 #[cfg(feature = "ffi-test-hooks")]
 #[unsafe(no_mangle)]

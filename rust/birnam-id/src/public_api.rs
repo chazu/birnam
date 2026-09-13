@@ -423,6 +423,14 @@ pub(crate) fn block_construction_context(symbol_vtable: Oop) -> [usize; 10] {
     ]
 }
 
+pub(crate) fn closure_codegen_context_matches(api: &IdApi) -> bool {
+    let canonical = runtime().canonical();
+    api.send as usize == api_send as *const () as usize
+        && api.intern as usize == api_intern as *const () as usize
+        && api.mkSmallInt as usize == api_make_smallint as *const () as usize
+        && api.nilObj == canonical.nil
+}
+
 fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [

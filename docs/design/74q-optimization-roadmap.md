@@ -32,8 +32,10 @@ retries. Enabled-source qualified matrices and their variation are recorded in
 elimination and broader acceptance remain outstanding. Source closure provenance
 and literal-aware PC emission now have compiler tests and full production gates;
 exact warm constructor declarations and runtime admission also pass real-module
-and installed-prefix checks. These are not yet connected to a runtime
-closure-elimination consumer.
+and installed-prefix checks. An experimental source-created closure consumer
+now eliminates allocation and substitutes captures, with escaping and forced
+recovery exercised end to end. It is disabled by default; continuation-control
+coverage, broader shapes and performance acceptance remain open.
 None of those four full families is complete yet.
 
 ## Direction
