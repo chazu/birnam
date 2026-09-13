@@ -1264,3 +1264,44 @@ No timing claim follows from eliminating this unnecessary
 work. Enabled preparation, repeated refusals and live API overrides still need
 cost and differential coverage before closure promotion; broader closure shapes
 and the other three families' acceptance obligations remain open.
+
+### Live API overrides and restored closure admission
+
+The explicit test floor now instruments API operations around one hot invocation
+of a real source-created closure factory. Candidate creation and warmup finish
+before instrumentation. The probe temporarily replaces one operation, executes
+the compiled factory, restores the original table and executes it again. The
+test-only API pointer and saved callbacks are confined to the existing opt-in
+host bridge; no production instrumentation API is added.
+
+The eight cases cover loader-only observation and replacement of send, interning,
+integer construction, allocation, import, vtable lookup and payload-size query.
+All cases also observe loader callbacks. Send/intern/boxing replacements must
+withdraw Codegen-context admission; constructor API replacements must withdraw
+constructor admission. The callback traces include selector names and arities,
+interned/imported names, integer values, allocation sizes, and the ordered
+storage queries relevant to each case. Ordinary and experimental execution must
+produce identical traces and return closures retaining the original shared Cell.
+
+During the seven replacements that require refusal, the measured call must have
+no closure optimization hit. Loader-only instrumentation permits an optimization
+hit but must record no new loader callbacks. After restoring the original
+functions, the next invocation must optimize again and return a distinct fresh
+closure with the same captured Cell. These requirements distinguish withdrawal
+and restored admission from cold code that never attempted optimization.
+
+`closure-control-smoke.sh` runs 32 differential groups (64 executions) across
+debug/release floors, precise/conservative GC and all eight cases, in addition
+to its capture/suspension groups. It compares complete non-diagnostic output and
+requires the expected hits inside both instrumented and restored invocations.
+The [live-API receipt](../measurements/74t-closure-live-api.json) records this
+matrix and the full production verification. All 61 commands pass, including
+526 workspace tests (19 ignored), all 32 live-API groups, the eight continuation
+groups, and installed-prefix, image, cold-archive and relocation gates. Retained
+source hashes match the tested files.
+
+This extends the prior unit context guard and direct-wrapper refusal proof to
+real compiled execution. Enabled preparation, steady execution, cold/metadata
+costs and repeated-refusal measurements remain the next evidence needed for
+closure promotion. Broader shapes, resource acceptance and the full numeric,
+loop and aggregate requirements remain in progress.

@@ -48,8 +48,10 @@ actual optimization hits within each tested control invocation.
 Instrumented constructor-refusal testing found and removed extra execution-time
 loader callbacks; the private hook is now resolved at unit binding. Default
 disabled staging also skips closure-plan preparation. The resulting source
-passes 526 workspace tests and full production verification; enabled-mode
-preparation, live API overrides and performance acceptance remain open.
+passes 526 workspace tests and full production verification. Live API overrides
+also pass 32 baseline/optimized comparisons with exact callback traces and
+restored admission across debug/release and both GC modes. Enabled-mode
+preparation, repeated-refusal costs and performance acceptance remain open.
 None of those four full families is complete yet.
 
 ## Direction

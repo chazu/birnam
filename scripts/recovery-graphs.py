@@ -40,6 +40,7 @@ def sources():
         "scripts/fixtures/closure-elision.birnam",
         "scripts/fixtures/closure-observation.birnam",
         "scripts/fixtures/closure-control.birnam",
+        "scripts/fixtures/closure-live-api.birnam",
         "scripts/fixtures/closure-api-context.c",
     )]
     for folder in ("rust", "src/id", "modules"):

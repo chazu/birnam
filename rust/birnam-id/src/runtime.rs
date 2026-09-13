@@ -32,6 +32,8 @@ use crate::vtable::{AddMethod, Vtables};
 #[cfg(all(test, target_os = "macos"))]
 mod architectural_fit_experiment;
 #[cfg(feature = "ffi-test-hooks")]
+mod closure_api_probe;
+#[cfg(feature = "ffi-test-hooks")]
 mod closure_control_probe;
 #[cfg(test)]
 mod deopt_experiment;

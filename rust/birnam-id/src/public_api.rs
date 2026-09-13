@@ -455,11 +455,12 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
 pub(crate) fn initialize_once() -> *mut IdApi {
     let bootstrap = Box::new(build_bootstrap());
     install_bootstrap_metadata(&bootstrap);
+    let mut api = Box::new(table_for(&bootstrap));
+    let api_pointer = core::ptr::from_mut(api.as_mut());
     #[cfg(feature = "ffi-test-hooks")]
     if std::env::var_os("BIRNAM_TEST_CLOSURE_CONTROL").is_some_and(|v| v == "1") {
-        bootstrap.runtime.install_closure_control_probe();
+        bootstrap.runtime.install_closure_control_probe(api_pointer);
     }
-    let api = Box::new(table_for(&bootstrap));
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
     if PUBLIC_RUNTIME
         .compare_exchange(
@@ -473,7 +474,8 @@ pub(crate) fn initialize_once() -> *mut IdApi {
         boundary::fatal_invariant("Rust id_init called more than once");
     }
     let _ = Box::into_raw(bootstrap);
-    Box::into_raw(api)
+    let _ = Box::into_raw(api);
+    api_pointer
 }
 
 pub(crate) fn configure_symbol_compaction(

@@ -53,5 +53,37 @@ print('closure-control-smoke:', 'profile=' + sys.argv[2], 'precise=' + sys.argv[
 print('\n'.join(outputs['enabled']))
 PY
     done
+    for operation in 0 1 2 3 4 5 6 7; do
+      for mode in baseline enabled; do
+        enabled=0
+        if [[ $mode == enabled ]]; then enabled=1; fi
+        BIRNAM_ID_DYLIB="$floor" BIRNAM_TEST_CLOSURE_CONTROL=1 \
+          BIRNAM_CLOSURE_PRECISE=$precise BIRNAM_CLOSURE_API_OPERATION=$operation \
+          BIRNAM_DEV_CLOSURE_ELISION=$enabled BIRNAM_DEV_CLOSURE_FORCE_RECOVERY=0 \
+          BIRNAM_DEV_CLOSURE_REPORT=1 "$prefix/bin/birnam" scripts/fixtures/closure-live-api.birnam \
+          >"$work/$mode.api" 2>&1
+      done
+      python3 - "$work" "$profile" "$precise" "$operation" <<'PY'
+from pathlib import Path
+import sys
+work = Path(sys.argv[1])
+operation = int(sys.argv[4])
+outputs = {}
+for mode in ('baseline', 'enabled'):
+    lines = (work / (mode + '.api')).read_text().splitlines()
+    for phase in ('override', 'restored'):
+        begin = lines.index('closure-live-api: ' + phase + ' begin')
+        end = lines.index('closure-live-api: ' + phase + ' end')
+        hits = [line for line in lines[begin + 1:end] if line.startswith('closure-elision: ')]
+        expected = (['closure-elision: hit materialized=true']
+                    if mode == 'enabled' and (phase == 'restored' or operation == 0) else [])
+        assert hits == expected, (operation, mode, phase, hits, expected)
+    outputs[mode] = [line for line in lines if not line.startswith('closure-elision: ')]
+assert outputs['baseline'] == outputs['enabled'], outputs
+print('closure-live-api-smoke:', 'profile=' + sys.argv[2], 'precise=' + sys.argv[3],
+      'operation=' + sys.argv[4], 'callback trace and restored admission passed')
+print(next(line for line in outputs['enabled'] if line.startswith('closure-live-api: operation=')))
+PY
+    done
   done
 done

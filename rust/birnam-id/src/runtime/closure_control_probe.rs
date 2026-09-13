@@ -19,7 +19,8 @@ thread_local! {
 }
 
 impl Runtime {
-    pub(crate) fn install_closure_control_probe(&self) {
+    pub(crate) fn install_closure_control_probe(&self, api: *mut crate::abi::IdApi) {
+        unsafe { super::closure_api_probe::attach(api) };
         let vt = self.create_vtable(self.globals().object_vt);
         for (name, method) in [
             (b"warm:input:".as_slice(), warm as Method),
@@ -27,6 +28,10 @@ impl Runtime {
             (b"inspect:alias:".as_slice(), observe as Method),
             (b"inspect:alias:supplied:".as_slice(), observe as Method),
             (b"checkpoint".as_slice(), checkpoint as Method),
+            (
+                b"checkApi:input:operation:".as_slice(),
+                super::closure_api_probe::check as Method,
+            ),
         ] {
             self.add_method(vt, self.intern(name).unwrap(), method);
         }
