@@ -83,8 +83,16 @@ impl Reuse {
                     mask | (u64::from(a != b) << index)
                 });
             values.outputs.copy_from_slice(&old.outputs);
-            let failed = unsafe {
-                (self.kernel)(values.inputs.as_ptr(), values.outputs.as_mut_ptr(), changed)
+            // A previous successful evaluation with identical raw inputs has
+            // no changed dependency. Its outputs are already copied above;
+            // avoid entering C merely to test every operation's zero mask.
+            // The caller still validates current numeric/lookup authority.
+            let failed = if changed == 0 {
+                0
+            } else {
+                unsafe {
+                    (self.kernel)(values.inputs.as_ptr(), values.outputs.as_mut_ptr(), changed)
+                }
             };
             #[cfg(any(test, feature = "ffi-test-hooks"))]
             if failed == 0 {

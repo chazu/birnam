@@ -289,3 +289,21 @@ covers every operation count, shape, representation and reuse setting. It record
 24 diagnostic intervals, performs no host-admission waits and remains explicitly
 unqualified even though those short intervals did not fail. Full exploratory
 cost matrices can now proceed without treating host load as a work blocker.
+
+### Avoid the reuse-kernel call when every input is unchanged
+
+For an actual consecutive self-tail iteration, the runtime already compares
+every raw numeric input with the preceding successful evaluation and copies its
+outputs. When no input changed, it now skips calling the C reuse kernel, whose
+only remaining work would be testing each operation's zero dependency mask.
+Partial changes still use the dependency kernel; fresh calls and stale stamps
+still use ordinary evaluation. Current numeric/lookup authority remains checked
+by the surrounding consumer, and logical allocations, result identities and
+V2 transitions are unchanged. Test counters still report all reused operations.
+
+The [focused receipt](../measurements/74w-unchanged-reuse-focused-correctness.json)
+passes the five relevant checks in both debug and release, including registered
+mutation and GC differentials, capture/suspension/retirement, actual-loop stamps
+and earliest arithmetic failures. The diagnostic timing test remains ignored.
+Full production integration and before/after cost evidence follow this checkpoint;
+no speedup is inferred merely from removing the C call.
