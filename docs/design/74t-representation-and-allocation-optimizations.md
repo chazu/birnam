@@ -1855,3 +1855,22 @@ The [focused receipt](../measurements/74t-aggregate-controls-focused-correctness
 passes the policy test, 546 workspace tests (19 ignored) and 202 release runtime
 tests (15 ignored). Full production, expanded installed-source and application
 comparison verification remain pending; no timing conclusion follows yet.
+
+The `recovery-memory.py` sampler now uses the existing numeric, loop, aggregate
+and closure source factories with admitted and refused controls. Its new Id
+wrapper retains fixture references in explicit Cells, verifies returned values
+or required aliases on every call, and checks continued use after eviction.
+It awaits both a phase marker and the following host REPL prompt before each
+sample. Dropping sampler references is not a claim that every other runtime root
+has gone away. Physical footprint, allocator and region reports remain separate
+from exact compiler-owned metadata or code-byte accounting.
+
+The [focused fixture check](../measurements/74t-memory-fixture-correctness.json)
+passes 20 normal-floor processes and 140 host-return checkpoints across all five
+consumer configurations (numeric, loop, clones, fields and closures), each with
+admitted/refused and disabled/enabled variants. The real vmmap report parses and
+an incomplete report is rejected. Factory/sampler and installed-manifest hashes
+are retained. No memory matrix has run yet: the sampler requires the full
+production proof, binds current sources and every installed artifact, and records
+all memory comparisons as unqualified. A one-pair matrix is queued after the
+existing production and aggregate source checks.
