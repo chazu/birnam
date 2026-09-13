@@ -38,6 +38,8 @@ mod closure_budget_probe;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_control_probe;
 #[cfg(feature = "ffi-test-hooks")]
+mod closure_journal_probe;
+#[cfg(feature = "ffi-test-hooks")]
 mod closure_sequence_probe;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_timing_probe;

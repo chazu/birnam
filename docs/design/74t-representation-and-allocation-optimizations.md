@@ -1526,3 +1526,34 @@ and profitability remain required before closure promotion. Completing the
 other families still includes deferring numeric intermediate materialization
 and removing invariant loop work, beyond the enabled fusion and tail-entry
 consumers. The four-family objective is unchanged.
+
+### Source closure finalizers and bounded journal storage
+
+The source journal probe separates construction and inspection into distinct
+Id calls. Its captured private input and child must be reclaimed after their
+actual roots expire. An observing finalizer checks the original detached
+payload and requires the deferred allocation journal to be settled before its
+callback. An intentionally live native root must prevent early finalization;
+after its helper returns, collection must finalize the input exactly once.
+Initial native-sweep variation is retained separately from deterministic
+runtime-root reclamation, following a reproduced variation within baseline
+processes. See 74U for the failed comparison and diagnostic evidence.
+
+The expanded development matrix passes 72 source processes. It also executes
+4,097 three-call factories below the automatic-GC threshold: exactly 4,096
+closures can be eliminated, the next attempt refuses without journal growth,
+and the first invocation after collection regains admission using its current
+nil input. Owned journal storage peaks at 384 KiB and retains 64–96 KiB of
+vector capacity after collection. These counters exclude allocator bookkeeping
+and other process/native resources. Whole-process resource acceptance and
+profitability remain open; no closure promotion or full-family completion is
+claimed.
+
+The [full journal correctness receipt](../measurements/74u-journal-correctness.json)
+passes all 61 commands and production verification: 528 workspace tests
+(19 ignored), 144 journal source processes across debug/release, and the
+previous sequence, mutation, budget, control, API and installed-prefix gates.
+It retains all 1,200 sequence/mutation/budget/journal rows in eight matrices;
+their per-profile floor hashes agree with the independent control output and
+all 243 source hashes match. The next closure step is repeated-use profitability
+measurement and broader preparation/metadata/resource acceptance.

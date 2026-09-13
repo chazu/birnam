@@ -1,15 +1,15 @@
 # 74U — Repeated invocation of one private closure
 
-Status: initial compiler/runtime implementation verified; not promoted. The full numeric, loop, aggregate and closure/capture
+Status: bounded repeated-closure implementation and focused correctness gates verified; not promoted. The full numeric, loop, aggregate and closure/capture
 objective remains owned by 74T and `birnam-sik`.
 
 ## Problem and intended behavior
 
-The current source closure consumer handles construction and one immediate
-invocation. If a successor still needs the closure, it materializes the Block
-before returning to ordinary execution. Consequently, two immediate uses cannot
-share an allocation-free region. Recent unqualified measurements also show
-that admission costs exceed savings for the single-use fixtures.
+Before 74U, the source closure consumer handled construction and one immediate
+invocation. If a successor still needed the closure, it materialized the Block
+before returning to ordinary execution. Two immediate uses therefore could not
+share an allocation-free region. The retained unqualified measurements also
+show admission costs exceeding savings for the single-use fixtures.
 
 Extend the existing compiler-derived plan to describe up to 32 consecutive
 non-tail invocations of the same source-created closure, with ordinary local
@@ -159,9 +159,8 @@ The retained source hashes match the tested files. The earlier
 run with an older verified Codegen prefix and a newly built test floor; it is
 not the production provenance claim.
 
-The consumer remains experimental and disabled by default. Dedicated source
-finalizer and dead-journal lifetime coverage, resource acceptance and
-profitability remain open.
+The consumer remains experimental and disabled by default. Broader resource
+acceptance, closure bodies and profitability remain open.
 
 ## Later-target mutation and immediate readmission
 
@@ -248,9 +247,9 @@ not timing or resource-promotion evidence.
 The full verification runner now retains each profile's sequence, mutation
 and budget matrices as structured data in its main receipt. It requires all
 six matrices to pass and their per-profile floor hashes to agree with each
-other and the independently reported control-test floor. Dedicated source
-finalizer and journal-lifetime checks, metadata/resource acceptance and
-profitability remain open.
+other and the independently reported control-test floor. At this budget
+checkpoint, source finalizer/journal-lifetime checks, metadata/resource
+acceptance and profitability remained open.
 
 The [full correctness receipt](../measurements/74u-budget-correctness.json)
 passes all 61 commands and production verification: 528 workspace tests
@@ -261,3 +260,75 @@ retains all 1,056 source-process rows across six debug/release matrices. All
 241 source hashes match the tested files; each profile's three matrix floor
 hashes agree with its independently reported control-test floor. The closure
 consumer remains disabled by default, with no timing claim.
+
+## Source capture lifetime, finalizers and journal capacity
+
+The source journal probe runs a warmed factory with a fresh private input and
+child, then returns nil to its Id caller. A separate source call collects after
+the factory and constructor native frames have unwound. The probe keeps only
+untraced addresses for identity checks, while the source keeps the factory's
+owner alive independently of its private captured input. An optional finalizer
+on that input checks its detached payload identity, requires an empty dead
+journal, and requires physical and logical allocation counts to agree during
+the foreign callback.
+
+Three collection modes distinguish actual root obligations:
+
+- Runtime-root collection excludes native stack words and must reclaim both
+  private objects immediately.
+- Ordinary native-stack scanning retains its first-sweep observations, then a
+  runtime-root collection checks exact eventual reclamation and accounting.
+- A deliberately live native root protects the input during the first native
+  scan. Its child must also survive and its finalizer must not run. After the
+  native helper returns, runtime-root collection must reclaim both objects and
+  run the observing finalizer exactly once.
+
+This distinction follows a test diagnosis, not a change to collector policy.
+The [initial capacity comparison](../measurements/74u-journal-capacity-initial.json)
+failed on an eight-byte first-sweep difference. A
+[repeated diagnostic](../measurements/74u-journal-native-repeat.json) showed
+variation within baseline processes too: incidental native words retained
+different dead objects, sometimes including the input. Exact first-sweep
+reclamation is therefore not a reproducible baseline contract. The corrected
+probe retains those observations, checks the initial logical allocation counts,
+and compares cumulative reclamation and final heap state after native roots no
+longer apply. Its additional live-root case proves absence of premature
+finalization. No optimizer or collector behavior was changed to make this pass.
+
+The capacity case executes 4,097 three-call factories without crossing the
+automatic-GC threshold. Enabled execution must save precisely 4,096 physical
+closures, complete 12,288 substitutions and refuse the next candidate without
+growing journal storage. Baseline and enabled execution both charge 5,506,368
+bytes. Collection must discard all journal entries; the very next factory call
+must regain admission and complete three substitutions, without a cooldown.
+That invocation receives nil, checking that admission uses its current input
+after the previous captured objects have been reclaimed.
+
+The [initial lifetime development receipt](../measurements/74u-journal-initial-development.json)
+passes 32 source processes before capacity testing. The
+[expanded development receipt](../measurements/74u-journal-development.json)
+passes 72 processes spanning three-/32-call factories, the capacity case,
+observing/non-observing collection, both heap-layout GC modes and all three
+native-root modes. These use the older verified Codegen prefix and newly built
+debug feature floor. Peak owned journal storage is 393,216 bytes at the
+4,096-entry limit; after collection, retained vector capacity is 65,536 or
+98,304 bytes depending on whether settlement consumed the dead-entry vector.
+This counter includes snapshot payloads, reference-count headers and vector
+capacity, but excludes allocator bookkeeping and other runtime/native storage.
+It is not an RSS or whole-process resource claim. Cold/preparation/metadata and
+application resource acceptance, broader closure bodies and profitability
+remain open, and the consumer remains disabled by default.
+
+The [full correctness receipt](../measurements/74u-journal-correctness.json)
+passes all 61 commands and production verification: 528 workspace tests
+(19 ignored), 144 journal executions in 72 comparison groups, the previous
+640 sequence, 32 mutation and 384 budget executions, and all control, API,
+installed-prefix, image, cold-archive and relocation gates. Its eight
+`closure_source_matrices` retain all 1,200 process rows, including the native
+first-sweep diagnostics. All 243 recorded source hashes match; each profile's
+four matrix floor hashes agree with its independent control-test floor.
+Debug and release both verify the 384 KiB capacity peak, bounded retained
+capacity, exactly-once observing finalization and immediate restored admission.
+The next step is paired measurement of repeated-use profitability together
+with broader preparation/metadata/resource acceptance. This does not complete
+the full numeric, loop, aggregate or closure family.

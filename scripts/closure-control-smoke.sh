@@ -22,8 +22,9 @@ for profile in debug release; do
   python3 scripts/closure-sequence-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/sequence-$profile.json"
   python3 scripts/closure-sequence-mutation-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/mutation-$profile.json"
   python3 scripts/closure-budget-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/budget-$profile.json"
+  python3 scripts/closure-journal-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/journal-$profile.json"
   if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
-    for matrix in sequence mutation budget; do
+    for matrix in sequence mutation budget journal; do
       cp "$work/$matrix-$profile.json" "$BIRNAM_TEST_CLOSURE_RECEIPTS/$matrix-$profile.json"
     done
   fi

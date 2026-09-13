@@ -1,0 +1,137 @@
+{
+  "scope": "Development diagnostic of native-root variation; no qualification or correctness promotion",
+  "rows": [
+    {
+      "pair": 0,
+      "enabled": 0,
+      "values": {
+        "native": 1,
+        "input_alive": 1,
+        "child_alive": 1,
+        "finalized": 0,
+        "reclaimed": 245813,
+        "mark_count_delta": 245821,
+        "mark_bytes_delta": 5506384,
+        "after_count_delta": 8,
+        "after_bytes_delta": 192,
+        "journal_storage": 0
+      }
+    },
+    {
+      "pair": 0,
+      "enabled": 1,
+      "values": {
+        "native": 1,
+        "input_alive": 0,
+        "child_alive": 0,
+        "finalized": 0,
+        "reclaimed": 245815,
+        "mark_count_delta": 245821,
+        "mark_bytes_delta": 5506384,
+        "after_count_delta": 6,
+        "after_bytes_delta": 176,
+        "journal_storage": 98304
+      }
+    },
+    {
+      "pair": 1,
+      "enabled": 1,
+      "values": {
+        "native": 1,
+        "input_alive": 0,
+        "child_alive": 0,
+        "finalized": 0,
+        "reclaimed": 245817,
+        "mark_count_delta": 245821,
+        "mark_bytes_delta": 5506384,
+        "after_count_delta": 4,
+        "after_bytes_delta": 112,
+        "journal_storage": 98304
+      }
+    },
+    {
+      "pair": 1,
+      "enabled": 0,
+      "values": {
+        "native": 1,
+        "input_alive": 1,
+        "child_alive": 1,
+        "finalized": 0,
+        "reclaimed": 245813,
+        "mark_count_delta": 245821,
+        "mark_bytes_delta": 5506384,
+        "after_count_delta": 8,
+        "after_bytes_delta": 192,
+        "journal_storage": 0
+      }
+    },
+    {
+      "pair": 2,
+      "enabled": 0,
+      "values": {
+        "native": 1,
+        "input_alive": 1,
+        "child_alive": 1,
+        "finalized": 0,
+        "reclaimed": 245818,
+        "mark_count_delta": 245821,
+        "mark_bytes_delta": 5506384,
+        "after_count_delta": 3,
+        "after_bytes_delta": 80,
+        "journal_storage": 0
+      }
+    },
+    {
+      "pair": 2,
+      "enabled": 1,
+      "values": {
+        "native": 1,
+        "input_alive": 0,
+        "child_alive": 0,
+        "finalized": 0,
+        "reclaimed": 245817,
+        "mark_count_delta": 245821,
+        "mark_bytes_delta": 5506384,
+        "after_count_delta": 4,
+        "after_bytes_delta": 112,
+        "journal_storage": 98304
+      }
+    },
+    {
+      "pair": 3,
+      "enabled": 1,
+      "values": {
+        "native": 1,
+        "input_alive": 0,
+        "child_alive": 0,
+        "finalized": 0,
+        "reclaimed": 245818,
+        "mark_count_delta": 245821,
+        "mark_bytes_delta": 5506384,
+        "after_count_delta": 3,
+        "after_bytes_delta": 80,
+        "journal_storage": 98304
+      }
+    },
+    {
+      "pair": 3,
+      "enabled": 0,
+      "values": {
+        "native": 1,
+        "input_alive": 1,
+        "child_alive": 1,
+        "finalized": 0,
+        "reclaimed": 245813,
+        "mark_count_delta": 245821,
+        "mark_bytes_delta": 5506384,
+        "after_count_delta": 8,
+        "after_bytes_delta": 192,
+        "journal_storage": 0
+      }
+    }
+  ],
+  "floor_sha256": "644bdb747bab7f580e84e787c5124d2410e8f2b874154579b980c1b76fe084d4",
+  "source_sha256": "47f9ca1dfabdb27fa8760f4ce0ed295b68a6ee0eda58ba9401c216f0a6e3eb16",
+  "reference": "74u-journal-capacity-initial.json",
+  "status": "diagnostic completed"
+}

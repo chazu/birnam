@@ -172,8 +172,12 @@ passed at 528 workspace tests and all 61 commands. Automatic-collection budget
 testing also passes 384 source processes with matching callback effects,
 Frame PCs and allocation counters through refused/partial/full admission.
 The full receipt retains 1,056 sequence/mutation/budget process rows and their
-floor hashes. Dedicated source finalizer/journal-lifetime cases, resource
-acceptance and profitability remain open; the
+floor hashes. Source finalizer/journal-lifetime checks now pass another 144
+processes, including live native roots, exact reclamation, the 4,096-entry
+journal limit and immediate admission after collection. Full verification
+retains all 1,200 source-process rows and passes all 61 commands at 528 workspace
+tests. Broader preparation/metadata/resource acceptance and repeated-use
+profitability remain open; the
 consumer stays disabled by default. See 74T for the full remaining scope.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of

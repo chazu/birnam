@@ -72,8 +72,13 @@ all three calls. Automatic-collection budget testing now also passes 384 source
 processes across both profiles and GC modes, preserving callback effects,
 current Frame PCs and allocation counters through refused, partial and full
 admission. The full gate retains all sequence/mutation/budget rows and their
-floor hashes. Dedicated source finalizer/journal-lifetime and resource cases,
-broader closure bodies and profitability remain open; the consumer stays default-off.
+floor hashes. Source finalizer and journal-lifetime testing also passes 144
+processes: live native roots prevent early finalization, expired captures are
+reclaimed, and the 4,096-entry journal limit refuses without growing and regains
+admission after collection. Incidental native-root variation is retained beside
+the exact runtime-root comparisons. The full gate retains 1,200 source-process
+rows with matching source/floor hashes. Broader preparation/metadata/resource
+acceptance, closure bodies and profitability remain open; the consumer stays default-off.
 None of those four full families is complete yet.
 
 ## Direction

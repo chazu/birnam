@@ -32,6 +32,7 @@ def sources():
         "closure-control-smoke.sh", "closure-sequence-smoke.py",
         "closure-sequence-mutation-smoke.py",
         "closure-budget-smoke.py",
+        "closure-journal-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
     )]
     paths += [ROOT / path for path in (
@@ -208,7 +209,7 @@ def main():
                         output = run(["mise", "run", "verify"], "production-verification")
                     finally:
                         env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
-                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget")
+                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal")
                                 for profile in ("debug", "release")}
                     paths = list(Path(evidence).glob("*.json"))
                     if {p.name for p in paths} != expected:

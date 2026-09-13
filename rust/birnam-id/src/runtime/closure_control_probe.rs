@@ -41,6 +41,18 @@ impl Runtime {
                 super::closure_timing_probe::sequence as Method,
             ),
             (
+                b"sequenceJournal:calls:observe:capacity:".as_slice(),
+                super::closure_journal_probe::run as Method,
+            ),
+            (
+                b"inspectJournal:".as_slice(),
+                super::closure_journal_probe::inspect as Method,
+            ),
+            (
+                b"journalRestored:calls:".as_slice(),
+                super::closure_journal_probe::restored as Method,
+            ),
+            (
                 b"sequenceBudget:gap:escape:".as_slice(),
                 super::closure_budget_probe::check as Method,
             ),
