@@ -1855,3 +1855,20 @@ The [focused receipt](../measurements/74t-aggregate-controls-focused-correctness
 passes the policy test, 546 workspace tests (19 ignored) and 202 release runtime
 tests (15 ignored). Full production, expanded installed-source and application
 comparison verification remain pending; no timing conclusion follows yet.
+
+The expanded discarded-clone source case initially returned its second argument,
+which the borrowed numeric probe explicitly forbids. The captured-result fixture
+returns the same expected Integer from an entry capture and supplies the ordinary
+observer as the unused argument. It preserves distinctness from both arguments;
+the existing probe and every allocation/identity assertion remain unchanged.
+The [corrected default debug matrix](../measurements/74t-aggregate-captured-default-debug.json)
+passes all 30 cases, including admitted clone chains and private-layout refusal.
+
+The source-validation driver is independently hashed from its prerequisite
+production proof. That production gate included its file hash but did not execute
+this additional driver. Only this driver's hash may differ; every runtime,
+compiler, probe, other prerequisite source, selected floor and installed artifact
+must still match. Receipts retain both driver hashes and every actual generated
+fixture. This records a corrected validation producer, not a rerun or weakening
+of the original full production gate. Remaining control/profile matrices are
+running before aggregate/application acceptance.
