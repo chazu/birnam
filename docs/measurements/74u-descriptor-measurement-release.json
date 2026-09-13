@@ -1,0 +1,1652 @@
+{
+  "status": "passed",
+  "uses": [
+    1,
+    3,
+    4,
+    8,
+    16,
+    32
+  ],
+  "source_sha256": {
+    "scripts/closure-measurement-smoke.py": "30aef27322a9713ac5413457960cd837daad8bbbcaae37db39936ce92362c5a0",
+    "scripts/closure_timing_common.py": "90cfb1a6d1d577652f22c0769153e82e177f28fb0ba236f8881382e1693346cf",
+    "rust/birnam-id/src/runtime/closure_timing_probe.rs": "b98301ae77bca368999a7f5de284abc8a9f0e66643dd375227f63b80427ce9d0"
+  },
+  "scope": "Validate repeated-closure measurement counters; timings here are unqualified.",
+  "floor_sha256": "77e0569a4cef5b4e71a7a84a32c087e5947c62c97c367daf775ddf5843130de8",
+  "rows": [
+    {
+      "uses": 1,
+      "shape": 0,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1273209,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 1,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 902125,
+          "ns": 1056501,
+          "gc_ns": 1737292,
+          "allocation_bytes": 196608,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458"
+    },
+    {
+      "uses": 1,
+      "shape": 0,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 1789000,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 45208,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 2351
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 1,
+          "calls": 256,
+          "completed_calls": 256,
+          "cold_ns": 2083583,
+          "ns": 1417167,
+          "gc_ns": 1988416,
+          "allocation_bytes": 196608,
+          "physical_saved": 256,
+          "journal_peak_bytes": 12288,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458"
+    },
+    {
+      "uses": 1,
+      "shape": 1,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1341375,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 1,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 918250,
+          "ns": 1820666,
+          "gc_ns": 3278458,
+          "allocation_bytes": 196608,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458"
+    },
+    {
+      "uses": 1,
+      "shape": 1,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2365250,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 66458,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 2367
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 1,
+          "calls": 256,
+          "completed_calls": 256,
+          "cold_ns": 1512667,
+          "ns": 2029833,
+          "gc_ns": 2629500,
+          "allocation_bytes": 196608,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 256,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458"
+    },
+    {
+      "uses": 1,
+      "shape": 2,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1187125,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 1,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 654750,
+          "ns": 1537292,
+          "gc_ns": 2989584,
+          "allocation_bytes": 192512,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 256,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458"
+    },
+    {
+      "uses": 1,
+      "shape": 2,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 1408459,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 47208,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 2367
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 1,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 988333,
+          "ns": 1399458,
+          "gc_ns": 2110375,
+          "allocation_bytes": 192512,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 256,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 1
+        }
+      },
+      "source_sha256": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458"
+    },
+    {
+      "uses": 1,
+      "shape": 3,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1451459,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 1,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 986834,
+          "ns": 1445334,
+          "gc_ns": 1959625,
+          "allocation_bytes": 208896,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458"
+    },
+    {
+      "uses": 1,
+      "shape": 3,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 1403042,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 23625,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 1,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 812167,
+          "ns": 1451417,
+          "gc_ns": 2178041,
+          "allocation_bytes": 208896,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "5c1c99ddc8be1d708a60e89bb605bbd460f4883892acf21167188572a792d458"
+    },
+    {
+      "uses": 3,
+      "shape": 0,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1491459,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 3,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 1179584,
+          "ns": 1919917,
+          "gc_ns": 2157750,
+          "allocation_bytes": 262144,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5"
+    },
+    {
+      "uses": 3,
+      "shape": 0,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2158916,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 53334,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 3587
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 3,
+          "calls": 256,
+          "completed_calls": 768,
+          "cold_ns": 1917250,
+          "ns": 2137499,
+          "gc_ns": 2333291,
+          "allocation_bytes": 262144,
+          "physical_saved": 256,
+          "journal_peak_bytes": 12288,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5"
+    },
+    {
+      "uses": 3,
+      "shape": 1,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1482250,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 3,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 1139542,
+          "ns": 2047208,
+          "gc_ns": 2242709,
+          "allocation_bytes": 262144,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5"
+    },
+    {
+      "uses": 3,
+      "shape": 1,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 3193042,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 71707,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 3603
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 3,
+          "calls": 256,
+          "completed_calls": 768,
+          "cold_ns": 1816541,
+          "ns": 2207625,
+          "gc_ns": 3415042,
+          "allocation_bytes": 262144,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 256,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5"
+    },
+    {
+      "uses": 3,
+      "shape": 2,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 2309125,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 3,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 6892875,
+          "ns": 1784750,
+          "gc_ns": 2030459,
+          "allocation_bytes": 249856,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 768,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5"
+    },
+    {
+      "uses": 3,
+      "shape": 2,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2473041,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 82791,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 3603
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 3,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 1939125,
+          "ns": 2167958,
+          "gc_ns": 1973499,
+          "allocation_bytes": 249856,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 768,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 1
+        }
+      },
+      "source_sha256": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5"
+    },
+    {
+      "uses": 3,
+      "shape": 3,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1580709,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 3,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 5109333,
+          "ns": 2562957,
+          "gc_ns": 2152875,
+          "allocation_bytes": 299008,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5"
+    },
+    {
+      "uses": 3,
+      "shape": 3,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 1673084,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 38166,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 3,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 1672792,
+          "ns": 4012584,
+          "gc_ns": 3065584,
+          "allocation_bytes": 299008,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "fb87dd6f84be1189fd9616024dedfa20d895cdb4484d4f9b6f916cd3741d6ec5"
+    },
+    {
+      "uses": 4,
+      "shape": 0,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1578916,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 4,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 1448417,
+          "ns": 2282459,
+          "gc_ns": 2071458,
+          "allocation_bytes": 294912,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "369a27f064639893b68307fd5fed251245ec3cc4a8f0cb99fa86939b5fdbc3eb"
+    },
+    {
+      "uses": 4,
+      "shape": 0,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 1844416,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 85542,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 4205
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 4,
+          "calls": 256,
+          "completed_calls": 1024,
+          "cold_ns": 3600459,
+          "ns": 2797209,
+          "gc_ns": 6179083,
+          "allocation_bytes": 294912,
+          "physical_saved": 256,
+          "journal_peak_bytes": 12288,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "369a27f064639893b68307fd5fed251245ec3cc4a8f0cb99fa86939b5fdbc3eb"
+    },
+    {
+      "uses": 4,
+      "shape": 1,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 2395542,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 4,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 2379416,
+          "ns": 5857250,
+          "gc_ns": 4795084,
+          "allocation_bytes": 294912,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "369a27f064639893b68307fd5fed251245ec3cc4a8f0cb99fa86939b5fdbc3eb"
+    },
+    {
+      "uses": 4,
+      "shape": 1,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 1564208,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 48458,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 4221
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 4,
+          "calls": 256,
+          "completed_calls": 1024,
+          "cold_ns": 1250750,
+          "ns": 4464251,
+          "gc_ns": 5969625,
+          "allocation_bytes": 294912,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 256,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "369a27f064639893b68307fd5fed251245ec3cc4a8f0cb99fa86939b5fdbc3eb"
+    },
+    {
+      "uses": 4,
+      "shape": 2,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1610666,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 4,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 1383542,
+          "ns": 3745000,
+          "gc_ns": 3512541,
+          "allocation_bytes": 278528,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 1024,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "369a27f064639893b68307fd5fed251245ec3cc4a8f0cb99fa86939b5fdbc3eb"
+    },
+    {
+      "uses": 4,
+      "shape": 2,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2076959,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 56917,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 4221
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 4,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 1477083,
+          "ns": 5013667,
+          "gc_ns": 12308541,
+          "allocation_bytes": 278528,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 1024,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 1
+        }
+      },
+      "source_sha256": "369a27f064639893b68307fd5fed251245ec3cc4a8f0cb99fa86939b5fdbc3eb"
+    },
+    {
+      "uses": 4,
+      "shape": 3,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 2334750,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 4,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 1935083,
+          "ns": 5301876,
+          "gc_ns": 16924501,
+          "allocation_bytes": 344064,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "369a27f064639893b68307fd5fed251245ec3cc4a8f0cb99fa86939b5fdbc3eb"
+    },
+    {
+      "uses": 4,
+      "shape": 3,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2648667,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 51458,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 4,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 3293542,
+          "ns": 7643083,
+          "gc_ns": 13208083,
+          "allocation_bytes": 344064,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "369a27f064639893b68307fd5fed251245ec3cc4a8f0cb99fa86939b5fdbc3eb"
+    },
+    {
+      "uses": 8,
+      "shape": 0,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 2060000,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 8,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 2615209,
+          "ns": 6205459,
+          "gc_ns": 10632500,
+          "allocation_bytes": 425984,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "b43f25daf5b944c47747bdd9958672637c8861515635da583c49e8de7008e69b"
+    },
+    {
+      "uses": 8,
+      "shape": 0,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2299583,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 73083,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 6677
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 8,
+          "calls": 256,
+          "completed_calls": 2048,
+          "cold_ns": 2160833,
+          "ns": 4250917,
+          "gc_ns": 10332042,
+          "allocation_bytes": 425984,
+          "physical_saved": 256,
+          "journal_peak_bytes": 12288,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "b43f25daf5b944c47747bdd9958672637c8861515635da583c49e8de7008e69b"
+    },
+    {
+      "uses": 8,
+      "shape": 1,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 1913667,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 8,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 19529167,
+          "ns": 4832251,
+          "gc_ns": 4238042,
+          "allocation_bytes": 425984,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "b43f25daf5b944c47747bdd9958672637c8861515635da583c49e8de7008e69b"
+    },
+    {
+      "uses": 8,
+      "shape": 1,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 1887333,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 73417,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 6693
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 8,
+          "calls": 256,
+          "completed_calls": 2048,
+          "cold_ns": 19785917,
+          "ns": 4710542,
+          "gc_ns": 21944125,
+          "allocation_bytes": 425984,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 256,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "b43f25daf5b944c47747bdd9958672637c8861515635da583c49e8de7008e69b"
+    },
+    {
+      "uses": 8,
+      "shape": 2,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 2204167,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 8,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 2353583,
+          "ns": 5820709,
+          "gc_ns": 7128625,
+          "allocation_bytes": 393216,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 2048,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "b43f25daf5b944c47747bdd9958672637c8861515635da583c49e8de7008e69b"
+    },
+    {
+      "uses": 8,
+      "shape": 2,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2291666,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 82124,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 6693
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 8,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 2277333,
+          "ns": 6435125,
+          "gc_ns": 4544000,
+          "allocation_bytes": 393216,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 2048,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 1
+        }
+      },
+      "source_sha256": "b43f25daf5b944c47747bdd9958672637c8861515635da583c49e8de7008e69b"
+    },
+    {
+      "uses": 8,
+      "shape": 3,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 3345083,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 8,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 5250375,
+          "ns": 5920333,
+          "gc_ns": 3364542,
+          "allocation_bytes": 524288,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "b43f25daf5b944c47747bdd9958672637c8861515635da583c49e8de7008e69b"
+    },
+    {
+      "uses": 8,
+      "shape": 3,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2258541,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 131500,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 8,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 3322708,
+          "ns": 8579000,
+          "gc_ns": 8751000,
+          "allocation_bytes": 524288,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "b43f25daf5b944c47747bdd9958672637c8861515635da583c49e8de7008e69b"
+    },
+    {
+      "uses": 16,
+      "shape": 0,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 3561958,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 16,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 4799917,
+          "ns": 12836959,
+          "gc_ns": 9349917,
+          "allocation_bytes": 688128,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "74f1b42febaa343ff0f49e15eb98254e32d27f98211afb26a7d006ad0e9225fd"
+    },
+    {
+      "uses": 16,
+      "shape": 0,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 3741042,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 135666,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 11621
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 16,
+          "calls": 256,
+          "completed_calls": 4096,
+          "cold_ns": 5439000,
+          "ns": 5184666,
+          "gc_ns": 12061083,
+          "allocation_bytes": 688128,
+          "physical_saved": 256,
+          "journal_peak_bytes": 12288,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "74f1b42febaa343ff0f49e15eb98254e32d27f98211afb26a7d006ad0e9225fd"
+    },
+    {
+      "uses": 16,
+      "shape": 1,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 7919542,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 16,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 5292041,
+          "ns": 8984041,
+          "gc_ns": 7408708,
+          "allocation_bytes": 688128,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "74f1b42febaa343ff0f49e15eb98254e32d27f98211afb26a7d006ad0e9225fd"
+    },
+    {
+      "uses": 16,
+      "shape": 1,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2827292,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 98292,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 11637
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 16,
+          "calls": 256,
+          "completed_calls": 4096,
+          "cold_ns": 3447958,
+          "ns": 11123791,
+          "gc_ns": 5803084,
+          "allocation_bytes": 688128,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 256,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "74f1b42febaa343ff0f49e15eb98254e32d27f98211afb26a7d006ad0e9225fd"
+    },
+    {
+      "uses": 16,
+      "shape": 2,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 4055917,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 16,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 6289167,
+          "ns": 7114833,
+          "gc_ns": 3653916,
+          "allocation_bytes": 622592,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 4096,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "74f1b42febaa343ff0f49e15eb98254e32d27f98211afb26a7d006ad0e9225fd"
+    },
+    {
+      "uses": 16,
+      "shape": 2,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 3216291,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 111375,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 11637
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 16,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 3516834,
+          "ns": 8353542,
+          "gc_ns": 7731375,
+          "allocation_bytes": 622592,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 4096,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 1
+        }
+      },
+      "source_sha256": "74f1b42febaa343ff0f49e15eb98254e32d27f98211afb26a7d006ad0e9225fd"
+    },
+    {
+      "uses": 16,
+      "shape": 3,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 3091416,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 16,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 8890583,
+          "ns": 13686749,
+          "gc_ns": 10250208,
+          "allocation_bytes": 884736,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "74f1b42febaa343ff0f49e15eb98254e32d27f98211afb26a7d006ad0e9225fd"
+    },
+    {
+      "uses": 16,
+      "shape": 3,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 2820708,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 81584,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 16,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 6248916,
+          "ns": 13820500,
+          "gc_ns": 11281167,
+          "allocation_bytes": 884736,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "74f1b42febaa343ff0f49e15eb98254e32d27f98211afb26a7d006ad0e9225fd"
+    },
+    {
+      "uses": 32,
+      "shape": 0,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 5817625,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 32,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 10183625,
+          "ns": 15126875,
+          "gc_ns": 13397583,
+          "allocation_bytes": 1212416,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+    },
+    {
+      "uses": 32,
+      "shape": 0,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 4695084,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 203792,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 21509
+        },
+        "measure": {
+          "shape": 0,
+          "uses": 32,
+          "calls": 256,
+          "completed_calls": 8192,
+          "cold_ns": 5807125,
+          "ns": 10935042,
+          "gc_ns": 12757584,
+          "allocation_bytes": 1212416,
+          "physical_saved": 256,
+          "journal_peak_bytes": 12288,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+    },
+    {
+      "uses": 32,
+      "shape": 1,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 5989250,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 32,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 9075625,
+          "ns": 21823042,
+          "gc_ns": 6245084,
+          "allocation_bytes": 1212416,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+    },
+    {
+      "uses": 32,
+      "shape": 1,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 6361416,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 187834,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 21525
+        },
+        "measure": {
+          "shape": 1,
+          "uses": 32,
+          "calls": 256,
+          "completed_calls": 8192,
+          "cold_ns": 5844167,
+          "ns": 9819958,
+          "gc_ns": 11768750,
+          "allocation_bytes": 1212416,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 256,
+          "materialized": 256,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 256,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+    },
+    {
+      "uses": 32,
+      "shape": 2,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 4313292,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 32,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 9771333,
+          "ns": 15394166,
+          "gc_ns": 10366084,
+          "allocation_bytes": 1081344,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 8192,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+    },
+    {
+      "uses": 32,
+      "shape": 2,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 5506291,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 222500,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 21525
+        },
+        "measure": {
+          "shape": 2,
+          "uses": 32,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 9231959,
+          "ns": 20082625,
+          "gc_ns": 8557125,
+          "allocation_bytes": 1081344,
+          "physical_saved": 0,
+          "journal_peak_bytes": 96,
+          "attempts": 256,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 8192,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 1
+        }
+      },
+      "source_sha256": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+    },
+    {
+      "uses": 32,
+      "shape": 3,
+      "enabled": 0,
+      "values": {
+        "prepare": {
+          "ns": 12675667,
+          "floor_preparations": 0,
+          "floor_preparation_ns": 0,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 32,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 16493542,
+          "ns": 26936875,
+          "gc_ns": 12756917,
+          "allocation_bytes": 1605632,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+    },
+    {
+      "uses": 32,
+      "shape": 3,
+      "enabled": 1,
+      "values": {
+        "prepare": {
+          "ns": 4490708,
+          "floor_preparations": 2,
+          "floor_preparation_ns": 128208,
+          "metadata_payload_before": 0,
+          "metadata_payload_after": 0
+        },
+        "measure": {
+          "shape": 3,
+          "uses": 32,
+          "calls": 256,
+          "completed_calls": 0,
+          "cold_ns": 21074875,
+          "ns": 22549459,
+          "gc_ns": 12219125,
+          "allocation_bytes": 1605632,
+          "physical_saved": 0,
+          "journal_peak_bytes": 0,
+          "attempts": 0,
+          "hits": 0,
+          "materialized": 0,
+          "effects": 0,
+          "constructor_discoveries": 0,
+          "constructor_queries": 0,
+          "restored_hits": 0
+        }
+      },
+      "source_sha256": "694740c5cc3673137f1759e38aaa6f1ab0ec1b4d9e68294eb00a91951834831e"
+    }
+  ]
+}

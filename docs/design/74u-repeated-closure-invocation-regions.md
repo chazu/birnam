@@ -600,6 +600,7 @@ and numeric sweeps now run independently of the unchanged-input loop correctness
 gate, using their already verified checkout. No admission threshold or default
 policy is selected merely by adding this harness.
 
+
 The [full normal-floor exploratory matrix](../measurements/74u-closure-production-exploratory-timing.json)
 now completes 144 processes and 14,400 measured 128-invocation batches. Every
 identity, result, post-GC and source/installation check passes. This uses the
@@ -620,3 +621,46 @@ Compiler-refusal controls are noisy: their execution/including-GC medians range
 from +6.39%/+7.35% at one use to -27.85%/-30.32% at 32 uses. The new admission
 implementation therefore still needs its own verified normal-floor comparison;
 these results alone do not select a smaller threshold or enable the consumer.
+
+## Avoid unused Frame-value construction during closure admission
+
+Current repeated-call admission invokes `materialize_acquired_entry` for every
+callee, retaining its descriptor but never reading its initial Oop vector.
+The earlier repeated-use profile includes this work within callee admission.
+The next implementation queries the descriptor of an already acquired entry
+without constructing the unused vector. It retains the acquisition until the
+admitted region ends and preserves capture-offset/count, V2 arity, current
+lookup, leaf-plan, control and allocation-budget checks. Actual Frame creation
+and recovery continue to use their existing value materialization paths.
+
+The query must share the same stale-index, generation and acquired-entry checks
+as value materialization. A descriptor reference alone grants no permission to
+execute or keep native code loaded. Tests must compare the admitted descriptor
+with ordinary materialization, reject unacquired/stale capabilities and preserve
+the held acquisition through retirement. Existing closure mutation, budget,
+forced recovery, GC, literal and V2 control matrices remain mandatory. There is
+no IdApi, descriptor, image or language change; this removes unobserved host
+allocation only. Full production verification and paired cost measurements
+remain required before merging or claiming a benefit.
+
+The implementation now shares checked acquired-entry lookup among value
+materialization, capture-layout inspection and descriptor inspection. Closure
+admission retains the descriptor and entry lease, without constructing unused
+initial Oops. The [focused correctness receipt](../measurements/74u-descriptor-admission-focused-correctness.json)
+passes 546 workspace tests and 202 release runtime tests, plus the dedicated
+acquisition/retirement test. Release source matrices pass 48 repeated-use
+accounting cases, 16 mutation cases and 24 literal capture/suspension cases,
+including forced recovery and both collection modes where applicable. Full
+production verification and an updated normal-floor cost comparison are pending.
+
+### Production verification of descriptor-only admission
+
+The [combined production receipt](../measurements/74u-descriptor-and-loop-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases with 271 matching source
+hashes. It covers descriptor-only closure admission together with the unchanged-
+input loop fast path. A fresh normal release installation publishes 15 native
+libraries and 27 compiled modules. All 90 [normal-driver verification cases](../measurements/74u-descriptor-normal-driver-correctness.json)
+pass with matching production-proof, source and installed-artifact hashes.
+The reduced admission allocation is ready for integration; its repeat cost
+comparison remains exploratory and the closure consumer stays default-off.
+

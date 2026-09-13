@@ -322,6 +322,7 @@ and earliest arithmetic failures. The diagnostic timing test remains ignored.
 Full production integration and before/after cost evidence follow this checkpoint;
 no speedup is inferred merely from removing the C call.
 
+
 The [full production receipt](../measurements/74w-unchanged-reuse-production-correctness.json)
 now passes all 71 commands and retains 3,164 source-process cases, with all 271
 production source hashes matching. This includes both floor profiles, mutation,
@@ -352,3 +353,5 @@ also mixed. Refusal and independent-call controls vary substantially. This
 experiment establishes neither a repeatable net gain nor profitability for
 smaller loops. The verified fast path remains available behind the development
 switch; default promotion and application/resource acceptance stay open.
+
+
