@@ -5,6 +5,8 @@ pub const MAX_INPUTS: usize = 64;
 pub const MAX_OPERATIONS: usize = 32;
 mod template;
 pub use template::{Input, Send, Template};
+mod recovery_maps;
+pub use recovery_maps::{RecoveryMaps, RecoveryStep};
 
 /// Codes returned by the optional native numeric semantics v1 declaration.
 /// This declares only successful canonical-integer behavior. Errors, mixed
