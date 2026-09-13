@@ -1993,3 +1993,14 @@ memory sampler, and retains every existing production/source check. Its current
 source set includes the corrected aggregate capture producer and verified batched
 numeric journal. Fresh repeated memory observations will use this consolidated
 proof and a matching normal release installation.
+
+The [consolidated storage production proof](../measurements/74t-consolidated-storage-production-correctness.json)
+passes all 73 commands, including debug/release compiler resource-ownership tests,
+and all 3,164 retained source cases. All 284 source hashes match. This completes
+production verification of the test-only private Unit allocation accounting,
+corrected aggregate producer and integrated sampler source set. It does not
+include the separate Error projection extension or resolve its intermittent
+identity failure. The fresh matching normal release installation is published;
+repeated memory and additional aggregate source acceptance are running separately.
+Private relocated allocation bytes still exclude the baseline TCC module and
+general compiler metadata, and no optimization default is changed.
