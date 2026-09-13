@@ -3680,6 +3680,11 @@ impl Runtime {
                 continue;
             }
 
+            // Test-floor observation occurs only after native execution and
+            // optimizer scratch ownership have unwound. Production has no hook.
+            #[cfg(feature = "ffi-test-hooks")]
+            let action = unboxed_numeric_probe::after_action(self, machine, action);
+
             let decoded = unsafe {
                 let state = &*self.state.get();
                 state

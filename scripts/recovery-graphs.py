@@ -30,7 +30,7 @@ def sources():
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
         "closure-elision-smoke.sh",
         "closure-control-smoke.sh", "closure-sequence-smoke.py",
-        "unboxed-numeric-smoke.py",
+        "unboxed-numeric-smoke.py", "unboxed-numeric-control-smoke.py",
         "closure-sequence-mutation-smoke.py",
         "closure-budget-smoke.py",
         "closure-journal-smoke.py",
@@ -237,7 +237,7 @@ def main():
                             raise RuntimeError("source matrix floor differs from control verification")
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:
-                        expected_unboxed = {f"unboxed-{p}.json" for p in ("debug", "release")}
+                        expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control") for p in ("debug", "release")}
                         paths = list(unboxed_evidence.glob("*.json"))
                         if {p.name for p in paths} != expected_unboxed:
                             raise RuntimeError("missing source unboxed matrix receipts")
@@ -249,6 +249,16 @@ def main():
                                 raise RuntimeError("source unboxed matrix failed or floor differs")
                             if len(matrix["rows"]) != 146 or not matrix["production_probe_absent"]:
                                 raise RuntimeError("incomplete source unboxed matrix")
+                            captured = unboxed[f"unboxed-captured-{profile}.json"]
+                            if captured["status"] != "passed" or captured["floor_sha256"] != expected_floor:
+                                raise RuntimeError("source captured numeric matrix failed or floor differs")
+                            if len(captured["rows"]) != 146 or not captured["production_probe_absent"] or not captured["captured_inputs"]:
+                                raise RuntimeError("incomplete source captured numeric matrix")
+                            control = unboxed[f"unboxed-control-{profile}.json"]
+                            if control["status"] != "passed" or control["floor_sha256"] != expected_floor:
+                                raise RuntimeError("source unboxed control matrix failed or floor differs")
+                            if len(control["rows"]) != 448:
+                                raise RuntimeError("incomplete source unboxed control matrix")
                         receipt["unboxed_source_matrices"] = unboxed
             else:
                 run(["mise", "run", "verify"], "production-verification")

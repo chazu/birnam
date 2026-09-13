@@ -1400,7 +1400,7 @@ impl FrameArena {
         Ok(())
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn root_state_program_counter(
         &self,
         handle: FrameHandle,

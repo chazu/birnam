@@ -58,6 +58,12 @@ pub(super) unsafe fn execute(
     candidate: &Rc<Candidate>,
     entry_args: *const Oop,
 ) -> Option<Result<Oop, ExecutionError>> {
+    // A test-floor debugger stop needs the original action boundary in its
+    // baseline run. This does not alter ordinary production admission.
+    #[cfg(feature = "ffi-test-hooks")]
+    if crate::runtime::unboxed_numeric_probe::control_active(machine) {
+        return None;
+    }
     #[cfg(not(test))]
     let enabled = true;
     #[cfg(test)]

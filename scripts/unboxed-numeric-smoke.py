@@ -16,7 +16,7 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def source(shape, operations, precise):
+def source(shape, operations, precise, captured=False):
     if shape == "equal":
         body = "let first := [a + b]; let second := [a + b]; [first + second]"
         expected = 28
@@ -33,9 +33,12 @@ def source(shape, operations, precise):
             statements.append("answer")
         body = " ".join(statements)
         expected = 11 + operations * 3
-    return (f"[System preciseGc: {'true' if precise else 'false'}];\n"
+    if captured:
+        body = body.replace(" + b", " + constant")
+    captures = "#[constant]" if captured else "#[]"
+    return (("let constant := 3;\n" if captured else "") + f"[System preciseGc: {'true' if precise else 'false'}];\n"
             f"let source := [:a :b | {body}];\n"
-            "let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];\n"
+            f"let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: {captures}];\n"
             f"[UnboxedNumericProbe run: block input: 11 other: 3 expected: {expected}];\n")
 
 
@@ -59,6 +62,7 @@ def main():
     parser.add_argument("--floor", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--captured-inputs", action="store_true")
     args = parser.parse_args()
     prefix, floor = args.prefix.resolve(), args.floor.resolve()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
@@ -71,7 +75,7 @@ def main():
                ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs",
                ROOT / "rust/birnam-id/src/heap/dead_allocations.rs"]
     sources += sorted((ROOT / "rust/birnam-codegen/src/numeric_chain").rglob("*.rs"))
-    receipt = dict(status="running", scope="Installed Prelude and Codegen with a test-only floor; no timing claim",
+    receipt = dict(status="running", captured_inputs=args.captured_inputs, scope="Installed Prelude and Codegen with a test-only floor; no timing claim",
                    floor_sha256=sha(floor), installed_sha256={str(p): sha(p) for p in installed},
                    source_sha256={str(p.relative_to(ROOT)): sha(p) for p in sources}, rows=[])
     try:
@@ -88,7 +92,7 @@ def main():
                 shapes += [("tail", 16), ("tail", 32)]
             for precise in ([1] if args.quick else [0, 1]):
                 for shape, operations in shapes:
-                    code = source(shape, operations, precise)
+                    code = source(shape, operations, precise, args.captured_inputs)
                     fixture.write_text(code)
                     baseline = None
                     pcs = 3 if shape == "continue" else operations + int(shape == "return")

@@ -3,10 +3,19 @@
 use super::native_tier::unboxed_numeric::{COMPLETED, MATERIALIZED};
 use super::*;
 
+mod control;
+pub(super) use control::{active as control_active, after_action};
+
 impl Runtime {
     pub(crate) fn install_unboxed_numeric_probe(&self) {
         let vt = self.create_vtable(self.globals().object_vt);
         self.add_method(vt, self.intern(b"run:input:other:expected:").unwrap(), run);
+        self.add_method(
+            vt,
+            self.intern(b"control:input:other:expected:at:capture:")
+                .unwrap(),
+            control::run,
+        );
         let object = self.allocate_instance(vt, 0);
         self.export(b"UnboxedNumericProbe", object).unwrap();
     }

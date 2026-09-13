@@ -209,3 +209,50 @@ The corrected [debug matrix](../measurements/74v-unboxed-source-debug.json) also
 passes all 146 rows, bringing the installed-source total to 292 fresh processes.
 After the function-identity repair, the complete debug workspace again passes
 538 tests with 19 ignored. Full production verification is the next gate.
+
+## Recovered numeric Frames through V2 control
+
+A separate test-floor observation hook stops at an original pending Call only
+after generated code and all unboxed optimizer scratch have unwound. The normal
+production floor has no hook. The baseline for this comparison also exposes
+the original action boundary by declining the older boxed fusion while that
+specific test Machine is under observation. Enabled cases force unboxed recovery
+at the requested source PC. This is an explicit test/debugger stop, not a new
+language-visible poll or a claim that opaque observation is allowed inside an
+admitted raw region.
+
+The hook distinguishes the source PC governing the current root state from the
+already-published successor PC. It checks every live numeric slot and its alias
+identity before and after collection, then publishes ordinary capture or
+suspension using the pending Call's existing result slot and successor PC.
+After control returns, the bridge checks Frame/Continuation pin transfer,
+evicts installed Codegen materializations, collects again, and confirms the
+published numeric identities remain alive. Supplying a fresh numeric result
+resumes the original continuation. The source checks its value and identity,
+requires pins to return to their starting counts, and rejects repeated restore
+or resume as already consumed/not suspended.
+
+The focused debug cases pass for the last Call of three-operation chains,
+equal-valued distinct results, and a chain crossing a Continue split. The full
+[release control matrix](../measurements/74v-unboxed-control-release.json)
+passes 448 fresh processes: baseline and forced unboxed recovery, capture and
+suspension, both GC modes, and every Call in three-/16-/32-operation chains plus
+the equal-result and Continue cases. The equal-result case explicitly requires
+two different recovered identities with the same bits. The [debug control matrix](../measurements/74v-unboxed-control-debug.json) also
+passes all 448 rows. Both profiles retain matching source/floor/installed hashes.
+
+Source verification also has a `--captured-inputs` mode. It materializes each
+numeric Block with an actual captured Integer and uses that value in the raw
+chain; ordinary arguments retain their separate identities. The full production
+gate now requires separate ordinary-input, captured-input and control matrices
+for each floor profile, with matching floor hashes. Full control/captured-input
+verification and performance acceptance remain separate gates.
+
+The captured-input matrices pass all 146 cases in
+[debug](../measurements/74v-unboxed-captured-debug.json) and
+[release](../measurements/74v-unboxed-captured-release.json), with actual raw
+completion, materialization and box-savings counters. Together with the control
+matrices, this checkpoint adds 1,188 fresh source-process comparisons. The
+feature-enabled runtime test suite also passes 195 tests, with 15 ignored. Full
+production verification of this extended checkpoint remains required before
+integration or a performance/promotion claim.
