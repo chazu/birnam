@@ -663,4 +663,3 @@ libraries and 27 compiled modules. All 90 [normal-driver verification cases](../
 pass with matching production-proof, source and installed-artifact hashes.
 The reduced admission allocation is ready for integration; its repeat cost
 comparison remains exploratory and the closure consumer stays default-off.
-

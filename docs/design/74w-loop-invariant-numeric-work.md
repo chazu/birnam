@@ -353,5 +353,3 @@ also mixed. Refusal and independent-call controls vary substantially. This
 experiment establishes neither a repeatable net gain nor profitability for
 smaller loops. The verified fast path remains available behind the development
 switch; default promotion and application/resource acceptance stay open.
-
-
