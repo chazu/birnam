@@ -240,6 +240,11 @@ def main():
                         hashes = {m["floor_sha256"] for name, m in matrices.items() if name.endswith(f"-{profile}.json")}
                         if len(hashes) != 1 or next(iter(hashes)) not in output:
                             raise RuntimeError("source matrix floor differs from control verification")
+                    expected_measurements = {(u, s, e) for u in (1, 3, 4, 8, 16, 32) for s in range(4) for e in (0, 1)}
+                    for profile in ("debug", "release"):
+                        rows = matrices[f"measure-{profile}.json"]["rows"]
+                        if len(rows) != 48 or {(r["uses"], r["shape"], r["enabled"]) for r in rows} != expected_measurements:
+                            raise RuntimeError("incomplete closure profitability-threshold measurement matrix")
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:
                         expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant") for p in ("debug", "release")}

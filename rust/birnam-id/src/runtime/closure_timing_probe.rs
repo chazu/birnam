@@ -110,7 +110,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let uses = std::env::var("BIRNAM_CLOSURE_USES")
             .map(|v| v.parse::<usize>().expect("closure uses"))
             .unwrap_or(1);
-        assert!(matches!(uses, 1 | 3 | 32));
+        assert!((1..=32).contains(&uses));
         let selector = r.intern(b"value:").unwrap();
         let mut answer = r.canonical().nil;
         let invoke = || {

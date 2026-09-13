@@ -4,7 +4,7 @@ import re
 
 def source(uses):
     """Static source bodies keep each repeated call visible to canonical lowering."""
-    assert uses in (1, 3, 32)
+    assert 1 <= uses <= 32
     bodies = []
     for shape in range(4):
         callee = "[| [input value]]" if shape == 3 else "[| input]"
@@ -37,7 +37,7 @@ def check_pair(off, on, batches):
     assert a["shape"] == b["shape"]
     shape = a["shape"]
     uses = a["uses"]
-    assert b["uses"] == uses and uses in (1, 3, 32)
+    assert b["uses"] == uses and 1 <= uses <= 32
     assert a["calls"] == b["calls"] == calls
     assert a["constructor_discoveries"] == b["constructor_discoveries"] == 0
     assert a["allocation_bytes"] == b["allocation_bytes"] > 0
