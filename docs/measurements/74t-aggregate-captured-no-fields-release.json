@@ -1,0 +1,1353 @@
+{
+  "status": "passed",
+  "profile": "release",
+  "floor_sha256": "d03b037d749bd7e5beb9d2f2aeb2eee1f09e63b299bc45eaa235c52247cfda76",
+  "disabled_consumers": [
+    "virtual-fields"
+  ],
+  "correctness_sha256": "f608bd9c0e5dc07ee5f6992623d82bf64a6648750b346e88d14ed43ef63425ce",
+  "script_sha256": "a58bd46ccfa40fbcdd450097c6c7033d68455eea700f68daa22823549da25144",
+  "prerequisite_driver_sha256": "ed9d0d1a1143c853d485a8e1c917b96d0ea54a25c1db59fa03c1a2b88079824a",
+  "driver_scope": "This source-validation driver is independently hashed. The prerequisite production gate binds but does not execute this driver. Every other prerequisite source must remain identical; no runtime, compiler, probe or assertion change is admitted here.",
+  "installed_sha256": {
+    "/private/tmp/birnam-74u-hot-prefix/bin/birnam": "b05e60072cfb34e262aeb02e52d4f8994a02550d7a80969773863002bea49af2",
+    "/private/tmp/birnam-74u-hot-prefix/share/birnam/rust-install.json": "77d61caef677ede27a0ff53208cfa364db9e4b48a8b204506d1312bd1d462822",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_appConfig.dylib": "2fbe364ba88705066a861b3498aeb0895dc9c36bcebe2161da3afd7f2582d262",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_cli.dylib": "a43ad6757c8f49f9f984887e3e5e632dfba0381f6b047ad97ff1cbd4e5354074",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_compiledUnit.dylib": "2a56737d0243456070340d741594d507f0ac146fdbd252275fda3dce2883e0a6",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_compiledUnitDocs.dylib": "5c04d7c1efc5599563d7a36d02fbdaacd2b751d80ec742cee1ca705f3d014859",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_config.dylib": "6709af8bb08c38b8ba20e96c824994b0384a04b1f48919ae5cd037a0ed09481a",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_doc.dylib": "621cab36af6665e85650c17829215c34373f339285a8b9a7dcd2bba44cd4ae36",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_file.dylib": "acf8ccadde531da42e5a9b0069aaf635b37d16eb477288a30e38c0bd4f178651",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_html.dylib": "930a620009ea6988efe9846adcafae13325c8f92e9ec5796e4724c956545c2f9",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_http.dylib": "1c11c0f5da5e4d0540404ac561f6be2b3f237fa4c4d0df3f6855d8f7c5edf110",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id.dylib": "bc2a2b6a8ded0917b1b50a6ee413b8ac034e8b14145eb8cac774d2cba00ea8ad",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_alien.dylib": "ff5f8a55239088d04b4676f6e90c1230920e6fb382b2d97ac47590a4d11b7111",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_artifact.dylib": "8bfafd4e18cad83b3f761112db5869d79dbe4cdda6c81f5122143967eb68442b",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_codegen.dylib": "4e56ba7167eb4c1744c398e183fd10e0301a543ed20df375ca952c3e9045e6c6",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_collection.dylib": "2abe2325646a618619fffb0cf289b190b08cf063524cb4a0792ec7ef297f07a9",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_error.dylib": "73ced7f293d563d2d311545bdfb01bd874c853a4c355247276a71091ac37e0ea",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_image.dylib": "9c0e1ae4d709a4ba10d0b841add73c9fd8f4419f5b67c9a00f517650ed03227f",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_isolate.dylib": "6a192584882b31b3ed868d44251de3cb57f00b86a28d20b6457bd47630fef3c4",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_lang.dylib": "b3ce4da01cfddab89c3eb92974d5b2785d51f827165a8464fd8a23f302952705",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_peg.dylib": "836f767b58a46923159f33b8d205b36094b16993bab3aac25536ee9f110f3580",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_prelude.dylib": "7a4e25e31c0e700b222bf61b8eabdb8a19b14abe8bd6aa14efa0806a6151a26b",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_relational.dylib": "a2205d2a50417913ff8e424a967007279e1d09fa9aa6f53d983287dc9bf29908",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_id_tcc.dylib": "3c29163fc98ce2025578c47081f6a58794ece696c7f485dd0df877e227cc88d6",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_isolate.dylib": "5b81ce2436e3a0cfaa1ad7c8ea37798bd3d36e492ba7981e564cdf0afc50862f",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_json.dylib": "6719320e21df15a22408da987906d4a217b3e2d29dcedc1c06113629528a07e8",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_log.dylib": "2d5ed9ce4c3a86b707939e1c6067d9e1cc8c1e78a75a987875689883a1638986",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_lsp.dylib": "9e178050fb08308cc2385a757e8982c37a583afcd7c995b6d941a0e7105f8f3e",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_markdown.dylib": "a01c3582bef3d6309c3daf10145fd31202bf9ad15d00ea381cd4ced267b3f3ad",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_modules.dylib": "62a655e833468551453f9599b507bcd7720691bfc1ad5f928a2e3a8603a603fa",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_nativedoc.dylib": "9f030dded1ea368dc3a1f7cd017a224e84e072acf97846df82c8427fb7820563",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_os.dylib": "2aed942071c1a85dc655f9d71dacfb82e598783c9b4a4269d18732712f7f755b",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_portable_code.dylib": "1c08bb0aed8157d197876abf96d0af06ecfc6b2aca2e3a33ebadfe4ee0b95ee6",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_process.dylib": "92d5b9e852bf65de3f261398701645772a4c0948147e25623e20aa31d41ba9f5",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_projectPolicy.dylib": "733cfa259f4373bfc408b3ec8851d4a858a94396e641b018fe01e11c04b912b0",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_random.dylib": "63675cdcb814c7853c760f0c08499af68ff458c7c3355180e26a07b2a118fcaf",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_repl.dylib": "b53b50d5fd9ca8ebabf4e710aa2ea332a01be40ae0406b74364f63072fbb1550",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_socket.dylib": "d9af79340a4f454c81c42e0e9e0b5514f3be60cbbc86b246f3897e1ee929f52e",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_stacklessControl.dylib": "c7dd3aa9beb86c00f042f8acd340aa128ce9fd52a9198a817de76e48c1df96bf",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_stdlib.dylib": "dfd0c85e65c10cf201865dfc1c5995473c481470ea88f05fb046891bc684bf2f",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_store.dylib": "b6f2c34b185933c515f448aedde1bafd017af332681e758b311cf28b4b491d3c",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_test.dylib": "987341e6ff7d9cadebaac3ab351700e30dd7d617cef87aa2399029d8832d31cd",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_time.dylib": "529a0d387fd59087202b71b15eac05f56c4a554d492f969b27c481deb2f49c85",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libbirnam_toml.dylib": "79b8af535078461a224d75ad69501bd9aa040f19caa1bbe22df84c16a48f327d",
+    "/private/tmp/birnam-74u-hot-prefix/lib/liblinenoise.dylib": "857e6d153d92b68cd07e6127c1a8f891ba4c25e313e9cd3478cb6ceb7e2a420b",
+    "/private/tmp/birnam-74u-hot-prefix/lib/libtermbox2.dylib": "dab8d8594ed4f7b44b1110cdf228f92f9321e2c081b6eec2ebf4636a4811ff69"
+  },
+  "rows": [
+    {
+      "projections": 1,
+      "shape": 0,
+      "precise": 0,
+      "source_sha256": "fe2bf5e5679690c267c784068d00ed5ac48b73fe76dd77a3c3adca2bb3615e59",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 137]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=2176 physical_saved=0 completed=0 materialized=0 answer=42\n45\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=3200 physical_saved=0 completed=0 materialized=0 answer=42\n53\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=2176 physical_saved=0 completed=0 materialized=0 answer=42\n45\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=2176 physical_saved=0 completed=0 materialized=0 answer=42\n44\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 2176,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 3200,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 2176,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 2176,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 0,
+      "precise": 1,
+      "source_sha256": "1be47b8adfa783a4541d787a3f598951908d5ef627a657a0d3d057a4b34698d9",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 137]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=2176 physical_saved=0 completed=0 materialized=0 answer=42\n45\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=3200 physical_saved=0 completed=0 materialized=0 answer=42\n53\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=2176 physical_saved=0 completed=0 materialized=0 answer=42\n45\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=2176 physical_saved=0 completed=0 materialized=0 answer=42\n44\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 2176,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 3200,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 2176,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 2176,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 1,
+      "precise": 0,
+      "source_sha256": "1b87a5de5077fca66bb20c6ffe396a98020f1aea9181dc069eccaffb827b310c",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; [copy name]]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 137]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=1664 physical_saved=0 completed=0 materialized=0 answer=42\n41\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=2688 physical_saved=0 completed=0 materialized=0 answer=42\n47\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=1664 physical_saved=0 completed=0 materialized=0 answer=42\n41\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=1664 physical_saved=0 completed=0 materialized=0 answer=42\n37\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 1664,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 2688,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 1664,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 1664,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 1,
+      "precise": 1,
+      "source_sha256": "2b230d1f78bf60a9c82504bc7672133655606e8d9af438d1407d655fc711afa4",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; [copy name]]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 137]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=1664 physical_saved=0 completed=0 materialized=0 answer=42\n40\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=2688 physical_saved=0 completed=0 materialized=0 answer=42\n49\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=1664 physical_saved=0 completed=0 materialized=0 answer=42\n41\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=1664 physical_saved=0 completed=0 materialized=0 answer=42\n41\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 1664,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 2688,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 1664,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 1664,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 2,
+      "precise": 0,
+      "source_sha256": "5946dbc9910068154b23a0a0f6a63ecb0f4bda73e06a7e025931b82ea0db9f71",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let second := [copy clone]; let answer := [second name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 137]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=3200 physical_saved=0 completed=0 materialized=0 answer=42\n53\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=4224 physical_saved=0 completed=0 materialized=0 answer=42\n61\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=3200 physical_saved=0 completed=0 materialized=0 answer=42\n53\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=3200 physical_saved=0 completed=0 materialized=0 answer=42\n53\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 3200,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 4224,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 3200,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 3200,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 2,
+      "precise": 1,
+      "source_sha256": "ce7ff6c123b43a7abb1c8d4bcc6da17629a61a0b467338a3f4d583ae8a805c14",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let second := [copy clone]; let answer := [second name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 137]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=3200 physical_saved=0 completed=0 materialized=0 answer=42\n53\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=4224 physical_saved=0 completed=0 materialized=0 answer=42\n61\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=3200 physical_saved=0 completed=0 materialized=0 answer=42\n53\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=3200 physical_saved=0 completed=0 materialized=0 answer=42\n53\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 3200,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 4224,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 3200,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 3200,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 3,
+      "precise": 0,
+      "source_sha256": "165d67144080f6cff0cc899f1984ff9879e5d35dcf5d68b8585a408e516e7831",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let observed := [observer value: copy value: copy]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapednative := [last value]; [[escapednative == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapednative name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 137]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedreplaced := [last value]; [[escapedreplaced == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedreplaced name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedrestored := [last value]; [[escapedrestored == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedrestored name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedcanonical := [last value]; [[escapedcanonical == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedcanonical name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=9728 physical_saved=0 completed=0 materialized=0 answer=42\n104\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=10752 physical_saved=0 completed=0 materialized=0 answer=42\n112\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=9728 physical_saved=0 completed=0 materialized=0 answer=42\n104\nbirnam> nil\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=9728 physical_saved=0 completed=0 materialized=0 answer=42\n104\nbirnam> nil\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 9728,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 10752,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 9728,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 9728,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 3,
+      "precise": 1,
+      "source_sha256": "c73a794733532642b11269fd2474fad5909a1bb5a9e94ab7caa09c077d3e94f6",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let observed := [observer value: copy value: copy]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapednative := [last value]; [[escapednative == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapednative name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 137]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedreplaced := [last value]; [[escapedreplaced == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedreplaced name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedrestored := [last value]; [[escapedrestored == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedrestored name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedcanonical := [last value]; [[escapedcanonical == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedcanonical name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=9728 physical_saved=0 completed=0 materialized=0 answer=42\n104\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=10752 physical_saved=0 completed=0 materialized=0 answer=42\n111\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=9728 physical_saved=0 completed=0 materialized=0 answer=42\n104\nbirnam> nil\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=9728 physical_saved=0 completed=0 materialized=0 answer=42\n104\nbirnam> nil\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 9728,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 10752,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 9728,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 9728,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 4,
+      "precise": 0,
+      "source_sha256": "ec87eb9dd897663183cb82b0cf113ed1e8fc31abea06f67c2d7a7b10f0663c26",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; expected]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=1280 physical_saved=0 completed=0 materialized=0 answer=42\n38\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=1280 physical_saved=0 completed=0 materialized=0 answer=42\n38\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=1280 physical_saved=0 completed=0 materialized=0 answer=42\n38\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=1280 physical_saved=0 completed=0 materialized=0 answer=42\n38\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 1280,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 1280,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 1280,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 1280,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 1,
+      "shape": 4,
+      "precise": 1,
+      "source_sha256": "637e8dadc17bbbcc7ec51daac8f1c9bad719e1fd7e0e1ccd1fda4d0939b4d764",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; expected]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=1280 physical_saved=0 completed=0 materialized=0 answer=42\n38\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=1280 physical_saved=0 completed=0 materialized=0 answer=42\n38\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=1280 physical_saved=0 completed=0 materialized=0 answer=42\n38\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=1280 physical_saved=0 completed=0 materialized=0 answer=42\n38\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 1280,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 1280,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 1280,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 1280,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 0,
+      "precise": 0,
+      "source_sha256": "fec5838bb3753365e012e6e99bc6bd607387db9c50a5d992dbb313ad9c30fb3b",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 411]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=3968 physical_saved=0 completed=0 materialized=0 answer=42\n59\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=7040 physical_saved=0 completed=0 materialized=0 answer=42\n83\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=3968 physical_saved=0 completed=0 materialized=0 answer=42\n58\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=3968 physical_saved=0 completed=0 materialized=0 answer=42\n59\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 3968,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 7040,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 3968,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 3968,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 0,
+      "precise": 1,
+      "source_sha256": "e3fb7755c60748ec6b24489d2725f958f05a8fe5e4b0c0421ee39a7b6b3a92a5",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 411]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=3968 physical_saved=0 completed=0 materialized=0 answer=42\n59\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=7040 physical_saved=0 completed=0 materialized=0 answer=42\n83\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=3968 physical_saved=0 completed=0 materialized=0 answer=42\n59\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=3968 physical_saved=0 completed=0 materialized=0 answer=42\n59\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 3968,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 7040,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 3968,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 3968,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 1,
+      "precise": 0,
+      "source_sha256": "65126cb6b926a248cb6a285e8e0c51ff74333f3393fc090f3b83fdaf16964c73",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; [copy name]]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 411]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=3456 physical_saved=0 completed=0 materialized=0 answer=42\n54\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=6528 physical_saved=0 completed=0 materialized=0 answer=42\n79\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=3456 physical_saved=0 completed=0 materialized=0 answer=42\n55\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=3456 physical_saved=0 completed=0 materialized=0 answer=42\n55\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 3456,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 6528,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 3456,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 3456,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 1,
+      "precise": 1,
+      "source_sha256": "f0fe55c35b5a60742140d5a3fba4b66e7aad78e2d2aa5182ef594b0745f0bce8",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; [copy name]]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 411]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=3456 physical_saved=0 completed=0 materialized=0 answer=42\n55\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=6528 physical_saved=0 completed=0 materialized=0 answer=42\n78\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=3456 physical_saved=0 completed=0 materialized=0 answer=42\n55\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=3456 physical_saved=0 completed=0 materialized=0 answer=42\n55\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 3456,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 6528,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 3456,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 3456,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 2,
+      "precise": 0,
+      "source_sha256": "aa00e247c4ef506d593669010d3ce6e3f3bf81e618ce54d4e9be45a73aaf3a4c",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let second := [copy clone]; let answer := [second name]; let answer := [second name]; let answer := [second name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 411]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=4992 physical_saved=0 completed=0 materialized=0 answer=42\n67\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=8064 physical_saved=0 completed=0 materialized=0 answer=42\n91\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=4992 physical_saved=0 completed=0 materialized=0 answer=42\n67\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=4992 physical_saved=0 completed=0 materialized=0 answer=42\n67\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 4992,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 8064,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 4992,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 4992,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 2,
+      "precise": 1,
+      "source_sha256": "061730f8ad2461716e6dc953270166edf36e9f8a415719d6424519a44d699b6d",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let second := [copy clone]; let answer := [second name]; let answer := [second name]; let answer := [second name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 411]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=4992 physical_saved=0 completed=0 materialized=0 answer=42\n67\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=8064 physical_saved=0 completed=0 materialized=0 answer=42\n90\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=4992 physical_saved=0 completed=0 materialized=0 answer=42\n67\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=4992 physical_saved=0 completed=0 materialized=0 answer=42\n67\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 4992,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 8064,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 4992,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 4992,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 3,
+      "precise": 0,
+      "source_sha256": "542febfa6f9f1ea731102a83e8c12a31dc70b4c43d73bcfb81869be33313d667",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let observed := [observer value: copy value: copy]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapednative := [last value]; [[escapednative == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapednative name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 411]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedreplaced := [last value]; [[escapedreplaced == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedreplaced name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedrestored := [last value]; [[escapedrestored == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedrestored name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedcanonical := [last value]; [[escapedcanonical == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedcanonical name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=11520 physical_saved=0 completed=0 materialized=0 answer=42\n118\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=14592 physical_saved=0 completed=0 materialized=0 answer=42\n142\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=11520 physical_saved=0 completed=0 materialized=0 answer=42\n118\nbirnam> nil\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=11520 physical_saved=0 completed=0 materialized=0 answer=42\n118\nbirnam> nil\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 11520,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 14592,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 11520,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 11520,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 3,
+      "precise": 1,
+      "source_sha256": "fea9a375acb30229348b24b4b0d4f80b7bd6b3e660497dd68cb2f7894df86efc",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let observed := [observer value: copy value: copy]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapednative := [last value]; [[escapednative == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapednative name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 411]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedreplaced := [last value]; [[escapedreplaced == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedreplaced name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedrestored := [last value]; [[escapedrestored == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedrestored name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedcanonical := [last value]; [[escapedcanonical == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedcanonical name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=11520 physical_saved=0 completed=0 materialized=0 answer=42\n118\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=14592 physical_saved=0 completed=0 materialized=0 answer=42\n142\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=11520 physical_saved=0 completed=0 materialized=0 answer=42\n118\nbirnam> nil\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=11520 physical_saved=0 completed=0 materialized=0 answer=42\n117\nbirnam> nil\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 11520,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 14592,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 11520,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 11520,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 4,
+      "precise": 0,
+      "source_sha256": "82a5ec81f1c2b123dadc5b2e97a94b447aca1cd9ca14aec3f508d5e5480e2e95",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; expected]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=3328 physical_saved=24 completed=0 materialized=0 answer=42\n54\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=3328 physical_saved=0 completed=0 materialized=0 answer=42\n54\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=3328 physical_saved=0 completed=0 materialized=0 answer=42\n54\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=3328 physical_saved=24 completed=0 materialized=0 answer=42\n54\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 3328,
+          "physical_saved": 24,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 3328,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 3328,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 3328,
+          "physical_saved": 24,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 3,
+      "shape": 4,
+      "precise": 1,
+      "source_sha256": "d9244877af178742e2b4066df809d02fc1f935eb8d5be6a6eacf17e94920a42a",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; expected]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=3328 physical_saved=24 completed=0 materialized=0 answer=42\n54\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=3328 physical_saved=0 completed=0 materialized=0 answer=42\n54\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=3328 physical_saved=0 completed=0 materialized=0 answer=42\n54\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=3328 physical_saved=24 completed=0 materialized=0 answer=42\n54\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 3328,
+          "physical_saved": 24,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 3328,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 3328,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 3328,
+          "physical_saved": 24,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 0,
+      "precise": 0,
+      "source_sha256": "f041453d861df3d1a8d53e6a9917955f752387d48e6c712bfcd2d0260d07d3fc",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 2192]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=15616 physical_saved=0 completed=0 materialized=0 answer=42\n150\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=32000 physical_saved=0 completed=0 materialized=0 answer=42\n278\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=15616 physical_saved=0 completed=0 materialized=0 answer=42\n150\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=15616 physical_saved=0 completed=0 materialized=0 answer=42\n149\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 15616,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 32000,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 15616,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 15616,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 0,
+      "precise": 1,
+      "source_sha256": "a6a1ddf1605697b6781296bf857ebb8069f54100bf9d94d51e3ae4968ee39afd",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 2192]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=15616 physical_saved=0 completed=0 materialized=0 answer=42\n150\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=32000 physical_saved=0 completed=0 materialized=0 answer=42\n278\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=15616 physical_saved=0 completed=0 materialized=0 answer=42\n150\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=15616 physical_saved=0 completed=0 materialized=0 answer=42\n150\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 15616,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 32000,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 15616,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 15616,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 1,
+      "precise": 0,
+      "source_sha256": "95126abc3b143083f55ff54a6aa885d5a998bfc2f3055738825be5516dc0de28",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; [copy name]]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 2192]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=15104 physical_saved=0 completed=0 materialized=0 answer=42\n146\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=31488 physical_saved=0 completed=0 materialized=0 answer=42\n274\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=15104 physical_saved=0 completed=0 materialized=0 answer=42\n146\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=15104 physical_saved=0 completed=0 materialized=0 answer=42\n129\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 15104,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 31488,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 15104,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 15104,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 1,
+      "precise": 1,
+      "source_sha256": "4f7ace1a6cec5c1b69fcb305a0a95d43569c9a851dd80ec119404a7eda8ebe66",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; [copy name]]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 2192]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=15104 physical_saved=0 completed=0 materialized=0 answer=42\n146\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=31488 physical_saved=0 completed=0 materialized=0 answer=42\n274\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=15104 physical_saved=0 completed=0 materialized=0 answer=42\n146\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=15104 physical_saved=0 completed=0 materialized=0 answer=42\n146\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 15104,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 31488,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 15104,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 15104,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 2,
+      "precise": 0,
+      "source_sha256": "ac91d9729c8a07ff78522863dbbe04b61b46a8773e2b3d5363a680bfd487f874",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let second := [copy clone]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 2192]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=33024 physical_saved=0 completed=0 materialized=0 answer=42\n286\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 33024,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 2,
+      "precise": 1,
+      "source_sha256": "86a9700eab6ae3bc7a684720bbe06b8f86d58846572b13a9a45a0f00ab428da0",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let second := [copy clone]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; let answer := [second name]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 2192]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=33024 physical_saved=0 completed=0 materialized=0 answer=42\n286\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 33024,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 3,
+      "precise": 0,
+      "source_sha256": "f008824aa7fb19310116d18b05a33611bb054e897311067c043c66841b4d17bf",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let observed := [observer value: copy value: copy]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapednative := [last value]; [[escapednative == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapednative name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 2192]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedreplaced := [last value]; [[escapedreplaced == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedreplaced name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedrestored := [last value]; [[escapedrestored == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedrestored name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedcanonical := [last value]; [[escapedcanonical == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedcanonical name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=23168 physical_saved=0 completed=0 materialized=0 answer=42\n209\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=39552 physical_saved=0 completed=0 materialized=0 answer=42\n337\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=23168 physical_saved=0 completed=0 materialized=0 answer=42\n209\nbirnam> nil\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=23168 physical_saved=0 completed=0 materialized=0 answer=42\n209\nbirnam> nil\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 23168,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 39552,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 23168,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 23168,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 3,
+      "precise": 1,
+      "source_sha256": "2b88727aac82fa77de356060870769d3f98f648ba6fa2674c0891b140139aba1",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let answer := [copy name]; let observed := [observer value: copy value: copy]; answer]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapednative := [last value]; [[escapednative == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapednative name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 2192]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedreplaced := [last value]; [[escapedreplaced == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedreplaced name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedrestored := [last value]; [[escapedrestored == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedrestored name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \nlet escapedcanonical := [last value]; [[escapedcanonical == proto] ifTrue: [| [OS exit: 46]] ifFalse: [| nil]]; [[[escapedcanonical name] == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=23168 physical_saved=0 completed=0 materialized=0 answer=42\n209\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=39552 physical_saved=0 completed=0 materialized=0 answer=42\n337\nbirnam> nil\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=23168 physical_saved=0 completed=0 materialized=0 answer=42\n209\nbirnam> nil\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=23168 physical_saved=0 completed=0 materialized=0 answer=42\n209\nbirnam> nil\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 23168,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 39552,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 23168,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 23168,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 4,
+      "precise": 0,
+      "source_sha256": "d4d5718ad03276550e41c0d0e84ff60c8807d0738370a0e902af671dc31e0ea4",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: false]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; expected]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=16640 physical_saved=128 completed=0 materialized=0 answer=42\n158\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=16640 physical_saved=128 completed=0 materialized=0 answer=42\n158\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 128,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 128,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    },
+    {
+      "projections": 16,
+      "shape": 4,
+      "precise": 1,
+      "source_sha256": "fdba6e023653ca347b83f73dfaa3f3159fbb26442b62f82c992dc9b66d0a376c",
+      "input": "[System load: \"modules/os.birnam\"]; [System preciseGc: true]; let expected := 42; let proto := [LogicVar named: expected]; let canonicalProto := [proto clone]; let last := [nil asCell]; let effects := [0 asCell]; let observer := [:copy :alias |   [[copy == proto] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];   [[copy == alias] ifTrue: [| nil] ifFalse: [| [OS exit: 42]]];   [[copy == [last value]] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];   [last set: copy]; nil]; let source := [:prototype :observer | let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; let copy := [prototype clone]; expected]; let block := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[expected]]; \n[System println: \"aggregate-phase native\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answernative := [block value: proto value: observer]; [[answernative == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect defineMethod: #name on: proto as: [:self | [effects inc]; expected]];\n[System println: \"aggregate-phase replaced\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerreplaced := [block value: proto value: observer]; [[answerreplaced == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Reflect removeMethod: #name on: proto];\n[System println: \"aggregate-phase restored\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: proto other: observer expected: 42]; let answerrestored := [block value: proto value: observer]; [[answerrestored == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[System println: \"aggregate-phase canonical\"]; [effects set: 0]; [UnboxedNumericProbe run: block input: canonicalProto other: observer expected: 42]; let answercanonical := [block value: canonicalProto value: observer]; [[answercanonical == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]]; [[[effects value] = 0]  ifTrue: [| nil] ifFalse: [| [OS exit: 45]]]; [System gc]; \n[Codegen evictMaterializations]; [System gc]; let afterEviction := [block value: proto value: observer]; [[afterEviction == expected] ifTrue: [| nil] ifFalse: [| [OS exit: 48]]]; [System println: \"aggregate-source identities and current effects passed\"]; \n",
+      "exit_code": 0,
+      "output": "birnam \u2014 an interactive image. :help for commands, :quit (or Ctrl-D) to leave.\nbirnam> anObject\nbirnam> aggregate-phase native\nunboxed-numeric invocations=8 bytes=16640 physical_saved=128 completed=0 materialized=0 answer=42\n158\nbirnam> anObject\nbirnam> aggregate-phase replaced\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> anObject\nbirnam> aggregate-phase restored\nunboxed-numeric invocations=8 bytes=16640 physical_saved=0 completed=0 materialized=0 answer=42\n158\nbirnam> aggregate-phase canonical\nunboxed-numeric invocations=8 bytes=16640 physical_saved=128 completed=0 materialized=0 answer=42\n158\nbirnam> aggregate-source identities and current effects passed\nanObject\nbirnam> \n",
+      "measurements": {
+        "native": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 128,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "replaced": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "restored": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 0,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        },
+        "canonical": {
+          "invocations": 8,
+          "bytes": 16640,
+          "physical_saved": 128,
+          "completed": 0,
+          "materialized": 0,
+          "answer": 42
+        }
+      }
+    }
+  ],
+  "scope": "Real host REPL, installed compiler and Relational native getter, using the previously verified test floor. Each expression returns to the host between phases so removed code can retire before readmission. Existing numeric probe supplies logical-byte and physical-allocation counters only: its completed/materialized fields count numeric optimization and must remain zero here. Four phases per process: native getter; effectful Id override creating a private vtable; inherited native getter restored with undeclared private layout still refused; unchanged canonical-layout prototype readmitted. Shapes include field-only returns, a tail getter, successive clones, an escaping observer and discarded repeated clones. Selected disabled consumers must omit no physical allocations; unrelated consumers remain active. This is source correctness and admission evidence, not a timing comparison or a proof of every aggregate shape."
+}
