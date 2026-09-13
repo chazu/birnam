@@ -9,7 +9,7 @@ pub struct Invocation {
     pub call_site: u32,
     pub selector: Vec<u8>,
     pub argument_sources: Vec<u32>,
-    pub return_source: u32,
+    pub return_source: Option<u32>,
     pub stores: Vec<(u32, Value)>,
     /// Baseline caller indices, excluding this PC's driver token.
     pub boxed_indices: Vec<u32>,
@@ -33,7 +33,12 @@ pub(super) fn derive(
         return sequence;
     };
     let mut values = entry_values.to_vec();
-    values[result.0 as usize] = Some(Value::Input(first.return_source));
+    values[result.0 as usize] = Some(
+        first
+            .return_source
+            .map(Value::Input)
+            .unwrap_or(Value::Result(0)),
+    );
     let mut aliases = first.continuation_aliases.clone().unwrap();
     let mut pc = first_edge.target.0 as usize;
     let mut visited = vec![false; program.blocks.len()];
@@ -55,6 +60,7 @@ pub(super) fn derive(
             callee_layout,
             &mut next_values,
             &aliases,
+            sequence.len() as u32 + 1,
         ) else {
             break;
         };
@@ -73,6 +79,7 @@ fn extend(
     callee_layout: &PhysicalLayout,
     values: &mut [Option<Value>],
     previous_aliases: &[bool],
+    ordinal: u32,
 ) -> Option<Invocation> {
     let mut aliases = previous_aliases.to_vec();
     let mut stores = Vec::new();
@@ -118,23 +125,34 @@ fn extend(
         .map(
             |argument| match values.get(argument.0 as usize).copied().flatten()? {
                 Value::Input(source) => Some(source),
-                Value::Closure => None,
+                Value::Closure | Value::Result(_) => None,
             },
         )
         .collect::<Option<_>>()?;
-    let returned = first.callee.return_entry_slot() as u32;
-    let return_source = if let Some(index) = callee_layout
-        .entry_capture_slots
-        .iter()
-        .position(|s| *s == returned)
-    {
-        first.capture_sources[index]
+    let return_source = if let Some(returned) = first.callee.return_entry_slot() {
+        let returned = returned as u32;
+        Some(
+            if let Some(index) = callee_layout
+                .entry_capture_slots
+                .iter()
+                .position(|s| *s == returned)
+            {
+                first.capture_sources[index]
+            } else {
+                *argument_sources
+                    .get(returned.checked_sub(callee_layout.entry_argument_start)? as usize)?
+            },
+        )
     } else {
-        *argument_sources.get(returned.checked_sub(callee_layout.entry_argument_start)? as usize)?
+        None
     };
     if values
         .get_mut(result.0 as usize)?
-        .replace(Value::Input(return_source))
+        .replace(
+            return_source
+                .map(Value::Input)
+                .unwrap_or(Value::Result(ordinal)),
+        )
         .is_some()
     {
         return None;

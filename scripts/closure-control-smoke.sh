@@ -26,13 +26,14 @@ for profile in debug release; do
     python3 scripts/unboxed-numeric-measurement-smoke.py --prefix "$prefix" --floor "$floor" --profile "$profile" --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/unboxed-measure-$profile.json"
     python3 scripts/loop-invariant-numeric-smoke.py --prefix "$prefix" --floor "$floor" --profile "$profile" --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/loop-invariant-$profile.json"
   fi
+  python3 scripts/closure-literals-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/literals-$profile.json"
   python3 scripts/closure-sequence-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/sequence-$profile.json"
   python3 scripts/closure-sequence-mutation-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/mutation-$profile.json"
   python3 scripts/closure-budget-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/budget-$profile.json"
   python3 scripts/closure-journal-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/journal-$profile.json"
   python3 scripts/closure-measurement-smoke.py --prefix "$prefix" --floor "$floor" --profile "$profile" --output "$work/measure-$profile.json"
   if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
-    for matrix in sequence mutation budget journal measure; do
+    for matrix in sequence mutation budget journal measure literals; do
       cp "$work/$matrix-$profile.json" "$BIRNAM_TEST_CLOSURE_RECEIPTS/$matrix-$profile.json"
     done
   fi

@@ -26,6 +26,9 @@ impl Prepared {
         }
         let layout = resumable::color_slots(&program).ok()?;
         let plan = Plan::derive(&program, &layout).ok()?;
+        if plan.callee.has_literal_allocations() && !literal_callees_enabled() {
+            return None;
+        }
         let descriptor =
             resumable_descriptor::compile_portable_descriptor_v2(&program, &layout, row, 1).ok()?;
         Some(Self { descriptor, plan })
@@ -159,6 +162,7 @@ impl Record {
             + p.selector.len()
             + size_of_val(p.callee.recovery_sources())
             + size_of_val(p.callee.boxed_indices())
+            + p.callee.additional_allocation_metadata_bytes()
             + size_of_val(p.invocation_aliases.as_slice())
             + size_of_val(p.constructor_stores.as_slice())
             + p.continuation.as_ref().map_or(0, |e| {
@@ -382,7 +386,7 @@ impl Runtime {
                 break;
             };
             let boxes = selected.call.boxes.len()
-                + plan.callee.boxed_indices().len()
+                + plan.callee.allocation_count()
                 + selected.callee.descriptor.driver_argument_count()
                 + if admitted.is_empty() {
                     0
@@ -423,6 +427,8 @@ impl Runtime {
         Some((|| {
             let identity = unsafe { (*self.state.get()).heap.record_virtual_clone(snapshot) }
                 .ok_or(ExecutionError::InvalidAction)?;
+            // Untraced scratch; the admitted interval cannot collect or observe.
+            let mut produced = Vec::new();
             let mut action = nil;
             for (call_index, selected) in admitted.iter().enumerate() {
                 let call = &selected.call;
@@ -443,6 +449,7 @@ impl Runtime {
                             match value {
                                 Value::Input(s) => inputs[s as usize],
                                 Value::Closure => nil,
+                                Value::Result(i) => produced[i as usize],
                             },
                         )?;
                     }
@@ -495,8 +502,15 @@ impl Runtime {
                 if selected.callee.descriptor.driver_argument_count() == 1 {
                     self.make_integer(0);
                 }
-                for &index in plan.callee.boxed_indices() {
-                    self.make_integer(index as i64);
+                let mut returned = call.returned.map(|s| inputs[s as usize]).unwrap_or(nil);
+                for (index, word) in plan.callee.allocation_values().enumerate() {
+                    let allocated = self.make_integer(word);
+                    if plan.callee.return_allocation() == Some(index) {
+                        returned = allocated;
+                    }
+                }
+                if plan.callee.return_allocation().is_some() {
+                    produced.push(returned);
                 }
                 unsafe {
                     let state = &mut *self.state.get();
@@ -507,7 +521,7 @@ impl Runtime {
                         result_slot,
                         plan.callee.return_slot(),
                         nil,
-                        inputs[call.returned as usize],
+                        returned,
                     )?;
                 }
                 #[cfg(any(test, feature = "ffi-test-hooks"))]

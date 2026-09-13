@@ -448,6 +448,7 @@ impl Prepared {
         .ok()?;
         if program.blocks.len() == 1
             && let Ok(plan) = small_callee::compile(&program, &layout)
+            && (!plan.has_literal_allocations() || literal_callees_enabled())
         {
             return Some(Self {
                 descriptor,
@@ -685,6 +686,21 @@ fn leaf_control_guard(runtime: &Runtime, machine: Oop) -> bool {
     true
 }
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static LITERAL_CALLEES: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+}
+fn literal_callees_enabled() -> bool {
+    #[cfg(test)]
+    {
+        LITERAL_CALLEES.get()
+    }
+    #[cfg(not(test))]
+    {
+        std::env::var_os("BIRNAM_DEV_LITERAL_CALLEES").is_some_and(|v| v == "1")
+    }
+}
+
 fn leaf_allocation_guard(
     runtime: &Runtime,
     descriptor: &FrameDescriptor,
@@ -695,7 +711,7 @@ fn leaf_allocation_guard(
     // If any of those allocations could collect, create the callee first.
     let bytes = crate::heap::Heap::allocation_total_size(core::mem::size_of::<i64>())
         .unwrap()
-        .saturating_mul(plan.boxed_indices().len() + descriptor.driver_argument_count());
+        .saturating_mul(plan.allocation_count() + descriptor.driver_argument_count());
     !state
         .metadata
         .automatic_collection_due(state.heap.bytes_since_collection().saturating_add(bytes))
@@ -792,15 +808,18 @@ pub(super) fn inline_call(
     if descriptor.driver_argument_count() == 1 {
         runtime.make_integer(0);
     }
-    for &index in leaf.boxed_indices() {
-        #[cfg(test)]
-        leaf_tests::record_box(index as i64);
-        runtime.make_integer(index as i64);
-    }
-    let value = initial
+    let mut value = initial
         .iter()
-        .find_map(|(slot, value)| (*slot == leaf.return_entry_slot()).then_some(*value))
+        .find_map(|(slot, value)| (Some(*slot) == leaf.return_entry_slot()).then_some(*value))
         .unwrap_or(nil);
+    for (index, word) in leaf.allocation_values().enumerate() {
+        #[cfg(test)]
+        leaf_tests::record_box(word);
+        let allocated = runtime.make_integer(word);
+        if leaf.return_allocation() == Some(index) {
+            value = allocated;
+        }
+    }
     let result = unsafe {
         let state = &mut *runtime.state.get();
         state.execution.commit_inlined_return(
