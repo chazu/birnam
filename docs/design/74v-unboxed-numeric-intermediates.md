@@ -366,6 +366,33 @@ and its refusal controls, followed by focused fixes supported by that profile
 and a quiet comparison. The unboxed consumer remains disabled by default;
 physical allocation savings alone have not demonstrated a net speed benefit.
 
+### Bound the historied-Store refusal control
+
+The compact-snapshot repeat exposed a measurement-scope problem in shape three:
+`[answer asCell]` creates a fresh anonymous Store entity and records a value on
+every invocation (`src/id/stdlib.birnam`). This is a growing-history workload,
+not a steady-state refusal control. One retained three-operation baseline
+process took 116.20 seconds for 64,000 measured calls, compared with 3.06 ms for
+its first 128 cold calls; collection added 16.27 seconds. It recorded no unboxed
+completion or metadata. Those costs must not be attributed to unboxed execution.
+
+The [partial long run](../measurements/74v-compact-growing-store-partial.json)
+retains 45 completed rows and its explicit cancellation reason. Only the owned
+measurement process tree and its sequencing wrappers were stopped; production
+verification continued. This receipt is incomplete and unqualified, not a
+passing matrix or a speedup claim.
+
+`scripts/unboxed-bounded-timing.py` retains the existing verified bodies, floor
+and counter rules, but uses ten 128-call batches for shape three by default;
+the other four shapes retain 500 batches. Both configurations in each pair use
+the same count, which is recorded in each row and checked against invocation,
+allocation and recovery counters. The control still creates Store history; the
+smaller bound limits that growth rather than claiming to remove it. Every
+installed artifact, source, fixture and driver digest remains checked.
+Exploratory mode stays unqualified. A short complete driver check precedes the
+new matrix, then normal-floor closure measurements can continue without waiting
+for another 64,000-cell control at every coordinate.
+
 ### Diagnostic native profiles
 
 The [paired diagnostic profiles](../measurements/74v-unboxed-numeric-diagnostic-profile.json)
