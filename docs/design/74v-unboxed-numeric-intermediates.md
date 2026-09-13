@@ -393,6 +393,22 @@ Exploratory mode stays unqualified. A short complete driver check precedes the
 new matrix, then normal-floor closure measurements can continue without waiting
 for another 64,000-cell control at every coordinate.
 
+The [short driver check](../measurements/74v-bounded-driver-smoke.json) passes
+all 30 coordinates with two batches. The
+[full bounded matrix](../measurements/74v-compact-bounded-exploratory-timing.json)
+now passes all 120 process/counter checks, using 500 batches for arithmetic and
+ten for the Store control. Source, driver, floor, fixture and installation
+digests match. Both host gates fail, and the result remains unqualified.
+
+For ordinary final results, execution/including-GC median reductions are
+-46.91%/-38.21%, -23.60%/-25.20% and -10.71%/-7.90% at three, sixteen and 32
+operations. Earlier-result recovery gives -33.88%/-33.15%, -22.42%/-17.26% and
+-17.32%/-13.84%. Controls vary in both directions. These observations do not
+establish causality under the concurrent load, but provide no reason to promote
+the unboxed consumer. It stays disabled while per-invocation snapshot and
+scratch-allocation costs are examined. Physical box savings remain correct;
+they have not translated into a supported net gain for these workloads.
+
 ### Diagnostic native profiles
 
 The [paired diagnostic profiles](../measurements/74v-unboxed-numeric-diagnostic-profile.json)
