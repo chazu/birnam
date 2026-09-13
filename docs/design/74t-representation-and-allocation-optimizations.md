@@ -2041,3 +2041,20 @@ identity failure. The fresh matching normal release installation is published;
 repeated memory and additional aggregate source acceptance are running separately.
 Private relocated allocation bytes still exclude the baseline TCC module and
 general compiler metadata, and no optimization default is changed.
+
+The [consolidated repeated memory matrix](../measurements/74t-consolidated-memory-checkpoints.json)
+passes all 60 normal-release processes and 420 host checkpoints across three
+alternating pairs. Production proof, current sources, fixtures and installed
+artifacts match. This uses the corrected aggregate producer and current batched
+numeric runtime, superseding the original single-pair matrix for those sources.
+
+Footprint differences remain mixed after accounting for each process's setup
+footprint. For admitted cases, enabled-minus-disabled release growth (in the
+report's rounded M units) is numeric `[-3.9, -1.5, +0.4]`, loop
+`[-3.7, +1.3, -0.8]`, clones `[-0.3, +4.1, -1.5]`, fields
+`[-0.3, -1.3, +1.8]`, and closures `[-2.9, +3.4, -4.9]`. Refused controls also
+vary substantially. Repeated steady checkpoints do not show a uniform excess
+across configurations. These samples establish successful execution and resource
+observability, not an attributable memory saving or a proof excluding leaks.
+Sampler reference release still excludes roots retained elsewhere in the runtime.
+Exact baseline-TCC storage and general metadata accounting remain open.
