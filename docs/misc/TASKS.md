@@ -165,7 +165,10 @@ and repeated refusal about 20%.
 [74U](../design/74u-repeated-closure-invocation-regions.md) now implements up to
 32 immediate invocations sharing one virtual closure. The full gate passes
 528 workspace tests, 640 sequence comparison executions and strengthened
-collecting/capture/suspension cases. Later-target mutation, allocation-boundary
+collecting/capture/suspension cases. Later-target mutation now passes 32 source
+processes across both GC modes and debug/release, with exact shorter prefixes,
+collecting recovery and immediate restored admission. Full verification remains
+passed at 528 workspace tests and all 61 commands. Allocation-boundary
 and finalizer cases, resource acceptance and profitability remain open; the
 consumer stays disabled by default. See 74T for the full remaining scope.
 Broader closure/capture coverage and performance acceptance

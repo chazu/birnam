@@ -1486,3 +1486,21 @@ Later-target mutation and partial admission, dedicated collection-threshold
 and finalizer cases, resource acceptance and profitability remain next within
 74U. The full numeric/loop/aggregate/closure and application obligations remain
 open; no full family is marked complete.
+
+### Later-target mutation in repeated closure regions
+
+The 74U test-floor source matrix now replaces the second or third invocation's
+registered method with an observing native method after warming. The runtime
+retains exactly one or two admitted calls, recovers one closure, and executes
+the replacement once per factory invocation. The replacement may collect;
+the returned closure retains its original captured Cell and observed identity.
+Restoring the registered method immediately admits all three substitutions.
+The full matrix passes 32 source processes across debug/release and both GC
+modes, with exact non-collecting allocation-charge parity. The
+[full verification receipt](../measurements/74u-mutation-correctness.json)
+passes all 61 commands and 528 workspace tests (19 ignored), including the
+existing sequence, control, API and installed-prefix gates. Detailed fresh-prefix
+debug counters are retained separately in 74U. Dedicated long-region
+allocation-threshold/finalizer cases, resource
+acceptance and profitability remain open, along with the broader numeric,
+loop and aggregate obligations. The closure consumer remains disabled by default.

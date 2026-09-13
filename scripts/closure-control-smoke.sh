@@ -20,6 +20,7 @@ for profile in debug release; do
     cargo build --locked --offline -p birnam-id --features ffi-test-hooks "${flags[@]}"
   floor="$PWD/.cargo-target/74t-closure-control-target/$profile/libbirnam_id.dylib"
   python3 scripts/closure-sequence-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/sequence-$profile.json"
+  python3 scripts/closure-sequence-mutation-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/mutation-$profile.json"
   for shape in 0 1 2 3; do
     for enabled in 0 1; do
       BIRNAM_ID_DYLIB="$floor" BIRNAM_TEST_CLOSURE_CONTROL=1 BIRNAM_DEV_CLOSURE_ELISION=$enabled \

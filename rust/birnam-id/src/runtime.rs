@@ -36,6 +36,8 @@ mod closure_api_probe;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_control_probe;
 #[cfg(feature = "ffi-test-hooks")]
+mod closure_sequence_probe;
+#[cfg(feature = "ffi-test-hooks")]
 mod closure_timing_probe;
 #[cfg(test)]
 mod deopt_experiment;

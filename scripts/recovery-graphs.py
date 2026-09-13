@@ -29,6 +29,7 @@ def sources():
         "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
         "closure-elision-smoke.sh",
         "closure-control-smoke.sh", "closure-sequence-smoke.py",
+        "closure-sequence-mutation-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
     )]
     paths += [ROOT / path for path in (

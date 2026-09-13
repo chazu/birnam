@@ -159,6 +159,51 @@ The retained source hashes match the tested files. The earlier
 run with an older verified Codegen prefix and a newly built test floor; it is
 not the production provenance claim.
 
-The consumer remains experimental and disabled by default. Later-target
-mutation/partial-admission cases, dedicated allocation-threshold/finalizer
-coverage for long regions, resource acceptance and profitability remain open.
+The consumer remains experimental and disabled by default. Dedicated
+allocation-threshold/finalizer coverage for long regions, resource acceptance
+and profitability remain open.
+
+## Later-target mutation and immediate readmission
+
+The source mutation fixture uses three calls through one private closure and
+aliases its registered `value:` method under an unrelated selector for the
+second or third call. After warming, it replaces only that alternate method
+with an observing native callback. This requires runtime target admission to
+retain a prefix of exactly one or two substitutions and materialize the same
+closure before executing the replacement. The callback checks the original
+captured Cell and actual argument identity, optionally collects, and records
+the receiver address in untraced thread-local storage. The factory must return
+that exact receiver, with a fresh closure on each invocation. A root for the
+previous result prevents address reuse from invalidating the freshness check;
+the currently recovered receiver relies on its ordinary Call/Frame roots.
+
+Eight measured invocations require eight replacement effects, eight optimized
+prefix hits when enabled, and zero physical allocation savings for the escaping
+results. Without callback collection, baseline and optimized logical allocation
+charges must match exactly. Collecting cases deliberately omit that byte-delta
+comparison because the collector resets the underlying counter. Restoring the
+original registered method must immediately admit all three substitutions on
+the very next invocation, without another native effect or a cooldown.
+
+The [focused development receipt](../measurements/74u-mutation-development.json)
+passes 16 source processes covering both GC modes, both mutation positions and
+collecting/non-collecting callbacks, each with optimization disabled/enabled.
+It uses an older verified Codegen prefix and the newly built debug test floor;
+the fresh installed-prefix verification is recorded separately. The probe is
+available only through the opt-in feature floor and does not change the public
+ABI or enable the experimental consumer.
+
+The [full verification receipt](../measurements/74u-mutation-correctness.json)
+passes all 61 commands and production verification: 528 workspace tests
+(19 ignored), 16 mutation comparison groups covering 32 processes across
+debug/release and both GC modes, all 640 sequence executions, eight existing
+measurement groups, eight capture/suspension groups, 32 live-API groups, and
+installed-prefix, image, cold-archive and relocation gates. All 239 retained
+source hashes match the tested files. The fresh-prefix debug matrix's
+[individual counters](../measurements/74u-mutation-debug-matrix.json) are also
+retained: each non-collecting eight-invocation row charges exactly 10,112 bytes
+in either mode. Enabled prefixes complete eight or sixteen calls, with eight
+materializations/effects and zero physical savings; the first restored
+invocation completes three substitutions and one materialization. Release
+matrix success is retained in the full verification output. No timing or
+promotion claim is made.

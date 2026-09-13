@@ -41,6 +41,10 @@ impl Runtime {
                 super::closure_timing_probe::sequence as Method,
             ),
             (
+                b"sequenceMutation:input:other:position:collect:".as_slice(),
+                super::closure_sequence_probe::check as Method,
+            ),
+            (
                 b"checkApi:input:operation:".as_slice(),
                 super::closure_api_probe::check as Method,
             ),

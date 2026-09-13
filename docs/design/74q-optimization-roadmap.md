@@ -61,8 +61,12 @@ closure execution overhead and 20% repeated-refusal overhead. Profitability
 remains unproven. [74U](74u-repeated-closure-invocation-regions.md) now implements
 up to 32 immediate invocations sharing one virtual closure, with recovery at
 every admitted call boundary. Full verification passes 528 workspace tests
-and the expanded source/control matrices. Later-target mutation, dedicated
-resource cases and profitability remain open; the consumer stays default-off.
+and the expanded source/control matrices. Later-target mutation now passes
+32 baseline/enabled process executions across debug/release and both GC modes:
+the changed second or third target shortens the region, collecting callbacks
+observe the recovered identity, and restoring the target immediately readmits
+all three calls. Dedicated allocation-boundary/finalizer and resource cases,
+broader closure bodies and profitability remain open; the consumer stays default-off.
 None of those four full families is complete yet.
 
 ## Direction
