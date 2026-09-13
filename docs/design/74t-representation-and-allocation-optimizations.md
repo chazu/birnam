@@ -1824,7 +1824,7 @@ sides. Add explicit preparation-time development controls for discarded clones
 and virtual fields so the same source and normal floor can be compared with each
 pass disabled/enabled. `BIRNAM_DEV_DISCARDED_CLONES=0` and
 `BIRNAM_DEV_VIRTUAL_FIELDS=0` disable their respective preparation; absent or
-nonzero values retain the enabled default. Snapshot them once for
+values other than `0` retain the enabled default. Snapshot them once for
 each registration staging operation and skip disabled plan derivation entirely;
 keep ordinary generated entries and all unrelated consumers available. No flag
 lookup belongs in invocation, recovery, GC or native-entry admission.
