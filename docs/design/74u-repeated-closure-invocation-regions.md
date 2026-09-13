@@ -606,3 +606,14 @@ acquisition/retirement test. Release source matrices pass 48 repeated-use
 accounting cases, 16 mutation cases and 24 literal capture/suspension cases,
 including forced recovery and both collection modes where applicable. Full
 production verification and an updated normal-floor cost comparison are pending.
+
+### Production verification of descriptor-only admission
+
+The [combined production receipt](../measurements/74u-descriptor-and-loop-production-correctness.json)
+passes all 71 commands and 3,164 retained source cases with 271 matching source
+hashes. It covers descriptor-only closure admission together with the unchanged-
+input loop fast path. A fresh normal release installation publishes 15 native
+libraries and 27 compiled modules. All 90 [normal-driver verification cases](../measurements/74u-descriptor-normal-driver-correctness.json)
+pass with matching production-proof, source and installed-artifact hashes.
+The reduced admission allocation is ready for integration; its repeat cost
+comparison remains exploratory and the closure consumer stays default-off.
