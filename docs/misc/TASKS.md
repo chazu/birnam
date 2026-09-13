@@ -160,8 +160,11 @@ unqualified on battery and shows a large admission regression; profiling points
 to repeated loader discovery. An exact-constructor declaration cache retains
 a native-image pin and rechecks current semantics on every use. Correctness
 verification passes all 61 commands. Retiming remains unqualified on battery:
-closure execution overhead is about 20–22%, repeated refusal 35%. Remaining
-admission/refusal costs need profiling before promotion; see 74T.
+after early native-callee refusal, closure execution overhead is about 19–25%
+and repeated refusal about 20%. The next implementation extension is
+[74U](../design/74u-repeated-closure-invocation-regions.md), multiple immediate
+invocations sharing one virtual closure. Profitability and remaining acceptance
+are still open; see 74T.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.

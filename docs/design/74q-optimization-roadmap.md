@@ -56,8 +56,11 @@ cost matrix confirms a large unqualified regression despite correct allocation
 savings. Profiles identify repeated loader discovery; a bounded cache now
 retains the exact constructor declaration with its image pin while rechecking
 its semantic answer on every use. Full verification passes. The repeated
-unqualified matrix reduces closure execution to about 20–22% overhead and
-repeated refusal to 35% overhead; profitability remains unproven (see 74T).
+unqualified matrix after early native-callee refusal shows about 19–25%
+closure execution overhead and 20% repeated-refusal overhead. Profitability
+remains unproven. [74U](74u-repeated-closure-invocation-regions.md) specifies the
+next extension: multiple immediate invocations sharing one virtual closure,
+with precise recovery at supported call boundaries.
 None of those four full families is complete yet.
 
 ## Direction

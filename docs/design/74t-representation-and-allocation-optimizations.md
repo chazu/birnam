@@ -1440,3 +1440,22 @@ comparison groups, eight continuation groups, 32 live-API groups and installed,
 image, cold-archive and relocation verification. Source hashes match. Paired
 timing follows this correctness checkpoint; the consumer remains off by default
 and no full family is declared complete.
+
+The [early-refusal timing matrix](../measurements/74t-closure-early-refusal-timing.json)
+retains four alternating pairs per shape and 64,000 calls per process from a
+fresh release installation of the verified source. Source/binary hashes and
+all counters match, including zero refused constructor queries and immediate
+restored admission. AC admission fails on battery, so timings remain unqualified.
+Execution overhead medians are 18.74% for eliminated closures, 24.90% for
+escaping closures, 19.73% for replaced-callee refusal and 1.67% for compiler
+refusal. Including GC gives 16.49%, 10.77%, 10.09% and 0.40% respectively.
+The earlier replaced-callee matrix showed 35.22% execution overhead. This
+iteration reduces that refusal cost, but successful invocation remains
+unprofitable on the measured single-use fixtures. All individual pairs remain
+in the receipts; these results do not justify promotion.
+
+The next scope extension is [74U](74u-repeated-closure-invocation-regions.md):
+retain one virtual closure across several immediate, proven invocations. This
+addresses the existing multiple-use obligation and offers a region large
+enough to test whether admission costs can be repaid. It does not remove the
+remaining cold/resource/application gates or complete any full family by itself.
