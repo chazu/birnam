@@ -601,3 +601,10 @@ leases now retain only identity and materialization vectors. Batch storage,
 including unused future elements retained by charged entries, is included once
 in journal resource reports; retained capacities of both journals are included.
 The consumer remains default-off. The [focused proof](../measurements/74v-batch-focused-correctness.json) passes 556 workspace tests (19 ignored) and 212 release runtime tests (15 ignored), including mixed journal identity/admission, partial ownership, stale IDs, exact bytes, and pointer-shaped payload/finalizer differential checks. Installed source and full production verification remain pending; the cost hypothesis has not yet been measured.
+
+The [30-case release measurement check](../measurements/74v-batch-measure-release.json)
+passes with matching source, floor and installed-prefix hashes. It checks the
+unchanged result/allocation/recovery counters for final and earlier results and
+refused inputs, plus stable scratch and journal capacity after collection. This
+is measurement correctness, not a speedup result. Full production/source
+verification is running against this committed implementation.
