@@ -202,6 +202,10 @@ acceptance and closure promotion remain open.
 Broader closure/capture coverage and performance acceptance
 and broader numeric/loop/aggregate/application acceptance remain open; none of
 the four full families is complete.
+The extended 74V recovery checkpoint is now integrated: all 63 production
+commands pass with 252 matching source hashes and 2,728 retained source cases,
+including captured numeric inputs and V2 capture/suspension. Numeric cost
+measurement and the remaining family acceptance work continue.
 The prior implementation
 sequence is paused while this direction is examined; existing Beads dependencies
 and pending timing acceptance are unchanged.
