@@ -26,10 +26,15 @@ The collection-workload ablation and diagnostic counters are retained in 74T:
 that workload recorded no closure-consumer activity, so its noisy regression
 cannot justify changing closure admission policy.
 
-Next, finish the queued repeated memory/source checks and diagnose the
-intermittent disabled-pass identity failure found by the isolated Error projection
-extension. Its report workload records successful field substitutions, but the
-new module is not ready for integration or timing while that failure is unresolved. Use their exact verified floors to select further cost reductions.
+Next, diagnose the two intermittent execution-state failures in disabled-pass
+source checks. The follow-on aggregate queue stopped at the 18th both-disabled
+debug case after the other three debug configurations passed 30 cases each;
+release configurations did not run. This LogicVar failure uses the unchanged
+module and is independent of the earlier isolated Error experiment. The Error
+report workload records successful field substitutions, but its new declaration
+is not ready for integration or timing while these failures remain unresolved.
+Passing replays do not establish a repair. Use exact verified floors to select
+further cost reductions.
 Then close the application/cold/resource gaps with individual and combined
 configurations. Native-unit counts, journal capacity and scratch bytes are
 partial resource observations. The repeated current-source normal-floor memory matrix passes 60 processes
