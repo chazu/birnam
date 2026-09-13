@@ -2785,20 +2785,7 @@ impl ExecutionState {
         captures: &[Oop],
         nil: Oop,
     ) -> Result<MaterializedEntry, RegistrationError> {
-        let slot = self
-            .resumable_entries
-            .get(capability.index)
-            .ok_or(RegistrationError::StaleCapability)?;
-        if slot.generation != capability.generation {
-            return Err(RegistrationError::StaleCapability);
-        }
-        let entry = slot
-            .entry
-            .as_ref()
-            .ok_or(RegistrationError::StaleCapability)?;
-        if entry.acquired_entries == 0 {
-            return Err(RegistrationError::StaleCapability);
-        }
+        let entry = self.acquired_entry_record(capability)?;
         if captures.len() != entry.descriptor.entry_capture_slots().len() {
             return Err(RegistrationError::InvalidDescriptor);
         }
@@ -2839,10 +2826,19 @@ impl ExecutionState {
         })
     }
 
-    pub(crate) fn acquired_entry_capture_layout(
+    /// Inspect immutable metadata under an existing acquisition. The caller
+    /// must retain that acquisition while using the descriptor for execution.
+    pub(crate) fn acquired_entry_descriptor(
         &self,
         capability: ResumableEntryCapability,
-    ) -> Result<(usize, usize), RegistrationError> {
+    ) -> Result<Arc<FrameDescriptor>, RegistrationError> {
+        Ok(self.acquired_entry_record(capability)?.descriptor.clone())
+    }
+
+    fn acquired_entry_record(
+        &self,
+        capability: ResumableEntryCapability,
+    ) -> Result<&ResumableEntry, RegistrationError> {
         let slot = self
             .resumable_entries
             .get(capability.index)
@@ -2857,6 +2853,14 @@ impl ExecutionState {
         if entry.acquired_entries == 0 {
             return Err(RegistrationError::StaleCapability);
         }
+        Ok(entry)
+    }
+
+    pub(crate) fn acquired_entry_capture_layout(
+        &self,
+        capability: ResumableEntryCapability,
+    ) -> Result<(usize, usize), RegistrationError> {
+        let entry = self.acquired_entry_record(capability)?;
         Ok((
             entry.receiver_capture_offset_words,
             entry.descriptor.entry_capture_slots().len(),
@@ -5959,6 +5963,61 @@ mod tests {
             execution.machine(owner + 1, second).map(|_| ()),
             Err(MachineError::WrongOwner)
         );
+    }
+
+    #[test]
+    fn acquired_descriptor_matches_materialization_and_requires_a_live_acquisition() {
+        let owner = 74;
+        let mut execution = ExecutionState::new(owner);
+        let descriptor = descriptor(vec![SlotKind::Oop, SlotKind::Oop], 1);
+        let capability = execution
+            .register_resumable(
+                owner,
+                SemanticRegistrationV1::new(inert_thunk, descriptor.clone(), 1, 0, 1),
+            )
+            .unwrap();
+        assert!(matches!(
+            execution.acquired_entry_descriptor(capability),
+            Err(RegistrationError::StaleCapability)
+        ));
+        let method = MethodAddress::from_method(inert_thunk);
+        execution.note_direct_binding_added(method).unwrap();
+        let Some(StacklessTarget::Registered { entry }) =
+            execution.classify_resumable(method).unwrap()
+        else {
+            panic!("published entry must acquire");
+        };
+        let admitted = execution.acquired_entry_descriptor(entry).unwrap();
+        let receiver = oop(0x1000);
+        let nil = core::ptr::null_mut();
+        let ordinary = execution
+            .materialize_acquired_entry(entry, receiver, &[], &[], nil)
+            .unwrap();
+        assert!(Arc::ptr_eq(&admitted, &ordinary.descriptor));
+        assert!(Arc::ptr_eq(&admitted, &descriptor));
+        assert_eq!(ordinary.initial_oops, vec![(0, receiver), (1, nil)]);
+        assert!(matches!(
+            execution.acquired_entry_descriptor(ResumableEntryCapability {
+                generation: entry.generation + 1,
+                ..entry
+            }),
+            Err(RegistrationError::StaleCapability)
+        ));
+        execution.note_direct_binding_removed(method).unwrap();
+        assert!(Arc::ptr_eq(
+            &admitted,
+            &execution.acquired_entry_descriptor(entry).unwrap()
+        ));
+        execution.release_acquired_entry(entry).unwrap();
+        assert!(matches!(
+            execution.acquired_entry_descriptor(entry),
+            Err(RegistrationError::StaleCapability)
+        ));
+        assert!(matches!(
+            execution.materialize_acquired_entry(entry, receiver, &[], &[], nil),
+            Err(RegistrationError::StaleCapability)
+        ));
+        assert_eq!(execution.registration_diagnostics().acquired_entries, 0);
     }
 
     #[test]

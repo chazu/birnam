@@ -43,7 +43,7 @@ pub(super) struct Admitted<'a> {
     pub call: Call<'a>,
     pub selector: Oop,
     pub arguments: Vec<Oop>,
-    pub callee: crate::execution::MaterializedEntry,
+    pub descriptor: Arc<FrameDescriptor>,
     _lease: EntryLease<'a>,
 }
 
@@ -82,21 +82,18 @@ pub(super) fn admit<'a>(
         return None;
     }
     let arguments: Vec<_> = call.arguments.iter().map(|s| inputs[*s as usize]).collect();
-    let nil = runtime.canonical().nil;
-    let callee = unsafe {
+    let descriptor = unsafe {
         (*runtime.state.get())
             .execution
-            .materialize_acquired_entry(entry, nil, &arguments, captures, nil)
+            .acquired_entry_descriptor(entry)
             .ok()?
     };
-    if callee.descriptor.v2_entry_binding()?.argument_count != arguments.len() {
+    if descriptor.v2_entry_binding()?.argument_count != arguments.len() {
         return None;
     }
     {
         let registry = runtime.native_tier.borrow();
-        let record = registry
-            .records
-            .get(&(Arc::as_ptr(&callee.descriptor) as usize))?;
+        let record = registry.records.get(&(Arc::as_ptr(&descriptor) as usize))?;
         if record.disabled || record.leaf.as_deref() != Some(&plan.callee) {
             return None;
         }
@@ -105,7 +102,7 @@ pub(super) fn admit<'a>(
         call,
         selector,
         arguments,
-        callee,
+        descriptor,
         _lease: lease,
     })
 }

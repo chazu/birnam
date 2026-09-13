@@ -575,3 +575,34 @@ and always records `qualified: false`. The user-waived exploratory threshold
 and numeric sweeps now run independently of the unchanged-input loop correctness
 gate, using their already verified checkout. No admission threshold or default
 policy is selected merely by adding this harness.
+
+## Avoid unused Frame-value construction during closure admission
+
+Current repeated-call admission invokes `materialize_acquired_entry` for every
+callee, retaining its descriptor but never reading its initial Oop vector.
+The earlier repeated-use profile includes this work within callee admission.
+The next implementation queries the descriptor of an already acquired entry
+without constructing the unused vector. It retains the acquisition until the
+admitted region ends and preserves capture-offset/count, V2 arity, current
+lookup, leaf-plan, control and allocation-budget checks. Actual Frame creation
+and recovery continue to use their existing value materialization paths.
+
+The query must share the same stale-index, generation and acquired-entry checks
+as value materialization. A descriptor reference alone grants no permission to
+execute or keep native code loaded. Tests must compare the admitted descriptor
+with ordinary materialization, reject unacquired/stale capabilities and preserve
+the held acquisition through retirement. Existing closure mutation, budget,
+forced recovery, GC, literal and V2 control matrices remain mandatory. There is
+no IdApi, descriptor, image or language change; this removes unobserved host
+allocation only. Full production verification and paired cost measurements
+remain required before merging or claiming a benefit.
+
+The implementation now shares checked acquired-entry lookup among value
+materialization, capture-layout inspection and descriptor inspection. Closure
+admission retains the descriptor and entry lease, without constructing unused
+initial Oops. The [focused correctness receipt](../measurements/74u-descriptor-admission-focused-correctness.json)
+passes 546 workspace tests and 202 release runtime tests, plus the dedicated
+acquisition/retirement test. Release source matrices pass 48 repeated-use
+accounting cases, 16 mutation cases and 24 literal capture/suspension cases,
+including forced recovery and both collection modes where applicable. Full
+production verification and an updated normal-floor cost comparison are pending.
