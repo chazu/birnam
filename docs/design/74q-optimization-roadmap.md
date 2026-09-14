@@ -14,10 +14,10 @@ and `birnam-sik`.
 
 | Family | Implemented behavior | Evidence and remaining acceptance |
 | --- | --- | --- |
-| Numeric representation | Production numeric fusion is enabled and retains original boxes. [74V](74v-unboxed-numeric-intermediates.md) additionally carries raw intermediates and reconstructs identities at original boundaries; unboxed execution is default-off. | Fusion has qualified fixture gains. The complete 120-process compact-unboxed exploratory matrix still regresses for admitted chains. Scratch reuse and omission of an unused tail snapshot are integrated on main after 71 production commands and 3,164 source cases pass. Its repeated 120-process bounded exploratory comparison still regresses for admitted chains. Batched raw snapshot storage is now on main after another full 71-command/3,164-case gate; its complete 120-process exploratory comparison shows +7.38% median including GC for the 32-operation final-result case, with mixed pairs, while shorter and earlier-result cases regress. No promotion. |
-| Loop optimization | Tail-entry transfer is enabled. [74W](74w-loop-invariant-numeric-work.md) reuses arithmetic across proven successive self-tail iterations; the verified unchanged-input path now skips the native kernel call. Invariant reuse remains default-off. | The unchanged-input implementation is on main with 71 production commands, 3,164 source cases and 96 normal-driver checks. Its complete 192-process exploratory comparison has mixed gains/regressions and does not establish repeatable profitability. Application/resource acceptance remains open. |
-| Temporary objects | Repeated discarded clones and private field projection regions are enabled under their measured minimum lengths, with exact allocation observations and bounded refusal retries. | Qualified fixture gains and real installed-source/REPL identity, mutation, private-layout and retirement checks are retained in 74T. Existing combined application comparisons enable aggregate consumers on both sides; they do not measure aggregate on/off cost. Individual preparation-time controls are on main, with 240 corrected source checks and 24 normal application checks. The complete 96-process individual/combined exploratory application comparison is mixed; no policy change follows. Isolated counters and positive controls show none of those four applications admits an aggregate plan; they cover refusal/regression behavior. Application benefit and total-resource acceptance remain open. |
-| Closures and captures | [74U](74u-repeated-closure-invocation-regions.md) eliminates private closure allocation across up to 32 immediate calls while retaining shared Cells. [74X](74x-closure-literal-results.md) adds fresh Integer literal results and V2 recovery. Both remain default-off. | Qualified 32-use fixture gains are retained. A complete 144-process normal-floor exploratory comparison improves all four 32-use pairs for successful and escaping cases, but noisy controls prevent a smaller threshold or default promotion. Descriptor-only admission is integrated on main after 71 production commands, 3,164 source cases and 90 normal-driver cases pass; its repeat 144-process normal-floor comparison is retained, with gains for longer regions but noisy controls and substantial preparation costs. Independent floor plan derivation now defers to the existing hot threshold on main, with a bounded pending-input budget, the full 71-command/3,164-case gate and 90 normal-driver checks. Its complete 144-process exploratory comparison shows roughly 13–17% median gains including GC at 32 uses, with mixed pairs and smaller/control results. Preparation, bodies and application/resource acceptance remain open. |
+| Numeric representation | Production numeric fusion is enabled and retains original boxes. [74V](74v-unboxed-numeric-intermediates.md) carries raw intermediates and reconstructs identities at original boundaries; unboxed execution remains default-off. | Scratch reuse and batched raw snapshot storage are integrated. The separate counted Frame-index candidate passed its complete production gate, numeric/aggregate/V2 checks, 240 normal/test-floor driver cases and 120 Id-driven allocation cases per profile. Its 480-process exploratory comparison is mixed: selected precise-GC 32-operation unboxed cases improve about 6–7% including GC, while other configurations regress. A main-based composition excluding the held Error declaration is undergoing independent acceptance. Default-path cost and application/resource acceptance remain open. |
+| Loop optimization | Tail-entry transfer is enabled. [74W](74w-loop-invariant-numeric-work.md) reuses arithmetic across proven successive self-tail iterations; the integrated unchanged-input path skips the native kernel call. Invariant reuse remains default-off. | The additional stable-cache write reduction remains isolated. Its full production/driver checks and 384-process direct predecessor/candidate comparison are complete, with mixed results. Four valid measured-work profiles are retained; unresolved or inlined frames limit attribution. No general profitability or promotion follows. Application/resource acceptance remains open. |
+| Temporary objects | Repeated discarded clones and private field projection regions are enabled under their measured minimum lengths, with exact allocation observations and bounded refusal retries. | Qualified fixture gains and installed-source identity, mutation, private-layout and retirement checks remain valid. The four existing application controls admit no aggregate plans, so they establish refusal/regression behavior rather than application benefit. Native caller-root preservation and baseline TCC resource diagnostics are now verified and integrated. The Error-field declaration and two-word snapshot experiment remain isolated. Application benefit and total-resource acceptance remain open. |
+| Closures and captures | [74U](74u-repeated-closure-invocation-regions.md) eliminates private closure allocation across up to 32 immediate calls while retaining shared Cells. [74X](74x-closure-literal-results.md) adds fresh Integer literal results and V2 recovery. Both remain default-off. | Descriptor-only admission and deferred hot plan derivation are integrated. The complete 144-process normal-floor comparison after hot preparation shows roughly 13–17% median gains including GC at 32 uses, with mixed pairs and smaller/control results. The latest shared-support gate retains complete closure source/control coverage and adds evaluator lifetime checks. Preparation, wider bodies and application/resource acceptance remain open. |
 
 The user has waived quiet-host admission for ongoing work. Continue exploratory
 measurements with host diagnostics and explicit `qualified: false`; retain every
@@ -26,25 +26,38 @@ The collection-workload ablation and diagnostic counters are retained in 74T:
 that workload recorded no closure-consumer activity, so its noisy regression
 cannot justify changing closure admission policy.
 
-Next, diagnose the two intermittent execution-state failures in disabled-pass
-source checks. The follow-on aggregate queue stopped at the 18th both-disabled
-debug case after the other three debug configurations passed 30 cases each;
-release configurations did not run. This LogicVar failure uses the unchanged
-module and is independent of the earlier isolated Error experiment. The Error
-report workload records successful field substitutions, but its new declaration
-is not ready for integration or timing while these failures remain unresolved.
-Passing replays do not establish a repair. Use exact verified floors to select
-further cost reductions.
-Then close the application/cold/resource gaps with individual and combined
-configurations. Native-unit counts, journal capacity and scratch bytes are
-partial resource observations. The repeated current-source normal-floor memory matrix passes 60 processes
-and 420 checkpoints across three alternating pairs. Setup-adjusted footprint
-differences and refused controls remain mixed; no memory-saving or leak claim follows. Test-only private native Unit
-allocation accounting has passed focused tests and 174 source cases in isolation;
-its consolidated 73-command/3,164-case production gate passed, and the accounting
-is integrated on main with all 284 source hashes matching. These private relocated allocation
-bytes exclude the separate baseline TCC module and other compiler metadata. Supported cases must pass the acceptance contract
-below before promotion. None of the four full families is complete yet.
+The earlier source-probe execution-state failures are no longer the next blocker.
+The native caller-root repair preserves the outer evaluator's live values while
+excluding only probe scratch from scanning. Shared verification support is
+integrated at `ef00b7a5` after all 75 production commands, 3,164 optimization
+source cases and 24 evaluator-lifetime/baseline-storage cases passed against
+288 source inputs. See [74T verification support](74t-verification-support-integration.md).
+This integration excludes the Error-field declaration and experimental consumer
+changes; its proof does not promote them.
+
+The immediate pending step is the exact main-based counted composition on
+`codex/74y-production-composition`. Its source checkpoint `42c6e94c` combines
+counted indices and reverse numeric-journal lookup with main's verified support,
+without the held Error declaration. Its 295-input production gate is running;
+the follow-on acceptance queue requires a fresh installation, 1,848 focused
+cases across both profiles and 240 normal/test-floor Id driver cases. These
+counts are requirements, not completed results.
+
+A fresh pre-change main installation and all 120 matching ordinary Id checks
+are complete at `241b946d`. The direct comparison runner at `f5d46b08` will compare
+main, candidate counting disabled and candidate counting enabled using identical
+programs and rotating order. Its incomplete-gate rejection is checked; its real
+execution smoke and timings must wait for candidate acceptance. The research
+480-process timing/audit at `16b234f6` applies only to its own checkpoint and
+cannot qualify the new composition or identify disabled-path overhead.
+
+After that comparison, use the observed execution, GC-inclusive and resource
+costs to select implementation changes or admission policy. Close the application,
+cold/preparation and lifetime/resource gaps for all four families. Existing
+native-unit counts, journal capacity, scratch bytes and process footprint are
+partial observations; none alone proves total memory savings or leak freedom.
+Supported cases must pass the acceptance contract below before promotion. None
+of the four full families is complete yet.
 
 ## Direction
 
