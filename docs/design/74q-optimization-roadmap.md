@@ -19,6 +19,17 @@ and `birnam-sik`.
 | Temporary objects | Repeated discarded clones and private field projection regions are enabled under their measured minimum lengths, with exact allocation observations and bounded refusal retries. | Qualified fixture gains and installed-source identity, mutation, private-layout and retirement checks remain valid. The four existing application controls admit no aggregate plans, so they establish refusal/regression behavior rather than application benefit. Native caller-root preservation and baseline TCC resource diagnostics are now verified and integrated. The Error-field declaration and two-word snapshot experiment remain isolated. Application benefit and total-resource acceptance remain open. |
 | Closures and captures | [74U](74u-repeated-closure-invocation-regions.md) eliminates private closure allocation across up to 32 immediate calls while retaining shared Cells. [74X](74x-closure-literal-results.md) adds fresh Integer literal results and V2 recovery. Both remain default-off. | Descriptor-only admission and deferred hot plan derivation are integrated. The complete 144-process normal-floor comparison after hot preparation shows roughly 13–17% median gains including GC at 32 uses, with mixed pairs and smaller/control results. The latest shared-support gate retains complete closure source/control coverage and adds evaluator lifetime checks. Preparation, wider bodies and application/resource acceptance remain open. |
 
+Current application evidence: [74AH](74ah-admitted-application-workload.md),
+committed at `d53d56dd`, passes 48 normal/diagnostic application processes with
+all four consumers active, individual controls, changed inputs, late getter
+replacement and clone identity checks. The fully enabled interval virtualizes
+64 field-bearing objects without reifying or settling them during that interval.
+This is application correctness/activity evidence, not a timing or promotion
+claim. [74AG](74ag-complete-consumer-composition.md) restored artifact acceptance
+is complete at `a364ae0a`; its interrupted final production verification has
+resumed while retaining 74 successful commands. The consolidated workflow
+supersedes the older parallel predecessor queues described below.
+
 The user has waived quiet-host admission for ongoing work. Continue exploratory
 measurements with host diagnostics and explicit `qualified: false`; retain every
 correctness, identity, GC/finalizer, V2, native-lifetime and compatibility gate.

@@ -168,3 +168,38 @@ is historical evidence for its recorded binaries, not acceptance of the rebuilt
 normal files. Production, installed application acceptance and profitability
 remain outstanding. No runtime implementation or optimization default changed
 while recovering these verification artifacts.
+
+
+## User-directed validation consolidation
+
+The [slim validation workflow](74ag-validation-workflow.md) supersedes the earlier
+queue scheduling and post-install replay plan. AC/AD/AE/AF predecessor queues were
+intentionally cancelled; do not restart them from stale running/failed receipts.
+Keep AG's restored focused verification, then use only
+`/tmp/birnam-74ag-production-acceptance-slim.py`. The AF scheduling dependency is
+removed. One full combined gate and fresh release installation remain required;
+the post-install String replay uses the existing release quick matrix. See the
+workflow document and cancellation inventory for exact scope and process IDs.
+
+## Restored acceptance and production resumption
+
+Restored artifact acceptance is complete: six source matrices passed all 72
+processes, and compiler/runtime/module suites passed 672 tests. The
+[completion audit](../measurements/74ag-restored-completion-audit.json) rechecked
+source and saved binary hashes, raw results, allocation accounting and normal
+exports. With unchanged preserved whole-Runtime tests, this covers 168 lifecycle
+cycles. This supersedes the pending restored-acceptance status above.
+
+The slim controller and its child process subsequently disappeared. Its partial
+receipt contains 74 successful commands, but no completed final production
+verification. The cause is unknown. The
+[interruption record](../measurements/74ag-slim-interruption.json) preserves this
+observation, source/test-binary checks and the resumption runner.
+
+`/tmp/birnam-74ag-production-acceptance-resumed.py` is now the sole controller. It
+retains those 74 historical command results and executes the unfinished production
+verification with the original validation logic. Its proof is
+`74ag-production-resumed.json`; fresh installation and the agreed focused
+installed checks follow. No predecessor queue was restarted. Production,
+installed acceptance, broader application acceptance and profitability remain
+open. Optimization defaults remain unchanged.

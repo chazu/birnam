@@ -2111,3 +2111,23 @@ production queue requires that acceptance and the existing build-slot dependency
 it has not started production commands. The prior test results describe their
 recorded binaries and do not silently accept the rebuilt files. No runtime source
 or optimization default changed during artifact recovery.
+
+
+### Current application and combined verification status
+
+[74AH](74ah-admitted-application-workload.md), `d53d56dd`, adds an ordinary Id
+binding pipeline and diagnostic snapshots. All 48 process coordinates pass:
+both profiles/GC modes, normal/diagnostic floors, and six individual/combined
+control settings. Its hot getter replacement preserves exact effects and fresh
+clone aliasing; original records, changed numeric inputs and post-eviction
+execution remain correct. The measured fully enabled interval has 1,024 unboxed
+operations, 945 invariant reuses, 192 closure calls and 64 virtualized field
+objects, with zero field recovery or allocation settlement in that interval.
+
+74AG restored artifact acceptance is now complete (`a364ae0a`), superseding the
+pending status above. Its sole resumed controller retains the 74 completed
+commands from the interrupted slim run and executes unfinished production
+verification, then fresh installation and the agreed focused checks. Do not
+restart the cancelled AC/AD/AE/AF queues or add noisy timing matrices. Full-family
+completion, application resource/performance acceptance and default promotion
+remain unproven.
