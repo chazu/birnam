@@ -2098,3 +2098,16 @@ fresh-install queue waits for focused acceptance and the current ownership gate'
 build slot; this is scheduling, not a renewed quiet-host requirement. The separate
 shared-prediction comparison is fully audited at `ca581c2a`, but host-rejected
 controls prevent a causal performance or default-promotion claim.
+
+
+74AG whole-Runtime teardown has now passed all eight isolated tests/24 complete
+cycles (`7445a3b0`). A subsequent artifact audit discovered that a wider cleanup
+had emptied the normal Cargo target and 39 other build targets. The actor is
+unknown; the test cleanup is confined to its own fixture directory. Earlier
+source/test receipts remain preserved, including the failed final artifact audit.
+Rebuilt normal libraries have different hashes, so fresh source acceptance is
+running against saved artifact copies outside Cargo caches. The replacement
+production queue requires that acceptance and the existing build-slot dependency;
+it has not started production commands. The prior test results describe their
+recorded binaries and do not silently accept the rebuilt files. No runtime source
+or optimization default changed during artifact recovery.

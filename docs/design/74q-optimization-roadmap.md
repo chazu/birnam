@@ -742,3 +742,16 @@ show descriptive median reductions of 5.43% for execution and 7.83% including GC
 escaping cases are approximately flat. All 72 host intervals reject qualification,
 and disabled/refused controls vary substantially. The saved prediction work is
 verified, but these data do not establish a causal speedup or justify promotion.
+
+
+74AG whole-Runtime teardown has now passed all eight isolated tests/24 complete
+cycles (`7445a3b0`). A subsequent artifact audit discovered that a wider cleanup
+had emptied the normal Cargo target and 39 other build targets. The actor is
+unknown; the test cleanup is confined to its own fixture directory. Earlier
+source/test receipts remain preserved, including the failed final artifact audit.
+Rebuilt normal libraries have different hashes, so fresh source acceptance is
+running against saved artifact copies outside Cargo caches. The replacement
+production queue requires that acceptance and the existing build-slot dependency;
+it has not started production commands. The prior test results describe their
+recorded binaries and do not silently accept the rebuilt files. No runtime source
+or optimization default changed during artifact recovery.
