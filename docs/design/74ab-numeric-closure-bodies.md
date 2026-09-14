@@ -278,3 +278,49 @@ samples remain unqualified diagnostics; their variation is not evidence for a
 profitability threshold. Complete the expanded production gate and fresh normal
 release verification before the paired exploratory timing run. The user's quiet
 host waiver does not bypass those correctness prerequisites.
+
+## Experiment: share pure predictions within one admitted region
+
+The current admission loop evaluates the raw kernel once per selected call and
+retains a separate leased input/output buffer for each prediction. Repeated calls
+with the same current compiled chain and numeric operand bits can instead share
+one immutable prediction. The reuse scope is the existing at-most-32-call
+admission vector; no cache survives the constructor invocation.
+
+Every call must still validate the current Machine controls, descriptor record,
+exact callee provenance, entry acquisition, capture layout, current Integer
+storage/operand bits, ErrorVt binding and native arithmetic declarations. Reuse
+is considered only after those checks. Its key is the actual owned compiled chain,
+descriptor identity and full ordered numeric input vector. Equal numeric values
+may share speculative arithmetic results; original argument/capture Oops, fresh
+integer allocations and each call's physical Frame remain distinct and unchanged.
+A different input or compiled owner evaluates a fresh prediction. A changed
+binding refuses admission even if a matching earlier prediction exists.
+
+Use `Rc<Ticket>` only for this read-only numeric closure consumer. The ordinary
+per-call prediction cursor and loop-reuse path retain their existing owned-ticket
+behavior. Keep buffer pooling bounded, retain native owners until the last shared
+prediction is released, and preserve every numeric action publication and logical
+allocation. Diagnostic counters must show one entry-kernel evaluation per private
+or escaping factory invocation when all selected calls have identical operands,
+while all current action/identity/GC/recovery/counter checks continue to pass.
+Compare this isolated experiment with the unshared candidate after correctness;
+no speedup, threshold or default promotion follows from eliminating repeated work
+alone. Existing production/cost queues keep their original source checkpoints.
+
+The isolated sharing implementation passes 215 floor tests per profile. The new
+unit test covers equal values in distinct Integer objects, changed numeric bits,
+changed/restored arithmetic Methods, another compiled descriptor owner, and
+retirement while an earlier shared prediction remains alive. The common entry
+preflight test continues to reject cold, malformed, observing and stale contexts.
+
+All 798 focused source cases pass: 710 release cases cover ordinary/numeric cost
+counters, exact action state, real inputs, every repeated-call recovery point,
+automatic-GC boundaries and V2 capture/suspend ownership; another 88 debug cases
+cover numeric counters and action state. At 32 calls per factory, 256 factory
+invocations complete 8,192 optimized calls using 256 entry-prediction kernel
+evaluations. Logical allocation charges remain 4,751,360 bytes for that fixture,
+with 256 physically eliminated closures. These are removed-work counts, not a
+speedup estimate. The source-bound audit also rejects the former 8,192-kernel
+count for that coordinate. Full production acceptance and direct paired
+comparison with the unshared candidate remain pending.

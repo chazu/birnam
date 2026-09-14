@@ -155,6 +155,24 @@ hashes to match. The two-batch diagnostic samples do not establish profitability
 Full acceptance, application/resource measurements and profitability remain
 required. The candidate is not integrated or promoted.
 
+A further isolated implementation at `b758b0ae` on
+`codex/74ab-shared-numeric-predictions` removes repeated prediction work inside
+one admitted closure region. Every call still validates its current descriptor,
+operands and native arithmetic bindings. Only equal raw input vectors belonging
+to the same compiled owner share immutable prediction storage; actual argument
+and capture Oops, allocations, Frames and publications remain per-call. No cache
+survives the constructor invocation. Changed inputs/Methods and retired callees
+are covered by the new unit test.
+
+All 215 floor tests pass per profile, plus 798 focused source cases covering
+counters, identities, exact action state, repeated-call recovery, automatic GC
+boundaries and V2 ownership. At 32 calls per factory, 256 factory invocations
+complete 8,192 optimized calls with 256 prediction-kernel evaluations, preserving
+logical charges and 256 physical closure savings. This is a removed-work result;
+full production acceptance and direct paired comparison with the unshared
+candidate remain required. Existing unshared production/cost queues retain their
+original sources. This implementation is not integrated or promoted.
+
 After that comparison, use the observed execution, GC-inclusive and resource
 costs to select implementation changes or admission policy. Close the application,
 cold/preparation and lifetime/resource gaps for all four families. Existing
