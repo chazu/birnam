@@ -98,9 +98,14 @@ claims. Ordinary eviction preserves live ownership and disables admission while
 generation retirement is pending, as required by the existing control guard.
 
 The focused queue is `/tmp/birnam-74ag-focused-verification.py`, with immutable
-runner text and source hashes embedded in its receipt. Release verification and
-isolated whole-Runtime teardown remain running/pending. Production and installed
-acceptance are not yet established. The repository-wide formatting check reports
+runner text and source hashes embedded in its receipt. The
+[both-profile completion audit](../measurements/74ag-source-lifetime-completion-audit.json)
+now passes 672 compiler/runtime/module tests, 72 source processes and 144 complete
+diagnostic lifecycle cycles. All six source matrices pass, with exact coordinates,
+raw-output validation, paired logical allocation comparisons, and current
+source/artifact hashes. Twenty-four normal-floor processes cover identity and
+mutation independently of the diagnostic probe. Isolated whole-Runtime teardown
+is running. Production and installed acceptance are not yet established. The repository-wide formatting check reports
 pre-existing differences only in unchanged `dev_slot_access.rs`; changed Python
 sources parse and the edited shell driver passes `bash -n`.
 
