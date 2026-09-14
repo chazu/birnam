@@ -73,8 +73,11 @@ String-cleanup candidate on `codex/74z-inert-string-cleanup` recognizes only the
 exact floor cleanup and its actual storage-owning public Runtime. Its independent
 production gate passed all 75 commands, 3,164 optimization source cases and 24
 evaluator/storage cases (`4c3c54c3`); fresh-prefix debug numeric60 and ordinary
-Id120 checks also passed their audits (`2ab45fae`). Further focused acceptance
-is running. The scoped control-read candidate on
+Id120 checks also passed their audits (`2ab45fae`). All 240 fresh-prefix debug
+aggregate cases then passed in 120 matched pairs without retries; the original
+identity, effect, allocation and collection comparisons were independently
+audited at `0ac76e5c`. V2 and remaining release/normal-driver acceptance is
+running. The scoped control-read candidate on
 `codex/74aa-scoped-counting-control` (`7ba56db1`) reduces 15 environment-control
 reads to one within a proved observation-free fused numeric invocation. It
 retains live reads between invocations and around observing publication methods.
