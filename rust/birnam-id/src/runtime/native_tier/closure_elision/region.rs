@@ -56,6 +56,7 @@ pub(super) fn admit<'a>(
     vtable: Oop,
     inputs: &[Oop],
     captures: &[Oop],
+    previous: &[Admitted<'_>],
 ) -> Option<Admitted<'a>> {
     let (selector, method) = {
         let state = unsafe { &*runtime.state.get() };
@@ -131,10 +132,14 @@ pub(super) fn admit<'a>(
                 )
                 .ok()?
         };
-        let prediction = runtime.prepare_numeric_entry_prediction(
+        let prediction = runtime.prepare_numeric_entry_prediction_reusing(
             machine,
             &descriptor,
             &initial.initial_oops,
+            previous
+                .iter()
+                .rev()
+                .filter_map(|entry| entry.numeric.as_ref().map(|n| &n.prediction)),
         )?;
         Some(NumericExecution {
             candidate,
@@ -156,7 +161,7 @@ pub(super) fn admit<'a>(
 
 struct NumericExecution {
     candidate: Rc<Candidate>,
-    prediction: super::super::super::numeric::Ticket,
+    prediction: Rc<super::super::super::numeric::Ticket>,
     initial: Vec<(usize, Oop)>,
 }
 impl Admitted<'_> {

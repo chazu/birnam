@@ -245,6 +245,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let discoveries_before = constructor_discoveries();
         let queries_before = constructor_queries();
         let completed_before = super::native_tier::closure_elision::completed_calls();
+        let prediction_kernels_before = super::numeric::ENTRY_PREDICTION_KERNELS.get();
         let pending = r.closure_pending_resources();
         let native_storage = birnam_native_compiler::Unit::resource_totals();
         let (private_native_units, private_relocated_bytes) = native_storage;
@@ -291,6 +292,8 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         let completed_calls =
             super::native_tier::closure_elision::completed_calls() - completed_before;
         let effects = EFFECTS.get();
+        let entry_prediction_kernels =
+            super::numeric::ENTRY_PREDICTION_KERNELS.get() - prediction_kernels_before;
         assert_eq!(effects, if shape == 2 { calls * uses } else { 0 });
         // Restore after the measurement snapshots. The first subsequent call
         // must regain admission, with no cooldown or stale native target.
@@ -314,7 +317,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             assert_eq!(EFFECTS.get(), effects);
         }
         println!(
-            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits} cold_floor_preparations={cold_preparations} cold_pending_records_before={} cold_pending_bytes_before={} cold_pending_records_after={} cold_pending_bytes_after={} pending_records={} pending_bytes={} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
+            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} entry_prediction_kernels={entry_prediction_kernels} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits} cold_floor_preparations={cold_preparations} cold_pending_records_before={} cold_pending_bytes_before={} cold_pending_records_after={} cold_pending_bytes_after={} pending_records={} pending_bytes={} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
             cold_pending_before.0,
             cold_pending_before.1,
             cold_pending_after.0,

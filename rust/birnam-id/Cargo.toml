@@ -17,6 +17,8 @@ birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specializatio
 
 [features]
 ffi-test-hooks = ["birnam-native-compiler/resource-metrics"]
+# Explicit diagnostics for complete private-compiler consumer lifecycles.
+allocation-metrics = ["birnam-native-compiler/allocation-metrics"]
 # Design 74 E1: development-only guarded Machine slot access exports. Never
 # enabled by ordinary builds; a dev artifact that binds them cannot load on an
 # ordinary runtime.

@@ -2436,6 +2436,23 @@ struct ResumableEntry {
     acquired_entries: usize,
     explicit_generation_leases: usize,
     registration_generation_lease: Option<RegistrationGenerationLease>,
+    unpublish_after_collection: bool,
+}
+
+impl ResumableEntry {
+    fn finish_retirement(&mut self) {
+        if self.unpublish_after_collection {
+            // A collected Block vtable can be reconstructed by another live
+            // factory in this admitted generation. It has no current dispatch
+            // authority until an actual new binding publishes it again.
+            debug_assert!(self.implementation_anchor.is_none());
+            self.lifecycle = ResumableEntryLifecycle::Unpublished;
+        } else {
+            self.lifecycle = ResumableEntryLifecycle::Retired;
+            self.registration_generation_lease = None;
+            self.implementation_anchor = None;
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2615,6 +2632,7 @@ impl ExecutionState {
             acquired_entries: 0,
             explicit_generation_leases: 0,
             registration_generation_lease: Some(carrier.generation_lease),
+            unpublish_after_collection: false,
         });
         self.resumable_by_thunk.insert(thunk_key, capability);
         Ok(capability)
@@ -3163,12 +3181,30 @@ impl ExecutionState {
             .checked_add(1)
             .ok_or(RegistrationError::BindingReferenceOverflow)?;
         entry.lifecycle = ResumableEntryLifecycle::Live;
+        entry.unpublish_after_collection = false;
         Ok(())
     }
 
     pub(crate) fn note_direct_binding_removed(
         &mut self,
         method: MethodAddress,
+    ) -> Result<(), RegistrationError> {
+        self.remove_direct_binding(method, false)
+    }
+
+    /// The Runtime has identified a collected vtable's method as a BlockBody
+    /// in an admitted manifest. This is not explicit MOP method removal.
+    pub(crate) fn note_collected_block_binding_removed(
+        &mut self,
+        method: MethodAddress,
+    ) -> Result<(), RegistrationError> {
+        self.remove_direct_binding(method, true)
+    }
+
+    fn remove_direct_binding(
+        &mut self,
+        method: MethodAddress,
+        collected_block: bool,
     ) -> Result<(), RegistrationError> {
         let Some(capability) = self
             .resumable_by_thunk
@@ -3188,23 +3224,25 @@ impl ExecutionState {
             .entry
             .as_mut()
             .ok_or(RegistrationError::StaleCapability)?;
+        if collected_block && entry.implementation_anchor.is_some() {
+            return Err(RegistrationError::InvalidDescriptor);
+        }
         entry.binding_references = entry
             .binding_references
             .checked_sub(1)
             .ok_or(RegistrationError::EntryUnpublished)?;
         if entry.binding_references == 0 {
-            entry.lifecycle = if entry.acquired_entries != 0
+            entry.unpublish_after_collection = collected_block;
+            if entry.acquired_entries != 0
                 || entry.active_frame_pins != 0
                 || entry.continuation_frame_pins != 0
                 || entry.explicit_generation_leases != 0
                 || self.dispatch_read_depth != 0
             {
-                ResumableEntryLifecycle::Retiring
+                entry.lifecycle = ResumableEntryLifecycle::Retiring;
             } else {
-                entry.registration_generation_lease = None;
-                entry.implementation_anchor = None;
-                ResumableEntryLifecycle::Retired
-            };
+                entry.finish_retirement();
+            }
         }
         Ok(())
     }
@@ -3307,6 +3345,7 @@ impl ExecutionState {
         if entry.binding_references != 0 {
             return Ok(());
         }
+        entry.unpublish_after_collection = false;
         entry.lifecycle = if entry.acquired_entries != 0
             || entry.active_frame_pins != 0
             || entry.continuation_frame_pins != 0
@@ -3347,9 +3386,7 @@ impl ExecutionState {
                     && entry.continuation_frame_pins == 0
                     && entry.explicit_generation_leases == 0
                 {
-                    entry.lifecycle = ResumableEntryLifecycle::Retired;
-                    entry.registration_generation_lease = None;
-                    entry.implementation_anchor = None;
+                    entry.finish_retirement();
                 }
             }
         }
@@ -3376,9 +3413,7 @@ impl ExecutionState {
             && entry.continuation_frame_pins == 0
             && entry.explicit_generation_leases == 0
         {
-            entry.lifecycle = ResumableEntryLifecycle::Retired;
-            entry.registration_generation_lease = None;
-            entry.implementation_anchor = None;
+            entry.finish_retirement();
         }
     }
 
@@ -4696,6 +4731,45 @@ impl ExecutionState {
             vtable if vtable == objects.abort_action_vtable => Some(objects.abort_kind),
             _ => None,
         }
+    }
+
+    /// Test-floor snapshot of every persistent action buffer. Only Machine
+    /// identity is normalized, after validating the published owner fields.
+    #[cfg(feature = "ffi-test-hooks")]
+    pub(crate) fn snapshot_action_words(
+        &self,
+        heap: &Heap,
+        owner: u64,
+        capability: MachineCapability,
+    ) -> Vec<Vec<usize>> {
+        let machine = self.machine(owner, capability).unwrap();
+        let objects = self.objects.unwrap();
+        [
+            (machine.continue_action, objects.continue_action_vtable, 4),
+            (machine.call_action, objects.call_action_vtable, 9),
+            (machine.tail_call_action, objects.tail_call_action_vtable, 8),
+            (machine.return_action, objects.return_action_vtable, 5),
+            (machine.suspend_action, objects.suspend_action_vtable, 7),
+            (machine.capture_action, objects.capture_action_vtable, 7),
+            (machine.restore_action, objects.restore_action_vtable, 6),
+            (machine.abort_action, objects.abort_action_vtable, 7),
+        ]
+        .into_iter()
+        .map(|(action, vtable, count)| {
+            assert_eq!(heap.vtable_of(action), Some(vtable));
+            assert_eq!(heap.payload_size(action), Some(count * size_of::<usize>()));
+            let mut words: Vec<_> = (0..count)
+                .map(|index| self.action_word(heap, action, index).unwrap())
+                .collect();
+            if words[0] == 1 {
+                assert_eq!(words[1], capability.index);
+                assert_eq!(words[2], capability.generation as usize);
+                words[1] = 0;
+                words[2] = 0;
+            }
+            words
+        })
+        .collect()
     }
 
     pub(crate) fn action_word(&self, heap: &Heap, action: Oop, index: usize) -> Option<usize> {
@@ -6018,6 +6092,109 @@ mod tests {
             Err(RegistrationError::StaleCapability)
         ));
         assert_eq!(execution.registration_diagnostics().acquired_entries, 0);
+    }
+
+    #[test]
+    fn collected_block_bindings_republish_only_after_holders_release() {
+        for holder in 0..6 {
+            let owner = 74;
+            let mut execution = ExecutionState::new(owner);
+            let descriptor = descriptor(vec![SlotKind::Oop], 1);
+            let generation = descriptor.identity().generation;
+            let capability = execution
+                .register_resumable(
+                    owner,
+                    SemanticRegistrationV1::new(inert_thunk, descriptor, 0, 0, 1),
+                )
+                .unwrap();
+            let method = MethodAddress::from_method(inert_thunk);
+            execution.note_direct_binding_added(method).unwrap();
+            let mut lease = None;
+            match holder {
+                1 => execution.begin_dispatch_read().unwrap(),
+                2 | 4 | 5 => {
+                    assert!(matches!(
+                        execution.classify_resumable(method),
+                        Ok(Some(StacklessTarget::Registered { .. }))
+                    ));
+                    if holder >= 4 {
+                        execution
+                            .transfer_acquired_entry_to_frame(capability)
+                            .unwrap();
+                    }
+                    if holder == 5 {
+                        execution
+                            .transfer_frame_pin_to_continuation(capability)
+                            .unwrap();
+                    }
+                }
+                3 => lease = Some(execution.acquire_explicit_generation_lease(method).unwrap()),
+                _ => (),
+            }
+            execution
+                .note_collected_block_binding_removed(method)
+                .unwrap();
+            if holder != 0 {
+                assert!(!execution.unregister_code_generation(generation).unwrap());
+            }
+            match holder {
+                1 => execution.end_dispatch_read().unwrap(),
+                2 => execution.release_acquired_entry(capability).unwrap(),
+                3 => execution
+                    .release_explicit_generation_lease(lease.unwrap())
+                    .unwrap(),
+                4 => execution.release_entry_frame_pin(capability).unwrap(),
+                5 => execution
+                    .release_entry_continuation_pin(capability)
+                    .unwrap(),
+                _ => (),
+            }
+            assert!(matches!(
+                execution.classify_resumable(method),
+                Err(RegistrationError::EntryUnpublished)
+            ));
+            assert_eq!(execution.registration_diagnostics().retired_entries, 0);
+            execution.note_direct_binding_added(method).unwrap();
+            assert!(matches!(
+                execution.classify_resumable(method),
+                Ok(Some(StacklessTarget::Registered { .. }))
+            ));
+            execution.release_acquired_entry(capability).unwrap();
+            // A subsequent explicit method removal remains terminal. A prior
+            // collection must not leave permission to revive a removed method.
+            execution.note_direct_binding_removed(method).unwrap();
+            assert!(matches!(
+                execution.classify_resumable(method),
+                Err(RegistrationError::EntryRetired)
+            ));
+            assert_eq!(
+                execution.note_direct_binding_added(method),
+                Err(RegistrationError::EntryRetired)
+            );
+            assert!(execution.unregister_code_generation(generation).unwrap());
+            assert!(!execution.has_resumable_thunk(method));
+        }
+    }
+
+    #[test]
+    fn collected_unpublished_block_generation_can_retire_without_republication() {
+        let owner = 74;
+        let mut execution = ExecutionState::new(owner);
+        let descriptor = descriptor(vec![SlotKind::Oop], 1);
+        let generation = descriptor.identity().generation;
+        execution
+            .register_resumable(
+                owner,
+                SemanticRegistrationV1::new(inert_thunk, descriptor, 0, 0, 1),
+            )
+            .unwrap();
+        let method = MethodAddress::from_method(inert_thunk);
+        execution.note_direct_binding_added(method).unwrap();
+        execution
+            .note_collected_block_binding_removed(method)
+            .unwrap();
+        assert!(execution.unregister_code_generation(generation).unwrap());
+        assert!(!execution.has_code_generation(generation));
     }
 
     #[test]

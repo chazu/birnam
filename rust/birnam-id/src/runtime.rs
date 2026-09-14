@@ -32,6 +32,8 @@ use crate::vtable::{AddMethod, Vtables};
 #[cfg(all(test, target_os = "macos"))]
 mod architectural_fit_experiment;
 #[cfg(feature = "ffi-test-hooks")]
+mod closure_action_probe;
+#[cfg(feature = "ffi-test-hooks")]
 mod closure_api_probe;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_budget_probe;
@@ -43,6 +45,8 @@ mod closure_journal_probe;
 mod closure_sequence_probe;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_timing_probe;
+#[cfg(all(feature = "ffi-test-hooks", feature = "allocation-metrics"))]
+mod consumer_lifetime_probe;
 #[cfg(test)]
 mod deopt_experiment;
 mod dispatch_cache;
@@ -3298,7 +3302,7 @@ impl Runtime {
         let nil = self.canonical().nil;
         // SAFETY: return application is one allocation-free owner-thread state
         // transition and invokes no generated code while borrowed.
-        unsafe {
+        let answer = unsafe {
             let state = &mut *self.state.get();
             let (answer, entry) = {
                 let machine = state.execution.machine_mut(owner, capability)?;
@@ -3330,8 +3334,11 @@ impl Runtime {
             if let Some(entry) = entry {
                 state.execution.release_entry_frame_pin(entry)?;
             }
-            Ok(answer)
-        }
+            answer
+        };
+        #[cfg(feature = "ffi-test-hooks")]
+        closure_action_probe::after_return(self, owner, capability);
+        Ok(answer)
     }
 
     pub(crate) fn drive_stackless(
@@ -4391,14 +4398,18 @@ impl Runtime {
             }
             for (_, methods) in &dead_bindings {
                 for method in methods {
-                    state
-                        .execution
-                        .note_direct_binding_removed(*method)
-                        .unwrap_or_else(|_| {
-                            boundary::fatal_invariant(
-                                "dead vtable binding retirement accounting failed",
-                            )
-                        });
+                    let removed = if block_registration_for_method(state, *method).is_some() {
+                        state
+                            .execution
+                            .note_collected_block_binding_removed(*method)
+                    } else {
+                        state.execution.note_direct_binding_removed(*method)
+                    };
+                    removed.unwrap_or_else(|_| {
+                        boundary::fatal_invariant(
+                            "dead vtable binding retirement accounting failed",
+                        )
+                    });
                 }
             }
             let dead_vtables = state.vtables.remove_dead_collectable(&state.heap);

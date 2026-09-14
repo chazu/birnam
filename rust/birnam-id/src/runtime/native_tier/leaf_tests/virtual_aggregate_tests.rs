@@ -332,7 +332,7 @@ fn virtual_fields_force_recovery_at_every_admitted_call_boundary() {
 }
 
 #[test]
-fn longer_virtual_field_regions_recover_at_every_call_and_preserve_reentry() {
+pub(super) fn longer_virtual_field_regions_recover_at_every_call_and_preserve_reentry() {
     for projections in [1, 3, 16] {
         compare_recovery(None, projections, CASES);
         for stop in 1..=projections + 2 {

@@ -2,12 +2,14 @@
 import re
 
 
-def source(uses):
+def source(uses, *, numeric=False):
     """Static source bodies keep each repeated call visible to canonical lowering."""
     assert 1 <= uses <= 32
     bodies = []
     for shape in range(4):
         callee = "[| [input value]]" if shape == 3 else "[| input]"
+        if numeric and shape != 3:
+            callee = "[| let first := [20 + 15]; let second := [first + 7]; input]"
         statements = [f"let closure := {callee};"]
         statements += ["let answer := [closure value];"] * uses
         statements.append("closure" if shape in (1, 2) else "answer")
@@ -31,7 +33,7 @@ def parse_output(output):
     return result
 
 
-def check_pair(off, on, batches):
+def check_pair(off, on, batches, *, numeric=False):
     calls = batches * 128
     a, b = off["measure"], on["measure"]
     for row in (a, b):
@@ -56,6 +58,8 @@ def check_pair(off, on, batches):
     assert b["physical_saved"] == (calls if shape == 0 else 0)
     assert a["completed_calls"] == 0
     assert b["completed_calls"] == (calls * uses if shape < 2 else 0)
+    assert a["entry_prediction_kernels"] == 0
+    assert b["entry_prediction_kernels"] == (calls if numeric and shape < 2 else 0)
     assert a["effects"] == b["effects"] == (calls * uses if shape == 2 else 0)
     assert off["prepare"]["floor_preparations"] == off["prepare"]["floor_preparation_ns"] == 0
     assert off["prepare"]["metadata_payload_before"] == off["prepare"]["metadata_payload_after"] == 0

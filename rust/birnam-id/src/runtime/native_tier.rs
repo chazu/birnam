@@ -216,6 +216,47 @@ thread_local! {
 }
 
 impl Registry {
+    #[cfg(all(feature = "ffi-test-hooks", feature = "allocation-metrics"))]
+    pub(super) fn watch_generation(
+        &self,
+        generation: u64,
+        watch: &mut super::consumer_lifetime_probe::Owners,
+    ) {
+        for record in self.records.values() {
+            if !record
+                .descriptor
+                .upgrade()
+                .is_some_and(|d| d.identity().generation == generation)
+            {
+                continue;
+            }
+            watch.arc("descriptor", record.descriptor.clone());
+            if let Some(value) = &record.pending {
+                watch.rc("prepared", value);
+            }
+            if let Some(value) = &record.candidate {
+                watch.rc("candidate", value);
+            }
+            if let Some(value) = &record.leaf {
+                watch.rc("leaf", value);
+            }
+            if let Some(value) = &record.numeric {
+                watch.rc("numeric-template", value);
+            }
+            if let Some(value) = &record.numeric_candidate {
+                watch.rc("numeric-chain", value);
+            }
+        }
+        for record in self.closures.values() {
+            if record
+                .descriptor
+                .upgrade()
+                .is_some_and(|d| d.identity().generation == generation)
+            {
+                record.watch_owners(watch);
+            }
+        }
+    }
     #[cfg(feature = "ffi-test-hooks")]
     pub(super) fn unboxed_scratch_resources(&self) -> (usize, usize) {
         self.unboxed_scratch

@@ -745,3 +745,6 @@ mod alias_tests;
 pub(super) use alias_tests::record_box;
 
 mod region_tests;
+
+#[cfg(feature = "allocation-metrics")]
+mod consumer_teardown_tests;

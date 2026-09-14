@@ -10,6 +10,27 @@ impl Runtime {
         descriptor: &Arc<FrameDescriptor>,
         initial: &[(usize, Oop)],
     ) -> Option<super::super::numeric::Ticket> {
+        self.numeric_entry_chain(machine, descriptor, initial)?
+            .predict_entry(self, Arc::as_ptr(descriptor) as usize, initial)
+    }
+
+    pub(in crate::runtime) fn prepare_numeric_entry_prediction_reusing<'p>(
+        &self,
+        machine: Oop,
+        descriptor: &Arc<FrameDescriptor>,
+        initial: &[(usize, Oop)],
+        previous: impl Iterator<Item = &'p Rc<super::super::numeric::Ticket>>,
+    ) -> Option<Rc<super::super::numeric::Ticket>> {
+        self.numeric_entry_chain(machine, descriptor, initial)?
+            .predict_entry_reusing(self, Arc::as_ptr(descriptor) as usize, initial, previous)
+    }
+
+    fn numeric_entry_chain(
+        &self,
+        machine: Oop,
+        descriptor: &Arc<FrameDescriptor>,
+        initial: &[(usize, Oop)],
+    ) -> Option<Rc<super::super::numeric::CompiledChain>> {
         #[cfg(feature = "ffi-test-hooks")]
         if crate::runtime::unboxed_numeric_probe::control_active(machine) {
             return None;
@@ -43,6 +64,6 @@ impl Runtime {
             // Constructor preflight never increments its visit/start counters.
             record.numeric_candidate.clone()?
         };
-        compiled.predict_entry(self, key, initial)
+        Some(compiled)
     }
 }

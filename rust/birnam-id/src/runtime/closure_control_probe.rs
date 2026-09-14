@@ -28,6 +28,10 @@ impl Runtime {
         let vt = self.create_vtable(self.globals().object_vt);
         for (name, method) in [
             (b"warm:input:".as_slice(), warm as Method),
+            (
+                b"actionState:input:".as_slice(),
+                super::closure_action_probe::run as Method,
+            ),
             (b"run:input:capture:".as_slice(), run as Method),
             (
                 b"runLiterals:input:capture:".as_slice(),
@@ -83,6 +87,8 @@ impl Runtime {
         ] {
             self.add_method(vt, self.intern(name).unwrap(), method);
         }
+        #[cfg(feature = "allocation-metrics")]
+        super::consumer_lifetime_probe::install(self, vt);
         let object = self.allocate_instance(vt, 0);
         self.export(b"ClosureControlProbe", object).unwrap();
     }

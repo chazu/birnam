@@ -185,3 +185,147 @@ fn numeric_entry_preflight_is_pure_current_and_requires_a_warm_callee() {
         }
     }
 }
+
+#[test]
+fn numeric_entry_predictions_share_only_current_equal_bits_and_compiled_owner() {
+    let bootstrap = crate::dispatch::build_bootstrap();
+    let r = &bootstrap.runtime;
+    r.publish_canonical_exports();
+    r.install_execution_objects();
+    let native = Fixture::load(r);
+    let blend = r.intern(b"blend:").unwrap();
+    r.add_method(r.canonical().smallint_vt, blend, native.method(1));
+    let bytes = super::fused_numeric_tests::program(false);
+    let block = install(r, &bytes, 741602, None);
+    let _block = ScopedOopRootGuard::new(r, block.receiver);
+    let a = r.make_integer(11);
+    let _a = ScopedOopRootGuard::new(r, a);
+    let equal = r.make_integer(11);
+    let _equal = ScopedOopRootGuard::new(r, equal);
+    let different = r.make_integer(12);
+    let _different = ScopedOopRootGuard::new(r, different);
+    let b = r.make_integer(3);
+    let _b = ScopedOopRootGuard::new(r, b);
+    let machine = r.create_stackless_machine().unwrap();
+    let _machine = ScopedOopRootGuard::new(r, machine);
+    for _ in 0..128 {
+        let drive = r.create_stackless_machine().unwrap();
+        let _drive = ScopedOopRootGuard::new(r, drive);
+        let answer = r
+            .enter(|| {
+                r.drive_stackless(
+                    drive,
+                    block.descriptor.clone(),
+                    &[(0, block.receiver), (1, a), (2, b)],
+                )
+            })
+            .unwrap();
+        assert_eq!(r.integer_value(answer), 27);
+    }
+    let initial = |value| [(0, r.canonical().nil), (1, value), (2, b)];
+    let before = numeric::ENTRY_PREDICTION_KERNELS.get();
+    let first = r
+        .prepare_numeric_entry_prediction_reusing(
+            machine,
+            &block.descriptor,
+            &initial(a),
+            core::iter::empty(),
+        )
+        .unwrap();
+    assert_eq!(numeric::ENTRY_PREDICTION_KERNELS.get() - before, 1);
+    let shared = r
+        .prepare_numeric_entry_prediction_reusing(
+            machine,
+            &block.descriptor,
+            &initial(equal),
+            core::iter::once(&first),
+        )
+        .unwrap();
+    assert_ne!(a, equal);
+    assert!(
+        Rc::ptr_eq(&first, &shared),
+        "equal bits share only pure prediction storage"
+    );
+    assert_eq!(numeric::ENTRY_PREDICTION_KERNELS.get() - before, 1);
+    let changed = r
+        .prepare_numeric_entry_prediction_reusing(
+            machine,
+            &block.descriptor,
+            &initial(different),
+            core::iter::once(&first),
+        )
+        .unwrap();
+    assert!(!Rc::ptr_eq(&first, &changed));
+    assert_eq!(numeric::ENTRY_PREDICTION_KERNELS.get() - before, 2);
+    r.add_method(r.canonical().smallint_vt, blend, native.method(2));
+    assert!(
+        r.prepare_numeric_entry_prediction_reusing(
+            machine,
+            &block.descriptor,
+            &initial(a),
+            core::iter::once(&first)
+        )
+        .is_none(),
+        "cached bits do not grant current arithmetic authority"
+    );
+    assert_eq!(numeric::ENTRY_PREDICTION_KERNELS.get() - before, 2);
+    r.add_method(r.canonical().smallint_vt, blend, native.method(1));
+    assert!(Rc::ptr_eq(
+        &first,
+        &r.prepare_numeric_entry_prediction_reusing(
+            machine,
+            &block.descriptor,
+            &initial(a),
+            core::iter::once(&first)
+        )
+        .unwrap()
+    ));
+    assert_eq!(first.fusion_result(2, 2), Some(27));
+    let other = install(r, &bytes, 741603, None);
+    let _other = ScopedOopRootGuard::new(r, other.receiver);
+    for _ in 0..128 {
+        let drive = r.create_stackless_machine().unwrap();
+        let _drive = ScopedOopRootGuard::new(r, drive);
+        assert_eq!(
+            r.integer_value(
+                r.enter(|| r.drive_stackless(
+                    drive,
+                    other.descriptor.clone(),
+                    &[(0, other.receiver), (1, a), (2, b)]
+                ))
+                .unwrap()
+            ),
+            27
+        );
+    }
+    let other_ticket = r
+        .prepare_numeric_entry_prediction_reusing(
+            machine,
+            &other.descriptor,
+            &initial(a),
+            core::iter::once(&first),
+        )
+        .unwrap();
+    assert!(
+        !Rc::ptr_eq(&first, &other_ticket),
+        "equal source and operands do not share different acquired descriptor owners"
+    );
+    assert_eq!(numeric::ENTRY_PREDICTION_KERNELS.get() - before, 3);
+    assert!(
+        r.remove_method(r.checked_vtable_of(block.receiver), block.selector)
+            .is_some()
+    );
+    assert!(r.enter(|| r.retire_stackless_code_generation(block.generation)));
+    assert!(
+        r.prepare_numeric_entry_prediction_reusing(
+            machine,
+            &block.descriptor,
+            &initial(a),
+            core::iter::once(&first)
+        )
+        .is_none(),
+        "a retained shared prediction cannot authorize a retired callee"
+    );
+    drop(shared);
+    assert_eq!(first.fusion_result(2, 2), Some(27));
+}

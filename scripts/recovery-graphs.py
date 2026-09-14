@@ -36,7 +36,7 @@ def sources():
         "unboxed-numeric-timing.py", "loop-invariant-numeric-smoke.py",
         "loop-measurement-smoke.py", "loop_timing_common.py", "loop-timing.py",
         "closure-sequence-mutation-smoke.py",
-        "closure-budget-smoke.py", "closure-numeric-inputs-smoke.py", "closure-string-cleanup-smoke.py",
+        "closure-budget-smoke.py", "closure-numeric-inputs-smoke.py", "closure-string-cleanup-smoke.py", "closure-numeric-actions-smoke.py",
         "closure-journal-smoke.py",
         "closure-measurement-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
@@ -77,6 +77,8 @@ def sources():
 
 def check_numeric_closure_matrices(matrices):
     sequence_source = runpy.run_path(str(ROOT / "scripts/closure-sequence-smoke.py"))["source"]
+    measure_module = runpy.run_path(str(ROOT / "scripts/closure_timing_common.py"))
+    action_source = runpy.run_path(str(ROOT / "scripts/closure-numeric-actions-smoke.py"))["source"]
     budget_source = runpy.run_path(str(ROOT / "scripts/closure-budget-smoke.py"))["source"]
     modes = [(0, 1, -1), (1, 0, -1), (1, 1, -1), (1, 1, 0), (1, 1, 1), (1, 1, 2)]
     expected_source = {(p, l, e, f) for p in (0, 1) for l, e, f in modes}
@@ -96,6 +98,28 @@ def check_numeric_closure_matrices(matrices):
         rows("source", ("precise", "literals", "enabled", "forced"), expected_source)
         rows("control", ("precise", "control", "literals", "enabled", "forced"), expected_control)
         rows("inputs", ("precise", "enabled", "forced"), expected_inputs)
+        expected_measures = {(u, s, e) for u in (1, 3, 4, 8, 16, 32) for s in range(4) for e in (0, 1)}
+        measures = rows("measure", ("uses", "shape", "enabled"), expected_measures)
+        for row in measures:
+            if row["source_sha256"] != digest(measure_module["source"](row["uses"], numeric=True)):
+                raise RuntimeError("numeric closure measurement used a different body")
+        for uses, shape in {(u, s) for u, s, _ in expected_measures}:
+            pair = {r["enabled"]: r["values"] for r in measures if r["uses"] == uses and r["shape"] == shape}
+            measure_module["check_pair"](pair[0], pair[1], 2, numeric=True)
+
+        expected_actions = {(tail, captures, p, e, f) for tail in (False, True)
+                            for captures in (False, True) for p, e, f in expected_inputs}
+        actions = rows("actions", ("tail", "captures", "precise", "enabled", "forced"), expected_actions)
+        baselines = {(r["tail"], r["captures"], r["precise"]): r["snapshots"] for r in actions if not r["enabled"]}
+        for row in actions:
+            if row["source_sha256"] != digest(action_source(row["tail"], row["captures"])):
+                raise RuntimeError("numeric closure action probe used a different body")
+            events = row["snapshots"]
+            if len(events) != 3 or any([len(a) for a in e] != [4, 9, 8, 5, 7, 7, 6, 7, 4] or e[-1][2:] != [1, 0] for e in events):
+                raise RuntimeError("numeric closure action snapshot is incomplete")
+            if events != baselines[row["tail"], row["captures"], row["precise"]]:
+                raise RuntimeError("numeric closure residual actions differ")
+
         for name, fixture in (("source", "closure-numeric.birnam"), ("control", "closure-numeric-control.birnam")):
             if matrices[f"numeric-{name}-{profile}.json"]["source_sha256"].get(f"scripts/fixtures/{fixture}") != sha(ROOT / "scripts/fixtures" / fixture):
                 raise RuntimeError("numeric closure fixture differs from tested source")
@@ -271,6 +295,23 @@ def check_closure_string_cleanup_matrix(receipt):
             require(accounting(baseline) == accounting(row), 'counting changed logical observations')
 
 
+def check_baseline_storage_matrix(storage):
+    if storage.get('status') != 'passed' or storage.get('heap_accounting') is not True:
+        raise RuntimeError('baseline TCC compiler heap accounting was not exercised')
+    expected = {(profile, size, repetition) for profile in ('debug', 'release')
+                for size in (4096, 65536) for repetition in range(3)}
+    if len(storage['rows']) != 12 or {(r['profile'], r['payload_bytes'], r['repetition']) for r in storage['rows']} != expected:
+        raise RuntimeError('incomplete baseline TCC storage lifecycle matrix')
+    checks = runpy.run_path(str(ROOT / 'scripts/baseline-native-storage-smoke.py'))
+    for row in storage['rows']:
+        source = checks['fixture'](row['payload_bytes'], True)
+        if row['source_sha256'] != hashlib.sha256(source.encode()).hexdigest():
+            raise RuntimeError('baseline TCC storage source differs')
+        measurements = checks['validate_row'](row, True)
+        if any(row.get(name) != value for name, value in measurements.items()):
+            raise RuntimeError('baseline TCC storage observations differ from raw output')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify", action="store_true")
@@ -349,10 +390,10 @@ def main():
             receipt["authorities"][name] = sha(ROOT / name)
         for profile in ("debug", "release"):
             run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
-                 "-p", "birnam-native-compiler", "--features", "resource-metrics"]
+                 "-p", "birnam-native-compiler", "--features", "allocation-metrics"]
                 + (["--release"] if profile == "release" else []), profile + "-native-resource-ownership")
             run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
-                 "-p", "birnam-tcc", "--features", "resource-metrics"]
+                 "-p", "birnam-tcc", "--features", "allocation-metrics"]
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["mise", "exec", "--", "cargo", "build", "--locked", "--offline",
@@ -449,7 +490,7 @@ def main():
                         env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
                         env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
                     expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control",
-                                                                                      "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs", "numeric-string-cleanup")
+                                                                                      "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs", "numeric-string-cleanup", "numeric-actions", "numeric-measure")
                                 for profile in ("debug", "release")}
                     expected.update(f"joint-{family}-{counting}-{profile}.json"
                                     for family in ('sequence', 'budget', 'control', 'inputs')
@@ -502,10 +543,7 @@ def main():
                             raise RuntimeError("evaluator lifetime floor differs from source matrix floor")
                     receipt["evaluator_lifetime_matrix"] = lifetime
                     baseline_storage = matrices.pop("baseline-native-storage.json")
-                    expected_storage = {(p, size, repeat) for p in ("debug", "release")
-                                        for size in (4096, 65536) for repeat in range(3)}
-                    if len(baseline_storage["rows"]) != 12 or {(r["profile"], r["payload_bytes"], r["repetition"]) for r in baseline_storage["rows"]} != expected_storage:
-                        raise RuntimeError("incomplete baseline TCC storage lifecycle matrix")
+                    check_baseline_storage_matrix(baseline_storage)
                     receipt["baseline_native_storage_matrix"] = baseline_storage
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:

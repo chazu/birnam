@@ -18,6 +18,10 @@ pub(in crate::runtime) mod loop_reuse;
 // invocation. Leases own the pool so cache clearing and nested drives cannot
 // invalidate active storage. Free buffers contain no traced Birnam references.
 const MAX_FREE_BUFFERS: usize = 4;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+thread_local! {
+    pub(in crate::runtime) static ENTRY_PREDICTION_KERNELS: Cell<usize> = const { Cell::new(0) };
+}
 #[derive(Default)]
 struct Buffers {
     inputs: Vec<i64>,
@@ -77,6 +81,36 @@ impl CompiledChain {
         key: usize,
         initial: &[(usize, Oop)],
     ) -> Option<Ticket> {
+        self.prepare_entry(runtime, key, initial)?.evaluate_entry()
+    }
+
+    /// Reuse only after ordinary entry validation, and only within the supplied
+    /// bounded admission scope. Each actual call still owns its Oops and Frame.
+    pub(in crate::runtime) fn predict_entry_reusing<'p>(
+        self: &Rc<Self>,
+        runtime: &Runtime,
+        key: usize,
+        initial: &[(usize, Oop)],
+        previous: impl Iterator<Item = &'p Rc<Ticket>>,
+    ) -> Option<Rc<Ticket>> {
+        let ticket = self.prepare_entry(runtime, key, initial)?;
+        for prior in previous {
+            if prior.key == ticket.key
+                && Rc::ptr_eq(&prior.chain, &ticket.chain)
+                && prior.buffers.values.inputs == ticket.buffers.values.inputs
+            {
+                return Some(prior.clone());
+            }
+        }
+        Some(Rc::new(ticket.evaluate_entry()?))
+    }
+
+    fn prepare_entry(
+        self: &Rc<Self>,
+        runtime: &Runtime,
+        key: usize,
+        initial: &[(usize, Oop)],
+    ) -> Option<Ticket> {
         let mut buffers = runtime
             .numeric
             .borrow_mut()
@@ -119,16 +153,7 @@ impl CompiledChain {
         if !ticket.fusion_bindings_current(runtime) {
             return None;
         }
-        // Deliberately do not call loop_reuse::predict: this is not an observed
-        // caller tail iteration and must neither consume nor replace its stamp.
-        let mut ticket = ticket;
-        let success = unsafe {
-            (self.kernel)(
-                ticket.buffers.values.inputs.as_ptr(),
-                ticket.buffers.values.outputs.as_mut_ptr(),
-            ) == 0
-        };
-        success.then_some(ticket)
+        Some(ticket)
     }
 
     #[cfg(feature = "ffi-test-hooks")]
@@ -238,6 +263,20 @@ pub(in crate::runtime) struct Ticket {
     next: usize,
 }
 impl Ticket {
+    fn evaluate_entry(mut self) -> Option<Self> {
+        // This is a callee preflight, not an observed caller tail iteration.
+        // Do not consume or replace loop-reuse history.
+        #[cfg(any(test, feature = "ffi-test-hooks"))]
+        ENTRY_PREDICTION_KERNELS.set(ENTRY_PREDICTION_KERNELS.get() + 1);
+        let success = unsafe {
+            (self.chain.kernel)(
+                self.buffers.values.inputs.as_ptr(),
+                self.buffers.values.outputs.as_mut_ptr(),
+            ) == 0
+        };
+        success.then_some(self)
+    }
+
     pub(in crate::runtime) fn fusion_template(&self) -> &Template {
         &self.chain.template
     }

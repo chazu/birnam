@@ -28,6 +28,8 @@ use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "resource-metrics")]
 mod resource_metrics;
 
+mod unit_cache;
+
 const RUST_TCC_IDENTITY: &[u8] = b"rust-tcc-n4.2-state\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
 const TCC_VT_NAME: &[u8] = b"TccVt\0";
@@ -381,6 +383,7 @@ unsafe fn unit_snapshot(object: Oop) -> Option<(*mut TccState, UnitPhase)> {
 }
 
 unsafe fn release_payload(payload: *mut UnitPayload) {
+    unit_cache::forget(payload.cast());
     // SAFETY: the finalizer owns the one-way transition and clears the pointer
     // before calling foreign code, so a repeated finalizer cannot double free.
     let state = unsafe { (*payload).state };
@@ -1431,8 +1434,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (api.gcRegisterRootProvider)(mark_runtime_roots);
     });
     let unit_vt = runtime.unit_vt as Oop;
-    // SAFETY: the raw UnitPayload contains only libtcc state and an enum byte.
-    unsafe { (api.setLayout)(unit_vt, ptr::null(), 0, SLOT_RAW) };
+    // The payload remains raw; the trace hook follows only this Unit's native
+    // cache, without making that cache a process-wide GC root.
+    unsafe {
+        (api.setLayout)(unit_vt, ptr::null(), 0, SLOT_RAW);
+        (api.setTraceHook)(unit_vt, unit_cache::trace);
+    }
     let tcc_vt = runtime.tcc_vt as Oop;
     let tcc_methods: &[(&[u8], Method)] = &[
         (b"compile:\0", m_compile),
@@ -1440,9 +1447,25 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (b"new\0", m_new),
         (b"liveUnitCount\0", m_live_unit_count),
         #[cfg(feature = "resource-metrics")]
+        (b"vtableCacheUnitCount\0", unit_cache::unit_count),
+        #[cfg(feature = "resource-metrics")]
+        (b"vtableCacheEntryCount\0", unit_cache::entry_count),
+        #[cfg(feature = "resource-metrics")]
+        (b"checkUnitCacheContract\0", unit_cache::check_contract),
+        #[cfg(feature = "resource-metrics")]
         (
             b"relocatedAllocationBytes\0",
             resource_metrics::allocation_bytes,
+        ),
+        #[cfg(feature = "allocation-metrics")]
+        (
+            b"heapAllocationBytes\0",
+            resource_metrics::heap_allocation_bytes,
+        ),
+        #[cfg(feature = "allocation-metrics")]
+        (
+            b"heapAllocationCount\0",
+            resource_metrics::heap_allocation_count,
         ),
     ];
     let unit_methods: &[(&[u8], Method)] = &[
@@ -1451,6 +1474,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (b"addLibraryPath:\0", m_add_library_path),
         (b"addFile:\0", m_add_file),
         (b"bindRuntime\0", m_bind_runtime),
+        (b"bindVtableCache\0", unit_cache::bind),
         (b"addSymbol:value:\0", m_add_symbol),
         (b"relocate\0", m_relocate),
         (b"ownCodeGeneration:\0", m_own_code_generation),

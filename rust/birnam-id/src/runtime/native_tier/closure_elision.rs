@@ -103,6 +103,19 @@ enum Visit {
     Refused,
 }
 impl Record {
+    #[cfg(all(feature = "ffi-test-hooks", feature = "allocation-metrics"))]
+    pub(super) fn watch_owners(&self, watch: &mut crate::runtime::consumer_lifetime_probe::Owners) {
+        watch.arc("closure-descriptor", self.descriptor.clone());
+        match &self.preparation {
+            Preparation::Pending { input, .. } => watch.rc("closure-input", input),
+            Preparation::Ready(prepared) => watch.rc("closure-plan", prepared),
+            Preparation::Refused => (),
+        }
+        if let Some(constructor) = &self.constructor {
+            watch.rc("closure-constructor", constructor);
+        }
+    }
+
     pub(super) fn new(
         input: Rc<pending::Pending>,
         descriptor: &Arc<FrameDescriptor>,
@@ -522,9 +535,16 @@ impl Runtime {
         let mut budget = snapshot.total_size();
         let integer_bytes = crate::heap::Heap::allocation_total_size(8)?;
         for call in region::calls(plan) {
-            let Some(selected) =
-                region::admit(self, machine, call, plan, block_vtable, &inputs, captures)
-            else {
+            let Some(selected) = region::admit(
+                self,
+                machine,
+                call,
+                plan,
+                block_vtable,
+                &inputs,
+                captures,
+                &admitted,
+            ) else {
                 break;
             };
             let boxes = selected.call.boxes.len()

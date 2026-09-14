@@ -1605,7 +1605,7 @@ pub unsafe extern "C" fn birnam_candidate_validate_binding(
     }
 }
 
-unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
+unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) -> bool {
     if std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION").is_some_and(|v| v == "1") {
         if CLOSURE_ATTEMPT.get().is_none()
             && let Some(address) =
@@ -1653,23 +1653,31 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop) -> bool {
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
-    let name = unsafe { (api.mkString)(b"birnam_vtable_cache_get".as_ptr(), 23) };
-    let Some(address) =
-        (unsafe { borrowed_address(api, birnam_vtable_cache_get as *const () as usize) })
-    else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
-    }
-    let name = unsafe { (api.mkString)(b"birnam_vtable_cache_set".as_ptr(), 23) };
-    let Some(address) =
-        (unsafe { borrowed_address(api, birnam_vtable_cache_set as *const () as usize) })
-    else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
+    if owned_vtable_cache {
+        // Bind the materialization's cache to its actual Unit lifetime. The
+        // synchronous and resumable emitters keep their existing C signatures.
+        if unsafe { send0(api, unit, b"bindVtableCache\0") } != unit {
+            return false;
+        }
+    } else {
+        let name = unsafe { (api.mkString)(b"birnam_vtable_cache_get".as_ptr(), 23) };
+        let Some(address) =
+            (unsafe { borrowed_address(api, birnam_vtable_cache_get as *const () as usize) })
+        else {
+            return false;
+        };
+        if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+            return false;
+        }
+        let name = unsafe { (api.mkString)(b"birnam_vtable_cache_set".as_ptr(), 23) };
+        let Some(address) =
+            (unsafe { borrowed_address(api, birnam_vtable_cache_set as *const () as usize) })
+        else {
+            return false;
+        };
+        if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+            return false;
+        }
     }
     let name = unsafe { (api.mkString)(b"birnam_portable_code_admit_v1".as_ptr(), 29) };
     let Some(address) =
@@ -6167,7 +6175,7 @@ unsafe extern "C" fn rust_codegen_eval(
     }
     let c_source = unsafe { (api.mkString)(source.bytes.as_ptr(), source.bytes.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit) }
+        || !unsafe { bind_global_shims(api, unit, false) }
         || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
@@ -6368,7 +6376,7 @@ unsafe fn compile_synchronous_materialization(
     }
     let c_source = unsafe { (api.mkString)(compiled.c_source.as_ptr(), compiled.c_source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit) }
+        || !unsafe { bind_global_shims(api, unit, true) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
         || !unsafe { bind_jit_code_generation_identity(api, unit) }
@@ -6376,6 +6384,15 @@ unsafe fn compile_synchronous_materialization(
         unsafe { dispose_unit(api, unit) };
         return None;
     }
+    let Some(owner_address) =
+        (unsafe { unit_symbol_address(api, unit, b"__birnam_materialization_owner") })
+    else {
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    };
+    // Copy the real Unit into each nested Block's traced carrier. A generation
+    // number is a scalar key and cannot retain the native implementation.
+    unsafe { (owner_address as *mut Oop).write(unit) };
     let entry_name =
         unsafe { (api.mkString)(compiled.entry_symbol.as_ptr(), compiled.entry_symbol.len()) };
     let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
@@ -6994,7 +7011,7 @@ unsafe extern "C" fn rust_codegen_begin_portable_image_rebuild(
     }
     let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit) }
+        || !unsafe { bind_global_shims(api, unit, false) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
     {
@@ -7859,7 +7876,7 @@ unsafe fn compile_portable_named_materialization(
     }
     let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit) }
+        || !unsafe { bind_global_shims(api, unit, false) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
         || !unsafe { bind_jit_code_generation_identity(api, unit) }
@@ -7991,7 +8008,7 @@ unsafe fn compile_resumable_materialized_block(
     }
     let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit) }
+        || !unsafe { bind_global_shims(api, unit, true) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
         || !unsafe { bind_jit_code_generation_identity(api, unit) }
@@ -8455,10 +8472,10 @@ unsafe extern "C" fn rust_codegen_evict_materializations(
             (before - entries.len(), generations)
         })
         .unwrap_or_default();
-    // The repository cache lease and the generated vtable/code-object cache
-    // lease end together. Live Block headers still trace their private vtable,
-    // whose carrier traces the Unit; an evicted-but-live unit can therefore
-    // rebuild a missing nested cache row without becoming a hidden root.
+    // Repository eviction drops its own Unit lease. Materialized JIT Units
+    // trace their vtable/Code caches for the lifetime of real Block owners;
+    // those values retain identity and edits until the whole cycle dies.
+    // The separate artifact cache cleanup below does not clear Unit caches.
     for (disposition, generation) in generations {
         let _ = take_vtable_cache_roots(generation);
         if disposition == MaterializationDisposition::Resumable {
@@ -8524,7 +8541,7 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
     }
     let c_source = unsafe { (api.mkString)(source.bytes.as_ptr(), source.bytes.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit) }
+        || !unsafe { bind_global_shims(api, unit, false) }
         || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj

@@ -18,7 +18,7 @@ for profile in debug release; do
   if [[ $profile == release ]]; then flags+=(--release); fi
   CARGO_TARGET_DIR="$PWD/.cargo-target/74t-closure-control-target" mise exec -- \
     cargo build --locked --offline -p birnam-id -p birnam-codegen-runtime -p birnam-tcc \
-      --features birnam-id/ffi-test-hooks,birnam-codegen-runtime/test-evaluator-lifetime,birnam-tcc/resource-metrics "${flags[@]}"
+      --features birnam-id/ffi-test-hooks,birnam-codegen-runtime/test-evaluator-lifetime,birnam-tcc/allocation-metrics "${flags[@]}"
   floor="$PWD/.cargo-target/74t-closure-control-target/$profile/libbirnam_id.dylib"
   if [[ -n ${BIRNAM_TEST_UNBOXED_RECEIPTS:-} ]]; then
     python3 scripts/unboxed-numeric-smoke.py --prefix "$prefix" --floor "$floor" --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/unboxed-$profile.json"
@@ -33,6 +33,7 @@ for profile in debug release; do
   python3 scripts/closure-sequence-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/sequence-$profile.json"
   python3 scripts/closure-sequence-mutation-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/mutation-$profile.json"
   python3 scripts/closure-budget-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/budget-$profile.json"
+  python3 scripts/closure-numeric-actions-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/numeric-actions-$profile.json"
   python3 scripts/closure-numeric-inputs-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/numeric-inputs-$profile.json"
   python3 scripts/closure-literals-smoke.py --numeric-body --prefix "$prefix" --floor "$floor" --output "$work/numeric-source-$profile.json"
   python3 scripts/closure-literal-control-smoke.py --numeric-body --prefix "$prefix" --floor "$floor" --output "$work/numeric-control-$profile.json"
@@ -73,9 +74,10 @@ print(f'joint numeric closures: {profile} complete counting off/on comparisons p
 PYJOINT
   python3 scripts/closure-string-cleanup-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/numeric-string-cleanup-$profile.json"
   python3 scripts/closure-journal-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/journal-$profile.json"
+  python3 scripts/closure-measurement-smoke.py --numeric-body --prefix "$prefix" --floor "$floor" --profile "$profile" --output "$work/numeric-measure-$profile.json"
   python3 scripts/closure-measurement-smoke.py --prefix "$prefix" --floor "$floor" --profile "$profile" --output "$work/measure-$profile.json"
   if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
-    for matrix in sequence mutation budget journal measure literals literal-control numeric-source numeric-control numeric-sequence numeric-budget numeric-inputs numeric-string-cleanup; do
+    for matrix in sequence mutation budget journal measure literals literal-control numeric-source numeric-control numeric-sequence numeric-budget numeric-inputs numeric-string-cleanup numeric-actions numeric-measure; do
       cp "$work/$matrix-$profile.json" "$BIRNAM_TEST_CLOSURE_RECEIPTS/$matrix-$profile.json"
     done
   fi
@@ -157,6 +159,7 @@ if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
   cp "$work/evaluator-lifetime.json" "$BIRNAM_TEST_CLOSURE_RECEIPTS/evaluator-lifetime.json"
 fi
 python3 scripts/baseline-native-storage-smoke.py --prefix "$prefix" \
+  --heap-accounting \
   --target "$PWD/.cargo-target/74t-closure-control-target" \
   --output "$work/baseline-native-storage.json"
 if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then

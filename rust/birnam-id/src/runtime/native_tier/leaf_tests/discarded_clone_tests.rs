@@ -108,7 +108,7 @@ enum Case {
 }
 
 #[test]
-fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
+pub(super) fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
     for clones in [1, 3, 16] {
         for case in [
             Case::Canonical,

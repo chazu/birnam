@@ -107,7 +107,7 @@ fn unboxed_numeric_preserves_boundaries_and_late_binding() {
 }
 
 #[test]
-fn unboxed_numeric_driver_saves_results_and_recovers_each_original_boundary() {
+pub(super) fn unboxed_numeric_driver_saves_results_and_recovers_each_original_boundary() {
     for shape in 0..6 {
         let operations = match shape {
             3 => 2,
