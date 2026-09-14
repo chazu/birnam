@@ -60,11 +60,14 @@ callers. The failed proof and queue are retained at `9e811468`. The repair on
 aggregate measurement callers. All 50 default inputs match the original generator
 and all 50 quiet inputs match the earlier measured inputs byte-for-byte. With
 identical binaries, the original lifetime failure reproduces and all 12 repaired
-cases pass. A fresh full gate remains active. Its first follow-on watcher stopped despite
-the production process still being live with the same PID and birth time; the
-resumed watcher retains that failure and uses stricter identity handling. The
-production job was not restarted. This evidence remains separate from the
-preliminary aggregate matrices.
+cases pass. Its full gate has now passed all 75 commands and 3,188
+source/lifetime/storage rows, independently audited against all 295 current
+inputs at `9c8f3540`. The first follow-on watcher had stopped while the original
+production process was still live; the resumed watcher retained that failure and
+used stricter identity handling. The production job was never restarted. The
+resumed watcher has now published a fresh prefix and started its installed
+acceptance matrix. This evidence remains separate from the preliminary aggregate
+matrices; the new composition's complete installed acceptance is still pending.
 The remaining release V2/loop/closure and 240 normal/test-floor driver checks
 also passed and were audited at `d5651ea3`. The release aggregate matrix is the
 only unfinished part of this composition's correctness acceptance. Complete
