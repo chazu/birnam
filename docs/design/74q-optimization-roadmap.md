@@ -643,3 +643,14 @@ those same descriptive summaries. All host observations failed admission, so
 these are unqualified mixed results, not a promotion claim. The next relevant
 cost experiment is the scoped control-read change after its independent
 acceptance. Defaults remain unchanged and all four families remain incomplete.
+
+
+The scoped control-read composition has passed its own 75-command production
+gate (3,188 source/lifetime/storage cases, commit `10c2be5f`). Its fresh release
+installation is published and focused installed acceptance is running. The
+[74AA direct cost comparison](74aa-scoped-counting-control.md#direct-scoped-read-cost-comparison)
+is implemented in `e378b9fb` and queued in `a4c71220`: accepted counted versus
+scoped counted, counting off/on on both builds, four rotating positions. It
+requires complete installed evidence and exactly the three scoped-read source
+changes before measuring. Twelve admission checks pass. Actual candidate
+measurements, runtime integration and any default promotion remain pending.
