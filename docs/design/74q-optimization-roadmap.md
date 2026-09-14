@@ -72,14 +72,15 @@ identity/effect assertions, logical charges and 960 collection phase snapshots.
 The release aggregate matrix also passes all 240 cases in 120 first-attempt
 pairs, independently audited at `c5b6e073`. Both profiles together cover 480
 aggregate processes and 1,920 collection phase snapshots without retries.
-All 1,848 focused installed cases now pass; the final 240-case normal/test-floor
-driver is running. The source-bound comparison queue at `b4a44e52` waits for that
-driver, independently audits and commits the complete installed evidence, then
-runs the existing comparison across main/counting-disabled/counting-enabled:
-180 short smoke processes followed by 540 exploratory measurement processes.
+All 1,848 focused installed cases and the final 240-case normal/test-floor driver
+now pass. The independent current-source/install/floor and case audit is committed
+at `42ac721f`. The source-bound comparison queue at `b4a44e52` has started the
+existing comparison across main/counting-disabled/counting-enabled: 180 short
+smoke processes followed, if successful, by 540 exploratory measurement processes.
 The current pre-change proof, installation, all 120 baseline outputs and exact
 19 changed source paths have been rechecked. This evidence is separate from the
-preliminary aggregate matrices; complete acceptance and actual costs are pending.
+preliminary aggregate matrices; installed correctness is accepted and actual
+costs remain pending.
 For the original pre-quiet composition, the remaining release V2/loop/closure and
 240 normal/test-floor driver checks passed and were audited at `d5651ea3`. The release aggregate matrix is the
 only unfinished part of this composition's correctness acceptance. Complete
@@ -156,7 +157,11 @@ covers repeated calls and every admitted call recovery point (320 cases), V2
 capture/suspend ownership (20), complete automatic-GC boundary comparisons (224,
 independently audited), and changed real numeric inputs/arithmetic methods (10).
 The initial normal release source matrix also covers tail and ordinary bodies
-with literal admission disabled. The 297-input production gate is still active.
+with literal admission disabled. The 297-input production gate passes all 75
+commands and 4,360 source/lifetime/storage rows, independently audited at
+`f5458ba2`. Its successor numeric-cost queue has started its own expanded gate;
+fresh installation and measurements of that composition and the shared-prediction
+descendant remain pending.
 A follow-on diagnostic branch, `codex/74ab-numeric-action-proof` at `b4c0f898`,
 compares all eight persistent action buffers after each physical numeric callee
 return, before its caller can overwrite them. All 80 source cases pass across

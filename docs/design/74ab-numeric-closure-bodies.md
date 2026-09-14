@@ -200,9 +200,14 @@ perform exactly six replacement effects and retain the returned capture identity
 The regular production gate now requires numeric source12, V2control20,
 sequence320, budget224 and input10 cases in each profile, with complete coordinate
 and actual numeric-body source checks. Its validator rejects missing/duplicated
-sequence cases, missing V2 cases and wrong source hashes. Full gate execution,
-exact residual action-state comparisons, application/resource measurements and
-profitability remain pending; none of the four families is declared complete.
+sequence cases, missing V2 cases and wrong source hashes. The original executing
+composition at `6ecce1b0` now passes all 75 production commands and 4,360
+source/lifetime/storage rows, independently audited against 297 current inputs,
+test binaries and both diagnostic floors at `f5458ba2`. The numeric-cost successor
+has started its own expanded gate. The action and shared-prediction extensions
+below still require their exact composed production/installation/cost evidence;
+application/resource measurements and profitability remain pending. None of the
+four families is declared complete.
 
 ## Residual action-state comparison
 
