@@ -1,0 +1,27 @@
+// The second arithmetic PC has no new literal and admits counted copy regions.
+// The probe retains no GC roots for recovered results or the recovered closure.
+[System load: "modules/os.birnam"];
+[System preciseGc: [[System getEnv: "BIRNAM_CLOSURE_PRECISE"] = "1"]];
+let source := [:input :observer |
+    let closure := [| let saved := input; let first := [20 + 1]; let second := [first + first]; second];
+    let closureAlias := closure;
+    let first := [closure value];
+    let second := [closureAlias value];
+    let retained := first;
+    let third := [closure value];
+    let before := [observer inspectLiterals: first second: second third: third alias: retained closure: closure closureAlias: closureAlias];
+    let supplied := [observer checkpoint];
+    let after := [observer inspectLiterals: first second: second third: third alias: retained closure: closure closureAlias: closureAlias supplied: supplied];
+    retained];
+let factory := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
+let input := [73 asCell];
+[ClosureControlProbe warm: factory input: input];
+[System gc];
+let capture := [[System getEnv: "BIRNAM_CLOSURE_CONTROL"] = "capture"];
+[System println: "closure-literal-control: begin measured control"];
+let answer := [ClosureControlProbe runLiterals: factory input: input capture: capture];
+[System println: "closure-literal-control: end measured control"];
+[[answer = 42] ifTrue: [| nil] ifFalse: [| [OS exit: 61]]];
+[System gc];
+[[answer = 42] ifTrue: [| nil] ifFalse: [| [OS exit: 62]]];
+[System println: "closure-literal-control: identities, source aliases, supplied result, GC and continuation ownership passed"];

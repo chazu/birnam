@@ -1,0 +1,34 @@
+{
+  "status": "failed",
+  "scope": "Compare real automatic GC boundaries around source closure regions. No timing claim.",
+  "floor_sha256": "b420dcd7a71f88f167715c2095a855e13957c5adcde58725a43ea1e979ecb74b",
+  "counted_frame_indices": true,
+  "numeric_copy_region": true,
+  "rows": [
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": false,
+      "gap": 65536,
+      "enabled": 0,
+      "values": {
+        "gap": 65536,
+        "threshold": 16777216,
+        "escaping": 0,
+        "collections": 0,
+        "trace_bytes": 0,
+        "trace_pc": 0,
+        "trace_pcs": 0,
+        "trace_slots": 0,
+        "remaining_bytes": 16713704,
+        "physical_saved": 21,
+        "attempts": 0,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "f043e57b70f5bc78457e0c8143518135c05d5e7c24775a559a34cd3d574fafc3"
+    }
+  ],
+  "error": "'counted_indices'"
+}

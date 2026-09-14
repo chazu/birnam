@@ -61,6 +61,8 @@ def sources():
         "scripts/fixtures/closure-literal-control.birnam",
         "scripts/fixtures/closure-numeric.birnam", "scripts/fixtures/closure-numeric-control.birnam",
         "scripts/fixtures/closure-numeric-inputs.birnam",
+        "scripts/fixtures/closure-counted-numeric-control.birnam",
+        "scripts/fixtures/closure-counted-numeric-inputs.birnam",
         "scripts/fixtures/closure-observation.birnam",
         "scripts/fixtures/closure-control.birnam",
         "scripts/fixtures/closure-live-api.birnam",
@@ -115,6 +117,116 @@ def check_numeric_closure_matrices(matrices):
         for row in rows("budget", ("precise", "calls", "escaping", "gap", "enabled"), expected_budget):
             if row["source_sha256"] != digest(budget_source(row["calls"], row["escaping"], row["precise"], row["gap"], numeric=True)):
                 raise RuntimeError("numeric closure budget used a different body")
+
+
+def check_joint_numeric_closure_pair(family, off, on):
+    """Admit complete joint matrices and compare observable state across counting modes."""
+    def require(condition, detail):
+        if not condition:
+            raise RuntimeError(f"joint numeric closure {family}: {detail}")
+
+    require(off['floor_sha256'] == on['floor_sha256'], 'different diagnostic floors')
+    for binding in ('installed_sha256', 'artifacts'):
+        require(off.get(binding) == on.get(binding), 'different installed artifacts')
+    keys = {
+        'sequence': ('precise', 'calls', 'escaping', 'enabled', 'force'),
+        'budget': ('precise', 'calls', 'escaping', 'gap', 'enabled'),
+        'control': ('precise', 'control', 'literals', 'enabled', 'forced'),
+        'inputs': ('precise', 'enabled', 'forced'),
+    }[family]
+    indexed = []
+    for counting, receipt in ((False, off), (True, on)):
+        require(receipt['status'] == 'passed', 'matrix did not pass')
+        require(receipt.get('numeric_copy_region') is True and
+                receipt.get('counted_frame_indices') is counting, 'wrong body or counting mode')
+        rows = {tuple(row[key] for key in keys): row for row in receipt['rows']}
+        require(len(rows) == len(receipt['rows']), 'duplicate coordinates')
+        modes = ((0, -1), (1, -1), (1, 0), (1, 1), (1, 2))
+        if family == 'sequence':
+            expected = {(p, n, e, enabled, force) for p in (0, 1) for n in (1, 2, 3, 32, 33)
+                        for e in (False, True) for enabled, force in
+                        [(0, -1), (1, -1)] + [(1, f) for f in range(min(n, 32))]}
+        elif family == 'control':
+            expected = {(p, c, 1, enabled, force) for p in (0, 1)
+                        for c in ('capture', 'suspend') for enabled, force in modes}
+        elif family == 'inputs':
+            expected = {(p, enabled, force) for p in (0, 1) for enabled, force in modes}
+        else:
+            expected = set()
+            for p in (0, 1):
+                for n in (3, 32):
+                    for e in (False, True):
+                        baseline = rows.get((p, n, e, 65536, 0))
+                        require(baseline is not None, 'missing baseline budget extent')
+                        values = baseline['values']
+                        extent = values['remaining_bytes'] - (values['threshold'] - 65536)
+                        require(values['collections'] == 0 and 64 < extent < 65528 and extent % 8 == 0,
+                                'invalid baseline budget extent')
+                        gaps = {65536, 64, 128, 256, 512, 1024, 2048, 4096, 8192,
+                                16384, 32768, extent - 8, extent, extent + 8}
+                        expected.update((p, n, e, gap, enabled) for gap in gaps for enabled in (0, 1))
+                        group = [r['values'] for key, r in rows.items() if key[:3] == (p, n, e)]
+                        completed = {v['completed_calls'] for v in group}
+                        require(0 in completed and n in completed and any(0 < c < n for c in completed),
+                                'missing budget recovery prefixes')
+                        require({v['collections'] for v in group} == {0, 1}, 'missing GC boundary')
+                        if counting:
+                            require(any(v['counted_recorded'] > 0 for v in group), 'no counted budget work')
+        require(set(rows) == expected, 'incomplete coordinates')
+        if family in ('sequence', 'budget'):
+            generator = runpy.run_path(str(ROOT / f'scripts/closure-{family}-smoke.py'))['source']
+            for row in rows.values():
+                args = [row['calls'], row['escaping'], row['precise']]
+                if family == 'budget':
+                    args.append(row['gap'])
+                body = generator(*args, numeric=True, numeric_copy_region=True)
+                require(row['source_sha256'] == hashlib.sha256(body.encode()).hexdigest(), 'different source body')
+                v = row['values']
+                indices = v['counted_indices']
+                require(0 <= indices <= v['physical_saved'], 'invalid counted savings')
+                if family == 'budget':
+                    require(indices <= v['counted_recorded'], 'missing counted events')
+                    if not counting:
+                        require(v['counted_recorded'] == 0, 'counted events while disabled')
+                require((indices > 0 if counting and family == 'sequence' else True) and
+                        (counting or indices == 0), 'counting mode was not exercised')
+        else:
+            sources = receipt['sources' if family == 'inputs' else 'source_sha256']
+            fixture = f'scripts/fixtures/closure-counted-numeric-{family}.birnam'
+            require(sources.get(fixture) == sha(ROOT / fixture), 'different source fixture')
+            require(all(sha(ROOT / name) == digest for name, digest in sources.items()), 'stale source hashes')
+            for row in rows.values():
+                if family == 'inputs':
+                    require(row['exit_code'] == 0, 'input fixture failed')
+                else:
+                    v = row['counted']
+                    require(set(v) == {'before_pause', 'after_resume'}, 'missing control counters')
+                    require((v['before_pause'] > 0 and v['after_resume'] >= v['before_pause']) if counting
+                            else v['before_pause'] == v['after_resume'] == 0, 'counted work absent at pause')
+                    raw = (row['stdout'] + row['stderr']).splitlines()
+                    counter_lines = [line for line in raw if line.startswith('closure-counted-control: ')]
+                    require(counter_lines == [f"closure-counted-control: before_pause={v['before_pause']} after_resume={v['after_resume']}"],
+                            'control counters differ from actual output')
+                    normalized = [re.sub(r'calls=\d+', 'calls=CHECKED', line) for line in raw
+                                  if not line.startswith(('closure-elision:', 'closure-counted-control: '))]
+                    require(normalized == row['output'], 'control output differs from actual output')
+        indexed.append(rows)
+    require(indexed[0].keys() == indexed[1].keys(), 'counting modes have different coordinates')
+    for key, baseline in indexed[0].items():
+        candidate = indexed[1][key]
+        if family in ('sequence', 'budget'):
+            def observable(row):
+                values = dict(row['values'])
+                values['physical_saved'] -= values.pop('counted_indices')
+                values.pop('counted_recorded', None)
+                return values
+            require(observable(baseline) == observable(candidate), f'counting changed accounting or recovery at {key}')
+        elif family == 'control':
+            require((baseline['output'], baseline['completed_calls']) ==
+                    (candidate['output'], candidate['completed_calls']), f'counting changed V2 behavior at {key}')
+        else:
+            require((baseline['stdout'], baseline['stderr']) == (candidate['stdout'], candidate['stderr']),
+                    f'counting changed current inputs or effects at {key}')
 
 
 def main():
@@ -297,6 +409,9 @@ def main():
                     expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control",
                                                                                       "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs")
                                 for profile in ("debug", "release")}
+                    expected.update(f"joint-{family}-{counting}-{profile}.json"
+                                    for family in ('sequence', 'budget', 'control', 'inputs')
+                                    for counting in ('off', 'on') for profile in ('debug', 'release'))
                     expected.update({"evaluator-lifetime.json", "baseline-native-storage.json"})
                     paths = list(Path(evidence).glob("*.json"))
                     if {p.name for p in paths} != expected:
@@ -327,6 +442,11 @@ def main():
                         if len(rows) != 24 or {(r["precise"], r["control"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literal_control:
                             raise RuntimeError("incomplete literal result capture/suspension matrix")
                     check_numeric_closure_matrices(matrices)
+                    for profile in ('debug', 'release'):
+                        for family in ('sequence', 'budget', 'control', 'inputs'):
+                            check_joint_numeric_closure_pair(family,
+                                matrices[f'joint-{family}-off-{profile}.json'],
+                                matrices[f'joint-{family}-on-{profile}.json'])
                     lifetime = matrices.pop("evaluator-lifetime.json")
                     expected_lifetime = {(profile, case) for profile in ("debug", "release")
                                          for case in ("probe-root-boundary", "logicvar-original", "error-original",

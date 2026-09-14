@@ -106,3 +106,49 @@ floor, then checks 320 sequence cases with counting off and on in each profile:
 covers both GC modes, one/two/three/32/33 calls and every supported forced exit.
 The live receipt is `74ac-joint-sequence-full.json`; no source mutation or broader
 production-acceptance claim is permitted while this run uses the checkpoint.
+
+## Joint GC budgets and V2 controls
+
+The controls descendant extends the test-only floor diagnostics with a cumulative
+counted-index event counter. The budget probe reports both pending counted indices
+and the events during the measured invocation. The former explains physical
+savings; the latter proves execution even when collection has cleared the pending
+ledger. The V2 probe records events before the actual capture/suspend pause and
+after resumption. Neither counter introduces Id allocation, roots, callbacks,
+public ABI fields, or production-floor instrumentation.
+
+Two explicit source fixtures exercise a copy PC between numeric operations. The
+V2 fixture retains the original expected result 42 and all fresh-result, alias,
+Frame and native-pin checks. The changed-input fixture retains shared capture and
+argument identity checks and the six observing replacement-addition effects. Its
+second operation reuses the current argument: the changed 40/2 inputs therefore
+produce 44. The initial fixture mistakenly expected 42; that failed receipt is
+retained alongside the corrected run. The runtime required no arithmetic change.
+
+`74ac-controls-focused-audit.json` binds 284 successful release cases to the current
+Rust sources and diagnostic floor: 40 V2 cases, 20 changed-input cases, and 224
+quick-budget cases. Both runtime unit suites pass 220 tests with 15 ignored. The
+budget subset covers precise GC, three/32 calls, escaping/non-escaping closures,
+all fixed budget gaps and baseline-derived extent minus/equal/plus eight bytes.
+It is not the complete two-GC production matrix. The original budget generator's
+176 checked coordinates and the original numeric fixtures remain unchanged.
+
+The full production gate now additionally requires counting off/on in both build
+profiles for sequence, budget, V2-control and changed-input matrices. This adds
+1,280 sequence, 896 budget, 80 control and 40 input processes (2,296 total) to the
+existing matrices. It checks exact coordinate coverage, current generated bodies
+and fixtures, common diagnostic floors and available installed-artifact bindings.
+It compares every accounting/GC/recovery field across counting modes after
+subtracting only independently reported pending-index savings. V2 output is
+normalized only after checking its raw counter line and positive work before the
+pause. Missing budget prefixes, GC modes or actual counted work reject admission.
+
+The source drivers retain their individual identity, effects, allocation and
+ownership assertions. Their existing numeric-only matrices are still mandatory.
+`74ac-joint-admission-checks.json` records 22 checker exercises, including an
+explicitly synthetic budget extension used only to test the validator. It is not
+runtime evidence for conservative GC. Six subsequent artifact-binding checks are
+recorded in `74ac-joint-artifact-admission-checks.json`. Full production acceptance,
+a fresh combined installation, installed checks and profitability work remain
+required; all four optimization families remain incomplete and defaults remain
+unchanged.

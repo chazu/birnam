@@ -18,6 +18,10 @@ mod numeric_closure;
 #[cfg(feature = "ffi-test-hooks")]
 pub(super) use fused_numeric::HITS as FUSED_NUMERIC_HITS;
 mod regions;
+#[cfg(feature = "ffi-test-hooks")]
+pub(super) fn counted_indices_recorded() -> usize {
+    regions::COUNTED_BOXES.get()
+}
 pub(in crate::runtime) mod unboxed_numeric;
 mod virtual_aggregate;
 use birnam_native_compiler::Unit;

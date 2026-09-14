@@ -13,10 +13,14 @@ def main():
     parser.add_argument('--prefix', type=Path, required=True)
     parser.add_argument('--floor', type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--numeric-copy-region', action='store_true')
+    parser.add_argument('--counted-frame-indices', action='store_true')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     prefix = args.prefix.resolve()
     fixture = root / 'scripts/fixtures/closure-numeric-inputs.birnam'
+    if args.numeric_copy_region:
+        fixture = root / 'scripts/fixtures/closure-counted-numeric-inputs.birnam'
     sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     paths = [Path(__file__).resolve(), fixture]
     paths += [p for p in (root / 'rust').rglob('*') if p.is_file()]
@@ -29,10 +33,12 @@ def main():
     floor = args.floor.resolve() if args.floor else prefix / 'lib/libbirnam_id.dylib'
     floor_hash = sha(floor)
     result = dict(status='running', qualified=False, sources=sources, artifacts=artifacts,
-                  floor_sha256=floor_hash, rows=[])
+                  floor_sha256=floor_hash, counted_frame_indices=args.counted_frame_indices,
+                  numeric_copy_region=args.numeric_copy_region, rows=[])
     env = {k: v for k, v in os.environ.items() if not k.startswith(('BIRNAM_', 'DYLD_'))}
     env.update(BIRNAM_DEV_CLOSURE_REPORT='1', BIRNAM_DEV_LITERAL_CALLEES='0',
                BIRNAM_DEV_CLOSURE_FORCE_RECOVERY='0')
+    env['BIRNAM_DEV_COUNTED_FRAME_INDICES'] = str(int(args.counted_frame_indices))
     if args.floor:
         env['BIRNAM_ID_DYLIB'] = str(floor)
     def current():

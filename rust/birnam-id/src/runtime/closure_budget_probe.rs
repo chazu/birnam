@@ -115,6 +115,7 @@ pub(super) unsafe extern "C" fn check(_: Oop, args: *const Oop, count: usize) ->
         }));
         let before = counters();
         let completed_before = completed_calls();
+        let counted_before = super::native_tier::counted_indices_recorded();
         let result = r
             .drive_stackless_with_resolver(
                 machine,
@@ -144,7 +145,7 @@ pub(super) unsafe extern "C" fn check(_: Oop, args: *const Oop, count: usize) ->
         );
         let after = counters();
         println!(
-            "closure-budget gap={gap} threshold={} escaping={} collections={} trace_bytes={} trace_pc={} trace_pcs={} trace_slots={} remaining_bytes={} physical_saved={} attempts={} hits={} materialized={} completed_calls={}",
+            "closure-budget gap={gap} threshold={} escaping={} collections={} trace_bytes={} trace_pc={} trace_pcs={} trace_slots={} remaining_bytes={} physical_saved={} attempts={} hits={} materialized={} completed_calls={} counted_indices={} counted_recorded={}",
             crate::gc::AUTO_COLLECTION_THRESHOLD,
             usize::from(escaping),
             observation.collections,
@@ -157,7 +158,9 @@ pub(super) unsafe extern "C" fn check(_: Oop, args: *const Oop, count: usize) ->
             after.0 - before.0,
             after.1 - before.1,
             after.2 - before.2,
-            completed_calls() - completed_before
+            completed_calls() - completed_before,
+            heap.counted_frame_index_count(),
+            super::native_tier::counted_indices_recorded().wrapping_sub(counted_before)
         );
         r.destroy_stackless_machine(machine).unwrap();
         nil

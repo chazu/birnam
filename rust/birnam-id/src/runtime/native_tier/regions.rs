@@ -32,13 +32,17 @@ pub(super) struct Compiled {
 thread_local! {
     pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static COUNTED_INDICES: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
-    pub(super) static COUNTED_BOXES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static REUSE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
     pub(super) static PROPAGATE: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static COMPILE_NS: core::cell::Cell<u128> = const { core::cell::Cell::new(0) };
     pub(super) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static LOADS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static MISSES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+thread_local! {
+    pub(super) static COUNTED_BOXES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
 fn counted_indices_enabled() -> bool {
@@ -153,9 +157,13 @@ impl Compiled {
         // discards each make_integer result before executing its raw copy kernel.
         // Admit the entire batch atomically, otherwise retain physical allocation.
         let counted = record_dead_indices(runtime, &self.plan.boxed_indices);
-        #[cfg(test)]
+        #[cfg(any(test, feature = "ffi-test-hooks"))]
         if counted {
-            COUNTED_BOXES.set(COUNTED_BOXES.get() + self.plan.boxed_indices.len());
+            COUNTED_BOXES.set(
+                COUNTED_BOXES
+                    .get()
+                    .wrapping_add(self.plan.boxed_indices.len()),
+            );
         }
         for &index in &self.plan.boxed_indices {
             #[cfg(test)]

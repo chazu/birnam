@@ -38,6 +38,39 @@ for profile in debug release; do
   python3 scripts/closure-literal-control-smoke.py --numeric-body --prefix "$prefix" --floor "$floor" --output "$work/numeric-control-$profile.json"
   python3 scripts/closure-sequence-smoke.py --numeric-body --prefix "$prefix" --floor "$floor" --output "$work/numeric-sequence-$profile.json"
   python3 scripts/closure-budget-smoke.py --numeric-body --prefix "$prefix" --floor "$floor" --output "$work/numeric-budget-$profile.json"
+  for counting in off on; do
+    counted_flags=()
+    if [[ $counting == on ]]; then counted_flags+=(--counted-frame-indices); fi
+    for matrix in sequence budget control inputs; do
+      case $matrix in
+        control) driver=closure-literal-control-smoke.py ;;
+        inputs) driver=closure-numeric-inputs-smoke.py ;;
+        *) driver=closure-$matrix-smoke.py ;;
+      esac
+      body_flags=(--numeric-copy-region)
+      if [[ $matrix != inputs ]]; then body_flags+=(--numeric-body); fi
+      receipt="joint-$matrix-$counting-$profile.json"
+      python3 "scripts/$driver" "${body_flags[@]}" "${counted_flags[@]}" \
+        --prefix "$prefix" --floor "$floor" --output "$work/$receipt"
+      if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
+        cp "$work/$receipt" "$BIRNAM_TEST_CLOSURE_RECEIPTS/$receipt"
+      fi
+    done
+  done
+  python3 - "$work" "$profile" <<'PYJOINT'
+import json
+from pathlib import Path
+import sys
+sys.path.insert(0, 'scripts')
+import runpy
+check = runpy.run_path('scripts/recovery-graphs.py')['check_joint_numeric_closure_pair']
+root, profile = Path(sys.argv[1]), sys.argv[2]
+for family in ('sequence', 'budget', 'control', 'inputs'):
+    receipts = [json.loads((root / f'joint-{family}-{counting}-{profile}.json').read_text())
+                for counting in ('off', 'on')]
+    check(family, *receipts)
+print(f'joint numeric closures: {profile} complete counting off/on comparisons passed')
+PYJOINT
   python3 scripts/closure-journal-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/journal-$profile.json"
   python3 scripts/closure-measurement-smoke.py --prefix "$prefix" --floor "$floor" --profile "$profile" --output "$work/measure-$profile.json"
   if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then

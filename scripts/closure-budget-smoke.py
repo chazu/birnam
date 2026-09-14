@@ -10,8 +10,11 @@ import subprocess
 import tempfile
 
 
-def source(calls, escaping, precise, gap, numeric=False):
-    arithmetic = "let first := [20 + 15]; let second := [first + 7]; " if numeric else ""
+def source(calls, escaping, precise, gap, numeric=False, *, numeric_copy_region=False):
+    assert not numeric_copy_region or numeric
+    arithmetic = ("let first := [20 + 15]; let second := [first + first]; "
+                  if numeric_copy_region else
+                  "let first := [20 + 15]; let second := [first + 7]; ") if numeric else ""
     body = ["let closure := [:arg | let kept := input; " + arithmetic + "let local := arg; local];",
             "let alias := closure;"]
     for _ in range(calls):
@@ -30,13 +33,20 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--quick", action="store_true")
     parser.add_argument("--numeric-body", action="store_true")
+    parser.add_argument("--numeric-copy-region", action="store_true")
+    parser.add_argument("--counted-frame-indices", action="store_true")
     args = parser.parse_args()
+    if args.numeric_copy_region and not args.numeric_body:
+        parser.error('--numeric-copy-region requires --numeric-body')
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
     env.update(BIRNAM_ID_DYLIB=str(args.floor.resolve()), BIRNAM_TEST_CLOSURE_CONTROL="1",
                BIRNAM_DEV_CLOSURE_FORCE_RECOVERY="0", BIRNAM_DEV_CLOSURE_FORCE_AT="-1",
                BIRNAM_DEV_CLOSURE_REPORT="0")
+    env['BIRNAM_DEV_COUNTED_FRAME_INDICES'] = str(int(args.counted_frame_indices))
     receipt = {"status": "running", "scope": __doc__ + " No timing claim.",
-               "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(), "rows": []}
+               "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(),
+               "counted_frame_indices": args.counted_frame_indices,
+               "numeric_copy_region": args.numeric_copy_region, "rows": []}
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-closure-budget-") as work:
             fixture = Path(work) / "budget.birnam"
@@ -45,12 +55,14 @@ def main():
                     for escaping in (False, True):
                         completed = set()
                         collections = set()
+                        counted_events = set()
                         initial_gap = 65536 if args.numeric_body else 16384
                         gaps = [initial_gap, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
                         if args.numeric_body:
                             gaps.extend([16384, 32768])
                         for gap in gaps:
-                            code = source(calls, escaping, precise, gap, numeric=args.numeric_body)
+                            code = source(calls, escaping, precise, gap, numeric=args.numeric_body,
+                                          numeric_copy_region=args.numeric_copy_region)
                             fixture.write_text(code)
                             baseline = None
                             for enabled in (0, 1):
@@ -80,12 +92,20 @@ def main():
                                 assert 0 <= n <= calls and (enabled or n == 0), row
                                 assert values["hits"] == int(n > 0), row
                                 assert values["materialized"] == int(n > 0 and (escaping or n < calls)), row
-                                assert values["physical_saved"] == int(n == calls and not escaping and values["collections"] == 0), row
+                                indices = values['counted_indices']
+                                assert 0 <= indices <= values['physical_saved'], row
+                                assert indices <= values['counted_recorded'], row
+                                if not args.counted_frame_indices:
+                                    assert indices == values['counted_recorded'] == 0, row
+                                assert values["physical_saved"] - indices == int(n == calls and not escaping and values["collections"] == 0), row
+                                counted_events.add(values['counted_recorded'])
                                 if enabled:
                                     completed.add(n)
                                     collections.add(values["collections"])
                         assert 0 in completed and calls in completed and any(0 < n < calls for n in completed), completed
                         assert collections == {0, 1}, collections
+                        if args.numeric_copy_region and args.counted_frame_indices:
+                            assert any(count > 0 for count in counted_events), counted_events
                         print(f"closure-budget-smoke: precise={precise} calls={calls} escaping={int(escaping)} prefixes={sorted(completed)} baseline/enabled GC traces passed", flush=True)
         receipt["status"] = "passed"
     except BaseException as error:
