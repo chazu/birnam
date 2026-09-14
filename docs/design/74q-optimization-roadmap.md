@@ -51,9 +51,10 @@ diagnostic run instead retains a String containing `number`. The repair changes
 aggregate fixture presentation through ordinary Id, preserving all roots,
 explicit assertions and host return boundaries. On
 `codex/74y-composition-quiet-repl`, fixture checkpoint `53dde2ef` passed all 240
-preliminary release aggregate cases without retries. Its debug matrix and new
-source-bound production gate are running; `c2d65cad` retains the release audit
-and the follow-on fresh-prefix acceptance queue.
+preliminary release aggregate cases without retries. Its debug matrix also
+passed 240 cases without retries, independently audited at `994cc164`. The new
+source-bound production gate and its follow-on fresh-prefix acceptance queue
+remain separate from this preliminary fixture evidence.
 The remaining release V2/loop/closure and 240 normal/test-floor driver checks
 also passed and were audited at `d5651ea3`. The release aggregate matrix is the
 only unfinished part of this composition's correctness acceptance. Complete
@@ -76,15 +77,32 @@ evaluator/storage cases (`4c3c54c3`); fresh-prefix debug numeric60 and ordinary
 Id120 checks also passed their audits (`2ab45fae`). All 240 fresh-prefix debug
 aggregate cases then passed in 120 matched pairs without retries; the original
 identity, effect, allocation and collection comparisons were independently
-audited at `0ac76e5c`. V2 and remaining release/normal-driver acceptance is
-running. The scoped control-read candidate on
+audited at `0ac76e5c`. All 924 debug focused cases and release numeric60/Id120
+cases now pass their audits. Release aggregate admission then failed with 78
+accepted cases across 100 actual processes and 11 incomparable starting-heap
+pairs (`b9a175a6`). A quiet-presentation diagnostic at the failed coordinate
+passes 16 processes/eight matched pairs. Its fixture repair still needs a
+separate cleanup composition; independent unreached release controls and the
+normal driver are running without changing the failed receipt.
+The scoped control-read candidate on
 `codex/74aa-scoped-counting-control` (`7ba56db1`) reduces 15 environment-control
 reads to one within a proved observation-free fused numeric invocation. It
 retains live reads between invocations and around observing publication methods.
-All 219 runtime tests pass in each profile; its independent production gate is
-now running against 295 frozen inputs (`9cc12338` retains the initial binding).
+All 219 runtime tests pass in each profile; its independent production gate
+also passes all 75 commands, 3,164 optimization source cases and 24 lifetime/storage
+cases with 295 current inputs independently audited (`a6a2e674`).
 Installed and direct timing acceptance remain pending. Neither experiment is
 integrated or promoted.
+
+Broader closure bodies are now being implemented under
+[74AB](74ab-numeric-closure-bodies.md). The isolated main-based compiler
+description at `b4d90466` derives numeric dataflow, exact allocation occurrences,
+original action publications and return identities from canonical lowering.
+It passes 89 default debug tests and 90 feature-enabled codegen tests per profile,
+including differential checks against canonical generated C. Runtime execution
+and recovery are still required: internal numeric calls leave reflective action
+state that the existing leaf shortcut cannot simply omit. This description is
+not integrated into main and does not yet optimize arithmetic closure bodies.
 
 After that comparison, use the observed execution, GC-inclusive and resource
 costs to select implementation changes or admission policy. Close the application,
