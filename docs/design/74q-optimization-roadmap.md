@@ -69,7 +69,10 @@ resumed watcher has published a fresh prefix. Debug numeric60 and ordinary Id120
 pass; all 240 debug aggregate cases pass in 120 comparable pairs without retries.
 The independent audit at `eaac0f5b` verifies source/install/floor bindings, raw
 identity/effect assertions, logical charges and 960 collection phase snapshots.
-V2 control and the remaining installed matrices are running. This evidence is
+The release aggregate matrix also passes all 240 cases in 120 first-attempt
+pairs, independently audited at `c5b6e073`. Both profiles together cover 480
+aggregate processes and 1,920 collection phase snapshots without retries.
+Release V2 control and the remaining installed matrices are running. This evidence is
 separate from the preliminary aggregate matrices; complete acceptance is pending.
 For the original pre-quiet composition, the remaining release V2/loop/closure and
 240 normal/test-floor driver checks passed and were audited at `d5651ea3`. The release aggregate matrix is the
