@@ -1,0 +1,16 @@
+{
+  "status": "recorded",
+  "qualified": false,
+  "string_installed_acceptance": "7c7a26dc",
+  "string_cost_start": "dda38135",
+  "combined_runtime": "da7ed262",
+  "combined_source_start": "f4554230",
+  "artifacts": {
+    "/tmp/birnam-74z-cleanup-scoped-repl/docs/measurements/74z-scoped-installed-acceptance-audit.json": "85e06fa967db37bc9af5cd259ce2c7cc2e503b3c80e346b341fd77fada579e01",
+    "/tmp/birnam-74z-cleanup-scoped-repl/docs/measurements/74z-scoped-cost-start.json": "49732acd2eb9c395986cc73150a0f2c4c20a3415db6d4aa45ac629ede00d0a97",
+    "/tmp/birnam-74ad-recovery-production-composition/docs/measurements/74ad-composition-source-audit.json": "c4b4a5d5bdf8987291f6becaaf9cce8d82058b55f077fa3456b26f6f94ffdf3b",
+    "/tmp/birnam-74ad-recovery-production-composition/docs/measurements/74ad-composition-tests.json": "eb4c25c496d11c717c45cff5aa3ec859550aabd255d3345b845882df2bf13665",
+    "/tmp/birnam-74ad-recovery-production-composition/docs/measurements/74ad-joint-release-start.json": "f070bd2f0211aacffea7833125b2698f46512b3ac728df36ee3a51e5dd51bb47"
+  },
+  "scope": "Documentation and tracker checkpoint only. String installed correctness complete; costs running. Combined runtime source/unit verification complete; full interaction, production, installed and cost acceptance pending. Defaults unchanged; all four families incomplete."
+}

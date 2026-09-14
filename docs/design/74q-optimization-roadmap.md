@@ -654,3 +654,18 @@ scoped counted, counting off/on on both builds, four rotating positions. It
 requires complete installed evidence and exactly the three scoped-read source
 changes before measuring. Twelve admission checks pass. Actual candidate
 measurements, runtime integration and any default promotion remain pending.
+
+
+The repaired String-cleanup composition now has complete installed acceptance
+(`7c7a26dc`): 1,848 focused cases and 240 normal/test-floor driver cases, audited
+against its own production source and artifacts. Its isolated normal-floor cost
+comparison is running (`dda38135`); no performance benefit is claimed yet.
+
+[74AD](74ad-recovery-production-composition.md) combines the 74AC recovery
+consumers with scoped control reads and exact floor-owned String cleanup in an
+isolated runtime (`da7ed262`). The source audit verifies the seven-path merge
+while preserving all other 74AC bytes, and both profiles pass 92 compiler plus
+222 runtime tests. Its complete joint release source matrix is running
+(`f4554230`), with all 60 V2-control/current-input cases already passed. Further
+interaction evidence, full production/installed acceptance and cost review are
+still required; main has not integrated this combined runtime.
