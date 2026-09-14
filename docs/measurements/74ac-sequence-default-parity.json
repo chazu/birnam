@@ -1,0 +1,289 @@
+{
+  "status": "passed",
+  "qualified": false,
+  "old_source": "ef5392a7",
+  "new_generator_sha256": "165f466e8acd71a7777ab4d3fcd4baf2e48c2471aa484ae0cdd7805e9f5d87c4",
+  "rows": [
+    {
+      "calls": 1,
+      "escaping": false,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "a07cf08ef161171d918681010748dc2e52fe98db2e19ac341cfa0587c78c4821"
+    },
+    {
+      "calls": 1,
+      "escaping": false,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "d119b0e1f30161c39a9189ad0a05aeae57a29bde1a28724212065b3156c169e0"
+    },
+    {
+      "calls": 1,
+      "escaping": false,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "2980ca2092a7db6b7c0f3e155343e22d10399a2ac22291f2116d20fdcd0e8253"
+    },
+    {
+      "calls": 1,
+      "escaping": false,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "592d9d502fc587713e764c9b4b4a98617e07fdf67c5570175ef1b8ac0d0ec9ad"
+    },
+    {
+      "calls": 1,
+      "escaping": true,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "8535ac7f1e5bbabd6c06da97109185fe10e39b6fdbc0dde8d7ad13d0cccf8320"
+    },
+    {
+      "calls": 1,
+      "escaping": true,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "5c1746e98af9a1a9f23229cc0aabcdb51bbf6c1f56a66f257db91a23fe8062bd"
+    },
+    {
+      "calls": 1,
+      "escaping": true,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "fe518f2f1ef73a35c12251c4bbbb3f25f4399c5279487f8e9e329e68f6fc1148"
+    },
+    {
+      "calls": 1,
+      "escaping": true,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "8d0c74e834f4382f3ceb9d4b6ec3fdc07be87d0227f3f293e6f8e452ae8c6339"
+    },
+    {
+      "calls": 2,
+      "escaping": false,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "e1c9d7c69671803ae7682f007ce65effc90f17aa2327ade85f7425e4c01470ef"
+    },
+    {
+      "calls": 2,
+      "escaping": false,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "5ad224648ce563efea71f7cbe353c9ab94dfb9cf4795b1e3b8a9a66689525c1c"
+    },
+    {
+      "calls": 2,
+      "escaping": false,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "0c3f9b37dc6c4ed12bdb11d683535f92b729167004c0e21fb215053c3499f6e9"
+    },
+    {
+      "calls": 2,
+      "escaping": false,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "78250d08430a01542ab000da21b6ad5b76e1e47c9489e6013ecc4eb7f9e28fd9"
+    },
+    {
+      "calls": 2,
+      "escaping": true,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "d35be292b7431dd1e250ec2981136bb13674751b5ba50805ed61b0d1156630ef"
+    },
+    {
+      "calls": 2,
+      "escaping": true,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "b5b0cf684333476b796b568e765cecfe05177cebe00d6a94b20ce7ef906d460e"
+    },
+    {
+      "calls": 2,
+      "escaping": true,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "7e7b6bdd46ce9eca1436c8838275d5ff5232ed1958706ab5b91258ee4cb298a8"
+    },
+    {
+      "calls": 2,
+      "escaping": true,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "57fee0f905302b68138b28fb2261ef762b7ab2d9c30e02631969ed3a521d5e33"
+    },
+    {
+      "calls": 3,
+      "escaping": false,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "d551548c15e787a8d3aea552f9c5f38f6dc464d53221646cd5ffe68918cad12c"
+    },
+    {
+      "calls": 3,
+      "escaping": false,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "c208f6008e30ce318b6f5462f0546ccb1a7b20acc964bcf96d785142302e8a26"
+    },
+    {
+      "calls": 3,
+      "escaping": false,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "8ad8ee8a588944b94bc2fc33421ebc9558fa215db8821fccf70c54002a29edcd"
+    },
+    {
+      "calls": 3,
+      "escaping": false,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "1fb877a1c5d0ec1f64792851450b96b6d2c74efa48db1f170fd7d8c7a2d11b86"
+    },
+    {
+      "calls": 3,
+      "escaping": true,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "8fa10ca930ae09ebf9dad3451d53899bbb1fba6fcd6803bcbd255213524ebcc6"
+    },
+    {
+      "calls": 3,
+      "escaping": true,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "da9e37cac83c01d0ee4da8065c8c8d7913908b983642d8b7b72e27b6a979a5ed"
+    },
+    {
+      "calls": 3,
+      "escaping": true,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "e9cef51d26509c952b93da5ab877f9818482cdcef4b66c5a3022ca605f20f600"
+    },
+    {
+      "calls": 3,
+      "escaping": true,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "5ed72ed95a9f5f6b7082e3a9f4a4946007666e644082cbdc69aa5f8cc9e26ad4"
+    },
+    {
+      "calls": 32,
+      "escaping": false,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "5d8ce472c1fd0fe1aa920ae06d67ff25bc2005c3f31d617894aa7c92cd390479"
+    },
+    {
+      "calls": 32,
+      "escaping": false,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "80e648e743f0fd38a42b597c4e74198fdffb9cfd98f688a571a2c777b08e3106"
+    },
+    {
+      "calls": 32,
+      "escaping": false,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "95ba986524194473dca4780b4691435823303aca79c004208c0f952a07ab5bfa"
+    },
+    {
+      "calls": 32,
+      "escaping": false,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "4704c66906891bb076474b3552879539779dde8f295f15ccbf0de213243c01f1"
+    },
+    {
+      "calls": 32,
+      "escaping": true,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "eff47cd39dcd269590f48e1c78b94a8339d7671e820513d267a385779062bd3d"
+    },
+    {
+      "calls": 32,
+      "escaping": true,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "118f43336d8a29911bd3dfbd0fcee33f4fa53741cd4e7c23ab96a9b1aeb0e672"
+    },
+    {
+      "calls": 32,
+      "escaping": true,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "c1356698fc1e185dd0d5cb575fd94f455e57f0abcd56e29685252b2df52e414f"
+    },
+    {
+      "calls": 32,
+      "escaping": true,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "15113658458ef4b3b7f93223738cf7a53dc68a0161f5f68809232df3b0333995"
+    },
+    {
+      "calls": 33,
+      "escaping": false,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "f00305e9557daf2571ff20eb3a0ada3a765114d84503bcb503ae7b64ee73747b"
+    },
+    {
+      "calls": 33,
+      "escaping": false,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "6168f8c52eea889d668891deb3ecb7aebe87e3f6601da57ecdc97245ea5cace0"
+    },
+    {
+      "calls": 33,
+      "escaping": false,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "b0a499c9225467bd8136c9f6a2ba91de447d8f2dd932f14d3d630a58075890fd"
+    },
+    {
+      "calls": 33,
+      "escaping": false,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "d44cc7b4ea4a177bd23e019465543674e62d58d65ba71c1bfd7d2e1bed5f74cd"
+    },
+    {
+      "calls": 33,
+      "escaping": true,
+      "precise": 0,
+      "numeric": false,
+      "source_sha256": "d07f87e4c0e56f5bca16fc3f036c427acfabb09eac4d6867f9b0066077b8c5c4"
+    },
+    {
+      "calls": 33,
+      "escaping": true,
+      "precise": 0,
+      "numeric": true,
+      "source_sha256": "3f7c7fef40067084fc91ae546fddbf321a1a7080c68a323053f13af3aa5813a8"
+    },
+    {
+      "calls": 33,
+      "escaping": true,
+      "precise": 1,
+      "numeric": false,
+      "source_sha256": "d68125f3968f91b3ab9d23cfb8295a623204736d235e869e03a5806984202a05"
+    },
+    {
+      "calls": 33,
+      "escaping": true,
+      "precise": 1,
+      "numeric": true,
+      "source_sha256": "3d35869ace8c72e6ec488fe2e492afd3d0ae455d03c34212fca1080bd55178a1"
+    }
+  ],
+  "scope": "All40original literal/numeric sequence generator coordinates remain byte-identical. Newcopy-region shape and counting activation are explicit options;this is generator parity only."
+}

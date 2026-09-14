@@ -68,3 +68,32 @@ Fresh debug/release runs each pass 92 compiler tests and 220 floor tests, with
 and exact source bindings. This establishes that the two implementations build
 and retain their existing individual tests together. Joint enabled source,
 accounting, GC and V2-control checks remain the next required work.
+
+
+## Joint counted sequence
+
+The first eight source observations show that simply enabling both flags does
+not prove both mechanisms execute: the original two-operation body introduces a
+new numeric literal in each PC, preventing counted copy-region admission. A
+second eight-case variant uses `first + first` for its second operation. Its
+allocation-free copy PC admits counted indices. Across both GC modes it preserves
+21,120 logical bytes per measured batch and the returned Cell identities;
+counting saves 168 index objects, and closure elimination independently saves
+eight closure objects (176 total when both are enabled). These are allocation
+counts, not a timing estimate.
+
+The sequence diagnostic now reports `counted_indices` separately. The checker
+subtracts exactly that independently recorded count before applying every
+original closure-savings assertion; it also requires positive index savings in
+the explicit `--numeric-copy-region --counted-frame-indices` cases. The new shape
+requires `--numeric-body`, and all 40 original generator coordinates remain
+byte-identical. The retained red check rejects the old diagnostic floor because
+it cannot supply the new counter; that is an instrumentation prerequisite, not
+a runtime semantic failure.
+
+The initial release quick matrix passes 40 cases in 20 counting off/on pairs:
+three and 33 calls, escaping/non-escaping, precise GC, closure disabled/enabled
+and forced exits zero/one/two. Source coordinates, logical bytes, closure hits,
+completion/recovery counts and closure-only savings agree between index modes.
+The full sequence matrix across both profiles and GC modes remains required,
+as do the budget, input-mutation and capture/suspend composition matrices.

@@ -1,0 +1,409 @@
+{
+  "status": "passed",
+  "scope": "Source sequence correctness and allocation accounting; no timing claim",
+  "floor_sha256": "b420dcd7a71f88f167715c2095a855e13957c5adcde58725a43ea1e979ecb74b",
+  "counted_frame_indices": true,
+  "numeric_copy_region": true,
+  "rows": [
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": false,
+      "enabled": false,
+      "force": -1,
+      "values": {
+        "calls": 3,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 0,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "20ca1b29a9b573a93413c0cdf7ef03f62c16d5817046ece888fd2f1e440f5334"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": false,
+      "enabled": true,
+      "force": -1,
+      "values": {
+        "calls": 3,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 176,
+        "counted_indices": 168,
+        "attempts": 8,
+        "hits": 8,
+        "materialized": 0,
+        "completed_calls": 24
+      },
+      "source_sha256": "20ca1b29a9b573a93413c0cdf7ef03f62c16d5817046ece888fd2f1e440f5334"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": false,
+      "enabled": true,
+      "force": 0,
+      "values": {
+        "calls": 3,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "20ca1b29a9b573a93413c0cdf7ef03f62c16d5817046ece888fd2f1e440f5334"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": false,
+      "enabled": true,
+      "force": 1,
+      "values": {
+        "calls": 3,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 8
+      },
+      "source_sha256": "20ca1b29a9b573a93413c0cdf7ef03f62c16d5817046ece888fd2f1e440f5334"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": false,
+      "enabled": true,
+      "force": 2,
+      "values": {
+        "calls": 3,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 16
+      },
+      "source_sha256": "20ca1b29a9b573a93413c0cdf7ef03f62c16d5817046ece888fd2f1e440f5334"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": true,
+      "enabled": false,
+      "force": -1,
+      "values": {
+        "calls": 3,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 0,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "e7f1762b4b79ea32da6e1c652720235e72d82dacf747523948329db8d0ee2fea"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": true,
+      "enabled": true,
+      "force": -1,
+      "values": {
+        "calls": 3,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 8,
+        "hits": 8,
+        "materialized": 8,
+        "completed_calls": 24
+      },
+      "source_sha256": "e7f1762b4b79ea32da6e1c652720235e72d82dacf747523948329db8d0ee2fea"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": true,
+      "enabled": true,
+      "force": 0,
+      "values": {
+        "calls": 3,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "e7f1762b4b79ea32da6e1c652720235e72d82dacf747523948329db8d0ee2fea"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": true,
+      "enabled": true,
+      "force": 1,
+      "values": {
+        "calls": 3,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 8
+      },
+      "source_sha256": "e7f1762b4b79ea32da6e1c652720235e72d82dacf747523948329db8d0ee2fea"
+    },
+    {
+      "precise": 1,
+      "calls": 3,
+      "escaping": true,
+      "enabled": true,
+      "force": 2,
+      "values": {
+        "calls": 3,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 21120,
+        "physical_saved": 168,
+        "counted_indices": 168,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 16
+      },
+      "source_sha256": "e7f1762b4b79ea32da6e1c652720235e72d82dacf747523948329db8d0ee2fea"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": false,
+      "enabled": false,
+      "force": -1,
+      "values": {
+        "calls": 33,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 0,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "96b03e3be3156e8583359940fc6a99d0314d8a734f6baa34cf2796eff0208d50"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": false,
+      "enabled": true,
+      "force": -1,
+      "values": {
+        "calls": 33,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 8,
+        "hits": 8,
+        "materialized": 8,
+        "completed_calls": 256
+      },
+      "source_sha256": "96b03e3be3156e8583359940fc6a99d0314d8a734f6baa34cf2796eff0208d50"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": false,
+      "enabled": true,
+      "force": 0,
+      "values": {
+        "calls": 33,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "96b03e3be3156e8583359940fc6a99d0314d8a734f6baa34cf2796eff0208d50"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": false,
+      "enabled": true,
+      "force": 1,
+      "values": {
+        "calls": 33,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 8
+      },
+      "source_sha256": "96b03e3be3156e8583359940fc6a99d0314d8a734f6baa34cf2796eff0208d50"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": false,
+      "enabled": true,
+      "force": 2,
+      "values": {
+        "calls": 33,
+        "escaping": 0,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 16
+      },
+      "source_sha256": "96b03e3be3156e8583359940fc6a99d0314d8a734f6baa34cf2796eff0208d50"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": true,
+      "enabled": false,
+      "force": -1,
+      "values": {
+        "calls": 33,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 0,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "b6245de33f72fc74535562e5fb412e9b981d5bbce621230eff8185ad9bddc4e3"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": true,
+      "enabled": true,
+      "force": -1,
+      "values": {
+        "calls": 33,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 8,
+        "hits": 8,
+        "materialized": 8,
+        "completed_calls": 256
+      },
+      "source_sha256": "b6245de33f72fc74535562e5fb412e9b981d5bbce621230eff8185ad9bddc4e3"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": true,
+      "enabled": true,
+      "force": 0,
+      "values": {
+        "calls": 33,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 0
+      },
+      "source_sha256": "b6245de33f72fc74535562e5fb412e9b981d5bbce621230eff8185ad9bddc4e3"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": true,
+      "enabled": true,
+      "force": 1,
+      "values": {
+        "calls": 33,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 8
+      },
+      "source_sha256": "b6245de33f72fc74535562e5fb412e9b981d5bbce621230eff8185ad9bddc4e3"
+    },
+    {
+      "precise": 1,
+      "calls": 33,
+      "escaping": true,
+      "enabled": true,
+      "force": 2,
+      "values": {
+        "calls": 33,
+        "escaping": 1,
+        "invocations": 8,
+        "bytes": 178560,
+        "physical_saved": 1848,
+        "counted_indices": 1848,
+        "attempts": 8,
+        "hits": 0,
+        "materialized": 0,
+        "completed_calls": 16
+      },
+      "source_sha256": "b6245de33f72fc74535562e5fb412e9b981d5bbce621230eff8185ad9bddc4e3"
+    }
+  ]
+}

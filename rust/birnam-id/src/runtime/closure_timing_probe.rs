@@ -47,10 +47,11 @@ pub(super) unsafe extern "C" fn sequence(_: Oop, args: *const Oop, count: usize)
         assert!(heap.bytes_since_collection() < crate::gc::AUTO_COLLECTION_THRESHOLD);
         let bytes = heap.bytes_since_collection() - allocated_before;
         let saved = heap.allocation_count() - heap.physical_allocation_count();
+        let counted_indices = heap.counted_frame_index_count();
         let after = counters();
         let completed = super::native_tier::closure_elision::completed_calls() - completed_before;
         println!(
-            "closure-sequence calls={calls} escaping={} invocations=8 bytes={bytes} physical_saved={saved} attempts={} hits={} materialized={} completed_calls={completed}",
+            "closure-sequence calls={calls} escaping={} invocations=8 bytes={bytes} physical_saved={saved} counted_indices={counted_indices} attempts={} hits={} materialized={} completed_calls={completed}",
             usize::from(escaping),
             after.0 - before.0,
             after.1 - before.1,
