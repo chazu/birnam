@@ -119,6 +119,19 @@ cases with 295 current inputs independently audited (`a6a2e674`).
 Installed and direct timing acceptance remain pending. Neither experiment is
 integrated or promoted.
 
+The AA composition on `codex/74aa-scoped-control-quiet` applies the same explicit
+quiet-caller repair at `dd1bf0b1`. All 12 evaluator-lifetime checks pass with the
+original production-proved AA diagnostic floors; 50 ordinary and 50 quiet
+generated programs match their respective previously tested versions. Runtime,
+compiler, modules and allocation/root behavior are unchanged. The source-bound
+acceptance queue (`56e420a8`, 295 inputs) waits for the current String build to
+finish before running this composition's own 75-command production gate, fresh
+normal installation, 1,848 focused cases and 240 normal/test-floor driver cases.
+This is build scheduling, not a quiet-host timing requirement. A failed preceding
+build pauses for inspection of potentially shared fixture defects. The queue
+does not integrate, promote or time the candidate; all four families remain
+incomplete until their broader acceptance requirements are met.
+
 Broader closure bodies now have an executing candidate under
 [74AB](74ab-numeric-closure-bodies.md), isolated on
 `codex/74ab-numeric-closure-bodies`. Commit `af2aecd1` connects numeric caller
