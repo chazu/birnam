@@ -1,10 +1,9 @@
 # 74AB — Numeric bodies in private closures
 
-Status: isolated implementation with complete production and fresh installed
-verification for this numeric-body slice. Numeric closure regions execute behind
-the existing experimental closure flag, whose production default remains off.
-Exploratory cost results are mixed; profitability and broader family obligations
-remain open.
+Status: implementation in progress on an isolated main-based branch. Numeric
+closure regions now execute behind the existing experimental closure flag, whose
+production default remains off. Full production and performance acceptance are
+still required.
 
 Before this slice, the closure consumer accepted small callees that returned an
 input, capture or fresh integer literal; arithmetic sends made a body ineligible.
@@ -201,14 +200,9 @@ perform exactly six replacement effects and retain the returned capture identity
 The regular production gate now requires numeric source12, V2control20,
 sequence320, budget224 and input10 cases in each profile, with complete coordinate
 and actual numeric-body source checks. Its validator rejects missing/duplicated
-sequence cases, missing V2 cases and wrong source hashes. The original executing
-composition at `6ecce1b0` now passes all 75 production commands and 4,360
-source/lifetime/storage rows, independently audited against 297 current inputs,
-test binaries and both diagnostic floors at `f5458ba2`. The numeric-cost successor
-has started its own expanded gate. The action and shared-prediction extensions
-below still require their exact composed production/installation/cost evidence;
-application/resource measurements and profitability remain pending. None of the
-four families is declared complete.
+sequence cases, missing V2 cases and wrong source hashes. Full gate execution,
+exact residual action-state comparisons, application/resource measurements and
+profitability remain pending; none of the four families is declared complete.
 
 ## Residual action-state comparison
 
@@ -285,39 +279,6 @@ profitability threshold. Complete the expanded production gate and fresh normal
 release verification before the paired exploratory timing run. The user's quiet
 host waiver does not bypass those correctness prerequisites.
 
-## Completed normal-installation cost run
-
-The source checkpoint `1d0dde8b` (299 bound inputs) passes all 75 production
-commands and 4,536 source/lifetime/storage cases. A fresh published release
-installation passes all 90 ordinary Id verification processes, including exact
-enabled/forced diagnostics and silent baseline/enabled runs. The completed
-`74ab-numeric-cost-completion-audit.json` rechecks current source and test-binary
-hashes, the required matrix inventory, action/cost admission, installed source and
-artifact hashes, and every normal process's raw diagnostics. This establishes
-acceptance for this isolated slice, not for the later counted/scoped/String
-composition or shared-prediction descendant.
-
-The same installation then completed 108 ordinary processes: six invocation
-counts, three shapes, and three alternating baseline/enabled pairs, with 100
-batches of 128 factory calls per process. Timing is silent and includes the Id
-driver's identity checks. All 324 paired calculations were recomputed from the
-recorded samples. The following values are medians of the six invocation-count
-case medians; positive values mean reduced elapsed time.
-
-| Shape | Execution reduction | Including explicit GC | Cases positive in all three execution pairs |
-| --- | ---: | ---: | ---: |
-| Private numeric closure returning its captured Cell | 7.11% | 3.44% | 1 of 6 |
-| Escaping numeric closure | -7.30% | -4.76% | 0 of 6 |
-| Compiler-refused observing body | 5.78% | 7.57% | 2 of 6 |
-
-All 54 sampled host intervals failed admission, and both receipts and audit retain
-`qualified:false`. The improvement in the refused control means the private-case
-reduction cannot be attributed confidently to this optimization. The escaping
-case supplies a regression concern to investigate, not a qualified slowdown
-estimate. The independently running shared-prediction comparison tests whether
-avoiding repeated per-call preparation improves these costs. Keep defaults off;
-retain these results as the exact unshared predecessor for that comparison.
-
 ## Experiment: share pure predictions within one admitted region
 
 The current admission loop evaluates the raw kernel once per selected call and
@@ -361,8 +322,7 @@ invocations complete 8,192 optimized calls using 256 entry-prediction kernel
 evaluations. Logical allocation charges remain 4,751,360 bytes for that fixture,
 with 256 physically eliminated closures. These are removed-work counts, not a
 speedup estimate. The source-bound audit also rejects the former 8,192-kernel
-count for that coordinate. Full production acceptance and direct paired
-comparison with the unshared candidate remain pending.
+count for that coordinate. Full production acceptance and the direct paired comparison are recorded below.
 
 ## Direct comparison with the unshared implementation
 
@@ -392,10 +352,38 @@ claim. The full sharing gate now binds this runner as its 300th source input.
 The prior 798-case focused proof remains tied to the unchanged runtime and source
 fixtures before this measurement-inventory extension.
 
-The unshared cost queue has completed and is audited at `11824f6f`. The sharing
-queue has started its own full production gate; its fresh normal release
-installation, 90-case driver verification and four direct comparison rounds
-(288 processes, 100 batches each) remain pending. A gate
-failure retains its result and stops the sequence; neither integration nor
-promotion is automatic. These direct paired data are still required before
-selecting the sharing implementation on performance grounds.
+The unshared cost queue completed before the sharing gate and fresh normal
+release installation. The sharing queue has now completed production verification,
+90-case normal driver verification, and four direct comparison rounds (288 normal
+processes, 100 batches each). Neither integration nor promotion is automatic.
+
+## Completed shared-prediction acceptance and exploratory costs
+
+[The completion audit](../measurements/74ab-shared-prediction-completion-audit.json)
+revalidates all 300 source inputs, 75 successful production commands and 4,536
+source/lifetime/storage cases. Both compared release installations are published,
+match their shipped sources and proofs, and pass their 90 ordinary-driver
+coordinates. All 288 comparison outputs parse successfully, with exact balanced
+ordering and fixture hashes. The audit recalculates 864 paired metric reductions
+from the recorded raw outputs and checks queue logs and current installed files.
+
+For each shape, the following values summarize the six repeated-use case medians
+(1, 3, 4, 8, 16 and 32 calls). Positive means the shared version used less time;
+these values describe this run and do not isolate a causal implementation effect.
+
+| Closure pass | Shape | Execution | Execution plus GC |
+| --- | --- | ---: | ---: |
+| Disabled | Private | -4.13% | -5.81% |
+| Disabled | Escaping | +1.42% | +6.57% |
+| Disabled | Refused | +18.86% | +17.08% |
+| Enabled | Private | +5.43% | +7.83% |
+| Enabled | Escaping | -0.30% | -0.05% |
+| Enabled | Refused | -10.93% | -16.29% |
+
+All 72 host intervals failed qualification. The disabled/refused controls vary
+substantially, and only two private execution cases improve in all four pairs.
+The implemented removal of duplicate prediction evaluations is verified, but
+these costs do not establish a general speedup or justify a default/threshold
+change. The four optimization families remain incomplete. This candidate's
+acceptance also excludes the subsequent combined Unit ownership and counted
+closure/String composition in 74AG; that work has its own source and gates.

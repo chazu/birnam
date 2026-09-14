@@ -2076,3 +2076,25 @@ Unlike the earlier Error experiment, this failure uses the unchanged LogicVar
 module. Both aggregate consumers were disabled in both failures. Their cause
 is unresolved, so neither aggregate attribution nor a repair is established.
 Separate passing replays and prior gates do not resolve these counterexamples.
+
+
+### Combined ownership and numeric closure acceptance (74AG)
+
+The current implementation follow-through is documented in
+[74AG](74ag-complete-consumer-composition.md), source `89805312`, with both-profile
+source lifetime acceptance at `6a5a11e5`. This combines the previously separate
+numeric/shared-prediction, counted-index, String cleanup and native-owner fixes.
+All 672 compiler/runtime/module tests and 72 source processes pass; the latter
+cover 144 complete diagnostic lifetime cycles and 24 normal-floor identity cases.
+Numeric closures have positive shared-kernel and counted-index activity, preserve
+baseline allocation charges and escaped identities, and release all observed
+private compiler/metadata owners. The combined source retains exact ABI,
+descriptor and image authorities. Whole-Runtime teardown and the candidate's own
+production/installed application acceptance remain required; none of these
+results substitutes for the four-family completion requirements above.
+
+Main still excludes this candidate's implementation. Its full production and
+fresh-install queue waits for focused acceptance and the current ownership gate's
+build slot; this is scheduling, not a renewed quiet-host requirement. The separate
+shared-prediction comparison is fully audited at `ca581c2a`, but host-rejected
+controls prevent a causal performance or default-promotion claim.

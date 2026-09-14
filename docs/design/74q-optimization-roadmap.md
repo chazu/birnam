@@ -721,3 +721,24 @@ and 9.59% including GC; execution signs remain mixed. All 480 host observations
 reject admission. These descriptive, unqualified results provide a follow-up
 signal, not a causal/application speedup or grounds for default promotion.
 All four optimization families remain in progress.
+
+
+[74AG](74ag-complete-consumer-composition.md) combines the 74AD numeric closure,
+counted-index and String interactions with shared numeric predictions, compiler
+heap accounting, collected-binding republication and complete Unit ownership.
+The source checkpoint is `89805312`; `6a5a11e5` records both-profile acceptance of
+672 compiler/runtime/module tests and 72 source processes/144 diagnostic lifecycle
+cycles. Arithmetic closures complete three substitutions per shared prediction,
+retain exact logical allocation totals, preserve escaped Cell identity, and
+release their private native and metadata owners through ordinary GC. Whole-
+Runtime teardown is running; its own full production gate and fresh installation
+are queued. Main has not integrated the candidate, and all four families remain
+in progress under the full 74T contract.
+
+The separate shared-prediction candidate is now production/install/cost accepted
+at `ca581c2a`: 75 commands, 4,536 source/lifetime/storage cases, 90 normal driver
+checks and 288 balanced direct-comparison processes. The private enabled cases
+show descriptive median reductions of 5.43% for execution and 7.83% including GC;
+escaping cases are approximately flat. All 72 host intervals reject qualification,
+and disabled/refused controls vary substantially. The saved prediction work is
+verified, but these data do not establish a causal speedup or justify promotion.
