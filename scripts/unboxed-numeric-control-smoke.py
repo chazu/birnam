@@ -39,6 +39,8 @@ def main():
     parser.add_argument("--floor", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument('--counted-frame-indices', action='store_true',
+                        help='enable counted body index allocations during the unchanged control checks')
     args = parser.parse_args()
     prefix, floor = args.prefix.resolve(), args.floor.resolve()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
@@ -54,10 +56,15 @@ def main():
     paths += sorted((ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
     paths += [ROOT / "rust/birnam-id/src/heap.rs", ROOT / "rust/birnam-id/src/heap/dead_allocations.rs"]
     paths += sorted((ROOT / "rust/birnam-id/src/heap/dead_allocations").rglob("*.rs"))
+    paths += [ROOT / 'rust/birnam-id/src/runtime/native_tier/regions.rs',
+              ROOT / 'rust/birnam-id/src/heap/dead_allocations/frame_indices.rs']
     installed = [prefix / "bin/birnam", prefix / "share/birnam/rust-install.json"] + sorted((prefix / "lib").glob("*.dylib"))
     receipt = dict(status="running", scope="Forced source recovery followed by test-floor V2 control; no timing claim",
                    floor_sha256=sha(floor), source_sha256={str(p.relative_to(ROOT)): sha(p) for p in paths},
                    installed_sha256={str(p): sha(p) for p in installed}, rows=[])
+    receipt['counted_frame_indices'] = args.counted_frame_indices
+    if args.counted_frame_indices:
+        env['BIRNAM_DEV_COUNTED_FRAME_INDICES'] = '1'
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-numeric-control-") as work:
             fixture = Path(work) / "control.birnam"

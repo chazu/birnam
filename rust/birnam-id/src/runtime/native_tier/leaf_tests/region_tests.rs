@@ -163,10 +163,18 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
     for chained in [false, true] {
         for captured in [false, true] {
             let mut baseline = None;
-            for mode in ["off", "plain", "reuse", "propagate"] {
+            for mode in [
+                "off",
+                "plain",
+                "reuse",
+                "propagate",
+                "counted",
+                "counted-refused",
+            ] {
                 regions::ENABLED.set(mode != "off");
                 regions::REUSE.set(mode == "reuse");
-                regions::PROPAGATE.set(mode == "propagate");
+                regions::PROPAGATE.set(matches!(mode, "propagate" | "counted" | "counted-refused"));
+                regions::COUNTED_INDICES.set(mode.starts_with("counted"));
                 let bootstrap = crate::dispatch::build_bootstrap();
                 let r = &bootstrap.runtime;
                 r.publish_canonical_exports();
@@ -206,8 +214,19 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
                     objects.continue_at,
                     observe_continue,
                 );
+                if mode == "counted-refused" {
+                    // A pending ledger for another retained vtable must decline
+                    // atomically; original physical body allocations still run.
+                    let other_vtable = r.canonical().float_vt;
+                    let state = unsafe { &mut *r.state.get() };
+                    state.heap.settle_dead_allocations();
+                    assert!(state.heap.record_dead_frame_indices(other_vtable, &[0]));
+                }
                 regions::HITS.set(0);
                 regions::LOADS.set(0);
+                regions::COUNTED_BOXES.set(0);
+                let logical_before = unsafe { (*r.state.get()).heap.allocation_count() };
+                let physical_before = unsafe { (*r.state.get()).heap.physical_allocation_count() };
                 SNAPSHOTS.with_borrow_mut(Vec::clear);
                 alias_tests::BOXES.set(Some(Vec::new()));
                 let before = unsafe { (*r.state.get()).heap.bytes_since_collection() };
@@ -215,6 +234,11 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
                     assert_eq!(drive(), expected);
                 }
                 let allocated = unsafe { (*r.state.get()).heap.bytes_since_collection() } - before;
+                let logical = unsafe { (*r.state.get()).heap.allocation_count() } - logical_before;
+                let physical =
+                    unsafe { (*r.state.get()).heap.physical_allocation_count() } - physical_before;
+                assert_eq!(logical - physical, regions::COUNTED_BOXES.get());
+                assert_eq!(regions::COUNTED_BOXES.get() > 0, mode == "counted");
                 let boxes = alias_tests::BOXES.take().unwrap();
                 let snapshots = SNAPSHOTS.take();
                 assert_eq!(snapshots.len(), 16);
@@ -223,13 +247,16 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
                     regions::LOADS.get(),
                     if mode == "off" {
                         0
-                    } else if (mode == "propagate" && chained) || (mode == "reuse" && !chained) {
+                    } else if (matches!(mode, "propagate" | "counted" | "counted-refused")
+                        && chained)
+                        || (mode == "reuse" && !chained)
+                    {
                         16
                     } else {
                         800
                     }
                 );
-                let observed = (allocated, boxes, snapshots);
+                let observed = (logical, allocated, boxes, snapshots);
                 if let Some(baseline) = &baseline {
                     assert_eq!(&observed, baseline);
                 } else {
@@ -238,14 +265,17 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
                 // A read override makes the region ineligible before any box.
                 r.add_method(objects.machine_vtable, objects.oop_at, read_override);
                 regions::HITS.set(0);
+                regions::COUNTED_BOXES.set(0);
                 assert_eq!(drive(), expected);
                 assert_eq!(regions::HITS.get(), 0);
+                assert_eq!(regions::COUNTED_BOXES.get(), 0);
                 assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
                 assert_eq!(r.stackless_registration_diagnostics().acquired_entries, 0);
             }
         }
     }
     regions::ENABLED.set(true);
+    regions::COUNTED_INDICES.set(false);
     regions::REUSE.set(false);
     regions::PROPAGATE.set(true);
 }
@@ -256,7 +286,9 @@ unsafe extern "C" fn read_override(machine: Oop, args: *const Oop, n: usize) -> 
 
 #[test]
 fn native_region_declines_before_gc_and_keeps_compiled_ownership() {
-    for enabled in [false, true] {
+    for mode in ["off", "physical", "counted"] {
+        let enabled = mode != "off";
+        regions::COUNTED_INDICES.set(mode == "counted");
         regions::ENABLED.set(enabled);
         regions::REUSE.set(false);
         regions::PROPAGATE.set(true);
@@ -307,6 +339,7 @@ fn native_region_declines_before_gc_and_keeps_compiled_ownership() {
         assert_eq!(r.stackless_registration_diagnostics().acquired_entries, 0);
     }
     regions::ENABLED.set(true);
+    regions::COUNTED_INDICES.set(false);
 }
 
 #[test]
@@ -492,10 +525,11 @@ unsafe extern "C" fn missing_target(receiver: Oop, args: *const Oop, n: usize) -
 fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
     for tail in [false, true] {
         let mut baseline = None;
-        for mode in ["off", "plain", "reuse", "propagate"] {
+        for mode in ["off", "plain", "reuse", "propagate", "counted"] {
             regions::ENABLED.set(mode != "off");
             regions::REUSE.set(mode == "reuse");
-            regions::PROPAGATE.set(mode == "propagate");
+            regions::PROPAGATE.set(matches!(mode, "propagate" | "counted"));
+            regions::COUNTED_INDICES.set(mode == "counted");
             let b = crate::dispatch::build_bootstrap();
             let r = &b.runtime;
             r.publish_canonical_exports();
@@ -547,7 +581,7 @@ fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
                 regions::LOADS.get(),
                 if mode == "off" {
                     0
-                } else if mode == "plain" || mode == "propagate" {
+                } else if matches!(mode, "plain" | "propagate" | "counted") {
                     40
                 } else {
                     8
@@ -567,7 +601,9 @@ fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
         }
     }
     let mut baseline = None;
-    for enabled in [false, true] {
+    for mode in ["off", "physical", "counted"] {
+        let enabled = mode != "off";
+        regions::COUNTED_INDICES.set(mode == "counted");
         regions::ENABLED.set(enabled);
         regions::REUSE.set(false);
         regions::PROPAGATE.set(true);
@@ -623,6 +659,7 @@ fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
         }
     }
     regions::ENABLED.set(true);
+    regions::COUNTED_INDICES.set(false);
     regions::REUSE.set(false);
     regions::PROPAGATE.set(true);
 }
@@ -636,4 +673,83 @@ unsafe extern "C" fn timing_argument_target(receiver: Oop, args: *const Oop, n: 
     );
     CALLS.set(CALLS.get() + 1);
     receiver
+}
+
+thread_local! {
+    static REGION_FINALIZED: Cell<usize> = const { Cell::new(0) };
+}
+unsafe extern "C" fn region_finalizer(_: Oop) {
+    with_active(|r| {
+        let heap = unsafe { &(*r.state.get()).heap };
+        assert!(!heap.has_dead_allocations());
+        assert_eq!(heap.allocation_count(), heap.physical_allocation_count());
+        REGION_FINALIZED.set(REGION_FINALIZED.get() + 1);
+    });
+}
+
+#[test]
+fn counted_native_regions_preserve_collection_and_foreign_finalizers() {
+    for precise in [false, true] {
+        for observing in [false, true] {
+            let mut baseline = None;
+            for counted in [false, true] {
+                regions::ENABLED.set(true);
+                regions::COUNTED_INDICES.set(counted);
+                let b = crate::dispatch::build_bootstrap();
+                let r = &b.runtime;
+                r.publish_canonical_exports();
+                r.install_execution_objects();
+                r.gc_set_precise(precise);
+                let input = r.make_integer(73);
+                let _input = ScopedOopRootGuard::new(r, input);
+                let leaf = install(r, &bytes(true, false), 740300, None);
+                let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
+                let caller = install(r, &caller(), 740400, None);
+                let _caller = ScopedOopRootGuard::new(r, caller.receiver);
+                r.native_tier
+                    .borrow_mut()
+                    .records
+                    .retain(|key, _| *key == Arc::as_ptr(&leaf.descriptor) as usize);
+                let drive = || {
+                    r.enter(|| {
+                        r.send_slice(caller.receiver, caller.selector, &[leaf.receiver, input])
+                    })
+                };
+                for _ in 0..80 {
+                    assert_eq!(drive(), input);
+                }
+                r.enter(|| r.gc_collect_from_native_range(0, 0));
+                if observing {
+                    let dead = r.make_integer(99);
+                    assert!(unsafe { (*r.state.get()).heap.set_finalizer(dead, region_finalizer) });
+                }
+                regions::COUNTED_BOXES.set(0);
+                REGION_FINALIZED.set(0);
+                for _ in 0..8 {
+                    assert_eq!(drive(), input);
+                }
+                let before = (r.gc_live_count(), r.gc_live_bytes(), unsafe {
+                    (*r.state.get()).heap.bytes_since_collection()
+                });
+                let physical = unsafe { (*r.state.get()).heap.physical_allocation_count() };
+                assert_eq!(before.0 - physical, regions::COUNTED_BOXES.get());
+                assert_eq!(regions::COUNTED_BOXES.get() > 0, counted);
+                let reclaimed = r.enter(|| r.gc_collect_from_native_range(0, 0));
+                assert_eq!(REGION_FINALIZED.get(), usize::from(observing));
+                let after = (r.gc_live_count(), r.gc_live_bytes(), unsafe {
+                    (*r.state.get()).heap.bytes_since_collection()
+                });
+                let observed = (before, reclaimed, after);
+                if let Some(baseline) = baseline {
+                    assert_eq!(observed, baseline);
+                } else {
+                    baseline = Some(observed);
+                }
+                assert_eq!(drive(), input);
+                assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
+                assert_eq!(r.stackless_registration_diagnostics().acquired_entries, 0);
+            }
+        }
+    }
+    regions::COUNTED_INDICES.set(false);
 }

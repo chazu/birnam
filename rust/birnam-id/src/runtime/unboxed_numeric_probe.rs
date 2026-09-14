@@ -87,6 +87,8 @@ unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
         let completed_before = COMPLETED.get();
         let materialized_before = MATERIALIZED.get();
         let before = unsafe { (*r.state.get()).heap.bytes_since_collection() };
+        let count_before = r.gc_live_count();
+        let bytes_before = r.gc_live_bytes();
         let mut answer = r.canonical().nil;
         for _ in 0..8 {
             answer = invoke();
@@ -96,12 +98,21 @@ unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
         assert!(heap.bytes_since_collection() < crate::gc::AUTO_COLLECTION_THRESHOLD);
         let bytes = heap.bytes_since_collection() - before;
         let physical_saved = heap.allocation_count() - heap.physical_allocation_count();
+        let counted_indices = heap.counted_frame_index_count();
+        let logical_allocations = heap.allocation_count() - count_before;
         let completed = COMPLETED.get() - completed_before;
         let materialized = MATERIALIZED.get() - materialized_before;
         println!(
-            "unboxed-numeric invocations=8 bytes={bytes} physical_saved={physical_saved} completed={completed} materialized={materialized} answer={expected}"
+            "unboxed-numeric invocations=8 bytes={bytes} physical_saved={physical_saved} counted_indices={counted_indices} logical_allocations={logical_allocations} live_before={count_before} live_bytes_before={bytes_before} completed={completed} materialized={materialized} answer={expected}"
         );
-        r.gc_collect_for_source_probe();
+        let reclaimed_objects = r.gc_collect_for_source_probe();
+        let heap = unsafe { &(*r.state.get()).heap };
+        println!(
+            "unboxed-numeric-gc reclaimed_objects={reclaimed_objects} live_objects={} live_bytes={} remaining_bytes={}",
+            heap.allocation_count(),
+            heap.allocated_bytes(),
+            heap.bytes_since_collection()
+        );
         assert_eq!(r.integer_value(answer), expected);
         drop(root);
         r.canonical().nil

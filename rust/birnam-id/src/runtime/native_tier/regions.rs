@@ -1,4 +1,4 @@
-//! Whole-PC native regions. Frames and every baseline index box are retained.
+//! Whole-PC native regions. Frames and original index allocation charges remain.
 use super::*;
 use birnam_codegen::frame_region;
 
@@ -31,12 +31,44 @@ pub(super) struct Compiled {
 #[cfg(test)]
 thread_local! {
     pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
+    pub(super) static COUNTED_INDICES: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+    pub(super) static COUNTED_BOXES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static REUSE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
     pub(super) static PROPAGATE: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static COMPILE_NS: core::cell::Cell<u128> = const { core::cell::Cell::new(0) };
     pub(super) static HITS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static LOADS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static MISSES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
+fn counted_indices_enabled() -> bool {
+    #[cfg(test)]
+    {
+        COUNTED_INDICES.get()
+    }
+    #[cfg(not(test))]
+    {
+        std::env::var("BIRNAM_DEV_COUNTED_FRAME_INDICES").is_ok_and(|value| value == "1")
+    }
+}
+
+/// Called only after whole-region no-collection and canonical slot admission.
+/// The original operation is Runtime::make_integer, a direct floor constructor,
+/// so neither an Integer method lookup nor an exported IntegerVt name grants
+/// authority here. Use the same retained canonical vtable and raw payload shape.
+fn record_dead_indices(runtime: &Runtime, indices: &[u32]) -> bool {
+    if !counted_indices_enabled() {
+        return false;
+    }
+    runtime.assert_owner();
+    runtime.require_allocation_allowed();
+    let state = unsafe { &mut *runtime.state.get() };
+    let Some(canonical) = state.canonical else {
+        return false;
+    };
+    state
+        .heap
+        .record_dead_frame_indices(canonical.smallint_vt, indices)
 }
 
 impl Compiled {
@@ -117,10 +149,20 @@ impl Compiled {
             MISSES.set(MISSES.get() + 1);
             return unsafe { baseline(machine, args, count) };
         }
+        // These body operands never expose an Oop: the original region already
+        // discards each make_integer result before executing its raw copy kernel.
+        // Admit the entire batch atomically, otherwise retain physical allocation.
+        let counted = record_dead_indices(runtime, &self.plan.boxed_indices);
+        #[cfg(test)]
+        if counted {
+            COUNTED_BOXES.set(COUNTED_BOXES.get() + self.plan.boxed_indices.len());
+        }
         for &index in &self.plan.boxed_indices {
             #[cfg(test)]
             super::leaf_tests::record_box(index as i64);
-            runtime.make_integer(index as i64);
+            if !counted {
+                runtime.make_integer(index as i64);
+            }
         }
         // No callback/collection can occur between admission and this kernel.
         // All source operations are canonical, non-observing local copies.

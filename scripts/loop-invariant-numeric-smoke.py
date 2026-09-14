@@ -49,6 +49,8 @@ def main():
     parser.add_argument('--floor', required=True, type=Path)
     parser.add_argument('--profile', required=True, choices=('debug', 'release'))
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--counted-frame-indices', action='store_true',
+                        help='enable counted body index allocations during the unchanged control checks')
     args = parser.parse_args()
     floor, prefix = args.floor.resolve(), args.prefix.resolve()
     paths = [Path(__file__).resolve(), ROOT / 'rust/birnam-codegen/src/numeric_chain.rs',
@@ -57,6 +59,8 @@ def main():
              ROOT / 'rust/birnam-id/src/runtime/numeric/chain.rs',
              ROOT / 'rust/birnam-id/src/runtime/numeric/chain/loop_reuse.rs',
              ROOT / 'rust/birnam-id/src/runtime/unboxed_numeric_probe.rs']
+    paths += [ROOT / 'rust/birnam-id/src/runtime/native_tier/regions.rs',
+              ROOT / 'rust/birnam-id/src/heap/dead_allocations/frame_indices.rs']
     installed = [prefix / 'bin/birnam', prefix / 'share/birnam/rust-install.json'] + sorted((prefix / 'lib').glob('*.dylib'))
     receipt = dict(status='running', profile=args.profile, floor_sha256=sha(floor),
                    source_sha256={str(p.relative_to(ROOT)): sha(p) for p in paths},
@@ -64,6 +68,9 @@ def main():
                    scope='Source loops through installed Codegen; raw kernel prediction work reused, not result Oop identity. No timing qualification.')
     env = {k: v for k, v in os.environ.items() if not k.startswith(('BIRNAM_', 'DYLD_'))}
     env.update(BIRNAM_ID_DYLIB=str(floor), BIRNAM_TEST_UNBOXED_NUMERIC='1')
+    receipt['counted_frame_indices'] = args.counted_frame_indices
+    if args.counted_frame_indices:
+        env['BIRNAM_DEV_COUNTED_FRAME_INDICES'] = '1'
     try:
         with tempfile.TemporaryDirectory(prefix='birnam-loop-invariant-') as work:
             fixture = Path(work) / 'loop.birnam'

@@ -104,9 +104,15 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         let mut gc_ns = 0;
         let mut allocation_bytes = 0;
         let mut physical_saved = 0;
+        let mut counted_indices = 0;
+        let mut reclaimed_objects = 0;
+        let mut logical_allocations = 0;
+        let mut live_after_gc = 0;
+        let mut live_bytes_after_gc = 0;
         let mut journal_peak_bytes = 0;
         for _ in 0..batches {
             let allocated = unsafe { (*r.state.get()).heap.bytes_since_collection() };
+            let count_before = r.gc_live_count();
             let start = Instant::now();
             for _ in 0..128 {
                 invoke(shape == 1);
@@ -116,10 +122,14 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
             assert!(heap.bytes_since_collection() < crate::gc::AUTO_COLLECTION_THRESHOLD);
             allocation_bytes += heap.bytes_since_collection() - allocated;
             physical_saved += heap.allocation_count() - heap.physical_allocation_count();
+            counted_indices += heap.counted_frame_index_count();
+            logical_allocations += heap.allocation_count() - count_before;
             journal_peak_bytes = journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
             let start = Instant::now();
-            r.gc_collect_for_source_probe();
+            reclaimed_objects += r.gc_collect_for_source_probe();
             gc_ns += start.elapsed().as_nanos();
+            live_after_gc += r.gc_live_count();
+            live_bytes_after_gc += r.gc_live_bytes();
             assert_eq!(
                 birnam_native_compiler::Unit::resource_totals(),
                 native_storage,
@@ -154,7 +164,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         }
         let calls = batches * 128;
         println!(
-            "unboxed-measure operations={operations} shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} completed={completed} materialized={materialized} restored_completed={restored_completed} maps={} metadata_bytes={} native_units={} numeric_units={} journal_peak_bytes={journal_peak_bytes} journal_retained_bytes={journal_retained_bytes} scratch_cached={} scratch_bytes={} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
+            "unboxed-measure operations={operations} shape={shape} calls={calls} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} counted_indices={counted_indices} logical_allocations={logical_allocations} reclaimed_objects={reclaimed_objects} live_after_gc={live_after_gc} live_bytes_after_gc={live_bytes_after_gc} completed={completed} materialized={materialized} restored_completed={restored_completed} maps={} metadata_bytes={} native_units={} numeric_units={} journal_peak_bytes={journal_peak_bytes} journal_retained_bytes={journal_retained_bytes} scratch_cached={} scratch_bytes={} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
             resources.0, resources.1, resources.2, resources.3, scratch.0, scratch.1
         );
         r.canonical().nil

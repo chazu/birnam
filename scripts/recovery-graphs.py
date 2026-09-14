@@ -41,6 +41,10 @@ def sources():
         "closure-timing.py", "closure_timing_common.py",
         "closure-production-timing.py", "unboxed-bounded-timing.py",
         "aggregate-source-smoke.py", "recovery-applications.py", "recovery-memory.py",
+        "counted-frame-indices-smoke.py", "counted-frame-aggregate-smoke.py",
+        "counted-frame-closure-control-smoke.py",
+        "counted-indices-production-timing.py", "counted-indices-id-calls-smoke.py",
+        "bench-host-check.sh",
         "evaluator-unit-lifetime-smoke.py", "baseline-native-storage-smoke.py",
     )]
     paths += [ROOT / path for path in (

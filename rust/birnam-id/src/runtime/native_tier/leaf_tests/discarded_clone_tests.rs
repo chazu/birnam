@@ -281,6 +281,67 @@ fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
 }
 
 #[test]
+fn counted_frame_indices_match_physical_gc_and_foreign_finalizer_observations() {
+    for precise in [false, true] {
+        for observing in [false, true] {
+            let mut evidence = Vec::new();
+            for counted in [false, true] {
+                let bootstrap = crate::dispatch::build_bootstrap();
+                let r = &bootstrap.runtime;
+                r.publish_canonical_exports();
+                r.install_execution_objects();
+                r.gc_set_precise(precise);
+                r.enter(|| r.gc_collect_from_native_range(0, 0));
+                let indices = [0, 1, 1, 127];
+                for _ in 0..3 {
+                    if counted {
+                        assert!(unsafe {
+                            (*r.state.get())
+                                .heap
+                                .record_dead_frame_indices(r.canonical().smallint_vt, &indices)
+                        });
+                    } else {
+                        for index in indices {
+                            r.make_integer(index as i64);
+                        }
+                    }
+                }
+                if observing {
+                    let garbage = r.make_integer(99);
+                    assert!(unsafe {
+                        (*r.state.get())
+                            .heap
+                            .set_finalizer(garbage, finalizer_observer)
+                    });
+                }
+                FINALIZED.set(0);
+                r.gc_register_root_provider(mark_observer);
+                let before = (r.gc_live_count(), r.gc_live_bytes());
+                assert_eq!(
+                    before.0 - unsafe { (*r.state.get()).heap.physical_allocation_count() },
+                    if counted { 12 } else { 0 },
+                );
+                let reclaimed = r.enter(|| r.gc_collect_from_native_range(0, 0));
+                assert_eq!(MARK_COUNTS.get(), before);
+                assert_eq!(FINALIZED.get(), usize::from(observing));
+                assert!(!unsafe { (*r.state.get()).heap.has_dead_allocations() });
+                evidence.push((
+                    before,
+                    reclaimed,
+                    r.gc_live_count(),
+                    r.gc_live_bytes(),
+                    unsafe { (*r.state.get()).heap.bytes_since_collection() },
+                ));
+            }
+            assert_eq!(
+                evidence[0], evidence[1],
+                "precise={precise} observing={observing}"
+            );
+        }
+    }
+}
+
+#[test]
 fn discarded_clone_journal_is_untraced_and_settles_before_foreign_finalizers() {
     for words in [1usize, 2] {
         for observing in [false, true] {

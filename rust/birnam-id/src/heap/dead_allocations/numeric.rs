@@ -58,7 +58,9 @@ impl Heap {
     }
 
     pub(in crate::heap) fn dead_allocation_count(&self) -> usize {
-        self.dead_allocations.len() + self.numeric_allocations.len()
+        self.dead_allocations.len()
+            + self.numeric_allocations.len()
+            + self.counted_frame_index_count()
     }
 
     pub(in crate::heap) fn numeric_allocated_bytes(&self) -> usize {
@@ -70,10 +72,13 @@ impl Heap {
     }
 
     pub(super) fn materialize_numeric(&mut self, identity: DeferredAllocation) -> Option<Oop> {
+        // Live recovery IDs belong to the current batch at the journal tail;
+        // preceding batches contain private dead results awaiting collection.
+        // IDs are unique, so reverse search preserves stale/out-of-order lookup.
         let position = self
             .numeric_allocations
             .iter()
-            .position(|entry| entry.identity == identity)?;
+            .rposition(|entry| entry.identity == identity)?;
         let entry = self.numeric_allocations.swap_remove(position);
         Some(self.materialize_numeric_entry(&entry))
     }
@@ -118,6 +123,55 @@ mod tests {
             heap.allocated_bytes(),
             heap.bytes_since_collection(),
         )
+    }
+
+    #[test]
+    fn repeated_earlier_result_recovery_preserves_identity_and_bounds_recent_search() {
+        let mut heap = Heap::new();
+        let vt = heap.allocate(0, Permanence::Permanent);
+        heap.set_vtable(vt, vt);
+        let before = counts(&heap);
+        let mut returned = Vec::new();
+        let mut forward_comparisons = 0;
+        let mut reverse_comparisons = 0;
+        for _ in 0..128 {
+            let batch = heap
+                .prepare_numeric_batch(vt, (0..32).map(|i| 14 + 3 * i).collect())
+                .unwrap();
+            let first = heap.record_numeric_result(batch.clone(), 0).unwrap();
+            for index in 1..32 {
+                heap.record_numeric_result(batch.clone(), index).unwrap();
+            }
+            let charged = counts(&heap);
+            let forward = heap.numeric_allocations.iter().position(|entry| {
+                forward_comparisons += 1;
+                entry.identity == first
+            });
+            let reverse = heap.numeric_allocations.iter().rposition(|entry| {
+                reverse_comparisons += 1;
+                entry.identity == first
+            });
+            assert_eq!(forward, reverse);
+            let object = heap.materialize_recorded_clone(first).unwrap();
+            assert_eq!(heap.vtable_of(object), Some(vt));
+            assert_eq!(heap.read_payload_word(object, 0), Some(14));
+            assert!(!returned.contains(&object));
+            returned.push(object);
+            assert!(heap.materialize_recorded_clone(first).is_none());
+            assert_eq!(counts(&heap), charged);
+        }
+        assert_eq!(forward_comparisons, 252_096);
+        assert_eq!(reverse_comparisons, 4_096);
+        assert_eq!(heap.allocation_count(), before.0 + 128 * 32);
+        assert_eq!(heap.physical_allocation_count(), before.0 + 128);
+        assert_eq!(heap.reclaim_dead_allocations(), 128 * 31);
+        assert_eq!(heap.allocation_count(), before.0 + 128);
+        for object in returned {
+            assert_eq!(heap.read_payload_word(object, 0), Some(14));
+        }
+        println!(
+            "numeric-journal-search: calls=128 operations=32 forward_comparisons={forward_comparisons} reverse_comparisons={reverse_comparisons}"
+        );
     }
 
     #[test]

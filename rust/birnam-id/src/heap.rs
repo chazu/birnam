@@ -135,6 +135,7 @@ pub(crate) struct Heap {
     dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
     deferred_allocations: Vec<(DeferredAllocation, usize)>,
     numeric_allocations: Vec<dead_allocations::numeric::Entry>,
+    counted_frame_indices: Option<Box<dead_allocations::frame_indices::CountedFrameIndices>>,
     next_deferred_id: u64,
 }
 
@@ -150,6 +151,7 @@ impl Heap {
             bytes_since_collection: 0,
             dead_allocations: Vec::new(),
             numeric_allocations: Vec::new(),
+            counted_frame_indices: None,
             deferred_allocations: Vec::new(),
             next_deferred_id: 0,
         }
@@ -211,7 +213,9 @@ impl Heap {
             total.saturating_add(block.total_size)
         });
         self.dead_allocations.iter().fold(
-            self.numeric_allocated_bytes().saturating_add(physical),
+            self.numeric_allocated_bytes()
+                .saturating_add(self.counted_frame_index_bytes())
+                .saturating_add(physical),
             |total, allocation| total.saturating_add(allocation.total_size()),
         )
     }

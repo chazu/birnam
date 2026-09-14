@@ -1,6 +1,7 @@
 //! Accounting for allocations whose unexposed identity is proven dead.
 //! No Oop is published for a journal entry; payload bits are intentionally not roots.
 use super::*;
+pub(super) mod frame_indices;
 pub(super) mod numeric;
 
 /// A process-local, single-use identity for an already charged allocation.
@@ -234,7 +235,11 @@ impl Heap {
     }
 
     pub(crate) fn admits_dead_allocations(&self, count: usize) -> bool {
-        count <= MAX_DEAD_ALLOCATIONS.saturating_sub(self.dead_allocation_count())
+        // This bound covers individually retained journal entries. Counted,
+        // already-dead frame indices have a separate fixed-storage bound.
+        count
+            <= MAX_DEAD_ALLOCATIONS
+                .saturating_sub(self.dead_allocations.len() + self.numeric_allocations.len())
     }
 
     pub(crate) fn admits_virtual_allocations(&self, count: usize) -> bool {
@@ -254,6 +259,7 @@ impl Heap {
         for entry in core::mem::take(&mut self.numeric_allocations) {
             self.materialize_numeric_entry(&entry);
         }
+        self.settle_dead_frame_indices();
     }
 
     /// Use only after proving that the sweep cannot observe these missing
@@ -263,6 +269,7 @@ impl Heap {
         self.dead_allocations.clear();
         self.numeric_allocations.clear();
         self.deferred_allocations.clear();
+        self.clear_dead_frame_indices();
         count
     }
 
@@ -289,6 +296,7 @@ impl Heap {
     pub(crate) fn dead_allocation_storage_bytes(&self) -> usize {
         let mut seen = std::collections::HashSet::new();
         self.numeric_allocation_storage_bytes()
+            + self.counted_frame_index_storage_bytes()
             + self.deferred_allocations.capacity()
                 * core::mem::size_of::<(DeferredAllocation, usize)>()
             + self.dead_allocations.capacity() * core::mem::size_of::<std::rc::Rc<DeadAllocation>>()

@@ -17,7 +17,7 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def source(projections, shape, precise):
+def source(projections, shape, precise, *, quiet_repl=False):
     statements = ['let copy := [prototype clone];']
     target = 'copy'
     if shape == 2:
@@ -37,7 +37,12 @@ def source(projections, shape, precise):
         body = ' '.join('let copy := [prototype clone];' for _ in range(projections)) + ' expected'
     other = 'observer'
     captures = '#[expected]' if shape == 4 else '#[]'
-    setup = f'''[System load: "modules/os.birnam"];
+    # Result presentation is outside the measured program. Its printString
+    # closure can remain as an incidental native root on the next REPL turn.
+    # Keep real host boundaries and explicit test output, with no implicit echo.
+    presentation = ('[Reflect defineMethod: #printHostResult: on: Repl as: [:self :value | self]]; '
+                    if quiet_repl else '')
+    setup = presentation + f'''[System load: "modules/os.birnam"];
 [System preciseGc: {'true' if precise else 'false'}];
 let expected := 42;
 let proto := [LogicVar named: expected];
@@ -85,6 +90,34 @@ let afterEviction := [block value: proto value: observer];
     return '\n'.join(part.replace('\n', ' ') for part in [setup, *phases, post]) + '\n'
 
 
+def check_output(row, disabled_consumers=(), counted=False):
+    """Keep original aggregate assertions while accounting separately for indices."""
+    projections, shape = row['projections'], row['shape']
+    assert 'aggregate-source identities and current effects passed' in row['output'], row
+    phases = []
+    measurements = []
+    for line in row['output'].splitlines():
+        if 'aggregate-phase ' in line:
+            phases.append(line.split('aggregate-phase ', 1)[1])
+        if line.startswith('unboxed-numeric '):
+            measurements.append({k: int(v) for k, v in re.findall(r'(\w+)=(-?\d+)', line)})
+    assert phases == ['native', 'replaced', 'restored', 'canonical'] and len(measurements) == 4, row
+    row['measurements'] = dict(zip(phases, measurements))
+    saved = 8 * (2 if shape == 2 else 1) if projections >= 3 and shape in (0, 2) else 0
+    if 'virtual-fields' in disabled_consumers:
+        saved = 0
+    if shape == 4 and projections >= 3 and 'discarded-clones' not in disabled_consumers:
+        saved = 8 * projections
+    for phase, m in zip(phases, measurements):
+        assert m['invocations'] == 8 and m['answer'] == 42, row
+        assert m['completed'] == m['materialized'] == 0, row
+        counted_indices = m['counted_indices'] if counted else m.get('counted_indices', 0)
+        assert counted_indices >= 0 and (counted or counted_indices == 0), row
+        assert m['physical_saved'] - counted_indices == (0 if phase in ('replaced', 'restored') else saved), row
+    assert measurements[0]['bytes'] == measurements[2]['bytes'] == measurements[3]['bytes'] > 0, row
+    return row['measurements']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prefix', required=True, type=Path)
@@ -93,6 +126,7 @@ def main():
     parser.add_argument('--profile', required=True, choices=('debug', 'release'))
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--disabled-consumers', nargs='+', choices=('discarded-clones', 'virtual-fields'), default=[])
+    parser.add_argument('--counted-frame-indices', action='store_true')
     args = parser.parse_args()
     prefix, floor = args.prefix.resolve(), args.floor.resolve()
     proof = json.loads(args.receipt.read_text())
@@ -103,7 +137,7 @@ def main():
         parser.error('selected floor differs from the verified production checkpoint')
     installed = [prefix / 'bin/birnam', prefix / 'share/birnam/rust-install.json'] + sorted((prefix / 'lib').glob('*.dylib'))
     result = dict(status='running', profile=args.profile, floor_sha256=sha(floor),
-                  disabled_consumers=args.disabled_consumers,
+                  disabled_consumers=args.disabled_consumers, counted_frame_indices=args.counted_frame_indices,
                   correctness_sha256=sha(args.receipt), script_sha256=sha(__file__),
                   prerequisite_driver_sha256=proof['sources'].get(str(Path(__file__).relative_to(ROOT))),
                   driver_scope='This source-validation driver is independently hashed. The prerequisite production gate binds but does not execute this driver. Every other prerequisite source must remain identical; no runtime, compiler, probe or assertion change is admitted here.',
@@ -122,6 +156,8 @@ def main():
 
     env = {k: v for k, v in os.environ.items() if not k.startswith(('BIRNAM_', 'DYLD_'))}
     env.update(BIRNAM_ID_DYLIB=str(floor), BIRNAM_TEST_UNBOXED_NUMERIC='1')
+    if args.counted_frame_indices:
+        env['BIRNAM_DEV_COUNTED_FRAME_INDICES'] = '1'
     for name in args.disabled_consumers:
         env[{'discarded-clones': 'BIRNAM_DEV_DISCARDED_CLONES',
              'virtual-fields': 'BIRNAM_DEV_VIRTUAL_FIELDS'}[name]] = '0'
@@ -130,7 +166,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix='birnam-aggregate-source-') as work:
             fixture = Path(work) / 'aggregate-repl.txt'
             for projections, shape, precise in product((1, 3, 16), range(5), (0, 1)):
-                code = source(projections, shape, precise)
+                code = source(projections, shape, precise, quiet_repl=True)
                 fixture.write_text(code)
                 p = subprocess.run([str(prefix / 'bin/birnam'), '--repl'], input=code, cwd=ROOT, env=env,
                                    text=True, capture_output=True)
@@ -138,26 +174,7 @@ def main():
                            source_sha256=sha(fixture), input=code, exit_code=p.returncode, output=p.stdout + p.stderr)
                 result['rows'].append(row)
                 assert p.returncode == 0, row
-                assert 'aggregate-source identities and current effects passed' in p.stdout, row
-                phases = []
-                measurements = []
-                for line in p.stdout.splitlines():
-                    if 'aggregate-phase ' in line:
-                        phases.append(line.split('aggregate-phase ', 1)[1])
-                    if line.startswith('unboxed-numeric '):
-                        measurements.append({k: int(v) for k, v in re.findall(r'(\w+)=(-?\d+)', line)})
-                assert phases == ['native', 'replaced', 'restored', 'canonical'] and len(measurements) == 4, row
-                row['measurements'] = dict(zip(phases, measurements))
-                saved = 8 * (2 if shape == 2 else 1) if projections >= 3 and shape in (0, 2) else 0
-                if 'virtual-fields' in args.disabled_consumers:
-                    saved = 0
-                if shape == 4 and projections >= 3 and 'discarded-clones' not in args.disabled_consumers:
-                    saved = 8 * projections
-                for phase, m in zip(phases, measurements):
-                    assert m['invocations'] == 8 and m['answer'] == 42, row
-                    assert m['completed'] == m['materialized'] == 0, row
-                    assert m['physical_saved'] == (0 if phase in ('replaced', 'restored') else saved), row
-                assert measurements[0]['bytes'] == measurements[2]['bytes'] == measurements[3]['bytes'] > 0, row
+                check_output(row, args.disabled_consumers, args.counted_frame_indices)
                 print(f'aggregate-source-smoke: {args.profile} projections={projections} shape={shape} precise={precise} passed', flush=True)
         check_sources()
         result['status'] = 'passed'
