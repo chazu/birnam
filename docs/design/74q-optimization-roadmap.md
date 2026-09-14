@@ -72,8 +72,14 @@ identity/effect assertions, logical charges and 960 collection phase snapshots.
 The release aggregate matrix also passes all 240 cases in 120 first-attempt
 pairs, independently audited at `c5b6e073`. Both profiles together cover 480
 aggregate processes and 1,920 collection phase snapshots without retries.
-Release V2 control and the remaining installed matrices are running. This evidence is
-separate from the preliminary aggregate matrices; complete acceptance is pending.
+All 1,848 focused installed cases now pass; the final 240-case normal/test-floor
+driver is running. The source-bound comparison queue at `b4a44e52` waits for that
+driver, independently audits and commits the complete installed evidence, then
+runs the existing comparison across main/counting-disabled/counting-enabled:
+180 short smoke processes followed by 540 exploratory measurement processes.
+The current pre-change proof, installation, all 120 baseline outputs and exact
+19 changed source paths have been rechecked. This evidence is separate from the
+preliminary aggregate matrices; complete acceptance and actual costs are pending.
 For the original pre-quiet composition, the remaining release V2/loop/closure and
 240 normal/test-floor driver checks passed and were audited at `d5651ea3`. The release aggregate matrix is the
 only unfinished part of this composition's correctness acceptance. Complete
