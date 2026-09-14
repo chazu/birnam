@@ -1,6 +1,6 @@
 # 74T verification support integration
 
-Status: implementation and production verification in progress. This integrates
+Status: production verification complete. This integrates
 shared correctness/resource evidence for all four optimization families. It does
 not complete a family or promote an optimizing consumer.
 
@@ -54,3 +54,19 @@ optimization switches and language semantics remain the main contracts.
 
 The counted-index candidate and direct loop-cache comparison remain frozen in
 their separate worktrees while this support composition is verified.
+
+## Completed verification
+
+The exact composition passed all75production commands,3164optimization source
+cases,12evaluator/native-root cases and12baseline-storage cases in
+`74t-verification-support-production.json`. The independent production audit
+rechecked all288current source inputs, every required matrix count/status, both
+current diagnostic floor hashes, and complete lifetime/storage coordinates. The
+full gate includes installed-prefix, image, cold-archive and relocation checks.
+Its temporary installations are not claimed to remain published.
+
+The Error implementation, native-field declaration contract, public ABI and
+canonical descriptor/image implementations equal the main starting point. The
+carried support source matches `c24030c9`; only the production source inventory
+excludes the unrelated Error experiment inputs. This evidence permits integration
+of the shared verification support. Optimizing-consumer promotion remains open.
