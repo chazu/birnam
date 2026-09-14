@@ -94,9 +94,15 @@ pairs (`b9a175a6`). A quiet-presentation diagnostic at the failed coordinate
 passes 16 processes/eight matched pairs. The unreached release V2/loop/closure
 controls and all 240 normal/test-floor driver cases subsequently passed and were
 audited at `04f45bcb`; the release aggregate failure remains unresolved in that
-checkpoint. A separate cleanup composition with the initial quiet fixture has
-an active full gate. It still carries the now-known shared-printing fixture issue
-and will need the explicit quiet-caller repair before final acceptance.
+checkpoint. The initial quiet composition's full gate failed the nested evaluator
+host-output assertion; the terminal proof is retained at `57bcd087`. Its program
+exited zero and returned 42, but the shared quiet fixture hid the expected REPL
+output. The separate `codex/74z-cleanup-scoped-repl` composition applies the
+explicit quiet-caller repair at `aca122e8`. All 12 lifetime cases pass against the
+same diagnostic binaries; 50 ordinary/quiet source pairs remain byte-identical
+to their respective original fixtures. Its new 295-input production gate is
+running, bound to the original process in `f0b9eb34`. Installed acceptance and
+performance remain pending.
 The scoped control-read candidate on
 `codex/74aa-scoped-counting-control` (`7ba56db1`) reduces 15 environment-control
 reads to one within a proved observation-free fused numeric invocation. It
@@ -122,8 +128,15 @@ covers repeated calls and every admitted call recovery point (320 cases), V2
 capture/suspend ownership (20), complete automatic-GC boundary comparisons (224,
 independently audited), and changed real numeric inputs/arithmetic methods (10).
 The initial normal release source matrix also covers tail and ordinary bodies
-with literal admission disabled. The new 297-input production gate is active;
-exact residual action-state comparison, application/resource measurements and
+with literal admission disabled. The 297-input production gate is still active.
+A follow-on diagnostic branch, `codex/74ab-numeric-action-proof` at `b4c0f898`,
+compares all eight persistent action buffers after each physical numeric callee
+return, before its caller can overwrite them. All 80 source cases pass across
+both floor profiles, including tail/ordinary bodies, captures, both GC modes and
+forced recovery at each call. Caller PCs and live pins agree, and final acquired
+leases balance. All 214 release floor tests and 123 selected debug runtime tests
+pass. The expanded 299-input source adds this comparison to the production gate;
+its full acceptance remains pending. Application/resource measurements and
 profitability remain required. The candidate is not integrated or promoted.
 
 After that comparison, use the observed execution, GC-inclusive and resource

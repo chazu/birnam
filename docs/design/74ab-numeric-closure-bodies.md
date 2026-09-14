@@ -5,9 +5,9 @@ closure regions now execute behind the existing experimental closure flag, whose
 production default remains off. Full production and performance acceptance are
 still required.
 
-The closure consumer currently accepts small callees that return an input,
-capture or fresh integer literal. An ordinary arithmetic send makes the body
-ineligible. Extend private-closure optimization to bounded numeric bodies using
+Before this slice, the closure consumer accepted small callees that returned an
+input, capture or fresh integer literal; arithmetic sends made a body ineligible.
+This slice extends private-closure optimization to bounded numeric bodies using
 the existing canonical numeric dataflow and runtime native declarations. This
 is part of the broader-body obligation in 74T; it does not complete that family
 or the other three families by itself.
@@ -203,3 +203,40 @@ and actual numeric-body source checks. Its validator rejects missing/duplicated
 sequence cases, missing V2 cases and wrong source hashes. Full gate execution,
 exact residual action-state comparisons, application/resource measurements and
 profitability remain pending; none of the four families is declared complete.
+
+## Residual action-state comparison
+
+The diagnostic floor now snapshots the eight persistent Machine action buffers
+immediately after a numeric callee returns, before its caller publishes another
+action. This uses the common physical Frame return path. A shortcut that only
+manufactured a result would miss that return event or leave different action
+contents. Each snapshot validates the actual action vtable and full payload
+length. Published Machine capability fields are checked against their owner
+before normalizing only those two identity words for comparison across processes;
+publication epochs, all payload fields and untouched buffers remain exact.
+
+The source matrix covers ordinary and tail arithmetic returns, literal and
+captured operands, both GC modes, optimization disabled/enabled, and forced
+recovery before each of three calls. All 40 cases pass with each diagnostic floor
+profile. Caller continuation PCs, slot counts and live Frame/continuation pins
+match. Final acquired-entry counts return to their baseline. Intermediate entry
+acquisition counts intentionally differ because region admission acquires the
+selected calls together; virtual closure slot contents are tested by the existing
+identity/recovery matrices rather than compared as raw physical Oops here.
+
+The probe holds only scalar metadata and introduces no Id allocations, roots or
+callbacks. Its hook and exported method exist only with `ffi-test-hooks`. The
+comparison uses the existing published compiler/host with an explicit newly built
+floor overlay; this is not a fresh production-installation proof. The first run
+omitted `BIRNAM_TEST_CLOSURE_CONTROL=1`, so the method was not installed and the
+source exited 61 before reaching the probe. That setup failure is retained in
+`74ab-numeric-actions-release.json`; the corrected release and debug receipts
+record all 80 cases. No numeric execution counterexample was observed.
+
+The production gate now requires these 40 coordinates in each profile and
+checks their generated body hashes, complete action-buffer shapes and exact
+baseline equality. A pure validator exercise rejects missing/duplicate cases,
+a different source body, a missing buffer, a changed publication epoch and
+changed live pins. Full acceptance of this newly instrumented source, resource
+and application measurements, and profitability remain pending. This closes
+one explicit state-equivalence evidence gap; no family is declared complete.
