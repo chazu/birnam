@@ -240,3 +240,41 @@ a different source body, a missing buffer, a changed publication epoch and
 changed live pins. Full acceptance of this newly instrumented source, resource
 and application measurements, and profitability remain pending. This closes
 one explicit state-equivalence evidence gap; no family is declared complete.
+
+## Numeric closure cost fixtures
+
+The existing repeated-closure cost probe now has an explicit numeric-body mode.
+For the private, escaping and replaced-method shapes, each callee performs two
+ordinary integer additions and then returns its captured Cell. This preserves
+the existing identity assertions while measuring closure and invocation overhead
+around a real admitted numeric body. The fourth shape remains an observing
+callee refused by the compiler. Uses range over 1, 3, 4, 8, 16 and 32; each shape
+runs with the closure pass disabled and enabled. No runtime code changes are
+needed for this measurement extension.
+
+The probe requires equal logical allocation bytes, one physically removed
+closure per private factory invocation, exact optimized-call counts, stable
+private native units and relocated bytes through collection, no new warmed
+preparations, bounded pending records, and every replacement-method effect.
+Restoring the original method must regain admission on the first subsequent
+call. These checks are retained unchanged for numeric bodies. The counters do
+not prove total memory savings or absence of leaks outside their measured state.
+
+The production gate now requires a complete 48-case numeric cost matrix in each
+profile and checks the actual generated source hash and all counter comparisons.
+Its validator rejects missing or duplicate coordinates, an unrelated body,
+missing allocation charge, absent optimization hits and lost replacement effects.
+Both the diagnostic and normal-floor timing runners accept `--numeric-body` and
+require the corresponding complete cost matrix in a current full production
+proof. Normal-floor timing additionally retains the existing 90-case driver
+verification, source/install binding, silent timing, alternating order and
+separate execution/collection/preparation/process measurements.
+
+All 32 default counter sources and all 32 default normal-floor sources remain
+byte-identical to their prior versions. Numeric fixtures are distinct and are
+recorded by hash. The source/prefix/floor overlays and both-profile counter
+receipts are retained separately from production acceptance. Two-batch smoke
+samples remain unqualified diagnostics; their variation is not evidence for a
+profitability threshold. Complete the expanded production gate and fresh normal
+release verification before the paired exploratory timing run. The user's quiet
+host waiver does not bypass those correctness prerequisites.

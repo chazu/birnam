@@ -138,9 +138,22 @@ return, before its caller can overwrite them. All 80 source cases pass across
 both floor profiles, including tail/ordinary bodies, captures, both GC modes and
 forced recovery at each call. Caller PCs and live pins agree, and final acquired
 leases balance. All 214 release floor tests and 123 selected debug runtime tests
-pass. The expanded 299-input source adds this comparison to the production gate;
-its full acceptance remains pending. Application/resource measurements and
-profitability remain required. The candidate is not integrated or promoted.
+pass. The follow-on `codex/74ab-numeric-costs` branch at `1d0dde8b` also extends
+the existing cost fixtures with actual numeric bodies. All 96 counter cases
+(48 per floor profile) pass and were independently audited for logical allocation
+charges, physical closure removal, completed calls, method replacement/restoration
+and measured native-resource stability. All 64 default generated counter and
+normal-floor fixtures remain byte-identical. Both timing runners now accept the
+numeric body only with its corresponding full correctness evidence.
+
+The 299-input expanded source requires both the action and numeric cost matrices.
+A bound queue at `7a533aad` waits for the original numeric gate to finish, then
+runs the expanded full gate, publishes a fresh normal release prefix, verifies
+90 ordinary-Id driver cases, and runs three alternating exploratory timing pairs
+(108 processes). Each stage requires the previous one to pass and current source
+hashes to match. The two-batch diagnostic samples do not establish profitability.
+Full acceptance, application/resource measurements and profitability remain
+required. The candidate is not integrated or promoted.
 
 After that comparison, use the observed execution, GC-inclusive and resource
 costs to select implementation changes or admission policy. Close the application,
