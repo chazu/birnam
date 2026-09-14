@@ -47,8 +47,10 @@ in comparable pairs. Commit `241820c1` retains the failed acceptance and a
 sixteen-process diagnosis showing the same one-object/24-byte variation with
 the counting control unchanged. Its cause and retained object remain unknown.
 The remaining release V2/loop/closure and 240 normal/test-floor driver checks
-continue independently. Complete acceptance still requires all 1,848 focused
-cases and the normal driver; neither timing nor integration is admitted yet.
+also passed and were audited at `d5651ea3`. The release aggregate matrix is the
+only unfinished part of this composition's correctness acceptance. Complete
+acceptance still requires all 1,848 focused cases and the normal driver;
+neither timing nor integration is admitted yet.
 
 A fresh pre-change main installation and all 120 matching ordinary Id checks
 are complete at `241b946d`. The direct comparison runner at `f5d46b08` will compare
@@ -65,8 +67,10 @@ production gate remains running. The scoped control-read candidate on
 `codex/74aa-scoped-counting-control` (`7ba56db1`) reduces 15 environment-control
 reads to one within a proved observation-free fused numeric invocation. It
 retains live reads between invocations and around observing publication methods.
-All 219 runtime tests pass in each profile; production, installed and direct
-timing acceptance remain pending. Neither experiment is integrated or promoted.
+All 219 runtime tests pass in each profile; its independent production gate is
+now running against 295 frozen inputs (`9cc12338` retains the initial binding).
+Installed and direct timing acceptance remain pending. Neither experiment is
+integrated or promoted.
 
 After that comparison, use the observed execution, GC-inclusive and resource
 costs to select implementation changes or admission policy. Close the application,
