@@ -59,7 +59,7 @@ unsafe extern "C" fn finalizer(object: Oop) {
 pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 4);
     let a = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         assert!(STATE.with_borrow(Option::is_none));
         let (factory, calls, observing) = (a[0], r.integer_value(a[1]), r.integer_value(a[2]) != 0);
         assert!(calls == 3 || calls == 32);
@@ -72,7 +72,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         for _ in 0..128 {
             assert_eq!(r.send_slice(factory, selector, &[nil]), nil);
         }
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         let input = r.allocate_instance(r.globals().object_vt, core::mem::size_of::<Oop>());
         let _input = ScopedOopRootGuard::new(r, input);
         let child = r.make_integer(999);
@@ -128,13 +128,13 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
 
 pub(super) unsafe extern "C" fn inspect(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 1);
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let native = r.integer_value(unsafe { *args });
         assert!((0..=2).contains(&native));
         assert!(STATE.with_borrow(Option::is_some));
         r.gc_register_root_provider(mark_observer);
         let first_reclaimed = match native {
-            0 => r.gc_collect_from_native_range(0, 0),
+            0 => r.gc_collect_for_source_probe(),
             1 => r.gc_collect(),
             2 => collect_with_live_native_root(r),
             _ => unreachable!(),
@@ -157,7 +157,7 @@ pub(super) unsafe extern "C" fn inspect(_: Oop, args: *const Oop, count: usize) 
             + if native == 0 {
                 0
             } else {
-                r.gc_collect_from_native_range(0, 0)
+                r.gc_collect_for_source_probe()
             };
         let s = STATE.take().unwrap();
         let heap = unsafe { &(*r.state.get()).heap };
@@ -206,7 +206,7 @@ fn collect_with_live_native_root(r: &Runtime) -> usize {
 
 pub(super) unsafe extern "C" fn restored(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 2);
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let factory = unsafe { *args };
         let calls = r.integer_value(unsafe { *args.add(1) });
         assert!(calls == 3 || calls == 32);

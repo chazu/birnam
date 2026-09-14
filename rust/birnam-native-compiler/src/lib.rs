@@ -36,3 +36,17 @@ unsafe extern "C" {
     pub fn tcc_relocate(state: *mut TccState) -> c_int;
     pub fn tcc_get_symbol(state: *mut TccState, name: *const c_char) -> *mut c_void;
 }
+
+/// Relocated allocation owned by one raw state in this compiler instance.
+/// Includes code, data and alignment storage, excluding compiler metadata.
+///
+/// # Safety
+/// The state must be live, created by this compiler instance, and exclusively
+/// observed with respect to compiler mutation or deletion for this call.
+#[cfg(feature = "resource-metrics")]
+pub unsafe fn relocated_allocation_bytes(state: *const TccState) -> usize {
+    unsafe extern "C" {
+        fn birnam_tcc_relocated_allocation_bytes(state: *const TccState) -> usize;
+    }
+    unsafe { birnam_tcc_relocated_allocation_bytes(state) }
+}

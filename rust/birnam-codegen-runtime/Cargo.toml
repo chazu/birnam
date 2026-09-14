@@ -5,6 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+# Test-module assertion for collection during an active synchronous evaluator.
+test-evaluator-lifetime = []
+
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 birnam-artifact = { path = "../birnam-artifact", default-features = false }

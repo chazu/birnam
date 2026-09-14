@@ -7,7 +7,7 @@ use std::time::Instant;
 pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 5);
     let args = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let block = args[0];
         let operations = r.integer_value(args[2]);
         assert!(matches!(operations, 3 | 16 | 32));
@@ -34,10 +34,10 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         let start = Instant::now();
         invoke();
         let cold_ns = start.elapsed().as_nanos();
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         for _ in 0..3 {
             invoke();
-            r.gc_collect_from_native_range(0, 0);
+            r.gc_collect_for_source_probe();
         }
         let before = (
             PREDICTED_OPERATIONS_REUSED.get(),
@@ -65,7 +65,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
             physical_saved += heap.allocation_count() - heap.physical_allocation_count();
             journal_peak_bytes = journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
             let start = Instant::now();
-            r.gc_collect_from_native_range(0, 0);
+            r.gc_collect_for_source_probe();
             gc_ns += start.elapsed().as_nanos();
             assert_eq!(
                 birnam_native_compiler::Unit::resource_totals(),

@@ -55,6 +55,10 @@ mod numeric;
 mod recovery;
 #[cfg(feature = "ffi-test-hooks")]
 mod unboxed_numeric_probe;
+#[cfg(feature = "ffi-test-hooks")]
+mod source_probe_roots;
+#[cfg(feature = "ffi-test-hooks")]
+use source_probe_roots::with_source_probe_native_roots;
 #[cfg(all(test, target_os = "macos"))]
 mod v2_control_tests;
 

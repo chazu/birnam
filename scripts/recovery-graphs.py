@@ -41,6 +41,7 @@ def sources():
         "closure-timing.py", "closure_timing_common.py",
         "closure-production-timing.py", "unboxed-bounded-timing.py",
         "aggregate-source-smoke.py", "recovery-applications.py", "recovery-memory.py",
+        "evaluator-unit-lifetime-smoke.py", "baseline-native-storage-smoke.py",
     )]
     paths += [ROOT / path for path in (
         "vendor/libtcc-src/tcc.h", "vendor/libtcc-src/config.h",
@@ -144,6 +145,9 @@ def main():
             run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
                  "-p", "birnam-native-compiler", "--features", "resource-metrics"]
                 + (["--release"] if profile == "release" else []), profile + "-native-resource-ownership")
+            run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
+                 "-p", "birnam-tcc", "--features", "resource-metrics"]
+                + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["mise", "exec", "--", "cargo", "build", "--locked", "--offline",
                      "-p", "birnam-id", "-p", "birnam-prelude", "-p", "birnam-collection",
@@ -240,6 +244,7 @@ def main():
                         env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
                     expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control")
                                 for profile in ("debug", "release")}
+                    expected.update({"evaluator-lifetime.json", "baseline-native-storage.json"})
                     paths = list(Path(evidence).glob("*.json"))
                     if {p.name for p in paths} != expected:
                         raise RuntimeError("missing source closure matrix receipts")
@@ -268,6 +273,23 @@ def main():
                         rows = matrices[f"literal-control-{profile}.json"]["rows"]
                         if len(rows) != 24 or {(r["precise"], r["control"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literal_control:
                             raise RuntimeError("incomplete literal result capture/suspension matrix")
+                    lifetime = matrices.pop("evaluator-lifetime.json")
+                    expected_lifetime = {(profile, case) for profile in ("debug", "release")
+                                         for case in ("probe-root-boundary", "logicvar-original", "error-original",
+                                                      "nested-sync", "nested-sync-block", "nested-persisting")}
+                    if len(lifetime["rows"]) != 12 or {(r["profile"], r["case"]) for r in lifetime["rows"]} != expected_lifetime:
+                        raise RuntimeError("incomplete evaluator/native root lifetime matrix")
+                    for profile in ("debug", "release"):
+                        floor = ROOT / ".cargo-target/74t-closure-control-target" / profile / "libbirnam_id.dylib"
+                        if lifetime["artifacts"].get(str(floor.resolve())) != matrices[f"sequence-{profile}.json"]["floor_sha256"]:
+                            raise RuntimeError("evaluator lifetime floor differs from source matrix floor")
+                    receipt["evaluator_lifetime_matrix"] = lifetime
+                    baseline_storage = matrices.pop("baseline-native-storage.json")
+                    expected_storage = {(p, size, repeat) for p in ("debug", "release")
+                                        for size in (4096, 65536) for repeat in range(3)}
+                    if len(baseline_storage["rows"]) != 12 or {(r["profile"], r["payload_bytes"], r["repetition"]) for r in baseline_storage["rows"]} != expected_storage:
+                        raise RuntimeError("incomplete baseline TCC storage lifecycle matrix")
+                    receipt["baseline_native_storage_matrix"] = baseline_storage
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:
                         expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant", "loop-measure") for p in ("debug", "release")}

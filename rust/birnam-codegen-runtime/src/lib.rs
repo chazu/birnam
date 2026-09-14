@@ -6190,6 +6190,11 @@ unsafe extern "C" fn rust_codegen_eval(
         // frozen Method ABI; the unit is still relocated and not installed.
         let entry: Method = unsafe { core::mem::transmute(address) };
         let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
+        #[cfg(feature = "test-evaluator-lifetime")]
+        assert!(
+            !unsafe { (api.vtableOf)(unit) }.is_null(),
+            "evaluator Unit reclaimed during direct entry"
+        );
         unsafe { dispose_unit(api, unit) };
         return result;
     }
@@ -8540,6 +8545,11 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
     // unit remains relocated but uninstalled for this direct invocation.
     let entry: Method = unsafe { core::mem::transmute(address) };
     let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
+    #[cfg(feature = "test-evaluator-lifetime")]
+    assert!(
+        !unsafe { (api.vtableOf)(unit) }.is_null(),
+        "evaluator Unit reclaimed during direct entry"
+    );
     // A persisting source can install blocks as methods or store them in
     // globals. Those closures point into this TCC unit, so keep the unit live
     // exactly as the native evaluator does for any program containing `__blk`.

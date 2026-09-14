@@ -11,6 +11,11 @@ pub(super) use control::{active as control_active, after_action};
 impl Runtime {
     pub(crate) fn install_unboxed_numeric_probe(&self) {
         let vt = self.create_vtable(self.globals().object_vt);
+        self.add_method(
+            vt,
+            self.intern(b"checkNativeRoots").unwrap(),
+            check_native_roots,
+        );
         self.add_method(vt, self.intern(b"run:input:other:expected:").unwrap(), run);
         self.add_method(
             vt,
@@ -41,10 +46,24 @@ impl Runtime {
     }
 }
 
+unsafe extern "C" fn check_native_roots(_: Oop, _: *const Oop, count: usize) -> Oop {
+    assert_eq!(count, 0);
+    with_source_probe_native_roots(|r| {
+        let inner = r.make_integer(1234567);
+        r.gc_collect_for_source_probe();
+        assert!(
+            !unsafe { (*r.state.get()).heap.contains(inner) },
+            "probe scratch must not become native roots"
+        );
+        println!("source-probe-roots inner_dead=1");
+        r.canonical().nil
+    })
+}
+
 unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 4);
     let a = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let (block, input, other) = (a[0], a[1], a[2]);
         let expected = r.integer_value(a[3]);
         let _block = ScopedOopRootGuard::new(r, block);
@@ -63,7 +82,7 @@ unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
             for _ in 0..8 {
                 invoke();
             }
-            r.gc_collect_from_native_range(0, 0);
+            r.gc_collect_for_source_probe();
         }
         let completed_before = COMPLETED.get();
         let materialized_before = MATERIALIZED.get();
@@ -82,7 +101,7 @@ unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
         println!(
             "unboxed-numeric invocations=8 bytes={bytes} physical_saved={physical_saved} completed={completed} materialized={materialized} answer={expected}"
         );
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         assert_eq!(r.integer_value(answer), expected);
         drop(root);
         r.canonical().nil
@@ -91,7 +110,7 @@ unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
 
 unsafe extern "C" fn loop_reused(_: Oop, _: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 0);
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         r.make_integer(super::numeric::loop_reuse::PREDICTED_OPERATIONS_REUSED.get() as i64)
     })
 }

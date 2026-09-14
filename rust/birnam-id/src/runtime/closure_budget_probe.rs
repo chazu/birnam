@@ -55,7 +55,7 @@ unsafe extern "C" fn observe(mark: crate::abi::MarkFn) {
 pub(super) unsafe extern "C" fn check(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 3);
     let a = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let factory = a[0];
         let gap = r.integer_value(a[1]) as usize;
         let escaping = r.integer_value(a[2]) != 0;
@@ -92,7 +92,7 @@ pub(super) unsafe extern "C" fn check(_: Oop, args: *const Oop, count: usize) ->
         let target = r
             .materialize_registered_target(entry, factory, &[input])
             .unwrap();
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         let start = crate::gc::AUTO_COLLECTION_THRESHOLD - gap;
         let current = unsafe { (*r.state.get()).heap.bytes_since_collection() };
         r.allocate_instance(

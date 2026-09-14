@@ -25,7 +25,7 @@ unsafe extern "C" fn replacement(closure: Oop, args: *const Oop, count: usize) -
         OBSERVED.set(closure.addr());
         EFFECTS.set(EFFECTS.get() + 1);
         if COLLECT.get() {
-            r.gc_collect_from_native_range(0, 0);
+            r.gc_collect_for_source_probe();
         }
         assert_eq!(capture(), Some(INPUT.get()));
         assert_eq!(unsafe { (*args).addr() }, OTHER.get());
@@ -36,7 +36,7 @@ unsafe extern "C" fn replacement(closure: Oop, args: *const Oop, count: usize) -
 pub(super) unsafe extern "C" fn check(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 5);
     let a = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let (factory, input, other) = (a[0], a[1], a[2]);
         let position = r.integer_value(a[3]) as usize;
         let collecting = r.integer_value(a[4]) != 0;
@@ -68,7 +68,7 @@ pub(super) unsafe extern "C" fn check(_: Oop, args: *const Oop, count: usize) ->
         OTHER.set(other.addr());
         EFFECTS.set(0);
         COLLECT.set(collecting);
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         let before = counters();
         let completed_before = completed_calls();
         let allocated_before = unsafe { (*r.state.get()).heap.bytes_since_collection() };

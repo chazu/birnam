@@ -91,7 +91,7 @@ impl Runtime {
 unsafe extern "C" fn warm(probe: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 2);
     let (block, input) = unsafe { (*args, *args.add(1)) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let selector = r.intern(b"value:value:").unwrap();
         for _ in 0..128 {
             let answer = r.send_slice(block, selector, &[input, probe]);
@@ -107,14 +107,14 @@ unsafe extern "C" fn checkpoint(_: Oop, _: *const Oop, count: usize) -> Oop {
         PROBE.with_borrow(Option::is_none),
         "paused Call must await supplied result"
     );
-    with_active(|r| r.canonical().nil)
+    with_source_probe_native_roots(|r| r.canonical().nil)
 }
 
 unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert!((2..=3).contains(&count));
     let closure = unsafe { *args };
     assert_eq!(closure, unsafe { *args.add(1) });
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let Some((machine, expected, input, supplied, observations)) = PROBE.with_borrow(|p| {
             p.as_ref()
                 .map(|p| (p.machine, p.closure, p.input, p.supplied, p.observations))
@@ -144,7 +144,7 @@ unsafe extern "C" fn observe(_: Oop, args: *const Oop, count: usize) -> Oop {
         };
         let before = aliases();
         assert!(before.len() >= 2);
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         assert_eq!(aliases(), before);
         assert_eq!(
             unsafe { (*r.state.get()).heap.read_payload_word(closure, 1) },
@@ -172,7 +172,7 @@ unsafe extern "C" fn observe_literals(probe: Oop, args: *const Oop, count: usize
     assert_ne!(values[0], values[1]);
     assert_ne!(values[0], values[2]);
     assert_ne!(values[1], values[2]);
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         for &value in &values[..3] {
             assert_eq!(r.integer_value(value), 42);
         }
@@ -217,7 +217,7 @@ unsafe extern "C" fn observe_literals(probe: Oop, args: *const Oop, count: usize
                 before[0].len() >= 2,
                 "first result and its source alias stay live"
             );
-            r.gc_collect_from_native_range(0, 0);
+            r.gc_collect_for_source_probe();
             assert_eq!(aliases(), before);
             for &value in &values[..3] {
                 assert!(unsafe { (*r.state.get()).heap.contains(value) });
@@ -233,7 +233,7 @@ unsafe extern "C" fn observe_literals(probe: Oop, args: *const Oop, count: usize
 
 unsafe extern "C" fn pause_call(machine: Oop, args: *const Oop, count: usize) -> Oop {
     let action = unsafe { crate::execution::machine_call_site(machine, args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let (expected, capture) = PROBE.with_borrow(|p| {
             let p = p.as_ref().unwrap();
             (p.machine, p.capture)
@@ -277,7 +277,7 @@ unsafe extern "C" fn run_literals(probe: Oop, args: *const Oop, count: usize) ->
 unsafe fn run_control(probe: Oop, args: *const Oop, count: usize, literal_mode: bool) -> Oop {
     assert_eq!(count, 3);
     let (block, input, mode) = unsafe { (*args, *args.add(1), *args.add(2)) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         assert!(PROBE.with_borrow(Option::is_none));
         let capture = mode == r.canonical().true_object;
         let baseline = r.stackless_registration_diagnostics();
@@ -343,7 +343,7 @@ unsafe fn run_control(probe: Oop, args: *const Oop, count: usize, literal_mode: 
         );
         let codegen = r.import(b"Codegen").unwrap();
         r.send_slice(codegen, r.intern(b"evictMaterializations").unwrap(), &[]);
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         let identity = PROBE.with_borrow(|p| p.as_ref().unwrap().closure);
         assert!(unsafe { (*r.state.get()).heap.contains(identity) });
         let supplied = if literal_mode {

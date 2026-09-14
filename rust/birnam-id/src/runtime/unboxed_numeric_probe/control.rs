@@ -69,7 +69,7 @@ pub(in crate::runtime) fn after_action(r: &Runtime, machine: Oop, action: Oop) -
     let before = integer_slots(r, machine);
     assert!(!before.is_empty());
     // Only the published Frame and explicit caller roots retain these Oops.
-    r.gc_collect_from_native_range(0, 0);
+    r.gc_collect_for_source_probe();
     assert_eq!(integer_slots(r, machine), before);
     CONTROL.with_borrow_mut(|c| {
         let c = c.as_mut().unwrap();
@@ -88,7 +88,7 @@ pub(in crate::runtime) fn after_action(r: &Runtime, machine: Oop, action: Oop) -
 pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 6);
     let args = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let (block, input, other) = (args[0], args[1], args[2]);
         let expected = r.integer_value(args[3]);
         let pc = r.integer_value(args[4]) as usize;
@@ -103,7 +103,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
                 let answer = r.send_slice(block, selector, &[input, other]);
                 assert_eq!(r.integer_value(answer), expected);
             }
-            r.gc_collect_from_native_range(0, 0);
+            r.gc_collect_for_source_probe();
         }
         let baseline = r.stackless_registration_diagnostics();
         let machine = r.create_stackless_machine().unwrap();
@@ -149,7 +149,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         );
         let codegen = r.import(b"Codegen").unwrap();
         r.send_slice(codegen, r.intern(b"evictMaterializations").unwrap(), &[]);
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         CONTROL.with_borrow(|c| {
             let heap = unsafe { &(*r.state.get()).heap };
             for &(_, address, value) in &c.as_ref().unwrap().integers {

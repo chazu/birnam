@@ -9,7 +9,7 @@ thread_local! { static EFFECTS: Cell<usize> = const { Cell::new(0) }; }
 pub(super) unsafe extern "C" fn sequence(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 5);
     let a = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let (factory, input, other) = (a[0], a[1], a[2]);
         let calls = r.integer_value(a[3]) as usize;
         let escaping = r.integer_value(a[4]) != 0;
@@ -33,10 +33,10 @@ pub(super) unsafe extern "C" fn sequence(_: Oop, args: *const Oop, count: usize)
                 answer = invoke();
             }
             if batch != 11 {
-                r.gc_collect_from_native_range(0, 0);
+                r.gc_collect_for_source_probe();
             }
         }
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         let before = counters();
         let completed_before = super::native_tier::closure_elision::completed_calls();
         let allocated_before = unsafe { (*r.state.get()).heap.bytes_since_collection() };
@@ -68,7 +68,7 @@ pub(super) unsafe extern "C" fn sequence(_: Oop, args: *const Oop, count: usize)
 
 pub(super) unsafe extern "C" fn prepare(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 2);
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let codegen = r.import(b"Codegen").unwrap();
         let selector = r.intern(b"materializeResumable:captures:").unwrap();
         let before = counters();
@@ -109,7 +109,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
     assert_eq!(count, 4);
     let (block, input, shape, batches) =
         unsafe { (*args, *args.add(1), *args.add(2), *args.add(3)) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let shape = r.integer_value(shape);
         let batches = r.integer_value(batches) as usize;
         assert!((0..=3).contains(&shape) && (1..=500).contains(&batches));
@@ -153,7 +153,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         } else {
             None
         };
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         let before = counters();
         let discoveries_before = constructor_discoveries();
         let queries_before = constructor_queries();
@@ -180,7 +180,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             physical_saved += heap.allocation_count() - heap.physical_allocation_count();
             journal_peak_bytes = journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
             let start = Instant::now();
-            r.gc_collect_from_native_range(0, 0);
+            r.gc_collect_for_source_probe();
             gc_ns += start.elapsed().as_nanos();
             assert_eq!(
                 birnam_native_compiler::Unit::resource_totals(),

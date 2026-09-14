@@ -10,13 +10,9 @@ static COMPILER: Mutex<()> = Mutex::new(());
 
 #[cfg(feature = "resource-metrics")]
 mod metrics {
-    use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     pub(super) static UNITS: AtomicUsize = AtomicUsize::new(0);
     pub(super) static BYTES: AtomicUsize = AtomicUsize::new(0);
-    unsafe extern "C" {
-        pub(super) fn birnam_tcc_relocated_allocation_bytes(state: *const TccState) -> usize;
-    }
     pub(super) fn add(bytes: usize) {
         BYTES
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
@@ -75,7 +71,7 @@ impl Unit {
             return None;
         }
         #[cfg(feature = "resource-metrics")]
-        metrics::add(unsafe { metrics::birnam_tcc_relocated_allocation_bytes(raw) });
+        metrics::add(unsafe { super::relocated_allocation_bytes(raw) });
         Some(Self { state })
     }
 
@@ -92,7 +88,7 @@ impl Unit {
     pub fn relocated_allocation_bytes(&self) -> usize {
         let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
         // The C helper reads the live state using the compiler's own layout.
-        unsafe { metrics::birnam_tcc_relocated_allocation_bytes(self.state.as_ptr()) }
+        unsafe { super::relocated_allocation_bytes(self.state.as_ptr()) }
     }
 
     /// The address is usable only while its Unit remains alive. Returning a
@@ -110,9 +106,7 @@ impl Drop for Unit {
         // SAFETY: Unit owns this compiler. Callers must retain that owner for
         // every invocation of an address borrowed from symbol().
         #[cfg(feature = "resource-metrics")]
-        metrics::remove(unsafe {
-            metrics::birnam_tcc_relocated_allocation_bytes(self.state.as_ptr())
-        });
+        metrics::remove(unsafe { super::relocated_allocation_bytes(self.state.as_ptr()) });
         unsafe { tcc_delete(self.state.as_ptr()) };
     }
 }

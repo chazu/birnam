@@ -6,7 +6,7 @@ use std::time::Instant;
 pub(super) unsafe extern "C" fn prepare(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 2);
     let args = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let _code = ScopedOopRootGuard::new(r, args[0]);
         let _captures = ScopedOopRootGuard::new(r, args[1]);
         let codegen = r.import(b"Codegen").unwrap();
@@ -34,7 +34,7 @@ pub(super) unsafe extern "C" fn prepare(_: Oop, args: *const Oop, count: usize) 
 pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 6);
     let args = unsafe { core::slice::from_raw_parts(args, count) };
-    with_active(|r| {
+    with_source_probe_native_roots(|r| {
         let (block, input, other) = (args[0], args[1], args[2]);
         let operations = r.integer_value(args[3]) as usize;
         let shape = r.integer_value(args[4]) as usize;
@@ -94,7 +94,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         } else {
             None
         };
-        r.gc_collect_from_native_range(0, 0);
+        r.gc_collect_for_source_probe();
         let before = (COMPLETED.get(), MATERIALIZED.get(), PREPARATIONS.get());
         let resources = r.native_tier.borrow().unboxed_resources();
         let scratch = r.native_tier.borrow().unboxed_scratch_resources();
@@ -118,7 +118,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
             physical_saved += heap.allocation_count() - heap.physical_allocation_count();
             journal_peak_bytes = journal_peak_bytes.max(heap.dead_allocation_storage_bytes());
             let start = Instant::now();
-            r.gc_collect_from_native_range(0, 0);
+            r.gc_collect_for_source_probe();
             gc_ns += start.elapsed().as_nanos();
             assert_eq!(
                 birnam_native_compiler::Unit::resource_totals(),

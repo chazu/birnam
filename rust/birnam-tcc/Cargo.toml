@@ -12,6 +12,8 @@ birnam-native-compiler = { path = "../birnam-native-compiler" }
 [features]
 # Design 74 E1: development-only guarded slot-access shims for generated code.
 dev-guarded-slots = []
+# Read-only diagnostics for owned baseline Unit relocation storage.
+resource-metrics = ["birnam-native-compiler/resource-metrics"]
 
 [lib]
 name = "birnam_tcc"

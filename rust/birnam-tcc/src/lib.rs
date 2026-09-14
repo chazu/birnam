@@ -16,14 +16,17 @@ use birnam_native_compiler::{
     tcc_compile_string, tcc_delete, tcc_get_symbol, tcc_new, tcc_output_file, tcc_relocate,
     tcc_set_error_func, tcc_set_output_type,
 };
-use core::ffi::{c_char, c_int, c_void};
 #[cfg(feature = "dev-guarded-slots")]
 use core::ffi::c_long;
+use core::ffi::{c_char, c_int, c_void};
 use core::mem::size_of;
 use core::ptr::{self, NonNull};
 use std::ffi::{CStr, CString};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
+
+#[cfg(feature = "resource-metrics")]
+mod resource_metrics;
 
 const RUST_TCC_IDENTITY: &[u8] = b"rust-tcc-n4.2-state\0";
 const TCC_NAME: &[u8] = b"Tcc\0";
@@ -163,13 +166,25 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
         (b"birnam_send", validation_send as *const c_void),
         (b"birnam_intern", validation_intern as *const c_void),
         #[cfg(feature = "dev-guarded-slots")]
-        (b"birnam_dev_frame_oop_at_v1", validation_pointer as *const c_void),
+        (
+            b"birnam_dev_frame_oop_at_v1",
+            validation_pointer as *const c_void,
+        ),
         #[cfg(feature = "dev-guarded-slots")]
-        (b"birnam_dev_frame_oop_at_put_v1", validation_pointer as *const c_void),
+        (
+            b"birnam_dev_frame_oop_at_put_v1",
+            validation_pointer as *const c_void,
+        ),
         #[cfg(feature = "dev-guarded-slots")]
-        (b"birnam_dev_frame_slot_get_v1", validation_pointer as *const c_void),
+        (
+            b"birnam_dev_frame_slot_get_v1",
+            validation_pointer as *const c_void,
+        ),
         #[cfg(feature = "dev-guarded-slots")]
-        (b"birnam_dev_frame_slot_put_v1", validation_pointer as *const c_void),
+        (
+            b"birnam_dev_frame_slot_put_v1",
+            validation_pointer as *const c_void,
+        ),
     ];
     symbols.push((
         b"__vecFactory",
@@ -221,7 +236,11 @@ unsafe extern "C" {
 /// Resolve one private symbol from the exact selected floor image (the one
 /// that owns `api.dlsym`), keeping that floor `RTLD_LOCAL`. Answers 0 when the
 /// image or symbol cannot be found; the result is cached per call site.
-fn floor_symbol_address(api: &IdApi, symbol: &'static CStr, address: &'static OnceLock<usize>) -> usize {
+fn floor_symbol_address(
+    api: &IdApi,
+    symbol: &'static CStr,
+    address: &'static OnceLock<usize>,
+) -> usize {
     *address.get_or_init(|| {
         let mut info = DlInfo {
             filename: ptr::null(),
@@ -371,6 +390,10 @@ unsafe fn release_payload(payload: *mut UnitPayload) {
     }
     if !state.is_null() {
         // SAFETY: state came from tcc_new and has not previously been deleted.
+        #[cfg(feature = "resource-metrics")]
+        unsafe {
+            resource_metrics::releasing(state)
+        };
         unsafe { tcc_delete(state) };
         LIVE_UNIT_STATES.fetch_sub(1, Ordering::AcqRel);
     }
@@ -594,7 +617,11 @@ unsafe extern "C" fn m_relocate(self_object: Oop, _args: *const Oop, _count: usi
         return self_object;
     }
     // SAFETY: this is the one-way libtcc relocation transition.
-    if unsafe { tcc_relocate(state) } < 0 {
+    #[cfg(feature = "resource-metrics")]
+    let relocated = unsafe { resource_metrics::relocate(state) };
+    #[cfg(not(feature = "resource-metrics"))]
+    let relocated = unsafe { tcc_relocate(state) };
+    if relocated < 0 {
         return api.nilObj;
     }
     if let Some(payload) = unsafe { unit_payload(self_object) } {
@@ -910,9 +937,7 @@ pub unsafe extern "C" fn rt_dev_frame_oop_at_put_v1(
         return 0;
     }
     let forward = unsafe {
-        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, Oop, Oop, *mut Oop) -> u32>(
-            address,
-        )
+        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, Oop, Oop, *mut Oop) -> u32>(address)
     };
     unsafe { forward(machine, operand, value, out) }
 }
@@ -1414,6 +1439,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (b"compile:output:as:\0", m_compile_output),
         (b"new\0", m_new),
         (b"liveUnitCount\0", m_live_unit_count),
+        #[cfg(feature = "resource-metrics")]
+        (
+            b"relocatedAllocationBytes\0",
+            resource_metrics::allocation_bytes,
+        ),
     ];
     let unit_methods: &[(&[u8], Method)] = &[
         (b"compile:\0", m_compile_into_method),

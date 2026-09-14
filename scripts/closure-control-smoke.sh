@@ -17,7 +17,8 @@ for profile in debug release; do
   flags=()
   if [[ $profile == release ]]; then flags+=(--release); fi
   CARGO_TARGET_DIR="$PWD/.cargo-target/74t-closure-control-target" mise exec -- \
-    cargo build --locked --offline -p birnam-id --features ffi-test-hooks "${flags[@]}"
+    cargo build --locked --offline -p birnam-id -p birnam-codegen-runtime -p birnam-tcc \
+      --features birnam-id/ffi-test-hooks,birnam-codegen-runtime/test-evaluator-lifetime,birnam-tcc/resource-metrics "${flags[@]}"
   floor="$PWD/.cargo-target/74t-closure-control-target/$profile/libbirnam_id.dylib"
   if [[ -n ${BIRNAM_TEST_UNBOXED_RECEIPTS:-} ]]; then
     python3 scripts/unboxed-numeric-smoke.py --prefix "$prefix" --floor "$floor" --output "$BIRNAM_TEST_UNBOXED_RECEIPTS/unboxed-$profile.json"
@@ -108,3 +109,17 @@ PY
     done
   done
 done
+
+python3 scripts/evaluator-unit-lifetime-smoke.py --prefix "$prefix" \
+  --target "$PWD/.cargo-target/74t-closure-control-target" \
+  --floor-root "$PWD/.cargo-target/74t-closure-control-target" \
+  --output "$work/evaluator-lifetime.json"
+if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
+  cp "$work/evaluator-lifetime.json" "$BIRNAM_TEST_CLOSURE_RECEIPTS/evaluator-lifetime.json"
+fi
+python3 scripts/baseline-native-storage-smoke.py --prefix "$prefix" \
+  --target "$PWD/.cargo-target/74t-closure-control-target" \
+  --output "$work/baseline-native-storage.json"
+if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
+  cp "$work/baseline-native-storage.json" "$BIRNAM_TEST_CLOSURE_RECEIPTS/baseline-native-storage.json"
+fi
