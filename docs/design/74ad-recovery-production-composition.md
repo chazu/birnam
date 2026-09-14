@@ -80,3 +80,12 @@ The public-runtime String test is exercised through its parent subprocess test.
 The seven-path composition does not add or skip tests, weaken the production
 gate, change public ABI, or promote defaults. Joint source interactions and full
 production/installed acceptance remain the next requirements.
+
+The joint release runner has built the matching diagnostic floor and passed all
+40 V2-control and 20 changed-input cases. It proceeds through 448 complete
+GC-budget and 640 sequence cases, including both GC modes and counting off/on.
+The complete target is 1,148 source processes. It reuses the unchanged installed
+numeric compiler with an explicit new floor overlay; it is not a fresh combined
+normal installation. `74ad-joint-release-start.json` records its live identity and
+source binding. The full production gate still follows completed interaction
+checks, including any additional cases needed to prove actual simultaneous use.
