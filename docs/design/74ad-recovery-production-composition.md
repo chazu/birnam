@@ -34,8 +34,9 @@ must not suppress these checks or extend across collection or recovery.
 ## Implementation and evidence
 
 1. Record the exact seven-path input union against the common counted checkpoint.
-   Resolve the shared `regions.rs` change by retaining both scoped control reads
-   and the existing test/FFI counted-event diagnostics. Preserve every unrelated
+   Preserve the numeric-closure `execute_prepared` entry when composing
+   `fused_numeric.rs`; retain both scoped control reads and the existing test/FFI
+   counted-event diagnostics in `regions.rs`. Preserve every unrelated
    74AC source byte, compiler change, source fixture and required gate.
 2. Run compiler and complete floor tests in both profiles. In particular retain
    off/on/off live-control tests, observing-publication fallback, String cleanup
@@ -60,3 +61,22 @@ its independent acceptance and cost comparison run. Its eventual inclusion needs
 its own explicit source composition and interaction checks. All four families
 remain in progress until their complete production and semantic obligations are
 met; creating this composition does not redefine those obligations.
+
+
+## Initial composed runtime
+
+The source audit confirms 306 inputs and exactly the seven declared Rust changes.
+Five files equal their incoming source versions byte-for-byte. `fused_numeric.rs`
+is the clean three-way composition, retaining the numeric-closure prepared entry
+and placing the scoped control value inside that admitted execution. `regions.rs`
+retains the existing 74AC diagnostic counter's test/FFI lifetime and wrapping
+increment while adding the scoped read. The initial audit expected six direct
+copies and correctly rejected the fused entry as an additional overlap; the
+corrected audit verifies both compositions explicitly.
+
+`74ad-composition-tests.json` records 92 compiler tests and 222 runtime tests
+passing in each profile, with 16 runtime tests ignored by the general runner.
+The public-runtime String test is exercised through its parent subprocess test.
+The seven-path composition does not add or skip tests, weaken the production
+gate, change public ABI, or promote defaults. Joint source interactions and full
+production/installed acceptance remain the next requirements.

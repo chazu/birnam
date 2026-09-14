@@ -12,6 +12,11 @@ pub(crate) struct DeferredAllocation(u64);
 pub(crate) const MAX_DEAD_ALLOCATIONS: usize = 4096;
 pub(crate) const MAX_DEAD_PAYLOAD_BYTES: usize = 1024;
 
+#[cfg(test)]
+thread_local! {
+    static SETTLED_ALLOCATIONS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
 // The enum uses Vec's niche without increasing the snapshot header. Small
 // bytes live inside the untraced Rc allocation; larger payloads keep their Vec.
 const INLINE_PAYLOAD_BYTES: usize = core::mem::size_of::<i64>();
@@ -251,6 +256,8 @@ impl Heap {
     /// a new Id allocation: no callback runs and all accounting is unchanged.
     /// The caller must be between marking and the dead-object snapshot.
     pub(crate) fn settle_dead_allocations(&mut self) {
+        #[cfg(test)]
+        SETTLED_ALLOCATIONS.set(SETTLED_ALLOCATIONS.get() + self.dead_allocation_count());
         let allocations = core::mem::take(&mut self.dead_allocations);
         self.deferred_allocations.clear();
         for snapshot in allocations {
@@ -260,6 +267,11 @@ impl Heap {
             self.materialize_numeric_entry(&entry);
         }
         self.settle_dead_frame_indices();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn settled_allocation_count_for_test() -> usize {
+        SETTLED_ALLOCATIONS.get()
     }
 
     /// Use only after proving that the sweep cannot observe these missing

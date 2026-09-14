@@ -54,9 +54,9 @@ mod native_tier;
 mod numeric;
 mod recovery;
 #[cfg(feature = "ffi-test-hooks")]
-mod unboxed_numeric_probe;
-#[cfg(feature = "ffi-test-hooks")]
 mod source_probe_roots;
+#[cfg(feature = "ffi-test-hooks")]
+mod unboxed_numeric_probe;
 #[cfg(feature = "ffi-test-hooks")]
 use source_probe_roots::with_source_probe_native_roots;
 #[cfg(all(test, target_os = "macos"))]
@@ -4369,9 +4369,19 @@ impl Runtime {
             if state.heap.has_dead_allocations()
                 && (!dead_bindings.is_empty()
                     || state.heap.dead_finalizers().any(|(object, finalizer)| {
-                        !state
-                            .execution
-                            .inert_machine_finalizer(&state.heap, object, finalizer)
+                        // Only this exact floor cleanup on its published runtime
+                        // and owned storage cannot observe the physical sweep.
+                        // It still runs normally below. Wrappers, replacement
+                        // finalizers and missing owners retain ordinary settlement.
+                        let string_cleanup =
+                            crate::public_api::string_cleanup_matches_runtime(self, finalizer)
+                                && state.values.string_bytes(object).is_some();
+                        !string_cleanup
+                            && !state.execution.inert_machine_finalizer(
+                                &state.heap,
+                                object,
+                                finalizer,
+                            )
                     }))
             {
                 // Realize already-charged, unreachable identities before weak

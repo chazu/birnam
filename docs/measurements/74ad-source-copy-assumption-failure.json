@@ -1,0 +1,6 @@
+{
+  "status": "rejected_assumption",
+  "qualified": false,
+  "scope": "Initial source audit expected fused_numeric.rs to equal the scoped donor exactly and rejected that assumption. The existing74AC execute_prepared changes are also required. No runtime change or test failure resulted; corrected composition audit verifies the clean three-way merge.",
+  "path": "rust/birnam-id/src/runtime/native_tier/fused_numeric.rs"
+}

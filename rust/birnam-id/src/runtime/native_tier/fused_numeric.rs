@@ -136,6 +136,9 @@ pub(super) unsafe fn execute_prepared(
     (|| {
         let nil = runtime.canonical().nil;
         let mut operation = 0;
+        // Canonical controls and the whole-body budget above exclude observers
+        // until this invocation ends. Read lazily, then discard on every exit.
+        let mut counting = None;
         for (pc, method) in candidate.entries.iter().enumerate() {
             let token;
             let args = if pc == 0 {
@@ -148,7 +151,17 @@ pub(super) unsafe fn execute_prepared(
             #[cfg(test)]
             let regions_enabled = regions_enabled && super::regions::ENABLED.get();
             let action = if regions_enabled && let Some(Some(region)) = candidate.regions.get(pc) {
-                unsafe { region.invoke(runtime, machine, key, *method, args, 1) }
+                unsafe {
+                    region.invoke_with_counting(
+                        runtime,
+                        machine,
+                        key,
+                        *method,
+                        args,
+                        1,
+                        &mut counting,
+                    )
+                }
             } else {
                 unsafe { method(machine, args, 1) }
             };
