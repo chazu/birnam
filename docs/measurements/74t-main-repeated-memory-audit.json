@@ -1,0 +1,1354 @@
+{
+  "status": "passed",
+  "qualified": false,
+  "receipt_sha256": "08e79d76bee9b9eb0d5065ac8a60f85775dad121053ff7bec73124f9d4ca3d27",
+  "production_proof_sha256": "1a808c8aca7b72da1aa215032f37bce60f6b641722a374f6765bd425a24da228",
+  "processes": 60,
+  "checkpoints": 420,
+  "checked_calls": 30720,
+  "pairs": 3,
+  "summaries": [
+    {
+      "family": "unboxed",
+      "refused": false,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -8.4,
+          "median": 1.4,
+          "maximum": 3.1,
+          "samples": [
+            -8.4,
+            3.1,
+            1.4
+          ]
+        },
+        "steady-2": {
+          "minimum": -10.5,
+          "median": 1.4,
+          "maximum": 3.4,
+          "samples": [
+            -10.5,
+            3.4,
+            1.4
+          ]
+        },
+        "evicted-live": {
+          "minimum": -10.4,
+          "median": 1.5,
+          "maximum": 3.0,
+          "samples": [
+            -10.4,
+            3.0,
+            1.5
+          ]
+        },
+        "released": {
+          "minimum": -9.5,
+          "median": 1.5,
+          "maximum": 3.0,
+          "samples": [
+            -9.5,
+            3.0,
+            1.5
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -10.9,
+          "median": -0.1,
+          "maximum": 0.1,
+          "samples": [
+            -10.9,
+            0.1,
+            -0.1
+          ]
+        },
+        "steady-2": {
+          "minimum": -13.0,
+          "median": -0.1,
+          "maximum": 0.4,
+          "samples": [
+            -13.0,
+            0.4,
+            -0.1
+          ]
+        },
+        "evicted-live": {
+          "minimum": -12.9,
+          "median": 0.0,
+          "maximum": 0.0,
+          "samples": [
+            -12.9,
+            0.0,
+            0.0
+          ]
+        },
+        "released": {
+          "minimum": -12.0,
+          "median": 0.0,
+          "maximum": 0.0,
+          "samples": [
+            -12.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": -0.3,
+            "median": 0.0,
+            "maximum": 0.0,
+            "samples": [
+              0.0,
+              -0.3,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 0.2,
+            "median": 0.2,
+            "maximum": 10.5,
+            "samples": [
+              10.5,
+              0.2,
+              0.2
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0,
+            "samples": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -1.5,
+            "median": 0.2,
+            "maximum": 0.2,
+            "samples": [
+              -1.5,
+              0.2,
+              0.2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "unboxed",
+      "refused": true,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -1.1,
+          "median": -1.0,
+          "maximum": -0.9,
+          "samples": [
+            -1.0,
+            -1.1,
+            -0.9
+          ]
+        },
+        "steady-2": {
+          "minimum": -1.3,
+          "median": -0.9,
+          "maximum": -0.8,
+          "samples": [
+            -0.9,
+            -1.3,
+            -0.8
+          ]
+        },
+        "evicted-live": {
+          "minimum": -6.7,
+          "median": -0.9,
+          "maximum": 0.8,
+          "samples": [
+            -0.9,
+            -6.7,
+            0.8
+          ]
+        },
+        "released": {
+          "minimum": -6.7,
+          "median": -3.3,
+          "maximum": 0.8,
+          "samples": [
+            -3.3,
+            -6.7,
+            0.8
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -1.0,
+          "median": -0.1,
+          "maximum": 0.3,
+          "samples": [
+            -1.0,
+            -0.1,
+            0.3
+          ]
+        },
+        "steady-2": {
+          "minimum": -0.9,
+          "median": -0.3,
+          "maximum": 0.4,
+          "samples": [
+            -0.9,
+            -0.3,
+            0.4
+          ]
+        },
+        "evicted-live": {
+          "minimum": -5.7,
+          "median": -0.9,
+          "maximum": 2.0,
+          "samples": [
+            -0.9,
+            -5.7,
+            2.0
+          ]
+        },
+        "released": {
+          "minimum": -5.7,
+          "median": -3.3,
+          "maximum": 2.0,
+          "samples": [
+            -3.3,
+            -5.7,
+            2.0
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.2,
+            "samples": [
+              0.2,
+              0.0,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -2.3,
+            "median": 4.0,
+            "maximum": 5.7,
+            "samples": [
+              4.0,
+              5.7,
+              -2.3
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": -0.2,
+            "median": 0.0,
+            "maximum": 0.0,
+            "samples": [
+              0.0,
+              -0.2,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -0.3,
+            "median": 0.0,
+            "maximum": 0.7,
+            "samples": [
+              0.7,
+              0.0,
+              -0.3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "loop",
+      "refused": false,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -3.1,
+          "median": 1.4,
+          "maximum": 2.3,
+          "samples": [
+            -3.1,
+            1.4,
+            2.3
+          ]
+        },
+        "steady-2": {
+          "minimum": 4.0,
+          "median": 5.6,
+          "maximum": 7.0,
+          "samples": [
+            4.0,
+            5.6,
+            7.0
+          ]
+        },
+        "evicted-live": {
+          "minimum": 2.4,
+          "median": 5.2,
+          "maximum": 6.3,
+          "samples": [
+            2.4,
+            5.2,
+            6.3
+          ]
+        },
+        "released": {
+          "minimum": 2.9,
+          "median": 3.7,
+          "maximum": 5.5,
+          "samples": [
+            2.9,
+            3.7,
+            5.5
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -0.4,
+          "median": 0.1,
+          "maximum": 2.0,
+          "samples": [
+            -0.4,
+            2.0,
+            0.1
+          ]
+        },
+        "steady-2": {
+          "minimum": 4.8,
+          "median": 6.2,
+          "maximum": 6.7,
+          "samples": [
+            6.7,
+            6.2,
+            4.8
+          ]
+        },
+        "evicted-live": {
+          "minimum": 4.1,
+          "median": 5.1,
+          "maximum": 5.8,
+          "samples": [
+            5.1,
+            5.8,
+            4.1
+          ]
+        },
+        "released": {
+          "minimum": 3.3,
+          "median": 4.3,
+          "maximum": 5.6,
+          "samples": [
+            5.6,
+            4.3,
+            3.3
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": -1.5,
+            "median": -0.2,
+            "maximum": 1.9,
+            "samples": [
+              -1.5,
+              1.9,
+              -0.2
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 40.4,
+            "median": 40.4,
+            "maximum": 41.2,
+            "samples": [
+              40.4,
+              41.2,
+              40.4
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": 1.2,
+            "median": 2.3,
+            "maximum": 5.9,
+            "samples": [
+              1.2,
+              5.9,
+              2.3
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 43.7,
+            "median": 45.5,
+            "maximum": 46.0,
+            "samples": [
+              46.0,
+              45.5,
+              43.7
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "loop",
+      "refused": true,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -0.4,
+          "median": 0.3,
+          "maximum": 2.9,
+          "samples": [
+            2.9,
+            0.3,
+            -0.4
+          ]
+        },
+        "steady-2": {
+          "minimum": -7.4,
+          "median": -3.0,
+          "maximum": 0.3,
+          "samples": [
+            0.3,
+            -7.4,
+            -3.0
+          ]
+        },
+        "evicted-live": {
+          "minimum": -6.7,
+          "median": -1.1,
+          "maximum": -0.8,
+          "samples": [
+            -0.8,
+            -1.1,
+            -6.7
+          ]
+        },
+        "released": {
+          "minimum": -6.3,
+          "median": -0.8,
+          "maximum": 0.1,
+          "samples": [
+            -0.8,
+            0.1,
+            -6.3
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -0.0,
+          "median": 0.5,
+          "maximum": 0.6,
+          "samples": [
+            -0.0,
+            0.5,
+            0.6
+          ]
+        },
+        "steady-2": {
+          "minimum": -7.2,
+          "median": -2.6,
+          "maximum": -2.0,
+          "samples": [
+            -2.6,
+            -7.2,
+            -2.0
+          ]
+        },
+        "evicted-live": {
+          "minimum": -5.7,
+          "median": -3.7,
+          "maximum": -0.9,
+          "samples": [
+            -3.7,
+            -0.9,
+            -5.7
+          ]
+        },
+        "released": {
+          "minimum": -5.3,
+          "median": -3.7,
+          "maximum": 0.3,
+          "samples": [
+            -3.7,
+            0.3,
+            -5.3
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": 0.1,
+            "median": 3.9,
+            "maximum": 7.6,
+            "samples": [
+              0.1,
+              3.9,
+              7.6
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 47.6,
+            "median": 51.1,
+            "maximum": 51.9,
+            "samples": [
+              51.1,
+              47.6,
+              51.9
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": -1.2,
+            "median": -0.2,
+            "maximum": 6.1,
+            "samples": [
+              -1.2,
+              -0.2,
+              6.1
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 46.6,
+            "median": 47.4,
+            "maximum": 47.9,
+            "samples": [
+              47.4,
+              47.9,
+              46.6
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "clones",
+      "refused": false,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -3.8,
+          "median": -0.6,
+          "maximum": 1.3,
+          "samples": [
+            -0.6,
+            -3.8,
+            1.3
+          ]
+        },
+        "steady-2": {
+          "minimum": -11.3,
+          "median": 0.1,
+          "maximum": 7.9,
+          "samples": [
+            0.1,
+            -11.3,
+            7.9
+          ]
+        },
+        "evicted-live": {
+          "minimum": -11.6,
+          "median": 0.2,
+          "maximum": 8.0,
+          "samples": [
+            0.2,
+            -11.6,
+            8.0
+          ]
+        },
+        "released": {
+          "minimum": -11.3,
+          "median": 0.2,
+          "maximum": 8.0,
+          "samples": [
+            0.2,
+            -11.3,
+            8.0
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": 0.0,
+          "median": 0.1,
+          "maximum": 0.5,
+          "samples": [
+            0.5,
+            0.1,
+            0.0
+          ]
+        },
+        "steady-2": {
+          "minimum": -7.4,
+          "median": 1.2,
+          "maximum": 6.6,
+          "samples": [
+            1.2,
+            -7.4,
+            6.6
+          ]
+        },
+        "evicted-live": {
+          "minimum": -7.7,
+          "median": 1.3,
+          "maximum": 6.7,
+          "samples": [
+            1.3,
+            -7.7,
+            6.7
+          ]
+        },
+        "released": {
+          "minimum": -7.4,
+          "median": 1.3,
+          "maximum": 6.7,
+          "samples": [
+            1.3,
+            -7.4,
+            6.7
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 1.5,
+            "samples": [
+              0.0,
+              1.5,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 0.0,
+            "median": 0.2,
+            "maximum": 7.7,
+            "samples": [
+              0.2,
+              7.7,
+              0.0
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.1,
+            "samples": [
+              0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 0.3,
+            "median": 1.5,
+            "maximum": 6.7,
+            "samples": [
+              1.5,
+              0.3,
+              6.7
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "clones",
+      "refused": true,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -1.2,
+          "median": 0.1,
+          "maximum": 0.8,
+          "samples": [
+            0.8,
+            0.1,
+            -1.2
+          ]
+        },
+        "steady-2": {
+          "minimum": -5.4,
+          "median": -0.8,
+          "maximum": 1.9,
+          "samples": [
+            1.9,
+            -0.8,
+            -5.4
+          ]
+        },
+        "evicted-live": {
+          "minimum": -6.4,
+          "median": -1.8,
+          "maximum": 1.9,
+          "samples": [
+            1.9,
+            -6.4,
+            -1.8
+          ]
+        },
+        "released": {
+          "minimum": -6.2,
+          "median": -1.6,
+          "maximum": 1.9,
+          "samples": [
+            1.9,
+            -6.2,
+            -1.6
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -0.1,
+          "median": 0.0,
+          "maximum": 0.1,
+          "samples": [
+            0.0,
+            -0.1,
+            0.1
+          ]
+        },
+        "steady-2": {
+          "minimum": -4.1,
+          "median": -1.0,
+          "maximum": 1.1,
+          "samples": [
+            1.1,
+            -1.0,
+            -4.1
+          ]
+        },
+        "evicted-live": {
+          "minimum": -6.6,
+          "median": -0.5,
+          "maximum": 1.1,
+          "samples": [
+            1.1,
+            -6.6,
+            -0.5
+          ]
+        },
+        "released": {
+          "minimum": -6.4,
+          "median": -0.3,
+          "maximum": 1.1,
+          "samples": [
+            1.1,
+            -6.4,
+            -0.3
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.3,
+            "samples": [
+              0.0,
+              0.0,
+              0.3
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -0.7,
+            "median": 3.3,
+            "maximum": 4.6,
+            "samples": [
+              -0.7,
+              4.6,
+              3.3
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0,
+            "samples": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -1.8,
+            "median": 0.4,
+            "maximum": 3.0,
+            "samples": [
+              0.4,
+              -1.8,
+              3.0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "fields",
+      "refused": false,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": 0.0,
+          "median": 0.2,
+          "maximum": 4.4,
+          "samples": [
+            4.4,
+            0.2,
+            0.0
+          ]
+        },
+        "steady-2": {
+          "minimum": 0.1,
+          "median": 0.5,
+          "maximum": 4.4,
+          "samples": [
+            4.4,
+            0.1,
+            0.5
+          ]
+        },
+        "evicted-live": {
+          "minimum": 0.1,
+          "median": 0.5,
+          "maximum": 4.5,
+          "samples": [
+            4.5,
+            0.1,
+            0.5
+          ]
+        },
+        "released": {
+          "minimum": -7.3,
+          "median": 0.5,
+          "maximum": 4.5,
+          "samples": [
+            4.5,
+            -7.3,
+            0.5
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -0.2,
+          "median": -0.1,
+          "maximum": -0.1,
+          "samples": [
+            -0.1,
+            -0.2,
+            -0.1
+          ]
+        },
+        "steady-2": {
+          "minimum": -0.3,
+          "median": -0.1,
+          "maximum": 0.4,
+          "samples": [
+            -0.1,
+            -0.3,
+            0.4
+          ]
+        },
+        "evicted-live": {
+          "minimum": -0.3,
+          "median": 0.0,
+          "maximum": 0.4,
+          "samples": [
+            0.0,
+            -0.3,
+            0.4
+          ]
+        },
+        "released": {
+          "minimum": -7.7,
+          "median": 0.0,
+          "maximum": 0.4,
+          "samples": [
+            0.0,
+            -7.7,
+            0.4
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0,
+            "samples": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 0.2,
+            "median": 0.2,
+            "maximum": 8.0,
+            "samples": [
+              0.2,
+              8.0,
+              0.2
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.3,
+            "samples": [
+              0.0,
+              0.0,
+              0.3
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 0.2,
+            "median": 0.3,
+            "maximum": 0.6,
+            "samples": [
+              0.2,
+              0.3,
+              0.6
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "fields",
+      "refused": true,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -8.9,
+          "median": 1.1,
+          "maximum": 7.0,
+          "samples": [
+            1.1,
+            -8.9,
+            7.0
+          ]
+        },
+        "steady-2": {
+          "minimum": -7.7,
+          "median": -5.1,
+          "maximum": 7.2,
+          "samples": [
+            -5.1,
+            -7.7,
+            7.2
+          ]
+        },
+        "evicted-live": {
+          "minimum": -7.7,
+          "median": -5.3,
+          "maximum": 7.2,
+          "samples": [
+            -5.3,
+            -7.7,
+            7.2
+          ]
+        },
+        "released": {
+          "minimum": -7.7,
+          "median": 1.8,
+          "maximum": 5.9,
+          "samples": [
+            1.8,
+            -7.7,
+            5.9
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": 0.0,
+          "median": 0.0,
+          "maximum": 0.3,
+          "samples": [
+            0.3,
+            0.0,
+            0.0
+          ]
+        },
+        "steady-2": {
+          "minimum": -5.9,
+          "median": 0.2,
+          "maximum": 1.2,
+          "samples": [
+            -5.9,
+            1.2,
+            0.2
+          ]
+        },
+        "evicted-live": {
+          "minimum": -6.1,
+          "median": 0.2,
+          "maximum": 1.2,
+          "samples": [
+            -6.1,
+            1.2,
+            0.2
+          ]
+        },
+        "released": {
+          "minimum": -1.1,
+          "median": 1.0,
+          "maximum": 1.2,
+          "samples": [
+            1.0,
+            1.2,
+            -1.1
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": -0.2,
+            "median": 0.0,
+            "maximum": 4.7,
+            "samples": [
+              4.7,
+              -0.2,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -0.8,
+            "median": -0.3,
+            "maximum": 4.9,
+            "samples": [
+              4.9,
+              -0.8,
+              -0.3
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.0,
+            "samples": [
+              0.0,
+              0.0,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -1.4,
+            "median": 0.4,
+            "maximum": 5.9,
+            "samples": [
+              5.9,
+              0.4,
+              -1.4
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "closure",
+      "refused": false,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": 0.3,
+          "median": 0.9,
+          "maximum": 1.0,
+          "samples": [
+            0.9,
+            1.0,
+            0.3
+          ]
+        },
+        "steady-2": {
+          "minimum": -5.7,
+          "median": 0.7,
+          "maximum": 1.4,
+          "samples": [
+            0.7,
+            1.4,
+            -5.7
+          ]
+        },
+        "evicted-live": {
+          "minimum": -6.2,
+          "median": 0.9,
+          "maximum": 1.4,
+          "samples": [
+            0.9,
+            1.4,
+            -6.2
+          ]
+        },
+        "released": {
+          "minimum": -4.8,
+          "median": 0.9,
+          "maximum": 1.4,
+          "samples": [
+            0.9,
+            1.4,
+            -4.8
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -0.8,
+          "median": -0.4,
+          "maximum": 0.1,
+          "samples": [
+            -0.4,
+            0.1,
+            -0.8
+          ]
+        },
+        "steady-2": {
+          "minimum": -6.8,
+          "median": -0.6,
+          "maximum": 0.5,
+          "samples": [
+            -0.6,
+            0.5,
+            -6.8
+          ]
+        },
+        "evicted-live": {
+          "minimum": -7.3,
+          "median": -0.4,
+          "maximum": 0.5,
+          "samples": [
+            -0.4,
+            0.5,
+            -7.3
+          ]
+        },
+        "released": {
+          "minimum": -5.9,
+          "median": -0.4,
+          "maximum": 0.5,
+          "samples": [
+            -0.4,
+            0.5,
+            -5.9
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 5.5,
+            "maximum": 6.0,
+            "samples": [
+              5.5,
+              0.0,
+              6.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": 0.1,
+            "median": 5.0,
+            "maximum": 6.3,
+            "samples": [
+              6.3,
+              0.1,
+              5.0
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.1,
+            "maximum": 0.5,
+            "samples": [
+              0.5,
+              0.1,
+              0.0
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -0.9,
+            "median": 0.6,
+            "maximum": 5.9,
+            "samples": [
+              5.9,
+              0.6,
+              -0.9
+            ]
+          }
+        }
+      }
+    },
+    {
+      "family": "closure",
+      "refused": true,
+      "enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -2.4,
+          "median": 0.3,
+          "maximum": 7.5,
+          "samples": [
+            0.3,
+            -2.4,
+            7.5
+          ]
+        },
+        "steady-2": {
+          "minimum": -5.0,
+          "median": -2.4,
+          "maximum": 7.9,
+          "samples": [
+            7.9,
+            -2.4,
+            -5.0
+          ]
+        },
+        "evicted-live": {
+          "minimum": -4.0,
+          "median": -2.4,
+          "maximum": 7.1,
+          "samples": [
+            7.1,
+            -2.4,
+            -4.0
+          ]
+        },
+        "released": {
+          "minimum": -4.0,
+          "median": -2.4,
+          "maximum": 0.4,
+          "samples": [
+            0.4,
+            -2.4,
+            -4.0
+          ]
+        }
+      },
+      "setup_adjusted_enabled_minus_disabled_mib": {
+        "cold": {
+          "minimum": -1.3,
+          "median": 0.0,
+          "maximum": 1.0,
+          "samples": [
+            0.0,
+            -1.3,
+            1.0
+          ]
+        },
+        "steady-2": {
+          "minimum": -11.5,
+          "median": -1.3,
+          "maximum": 7.6,
+          "samples": [
+            7.6,
+            -1.3,
+            -11.5
+          ]
+        },
+        "evicted-live": {
+          "minimum": -10.5,
+          "median": -1.3,
+          "maximum": 6.8,
+          "samples": [
+            6.8,
+            -1.3,
+            -10.5
+          ]
+        },
+        "released": {
+          "minimum": -10.5,
+          "median": -1.3,
+          "maximum": 0.1,
+          "samples": [
+            0.1,
+            -1.3,
+            -10.5
+          ]
+        }
+      },
+      "within_process_mib": {
+        "False": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.0,
+            "maximum": 0.7,
+            "samples": [
+              0.0,
+              0.0,
+              0.7
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -0.6,
+            "median": 6.3,
+            "maximum": 12.8,
+            "samples": [
+              6.3,
+              -0.6,
+              12.8
+            ]
+          }
+        },
+        "True": {
+          "steady_growth": {
+            "minimum": 0.0,
+            "median": 0.4,
+            "maximum": 0.9,
+            "samples": [
+              0.4,
+              0.0,
+              0.9
+            ]
+          },
+          "release_from_setup": {
+            "minimum": -1.9,
+            "median": 2.3,
+            "maximum": 6.4,
+            "samples": [
+              6.4,
+              -1.9,
+              2.3
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "scope": "Current verified main baseline, normal published release floor. All coordinate/order/source/artifact bindings, generated phase inputs, result/identity-check completion markers and EOF exits revalidated. Rounded vmmap whole-process footprints, not exact optimizer storage, activation evidence or leak freedom. Released drops sampler-owned references; source factories and independent compiler/runtime roots may remain. Concurrent host work and paging can affect observations.",
+  "audit_source": "\"\"\"Audit all repeated normal-floor memory coordinates and retain paired ranges.\"\"\"\nimport hashlib\nimport importlib.util\nimport itertools\nimport json\nfrom pathlib import Path\nimport re\nimport statistics\nimport sys\n\nROOT = Path('/tmp/birnam-74t-verification-support')\nINPUT = ROOT / 'docs/measurements/74t-main-repeated-memory.json'\nOUTPUT = ROOT / 'docs/measurements/74t-main-repeated-memory-audit.json'\nPROOF = ROOT / 'docs/measurements/74t-verification-support-production.json'\nsha = lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest()\nsys.path.insert(0, str(ROOT / 'scripts'))\nspec = importlib.util.spec_from_file_location('memory_sampler', ROOT / 'scripts/recovery-memory.py')\nsampler = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(sampler)\n\n\ndef mib(text):\n    match = re.fullmatch(r'(\\d+(?:\\.\\d+)?)([BKMG])', text)\n    assert match, text\n    return float(match[1]) * {'B': 1 / 1048576, 'K': 1 / 1024, 'M': 1, 'G': 1024}[match[2]]\n\n\ndef spread(values):\n    return dict(minimum=round(min(values), 4), median=round(statistics.median(values), 4), maximum=round(max(values), 4), samples=values)\n\n\nd = json.loads(INPUT.read_text())\nproof = json.loads(PROOF.read_text())\nassert d['status'] == 'passed' and d['qualified'] is False and d['pairs'] == 3\nassert proof['status'] == proof['production_verification'] == 'passed'\nassert len(proof['commands']) == 75 and all(c['exit_code'] == 0 for c in proof['commands'])\nassert len(proof['sources']) == 288\nassert sha(PROOF) == d['correctness_sha256']\nassert all(sha(ROOT / n) == h for n, h in proof['sources'].items())\nassert all(sha(ROOT / n) == h for n, h in d['sources'].items())\nprefix = Path(d['prefix'])\nassert all(sha(prefix / n) == h for n, h in d['installed_sha256'].items())\nmanifest = json.loads((prefix / 'share/birnam/rust-install.json').read_text())\nassert manifest['profile'] == 'release' and manifest['publication']['state'] == 'published'\nassert d['installed_sha256'] == dict(manifest['staged_manifest'], **{'share/birnam/rust-install.json': sha(prefix / 'share/birnam/rust-install.json')})\nexpected_sources = dict(proof['sources'])\nexpected_sources['scripts/recovery-memory.py'] = sha(ROOT / 'scripts/recovery-memory.py')\nexpected_sources.update({n.removeprefix('share/birnam/src/'): h for n, h in manifest['staged_manifest'].items() if n.startswith('share/birnam/src/')})\nassert d['sources'] == expected_sources\nexpected = list(itertools.product(range(3), sampler.SWITCHES, (False, True), (False, True)))\nby_coordinate = {}\nfor row in d['rows']:\n    key = row['pair'], row['family'], row['refused'], row['enabled']\n    assert key not in by_coordinate and row['exit_code'] == 0\n    _, steps = sampler.phases(row['family'], row['refused'])\n    assert row['fixture_sha256'] == hashlib.sha256(''.join(code for _, code in steps).encode()).hexdigest()\n    enabled = row['enabled']\n    switches = {sampler.SWITCHES[row['family']]: '1'} if enabled else ({sampler.SWITCHES[row['family']]: '0'} if row['family'] in sampler.DEFAULT_ON else {})\n    assert row['switch_values'] == switches\n    assert len(row['phases']) == 7\n    for phase, (name, code) in zip(row['phases'], steps):\n        assert phase['name'] == name and phase['input'] == code\n        assert phase['summary'] == sampler.memory_summary(phase['vmmap'])\n        assert phase['output'].endswith('birnam> ')\n        assert any(line.removeprefix('birnam> ') == 'memory-checkpoint ' + name for line in phase['output'].splitlines())\n        assert 'EvaluationRejected' not in phase['output'] and 'error(' not in phase['output']\n    by_coordinate[key] = {p['name']: mib(p['summary']['Physical footprint']) for p in row['phases']}\nassert len(d['rows']) == 60 and set(by_coordinate) == set(expected)\nassert [(r['pair'], r['family'], r['refused'], r['enabled']) for r in d['rows']] == [\n    (pair, family, refused, enabled) for pair in range(3) for family in sampler.SWITCHES\n    for refused in (False, True) for enabled in ((False, True) if pair % 2 == 0 else (True, False))]\nsummaries = []\nfor family in sampler.SWITCHES:\n    for refused in (False, True):\n        comparisons = {phase: spread([round(by_coordinate[pair, family, refused, True][phase] - by_coordinate[pair, family, refused, False][phase], 4) for pair in range(3)]) for phase in ('cold', 'steady-2', 'evicted-live', 'released')}\n        adjusted = {phase: spread([round((by_coordinate[pair, family, refused, True][phase] - by_coordinate[pair, family, refused, True]['setup']) - (by_coordinate[pair, family, refused, False][phase] - by_coordinate[pair, family, refused, False]['setup']), 4) for pair in range(3)]) for phase in ('cold', 'steady-2', 'evicted-live', 'released')}\n        within = {str(enabled): {label: spread([round(by_coordinate[pair, family, refused, enabled][end] - by_coordinate[pair, family, refused, enabled][start], 4) for pair in range(3)]) for label, start, end in [('steady_growth', 'steady-1', 'steady-2'), ('release_from_setup', 'setup', 'released')]} for enabled in (False, True)}\n        summaries.append(dict(family=family, refused=refused, enabled_minus_disabled_mib=comparisons, setup_adjusted_enabled_minus_disabled_mib=adjusted, within_process_mib=within))\nassert not OUTPUT.exists(), 'preserve prior audit'\nout = dict(status='passed', qualified=False, receipt_sha256=sha(INPUT), production_proof_sha256=sha(PROOF), processes=60, checkpoints=420, checked_calls=30720, pairs=3, summaries=summaries,\n           scope='Current verified main baseline, normal published release floor. All coordinate/order/source/artifact bindings, generated phase inputs, result/identity-check completion markers and EOF exits revalidated. Rounded vmmap whole-process footprints, not exact optimizer storage, activation evidence or leak freedom. Released drops sampler-owned references; source factories and independent compiler/runtime roots may remain. Concurrent host work and paging can affect observations.', audit_source=Path(__file__).read_text())\nOUTPUT.write_text(json.dumps(out, indent=2) + '\\n')\nprint('Audited 60 processes, 420 checkpoints, 30720 checked calls; all observations unqualified')\nfor item in summaries:\n    print(item['family'], 'refused=' + str(item['refused']), 'steady enabled-minus-disabled MiB', item['enabled_minus_disabled_mib']['steady-2'])\n"
+}

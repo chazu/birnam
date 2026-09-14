@@ -70,3 +70,49 @@ canonical descriptor/image implementations equal the main starting point. The
 carried support source matches `c24030c9`; only the production source inventory
 excludes the unrelated Error experiment inputs. This evidence permits integration
 of the shared verification support. Optimizing-consumer promotion remains open.
+
+## Repeated resource evidence on the integrated main baseline
+
+`74t-main-repeated-memory.json` completes three alternating enabled/disabled
+pairs for all five consumer configurations, with both admitted-shape and refused
+controls: 60 normal-release processes, 420 explicit collection/host checkpoints
+and 30,720 checked wrapper invocations. Calls after cache eviction also pass.
+The independent audit revalidates all coordinates, generated phase inputs,
+result/identity-check completion, normal process exits, the full 75-command
+production proof, current sources and every published installation artifact.
+This uses the integrated `ef00b7a5` support baseline and the matching
+`/tmp/birnam-74y-main-baseline-prefix` installation; held counted-index,
+String-cleanup and scoped-control changes are absent.
+
+The following are enabled-minus-disabled footprint growth from each process's
+own setup checkpoint, in rounded MiB. Each cell retains all three paired
+observations for the admitted source shape:
+
+| Consumer | Final steady checkpoint | Sampler references released |
+| --- | --- | --- |
+| Unboxed numeric | -13.0, +0.4, -0.1 | -12.0, 0.0, 0.0 |
+| Loop invariants | +6.7, +6.2, +4.8 | +5.6, +4.3, +3.3 |
+| Discarded clones | +1.2, -7.4, +6.6 | +1.3, -7.4, +6.7 |
+| Virtual fields | -0.1, -0.3, +0.4 | 0.0, -7.7, +0.4 |
+| Closures | -0.6, +0.5, -6.8 | -0.4, +0.5, -5.9 |
+
+Refused controls also vary. These whole-process samples do not establish an
+attributable memory saving, activation in the normal sampler or leak freedom.
+Clearing sampler references still permits independent source-factory and
+compiler/runtime roots. All observations remain `qualified: false`.
+
+The consistent loop footprint increase was investigated using the retained
+reports, rather than treating it as optimizer-owned memory. In
+`74t-main-loop-memory-accounting.json`, all three admitted pairs have identical
+rounded malloc allocated totals at setup (50.0M), both steady checkpoints
+(91.7M and 91.8M) and release (91.6M). Allocator fragmentation and dirty/swapped
+totals differ. This supports allocator/page accounting as an explanation for
+the footprint difference; it does not isolate the cause of that difference.
+
+The same-source, shorter diagnostic loop control separately reports two private
+units and 81,920 relocated bytes with the flag either off or on, equal logical
+allocation charge, and a 400-byte enabled cache. Its independent-invocation
+refusal control similarly retains three units and 131,072 relocated bytes in
+both modes. Those shorter controls do not prove ownership stability throughout
+the long normal-floor memory run. Repeated full teardown and general compiler
+metadata accounting remain broader resource obligations.
