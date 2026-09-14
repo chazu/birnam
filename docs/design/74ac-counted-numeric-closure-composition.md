@@ -99,13 +99,15 @@ The full sequence matrix across both profiles and GC modes remains required,
 as do the budget, input-mutation and capture/suspend composition matrices.
 
 
-The full sequence run is now active, bound to `1644bf5d` in
-`74ac-joint-sequence-full-start.json`. It builds the matching debug diagnostic
-floor, then checks 320 sequence cases with counting off and on in each profile:
-1,280 processes and 640 directly compared pairs. Unlike the quick matrix, this
-covers both GC modes, one/two/three/32/33 calls and every supported forced exit.
-The live receipt is `74ac-joint-sequence-full.json`; no source mutation or broader
-production-acceptance claim is permitted while this run uses the checkpoint.
+The full sequence run passed all 1,280 processes and 640 directly compared pairs,
+bound to the 304 source inputs at `1644bf5d`. It covers counting off/on in both
+build profiles and GC modes, one/two/three/32/33 calls, escaping/non-escaping
+closures and every supported forced exit. Every counting-enabled case records
+positive counted indices while preserving logical bytes, closure savings and
+recovery counters. `74ac-joint-sequence-full-audit.json` checks the exact source,
+floor and installed artifacts, matrix coordinates and paired comparisons.
+This completes sequence acceptance for that checkpoint; the later controls
+descendant still requires its own combined production and installed gates.
 
 ## Joint GC budgets and V2 controls
 
