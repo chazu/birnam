@@ -320,3 +320,36 @@ existing default-off behavior. Fresh debug/release floor tests on main pass 218 
 ignored, supplementing the exact-source proof transfer. The receipt is
 `74y-main-integration.json`. This integration does not claim a fresh main
 installation, default promotion, timing benefit or completion of any family.
+
+
+## Completed exploratory checkpoint comparison
+
+`74y-scoped-checkpoint-timing.json` completes 540 normal-floor processes: 60
+workload/GC/unboxing coordinates, three rotating rounds and three states (earlier
+baseline, candidate counting off, candidate counting on). Each process runs 100
+measured batches. `74y-scoped-checkpoint-timing-audit.json` independently checks
+all bound sources/installations/receipts, exact order and coordinates, parsed
+samples and RSS, fixture hashes, and all 1,080 comparison calculations.
+
+The following numbers are the median across the 60 per-case medians, each based
+on three paired rounds. Positive means reduced elapsed time; these are descriptive
+summaries of this workload matrix, not an application-wide speedup estimate.
+
+| Comparison | Execution reduction | Including-GC reduction |
+| --- | ---: | ---: |
+| Earlier baseline to candidate, counting off | -5.2% | -4.2% |
+| Earlier baseline to candidate, counting on | -1.9% | -3.7% |
+| Candidate counting off to counting on | +6.3% | +2.6% |
+
+Counting improves the execution median in 44 of 60 same-build cases, but only 15
+cases improve in every round. Including GC, 35 case medians improve and nine
+improve in every round. Execution case medians range from a 32.1% slowdown to a
+34.9% reduction, so the central value cannot establish a uniform benefit.
+
+Every one of the 180 post-group host checks returned non-admission. Measurements
+remain `qualified:false` under the user's quiet-window waiver. The candidate also
+contains reverse numeric-journal lookup; baseline differences cannot isolate one
+control query or establish causality under this load. Counting remains default
+off. The pending scoped-control-read implementation is the next relevant cost
+comparison after its own correctness and installed acceptance; no additional
+repetition of this noisy matrix is needed without a changed hypothesis.

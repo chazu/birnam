@@ -627,3 +627,19 @@ describes recovery information at defined interrupt points. These are precedents
 for the approach, not evidence that Birnam already has their machinery or will
 reproduce their performance. Birnam's current contracts and counterexamples above
 remain the acceptance authority.
+
+
+The 74AC controls descendant (`f86a61fd`, queue checkpoint `f117cf51`) now requires
+joint counted/numeric sequence, budget, V2 and changed-input matrices in its full
+production gate. Its 284 focused release cases and 220 floor tests/profile pass;
+full production and fresh combined installed acceptance are queued. This source
+remains isolated from main until acceptance completes.
+
+The accepted counted composition's exploratory comparison is complete in
+`88161ebf`: 540 normal-floor processes, 100 batches and three rotating rounds.
+Counting on/off has a +6.3% median across execution case medians (+2.6% including
+GC); against the earlier baseline, the enabled candidate is -1.9% and -3.7% by
+those same descriptive summaries. All host observations failed admission, so
+these are unqualified mixed results, not a promotion claim. The next relevant
+cost experiment is the scoped control-read change after its independent
+acceptance. Defaults remain unchanged and all four families remain incomplete.
