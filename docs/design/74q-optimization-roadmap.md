@@ -649,13 +649,16 @@ acceptance. Defaults remain unchanged and all four families remain incomplete.
 
 The scoped control-read composition has passed its own 75-command production
 gate (3,188 source/lifetime/storage cases, commit `10c2be5f`). Its fresh release
-installation is published and focused installed acceptance is running. The
-[74AA direct cost comparison](74aa-scoped-counting-control.md#direct-scoped-read-cost-comparison)
+installation and all 2,088 installed cases pass their independent audit at
+`392076aa`. The [74AA direct cost comparison](74aa-scoped-counting-control.md#direct-scoped-read-cost-comparison)
 is implemented in `e378b9fb` and queued in `a4c71220`: accepted counted versus
 scoped counted, counting off/on on both builds, four rotating positions. It
 requires complete installed evidence and exactly the three scoped-read source
-changes before measuring. Twelve admission checks pass. Actual candidate
-measurements, runtime integration and any default promotion remain pending.
+changes before measuring. The first smoke stopped before measurement because
+its auditor assumed a receipt without the production step. The repaired auditor
+checks both actual receipt shapes and binds that extra step explicitly; nine
+additional checks pass. The corrected 240-process smoke is running before the
+960-process comparison. Runtime integration and default promotion remain pending.
 
 
 The repaired String-cleanup composition now has complete installed acceptance
@@ -676,3 +679,13 @@ identities, with all logical accounting and retained results preserved. Its own
 307-input, 75-command, 7,136-case production gate is running before fresh installed
 acceptance. Cost review and broader application/resource obligations remain open;
 main has not integrated this combined runtime.
+
+
+The resource follow-through in [74AE](74ae-compiler-heap-accounting.md) now
+implements diagnostic TinyCC heap accounting (`42d976d9`). Compiler ownership
+suites in both profiles, 24 source lifecycle cases and three normal-module cases
+pass; the source-bound production/install queue is waiting for the current
+counted-closure build. This adds visibility into compiler heap ownership while
+leaving ordinary allocations and optimization defaults unchanged. Full consumer
+teardown, Rust metadata accounting and application/resource acceptance remain
+required for the four families.

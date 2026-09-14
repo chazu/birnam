@@ -116,3 +116,21 @@ refusal control similarly retains three units and 131,072 relocated bytes in
 both modes. Those shorter controls do not prove ownership stability throughout
 the long normal-floor memory run. Repeated full teardown and general compiler
 metadata accounting remain broader resource obligations.
+
+
+## Compiler heap accounting follow-through
+
+[74AE](74ae-compiler-heap-accounting.md) adds optional diagnostic accounting of
+TinyCC's requested live heap bytes and blocks in isolated commit `42d976d9`.
+Unlike relocation-only counters, it includes compiler state, sections, symbols
+and parsing allocations. It uses the existing allocator hook, retains original
+alignment/reallocation/release behavior and leaves normal builds unchanged.
+Heap and relocation totals overlap on Darwin and are not added together.
+
+Both-profile ownership suites, 24 ordinary Id lifecycle cases and three current
+normal-module cases pass. Exact final release is checked; intermediate totals
+can fall when unrelated cache/evaluator Units retire. The 297-input full
+production gate and fresh installed acceptance are queued behind the live
+counted-closure gate. This is not yet integrated support. Full consumer teardown,
+Rust-owned optimizer metadata and general application/resource acceptance remain
+open; these counters do not claim total process memory or leak freedom.

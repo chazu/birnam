@@ -102,8 +102,9 @@ these fixture checks.
 ## Direct scoped-read cost comparison
 
 The repaired composition has now passed all 75 production commands. Its fresh
-release installation is published and the installed matrices are running. The
-next comparison uses that exact installation and the accepted counted 74Y
+release installation is published and all 1,848 focused installed cases plus
+240 normal/test-floor driver cases pass their independent audit. The next
+comparison uses that exact installation and the accepted counted 74Y
 installation. Their 295-input production inventories differ in only
 `fused_numeric.rs`, `regions.rs`, and the corresponding fused numeric tests.
 This isolates the scoped control-read change from the earlier counted-index and
@@ -136,3 +137,28 @@ queue waits for installed correctness acceptance, not for host quiescence, and
 stops on failure. Results require review before integration or default promotion.
 The previous noisy counted comparison is not repeated without this changed
 implementation hypothesis.
+
+
+### Complete installed acceptance and receipt-shape repair
+
+`74aa-quiet-installed-audit.json` validates all 2,088 installed cases against the
+current 295 production inputs, published normal prefix and diagnostic floors.
+It reparses the retained numeric/Id and aggregate observations, preserves the
+original V2/loop/closure controls, and separately revalidates the predecessor's
+2,088 cases. This completes installed correctness for scoped controls; cost
+selection and default promotion remain separate.
+
+The first cost smoke stopped before producing any measurement receipt. Its
+reusable auditor expected exactly 14 acceptance steps, while the scoped queue
+also records the production step, for 15. The repaired auditor permits that one
+explicit extra step only when its path/digest identify the already verified
+production proof, its log matches, and it succeeded. Every focused/driver step
+remains mandatory. Nine checks verify both actual receipt shapes and reject
+duplicate or altered production records, missing focused cases and unknown
+extra steps. The failed queue/logs remain bound in the audit.
+
+No runtime, production-source inventory, installation, fixture or timing schedule
+changed. `74aa-scoped-cost-repaired-start.json` records the new source/helper-bound
+watcher. Its separate output paths preserve the failed attempt. The 240-process
+smoke is running; the 960-process comparison starts only after it passes. Neither
+run can establish a qualified speedup under the current host waiver.
