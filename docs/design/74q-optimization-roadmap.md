@@ -45,7 +45,15 @@ after three unmatched pre-work heaps at one coordinate; all 202 individual
 attempted processes passed their original checks, but only 160 were accepted
 in comparable pairs. Commit `241820c1` retains the failed acceptance and a
 sixteen-process diagnosis showing the same one-object/24-byte variation with
-the counting control unchanged. Its cause and retained object remain unknown.
+the counting control unchanged. Subsequent isolated inspection identifies a
+REPL result-rendering closure retained by the native root interval; one later
+diagnostic run instead retains a String containing `number`. The repair changes
+aggregate fixture presentation through ordinary Id, preserving all roots,
+explicit assertions and host return boundaries. On
+`codex/74y-composition-quiet-repl`, fixture checkpoint `53dde2ef` passed all 240
+preliminary release aggregate cases without retries. Its debug matrix and new
+source-bound production gate are running; `c2d65cad` retains the release audit
+and the follow-on fresh-prefix acceptance queue.
 The remaining release V2/loop/closure and 240 normal/test-floor driver checks
 also passed and were audited at `d5651ea3`. The release aggregate matrix is the
 only unfinished part of this composition's correctness acceptance. Complete
@@ -62,8 +70,11 @@ cannot qualify the new composition or identify disabled-path overhead.
 
 Two isolated cost experiments preserve that composition's frozen sources. The
 String-cleanup candidate on `codex/74z-inert-string-cleanup` recognizes only the
-exact floor cleanup and its actual storage-owning public Runtime; its independent
-production gate remains running. The scoped control-read candidate on
+exact floor cleanup and its actual storage-owning public Runtime. Its independent
+production gate passed all 75 commands, 3,164 optimization source cases and 24
+evaluator/storage cases (`4c3c54c3`); fresh-prefix debug numeric60 and ordinary
+Id120 checks also passed their audits (`2ab45fae`). Further focused acceptance
+is running. The scoped control-read candidate on
 `codex/74aa-scoped-counting-control` (`7ba56db1`) reduces 15 environment-control
 reads to one within a proved observation-free fused numeric invocation. It
 retains live reads between invocations and around observing publication methods.
