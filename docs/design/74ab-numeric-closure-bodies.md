@@ -104,3 +104,45 @@ This is an inactive compiler description, not a new optimizing consumer. Runtime
 admission, action/Frame fidelity, recovery and installed source execution are the
 next required implementation work. No existing leaf or numeric admission rule,
 runtime default, floor ABI or serialized descriptor/image was changed.
+
+## Entry prediction delivered
+
+Runtime preflight can now predict from explicit entry Oops before installing a
+callee Frame. It uses only an existing warm numeric candidate, verifies current
+native declarations and controls, and leaves Birnam allocations, source method
+execution, hotness and loop history untouched. Each prediction owns its raw
+buffers and compiled numeric unit; it does not acquire callee execution authority.
+
+The regression covers both GC modes and tail/ordinary returns, cold refusal,
+invalid/duplicate/missing inputs, mixed operands and overflow, changed Methods,
+live native declarations, ErrorVt rebinding, observing lookup refusal, concurrent
+prediction storage and generation retirement after normal Method withdrawal.
+All 213 active runtime tests pass in each profile (15 diagnostic tests ignored);
+`74ab-numeric-entry-runtime.json` retains sources, full logs and prior failed
+fixture attempts. This remains a prerequisite: constructor admission, physical
+Frame execution and full action-state/recovery fidelity are not wired yet.
+
+## Numeric caller regions delivered
+
+`NumericPlan` now uses the same canonical caller provenance, capture ordering,
+constructor stores, invocation aliases, repeated-call bounds and V2 continuation
+analysis as the leaf plan. Its distinct callee type contains the numeric body
+description; existing leaf execution cannot accept it accidentally. The default
+`Plan::derive` retains its previous eligibility and representation.
+
+The region tests cover 1/2/3/32/33 calls, tail and ordinary numeric bodies,
+argument/capture and earlier/final numeric returns, live closure aliases at
+recovery successors and noncanonical layouts. A subsequent call depending on a
+fresh result ends the current region; entry aliases may continue. Such a stop
+retains the original continuation and closure recovery aliases. These are
+compiler eligibility rules, not language restrictions.
+
+All 92 feature-enabled compiler tests and seven runtime closure tests pass in
+each profile; `74ab-numeric-closure-plan.json` binds the tested sources and logs.
+Numeric-body/template structural equality includes allocation occurrences and
+publication/recovery metadata, but equality alone grants no execution authority.
+
+Next connect the numeric caller plan to exact acquired callee provenance and
+physical Frame execution using the entry prediction. Preserve original actions,
+allocations and generation pins throughout; the existing leaf return shortcut
+is insufficient. Numeric constructor elision is still not enabled or claimed.

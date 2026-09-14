@@ -53,8 +53,15 @@ explicit assertions and host return boundaries. On
 `codex/74y-composition-quiet-repl`, fixture checkpoint `53dde2ef` passed all 240
 preliminary release aggregate cases without retries. Its debug matrix also
 passed 240 cases without retries, independently audited at `994cc164`. The new
-source-bound production gate and its follow-on fresh-prefix acceptance queue
-remain separate from this preliminary fixture evidence.
+source-bound production gate subsequently failed a nested evaluator lifetime
+output assertion: the shared fixture also suppressed printing for non-measurement
+callers. The failed proof and queue are retained at `9e811468`. The repair on
+`codex/74y-scoped-repl-fixture` (`48a1d54d`) makes quiet presentation explicit in
+aggregate measurement callers. All 50 default inputs match the original generator
+and all 50 quiet inputs match the earlier measured inputs byte-for-byte. With
+identical binaries, the original lifetime failure reproduces and all 12 repaired
+cases pass. A fresh full gate and its bound installed acceptance queue are active;
+this evidence remains separate from the preliminary aggregate matrices.
 The remaining release V2/loop/closure and 240 normal/test-floor driver checks
 also passed and were audited at `d5651ea3`. The release aggregate matrix is the
 only unfinished part of this composition's correctness acceptance. Complete
@@ -81,9 +88,12 @@ audited at `0ac76e5c`. All 924 debug focused cases and release numeric60/Id120
 cases now pass their audits. Release aggregate admission then failed with 78
 accepted cases across 100 actual processes and 11 incomparable starting-heap
 pairs (`b9a175a6`). A quiet-presentation diagnostic at the failed coordinate
-passes 16 processes/eight matched pairs. Its fixture repair still needs a
-separate cleanup composition; independent unreached release controls and the
-normal driver are running without changing the failed receipt.
+passes 16 processes/eight matched pairs. The unreached release V2/loop/closure
+controls and all 240 normal/test-floor driver cases subsequently passed and were
+audited at `04f45bcb`; the release aggregate failure remains unresolved in that
+checkpoint. A separate cleanup composition with the initial quiet fixture has
+an active full gate. It still carries the now-known shared-printing fixture issue
+and will need the explicit quiet-caller repair before final acceptance.
 The scoped control-read candidate on
 `codex/74aa-scoped-counting-control` (`7ba56db1`) reduces 15 environment-control
 reads to one within a proved observation-free fused numeric invocation. It
@@ -123,6 +133,16 @@ This does not establish a leak or attribute the footprint to optimizer storage.
 Full teardown and general metadata accounting remain open.
 Supported cases must pass the acceptance contract below before promotion. None
 of the four full families is complete yet.
+
+Runtime entry prediction is committed at `19c5db0f`: only warm candidates predict
+from explicit input Oops, without Birnam allocation or source execution. All 213
+active runtime tests pass per profile (15 diagnostic tests ignored). Numeric
+caller regions are committed at `39a43cb0`, sharing canonical constructor/capture,
+alias, repeated-call and V2 continuation analysis through a distinct plan type.
+All 92 feature-enabled compiler tests and seven runtime closure tests pass per
+profile. These remain isolated implementation prerequisites. Acquired callee
+provenance, physical Frame execution and full recovery/observation acceptance
+must be connected before claiming numeric closure construction savings.
 
 ## Direction
 
