@@ -1,7 +1,9 @@
 # 74AB — Numeric bodies in private closures
 
-Status: implementation in progress on an isolated main-based branch. Existing
-closure consumers, defaults and production verification checkpoints are unchanged.
+Status: implementation in progress on an isolated main-based branch. Numeric
+closure regions now execute behind the existing experimental closure flag, whose
+production default remains off. Full production and performance acceptance are
+still required.
 
 The closure consumer currently accepts small callees that return an input,
 capture or fresh integer literal. An ordinary arithmetic send makes the body
@@ -100,10 +102,9 @@ receiver exposure, observing operations, backedges and noncanonical layouts.
 Description allocation totals also match the existing numeric template, including
 the entry driver token.
 
-This is an inactive compiler description, not a new optimizing consumer. Runtime
-admission, action/Frame fidelity, recovery and installed source execution are the
-next required implementation work. No existing leaf or numeric admission rule,
-runtime default, floor ABI or serialized descriptor/image was changed.
+The compiler description itself grants no execution authority. Runtime admission
+and the executing consumer are described below. Existing leaf eligibility,
+runtime defaults, the floor ABI and serialized descriptors/images are preserved.
 
 ## Entry prediction delivered
 
@@ -119,8 +120,8 @@ live native declarations, ErrorVt rebinding, observing lookup refusal, concurren
 prediction storage and generation retirement after normal Method withdrawal.
 All 213 active runtime tests pass in each profile (15 diagnostic tests ignored);
 `74ab-numeric-entry-runtime.json` retains sources, full logs and prior failed
-fixture attempts. This remains a prerequisite: constructor admission, physical
-Frame execution and full action-state/recovery fidelity are not wired yet.
+fixture attempts. This prediction is a prerequisite of the executing consumer
+below; it cannot authorize constructor omission on its own.
 
 ## Numeric caller regions delivered
 
@@ -142,7 +143,63 @@ each profile; `74ab-numeric-closure-plan.json` binds the tested sources and logs
 Numeric-body/template structural equality includes allocation occurrences and
 publication/recovery metadata, but equality alone grants no execution authority.
 
-Next connect the numeric caller plan to exact acquired callee provenance and
-physical Frame execution using the entry prediction. Preserve original actions,
-allocations and generation pins throughout; the existing leaf return shortcut
-is insufficient. Numeric constructor elision is still not enabled or claimed.
+The executing consumer below connects this plan to exact acquired callee
+provenance and physical Frame execution. It retains original actions, allocations
+and generation pins; the leaf return shortcut is insufficient for numeric bodies.
+
+## First executing numeric consumer
+
+The constructor continuation now admits a numeric plan under the existing
+experimental closure flag. It compares the actual acquired callee's retained
+Portable bytes, including captures and literal occurrences, and predicts all
+arithmetic before charging the omitted constructor. Its numeric candidate and
+raw prediction remain owned throughout use. The selected acquisition transfers
+to a physical callee Frame; existing fused execution performs original PCs,
+allocations and action publications, then the normal return path applies V2
+copies/clears and releases the Frame pin. Original constructor recovery remains
+available before each admitted call. The production default stays off.
+
+The fresh release installation passes 20 source cases spanning tail/ordinary
+bodies, both GC modes, three repeated calls, fresh identities, collecting escapes,
+eviction, Method replacement and forced recovery. The release test floor passes
+320 repeated-call/accounting cases (1/2/3/32/33 calls, escapes, every admitted call
+exit and both GC modes) and 20 fresh-result V2 capture/suspend cases with source
+aliases, supplied results, GC and generation-pin comparisons. Both profiles pass
+213 runtime tests and 92 all-feature compiler tests. Receipts are indexed by
+`74ab-numeric-wiring-focused.json`.
+
+Two test-setup failures are retained. The shared fresh-result V2 probe expects
+its literal mode flag; the numeric matrix now selects that mode while normal
+source testing independently checks literal-flag independence. The 32-call numeric
+allocation extent exceeds the budget fixture's original 16KiB first gap; the
+64KiB setup is also rejected by the test floor's old input cap. The bounded diagnostic
+cap and retained callee-source storage are addressed below, with complete numeric
+budget traces. Exact action-state checks and full production acceptance remain
+required. No timing or default-promotion claim follows.
+
+## Bounded provenance and production-gate coverage
+
+Retained callee Portable bytes are capped by the compiler's 64KiB program limit
+and exist only when the closure consumer is enabled. Preparation and the compiled
+candidate share one owned byte buffer; a runtime test verifies that the candidate
+retains exact provenance after preparation storage is dropped. All 214 active
+runtime tests pass in each profile, with 15 diagnostic tests ignored.
+
+The test-only budget input cap is extended to 64KiB; the production collection
+threshold and root scanning are unchanged. The complete 224-case numeric budget
+matrix passes, independently audited as 112 baseline/enabled pairs with identical
+collection bytes, PCs, slot counts and remaining charges. Every 3/32-call and
+escape/GC configuration covers refusal, a shorter admitted prefix and the whole
+region. Prior setup failures remain in their original receipts.
+
+Ten additional source cases use actual captured integers and call arguments,
+change both after warmup, verify fresh results survive collection, and replace
+arithmetic with an observing method. Both ordinary and optimized executions
+perform exactly six replacement effects and retain the returned capture identity.
+
+The regular production gate now requires numeric source12, V2control20,
+sequence320, budget224 and input10 cases in each profile, with complete coordinate
+and actual numeric-body source checks. Its validator rejects missing/duplicated
+sequence cases, missing V2 cases and wrong source hashes. Full gate execution,
+exact residual action-state comparisons, application/resource measurements and
+profitability remain pending; none of the four families is declared complete.

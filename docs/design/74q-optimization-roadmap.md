@@ -60,8 +60,11 @@ callers. The failed proof and queue are retained at `9e811468`. The repair on
 aggregate measurement callers. All 50 default inputs match the original generator
 and all 50 quiet inputs match the earlier measured inputs byte-for-byte. With
 identical binaries, the original lifetime failure reproduces and all 12 repaired
-cases pass. A fresh full gate and its bound installed acceptance queue are active;
-this evidence remains separate from the preliminary aggregate matrices.
+cases pass. A fresh full gate remains active. Its first follow-on watcher stopped despite
+the production process still being live with the same PID and birth time; the
+resumed watcher retains that failure and uses stricter identity handling. The
+production job was not restarted. This evidence remains separate from the
+preliminary aggregate matrices.
 The remaining release V2/loop/closure and 240 normal/test-floor driver checks
 also passed and were audited at `d5651ea3`. The release aggregate matrix is the
 only unfinished part of this composition's correctness acceptance. Complete
@@ -104,15 +107,24 @@ cases with 295 current inputs independently audited (`a6a2e674`).
 Installed and direct timing acceptance remain pending. Neither experiment is
 integrated or promoted.
 
-Broader closure bodies are now being implemented under
-[74AB](74ab-numeric-closure-bodies.md). The isolated main-based compiler
-description at `b4d90466` derives numeric dataflow, exact allocation occurrences,
-original action publications and return identities from canonical lowering.
-It passes 89 default debug tests and 90 feature-enabled codegen tests per profile,
-including differential checks against canonical generated C. Runtime execution
-and recovery are still required: internal numeric calls leave reflective action
-state that the existing leaf shortcut cannot simply omit. This description is
-not integrated into main and does not yet optimize arithmetic closure bodies.
+Broader closure bodies now have an executing candidate under
+[74AB](74ab-numeric-closure-bodies.md), isolated on
+`codex/74ab-numeric-closure-bodies`. Commit `af2aecd1` connects numeric caller
+provenance to the exact acquired callee's Portable bytes and warm arithmetic
+prediction. It retains a physical callee Frame, original numeric allocations
+and action publications, and uses the ordinary V2 return/pin-release path.
+The experimental closure flag controls it; the production default remains off.
+
+Commit `6ecce1b0` bounds retained provenance, extends diagnostic allocation
+headroom and adds permanent numeric source/control gates. Both profiles pass
+214 active runtime tests; compiler checks pass 92 per profile. Release evidence
+covers repeated calls and every admitted call recovery point (320 cases), V2
+capture/suspend ownership (20), complete automatic-GC boundary comparisons (224,
+independently audited), and changed real numeric inputs/arithmetic methods (10).
+The initial normal release source matrix also covers tail and ordinary bodies
+with literal admission disabled. The new 297-input production gate is active;
+exact residual action-state comparison, application/resource measurements and
+profitability remain required. The candidate is not integrated or promoted.
 
 After that comparison, use the observed execution, GC-inclusive and resource
 costs to select implementation changes or admission policy. Close the application,
@@ -134,15 +146,6 @@ Full teardown and general metadata accounting remain open.
 Supported cases must pass the acceptance contract below before promotion. None
 of the four full families is complete yet.
 
-Runtime entry prediction is committed at `19c5db0f`: only warm candidates predict
-from explicit input Oops, without Birnam allocation or source execution. All 213
-active runtime tests pass per profile (15 diagnostic tests ignored). Numeric
-caller regions are committed at `39a43cb0`, sharing canonical constructor/capture,
-alias, repeated-call and V2 continuation analysis through a distinct plan type.
-All 92 feature-enabled compiler tests and seven runtime closure tests pass per
-profile. These remain isolated implementation prerequisites. Acquired callee
-provenance, physical Frame execution and full recovery/observation acceptance
-must be connected before claiming numeric closure construction savings.
 
 ## Direction
 
