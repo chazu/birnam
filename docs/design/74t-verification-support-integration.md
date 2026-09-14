@@ -134,3 +134,14 @@ production gate and fresh installed acceptance are queued behind the live
 counted-closure gate. This is not yet integrated support. Full consumer teardown,
 Rust-owned optimizer metadata and general application/resource acceptance remain
 open; these counters do not claim total process memory or leak freedom.
+
+
+[74AF](74af-consumer-teardown.md), isolated commit `e244324f`, extends the compiler
+heap proof to actual numeric, loop and aggregate consumer Runtime lifecycles.
+Eight exact debug/release processes repeat their complete semantic fixtures
+three times, returning private Unit counts, relocated bytes and compiler heap
+blocks/bytes to zero after every matrix. All 24 observations, executable/source
+hashes and the normal feature build are audited. Eleven parser admission checks
+retain the original successful numeric execution and its rejected libtest-line
+format, and verify the narrow parser repair. This is not yet integrated support;
+closure source teardown and Rust-only metadata ownership remain required.

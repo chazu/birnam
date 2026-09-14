@@ -689,3 +689,14 @@ counted-closure build. This adds visibility into compiler heap ownership while
 leaving ordinary allocations and optimization defaults unchanged. Full consumer
 teardown, Rust metadata accounting and application/resource acceptance remain
 required for the four families.
+
+
+[74AF](74af-consumer-teardown.md) now verifies complete Runtime destruction for
+the numeric, loop, discarded-clone and virtual-field driver fixtures in isolated
+commit `e244324f`. All eight debug/release test processes pass, with three full
+semantic matrix repetitions each. All 24 post-matrix compiler heap/relocation
+observations return to zero without resets or process exit; the ordinary build
+check and raw/source/binary audit also pass. This leaves closure source teardown,
+Rust-only metadata ownership, live-runtime generation retirement and combined
+application/resource acceptance open. No family or optimization default is
+promoted by the new diagnostic evidence.
