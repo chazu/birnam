@@ -171,9 +171,9 @@ independently audited), and changed real numeric inputs/arithmetic methods (10).
 The initial normal release source matrix also covers tail and ordinary bodies
 with literal admission disabled. The 297-input production gate passes all 75
 commands and 4,360 source/lifetime/storage rows, independently audited at
-`f5458ba2`. Its successor numeric-cost queue has started its own expanded gate;
-fresh installation and measurements of that composition and the shared-prediction
-descendant remain pending.
+`f5458ba2`. Its successor numeric-cost composition has also completed its
+expanded gate, fresh installation and exploratory timings (`11824f6f`), as recorded below.
+The shared-prediction descendant is running its separate full production gate.
 A follow-on diagnostic branch, `codex/74ab-numeric-action-proof` at `b4c0f898`,
 compares all eight persistent action buffers after each physical numeric callee
 return, before its caller can overwrite them. All 80 source cases pass across
@@ -189,13 +189,16 @@ normal-floor fixtures remain byte-identical. Both timing runners now accept the
 numeric body only with its corresponding full correctness evidence.
 
 The 299-input expanded source requires both the action and numeric cost matrices.
-A bound queue at `7a533aad` waits for the original numeric gate to finish, then
-runs the expanded full gate, publishes a fresh normal release prefix, verifies
-90 ordinary-Id driver cases, and runs three alternating exploratory timing pairs
-(108 processes). Each stage requires the previous one to pass and current source
-hashes to match. The two-batch diagnostic samples do not establish profitability.
-Full acceptance, application/resource measurements and profitability remain
-required. The candidate is not integrated or promoted.
+All 75 production commands and 4,536 source/lifetime/storage cases pass, followed
+by a fresh published release installation, 90 ordinary Id verification processes
+and 108 exploratory timing processes. The complete source/binary/install/raw-data
+and calculation audit is committed at `11824f6f`. Private numeric closures show a
+7.11% execution reduction by the median of six case medians, escaping closures
+show -7.30%, and the refused control shows +5.78%. Every host interval failed
+qualification; the control variation prevents a confident causal speed claim.
+See [74AB costs](74ab-numeric-closure-bodies.md#completed-normal-installation-cost-run).
+Application/resource acceptance and profitability remain open; this isolated
+candidate is not integrated or promoted.
 
 A further isolated implementation at `b758b0ae` on
 `codex/74ab-shared-numeric-predictions` removes repeated prediction work inside
@@ -220,11 +223,10 @@ and predecessors; separate paired metrics expose enabled benefit and baseline
 cost. Thirteen synthetic harness/schedule checks pass; no real timing follows
 from them.
 
-The sharing queue at `84009ad9` waits for the unshared cost run to pass, then
-runs its own 300-input production gate, fresh release installation, 90 driver
-cases and 288 exploratory comparison processes. Waiting avoids overlapping our
-new builds with the unshared timings. Existing queues retain their original
-sources. Neither implementation is integrated or promoted.
+The sharing queue at `84009ad9` has observed the unshared cost run pass and
+started its own 300-input production gate. Fresh release installation, 90 driver
+cases and 288 exploratory comparison processes follow successful prerequisites.
+Existing queues retain their original sources. Neither implementation is integrated or promoted.
 
 After that comparison, use the observed execution, GC-inclusive and resource
 costs to select implementation changes or admission policy. Close the application,
@@ -665,7 +667,12 @@ comparison is running (`dda38135`); no performance benefit is claimed yet.
 consumers with scoped control reads and exact floor-owned String cleanup in an
 isolated runtime (`da7ed262`). The source audit verifies the seven-path merge
 while preserving all other 74AC bytes, and both profiles pass 92 compiler plus
-222 runtime tests. Its complete joint release source matrix is running
-(`f4554230`), with all 60 V2-control/current-input cases already passed. Further
-interaction evidence, full production/installed acceptance and cost review are
-still required; main has not integrated this combined runtime.
+222 runtime tests. All 1,148 joint release source cases pass and are audited at
+`1731b757`.
+The descendant `eb006eb7` adds and passes 480 compiled-closure/String-finalizer
+interaction cases, 222 runtime tests per profile and 12 admission checks. Exact
+cleanup avoids settlement; wrapped or late-replaced cleanup observes settled
+identities, with all logical accounting and retained results preserved. Its own
+307-input, 75-command, 7,136-case production gate is running before fresh installed
+acceptance. Cost review and broader application/resource obligations remain open;
+main has not integrated this combined runtime.

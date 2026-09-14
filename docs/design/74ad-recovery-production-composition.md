@@ -81,11 +81,67 @@ The seven-path composition does not add or skip tests, weaken the production
 gate, change public ABI, or promote defaults. Joint source interactions and full
 production/installed acceptance remain the next requirements.
 
-The joint release runner has built the matching diagnostic floor and passed all
-40 V2-control and 20 changed-input cases. It proceeds through 448 complete
-GC-budget and 640 sequence cases, including both GC modes and counting off/on.
-The complete target is 1,148 source processes. It reuses the unchanged installed
-numeric compiler with an explicit new floor overlay; it is not a fresh combined
-normal installation. `74ad-joint-release-start.json` records its live identity and
-source binding. The full production gate still follows completed interaction
-checks, including any additional cases needed to prove actual simultaneous use.
+The composed release source matrix completed all 1,148 processes in the
+predecessor `da7ed262`: 40 V2-control, 20 changed-input, 448 GC-budget and 640
+sequence cases. The independent `74ad-joint-release-audit.json` binds its 306
+source inputs, release diagnostic floor, installed compiler artifacts, all eight
+exact coordinate sets and counting off/on comparisons (commit `1731b757`).
+It reuses the unchanged installed numeric compiler with an explicit new floor
+overlay; this is release source acceptance, not a fresh combined normal
+installation. The interaction descendant below adds explicit collection and
+observer cases before proceeding to complete production verification.
+
+## Owned String cleanup during source-produced deferred allocations
+
+The interaction descendant adds an optional diagnostic collection to the existing
+real compiled-closure sequence probe. After warm-up it creates one owned String,
+runs the unchanged numeric closure source, retains only the actual returned value
+for the new collection, and checks that the returned closure/capture still works.
+The String remains outside the existing outer native-root interval. Ordinary
+probe cases gain no root or collection. No production API or runtime behavior
+changes; the existing settlement counter becomes available in diagnostic floors.
+
+Three cases cover exact cleanup, an observing wrapper, and replacement by that
+wrapper after optimized execution. Exact cleanup must release String storage
+without realizing any deferred identities. Both observing cases must settle all
+pending identities before the callback. Counting-enabled source cases must have
+positive counted-index savings; closure allocation savings and all existing
+result, alias, byte and recovery checks remain required.
+
+The first fixture incorrectly required identical live counts inside finalizers
+across independent processes. It failed even though pre/post collection counts
+matched. Eight repeated observations establish that baseline physical allocation
+already varies: its callback sees 2,718 through 3,783 live objects while every
+run starts with 3,845 and ends with 2,716. The existing 74T contract leaves sweep
+order and addresses unspecified. The original failed 12-row receipt and all eight
+diagnostic runs remain retained; this is a fixture assumption failure, not proof
+of a runtime accounting defect.
+
+The corrected check records each callback's remaining dead objects and bytes,
+then requires its live observations to equal those remaining amounts plus the
+final retained heap. Thus every callback observation is checked in its own sweep.
+Raw values remain in the receipt. Pre/post logical counts and bytes, reclaimed
+counts and callback effects still compare exactly across counting modes. No
+retries or additional roots are used to hide an observation mismatch.
+
+All 120 initial corrected release cases pass. Both full matrices also pass:
+240 cases per build profile, 480 overall, including 33-call sequences and the
+final eligible forced exit. They span both GC modes, escaping/non-escaping
+results, counting off/on and baseline/enabled/first/second/final forced recovery. The production
+gate now requires both complete matrices and their raw-output/source/accounting
+admission checks, adding 480 cases to the previous 6,656-case gate. Twelve
+admission checks accept the full actual release receipt and reject missing,
+duplicate, stale, mismatched, unexercised or incorrectly accounted evidence.
+`74ad-cleanup-interactions-full.json` also passes the complete runtime suites:
+222 tests in each profile, with 16 ignored. The independent
+`74ad-cleanup-interactions-audit.json` revalidates every interaction coordinate,
+source/install/floor binding and unit log against the current 307 inputs.
+
+The source-bound acceptance queue (`74ad-interactions-acceptance-start.json`)
+has verified that exact interaction/unit process finished successfully. It
+rechecked all 307 inputs, both complete matrices, diagnostic floors, installed
+compiler artifacts and unit logs, then started the 75-command, 7,136-case
+production gate. A fresh normal release installation, 1,848 focused installed cases, 240
+normal/test-floor driver cases and 20 ordinary changed-input cases follow only
+successful prerequisites. This is a correctness dependency, not a quiet-host
+wait. No production or installed acceptance is claimed until those jobs finish.

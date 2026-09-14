@@ -1,9 +1,10 @@
 # 74AB — Numeric bodies in private closures
 
-Status: implementation in progress on an isolated main-based branch. Numeric
-closure regions now execute behind the existing experimental closure flag, whose
-production default remains off. Full production and performance acceptance are
-still required.
+Status: isolated implementation with complete production and fresh installed
+verification for this numeric-body slice. Numeric closure regions execute behind
+the existing experimental closure flag, whose production default remains off.
+Exploratory cost results are mixed; profitability and broader family obligations
+remain open.
 
 Before this slice, the closure consumer accepted small callees that returned an
 input, capture or fresh integer literal; arithmetic sends made a body ineligible.
@@ -284,6 +285,39 @@ profitability threshold. Complete the expanded production gate and fresh normal
 release verification before the paired exploratory timing run. The user's quiet
 host waiver does not bypass those correctness prerequisites.
 
+## Completed normal-installation cost run
+
+The source checkpoint `1d0dde8b` (299 bound inputs) passes all 75 production
+commands and 4,536 source/lifetime/storage cases. A fresh published release
+installation passes all 90 ordinary Id verification processes, including exact
+enabled/forced diagnostics and silent baseline/enabled runs. The completed
+`74ab-numeric-cost-completion-audit.json` rechecks current source and test-binary
+hashes, the required matrix inventory, action/cost admission, installed source and
+artifact hashes, and every normal process's raw diagnostics. This establishes
+acceptance for this isolated slice, not for the later counted/scoped/String
+composition or shared-prediction descendant.
+
+The same installation then completed 108 ordinary processes: six invocation
+counts, three shapes, and three alternating baseline/enabled pairs, with 100
+batches of 128 factory calls per process. Timing is silent and includes the Id
+driver's identity checks. All 324 paired calculations were recomputed from the
+recorded samples. The following values are medians of the six invocation-count
+case medians; positive values mean reduced elapsed time.
+
+| Shape | Execution reduction | Including explicit GC | Cases positive in all three execution pairs |
+| --- | ---: | ---: | ---: |
+| Private numeric closure returning its captured Cell | 7.11% | 3.44% | 1 of 6 |
+| Escaping numeric closure | -7.30% | -4.76% | 0 of 6 |
+| Compiler-refused observing body | 5.78% | 7.57% | 2 of 6 |
+
+All 54 sampled host intervals failed admission, and both receipts and audit retain
+`qualified:false`. The improvement in the refused control means the private-case
+reduction cannot be attributed confidently to this optimization. The escaping
+case supplies a regression concern to investigate, not a qualified slowdown
+estimate. The independently running shared-prediction comparison tests whether
+avoiding repeated per-call preparation improves these costs. Keep defaults off;
+retain these results as the exact unshared predecessor for that comparison.
+
 ## Experiment: share pure predictions within one admitted region
 
 The current admission loop evaluates the raw kernel once per selected call and
@@ -358,9 +392,10 @@ claim. The full sharing gate now binds this runner as its 300th source input.
 The prior 798-case focused proof remains tied to the unchanged runtime and source
 fixtures before this measurement-inventory extension.
 
-Wait for the unshared cost queue to complete before running the sharing full
-gate, fresh normal release installation and 90-case driver verification. Then
-run four direct comparison rounds (288 processes, 100 batches each). A gate
+The unshared cost queue has completed and is audited at `11824f6f`. The sharing
+queue has started its own full production gate; its fresh normal release
+installation, 90-case driver verification and four direct comparison rounds
+(288 processes, 100 batches each) remain pending. A gate
 failure retains its result and stops the sequence; neither integration nor
 promotion is automatic. These direct paired data are still required before
 selecting the sharing implementation on performance grounds.
