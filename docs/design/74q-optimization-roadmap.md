@@ -126,9 +126,11 @@ exited zero and returned 42, but the shared quiet fixture hid the expected REPL
 output. The separate `codex/74z-cleanup-scoped-repl` composition applies the
 explicit quiet-caller repair at `aca122e8`. All 12 lifetime cases pass against the
 same diagnostic binaries; 50 ordinary/quiet source pairs remain byte-identical
-to their respective original fixtures. Its new 295-input production gate is
-running, bound to the original process in `f0b9eb34`. Installed acceptance and
-performance remain pending.
+to their respective original fixtures. Its new 295-input production gate passes
+all 75 commands and 3,188 source/lifetime/storage cases, independently audited
+at `91ed3919`. A fresh normal release prefix is published; the exact 1,848 focused
+plus 240 driver acceptance runner is active, bound in `21340ef0`. Performance
+and integration remain pending.
 The scoped control-read candidate on
 `codex/74aa-scoped-counting-control` (`7ba56db1`) reduces 15 environment-control
 reads to one within a proved observation-free fused numeric invocation. It
@@ -590,6 +592,30 @@ Retain a pass when it provides supported benefit for its intended workload witho
 unacceptable regressions or semantic compromises. An inconclusive result can
 justify a narrower candidate or deferral. A semantic counterexample requires a
 stronger eligibility condition or rejection, not more favorable benchmarking.
+
+## Counted-index and numeric-closure composition
+
+[74AC](74ac-counted-numeric-closure-composition.md) composes the accepted numeric
+closure implementation with counted accounting from main, isolated on
+`codex/74ac-counted-numeric-closures`. The source union is 304 inputs with only
+the production inventory/validator script requiring a merge. Commit `ef5392a7`
+passes 92 compiler and 220 floor tests per profile (15 floor tests ignored).
+
+Initial joint source checks found that the original literal-heavy numeric body
+does not exercise counted copy regions. An explicit second-operation variant
+without a new literal does: its batch saves 168 index objects plus eight closure
+objects while preserving 21,120 logical bytes and returned Cell identities.
+`1644bf5d` adds separate counted-index diagnostics and retains exact closure-only
+savings assertions. All 40 original source-generator coordinates remain unchanged;
+40 quick joint cases pass in 20 directly compared index off/on pairs.
+
+The complete 1,280-process sequence matrix is active and source-bound at
+`4d9d4e0c`: both profiles/GC modes, one/two/three/32/33 calls, escaping/non-escaping
+and every supported forced exit. Budget, changed-input and capture/suspend joint
+matrices, full composed production and fresh installed acceptance remain required
+before integration. This composition does not include the separately queued
+String cleanup, scoped control reads or shared numeric prediction changes. No
+family-completion or timing claim follows from these initial joint checks.
 
 ## Reference and scope of precedent
 
