@@ -91,6 +91,18 @@ costs to select implementation changes or admission policy. Close the applicatio
 cold/preparation and lifetime/resource gaps for all four families. Existing
 native-unit counts, journal capacity, scratch bytes and process footprint are
 partial observations; none alone proves total memory savings or leak freedom.
+
+The integrated-main repeated resource matrix now passes 60 normal-release
+processes and 420 checkpoints across three alternating pairs for all five
+consumer configurations. Its independent audit checks 30,720 wrapper invocations,
+use after eviction, complete coordinates and current source/install bindings.
+See [the resource evidence](74t-verification-support-integration.md#repeated-resource-evidence-on-the-integrated-main-baseline).
+Whole-process differences are mixed. The admitted loop shape shows higher
+enabled footprint in all three pairs, but identical rounded malloc allocated
+totals; fragmentation and dirty/swapped totals differ. Shorter diagnostic
+controls retain equal private code allocations plus a 400-byte enabled cache.
+This does not establish a leak or attribute the footprint to optimizer storage.
+Full teardown and general metadata accounting remain open.
 Supported cases must pass the acceptance contract below before promotion. None
 of the four full families is complete yet.
 
