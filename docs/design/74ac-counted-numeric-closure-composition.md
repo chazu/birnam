@@ -97,3 +97,12 @@ and forced exits zero/one/two. Source coordinates, logical bytes, closure hits,
 completion/recovery counts and closure-only savings agree between index modes.
 The full sequence matrix across both profiles and GC modes remains required,
 as do the budget, input-mutation and capture/suspend composition matrices.
+
+
+The full sequence run is now active, bound to `1644bf5d` in
+`74ac-joint-sequence-full-start.json`. It builds the matching debug diagnostic
+floor, then checks 320 sequence cases with counting off and on in each profile:
+1,280 processes and 640 directly compared pairs. Unlike the quick matrix, this
+covers both GC modes, one/two/three/32/33 calls and every supported forced exit.
+The live receipt is `74ac-joint-sequence-full.json`; no source mutation or broader
+production-acceptance claim is permitted while this run uses the checkpoint.
