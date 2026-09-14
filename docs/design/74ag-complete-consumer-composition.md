@@ -119,3 +119,46 @@ before running AG's own full production gate. It then publishes the fresh normal
 prefix `/tmp/birnam-74ag-production-prefix` and repeats changed-input and String
 cleanup source acceptance. Broader installed application/resource/cost acceptance
 still follows that stage; it is not supplied by the queue's passing status alone.
+
+
+## Completed teardown and artifact-cache loss
+
+All eight isolated whole-Runtime teardown tests subsequently passed, repeating
+numeric, loop, discarded-clone and virtual-field semantic matrices three times
+per profile. [The teardown audit](../measurements/74ag-consumer-teardown-completion-audit.json)
+checks all 24 zero-resource observations, source hashes, exact test coordinates,
+raw logs and byte-identical saved copies of the executed diagnostic binaries.
+The original focused queue completed all 13 steps successfully.
+
+The subsequent full focused audit failed because the normal debug/release build
+artifacts had disappeared. [The artifact-loss record](../measurements/74ag-artifact-loss.json)
+records 39 other emptied Cargo targets in the same sequential 18:57–18:58 local
+window. The actor is unknown; the pattern is consistent with a wider cache
+cleanup. `/tmp` and `/private/tmp` resolve to the same target inode. The consumer
+fixture's only directory removal is restricted to its own fresh
+`birnam-fields-PID-counter` directory. No source, receipt, or executed semantic
+result was changed by this observation.
+
+Rebuilding the same frozen source produced different normal-library hashes.
+Do not silently substitute these files for the originally tested artifacts.
+The failed audit and original completed matrices remain intact. Copies of the
+rebuilt normal libraries and unchanged diagnostic libraries/test executables now
+live outside Cargo caches in `/tmp/birnam-74ag-proof-artifacts`; their exact hashes
+and source inputs are recorded in `74ag-restored-artifacts.json`.
+
+A fresh acceptance queue, `/tmp/birnam-74ag-restored-verification.py`, repeats all
+six source matrices and the compiler/runtime/module suites against the saved
+normal/diagnostic modules. The original whole-Runtime tests use unchanged,
+byte-identically preserved executables and do not need another repetition.
+Only the owned AG production queue was interrupted, while it was still waiting
+and had executed no production command. The replacement
+`/tmp/birnam-74ag-production-acceptance-restored.py` requires the fresh source
+receipts, exact saved-artifact hashes, completed teardown proof and captured
+normal export contract before beginning the full production gate. Its immutable
+startup evidence is `74ag-restored-verification-start.json`.
+
+Until fresh artifact acceptance finishes, the earlier 672-test/72-process proof
+is historical evidence for its recorded binaries, not acceptance of the rebuilt
+normal files. Production, installed application acceptance and profitability
+remain outstanding. No runtime implementation or optimization default changed
+while recovering these verification artifacts.
