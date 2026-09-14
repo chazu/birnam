@@ -700,3 +700,24 @@ check and raw/source/binary audit also pass. This leaves closure source teardown
 Rust-only metadata ownership, live-runtime generation retirement and combined
 application/resource acceptance open. No family or optimization default is
 promoted by the new diagnostic evidence.
+
+
+The 74AF source-lifetime follow-through found and fixed two ordinary runtime
+failures: collected nested Block bindings could not republish in a still-live
+generation (`976acf64`), and synchronous escaped closures retained a tagged
+generation number instead of the actual Unit. The ownership repair at
+`e340e1da` also makes materialized JIT vtable/Code caches follow their Unit,
+preserving resumable identities/edits through eviction and releasing the cache
+with its final owner. Synchronous nested identities remain fresh as before.
+Both profiles pass 105 compiler/module tests; 32 source processes cover 72
+complete lifecycles plus normal identity/mutation cases, with independent raw,
+source, artifact and ABI audits. Full production verification is running at
+`363a6432` against 300 frozen inputs. Main has not integrated these runtime changes.
+
+The String-cleanup direct cost comparison is complete and audited at `d3740cd7`:
+960 ordinary processes, 100 batches and four alternating pairs per case. With
+counting enabled, the median of per-case paired reductions is 1.72% for execution
+and 9.59% including GC; execution signs remain mixed. All 480 host observations
+reject admission. These descriptive, unqualified results provide a follow-up
+signal, not a causal/application speedup or grounds for default promotion.
+All four optimization families remain in progress.

@@ -273,3 +273,31 @@ counted predecessor. `74z-scoped-cost-start.json` records its process identity
 and frozen source inventory. The two-batch/one-pair smoke precedes the 100-batch,
 four-pair comparison; both retain `qualified:false`. Installed correctness does
 not establish a String-cleanup speedup or promote the implementation.
+
+The cost smoke has passed all 240 ordinary processes. Its independent audit
+rechecks current bound sources/artifacts/evidence, exact case and checkpoint
+order, generated fixtures, parsed result/identity assertions and RSS. These
+short samples validate execution only. The 960-process, 100-batch comparison is
+now running; its results remain unqualified and require separate review.
+
+
+### Completed direct cost comparison
+
+The 240-process smoke and full 960-process comparison have completed. The full
+run uses 100 batches and four alternating pairs per case on the two accepted
+normal release installations. `74z-scoped-cost-completion-audit.json` rechecks
+every bound source/artifact, exact process coordinates, raw result and RSS
+parsing, paired calculations and queue exit/log evidence.
+
+| Counting | Execution reduction | Reduction including GC | Positive execution cases | Positive cases including GC |
+| --- | --- | --- | --- | --- |
+| Off | 1.75% | 1.59% | 35/60 | 34/60 |
+| On | 1.72% | 9.59% | 34/60 | 45/60 |
+
+Each percentage is the median of the 60 per-case medians of paired reductions.
+It is a descriptive summary, not a causal estimate or an application speedup.
+All 480 host observations rejected admission, individual pairs vary widely, and
+the execution results remain mixed. The GC-inclusive result with counting on is
+a useful follow-up signal, but it does not justify default promotion. Complete
+receipts are `74z-scoped-cost-timing.json` and `74z-scoped-cost-queue.json`; no
+runtime integration or optimization default changes accompany these results.
