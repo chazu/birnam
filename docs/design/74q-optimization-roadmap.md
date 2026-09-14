@@ -65,11 +65,14 @@ source/lifetime/storage rows, independently audited against all 295 current
 inputs at `9c8f3540`. The first follow-on watcher had stopped while the original
 production process was still live; the resumed watcher retained that failure and
 used stricter identity handling. The production job was never restarted. The
-resumed watcher has now published a fresh prefix and started its installed
-acceptance matrix. This evidence remains separate from the preliminary aggregate
-matrices; the new composition's complete installed acceptance is still pending.
-The remaining release V2/loop/closure and 240 normal/test-floor driver checks
-also passed and were audited at `d5651ea3`. The release aggregate matrix is the
+resumed watcher has published a fresh prefix. Debug numeric60 and ordinary Id120
+pass; all 240 debug aggregate cases pass in 120 comparable pairs without retries.
+The independent audit at `eaac0f5b` verifies source/install/floor bindings, raw
+identity/effect assertions, logical charges and 960 collection phase snapshots.
+V2 control and the remaining installed matrices are running. This evidence is
+separate from the preliminary aggregate matrices; complete acceptance is pending.
+For the original pre-quiet composition, the remaining release V2/loop/closure and
+240 normal/test-floor driver checks passed and were audited at `d5651ea3`. The release aggregate matrix is the
 only unfinished part of this composition's correctness acceptance. Complete
 acceptance still requires all 1,848 focused cases and the normal driver;
 neither timing nor integration is admitted yet.
@@ -170,8 +173,19 @@ boundaries and V2 ownership. At 32 calls per factory, 256 factory invocations
 complete 8,192 optimized calls with 256 prediction-kernel evaluations, preserving
 logical charges and 256 physical closure savings. This is a removed-work result;
 full production acceptance and direct paired comparison with the unshared
-candidate remain required. Existing unshared production/cost queues retain their
-original sources. This implementation is not integrated or promoted.
+candidate remain required. The direct comparator at `d09d16b8` requires both
+current full proofs and all 90 ordinary-Id verification cases per prefix, checks
+identical fixtures and revalidates source/artifact bindings throughout. Four
+rounds balance both enabled and disabled implementations across process positions
+and predecessors; separate paired metrics expose enabled benefit and baseline
+cost. Thirteen synthetic harness/schedule checks pass; no real timing follows
+from them.
+
+The sharing queue at `84009ad9` waits for the unshared cost run to pass, then
+runs its own 300-input production gate, fresh release installation, 90 driver
+cases and 288 exploratory comparison processes. Waiting avoids overlapping our
+new builds with the unshared timings. Existing queues retain their original
+sources. Neither implementation is integrated or promoted.
 
 After that comparison, use the observed execution, GC-inclusive and resource
 costs to select implementation changes or admission policy. Close the application,

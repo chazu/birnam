@@ -324,3 +324,38 @@ with 256 physically eliminated closures. These are removed-work counts, not a
 speedup estimate. The source-bound audit also rejects the former 8,192-kernel
 count for that coordinate. Full production acceptance and direct paired
 comparison with the unshared candidate remain pending.
+
+## Direct comparison with the unshared implementation
+
+`closure-prediction-comparison.py` compares independently verified unshared and
+shared normal release prefixes using identical numeric source fixtures. Both
+versions run with the closure pass disabled and enabled. Over four rounds each
+mode occupies each process-order position once, and each ordered adjacent pair
+occurs once; another four rounds reverse that schedule. This exposes default-path
+cost separately from the enabled sharing change. Execution, execution plus GC,
+cold execution, materialization, whole-process time and peak RSS remain separate
+metrics, with per-round observations and paired reductions retained.
+
+Admission requires each version's current full 75-command production proof,
+complete 48-case numeric cost matrix, published release artifacts and shipped
+sources, and all 90 ordinary-Id verification coordinates. The runner rechecks
+the actual verification output for results and exact hit/forced-recovery reports,
+requires identical generated fixture hashes, and binds both source trees,
+installations and proof files throughout the run. Timed processes have neither
+probe floors nor diagnostic reports. The existing host gates remain available;
+`--exploratory` retains unqualified measurements under the user's quiet-host waiver.
+
+Thirteen synthetic admission/parser and schedule checks pass, including changed
+sources/artifacts, missing production/cost cases, stale driver evidence, duplicate
+coordinates, missing forced-recovery reports and unexpected timing diagnostics.
+These are harness checks only; they contain no real program execution or timing
+claim. The full sharing gate now binds this runner as its 300th source input.
+The prior 798-case focused proof remains tied to the unchanged runtime and source
+fixtures before this measurement-inventory extension.
+
+Wait for the unshared cost queue to complete before running the sharing full
+gate, fresh normal release installation and 90-case driver verification. Then
+run four direct comparison rounds (288 processes, 100 batches each). A gate
+failure retains its result and stops the sequence; neither integration nor
+promotion is automatic. These direct paired data are still required before
+selecting the sharing implementation on performance grounds.
