@@ -10,8 +10,9 @@ import subprocess
 import tempfile
 
 
-def source(calls, escaping, precise, gap):
-    body = ["let closure := [:arg | let kept := input; let local := arg; local];",
+def source(calls, escaping, precise, gap, numeric=False):
+    arithmetic = "let first := [20 + 15]; let second := [first + 7]; " if numeric else ""
+    body = ["let closure := [:arg | let kept := input; " + arithmetic + "let local := arg; local];",
             "let alias := closure;"]
     for _ in range(calls):
         body.append("let answer := [alias value: input];")
@@ -28,6 +29,7 @@ def main():
     parser.add_argument("--floor", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--numeric-body", action="store_true")
     args = parser.parse_args()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
     env.update(BIRNAM_ID_DYLIB=str(args.floor.resolve()), BIRNAM_TEST_CLOSURE_CONTROL="1",
@@ -43,9 +45,12 @@ def main():
                     for escaping in (False, True):
                         completed = set()
                         collections = set()
-                        gaps = [16384, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+                        initial_gap = 65536 if args.numeric_body else 16384
+                        gaps = [initial_gap, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+                        if args.numeric_body:
+                            gaps.extend([16384, 32768])
                         for gap in gaps:
-                            code = source(calls, escaping, precise, gap)
+                            code = source(calls, escaping, precise, gap, numeric=args.numeric_body)
                             fixture.write_text(code)
                             baseline = None
                             for enabled in (0, 1):
@@ -63,7 +68,7 @@ def main():
                                     "gap", "threshold", "escaping", "collections", "trace_bytes", "trace_pc", "trace_pcs", "trace_slots", "remaining_bytes")}
                                 if baseline is None: baseline = observable
                                 assert observable == baseline, (baseline, row)
-                                if gap == 16384 and not enabled:
+                                if gap == initial_gap and not enabled:
                                     assert values["collections"] == 0, row
                                     body_bytes = values["remaining_bytes"] - (values["threshold"] - gap)
                                     assert body_bytes > 64 and body_bytes + 8 < gap and body_bytes % 8 == 0, row

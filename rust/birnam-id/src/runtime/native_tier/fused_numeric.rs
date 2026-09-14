@@ -74,7 +74,7 @@ pub(super) unsafe fn execute(
     }
     let owner = current_thread_token();
     let capability = runtime.stackless_machine_capability(machine).ok()?;
-    let frame = {
+    {
         let state = unsafe { &*runtime.state.get() };
         let arena = state.execution.machine(owner, capability).ok()?.arena();
         let frame = arena.current_handle()?;
@@ -83,8 +83,7 @@ pub(super) unsafe fn execute(
         {
             return None;
         }
-        frame
-    };
+    }
     let ticket = runtime.prepare_numeric_chain_candidate(capability, owner, key)?;
     if ticket.fusion_template().step_count() != candidate.entries.len()
         || !ticket.fusion_bindings_current(runtime)
@@ -104,7 +103,37 @@ pub(super) unsafe fn execute(
     }
     // From here, the canonical body has no observing method, collection or
     // retirement boundary. Every original allocation is still performed.
-    Some((|| {
+    Some(unsafe { execute_prepared(runtime, machine, key, candidate, &ticket, entry_args) })
+}
+
+/// The caller has admitted all current bindings, controls and allocation room.
+/// A physical acquired callee Frame is installed at PC zero. Errors after this
+/// point belong to that execution; the constructor must not be replayed.
+pub(super) unsafe fn execute_prepared(
+    runtime: &Runtime,
+    machine: Oop,
+    key: usize,
+    candidate: &Rc<Candidate>,
+    ticket: &super::super::numeric::Ticket,
+    entry_args: *const Oop,
+) -> Result<Oop, ExecutionError> {
+    let owner = current_thread_token();
+    let capability = runtime.stackless_machine_capability(machine)?;
+    let frame = {
+        let state = unsafe { &*runtime.state.get() };
+        let arena = state.execution.machine(owner, capability)?.arena();
+        let frame = arena
+            .current_handle()
+            .ok_or(ExecutionError::InvalidAction)?;
+        if arena.program_counter(frame)? != 0
+            || arena.descriptor(frame)? as *const FrameDescriptor as usize != key
+            || ticket.fusion_template().step_count() != candidate.entries.len()
+        {
+            return Err(ExecutionError::InvalidAction);
+        }
+        frame
+    };
+    (|| {
         let nil = runtime.canonical().nil;
         let mut operation = 0;
         for (pc, method) in candidate.entries.iter().enumerate() {
@@ -181,5 +210,5 @@ pub(super) unsafe fn execute(
             }
         }
         Err(ExecutionError::InvalidAction)
-    })())
+    })()
 }

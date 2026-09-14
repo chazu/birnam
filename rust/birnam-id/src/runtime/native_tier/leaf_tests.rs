@@ -14,6 +14,7 @@ mod fused_numeric_tests;
 mod graph_tests;
 mod literal_tests;
 mod loop_invariant_tests;
+mod numeric_closure_tests;
 mod numeric_tests;
 mod tail_entry_tests;
 mod unboxed_numeric_tests;

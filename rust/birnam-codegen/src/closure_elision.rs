@@ -8,6 +8,7 @@ use crate::resumable::{
     self, ColoredEdge, LogicalProgram, OperationKind, PhysicalLayout, Terminator,
 };
 use crate::small_callee;
+pub mod numeric_body;
 mod sequence;
 pub use sequence::{Invocation, MAX_CALLS};
 
@@ -33,7 +34,7 @@ pub enum Value {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Plan {
+pub struct Plan<C = small_callee::Plan> {
     /// Occurrence identity, independent of identical nested program bytes.
     pub node_index: u32,
     pub literal_value: u32,
@@ -46,7 +47,7 @@ pub struct Plan {
     pub return_source: Option<u32>,
     pub selector: Vec<u8>,
     pub call_site: u32,
-    pub callee: small_callee::Plan,
+    pub callee: C,
     /// Complete physical aliases at call publication, including staging slots.
     pub invocation_aliases: Vec<bool>,
     /// Ordered stores after the constructor, including its result but excluding
@@ -69,6 +70,69 @@ impl Plan {
     /// Inputs must be canonical lowering and coloring. Selector spelling gives
     /// no authority: even `value` must resolve to the admitted body at runtime.
     pub fn derive(program: &LogicalProgram<'_>, layout: &PhysicalLayout) -> Result<Self, Refusal> {
+        Self::derive_with(
+            program,
+            layout,
+            |program, layout| small_callee::compile(program, layout).map_err(|_| Refusal::Callee),
+            small_callee::Plan::return_entry_slot,
+        )
+    }
+}
+
+/// Numeric closure provenance uses the same caller identity and V2 analysis.
+/// Existing leaf consumers retain `Plan::derive` and cannot execute this type.
+pub type NumericPlan = Plan<numeric_body::NumericBody>;
+
+impl NumericPlan {
+    pub fn derive_numeric(
+        program: &LogicalProgram<'_>,
+        layout: &PhysicalLayout,
+    ) -> Result<Self, Refusal> {
+        Self::derive_with(
+            program,
+            layout,
+            |program, layout| {
+                numeric_body::NumericBody::derive(program, layout).ok_or(Refusal::Callee)
+            },
+            |body| match body.returned {
+                numeric_body::Identity::Entry(slot) => Some(slot as usize),
+                numeric_body::Identity::Allocation(_) => None,
+            },
+        )
+    }
+}
+
+impl<C> Plan<C> {
+    /// Change only the owned callee description; caller provenance stays intact.
+    pub fn map_callee<D>(self, map: impl FnOnce(C) -> D) -> Plan<D> {
+        Plan {
+            node_index: self.node_index,
+            literal_value: self.literal_value,
+            literal_slot: self.literal_slot,
+            program: self.program,
+            capture_sources: self.capture_sources,
+            argument_sources: self.argument_sources,
+            return_source: self.return_source,
+            selector: self.selector,
+            call_site: self.call_site,
+            callee: map(self.callee),
+            invocation_aliases: self.invocation_aliases,
+            constructor_stores: self.constructor_stores,
+            call_window_start: self.call_window_start,
+            continuation: self.continuation,
+            continuation_aliases: self.continuation_aliases,
+            before_constructor_boxes: self.before_constructor_boxes,
+            after_constructor_boxes: self.after_constructor_boxes,
+            following: self.following,
+        }
+    }
+
+    fn derive_with(
+        program: &LogicalProgram<'_>,
+        layout: &PhysicalLayout,
+        compile: impl Fn(&LogicalProgram<'_>, &PhysicalLayout) -> Result<C, Refusal>,
+        return_entry_slot: impl Fn(&C) -> Option<usize>,
+    ) -> Result<Self, Refusal> {
         if program.entry.0 != 0 || program.blocks.is_empty() {
             return Err(Refusal::RegionShape);
         }
@@ -133,9 +197,8 @@ impl Plan {
                     }
                     let nested_layout =
                         resumable::color_slots(&nested_program).map_err(|_| Refusal::Callee)?;
-                    let callee = small_callee::compile(&nested_program, &nested_layout)
-                        .map_err(|_| Refusal::Callee)?;
-                    if callee.return_entry_slot()
+                    let callee = compile(&nested_program, &nested_layout)?;
+                    if return_entry_slot(&callee)
                         == Some(nested_layout.entry_receiver_slot as usize)
                     {
                         return Err(Refusal::IdentityExposure);
@@ -228,7 +291,7 @@ impl Plan {
             };
             argument_sources.push(source);
         }
-        let return_source = if let Some(returned) = callee.return_entry_slot() {
+        let return_source = if let Some(returned) = return_entry_slot(&callee) {
             let returned = returned as u32;
             Some(
                 if let Some(index) = nested_layout
@@ -297,7 +360,14 @@ impl Plan {
             after_constructor_boxes: after_boxes,
             following: Vec::new(),
         };
-        plan.following = sequence::derive(program, layout, &plan, &values, &nested_layout);
+        plan.following = sequence::derive(
+            program,
+            layout,
+            &plan,
+            &values,
+            &nested_layout,
+            return_entry_slot(&plan.callee),
+        );
         Ok(plan)
     }
 }
@@ -741,3 +811,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod numeric_plan_tests;

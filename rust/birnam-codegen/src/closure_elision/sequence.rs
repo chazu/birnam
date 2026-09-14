@@ -18,12 +18,13 @@ pub struct Invocation {
     pub continuation_aliases: Vec<bool>,
 }
 
-pub(super) fn derive(
+pub(super) fn derive<C>(
     program: &LogicalProgram<'_>,
     layout: &PhysicalLayout,
-    first: &Plan,
+    first: &Plan<C>,
     entry_values: &[Option<Value>],
     callee_layout: &PhysicalLayout,
+    return_entry_slot: Option<usize>,
 ) -> Vec<Invocation> {
     let mut sequence = Vec::new();
     let Some(first_edge) = &first.continuation else {
@@ -58,6 +59,7 @@ pub(super) fn derive(
             layout,
             first,
             callee_layout,
+            return_entry_slot,
             &mut next_values,
             &aliases,
             sequence.len() as u32 + 1,
@@ -72,11 +74,12 @@ pub(super) fn derive(
     sequence
 }
 
-fn extend(
+fn extend<C>(
     block: &resumable::BasicBlock<'_>,
     layout: &PhysicalLayout,
-    first: &Plan,
+    first: &Plan<C>,
     callee_layout: &PhysicalLayout,
+    return_entry_slot: Option<usize>,
     values: &mut [Option<Value>],
     previous_aliases: &[bool],
     ordinal: u32,
@@ -129,7 +132,7 @@ fn extend(
             },
         )
         .collect::<Option<_>>()?;
-    let return_source = if let Some(returned) = first.callee.return_entry_slot() {
+    let return_source = if let Some(returned) = return_entry_slot {
         let returned = returned as u32;
         Some(
             if let Some(index) = callee_layout

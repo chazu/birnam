@@ -59,7 +59,10 @@ pub(super) unsafe extern "C" fn check(_: Oop, args: *const Oop, count: usize) ->
         let factory = a[0];
         let gap = r.integer_value(a[1]) as usize;
         let escaping = r.integer_value(a[2]) != 0;
-        assert!((64..=16384).contains(&gap) && gap.is_multiple_of(8));
+        // Numeric callees retain their original boxes, so a 32-call region
+        // needs a larger initial gap than the alias-only fixture. This bounds
+        // test input only; the production collection threshold is unchanged.
+        assert!((64..=65536).contains(&gap) && gap.is_multiple_of(8));
         assert!(OBSERVATION.with_borrow(Option::is_none));
         assert!(unsafe {
             (*r.state.get())

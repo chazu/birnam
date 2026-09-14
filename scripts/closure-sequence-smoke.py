@@ -10,8 +10,9 @@ import subprocess
 import tempfile
 
 
-def source(calls, escaping, precise):
-    body = ["let closure := [:arg | let kept := input; let local := arg; local];",
+def source(calls, escaping, precise, numeric=False):
+    arithmetic = "let first := [20 + 15]; let second := [first + 7]; " if numeric else ""
+    body = ["let closure := [:arg | let kept := input; " + arithmetic + "let local := arg; local];",
             "let alias := closure;"]
     for call in range(calls):
         argument = ("input", "other", "answer")[call % 3]
@@ -30,6 +31,7 @@ def main():
     parser.add_argument("--floor", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--numeric-body", action="store_true")
     args = parser.parse_args()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
     env.update(BIRNAM_ID_DYLIB=str(args.floor.resolve()), BIRNAM_TEST_CLOSURE_CONTROL="1",
@@ -42,7 +44,7 @@ def main():
             for precise in ([1] if args.quick else [0, 1]):
                 for calls in ([3, 33] if args.quick else [1, 2, 3, 32, 33]):
                     for escaping in [False, True]:
-                        code = source(calls, escaping, precise)
+                        code = source(calls, escaping, precise, numeric=args.numeric_body)
                         fixture.write_text(code)
                         baseline = None
                         force_points = [0, 1, 2] if args.quick else list(range(min(calls, 32)))

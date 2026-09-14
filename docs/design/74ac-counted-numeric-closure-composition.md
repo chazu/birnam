@@ -53,3 +53,18 @@ The String cleanup and scoped control-read changes are absent. The shared numeri
 prediction descendant remains on its independent acceptance/cost path; introducing
 it into this composition requires the same joint checks. Existing frozen jobs
 and installations remain intact. No qualified timing is claimed.
+
+
+## Initial composition evidence
+
+The composition preserves the exact union of both production inventories: 304
+inputs. All 27 numeric-side source changes and all 19 counted-side paths retain
+their accepted contents except the deliberately merged production inventory and
+validator script, their only intersecting edit. `74ac-composition-source-audit.json`
+records the source union and both original production proof hashes.
+
+Fresh debug/release runs each pass 92 compiler tests and 220 floor tests, with
+15 floor tests ignored. `74ac-composition-tests.json` retains the command output
+and exact source bindings. This establishes that the two implementations build
+and retain their existing individual tests together. Joint enabled source,
+accounting, GC and V2-control checks remain the next required work.

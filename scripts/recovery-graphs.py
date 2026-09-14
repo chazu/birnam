@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import subprocess
 import tempfile
 from compatibility_authority import unchanged_authority
@@ -35,7 +36,7 @@ def sources():
         "unboxed-numeric-timing.py", "loop-invariant-numeric-smoke.py",
         "loop-measurement-smoke.py", "loop_timing_common.py", "loop-timing.py",
         "closure-sequence-mutation-smoke.py",
-        "closure-budget-smoke.py",
+        "closure-budget-smoke.py", "closure-numeric-inputs-smoke.py",
         "closure-journal-smoke.py",
         "closure-measurement-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
@@ -58,6 +59,8 @@ def sources():
         "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
         "scripts/fixtures/closure-elision.birnam", "scripts/fixtures/closure-literals.birnam",
         "scripts/fixtures/closure-literal-control.birnam",
+        "scripts/fixtures/closure-numeric.birnam", "scripts/fixtures/closure-numeric-control.birnam",
+        "scripts/fixtures/closure-numeric-inputs.birnam",
         "scripts/fixtures/closure-observation.birnam",
         "scripts/fixtures/closure-control.birnam",
         "scripts/fixtures/closure-live-api.birnam",
@@ -67,6 +70,51 @@ def sources():
     for folder in ("rust", "src/id", "modules"):
         paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
     return {str(p.relative_to(ROOT)): sha(p) for p in sorted(paths)}
+
+
+
+def check_numeric_closure_matrices(matrices):
+    sequence_source = runpy.run_path(str(ROOT / "scripts/closure-sequence-smoke.py"))["source"]
+    budget_source = runpy.run_path(str(ROOT / "scripts/closure-budget-smoke.py"))["source"]
+    modes = [(0, 1, -1), (1, 0, -1), (1, 1, -1), (1, 1, 0), (1, 1, 1), (1, 1, 2)]
+    expected_source = {(p, l, e, f) for p in (0, 1) for l, e, f in modes}
+    expected_control = {(p, c, l, e, f) for p, l, e, f in expected_source if l == 1
+                        for c in ("capture", "suspend")}
+    expected_inputs = {(p, e, f) for p in (0, 1) for e, f in ((0, -1), (1, -1), (1, 0), (1, 1), (1, 2))}
+    expected_sequence = {(p, n, escape, enabled, force) for p in (0, 1)
+                         for n in (1, 2, 3, 32, 33) for escape in (False, True)
+                         for enabled, force in [(False, -1), (True, -1)] + [(True, f) for f in range(min(n, 32))]}
+    digest = lambda source: hashlib.sha256(source.encode()).hexdigest()
+    for profile in ("debug", "release"):
+        def rows(name, keys, expected):
+            values = matrices[f"numeric-{name}-{profile}.json"]["rows"]
+            if len(values) != len(expected) or {tuple(row[k] for k in keys) for row in values} != expected:
+                raise RuntimeError(f"incomplete numeric closure {name} matrix")
+            return values
+        rows("source", ("precise", "literals", "enabled", "forced"), expected_source)
+        rows("control", ("precise", "control", "literals", "enabled", "forced"), expected_control)
+        rows("inputs", ("precise", "enabled", "forced"), expected_inputs)
+        for name, fixture in (("source", "closure-numeric.birnam"), ("control", "closure-numeric-control.birnam")):
+            if matrices[f"numeric-{name}-{profile}.json"]["source_sha256"].get(f"scripts/fixtures/{fixture}") != sha(ROOT / "scripts/fixtures" / fixture):
+                raise RuntimeError("numeric closure fixture differs from tested source")
+        for row in rows("sequence", ("precise", "calls", "escaping", "enabled", "force"), expected_sequence):
+            if row["source_sha256"] != digest(sequence_source(row["calls"], row["escaping"], row["precise"], numeric=True)):
+                raise RuntimeError("numeric closure sequence used a different body")
+        budget = matrices[f"numeric-budget-{profile}.json"]["rows"]
+        expected_budget = set()
+        for precise in (0, 1):
+            for calls in (3, 32):
+                for escaping in (False, True):
+                    initial = [row for row in budget if (row["precise"], row["calls"], row["escaping"], row["gap"], row["enabled"]) == (precise, calls, escaping, 65536, 0)]
+                    if len(initial) != 1 or initial[0]["values"]["collections"] != 0:
+                        raise RuntimeError("numeric budget has no complete baseline extent")
+                    values = initial[0]["values"]
+                    extent = values["remaining_bytes"] - (values["threshold"] - 65536)
+                    gaps = {65536, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, extent - 8, extent, extent + 8}
+                    expected_budget.update((precise, calls, escaping, gap, enabled) for gap in gaps for enabled in (0, 1))
+        for row in rows("budget", ("precise", "calls", "escaping", "gap", "enabled"), expected_budget):
+            if row["source_sha256"] != digest(budget_source(row["calls"], row["escaping"], row["precise"], row["gap"], numeric=True)):
+                raise RuntimeError("numeric closure budget used a different body")
 
 
 def main():
@@ -246,7 +294,8 @@ def main():
                     finally:
                         env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
                         env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
-                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control")
+                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control",
+                                                                                      "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs")
                                 for profile in ("debug", "release")}
                     expected.update({"evaluator-lifetime.json", "baseline-native-storage.json"})
                     paths = list(Path(evidence).glob("*.json"))
@@ -277,6 +326,7 @@ def main():
                         rows = matrices[f"literal-control-{profile}.json"]["rows"]
                         if len(rows) != 24 or {(r["precise"], r["control"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literal_control:
                             raise RuntimeError("incomplete literal result capture/suspension matrix")
+                    check_numeric_closure_matrices(matrices)
                     lifetime = matrices.pop("evaluator-lifetime.json")
                     expected_lifetime = {(profile, case) for profile in ("debug", "release")
                                          for case in ("probe-root-boundary", "logicvar-original", "error-original",

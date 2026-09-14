@@ -15,9 +15,12 @@ def main():
     parser.add_argument('--prefix', type=Path, required=True)
     parser.add_argument('--floor', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--numeric-body', action='store_true', help='Exercise two arithmetic sends in each closure body')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     fixture = root / 'scripts/fixtures/closure-literal-control.birnam'
+    if args.numeric_body:
+        fixture = root / 'scripts/fixtures/closure-numeric-control.birnam'
     paths = [fixture, Path(__file__).resolve()]
     paths += sorted((root / 'rust/birnam-codegen/src').rglob('*.rs'))
     paths += sorted((root / 'rust/birnam-id/src').rglob('*'))
@@ -30,6 +33,11 @@ def main():
     env.update(BIRNAM_ID_DYLIB=str(args.floor.resolve()), BIRNAM_TEST_CLOSURE_CONTROL='1',
                BIRNAM_DEV_CLOSURE_REPORT='1', BIRNAM_DEV_CLOSURE_FORCE_RECOVERY='0')
     modes = [(0, 1, -1), (1, 0, -1), (1, 1, -1), (1, 1, 0), (1, 1, 1), (1, 1, 2)]
+    if args.numeric_body:
+        # The shared fresh-result probe expects its literal test mode enabled.
+        # Numeric admission's independence from that flag is checked by the
+        # ordinary source matrix; keep this matrix focused on V2 ownership.
+        modes = [mode for mode in modes if mode[0] == 1]
     try:
         for precise, control in itertools.product((0, 1), ('capture', 'suspend')):
             baseline = None
@@ -43,7 +51,7 @@ def main():
                 lines = (run.stdout + run.stderr).splitlines()
                 reports = [line for line in lines if line.startswith('closure-literal-control: calls=')]
                 assert len(reports) == 1, lines
-                expected = (3 if forced < 0 else forced) if literals and enabled else 0
+                expected = (3 if forced < 0 else forced) if (literals or args.numeric_body) and enabled else 0
                 assert reports[0].startswith(f'closure-literal-control: calls={expected} fresh_results=3 supplied_distinct=true'), reports
                 output = [re.sub(r'calls=\d+', 'calls=CHECKED', line) for line in lines if not line.startswith('closure-elision:')]
                 if baseline is None:

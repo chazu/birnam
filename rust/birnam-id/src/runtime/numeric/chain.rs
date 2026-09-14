@@ -68,6 +68,69 @@ pub(in crate::runtime) struct Binding {
 }
 
 impl CompiledChain {
+    /// Predict from explicit entry Oops before a physical callee Frame exists.
+    /// The caller validates the current descriptor record. This path uses an
+    /// already compiled owner and never changes hotness or loop reuse history.
+    pub(in crate::runtime) fn predict_entry(
+        self: &Rc<Self>,
+        runtime: &Runtime,
+        key: usize,
+        initial: &[(usize, Oop)],
+    ) -> Option<Ticket> {
+        let mut buffers = runtime
+            .numeric
+            .borrow_mut()
+            .buffers
+            .get_or_insert_with(Pool::default)
+            .take(self.template.inputs().len(), self.bindings.len());
+        {
+            let state = unsafe { &*runtime.state.get() };
+            let canonical = state.canonical?;
+            let error = state.symbols.existing(b"ErrorVt")?;
+            if state.environment.import(error) == canonical.smallint_vt {
+                return None;
+            }
+            for (destination, input) in buffers.values.inputs.iter_mut().zip(self.template.inputs())
+            {
+                *destination = match input {
+                    Input::Literal { value, .. } => *value,
+                    Input::Frame(slot) => {
+                        let value = initial.iter().find_map(|&(index, value)| {
+                            (index == *slot as usize).then_some(value)
+                        })?;
+                        if Vtables::checked_vtable_of(&state.heap, value) != canonical.smallint_vt
+                            || !state.heap.payload_size(value).is_some_and(|size| size >= 8)
+                        {
+                            return None;
+                        }
+                        state.values.integer_value(value)
+                    }
+                };
+            }
+        }
+        let ticket = Ticket {
+            key,
+            chain: self.clone(),
+            buffers,
+            next: 0,
+        };
+        // Queries are outside RuntimeState/registry borrows. The current native
+        // declaration supplies arithmetic authority, not selector spelling.
+        if !ticket.fusion_bindings_current(runtime) {
+            return None;
+        }
+        // Deliberately do not call loop_reuse::predict: this is not an observed
+        // caller tail iteration and must neither consume nor replace its stamp.
+        let mut ticket = ticket;
+        let success = unsafe {
+            (self.kernel)(
+                ticket.buffers.values.inputs.as_ptr(),
+                ticket.buffers.values.outputs.as_mut_ptr(),
+            ) == 0
+        };
+        success.then_some(ticket)
+    }
+
     #[cfg(feature = "ffi-test-hooks")]
     pub(in crate::runtime) fn loop_resources(&self) -> (usize, usize, usize) {
         self.loop_reuse.as_ref().map_or((0, 0, 0), |reuse| {
