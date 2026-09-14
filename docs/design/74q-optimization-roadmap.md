@@ -38,10 +38,17 @@ changes; its proof does not promote them.
 The immediate pending step is the exact main-based counted composition on
 `codex/74y-production-composition`. Its source checkpoint `42c6e94c` combines
 counted indices and reverse numeric-journal lookup with main's verified support,
-without the held Error declaration. Its 295-input production gate is running;
-the follow-on acceptance queue requires a fresh installation, 1,848 focused
-cases across both profiles and 240 normal/test-floor Id driver cases. These
-counts are requirements, not completed results.
+without the held Error declaration. Its 295-input production gate passed all
+75 commands. A fresh installation passed all 924 debug focused cases and the
+release numeric60/ordinary-Id120 matrices. The release aggregate matrix stopped
+after three unmatched pre-work heaps at one coordinate; all 202 individual
+attempted processes passed their original checks, but only 160 were accepted
+in comparable pairs. Commit `241820c1` retains the failed acceptance and a
+sixteen-process diagnosis showing the same one-object/24-byte variation with
+the counting control unchanged. Its cause and retained object remain unknown.
+The remaining release V2/loop/closure and 240 normal/test-floor driver checks
+continue independently. Complete acceptance still requires all 1,848 focused
+cases and the normal driver; neither timing nor integration is admitted yet.
 
 A fresh pre-change main installation and all 120 matching ordinary Id checks
 are complete at `241b946d`. The direct comparison runner at `f5d46b08` will compare
@@ -50,6 +57,16 @@ programs and rotating order. Its incomplete-gate rejection is checked; its real
 execution smoke and timings must wait for candidate acceptance. The research
 480-process timing/audit at `16b234f6` applies only to its own checkpoint and
 cannot qualify the new composition or identify disabled-path overhead.
+
+Two isolated cost experiments preserve that composition's frozen sources. The
+String-cleanup candidate on `codex/74z-inert-string-cleanup` recognizes only the
+exact floor cleanup and its actual storage-owning public Runtime; its independent
+production gate remains running. The scoped control-read candidate on
+`codex/74aa-scoped-counting-control` (`7ba56db1`) reduces 15 environment-control
+reads to one within a proved observation-free fused numeric invocation. It
+retains live reads between invocations and around observing publication methods.
+All 219 runtime tests pass in each profile; production, installed and direct
+timing acceptance remain pending. Neither experiment is integrated or promoted.
 
 After that comparison, use the observed execution, GC-inclusive and resource
 costs to select implementation changes or admission policy. Close the application,
