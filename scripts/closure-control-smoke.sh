@@ -71,10 +71,11 @@ for family in ('sequence', 'budget', 'control', 'inputs'):
     check(family, *receipts)
 print(f'joint numeric closures: {profile} complete counting off/on comparisons passed')
 PYJOINT
+  python3 scripts/closure-string-cleanup-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/numeric-string-cleanup-$profile.json"
   python3 scripts/closure-journal-smoke.py --prefix "$prefix" --floor "$floor" --output "$work/journal-$profile.json"
   python3 scripts/closure-measurement-smoke.py --prefix "$prefix" --floor "$floor" --profile "$profile" --output "$work/measure-$profile.json"
   if [[ -n ${BIRNAM_TEST_CLOSURE_RECEIPTS:-} ]]; then
-    for matrix in sequence mutation budget journal measure literals literal-control numeric-source numeric-control numeric-sequence numeric-budget numeric-inputs; do
+    for matrix in sequence mutation budget journal measure literals literal-control numeric-source numeric-control numeric-sequence numeric-budget numeric-inputs numeric-string-cleanup; do
       cp "$work/$matrix-$profile.json" "$BIRNAM_TEST_CLOSURE_RECEIPTS/$matrix-$profile.json"
     done
   fi

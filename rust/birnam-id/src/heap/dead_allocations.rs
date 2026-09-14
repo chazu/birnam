@@ -12,7 +12,7 @@ pub(crate) struct DeferredAllocation(u64);
 pub(crate) const MAX_DEAD_ALLOCATIONS: usize = 4096;
 pub(crate) const MAX_DEAD_PAYLOAD_BYTES: usize = 1024;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 thread_local! {
     static SETTLED_ALLOCATIONS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
@@ -256,8 +256,12 @@ impl Heap {
     /// a new Id allocation: no callback runs and all accounting is unchanged.
     /// The caller must be between marking and the dead-object snapshot.
     pub(crate) fn settle_dead_allocations(&mut self) {
-        #[cfg(test)]
-        SETTLED_ALLOCATIONS.set(SETTLED_ALLOCATIONS.get() + self.dead_allocation_count());
+        #[cfg(any(test, feature = "ffi-test-hooks"))]
+        SETTLED_ALLOCATIONS.set(
+            SETTLED_ALLOCATIONS
+                .get()
+                .wrapping_add(self.dead_allocation_count()),
+        );
         let allocations = core::mem::take(&mut self.dead_allocations);
         self.deferred_allocations.clear();
         for snapshot in allocations {
@@ -269,7 +273,7 @@ impl Heap {
         self.settle_dead_frame_indices();
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn settled_allocation_count_for_test() -> usize {
         SETTLED_ALLOCATIONS.get()
     }

@@ -1,0 +1,22 @@
+{
+  "status": "passed",
+  "qualified": false,
+  "receipt_sha256": "c55272c97f913d1153c84f52a04c46bcef7607cdf8e8f1b294589b83ffd8dbee",
+  "checker_sha256": "f936df848f5633d4b95e2910c1baa8eef0d00f915ad319fe5c90fac8c3c7bd6d",
+  "checks": [
+    "complete actual release matrix accepted",
+    "quick matrix rejected: closure String cleanup: incomplete matrix",
+    "missing row rejected: closure String cleanup: wrong coordinates",
+    "duplicate row rejected: closure String cleanup: wrong coordinates",
+    "wrong source body rejected: closure String cleanup: different body",
+    "stale source rejected: closure String cleanup: stale sources",
+    "raw output mismatch rejected: closure String cleanup: diagnostic differs from raw output",
+    "rebound callback mismatch rejected: closure String cleanup: callback sweep accounting",
+    "unsettled observer rejected: closure String cleanup: incorrect settlement",
+    "unneeded exact cleanup settlement rejected: closure String cleanup: incorrect settlement",
+    "String not released rejected: closure String cleanup: cleanup not exercised",
+    "counting did no work rejected: closure String cleanup: counting not exercised"
+  ],
+  "audit_source": "import copy,hashlib,json,pathlib,re,runpy,sys\nroot=pathlib.Path('/tmp/birnam-74ad-cleanup-interactions');sys.path.insert(0,str(root/'scripts'));ns=runpy.run_path(str(root/'scripts/recovery-graphs.py'));check=ns['check_closure_string_cleanup_matrix'];base=root/'docs/measurements';path=base/'74ad-cleanup-interactions-release-full.json';data=json.loads(path.read_text());check(data);checks=['complete actual release matrix accepted']\ndef alter(row,field,value,group='collection'):\n row[group][field]=value\n row['stdout']=re.sub(r'\\b'+field+r'=\\d+',field+'='+str(value),row['stdout'])\ndef counted_observer(d):return next(r for r in d['rows'] if r['counted'] and r['cleanup']==2)\ndef exact(d):return next(r for r in d['rows'] if r['counted'] and r['cleanup']==1)\ncases=[\n ('quick matrix',lambda d:d.update(quick=True)),\n ('missing row',lambda d:d['rows'].pop()),\n ('duplicate row',lambda d:d['rows'].__setitem__(-1,copy.deepcopy(d['rows'][0]))),\n ('wrong source body',lambda d:d['rows'][0].update(source_sha256='wrong')),\n ('stale source',lambda d:d['sources'].update({'scripts/closure-string-cleanup-smoke.py':'wrong'})),\n ('raw output mismatch',lambda d:counted_observer(d)['collection'].update(callback_live=0)),\n ('rebound callback mismatch',lambda d:alter(counted_observer(d),'callback_live',0)),\n ('unsettled observer',lambda d:alter(counted_observer(d),'settled',0)),\n ('unneeded exact cleanup settlement',lambda d:alter(exact(d),'settled',1)),\n ('String not released',lambda d:alter(exact(d),'string_released',0)),\n ('counting did no work',lambda d:alter(exact(d),'counted_indices',0,'sequence')),\n]\nfor name,mutate in cases:\n d=copy.deepcopy(data);mutate(d)\n try:check(d)\n except RuntimeError as e:checks.append(name+' rejected: '+str(e))\n else:raise AssertionError(name+' accepted')\nsha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()\nresult=dict(status='passed',qualified=False,receipt_sha256=sha(path),checker_sha256=sha(root/'scripts/recovery-graphs.py'),checks=checks,audit_source=pathlib.Path(__file__).read_text(),scope='Admission checker tests using the actual completed release receipt and explicit corrupted copies. Not additional runtime cases.')\n(base/'74ad-cleanup-admission-checks.json').write_text(json.dumps(result,indent=2)+'\\n')\nprint(len(checks),'admission checks passed')\n",
+  "scope": "Admission checker tests using the actual completed release receipt and explicit corrupted copies. Not additional runtime cases."
+}

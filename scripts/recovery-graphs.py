@@ -36,7 +36,7 @@ def sources():
         "unboxed-numeric-timing.py", "loop-invariant-numeric-smoke.py",
         "loop-measurement-smoke.py", "loop_timing_common.py", "loop-timing.py",
         "closure-sequence-mutation-smoke.py",
-        "closure-budget-smoke.py", "closure-numeric-inputs-smoke.py",
+        "closure-budget-smoke.py", "closure-numeric-inputs-smoke.py", "closure-string-cleanup-smoke.py",
         "closure-journal-smoke.py",
         "closure-measurement-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
@@ -229,6 +229,48 @@ def check_joint_numeric_closure_pair(family, off, on):
                     f'counting changed current inputs or effects at {key}')
 
 
+def check_closure_string_cleanup_matrix(receipt):
+    def require(condition, detail):
+        if not condition:
+            raise RuntimeError('closure String cleanup: ' + detail)
+    require(receipt['status'] == 'passed' and receipt.get('quick') is False, 'incomplete matrix')
+    keys = ('precise', 'calls', 'escaping', 'cleanup', 'enabled', 'force', 'counted')
+    expected = {(p, n, e, c, enabled, force, counting) for p in (0, 1) for n in (3, 33)
+                for e in (False, True) for c in (1, 2, 3) for counting in (False, True)
+                for enabled, force in ((False, -1), (True, -1), (True, 0), (True, 1), (True, min(n, 32) - 1))}
+    rows = {tuple(r[k] for k in keys): r for r in receipt['rows']}
+    require(len(rows) == len(receipt['rows']) == len(expected) and set(rows) == expected, 'wrong coordinates')
+    require(all(sha(ROOT / n) == h for n, h in receipt['sources'].items()), 'stale sources')
+    source = runpy.run_path(str(ROOT / 'scripts/closure-sequence-smoke.py'))['source']
+    for key, row in rows.items():
+        require(row['exit_code'] == 0, 'failed process')
+        body = source(row['calls'], row['escaping'], row['precise'], numeric=True, numeric_copy_region=True)
+        require(row['source_sha256'] == hashlib.sha256(body.encode()).hexdigest(), 'different body')
+        for prefix, field in (('closure-sequence ', 'sequence'), ('closure-cleanup ', 'collection')):
+            lines = [s for s in row['stdout'].splitlines() if s.startswith(prefix)]
+            require(len(lines) == 1, 'missing diagnostic')
+            require({k: int(v) for k, v in re.findall(r'(\w+)=(\d+)', lines[0])} == row[field], 'diagnostic differs from raw output')
+        v, c = row['sequence'], row['collection']
+        require(v['counted_indices'] > 0 if row['counted'] else v['counted_indices'] == 0, 'counting not exercised')
+        require(c['pending'] == v['physical_saved'] and c['settled'] == (0 if row['cleanup'] == 1 else c['pending']), 'incorrect settlement')
+        require(c['mode'] == row['cleanup'] and c['callbacks'] == int(row['cleanup'] != 1) and c['string_released'] == 1, 'cleanup not exercised')
+        require(c['reclaimed'] > 0 and c['after_live'] == c['before_live'] - c['reclaimed'], 'allocation conservation')
+        if row['cleanup'] == 1:
+            require(c['callback_live'] == c['callback_bytes'] == 0, 'unexpected observing callback')
+        else:
+            require(c['callback_live'] == c['after_live'] + c['remaining_dead'] and
+                    c['callback_bytes'] == c['after_bytes'] + c['remaining_dead_bytes'], 'callback sweep accounting')
+        if row['counted']:
+            baseline = rows[(*key[:-1], False)]
+            def accounting(row):
+                sequence = dict(row['sequence'])
+                sequence['physical_saved'] -= sequence.pop('counted_indices')
+                collection = {k: v for k, v in row['collection'].items() if k not in
+                              ('pending', 'settled', 'callback_live', 'callback_bytes', 'remaining_dead', 'remaining_dead_bytes')}
+                return sequence, collection
+            require(accounting(baseline) == accounting(row), 'counting changed logical observations')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify", action="store_true")
@@ -407,7 +449,7 @@ def main():
                         env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
                         env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
                     expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control",
-                                                                                      "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs")
+                                                                                      "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs", "numeric-string-cleanup")
                                 for profile in ("debug", "release")}
                     expected.update(f"joint-{family}-{counting}-{profile}.json"
                                     for family in ('sequence', 'budget', 'control', 'inputs')
@@ -443,6 +485,7 @@ def main():
                             raise RuntimeError("incomplete literal result capture/suspension matrix")
                     check_numeric_closure_matrices(matrices)
                     for profile in ('debug', 'release'):
+                        check_closure_string_cleanup_matrix(matrices[f'numeric-string-cleanup-{profile}.json'])
                         for family in ('sequence', 'budget', 'control', 'inputs'):
                             check_joint_numeric_closure_pair(family,
                                 matrices[f'joint-{family}-off-{profile}.json'],
