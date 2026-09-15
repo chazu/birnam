@@ -175,20 +175,7 @@ fn extend<C>(
         .iter()
         .find(|e| e.source == block.pc && e.target == *successor)?
         .clone();
-    let mut next = aliases.clone();
-    for copy in &edge.copies {
-        next[copy.destination as usize] = aliases[copy.source as usize];
-    }
-    next[edge.result_initialization_slot? as usize] = false;
-    for (slot, live) in next.iter_mut().enumerate() {
-        if edge
-            .clear_bitmap_words
-            .get(slot / 64)
-            .is_some_and(|bits| bits & (1 << (slot % 64)) != 0)
-        {
-            *live = false;
-        }
-    }
+    let next = transition::continuation_aliases(&aliases, &edge)?;
     Some(Invocation {
         pc: block.pc.0,
         call_site: call_site.0,
