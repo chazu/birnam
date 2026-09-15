@@ -3,6 +3,9 @@
 //! This dylib publishes the `Codegen` and `Reflect` globals used by the host.
 //! It materializes the Rust PEG CST, lowers it through the pure Codegen core,
 //! and returns deterministic generated C without invoking TCC.
+mod materialization_cache;
+use materialization_cache::{MAX_MATERIALIZATION_C_SOURCE_BYTES, MaterializationDisposition, cached_materialization, stage_materialization, set_staged_materialization_vtable, commit_staged_materialization, remove_materialization, rust_codegen_materialization_count, rust_codegen_evict_materializations};
+
 use birnam_abi::{
     IdApi, MarkFn, Method, Oop, PORTABLE_CODE_API_V1_VERSION, PORTABLE_CODE_API_V2_VERSION,
     PORTABLE_PROGRAM_VIEW_API_V1_VERSION, PortableCodeApiV1, PortableCodeApiV2,
@@ -258,7 +261,6 @@ static CANDIDATES: Mutex<Vec<CandidateState>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Vec<PreparedState>> = Mutex::new(Vec::new());
 static CANDIDATE_ROOTS: Mutex<Vec<CandidateRoot>> = Mutex::new(Vec::new());
 static VTABLE_CACHE_ROOTS: Mutex<BTreeMap<(u64, u64), usize>> = Mutex::new(BTreeMap::new());
-static MATERIALIZATIONS: Mutex<Vec<MaterializationEntry>> = Mutex::new(Vec::new());
 static CODE_BINDINGS: Mutex<Vec<CodeBindingEntry>> = Mutex::new(Vec::new());
 static PORTABLE_IMAGE_STAGE: Mutex<Option<PortableImageStage>> = Mutex::new(None);
 static INITIALIZER_TRANSACTION: Mutex<Option<InitializerTransaction>> = Mutex::new(None);
@@ -273,34 +275,15 @@ static IMAGE_DISPATCH_RECOVERY: AtomicBool = AtomicBool::new(false);
 static IMAGE_CODE_LOAD_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 static NEXT_CODE_GENERATION_LEASE: AtomicU64 = AtomicU64::new(1);
 static NEXT_MATERIALIZATION_NAMESPACE: AtomicU64 = AtomicU64::new(1);
-static NEXT_MATERIALIZATION_AGE: AtomicU64 = AtomicU64::new(1);
 static NEXT_PREPARED_TOKEN: AtomicU64 = AtomicU64::new(1);
 static RUNTIME_PHASE: AtomicU8 = AtomicU8::new(0);
 static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
 static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
 static METHOD_OP_PRESENT: AtomicBool = AtomicBool::new(false);
 
-const MAX_MATERIALIZATION_CACHE_ENTRIES: usize = 64;
-const MAX_MATERIALIZATION_CACHE_PROGRAM_BYTES: usize = 64 << 20;
-const MAX_MATERIALIZATION_C_SOURCE_BYTES: usize = 128 << 20;
 const MAX_CURRENT_CODE_BINDINGS: usize = 262_144;
 
-struct MaterializationEntry {
-    disposition: MaterializationDisposition,
-    digest: [u8; 32],
-    program: Vec<u8>,
-    vtable: usize,
-    unit: usize,
-    generated_bytes: usize,
-    age: u64,
-    ready: bool,
-}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MaterializationDisposition {
-    Synchronous,
-    Resumable,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CodeBindingLifecycle {
@@ -612,22 +595,7 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
             unsafe { mark(unit as Oop) };
         }
     }
-    if let Ok(materializations) = MATERIALIZATIONS.lock() {
-        for entry in materializations.iter() {
-            // SAFETY: bounded ready entries form an explicit cache lease;
-            // staging entries protect their unit and vtable across
-            // allocation-capable setup. After eviction, live Block vtables
-            // retain the same unit through their two-edge private carrier.
-            unsafe {
-                if entry.vtable != 0 {
-                    mark(entry.vtable as Oop);
-                }
-                if entry.unit != 0 {
-                    mark(entry.unit as Oop);
-                }
-            }
-        }
-    }
+    unsafe { materialization_cache::mark_roots(mark) };
     if let Ok(bindings) = CODE_BINDINGS.lock() {
         for binding in bindings.iter() {
             // Current semantic bindings retain target, selector,
@@ -6183,116 +6151,11 @@ fn issue_materialization_namespace() -> Option<u32> {
         .filter(|value| *value != 0)
 }
 
-fn next_materialization_age() -> u64 {
-    NEXT_MATERIALIZATION_AGE.fetch_add(1, Ordering::AcqRel)
-}
 
-fn cached_materialization(
-    disposition: MaterializationDisposition,
-    digest: [u8; 32],
-    program: &[u8],
-) -> Option<(Oop, Oop)> {
-    let mut entries = MATERIALIZATIONS.lock().ok()?;
-    let entry = entries.iter_mut().find(|entry| {
-        entry.ready
-            && entry.disposition == disposition
-            && entry.digest == digest
-            && entry.program == program
-    })?;
-    entry.age = next_materialization_age();
-    Some((entry.vtable as Oop, entry.unit as Oop))
-}
 
-fn stage_materialization(
-    disposition: MaterializationDisposition,
-    digest: [u8; 32],
-    program: Vec<u8>,
-    unit: Oop,
-    generated_bytes: usize,
-) -> bool {
-    let Ok(mut entries) = MATERIALIZATIONS.lock() else {
-        return false;
-    };
-    while entries.len() >= MAX_MATERIALIZATION_CACHE_ENTRIES
-        || entries
-            .iter()
-            .try_fold(0usize, |total, entry| {
-                total.checked_add(entry.program.len())
-            })
-            .and_then(|total| total.checked_add(program.len()))
-            .is_none_or(|total| total > MAX_MATERIALIZATION_CACHE_PROGRAM_BYTES)
-        || entries
-            .iter()
-            .try_fold(0usize, |total, entry| {
-                total.checked_add(entry.generated_bytes)
-            })
-            .and_then(|total| total.checked_add(generated_bytes))
-            .is_none_or(|total| total > MAX_MATERIALIZATION_C_SOURCE_BYTES)
-    {
-        let Some((index, _)) = entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| entry.ready)
-            .min_by_key(|(_, entry)| entry.age)
-        else {
-            return false;
-        };
-        entries.remove(index);
-    }
-    entries.push(MaterializationEntry {
-        disposition,
-        digest,
-        program,
-        vtable: 0,
-        unit: unit as usize,
-        generated_bytes,
-        age: next_materialization_age(),
-        ready: false,
-    });
-    true
-}
 
-fn set_staged_materialization_vtable(unit: Oop, vtable: Oop) -> bool {
-    let Ok(mut entries) = MATERIALIZATIONS.lock() else {
-        return false;
-    };
-    let Some(entry) = entries
-        .iter_mut()
-        .find(|entry| !entry.ready && entry.unit == unit as usize)
-    else {
-        return false;
-    };
-    entry.vtable = vtable as usize;
-    true
-}
 
-fn commit_staged_materialization(unit: Oop) -> bool {
-    let Ok(mut entries) = MATERIALIZATIONS.lock() else {
-        return false;
-    };
-    let Some(entry) = entries
-        .iter_mut()
-        .find(|entry| !entry.ready && entry.unit == unit as usize && entry.vtable != 0)
-    else {
-        return false;
-    };
-    entry.ready = true;
-    entry.age = next_materialization_age();
-    true
-}
 
-fn remove_materialization(unit: Oop) {
-    let removed = if let Ok(mut entries) = MATERIALIZATIONS.lock() {
-        let before = entries.len();
-        entries.retain(|entry| entry.unit != unit as usize);
-        before != entries.len()
-    } else {
-        false
-    };
-    if removed {
-        let _ = take_vtable_cache_roots(jit_code_generation_identity(unit));
-    }
-}
 
 unsafe fn compile_synchronous_materialization(
     api: &IdApi,
@@ -8222,21 +8085,6 @@ unsafe extern "C" fn rust_codegen_materialize_resumable(
     block
 }
 
-unsafe extern "C" fn rust_codegen_materialization_count(
-    _self_object: Oop,
-    _pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    if count != 0 {
-        abort("RustCodegen materializationCount expects no arguments");
-    }
-    let value = MATERIALIZATIONS
-        .lock()
-        .map(|entries| entries.iter().filter(|entry| entry.ready).count())
-        .unwrap_or(0);
-    let api = unsafe { api(runtime()) };
-    unsafe { (api.mkSmallInt)(value as i64) }
-}
 
 unsafe extern "C" fn rust_codegen_current_code_binding_count(
     _self_object: Oop,
@@ -8384,50 +8232,6 @@ unsafe extern "C" fn rust_codegen_portable_image_bindings(
     unsafe { make_vector(api, vector, &encoded) }
 }
 
-unsafe extern "C" fn rust_codegen_evict_materializations(
-    _self_object: Oop,
-    _pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    if count != 0 {
-        abort("RustCodegen evictMaterializations expects no arguments");
-    }
-    let (removed, generations) = MATERIALIZATIONS
-        .lock()
-        .map(|mut entries| {
-            let before = entries.len();
-            let mut generations = Vec::new();
-            entries.retain(|entry| {
-                if entry.ready {
-                    generations.push((
-                        entry.disposition,
-                        jit_code_generation_identity(entry.unit as Oop),
-                    ));
-                    false
-                } else {
-                    true
-                }
-            });
-            (before - entries.len(), generations)
-        })
-        .unwrap_or_default();
-    // Repository eviction drops its own Unit lease. Materialized JIT Units
-    // trace their vtable/Code caches for the lifetime of real Block owners;
-    // those values retain identity and edits until the whole cycle dies.
-    // The separate artifact cache cleanup below does not clear Unit caches.
-    for (disposition, generation) in generations {
-        let _ = take_vtable_cache_roots(generation);
-        if disposition == MaterializationDisposition::Resumable {
-            let api = unsafe { api(runtime()) };
-            // A live Block makes this first attempt reject after preserving
-            // the generation for a later GC safe-point retry. A quiescent unit
-            // retires immediately. Either result leaves no repository root.
-            let _ = unsafe { retire_runtime_generation_v1(api, generation) };
-        }
-    }
-    let api = unsafe { api(runtime()) };
-    unsafe { (api.mkSmallInt)(removed as i64) }
-}
 
 unsafe extern "C" fn rust_codegen_eval_persisting(
     self_object: Oop,
