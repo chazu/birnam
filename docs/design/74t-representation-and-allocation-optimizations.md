@@ -1,6 +1,8 @@
 # 74T — Numeric, loop, aggregate and closure optimization
 
-Status: implementation in progress. This document tracks the user's request to
+Status: all four consumer implementations are integrated; bounded qualification
+is complete with conditional default promotion rejected for the remaining opt-in
+settings. See [74AK](74ak-bounded-qualification-and-defaults.md). This document tracks the user's request to
 implement all four remaining families in [74Q](74q-optimization-roadmap.md).
 Recovery infrastructure alone does not complete a family. The outstanding 74S
 application timing gate remains separate.
@@ -2149,3 +2151,19 @@ See [74AJ](74aj-landing-the-combined-consumers.md) for the accepted checks and
 [74AH](74ah-admitted-application-workload.md) for reproduction. Optional resource
 and profitability experiments remain deferred; old queue descriptions must not
 be interpreted as instructions to restart them.
+
+### Bounded qualification verdict (74AK)
+
+The user authorized a one-hour qualification run and promotion where there is no
+apparent slowdown. The fixed initial and selected-closure comparison matrices
+completed with 252 correct normal-floor executions. All missing scoped Rust
+allocator checks passed, completing eight debug/release Runtime cases and 24
+teardown cycles. Existing source, ABI, image and installed acceptance was reused
+for unchanged code.
+
+The remaining experimental settings cross the declared slowdown rule in some
+cases, so they stay opt-in. Aggregate defaults remain enabled. This is a completed
+qualification decision under the revised acceptance instruction, not universal
+performance approval or a completed exhaustive replay. Any further default
+promotion is a new targeted optimization task; repeated qualification is not the
+next step. See [74AK](74ak-bounded-qualification-and-defaults.md).

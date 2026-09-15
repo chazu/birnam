@@ -5,6 +5,13 @@ implement or promote another optimization. It follows the user's request for a
 plan covering the opportunities beyond 74P, including transformations for which
 deoptimization cannot undo an observable change.
 
+Current qualification decision, 2026-09-14: [74AK](74ak-bounded-qualification-and-defaults.md)
+completed the user-authorized bounded comparisons and missing allocator checks.
+All semantic checks passed, but the remaining opt-in settings showed apparent
+slowdowns in some cases and remain opt-in. Existing aggregate defaults stay on.
+This supersedes earlier pending qualification queues; no new runtime defaults
+were enabled and no host-qualified performance claim is made.
+
 Implementation status, 2026-09-13: [74R](74r-small-callee-recovery-plans.md)
 delivers the first bounded inlining batch. [74S](74s-three-optimization-families.md)
 implements inherited dispatch caching, guarded native Frame regions and selective

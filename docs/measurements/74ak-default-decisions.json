@@ -1,0 +1,51 @@
+{
+  "status": "completed",
+  "qualified": false,
+  "default_changes": [],
+  "source_commit": "932744623664d21ff455c7fafdd040c88c32871f",
+  "basis": "User-authorized bounded qualification and no-apparent-slowdown default rule. Passing correctness is separate from default promotion. Clear measured counterexamples retain opt-in defaults; no claim of host-qualified performance.",
+  "evidence": {
+    "74ak-promotion-comparison.json": "91de8535b4280be76f7f24162f33bd79b1018764b4f7ec6da978f651270f60bc",
+    "74ak-closure-confirmation.json": "1578b4a467a62628644b5a9134494047939e271c6ca136b3d15f58995ea2d168",
+    "74ak-rust-storage-completion.json": "a675262ca0643a35ee4196c6d67250e42372c1760197617df08ce01fbb4815bb",
+    "74aj-landing-resumed.json": "271a27711a453cd29e1c01c2a20ded336c9a974f8ba48711ee5bc10adba122e4"
+  },
+  "decisions": [
+    {
+      "family": "numeric",
+      "status": "retain_opt_in",
+      "reason": "Short raw chains +10.5% execution / +20.9% including GC; hot raw chains faster execution but +8.0% including GC."
+    },
+    {
+      "family": "loop",
+      "status": "retain_opt_in",
+      "reason": "Changing-input loop +14.1% execution / +13.6% including GC; invariant loop faster."
+    },
+    {
+      "family": "closures_and_literal_callees",
+      "status": "retain_opt_in",
+      "reason": "Hot closures faster; closure-only confirmation has +10.3% single-use GC-inclusive time and +8.7% ordinary-collection process time. Combined closure/literal controls also crossed the rule."
+    },
+    {
+      "family": "counted_frame_indices",
+      "status": "retain_opt_in",
+      "reason": "Hot numeric case +8.2% execution and +6.0% process time; short case +7.8% execution."
+    },
+    {
+      "family": "aggregate_allocation_and_fields",
+      "status": "retain_enabled",
+      "reason": "Existing defaults: binding application -7.7% execution, -9.5% including GC, -22.8% process time; semantic and lifetime checks remain passed."
+    }
+  ],
+  "retained_defaults": {
+    "UNBOXED_NUMERIC": 0,
+    "LOOP_INVARIANTS": 0,
+    "CLOSURE_ELISION": 0,
+    "LITERAL_CALLEES": 0,
+    "COUNTED_FRAME_INDICES": 0,
+    "VIRTUAL_FIELDS": 1,
+    "DISCARDED_CLONES": 1
+  },
+  "next_work": "Any default promotion needs an implementation/admission improvement, rather than rerunning this qualification until a favorable result appears. Further optimization development is not part of this bounded run.",
+  "diagnostic_evidence_commit": "498bb063d6baa07802750d510928744d563cfe87"
+}
