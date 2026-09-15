@@ -15238,3 +15238,6 @@ mod floor_lookup_fixture {
 fn floor_lookup_contract() {
     floor_lookup_fixture::check(|api, name| unsafe { floor_symbol(api, name.to_bytes_with_nul()) }, false);
 }
+
+#[cfg(test)]
+mod state_contract;
