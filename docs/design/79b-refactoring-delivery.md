@@ -1,7 +1,7 @@
 # 79B — Refactoring delivery and evidence
 
-Status: implementation delivered within the gates below; integrated acceptance
-running. Authorized 2026-09-15. Governing contracts: [78](78-invariant-preserving-refactoring-review.md),
+Status: implemented within the scope below; focused checks pass. Full language
+qualification is incomplete after the requested validation cutback. Authorized 2026-09-15. Governing contracts: [78](78-invariant-preserving-refactoring-review.md),
 [78A](78a-refactoring-adversarial-review.md), [79](79-refactoring-implementation-plan.md),
 and [79A](79a-implementation-plan-adversarial-review.md).
 
@@ -14,11 +14,11 @@ of a technical dependency or permission to bypass a gate.
 
 | Series | Delivered | Remaining gate / exclusion |
 | --- | --- | --- |
-| A: language bytes | Shared unchecked selector arity and literal-body decoding; caller validation preserved. | Integrated acceptance pending. |
+| A: language bytes | Shared unchecked selector arity and literal-body decoding; caller validation preserved. | Focused checks pass; full language qualification incomplete. |
 | B: exact floor | Shared acquisition mechanics for TCC registration/retirement and Codegen; each adapter retains its cache and lookup policy. | B5 Image migration deferred: Image source is a frozen compatibility authority. |
-| C: relational | One raw output writer for ten adapters; pure evaluator separated from native adapter; unnecessary Rust String copies removed. | Integrated acceptance pending. |
+| C: relational | One raw output writer for ten adapters; pure evaluator separated from native adapter; unnecessary Rust String copies removed. | Focused checks pass; full language qualification incomplete. |
 | D: materialization | D1 cache and D2 CodeBindings storage, operations and root segments have private owners. | D3/D5/D6 need the broader failure/lifetime matrix. D4 has non-equivalent orchestration order. See [79C](79c-materialization-ownership.md). |
-| E: host | Command, project data, filesystem, runtime and startup responsibilities have private modules with existing public exports. | Integrated acceptance pending. |
+| E: host | Command, project data, filesystem, runtime and startup responsibilities have private modules with existing public exports. | Focused checks pass; full language qualification incomplete. |
 | F: analysis reuse | Static caller and ownership audit. No production changes. | Paired preparation-cost and retained-lifetime evidence absent. See [79D](79d-optimizer-refactoring-gates.md). |
 | G: transition sharing | One private alias transition for the two canonical closure callers. | Numeric and aggregate sharing deferred because their contracts differ; see 79D. |
 
@@ -71,28 +71,42 @@ the broader D failure matrix open; the complete disposition is recorded in 79C.
 
 ## Acceptance
 
-The final source-bound release plan contains **84 steps**: workspace/tool and
-format tests, installation/native workflows, the five added fixture/project
-steps, exhaustive debug and release matrices, evaluator/native-storage lifetime,
-recovery, native exports and independent cold-source installation.
+The user explicitly reduced validation scope during implementation. The blanket
+84-step release requirement was excessive for these bounded refactors; the
+release run and queued supplemental lifetime sweeps were stopped.
 
-```sh
-CARGO_TARGET_DIR=.cargo-target mise exec -- python3 scripts/validate.py \
-  --suite release --deadline 21600 --output .cargo-target/validation/79-final \
-  --prefix "$(cat /tmp/birnam79-prefix.txt)"
-```
+Acceptance now consists of the Rust workspace, the Birnam language suite, tests
+for the changed boundaries, and existing normal native lifecycles. G also uses
+the already-passing debug sequence/mutation checks. Reuse matching evidence;
+additional work needs a concrete changed behavior or unresolved invariant concern.
+The policy is recorded in [79 section 5](79-refactoring-implementation-plan.md#5-testing-and-evidence-execution).
 
-Current receipt: `.cargo-target/validation/79-final/run.json`. Current log:
-`/tmp/birnam79-final-release-resumed.log`. Acceptance is pending until all 84
-selected steps pass and the receipt audit matches current inputs/artifacts.
-A passing subset invocation is not full acceptance.
+Current candidate evidence already passed:
 
-Following the complete release receipt, the same prefix runs the language suite.
-A separate diagnostic release target runs the existing unit-cache lifetime
-fixture in leaf, numeric-body and numeric-body with counted-frame-index modes.
-Those fixtures separately exercise native GC/retirement and normal-floor/TCC
-identity. They are diagnostic lifetime evidence, not production timing evidence.
-Follow-up receipt: `.cargo-target/validation/79-followup/run.json`.
+- Workspace and validation-tool tests.
+- Selected-floor discovery: nine actual-adapter cases.
+- Relational output: 120 cases; all allocation/floor-live rows match C6.
+- Codegen state/root ownership: three fresh-process cases.
+- Actual host bridge and the complete project workflow.
+- Normal native lifecycle, including CodeBinding/image/mutation/retirement paths.
+- Targeted debug literal, sequence and mutation checks.
+- Frozen authorities, recovery, native exports and cold-source builds from the
+  earlier scoped preflight. These completed checks do not need repetition.
+
+The language run used the existing private prefix and stopped at its three-minute
+cap. Completed assertions passed; the suite did not finish and is not counted as
+a pass. No retry or supplemental sweep is queued. Receipt:
+`.cargo-target/validation/79-language/run.json`. Full language qualification remains
+open; the implementation and focused-check results above stand on their own.
+
+The interrupted release receipt remains at
+`.cargo-target/validation/79-final/run.json`, with cancellation recorded as a
+failed/incomplete run. Its individual passing steps retain their source/artifact
+receipts. The full release suite has **not** passed and is not required for this
+refactor's revised acceptance. A final audit confirmed that the selected passing
+workspace/native/contract/sequence/mutation receipts still match current source,
+artifacts and dependencies; that audit reran no tests. No semantic assertion, frozen baseline or checker
+was weakened.
 
 ### Validation issues resolved without weakening contracts
 
@@ -100,7 +114,8 @@ Follow-up receipt: `.cargo-target/validation/79-followup/run.json`.
    the generated command because the validation plan omitted required `--profile`.
    Commit `66ceacbb` supplies the requested profile and adds an actual parser
    regression test. Debug/release loop-invariant checks then passed. The changed
-   plan invalidates earlier matrix receipts; affected steps are rerun.
+   plan invalidates earlier matrix receipts; only selected affected checks are
+   required under the revised validation scope.
 2. Recovery subsequently caught edits to the frozen ABI root and Image lib.
    Commit `96bdd2b8` places the helper declaration under the existing ABI private
    module and restores Image lib byte-for-byte. B5 and its Image-specific fixture

@@ -252,6 +252,8 @@ bootstrap and existing benchmark thresholds.
   delivered scope and acceptance. A/C/E and closure-only G are implemented;
   B covers TCC/Codegen only because Image is a frozen compatibility authority.
   D is limited to cache/CodeBindings ownership. Broader D and F remain gated.
+  Validation was reduced to change-focused checks by user direction; the full
+  release run was stopped and language qualification reached its time cap.
   See [79C](../design/79c-materialization-ownership.md) and
   [79D](../design/79d-optimizer-refactoring-gates.md) for scope and review findings.
 

@@ -5,6 +5,8 @@
 > initially authorized planning and adversarial review. Implementation was
 > subsequently authorized on 2026-09-15; progress and evidence are recorded in
 > [79B](79b-refactoring-delivery.md).
+> Validation scope was reduced by explicit user direction during implementation:
+> use the change-focused acceptance in section 5, not a full release matrix.
 > This document schedules no deployment, commit, tracker transition or default
 > promotion. Its commit labels are proposed work units, not completed work.
 
@@ -147,10 +149,9 @@ For example, the private Frame/manifest arity helpers classify empty input
 differently from the compiler's total helper. Leaving them untouched avoids
 assuming their caller validation makes every internal behavior interchangeable.
 
-**Series acceptance:** exhaustive correctness, plus language suites and exact
-emission comparisons. Provider-free dependency/export checks must pass. Any
-bootstrap dependency change requires release acceptance; it is preferable to
-use the already existing dependency graph. No performance claim is planned.
+**Series acceptance:** section 5's shared baseline, focused byte/emission tests
+and provider-free dependency/export checks. A bootstrap dependency change needs
+the affected bootstrap check. No performance claim is planned.
 
 ### B — Exact-floor discovery (R2)
 
@@ -177,8 +178,9 @@ not keep a harness-owned reference alive across an unload assertion and thereby
 mask a premature release. Fixture capability traces supplement normal-prefix
 native/image tests; they do not replace ordinary-floor acceptance.
 
-**Series acceptance:** release correctness (includes exhaustive and cold-source
-relocation), plus B1. Confirm normal-floor/provider export and dependency surfaces.
+**Series acceptance:** section 5's shared baseline, B1 and normal-floor native
+checks. Confirm provider export/dependency surfaces and frozen authorities.
+Image migration is deferred in this delivery because its source is frozen.
 
 ### C — Relational output and evaluator (R3)
 
@@ -195,9 +197,9 @@ C4 is conditional and may be deferred without blocking C5/C6. Do not stream
 output before total capacity is known, set `written` on entry, or introduce
 exclusive output references while callbacks/input reads can still access it.
 
-**Series acceptance:** exhaustive correctness and language suites, plus the C1
-native-adapter matrix; native export layout unchanged. No query optimization is
-included. A source count of removed clones is not a timing result.
+**Series acceptance:** section 5's shared baseline and C1's native-adapter matrix;
+native export layout unchanged. No query optimization is included. A source count
+of removed clones is not a timing result.
 
 ### D — Materialization ownership (R4)
 
@@ -241,8 +243,10 @@ the next send, and active old-code retention. Preserve barriers and bounded
 resumable stack behavior. An effect counter and correct final value alone do
 not prove all of those properties.
 
-**Series acceptance:** release correctness, language suites and the complete D0
-failure/lifetime matrix. No remaining direct registry manipulation across the
+**Series acceptance:** section 5's shared baseline and evidence for the ownership
+actually moved. D1/D2 require the state/root characterization and existing native
+lifecycles. Broader moves remain gated by the complete D0 failure/lifetime matrix.
+No remaining direct registry manipulation across the
 new ownership seam; no unsourced root or native owner. D4 may remain partial
 where behavior differs; D5/D6 must not depend on forcing those paths to merge.
 
@@ -261,9 +265,8 @@ A discovered existing pointer-lifetime issue must be separately reported. The
 first source-independent project-run test corrupts/removes authored input after
 a successful build and checks ordinary run/install still use that publication.
 
-**Series acceptance:** release correctness, language suites and explicit host
-project/bridge tests. The routine `native` step is not a substitute for the full
-project workflow fixture.
+**Series acceptance:** section 5's shared baseline and explicit host project/bridge
+tests. The project workflow fixture remains necessary for the project moves.
 
 ### F — Conditional compiler-analysis reuse (R6)
 
@@ -279,7 +282,7 @@ retention/accounting. In that case retain the duplicated validation. Existing
 public aggregate derivation is excluded from F. A cached compiler proof never
 replaces the live send/constructor/API/lookup guard that admits execution.
 
-**Series acceptance:** exhaustive correctness, language suites and F0's paired
+**Series acceptance:** section 5's shared baseline and F0's paired
 preparation/refusal/lifetime evidence using the revision comparison below.
 Improvement is not assumed, no default is promoted, and no full profitability
 research is required merely for file moves.
@@ -345,10 +348,31 @@ production helper. Do not change driver/descriptor/root-map semantics to make
 sharing possible. Failing G0 is a valid reason to stop this series; it does not
 block A–F.
 
-**Series acceptance:** exhaustive correctness, language suites and G0's domain
-matrix. Resource changes require the same accounting/lifetime checks as F.
+**Series acceptance:** section 5's shared baseline, G0's domain tests, and targeted
+sequence/mutation checks. Resource changes require the affected accounting/lifetime
+checks. Unchanged numeric/aggregate families do not require full matrix sweeps.
 
 ## 5. Testing and evidence execution
+
+### Change-focused acceptance — revised during implementation
+
+The user explicitly rejected the 84-step release run as excessive for this work.
+The refactor uses four groups of evidence, once on the combined candidate:
+
+1. Rust workspace tests, including focused compiler/byte/transition tests.
+2. The Birnam language suite against the existing candidate prefix.
+3. Tests for changed boundaries: loader selection, relational FFI output,
+   cache/binding roots, host bridge and project workflow.
+4. Existing normal native lifecycles for malleability, replacement/retirement
+   and image behavior, plus targeted sequence/mutation checks for G.
+
+Reuse already-passing checks whose source and artifacts still match. Preserve
+the frozen ABI/Image authorities. Add a further check only for a specific changed
+behavior, failure, or unresolved invariant concern; document what it resolves.
+Full debug/release optimizer matrices, performance sweeps, repeated cold builds
+and supplemental lifetime sweeps are not automatic refactor requirements.
+The repository's full release tools remain available for release qualification.
+The interrupted release run is incomplete and is not relabeled as a release pass.
 
 ### Existing entry points verified during planning
 
@@ -400,16 +424,14 @@ a manual log does not ensure the test remains exercised after the refactor.
 
 ### Cost and repetition rules
 
-Run focused checks for each commit. At a series boundary run the required tier
-on the final combined source; a passing release tier subsumes exhaustive/routine
-coverage already contained in it. Avoid rerunning contained suites unless new
-changes or failures require it. Language suites and new cases outside the tier
-remain separately required. Reuse only validated matching evidence; moves,
-added input files and changed build configurations invalidate affected results.
+Run affected checks as changes are made, then the shared acceptance once on the
+combined source. Do not multiply full suites by series or automatically promote
+a refactor to release qualification. Reuse only validated matching evidence;
+changed source, input files and build configurations invalidate affected results.
 
-Record normal and diagnostic builds separately. Required diagnostic matrices
-retain both profiles/GC modes as selected by the current plan; installed
-normal-prefix evidence and ABI/export checks must use normal builds.
+Record normal and diagnostic builds separately. Select diagnostic cases only
+when they resolve a concrete concern in the changed code; installed normal-prefix
+evidence and ABI/export checks use normal builds.
 
 Current default deadlines are 15 minutes for routine and 30 for exhaustive/
 release. A timeout is incomplete. A larger explicit execution budget or resumed

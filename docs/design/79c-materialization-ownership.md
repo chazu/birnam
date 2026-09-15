@@ -86,8 +86,8 @@ retain the guard across delegated continuation or leave this segment in place.
 - `portable-code-binding-lifecycle-smoke.sh` uses separate REPL turns to prove
   publication/replacement/self-removal and retirement. `stackless-control-smoke.sh`
   exercises the 100k callback loop in normal and source-recovery entry.
-- The complete D series still requires fresh release/language acceptance and
-  the existing evaluator/native-storage matrices. Source-identical function
+- The broader D moves still require evidence for their actual failure/lifetime
+  boundaries. D1/D2 use the reduced acceptance in 79B. Source-identical function
   moves will be checked independently by parsed declaration/method tokens,
   including bodies, literals and local scopes. No compile/publication setup is
   merged on that evidence; D4 remains deferred because the table proves differing
@@ -113,8 +113,11 @@ no source-level invariant regression in these moves and agreed that D3/D5/D6
 must remain undelivered. Its acceptance objections are recorded here:
 
 1. Opaque-token state tests do not prove real image publication, native reaping
-   or GC lifetime. A-prefix native evidence predates D1/D2. Require the combined
-   candidate release/language and image/CodeBinding/evaluator/native-storage routes.
+   or GC lifetime. A-prefix native evidence predates D1/D2. The reviewer requested
+   combined release/language and image/CodeBinding/evaluator/native-storage routes.
+   The user subsequently reduced acceptance scope: current combined normal-native
+   image/CodeBinding lifecycles, state/root cases and language tests qualify D1/D2.
+   The broader lifetime requirement continues to gate the undelivered moves.
 2. The temporary baseline/D1/D2 JSON files do not carry source/artifact manifests.
    They are focused logs. Final `codegen-state` must run through PlanRunner and
    its hashed inputs/artifact receipt. Fixed token-audit baselines are `b9ae3c77`

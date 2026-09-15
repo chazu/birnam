@@ -1,6 +1,7 @@
 # 79D — Optimizer refactoring gate decisions
 
-Status: F deferred; G1/G2 implemented, integrated acceptance pending. This record
+Status: F deferred; G1/G2 implemented with focused checks passing. Full language
+qualification is incomplete; see 79B. This record
 applies to the Design 79 batch through `2e8d14d6`. It does not promote any native
 family or change the live guards that authorize optimized execution.
 
@@ -56,6 +57,6 @@ still allocate one alias vector at the same preparation point; no Oop, runtime
 root, native metadata, live send guard or execution allocation charge moved.
 
 G0 baseline: 13 closure tests passed. G1 and G2 each passed all 97 pure Codegen
-tests. These are focused results, not full series acceptance. The integrated
-release matrix and language suite remain required. G3 is deferred because the
+tests. Final acceptance uses the reduced scope requested by the user: workspace,
+language, normal native and targeted sequence/mutation checks; see 79B. G3 is deferred because the
 numeric and aggregate contracts above do not justify one shared transition.
