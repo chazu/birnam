@@ -1503,6 +1503,27 @@ unsafe fn grouped_terms(api: &IdApi, pattern: GroupedPattern) -> Result<[Term; 3
     ])
 }
 
+/// Publish only after every callback and borrowed-input read has completed.
+/// Callers retain their early pointer checks. Raw writes permit existing input/
+/// output and count/output overlap; no exclusive output slice is introduced.
+unsafe fn write_projected_values(
+    values: &[Value],
+    output: *mut ClassifiedValue,
+    capacity: usize,
+    written: *mut usize,
+) -> i32 {
+    if values.len() > capacity {
+        return -5;
+    }
+    for (slot, value) in values.iter().cloned().enumerate() {
+        // SAFETY: the caller supplied writable record storage; the complete
+        // length check bounds writes and all input access has already ended.
+        unsafe { ptr::write(output.add(slot), record(value)) };
+    }
+    unsafe { *written = values.len() };
+    0
+}
+
 #[allow(clippy::too_many_arguments)]
 unsafe fn project_live(
     store: Oop,
@@ -1541,18 +1562,7 @@ unsafe fn project_live(
         Err(status) => return status,
     };
     let projected = project(&facts, &[Clause(terms)], projection as u32);
-    if projected.len() > capacity {
-        return -5;
-    }
-    // SAFETY: the caller supplied capacity elements of writable output storage;
-    // the length check above bounds every write.
-    let projected_len = projected.len();
-    for (slot, value) in projected.iter().cloned().enumerate() {
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    // `written` is the number of projected values, not the callback snapshot.
-    unsafe { *written = projected_len };
-    0
+    unsafe { write_projected_values(&projected, output, capacity, written) }
 }
 
 #[allow(clippy::too_many_arguments)]
