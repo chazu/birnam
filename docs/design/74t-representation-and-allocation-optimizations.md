@@ -11,6 +11,13 @@ for host admission. Retain the observations and their uncertainty; do not label
 them host-qualified. Semantic, identity, GC, control, ABI and lifetime correctness
 requirements remain unchanged.
 
+Current landing, 2026-09-14: [74AJ](74aj-landing-the-combined-consumers.md)
+integrates the combined consumers after 24 focused release checks passed,
+including clean source archives, installed recovery/control and application
+checks. Completed tests for unchanged inputs are reused. Further performance,
+expanded matrices and Rust allocator accounting are deferred; existing defaults
+are unchanged. The full qualification objective remains open.
+
 ## Contract
 
 Preserve ordinary Id meaning, mutable method lookup, object identity, shared

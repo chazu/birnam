@@ -36,7 +36,11 @@ pub fn emit(
     if !enabled {
         return Ok(baseline);
     }
-    let Ok(plan) = Plan::derive(program, layout) else {
+    let plan = if let Ok(plan) = Plan::derive(program, layout) {
+        plan.map_callee(|_| ())
+    } else if let Ok(plan) = crate::closure_elision::NumericPlan::derive_numeric(program, layout) {
+        plan.map_callee(|_| ())
+    } else {
         return Ok(baseline);
     };
     if plan.continuation.is_none() {

@@ -197,7 +197,7 @@ impl Drop for Mode {
 }
 
 #[test]
-fn loop_invariant_numeric_work_preserves_inputs_methods_lookup_gc_and_fresh_results() {
+pub(super) fn loop_invariant_numeric_work_preserves_inputs_methods_lookup_gc_and_fresh_results() {
     let (numeric_program, parent_program) = programs();
     for tails in [false, true] {
         for unboxed in [false, true] {

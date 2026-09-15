@@ -84,6 +84,14 @@ impl Unit {
         metrics::read()
     }
 
+    /// All live TinyCC heap requests in this compiler instance, including
+    /// compiler metadata and scratch. Raw compiler users must also serialize.
+    #[cfg(feature = "allocation-metrics")]
+    pub fn compiler_heap_totals() -> super::HeapAllocationTotals {
+        let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
+        super::heap_allocation_totals()
+    }
+
     #[cfg(feature = "resource-metrics")]
     pub fn relocated_allocation_bytes(&self) -> usize {
         let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
@@ -182,5 +190,40 @@ mod tests {
         assert_eq!(Unit::resource_totals(), (before.0 + 1, before.1 + big_size));
         drop(big);
         assert_eq!(Unit::resource_totals(), before);
+    }
+
+    #[test]
+    #[cfg(feature = "allocation-metrics")]
+    fn compiler_heap_returns_to_baseline_after_failure_and_last_owner_release() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        let before = Unit::compiler_heap_totals();
+        for _ in 0..16 {
+            let owner = Rc::new(unsafe {
+                Unit::compile(c"static volatile unsigned char values[65536]; long answer(long n) { values[n & 65535] = 7; return values[n & 65535]; }", &[])
+            }.unwrap());
+            let live = Unit::compiler_heap_totals();
+            assert!(live.blocks > before.blocks);
+            assert!(live.requested_bytes > before.requested_bytes);
+            assert!(unsafe { Unit::compile(c"not valid C", &[]) }.is_none());
+            assert_eq!(Unit::compiler_heap_totals(), live);
+            assert!(
+                unsafe {
+                    Unit::compile(
+                        c"extern long missing(void); long answer(void) { return missing(); }",
+                        &[],
+                    )
+                }
+                .is_none()
+            );
+            assert_eq!(Unit::compiler_heap_totals(), live);
+            let entry: unsafe extern "C" fn(i64) -> i64 =
+                unsafe { core::mem::transmute(owner.symbol(c"answer").unwrap().as_ptr()) };
+            let selected = owner.clone();
+            drop(owner);
+            assert_eq!(unsafe { entry(12345) }, 7);
+            assert_eq!(Unit::compiler_heap_totals(), live);
+            drop(selected);
+            assert_eq!(Unit::compiler_heap_totals(), before);
+        }
     }
 }

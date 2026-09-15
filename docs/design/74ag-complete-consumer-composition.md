@@ -1,13 +1,14 @@
 # 74AG — Compose the four consumers with complete Unit ownership
 
-Status: implementation in progress in an isolated worktree. No family is complete
-and no optimization default is promoted by this composition.
+Status: integrated by [74AJ](74aj-landing-the-combined-consumers.md), 2026-09-14.
+The focused release landing checks passed with exact source and artifact audits.
+No optimization default is promoted; broader family qualification remains open.
 
-Implementation and evidence are committed on `codex/74ag-complete-consumer-composition`
-in `/tmp/birnam-74ag-complete-consumer-composition`: source `89805312`, both-profile
-source lifetime acceptance `6a5a11e5`. The measurement links below refer to that
-branch's evidence directory. This main-branch copy records the design and status;
-main has not integrated the implementation.
+The implementation originates on `codex/74ag-complete-consumer-composition`: source
+`89805312`, source lifetime acceptance `6a5a11e5`, and restored artifact acceptance
+`a364ae0a`. Its implementation and committed evidence are included in this merge.
+74AJ supersedes the exhaustive replay requirement below for landing; the original
+full verification was interrupted and is not recorded as passed.
 
 Start from the 74AD interaction candidate `eb006eb7`: numeric closure bodies,
 counted Frame indices, scoped control reads and exact String cleanup. Add the

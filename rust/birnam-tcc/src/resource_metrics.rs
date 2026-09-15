@@ -37,6 +37,36 @@ pub(super) unsafe extern "C" fn allocation_bytes(_: Oop, _: *const Oop, count: u
     unsafe { (api.mkSmallInt)(value) }
 }
 
+#[cfg(feature = "allocation-metrics")]
+pub(super) unsafe extern "C" fn heap_allocation_bytes(_: Oop, _: *const Oop, count: usize) -> Oop {
+    unsafe { heap_total(count, false) }
+}
+
+#[cfg(feature = "allocation-metrics")]
+pub(super) unsafe extern "C" fn heap_allocation_count(_: Oop, _: *const Oop, count: usize) -> Oop {
+    unsafe { heap_total(count, true) }
+}
+
+#[cfg(feature = "allocation-metrics")]
+unsafe fn heap_total(count: usize, blocks: bool) -> Oop {
+    let api = unsafe { api_ref(RUNTIME.get().expect("TCC runtime was not initialized")) };
+    if count != 0 {
+        return api.nilObj;
+    }
+    // Baseline module entry occurs at a quiescent compiler boundary. Snapshot
+    // first: boxing the diagnostic result may itself invoke allocation/GC.
+    let totals = birnam_native_compiler::heap_allocation_totals();
+    let value = if blocks {
+        totals.blocks
+    } else {
+        totals.requested_bytes
+    };
+    let Ok(value) = i64::try_from(value) else {
+        return api.nilObj;
+    };
+    unsafe { (api.mkSmallInt)(value) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,9 +102,16 @@ mod tests {
     #[test]
     fn baseline_unit_bytes_follow_real_relocation_failure_and_release() {
         let _lock = VALIDATION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        #[cfg(feature = "allocation-metrics")]
+        let heap_before = birnam_native_compiler::heap_allocation_totals();
         let baseline = BYTES.load(Ordering::Relaxed);
         let units = LIVE_UNIT_STATES.load(Ordering::Acquire);
         let mut small = Owned::new(c"int answer(void) { return 41; }");
+        #[cfg(feature = "allocation-metrics")]
+        assert!(
+            birnam_native_compiler::heap_allocation_totals().requested_bytes
+                > heap_before.requested_bytes
+        );
         assert_eq!(BYTES.load(Ordering::Relaxed), baseline);
         assert_eq!(unsafe { relocate(small.state()) }, 0);
         let small_bytes = unsafe { relocated_allocation_bytes(small.state()) };
@@ -116,5 +153,10 @@ mod tests {
         drop(small); // The central release is idempotent.
         assert_eq!(BYTES.load(Ordering::Relaxed), baseline);
         assert_eq!(LIVE_UNIT_STATES.load(Ordering::Acquire), units);
+        #[cfg(feature = "allocation-metrics")]
+        assert_eq!(
+            birnam_native_compiler::heap_allocation_totals(),
+            heap_before
+        );
     }
 }

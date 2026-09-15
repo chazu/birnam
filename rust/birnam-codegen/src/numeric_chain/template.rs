@@ -17,7 +17,7 @@ pub enum Input {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Send {
     pub pc: u32,
     pub selector: Vec<u8>,
@@ -25,7 +25,7 @@ pub struct Send {
     pub right: Value,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Template {
     inputs: Vec<Input>,
     sends: Vec<Send>,

@@ -18,6 +18,10 @@ pub(in crate::runtime) mod loop_reuse;
 // invocation. Leases own the pool so cache clearing and nested drives cannot
 // invalidate active storage. Free buffers contain no traced Birnam references.
 const MAX_FREE_BUFFERS: usize = 4;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+thread_local! {
+    pub(in crate::runtime) static ENTRY_PREDICTION_KERNELS: Cell<usize> = const { Cell::new(0) };
+}
 #[derive(Default)]
 struct Buffers {
     inputs: Vec<i64>,
@@ -68,6 +72,90 @@ pub(in crate::runtime) struct Binding {
 }
 
 impl CompiledChain {
+    /// Predict from explicit entry Oops before a physical callee Frame exists.
+    /// The caller validates the current descriptor record. This path uses an
+    /// already compiled owner and never changes hotness or loop reuse history.
+    pub(in crate::runtime) fn predict_entry(
+        self: &Rc<Self>,
+        runtime: &Runtime,
+        key: usize,
+        initial: &[(usize, Oop)],
+    ) -> Option<Ticket> {
+        self.prepare_entry(runtime, key, initial)?.evaluate_entry()
+    }
+
+    /// Reuse only after ordinary entry validation, and only within the supplied
+    /// bounded admission scope. Each actual call still owns its Oops and Frame.
+    pub(in crate::runtime) fn predict_entry_reusing<'p>(
+        self: &Rc<Self>,
+        runtime: &Runtime,
+        key: usize,
+        initial: &[(usize, Oop)],
+        previous: impl Iterator<Item = &'p Rc<Ticket>>,
+    ) -> Option<Rc<Ticket>> {
+        let ticket = self.prepare_entry(runtime, key, initial)?;
+        for prior in previous {
+            if prior.key == ticket.key
+                && Rc::ptr_eq(&prior.chain, &ticket.chain)
+                && prior.buffers.values.inputs == ticket.buffers.values.inputs
+            {
+                return Some(prior.clone());
+            }
+        }
+        Some(Rc::new(ticket.evaluate_entry()?))
+    }
+
+    fn prepare_entry(
+        self: &Rc<Self>,
+        runtime: &Runtime,
+        key: usize,
+        initial: &[(usize, Oop)],
+    ) -> Option<Ticket> {
+        let mut buffers = runtime
+            .numeric
+            .borrow_mut()
+            .buffers
+            .get_or_insert_with(Pool::default)
+            .take(self.template.inputs().len(), self.bindings.len());
+        {
+            let state = unsafe { &*runtime.state.get() };
+            let canonical = state.canonical?;
+            let error = state.symbols.existing(b"ErrorVt")?;
+            if state.environment.import(error) == canonical.smallint_vt {
+                return None;
+            }
+            for (destination, input) in buffers.values.inputs.iter_mut().zip(self.template.inputs())
+            {
+                *destination = match input {
+                    Input::Literal { value, .. } => *value,
+                    Input::Frame(slot) => {
+                        let value = initial.iter().find_map(|&(index, value)| {
+                            (index == *slot as usize).then_some(value)
+                        })?;
+                        if Vtables::checked_vtable_of(&state.heap, value) != canonical.smallint_vt
+                            || !state.heap.payload_size(value).is_some_and(|size| size >= 8)
+                        {
+                            return None;
+                        }
+                        state.values.integer_value(value)
+                    }
+                };
+            }
+        }
+        let ticket = Ticket {
+            key,
+            chain: self.clone(),
+            buffers,
+            next: 0,
+        };
+        // Queries are outside RuntimeState/registry borrows. The current native
+        // declaration supplies arithmetic authority, not selector spelling.
+        if !ticket.fusion_bindings_current(runtime) {
+            return None;
+        }
+        Some(ticket)
+    }
+
     #[cfg(feature = "ffi-test-hooks")]
     pub(in crate::runtime) fn loop_resources(&self) -> (usize, usize, usize) {
         self.loop_reuse.as_ref().map_or((0, 0, 0), |reuse| {
@@ -175,6 +263,20 @@ pub(in crate::runtime) struct Ticket {
     next: usize,
 }
 impl Ticket {
+    fn evaluate_entry(mut self) -> Option<Self> {
+        // This is a callee preflight, not an observed caller tail iteration.
+        // Do not consume or replace loop-reuse history.
+        #[cfg(any(test, feature = "ffi-test-hooks"))]
+        ENTRY_PREDICTION_KERNELS.set(ENTRY_PREDICTION_KERNELS.get() + 1);
+        let success = unsafe {
+            (self.chain.kernel)(
+                self.buffers.values.inputs.as_ptr(),
+                self.buffers.values.outputs.as_mut_ptr(),
+            ) == 0
+        };
+        success.then_some(self)
+    }
+
     pub(in crate::runtime) fn fusion_template(&self) -> &Template {
         &self.chain.template
     }

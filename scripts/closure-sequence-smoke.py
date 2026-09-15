@@ -10,8 +10,12 @@ import subprocess
 import tempfile
 
 
-def source(calls, escaping, precise):
-    body = ["let closure := [:arg | let kept := input; let local := arg; local];",
+def source(calls, escaping, precise, numeric=False, *, numeric_copy_region=False):
+    assert not numeric_copy_region or numeric
+    arithmetic = ("let first := [20 + 15]; let second := [first + first]; "
+                  if numeric_copy_region else
+                  "let first := [20 + 15]; let second := [first + 7]; ") if numeric else ""
+    body = ["let closure := [:arg | let kept := input; " + arithmetic + "let local := arg; local];",
             "let alias := closure;"]
     for call in range(calls):
         argument = ("input", "other", "answer")[call % 3]
@@ -30,19 +34,29 @@ def main():
     parser.add_argument("--floor", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--quick", action="store_true")
+    parser.add_argument("--numeric-body", action="store_true")
+    parser.add_argument("--numeric-copy-region", action="store_true",
+                        help="Use a second numeric operation without a new literal, allowing counted copy regions")
+    parser.add_argument("--counted-frame-indices", action="store_true")
     args = parser.parse_args()
+    if args.numeric_copy_region and not args.numeric_body:
+        parser.error('--numeric-copy-region requires --numeric-body')
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
     env.update(BIRNAM_ID_DYLIB=str(args.floor.resolve()), BIRNAM_TEST_CLOSURE_CONTROL="1",
                BIRNAM_DEV_CLOSURE_FORCE_RECOVERY="0", BIRNAM_DEV_CLOSURE_REPORT="0")
+    env['BIRNAM_DEV_COUNTED_FRAME_INDICES'] = str(int(args.counted_frame_indices))
     receipt = {"status": "running", "scope": "Source sequence correctness and allocation accounting; no timing claim",
-               "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(), "rows": []}
+               "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(),
+               "counted_frame_indices": args.counted_frame_indices,
+               "numeric_copy_region": args.numeric_copy_region, "rows": []}
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-closure-sequence-") as work:
             fixture = Path(work) / "sequence.birnam"
             for precise in ([1] if args.quick else [0, 1]):
                 for calls in ([3, 33] if args.quick else [1, 2, 3, 32, 33]):
                     for escaping in [False, True]:
-                        code = source(calls, escaping, precise)
+                        code = source(calls, escaping, precise, numeric=args.numeric_body,
+                                      numeric_copy_region=args.numeric_copy_region)
                         fixture.write_text(code)
                         baseline = None
                         force_points = [0, 1, 2] if args.quick else list(range(min(calls, 32)))
@@ -66,7 +80,13 @@ def main():
                             assert values["hits"] == (8 if enabled and not forced else 0), row
                             assert values["completed_calls"] == (8 * (force if forced else min(calls, 32)) if enabled else 0), row
                             assert values["materialized"] == (8 if enabled and not forced and (escaping or calls > 32) else 0), row
-                            assert values["physical_saved"] == (8 if enabled and not forced and not escaping and calls <= 32 else 0), row
+                            indices = values['counted_indices']
+                            assert 0 <= indices <= values['physical_saved'], row
+                            if not args.counted_frame_indices:
+                                assert indices == 0, row
+                            elif args.numeric_copy_region:
+                                assert indices > 0, row
+                            assert values["physical_saved"] - indices == (8 if enabled and not forced and not escaping and calls <= 32 else 0), row
                         print(f"closure-sequence-smoke: precise={precise} calls={calls} escaping={int(escaping)} baseline/enabled/forced passed", flush=True)
         receipt["status"] = "passed"
     except BaseException as error:

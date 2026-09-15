@@ -32,7 +32,7 @@ pub(super) struct Compiled {
 thread_local! {
     pub(super) static ENABLED: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static COUNTED_INDICES: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
-    pub(super) static COUNTED_BOXES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+    pub(super) static COUNTED_CONTROL_READS: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
     pub(super) static REUSE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
     pub(super) static PROPAGATE: core::cell::Cell<bool> = const { core::cell::Cell::new(true) };
     pub(super) static COMPILE_NS: core::cell::Cell<u128> = const { core::cell::Cell::new(0) };
@@ -41,9 +41,15 @@ thread_local! {
     pub(super) static MISSES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
 }
 
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+thread_local! {
+    pub(super) static COUNTED_BOXES: core::cell::Cell<usize> = const { core::cell::Cell::new(0) };
+}
+
 fn counted_indices_enabled() -> bool {
     #[cfg(test)]
     {
+        COUNTED_CONTROL_READS.set(COUNTED_CONTROL_READS.get() + 1);
         COUNTED_INDICES.get()
     }
     #[cfg(not(test))]
@@ -56,8 +62,8 @@ fn counted_indices_enabled() -> bool {
 /// The original operation is Runtime::make_integer, a direct floor constructor,
 /// so neither an Integer method lookup nor an exported IntegerVt name grants
 /// authority here. Use the same retained canonical vtable and raw payload shape.
-fn record_dead_indices(runtime: &Runtime, indices: &[u32]) -> bool {
-    if !counted_indices_enabled() {
+fn record_dead_indices(runtime: &Runtime, indices: &[u32], enabled: bool) -> bool {
+    if !enabled {
         return false;
     }
     runtime.assert_owner();
@@ -120,6 +126,33 @@ impl Compiled {
         args: *const Oop,
         count: usize,
     ) -> Oop {
+        // Ordinary publication can invoke an observer. Never retain its choice
+        // for another PC; read only after this region's admission succeeds.
+        unsafe {
+            self.invoke_with_counting(
+                runtime,
+                machine,
+                descriptor_key,
+                baseline,
+                args,
+                count,
+                &mut None,
+            )
+        }
+    }
+
+    /// Reuse a control read only within an already admitted observation-free
+    /// invocation. The caller must discard it before an observing boundary.
+    pub(super) unsafe fn invoke_with_counting(
+        &self,
+        runtime: &Runtime,
+        machine: Oop,
+        descriptor_key: usize,
+        baseline: Method,
+        args: *const Oop,
+        count: usize,
+        counting: &mut Option<bool>,
+    ) -> Oop {
         let symbol = {
             let state = unsafe { &*runtime.state.get() };
             match &self.plan.selector_store {
@@ -152,10 +185,18 @@ impl Compiled {
         // These body operands never expose an Oop: the original region already
         // discards each make_integer result before executing its raw copy kernel.
         // Admit the entire batch atomically, otherwise retain physical allocation.
-        let counted = record_dead_indices(runtime, &self.plan.boxed_indices);
-        #[cfg(test)]
+        let counted = record_dead_indices(
+            runtime,
+            &self.plan.boxed_indices,
+            *counting.get_or_insert_with(counted_indices_enabled),
+        );
+        #[cfg(any(test, feature = "ffi-test-hooks"))]
         if counted {
-            COUNTED_BOXES.set(COUNTED_BOXES.get() + self.plan.boxed_indices.len());
+            COUNTED_BOXES.set(
+                COUNTED_BOXES
+                    .get()
+                    .wrapping_add(self.plan.boxed_indices.len()),
+            );
         }
         for &index in &self.plan.boxed_indices {
             #[cfg(test)]

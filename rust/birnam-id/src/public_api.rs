@@ -21,6 +21,11 @@ fn runtime() -> &'static Runtime {
     unsafe { &*pointer }
 }
 
+#[cfg(test)]
+pub(crate) fn runtime_for_string_cleanup_test() -> &'static Runtime {
+    runtime()
+}
+
 unsafe extern "C" fn api_dlopen(path: *const c_char, mode: c_int) -> *mut c_void {
     // SAFETY: this is a transparent pass-through of the platform loader ABI.
     unsafe { crate::loader::open(path, mode) }
@@ -184,6 +189,14 @@ unsafe extern "C" fn api_word_value(object: Oop) -> u64 {
 
 unsafe extern "C" fn api_is_word(object: Oop) -> c_int {
     i32::from(runtime().is_word(object))
+}
+
+/// This exact cleanup routes only to the process-published Runtime and removes
+/// its private byte owner without reading Id state or invoking another callback.
+/// The caller must additionally prove that this Runtime owns the object's bytes.
+pub(crate) fn string_cleanup_matches_runtime(active: &Runtime, finalizer: Finalizer) -> bool {
+    finalizer as usize == string_finalizer as *const () as usize
+        && core::ptr::eq(PUBLIC_RUNTIME.load(Ordering::Acquire).cast_const(), active)
 }
 
 pub(crate) unsafe extern "C" fn string_finalizer(object: Oop) {

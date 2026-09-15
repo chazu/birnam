@@ -922,3 +922,67 @@ fn portable_registration_activates_and_recovers_on_the_same_frame() {
         assert_eq!(run(case, false), run(case, true), "{case:?}");
     }
 }
+
+#[test]
+fn numeric_callee_provenance_is_owned_only_in_closure_mode() {
+    struct Mode(bool);
+    impl Drop for Mode {
+        fn drop(&mut self) {
+            closure_elision::ENABLED.set(self.0);
+        }
+    }
+    let _mode = Mode(closure_elision::ENABLED.get());
+    let send = |left, right| Expr::Send {
+        receiver: Box::new(left),
+        selector: Cow::Borrowed(b"blend:"),
+        args: vec![right],
+        source: b"",
+    };
+    let bytes = portable::encode_block(
+        &Block {
+            params: vec![b"input"],
+            body: vec![
+                Statement::Let {
+                    name: b"first",
+                    value: send(Expr::Global(b"input"), Expr::SmallInt(7)),
+                },
+                Statement::Expr(send(Expr::Global(b"first"), Expr::SmallInt(9))),
+            ],
+        },
+        &[],
+    )
+    .unwrap();
+    let programs = portable_inventory::encode_closure(&[&bytes]).unwrap();
+    let bindings = code_binding_inventory::encode(&[]).unwrap();
+    let selected = selection::encode(
+        &programs,
+        &bindings,
+        &[],
+        &[selection::Disposition::Resumable],
+    )
+    .unwrap();
+    let selected = selection::inspect(&selected, &programs, &bindings).unwrap();
+    let row = selected.row(0).unwrap();
+    for enabled in [false, true, false] {
+        closure_elision::ENABLED.set(enabled);
+        let prepared = Prepared::new(&bytes, row, 1, AggregatePolicy::from_environment()).unwrap();
+        assert!(prepared.numeric.is_some());
+        assert_eq!(
+            prepared.numeric_closure_program.as_deref(),
+            enabled.then_some(bytes.as_slice())
+        );
+        let candidate = prepared.compile().unwrap();
+        if enabled {
+            assert!(Rc::ptr_eq(
+                prepared.numeric_closure_program.as_ref().unwrap(),
+                candidate.numeric_closure_program.as_ref().unwrap()
+            ));
+        }
+        drop(prepared);
+        assert_eq!(
+            candidate.numeric_closure_program.as_deref(),
+            enabled.then_some(bytes.as_slice()),
+            "the executing candidate retains exact provenance after preparation storage is released"
+        );
+    }
+}

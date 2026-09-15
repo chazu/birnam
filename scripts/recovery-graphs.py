@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import subprocess
 import tempfile
 from compatibility_authority import unchanged_authority
@@ -35,7 +36,7 @@ def sources():
         "unboxed-numeric-timing.py", "loop-invariant-numeric-smoke.py",
         "loop-measurement-smoke.py", "loop_timing_common.py", "loop-timing.py",
         "closure-sequence-mutation-smoke.py",
-        "closure-budget-smoke.py",
+        "closure-budget-smoke.py", "closure-numeric-inputs-smoke.py", "closure-string-cleanup-smoke.py", "closure-numeric-actions-smoke.py",
         "closure-journal-smoke.py",
         "closure-measurement-smoke.py",
         "closure-timing.py", "closure_timing_common.py",
@@ -58,6 +59,10 @@ def sources():
         "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
         "scripts/fixtures/closure-elision.birnam", "scripts/fixtures/closure-literals.birnam",
         "scripts/fixtures/closure-literal-control.birnam",
+        "scripts/fixtures/closure-numeric.birnam", "scripts/fixtures/closure-numeric-control.birnam",
+        "scripts/fixtures/closure-numeric-inputs.birnam",
+        "scripts/fixtures/closure-counted-numeric-control.birnam",
+        "scripts/fixtures/closure-counted-numeric-inputs.birnam",
         "scripts/fixtures/closure-observation.birnam",
         "scripts/fixtures/closure-control.birnam",
         "scripts/fixtures/closure-live-api.birnam",
@@ -67,6 +72,244 @@ def sources():
     for folder in ("rust", "src/id", "modules"):
         paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
     return {str(p.relative_to(ROOT)): sha(p) for p in sorted(paths)}
+
+
+
+def check_numeric_closure_matrices(matrices):
+    sequence_source = runpy.run_path(str(ROOT / "scripts/closure-sequence-smoke.py"))["source"]
+    measure_module = runpy.run_path(str(ROOT / "scripts/closure_timing_common.py"))
+    action_source = runpy.run_path(str(ROOT / "scripts/closure-numeric-actions-smoke.py"))["source"]
+    budget_source = runpy.run_path(str(ROOT / "scripts/closure-budget-smoke.py"))["source"]
+    modes = [(0, 1, -1), (1, 0, -1), (1, 1, -1), (1, 1, 0), (1, 1, 1), (1, 1, 2)]
+    expected_source = {(p, l, e, f) for p in (0, 1) for l, e, f in modes}
+    expected_control = {(p, c, l, e, f) for p, l, e, f in expected_source if l == 1
+                        for c in ("capture", "suspend")}
+    expected_inputs = {(p, e, f) for p in (0, 1) for e, f in ((0, -1), (1, -1), (1, 0), (1, 1), (1, 2))}
+    expected_sequence = {(p, n, escape, enabled, force) for p in (0, 1)
+                         for n in (1, 2, 3, 32, 33) for escape in (False, True)
+                         for enabled, force in [(False, -1), (True, -1)] + [(True, f) for f in range(min(n, 32))]}
+    digest = lambda source: hashlib.sha256(source.encode()).hexdigest()
+    for profile in ("debug", "release"):
+        def rows(name, keys, expected):
+            values = matrices[f"numeric-{name}-{profile}.json"]["rows"]
+            if len(values) != len(expected) or {tuple(row[k] for k in keys) for row in values} != expected:
+                raise RuntimeError(f"incomplete numeric closure {name} matrix")
+            return values
+        rows("source", ("precise", "literals", "enabled", "forced"), expected_source)
+        rows("control", ("precise", "control", "literals", "enabled", "forced"), expected_control)
+        rows("inputs", ("precise", "enabled", "forced"), expected_inputs)
+        expected_measures = {(u, s, e) for u in (1, 3, 4, 8, 16, 32) for s in range(4) for e in (0, 1)}
+        measures = rows("measure", ("uses", "shape", "enabled"), expected_measures)
+        for row in measures:
+            if row["source_sha256"] != digest(measure_module["source"](row["uses"], numeric=True)):
+                raise RuntimeError("numeric closure measurement used a different body")
+        for uses, shape in {(u, s) for u, s, _ in expected_measures}:
+            pair = {r["enabled"]: r["values"] for r in measures if r["uses"] == uses and r["shape"] == shape}
+            measure_module["check_pair"](pair[0], pair[1], 2, numeric=True)
+
+        expected_actions = {(tail, captures, p, e, f) for tail in (False, True)
+                            for captures in (False, True) for p, e, f in expected_inputs}
+        actions = rows("actions", ("tail", "captures", "precise", "enabled", "forced"), expected_actions)
+        baselines = {(r["tail"], r["captures"], r["precise"]): r["snapshots"] for r in actions if not r["enabled"]}
+        for row in actions:
+            if row["source_sha256"] != digest(action_source(row["tail"], row["captures"])):
+                raise RuntimeError("numeric closure action probe used a different body")
+            events = row["snapshots"]
+            if len(events) != 3 or any([len(a) for a in e] != [4, 9, 8, 5, 7, 7, 6, 7, 4] or e[-1][2:] != [1, 0] for e in events):
+                raise RuntimeError("numeric closure action snapshot is incomplete")
+            if events != baselines[row["tail"], row["captures"], row["precise"]]:
+                raise RuntimeError("numeric closure residual actions differ")
+
+        for name, fixture in (("source", "closure-numeric.birnam"), ("control", "closure-numeric-control.birnam")):
+            if matrices[f"numeric-{name}-{profile}.json"]["source_sha256"].get(f"scripts/fixtures/{fixture}") != sha(ROOT / "scripts/fixtures" / fixture):
+                raise RuntimeError("numeric closure fixture differs from tested source")
+        for row in rows("sequence", ("precise", "calls", "escaping", "enabled", "force"), expected_sequence):
+            if row["source_sha256"] != digest(sequence_source(row["calls"], row["escaping"], row["precise"], numeric=True)):
+                raise RuntimeError("numeric closure sequence used a different body")
+        budget = matrices[f"numeric-budget-{profile}.json"]["rows"]
+        expected_budget = set()
+        for precise in (0, 1):
+            for calls in (3, 32):
+                for escaping in (False, True):
+                    initial = [row for row in budget if (row["precise"], row["calls"], row["escaping"], row["gap"], row["enabled"]) == (precise, calls, escaping, 65536, 0)]
+                    if len(initial) != 1 or initial[0]["values"]["collections"] != 0:
+                        raise RuntimeError("numeric budget has no complete baseline extent")
+                    values = initial[0]["values"]
+                    extent = values["remaining_bytes"] - (values["threshold"] - 65536)
+                    gaps = {65536, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, extent - 8, extent, extent + 8}
+                    expected_budget.update((precise, calls, escaping, gap, enabled) for gap in gaps for enabled in (0, 1))
+        for row in rows("budget", ("precise", "calls", "escaping", "gap", "enabled"), expected_budget):
+            if row["source_sha256"] != digest(budget_source(row["calls"], row["escaping"], row["precise"], row["gap"], numeric=True)):
+                raise RuntimeError("numeric closure budget used a different body")
+
+
+def check_joint_numeric_closure_pair(family, off, on):
+    """Admit complete joint matrices and compare observable state across counting modes."""
+    def require(condition, detail):
+        if not condition:
+            raise RuntimeError(f"joint numeric closure {family}: {detail}")
+
+    require(off['floor_sha256'] == on['floor_sha256'], 'different diagnostic floors')
+    for binding in ('installed_sha256', 'artifacts'):
+        require(off.get(binding) == on.get(binding), 'different installed artifacts')
+    keys = {
+        'sequence': ('precise', 'calls', 'escaping', 'enabled', 'force'),
+        'budget': ('precise', 'calls', 'escaping', 'gap', 'enabled'),
+        'control': ('precise', 'control', 'literals', 'enabled', 'forced'),
+        'inputs': ('precise', 'enabled', 'forced'),
+    }[family]
+    indexed = []
+    for counting, receipt in ((False, off), (True, on)):
+        require(receipt['status'] == 'passed', 'matrix did not pass')
+        require(receipt.get('numeric_copy_region') is True and
+                receipt.get('counted_frame_indices') is counting, 'wrong body or counting mode')
+        rows = {tuple(row[key] for key in keys): row for row in receipt['rows']}
+        require(len(rows) == len(receipt['rows']), 'duplicate coordinates')
+        modes = ((0, -1), (1, -1), (1, 0), (1, 1), (1, 2))
+        if family == 'sequence':
+            expected = {(p, n, e, enabled, force) for p in (0, 1) for n in (1, 2, 3, 32, 33)
+                        for e in (False, True) for enabled, force in
+                        [(0, -1), (1, -1)] + [(1, f) for f in range(min(n, 32))]}
+        elif family == 'control':
+            expected = {(p, c, 1, enabled, force) for p in (0, 1)
+                        for c in ('capture', 'suspend') for enabled, force in modes}
+        elif family == 'inputs':
+            expected = {(p, enabled, force) for p in (0, 1) for enabled, force in modes}
+        else:
+            expected = set()
+            for p in (0, 1):
+                for n in (3, 32):
+                    for e in (False, True):
+                        baseline = rows.get((p, n, e, 65536, 0))
+                        require(baseline is not None, 'missing baseline budget extent')
+                        values = baseline['values']
+                        extent = values['remaining_bytes'] - (values['threshold'] - 65536)
+                        require(values['collections'] == 0 and 64 < extent < 65528 and extent % 8 == 0,
+                                'invalid baseline budget extent')
+                        gaps = {65536, 64, 128, 256, 512, 1024, 2048, 4096, 8192,
+                                16384, 32768, extent - 8, extent, extent + 8}
+                        expected.update((p, n, e, gap, enabled) for gap in gaps for enabled in (0, 1))
+                        group = [r['values'] for key, r in rows.items() if key[:3] == (p, n, e)]
+                        completed = {v['completed_calls'] for v in group}
+                        require(0 in completed and n in completed and any(0 < c < n for c in completed),
+                                'missing budget recovery prefixes')
+                        require({v['collections'] for v in group} == {0, 1}, 'missing GC boundary')
+                        if counting:
+                            require(any(v['counted_recorded'] > 0 for v in group), 'no counted budget work')
+        require(set(rows) == expected, 'incomplete coordinates')
+        if family in ('sequence', 'budget'):
+            generator = runpy.run_path(str(ROOT / f'scripts/closure-{family}-smoke.py'))['source']
+            for row in rows.values():
+                args = [row['calls'], row['escaping'], row['precise']]
+                if family == 'budget':
+                    args.append(row['gap'])
+                body = generator(*args, numeric=True, numeric_copy_region=True)
+                require(row['source_sha256'] == hashlib.sha256(body.encode()).hexdigest(), 'different source body')
+                v = row['values']
+                indices = v['counted_indices']
+                require(0 <= indices <= v['physical_saved'], 'invalid counted savings')
+                if family == 'budget':
+                    require(indices <= v['counted_recorded'], 'missing counted events')
+                    if not counting:
+                        require(v['counted_recorded'] == 0, 'counted events while disabled')
+                require((indices > 0 if counting and family == 'sequence' else True) and
+                        (counting or indices == 0), 'counting mode was not exercised')
+        else:
+            sources = receipt['sources' if family == 'inputs' else 'source_sha256']
+            fixture = f'scripts/fixtures/closure-counted-numeric-{family}.birnam'
+            require(sources.get(fixture) == sha(ROOT / fixture), 'different source fixture')
+            require(all(sha(ROOT / name) == digest for name, digest in sources.items()), 'stale source hashes')
+            for row in rows.values():
+                if family == 'inputs':
+                    require(row['exit_code'] == 0, 'input fixture failed')
+                else:
+                    v = row['counted']
+                    require(set(v) == {'before_pause', 'after_resume'}, 'missing control counters')
+                    require((v['before_pause'] > 0 and v['after_resume'] >= v['before_pause']) if counting
+                            else v['before_pause'] == v['after_resume'] == 0, 'counted work absent at pause')
+                    raw = (row['stdout'] + row['stderr']).splitlines()
+                    counter_lines = [line for line in raw if line.startswith('closure-counted-control: ')]
+                    require(counter_lines == [f"closure-counted-control: before_pause={v['before_pause']} after_resume={v['after_resume']}"],
+                            'control counters differ from actual output')
+                    normalized = [re.sub(r'calls=\d+', 'calls=CHECKED', line) for line in raw
+                                  if not line.startswith(('closure-elision:', 'closure-counted-control: '))]
+                    require(normalized == row['output'], 'control output differs from actual output')
+        indexed.append(rows)
+    require(indexed[0].keys() == indexed[1].keys(), 'counting modes have different coordinates')
+    for key, baseline in indexed[0].items():
+        candidate = indexed[1][key]
+        if family in ('sequence', 'budget'):
+            def observable(row):
+                values = dict(row['values'])
+                values['physical_saved'] -= values.pop('counted_indices')
+                values.pop('counted_recorded', None)
+                return values
+            require(observable(baseline) == observable(candidate), f'counting changed accounting or recovery at {key}')
+        elif family == 'control':
+            require((baseline['output'], baseline['completed_calls']) ==
+                    (candidate['output'], candidate['completed_calls']), f'counting changed V2 behavior at {key}')
+        else:
+            require((baseline['stdout'], baseline['stderr']) == (candidate['stdout'], candidate['stderr']),
+                    f'counting changed current inputs or effects at {key}')
+
+
+def check_closure_string_cleanup_matrix(receipt):
+    def require(condition, detail):
+        if not condition:
+            raise RuntimeError('closure String cleanup: ' + detail)
+    require(receipt['status'] == 'passed' and receipt.get('quick') is False, 'incomplete matrix')
+    keys = ('precise', 'calls', 'escaping', 'cleanup', 'enabled', 'force', 'counted')
+    expected = {(p, n, e, c, enabled, force, counting) for p in (0, 1) for n in (3, 33)
+                for e in (False, True) for c in (1, 2, 3) for counting in (False, True)
+                for enabled, force in ((False, -1), (True, -1), (True, 0), (True, 1), (True, min(n, 32) - 1))}
+    rows = {tuple(r[k] for k in keys): r for r in receipt['rows']}
+    require(len(rows) == len(receipt['rows']) == len(expected) and set(rows) == expected, 'wrong coordinates')
+    require(all(sha(ROOT / n) == h for n, h in receipt['sources'].items()), 'stale sources')
+    source = runpy.run_path(str(ROOT / 'scripts/closure-sequence-smoke.py'))['source']
+    for key, row in rows.items():
+        require(row['exit_code'] == 0, 'failed process')
+        body = source(row['calls'], row['escaping'], row['precise'], numeric=True, numeric_copy_region=True)
+        require(row['source_sha256'] == hashlib.sha256(body.encode()).hexdigest(), 'different body')
+        for prefix, field in (('closure-sequence ', 'sequence'), ('closure-cleanup ', 'collection')):
+            lines = [s for s in row['stdout'].splitlines() if s.startswith(prefix)]
+            require(len(lines) == 1, 'missing diagnostic')
+            require({k: int(v) for k, v in re.findall(r'(\w+)=(\d+)', lines[0])} == row[field], 'diagnostic differs from raw output')
+        v, c = row['sequence'], row['collection']
+        require(v['counted_indices'] > 0 if row['counted'] else v['counted_indices'] == 0, 'counting not exercised')
+        require(c['pending'] == v['physical_saved'] and c['settled'] == (0 if row['cleanup'] == 1 else c['pending']), 'incorrect settlement')
+        require(c['mode'] == row['cleanup'] and c['callbacks'] == int(row['cleanup'] != 1) and c['string_released'] == 1, 'cleanup not exercised')
+        require(c['reclaimed'] > 0 and c['after_live'] == c['before_live'] - c['reclaimed'], 'allocation conservation')
+        if row['cleanup'] == 1:
+            require(c['callback_live'] == c['callback_bytes'] == 0, 'unexpected observing callback')
+        else:
+            require(c['callback_live'] == c['after_live'] + c['remaining_dead'] and
+                    c['callback_bytes'] == c['after_bytes'] + c['remaining_dead_bytes'], 'callback sweep accounting')
+        if row['counted']:
+            baseline = rows[(*key[:-1], False)]
+            def accounting(row):
+                sequence = dict(row['sequence'])
+                sequence['physical_saved'] -= sequence.pop('counted_indices')
+                collection = {k: v for k, v in row['collection'].items() if k not in
+                              ('pending', 'settled', 'callback_live', 'callback_bytes', 'remaining_dead', 'remaining_dead_bytes')}
+                return sequence, collection
+            require(accounting(baseline) == accounting(row), 'counting changed logical observations')
+
+
+def check_baseline_storage_matrix(storage):
+    if storage.get('status') != 'passed' or storage.get('heap_accounting') is not True:
+        raise RuntimeError('baseline TCC compiler heap accounting was not exercised')
+    expected = {(profile, size, repetition) for profile in ('debug', 'release')
+                for size in (4096, 65536) for repetition in range(3)}
+    if len(storage['rows']) != 12 or {(r['profile'], r['payload_bytes'], r['repetition']) for r in storage['rows']} != expected:
+        raise RuntimeError('incomplete baseline TCC storage lifecycle matrix')
+    checks = runpy.run_path(str(ROOT / 'scripts/baseline-native-storage-smoke.py'))
+    for row in storage['rows']:
+        source = checks['fixture'](row['payload_bytes'], True)
+        if row['source_sha256'] != hashlib.sha256(source.encode()).hexdigest():
+            raise RuntimeError('baseline TCC storage source differs')
+        measurements = checks['validate_row'](row, True)
+        if any(row.get(name) != value for name, value in measurements.items()):
+            raise RuntimeError('baseline TCC storage observations differ from raw output')
 
 
 def main():
@@ -147,10 +390,10 @@ def main():
             receipt["authorities"][name] = sha(ROOT / name)
         for profile in ("debug", "release"):
             run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
-                 "-p", "birnam-native-compiler", "--features", "resource-metrics"]
+                 "-p", "birnam-native-compiler", "--features", "allocation-metrics"]
                 + (["--release"] if profile == "release" else []), profile + "-native-resource-ownership")
             run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
-                 "-p", "birnam-tcc", "--features", "resource-metrics"]
+                 "-p", "birnam-tcc", "--features", "allocation-metrics"]
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["mise", "exec", "--", "cargo", "build", "--locked", "--offline",
@@ -246,8 +489,12 @@ def main():
                     finally:
                         env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
                         env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
-                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control")
+                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control",
+                                                                                      "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs", "numeric-string-cleanup", "numeric-actions", "numeric-measure")
                                 for profile in ("debug", "release")}
+                    expected.update(f"joint-{family}-{counting}-{profile}.json"
+                                    for family in ('sequence', 'budget', 'control', 'inputs')
+                                    for counting in ('off', 'on') for profile in ('debug', 'release'))
                     expected.update({"evaluator-lifetime.json", "baseline-native-storage.json"})
                     paths = list(Path(evidence).glob("*.json"))
                     if {p.name for p in paths} != expected:
@@ -277,6 +524,13 @@ def main():
                         rows = matrices[f"literal-control-{profile}.json"]["rows"]
                         if len(rows) != 24 or {(r["precise"], r["control"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literal_control:
                             raise RuntimeError("incomplete literal result capture/suspension matrix")
+                    check_numeric_closure_matrices(matrices)
+                    for profile in ('debug', 'release'):
+                        check_closure_string_cleanup_matrix(matrices[f'numeric-string-cleanup-{profile}.json'])
+                        for family in ('sequence', 'budget', 'control', 'inputs'):
+                            check_joint_numeric_closure_pair(family,
+                                matrices[f'joint-{family}-off-{profile}.json'],
+                                matrices[f'joint-{family}-on-{profile}.json'])
                     lifetime = matrices.pop("evaluator-lifetime.json")
                     expected_lifetime = {(profile, case) for profile in ("debug", "release")
                                          for case in ("probe-root-boundary", "logicvar-original", "error-original",
@@ -289,10 +543,7 @@ def main():
                             raise RuntimeError("evaluator lifetime floor differs from source matrix floor")
                     receipt["evaluator_lifetime_matrix"] = lifetime
                     baseline_storage = matrices.pop("baseline-native-storage.json")
-                    expected_storage = {(p, size, repeat) for p in ("debug", "release")
-                                        for size in (4096, 65536) for repeat in range(3)}
-                    if len(baseline_storage["rows"]) != 12 or {(r["profile"], r["payload_bytes"], r["repetition"]) for r in baseline_storage["rows"]} != expected_storage:
-                        raise RuntimeError("incomplete baseline TCC storage lifecycle matrix")
+                    check_baseline_storage_matrix(baseline_storage)
                     receipt["baseline_native_storage_matrix"] = baseline_storage
                     receipt["closure_source_matrices"] = matrices
                     if args.unboxed:

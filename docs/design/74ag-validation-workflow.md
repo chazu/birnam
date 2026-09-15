@@ -1,5 +1,13 @@
 # 74AG validation workflow consolidation
 
+Current landing decision: [74AJ](74aj-landing-the-combined-consumers.md) supersedes
+the queue plan below following the user's request to shorten the path to landing.
+The exhaustive AG replay and optional AI allocator experiment are stopped.
+All 24 fresh release/compatibility/focused checks passed; the terminal receipt
+is `docs/measurements/74aj-landing-resumed.json`. Completed source evidence was
+reused after exact input checks.
+The broader qualification objective remains open.
+
 The user explicitly requested this consolidation in the side conversation on
 2026-09-14: slim the workflow and speed up the remaining validation.
 

@@ -105,6 +105,151 @@ fn fused_numeric_driver_preserves_allocations_boundaries_and_late_binding() {
     numeric_driver_preserves_allocations_boundaries_and_late_binding(false);
 }
 
+unsafe extern "C" fn counting_switch_observer(machine: Oop, args: *const Oop, count: usize) -> Oop {
+    OBSERVATIONS.set(OBSERVATIONS.get() + 1);
+    if OBSERVATIONS.get() == 2 {
+        // PC 0 contains entry/global setup and is not a native copy region.
+        // Change after PC 1 so admitted regions execute on both sides.
+        regions::COUNTED_INDICES.set(true);
+    }
+    unsafe { crate::execution::machine_call_site(machine, args, count) }
+}
+
+#[test]
+fn fused_numeric_counting_control_is_scoped_to_nonobserving_execution() {
+    struct CountingMode(bool);
+    impl Drop for CountingMode {
+        fn drop(&mut self) {
+            regions::COUNTED_INDICES.set(self.0);
+        }
+    }
+    let _counting = CountingMode(regions::COUNTED_INDICES.replace(false));
+    for precise in [false, true] {
+        for tail in [false, true] {
+            let _mode = Mode::set(true);
+            let _raw = super::unboxed_numeric_tests::Mode::set(false, None);
+            let bootstrap = crate::dispatch::build_bootstrap();
+            let r = &bootstrap.runtime;
+            r.publish_canonical_exports();
+            r.install_execution_objects();
+            r.gc_set_precise(precise);
+            let native = Fixture::load(r);
+            r.add_method(
+                r.canonical().smallint_vt,
+                r.intern(b"blend:").unwrap(),
+                native.method(1),
+            );
+            let mut body = Vec::new();
+            for operation in 0..16 {
+                let value = Expr::Send {
+                    receiver: Box::new(Expr::Global(if operation == 0 { b"a" } else { b"v" })),
+                    selector: Cow::Borrowed(b"blend:"),
+                    args: vec![Expr::Global(b"b")],
+                    source: b"",
+                };
+                body.push(if tail && operation == 15 {
+                    Statement::Expr(value)
+                } else {
+                    Statement::Let { name: b"v", value }
+                });
+            }
+            if !tail {
+                body.push(Statement::Expr(Expr::Global(b"v")));
+            }
+            let bytes = portable::encode_block(
+                &Block {
+                    params: vec![b"a", b"b"],
+                    body,
+                },
+                &[],
+            )
+            .unwrap();
+            let block = install(r, &bytes, 741507, None);
+            let _block = ScopedOopRootGuard::new(r, block.receiver);
+            let a = r.make_integer(11);
+            let _a = ScopedOopRootGuard::new(r, a);
+            let b = r.make_integer(3);
+            let _b = ScopedOopRootGuard::new(r, b);
+            let invoke = || r.enter(|| r.send_slice(block.receiver, block.selector, &[a, b]));
+            for _ in 0..128 {
+                assert_eq!(r.integer_value(invoke()), 59);
+            }
+            let snapshot = || {
+                let heap = unsafe { &(*r.state.get()).heap };
+                (
+                    heap.allocation_count(),
+                    heap.physical_allocation_count(),
+                    r.gc_live_bytes(),
+                )
+            };
+            let reset = || {
+                regions::COUNTED_CONTROL_READS.set(0);
+                regions::COUNTED_BOXES.set(0);
+                regions::HITS.set(0);
+                fused_numeric::HITS.set(0);
+            };
+            let mut canonical_charge = None;
+            let mut all_counted = 0;
+            // One already-hot Runtime observes each change on the next call.
+            // The unfused path retains a fresh read at every admitted PC.
+            for (fused, counted) in [(false, false), (true, false), (true, true), (true, false)] {
+                let _mode = Mode::set(fused);
+                regions::COUNTED_INDICES.set(counted);
+                r.enter(|| r.gc_collect_from_native_range(0, 0));
+                reset();
+                let before = snapshot();
+                let answer = invoke();
+                let after = snapshot();
+                assert_eq!(r.integer_value(answer), 59);
+                assert_ne!(answer, a);
+                assert_ne!(answer, b);
+                let charge = (after.0 - before.0, after.2 - before.2);
+                assert_eq!(*canonical_charge.get_or_insert(charge), charge);
+                assert!(
+                    regions::HITS.get() > 1,
+                    "precise={precise} tail={tail} fused={fused} counted={counted} region_hits={} numeric_hits={} reads={}",
+                    regions::HITS.get(),
+                    fused_numeric::HITS.get(),
+                    regions::COUNTED_CONTROL_READS.get()
+                );
+                assert_eq!(fused_numeric::HITS.get(), if fused { 16 } else { 0 });
+                assert_eq!(
+                    regions::COUNTED_CONTROL_READS.get(),
+                    if fused { 1 } else { regions::HITS.get() }
+                );
+                let saved = regions::COUNTED_BOXES.get();
+                assert_eq!(saved > 0, counted);
+                assert_eq!(charge.0 - (after.1 - before.1), saved);
+                if counted {
+                    all_counted = saved;
+                }
+                let _answer = ScopedOopRootGuard::new(r, answer);
+                r.enter(|| r.gc_collect_from_native_range(0, 0));
+                assert_eq!(r.integer_value(answer), 59);
+            }
+
+            // A user-defined publication method creates an observation boundary.
+            // Its switch mutation must affect the subsequent PC in this call.
+            let objects = unsafe { (*r.state.get()).execution.objects().unwrap() };
+            r.add_method(
+                objects.machine_vtable,
+                objects.call_site,
+                counting_switch_observer,
+            );
+            regions::COUNTED_INDICES.set(false);
+            OBSERVATIONS.set(0);
+            reset();
+            assert_eq!(r.integer_value(invoke()), 59);
+            assert_eq!(fused_numeric::HITS.get(), 0);
+            assert!(OBSERVATIONS.get() >= 2);
+            assert!(regions::COUNTED_CONTROL_READS.get() > 1);
+            assert_eq!(regions::COUNTED_CONTROL_READS.get(), regions::HITS.get());
+            assert!(regions::COUNTED_BOXES.get() > 0);
+            assert!(regions::COUNTED_BOXES.get() < all_counted);
+        }
+    }
+}
+
 pub(super) fn numeric_driver_preserves_allocations_boundaries_and_late_binding(unboxed: bool) {
     for tail in [false, true] {
         let bytes = program(tail);

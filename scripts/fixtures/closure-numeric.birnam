@@ -1,0 +1,47 @@
+// Fresh results and retained aliases across repeated calls and collecting exits.
+[System load: "modules/os.birnam"];
+[System preciseGc: [[System getEnv: "BIRNAM_CLOSURE_PRECISE"] = "1"]];
+let source := [:observer |
+    let closure := [| let first := [20 + 15]; let second := [first + 7]; second];
+    let first := [closure value];
+    let second := [closure value];
+    let retained := first;
+    let third := [closure value];
+    let observed := [observer value: first value: second value: third value: retained value: closure];
+    retained];
+let factory := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
+let effects := [0 asCell];
+let collect := [false asCell];
+let last := [nil asCell];
+let escaped := [nil asCell];
+let observer := [:first :second :third :retained :closure |
+    [effects inc];
+    [[first == second] ifTrue: [| [OS exit: 41]] ifFalse: [| nil]];
+    [[first == third] ifTrue: [| [OS exit: 42]] ifFalse: [| nil]];
+    [[second == third] ifTrue: [| [OS exit: 43]] ifFalse: [| nil]];
+    [[first == retained] ifTrue: [| nil] ifFalse: [| [OS exit: 44]]];
+    [[first = 42] ifTrue: [| nil] ifFalse: [| [OS exit: 45]]];
+    [[second = 42] ifTrue: [| nil] ifFalse: [| [OS exit: 46]]];
+    [[third = 42] ifTrue: [| nil] ifFalse: [| [OS exit: 47]]];
+    [[first == [last value]] ifTrue: [| [OS exit: 48]] ifFalse: [| nil]];
+    [last set: first];
+    [escaped set: closure];
+    [[collect value] ifTrue: [| [Codegen evictMaterializations]; [System gc]] ifFalse: [| nil]];
+    let fresh := [closure value];
+    [[fresh = 42] ifTrue: [| nil] ifFalse: [| [OS exit: 49]]];
+    [[fresh == first] ifTrue: [| [OS exit: 50]] ifFalse: [| nil]];
+    [[retained = 42] ifTrue: [| nil] ifFalse: [| [OS exit: 51]]];
+    retained];
+[128 timesRepeat: [| [factory value: observer]]];
+[collect set: true];
+[System println: "closure-literals: begin collecting exits"];
+[8 timesRepeat: [|
+    let answer := [factory value: observer];
+    [[answer == [last value]] ifTrue: [| nil] ifFalse: [| [OS exit: 52]]]]];
+[[[effects value] = 136] ifTrue: [| nil] ifFalse: [| [OS exit: 53]]];
+let replacements := [0 asCell];
+[Reflect defineMethod: #value on: [Reflect vtableOf: [escaped value]] as: [:self | [replacements inc]; 42]];
+let replaced := [factory value: observer];
+[[[replacements value] = 4] ifTrue: [| nil] ifFalse: [| [OS exit: 54]]];
+[[replaced == [last value]] ifTrue: [| nil] ifFalse: [| [OS exit: 55]]];
+[System println: "closure-literals: fresh results, aliases, recovery, collection and current method effects passed"];

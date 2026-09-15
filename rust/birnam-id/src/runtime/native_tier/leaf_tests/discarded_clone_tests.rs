@@ -108,7 +108,7 @@ enum Case {
 }
 
 #[test]
-fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
+pub(super) fn discarded_clones_preserve_counts_identity_boundaries_and_late_binding() {
     for clones in [1, 3, 16] {
         for case in [
             Case::Canonical,
@@ -812,5 +812,166 @@ fn numeric_batches_are_untraced_and_settle_with_clone_entries_before_finalizers(
             ));
         }
         assert_eq!(evidence[0], evidence[1], "observing finalizer={observing}");
+    }
+}
+
+unsafe extern "C" fn observing_string_cleanup(object: Oop) {
+    unsafe {
+        finalizer_observer(object);
+        crate::public_api::string_finalizer(object);
+    }
+}
+
+#[test]
+fn floor_string_cleanup_preserves_deferred_allocation_observations() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "runtime::native_tier::leaf_tests::discarded_clone_tests::floor_string_cleanup_process_case",
+            "--exact", "--ignored", "--nocapture", "--test-threads=1",
+        ])
+        .env("BIRNAM_TEST_STRING_CLEANUP_CHILD", "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+#[ignore = "real public-runtime child invoked by the parent differential test"]
+fn floor_string_cleanup_process_case() {
+    assert_eq!(
+        std::env::var("BIRNAM_TEST_STRING_CLEANUP_CHILD").as_deref(),
+        Ok("1")
+    );
+    crate::public_api::initialize_once();
+    let r = crate::public_api::runtime_for_string_cleanup_test();
+    let retiring_selector = r.intern(b"retiringCleanupBinding").unwrap();
+    let nonobserving = |runtime: &Runtime, object, finalizer| {
+        crate::public_api::string_cleanup_matches_runtime(runtime, finalizer)
+            && runtime.string_bytes(object).is_some()
+    };
+    let string = r.make_string_with_finalizer(b"admission", crate::public_api::string_finalizer);
+    assert!(nonobserving(r, string, crate::public_api::string_finalizer));
+    assert!(!nonobserving(r, string, observing_string_cleanup));
+    assert!(!nonobserving(r, string, inert_finalizer));
+    let integer = r.make_integer(42);
+    assert!(!nonobserving(
+        r,
+        integer,
+        crate::public_api::string_finalizer
+    ));
+    {
+        let private = crate::dispatch::build_bootstrap();
+        let object = private.runtime.make_string_with_finalizer(
+            b"other runtime owner",
+            crate::public_api::string_finalizer,
+        );
+        assert!(private.runtime.string_bytes(object).is_some());
+        assert!(!nonobserving(
+            &private.runtime,
+            object,
+            crate::public_api::string_finalizer
+        ));
+    }
+    for precise in [false, true] {
+        // Exact cleanup, observing wrapper, late replacement, dead dictionary.
+        for observer in 0..4 {
+            let mut evidence = Vec::new();
+            for elide in [false, true] {
+                r.gc_set_precise(precise);
+                r.enter(|| r.gc_collect_from_native_range(0, 0));
+                let string = r.make_string_with_finalizer(
+                    b"owned cleanup bytes",
+                    if observer == 1 {
+                        observing_string_cleanup
+                    } else {
+                        crate::public_api::string_finalizer
+                    },
+                );
+                let child = r.make_integer(902);
+                let raw = child.addr() as i64;
+                if elide {
+                    let heap = unsafe { &mut (*r.state.get()).heap };
+                    let batch = heap
+                        .prepare_numeric_batch(r.canonical().smallint_vt, vec![raw, raw, -5])
+                        .unwrap();
+                    for index in 0..3 {
+                        heap.record_numeric_result(batch.clone(), index).unwrap();
+                    }
+                    for _ in 0..3 {
+                        let snapshot = heap.prepare_dead_clone(r.canonical().nil).unwrap();
+                        assert!(heap.record_dead_allocation(snapshot));
+                    }
+                    assert!(
+                        heap.record_dead_frame_indices(r.canonical().smallint_vt, &[0, 1, 1, 127])
+                    );
+                } else {
+                    for value in [raw, raw, -5, 0, 1, 1, 127] {
+                        r.make_integer(value);
+                    }
+                    for _ in 0..3 {
+                        r.clone_object(r.canonical().nil);
+                    }
+                }
+                if observer == 2 {
+                    r.set_finalizer(string, observing_string_cleanup);
+                }
+                if observer == 3 {
+                    let vt = r.create_vtable(r.globals().object_vt);
+                    r.add_method(vt, retiring_selector, crate::dispatch::object_clone);
+                }
+                FINALIZED.set(0);
+                r.gc_register_root_provider(mark_observer);
+                let before = (r.gc_live_count(), r.gc_live_bytes());
+                let charged = unsafe { (*r.state.get()).heap.bytes_since_collection() };
+                assert_eq!(
+                    before.0 - unsafe { (*r.state.get()).heap.physical_allocation_count() },
+                    if elide { 10 } else { 0 }
+                );
+                let settled_before = crate::heap::Heap::settled_allocation_count_for_test();
+                let reclaimed = r.enter(|| r.gc_collect_from_native_range(0, 0));
+                let settled =
+                    crate::heap::Heap::settled_allocation_count_for_test() - settled_before;
+                assert_eq!(
+                    settled,
+                    if elide && observer != 0 { 10 } else { 0 },
+                    "precise={precise}, observer={observer}, elide={elide}"
+                );
+                assert_eq!(MARK_COUNTS.get(), before);
+                assert_eq!(FINALIZED.get(), usize::from(observer == 1 || observer == 2));
+                assert!(
+                    r.string_bytes(string).is_none(),
+                    "cleanup must release its owned bytes"
+                );
+                assert!(!nonobserving(
+                    r,
+                    string,
+                    crate::public_api::string_finalizer
+                ));
+                let heap = unsafe { &(*r.state.get()).heap };
+                assert_eq!(
+                    heap.payload_size(child),
+                    None,
+                    "deferred payloads are not roots"
+                );
+                assert_eq!(heap.payload_size(string), None);
+                assert!(!heap.has_dead_allocations());
+                evidence.push((
+                    before,
+                    charged,
+                    reclaimed,
+                    r.gc_live_count(),
+                    r.gc_live_bytes(),
+                ));
+            }
+            assert_eq!(
+                evidence[0], evidence[1],
+                "precise={precise}, observer={observer}"
+            );
+        }
     }
 }

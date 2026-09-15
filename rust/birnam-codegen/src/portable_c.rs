@@ -45,6 +45,7 @@ pub fn compile_synchronous_block_v1(
     compiler.compile_program(bytes, 0)?;
 
     let mut unit = TranslationUnit::new(false);
+    unit.push_function(b"void* __birnam_materialization_owner;\n");
     unit.push_function(&compiler.functions);
     unit.push_body(b"return birnam_nil();\n");
     Ok(CompiledSynchronousBlockV1 {
@@ -251,9 +252,7 @@ impl Compiler {
         }
         output.push(b',');
         decimal(output, nested.capture_count);
-        output.extend_from_slice(
-            b"UL,(void*)(unsigned long)__birnam_code_generation_identity):birnam_nil();})",
-        );
+        output.extend_from_slice(b"UL,__birnam_materialization_owner):birnam_nil();})");
         Ok(())
     }
 }

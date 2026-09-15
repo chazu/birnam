@@ -23,8 +23,8 @@ def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def source(uses):
-    setup = counter_source(uses).split('let block :=', 1)[0]
+def source(uses, *, numeric=False):
+    setup = counter_source(uses, numeric=numeric).split('let block :=', 1)[0]
     setup = setup.replace('[System preciseGc: true];\n', '')
     return setup + '''[System load: "modules/time.birnam"];
 let portable := [[source codeObject] withoutSourceProvenance];
@@ -121,6 +121,7 @@ def main():
     p.add_argument('--receipt', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--verify', action='store_true')
+    p.add_argument('--numeric-body', action='store_true')
     p.add_argument('--verified', type=Path)
     p.add_argument('--exploratory', action='store_true')
     p.add_argument('--batches', type=int, default=100)
@@ -137,11 +138,11 @@ def main():
     sources = dict(proof['sources'])
     if not sources or any(sha(ROOT / n) != h for n, h in sources.items()):
         p.error('production sources differ from correctness receipt')
-    measurement = proof.get('closure_source_matrices', {}).get('measure-release.json', {})
+    measurement = proof.get('closure_source_matrices', {}).get(('numeric-' if args.numeric_body else '') + 'measure-release.json', {})
     if measurement.get('status') != 'passed':
         p.error('release allocation and invocation counter matrix required')
     for uses in USES:
-        digest = hashlib.sha256(counter_source(uses).encode()).hexdigest()
+        digest = hashlib.sha256(counter_source(uses, numeric=args.numeric_body).encode()).hexdigest()
         rows = [r for r in measurement['rows'] if r['uses'] == uses and r['source_sha256'] == digest]
         if {(r['shape'], r['enabled']) for r in rows} != set(product(range(4), (0, 1))):
             p.error('factory bodies lack complete counter verification')
@@ -158,14 +159,14 @@ def main():
     if not shipped or any(sha(ROOT / n) != h for n, h in shipped.items()):
         p.error('installed sources differ from correctness checkpoint')
     sources.update(shipped)
-    fixtures = {str(n): hashlib.sha256(source(n).encode()).hexdigest() for n in USES}
+    fixtures = {str(n): hashlib.sha256(source(n, numeric=args.numeric_body).encode()).hexdigest() for n in USES}
     if not args.verify:
         verified = json.loads(args.verified.read_text())
         coordinates = {(r['uses'], r['shape'], r['mode'], r['reports']) for r in verified.get('rows', [])}
         expected = {(n, s, m, r) for n, s, m, r in product(USES, SHAPES, ('baseline', 'enabled', 'forced'), (False, True)) if r or m != 'forced'}
         if verified.get('status') != 'passed' or not verified.get('verification') or verified.get('sources') != sources or verified.get('installed_sha256') != installed or verified.get('fixture_sha256') != fixtures or len(verified.get('rows', [])) != 90 or coordinates != expected:
             p.error('normal-floor verification is incomplete or stale')
-    result = dict(status='running', qualified=False, verification=args.verify, exploratory_requested=args.exploratory,
+    result = dict(status='running', qualified=False, verification=args.verify, exploratory_requested=args.exploratory, numeric_body=args.numeric_body,
                   sources=sources, installed_sha256=installed, fixture_sha256=fixtures, correctness_sha256=sha(args.receipt),
                   verification_sha256=sha(args.verified) if args.verified else None, prefix=str(prefix),
                   batches=2 if args.verify else args.batches, pairs=1 if args.verify else args.pairs, rows=[], gates=[],
@@ -195,7 +196,7 @@ def main():
             fixture, log_path = Path(work) / 'closure.birnam', Path(work) / 'interval.log'
             for pair in range(result['pairs']):
                 for n, s in product(USES, SHAPES):
-                    check(); fixture.write_text(source(n))
+                    check(); fixture.write_text(source(n, numeric=args.numeric_body))
                     if not args.verify and not args.exploratory and not gate(['--wait', 'production-closure']):
                         result['status'] = 'not_qualified'; return 2
                     monitor = None

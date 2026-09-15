@@ -1,0 +1,32 @@
+// Both numeric operands come from current slots in the second arithmetic PC.
+// Numeric predictions must use each invocation's actual capture and argument.
+[System load: "modules/os.birnam"];
+[System preciseGc: [[System getEnv: "BIRNAM_CLOSURE_PRECISE"] = "1"]];
+let source := [:left :right |
+    let closure := [:argument | let first := [left + argument]; [first + argument]];
+    let first := [closure value: right];
+    let second := [closure value: right];
+    let third := [closure value: right];
+    third];
+let factory := [Codegen materializeResumable: [[source codeObject] withoutSourceProvenance] captures: #[]];
+let left := 10;
+let right := 20;
+let changedLeft := 40;
+let changedRight := 2;
+[128 timesRepeat: [| let answer := [factory value: left value: right];
+    [[answer = 50] ifTrue: [| nil] ifFalse: [| [OS exit: 71]]]]];
+let first := [factory value: left value: right];
+let second := [factory value: left value: right];
+[[first = 50] ifTrue: [| nil] ifFalse: [| [OS exit: 72]]];
+[[second = 50] ifTrue: [| nil] ifFalse: [| [OS exit: 73]]];
+[[first == second] ifTrue: [| [OS exit: 74]] ifFalse: [| nil]];
+let changed := [factory value: changedLeft value: changedRight];
+[[changed = 44] ifTrue: [| nil] ifFalse: [| [OS exit: 75]]];
+[System gc];
+[[first = 50] ifTrue: [| nil] ifFalse: [| [OS exit: 76]]];
+[[changed = 44] ifTrue: [| nil] ifFalse: [| [OS exit: 77]]];
+[Reflect defineMethod: #+ on: [Reflect vtableOf: 0] as: [:self :other |
+    [System println: "numeric-inputs: changed add"]; self]];
+let replaced := [factory value: changedLeft value: changedRight];
+[[replaced == changedLeft] ifTrue: [| nil] ifFalse: [| [OS exit: 78]]];
+[System println: "numeric-inputs: current values, fresh identities and changed arithmetic passed"];

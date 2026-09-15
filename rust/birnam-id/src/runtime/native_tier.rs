@@ -14,9 +14,14 @@ use birnam_codegen::{
 pub(in crate::runtime) mod closure_elision;
 mod discarded_clone;
 mod fused_numeric;
+mod numeric_closure;
 #[cfg(feature = "ffi-test-hooks")]
 pub(super) use fused_numeric::HITS as FUSED_NUMERIC_HITS;
 mod regions;
+#[cfg(feature = "ffi-test-hooks")]
+pub(super) fn counted_indices_recorded() -> usize {
+    regions::COUNTED_BOXES.get()
+}
 pub(in crate::runtime) mod unboxed_numeric;
 mod virtual_aggregate;
 use birnam_native_compiler::Unit;
@@ -80,6 +85,7 @@ struct Record {
 }
 
 struct Prepared {
+    numeric_closure_program: Option<Rc<[u8]>>,
     descriptor: Vec<u8>,
     source: CString,
     pcs: usize,
@@ -92,6 +98,7 @@ struct Prepared {
 }
 
 struct Candidate {
+    numeric_closure_program: Option<Rc<[u8]>>,
     numeric: bool,
     unboxed_numeric: Option<Rc<numeric_chain::RecoveryMaps>>,
     discarded_clone: Option<Rc<birnam_codegen::discarded_clone::Plan>>,
@@ -209,6 +216,47 @@ thread_local! {
 }
 
 impl Registry {
+    #[cfg(all(feature = "ffi-test-hooks", feature = "allocation-metrics"))]
+    pub(super) fn watch_generation(
+        &self,
+        generation: u64,
+        watch: &mut super::consumer_lifetime_probe::Owners,
+    ) {
+        for record in self.records.values() {
+            if !record
+                .descriptor
+                .upgrade()
+                .is_some_and(|d| d.identity().generation == generation)
+            {
+                continue;
+            }
+            watch.arc("descriptor", record.descriptor.clone());
+            if let Some(value) = &record.pending {
+                watch.rc("prepared", value);
+            }
+            if let Some(value) = &record.candidate {
+                watch.rc("candidate", value);
+            }
+            if let Some(value) = &record.leaf {
+                watch.rc("leaf", value);
+            }
+            if let Some(value) = &record.numeric {
+                watch.rc("numeric-template", value);
+            }
+            if let Some(value) = &record.numeric_candidate {
+                watch.rc("numeric-chain", value);
+            }
+        }
+        for record in self.closures.values() {
+            if record
+                .descriptor
+                .upgrade()
+                .is_some_and(|d| d.identity().generation == generation)
+            {
+                record.watch_owners(watch);
+            }
+        }
+    }
     #[cfg(feature = "ffi-test-hooks")]
     pub(super) fn unboxed_scratch_resources(&self) -> (usize, usize) {
         self.unboxed_scratch
@@ -503,6 +551,7 @@ impl Prepared {
             && (!plan.has_literal_allocations() || literal_callees_enabled())
         {
             return Some(Self {
+                numeric_closure_program: None,
                 descriptor,
                 source: CString::new("").ok()?,
                 pcs: 1,
@@ -558,13 +607,19 @@ impl Prepared {
                 .extend(format!("case {pc}:return (void*)__birnam_resumable_step_{pc};\n").bytes());
         }
         source.extend_from_slice(b"default:return 0;}}\n");
+        let numeric = numeric_chain::Template::derive(&program, &layout).map(Rc::new);
+        let numeric_closure_program = (numeric.is_some()
+            && bytes.len() <= birnam_codegen::closure_elision::MAX_PROGRAM_BYTES
+            && closure_elision::enabled())
+        .then(|| Rc::from(bytes));
         Some(Self {
+            numeric_closure_program,
             descriptor,
             source: CString::new(source).ok()?,
             pcs: program.blocks.len(),
             regions,
             leaf: None,
-            numeric: numeric_chain::Template::derive(&program, &layout).map(Rc::new),
+            numeric,
             unboxed_numeric: unboxed_numeric::prepare_maps(&program, &layout),
             discarded_clone: aggregates
                 .discarded_clones
@@ -624,6 +679,7 @@ impl Prepared {
         #[cfg(test)]
         regions::COMPILE_NS.set(regions::COMPILE_NS.get() + compile_start.elapsed().as_nanos());
         Some(Candidate {
+            numeric_closure_program: self.numeric_closure_program.clone(),
             numeric: self.numeric.is_some(),
             unboxed_numeric: self.unboxed_numeric.clone(),
             discarded_clone: self.discarded_clone.clone(),

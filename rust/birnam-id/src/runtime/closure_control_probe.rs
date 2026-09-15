@@ -28,6 +28,10 @@ impl Runtime {
         let vt = self.create_vtable(self.globals().object_vt);
         for (name, method) in [
             (b"warm:input:".as_slice(), warm as Method),
+            (
+                b"actionState:input:".as_slice(),
+                super::closure_action_probe::run as Method,
+            ),
             (b"run:input:capture:".as_slice(), run as Method),
             (
                 b"runLiterals:input:capture:".as_slice(),
@@ -83,6 +87,8 @@ impl Runtime {
         ] {
             self.add_method(vt, self.intern(name).unwrap(), method);
         }
+        #[cfg(feature = "allocation-metrics")]
+        super::consumer_lifetime_probe::install(self, vt);
         let object = self.allocate_instance(vt, 0);
         self.export(b"ClosureControlProbe", object).unwrap();
     }
@@ -301,6 +307,7 @@ unsafe fn run_control(probe: Oop, args: *const Oop, count: usize, literal_mode: 
             .materialize_registered_target(entry, block, &[input, probe])
             .unwrap();
         let calls_before = super::native_tier::closure_elision::completed_calls();
+        let counted_before = super::native_tier::counted_indices_recorded();
         let paused = r
             .drive_stackless_with_resolver(
                 machine,
@@ -312,6 +319,8 @@ unsafe fn run_control(probe: Oop, args: *const Oop, count: usize, literal_mode: 
                 },
             )
             .unwrap();
+        let counted_at_pause =
+            super::native_tier::counted_indices_recorded().wrapping_sub(counted_before);
         let expected_calls = if std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION")
             .is_some_and(|v| v == "1")
             && !std::env::var_os("BIRNAM_DEV_CLOSURE_FORCE_RECOVERY").is_some_and(|v| v == "1")
@@ -396,6 +405,8 @@ unsafe fn run_control(probe: Oop, args: *const Oop, count: usize, literal_mode: 
             answer
         };
         let _answer = ScopedOopRootGuard::new(r, answer);
+        let counted_after_resume =
+            super::native_tier::counted_indices_recorded().wrapping_sub(counted_before);
         assert_eq!(
             answer,
             if literal_mode {
@@ -430,6 +441,11 @@ unsafe fn run_control(probe: Oop, args: *const Oop, count: usize, literal_mode: 
             assert_eq!(returned, input);
         }
         r.destroy_stackless_machine(machine).unwrap();
+        if std::env::var_os("BIRNAM_TEST_COUNTED_CLOSURE_CONTROL").is_some_and(|v| v == "1") {
+            println!(
+                "closure-counted-control: before_pause={counted_at_pause} after_resume={counted_after_resume}"
+            );
+        }
         println!(
             "closure-control: capture={capture} observations=2 aliases={:?} pins_restored=true",
             state.aliases

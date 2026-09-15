@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--floor", type=Path, required=True)
     parser.add_argument("--profile", choices=("debug", "release"), required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--numeric-body", action="store_true")
     parser.add_argument("--uses", type=int, nargs="+", choices=range(1, 33), default=[1, 3, 4, 8, 16, 32])
     args = parser.parse_args()
     args.uses = list(dict.fromkeys(args.uses))
@@ -27,16 +28,21 @@ def main():
     paths = [Path(__file__).resolve(), root / "scripts/closure_timing_common.py",
              root / "rust/birnam-id/src/runtime/closure_timing_probe.rs"]
     paths += sorted(p for p in (root / "rust/birnam-native-compiler").rglob("*") if p.is_file())
-    paths += [root / "rust/birnam-id/Cargo.toml"]
+    paths += sorted(p for p in (root / "rust/birnam-id").rglob("*") if p.is_file())
     paths += [root / "vendor/libtcc-src" / name for name in ("tcc.h", "config.h", "tccrun.c", "libtcc.c")]
     hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
-    receipt = {"status": "running", "uses": args.uses, "source_sha256": hashes, "scope": __doc__,
+    manifest = args.prefix.resolve() / "share/birnam/rust-install.json"
+    publication = json.loads(manifest.read_text())
+    assert publication["publication"]["state"] == "published"
+    artifacts = dict(publication["staged_manifest"])
+    artifacts["share/birnam/rust-install.json"] = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    receipt = {"status": "running", "qualified": False, "numeric_body": args.numeric_body, "installed_sha256": artifacts, "uses": args.uses, "source_sha256": hashes, "scope": __doc__,
                "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(), "rows": []}
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-closure-measurement-") as work:
             fixture = Path(work) / "measurement.birnam"
             for uses in args.uses:
-                code = source(uses)
+                code = source(uses, numeric=args.numeric_body)
                 fixture.write_text(code)
                 env["BIRNAM_CLOSURE_USES"] = str(uses)
                 for shape in range(4):
@@ -44,17 +50,18 @@ def main():
                     for enabled in (0, 1):
                         env.update(BIRNAM_CLOSURE_SHAPE=str(shape), BIRNAM_DEV_CLOSURE_ELISION=str(enabled))
                         process = subprocess.run([str(args.prefix.resolve() / "bin/birnam"), str(fixture)],
-                                                 env=env, text=True, capture_output=True)
+                                                 env=env, text=True, capture_output=True, timeout=600)
                         assert process.returncode == 0, (uses, shape, enabled, process.stdout, process.stderr)
                         values = parse_output(process.stdout)
                         assert values["measure"]["uses"] == uses and values["measure"]["shape"] == shape, values
                         pair[enabled] = values
                         receipt["rows"].append(dict(uses=uses, shape=shape, enabled=enabled, values=values,
                                                    source_sha256=hashlib.sha256(code.encode()).hexdigest()))
-                    check_pair(pair[0], pair[1], 2)
+                    check_pair(pair[0], pair[1], 2, numeric=args.numeric_body)
                     print(f"closure-timing-smoke: profile={args.profile} shape={shape} uses={uses} counter/allocation/result checks passed; timings unqualified", flush=True)
         assert hashlib.sha256(args.floor.read_bytes()).hexdigest() == receipt["floor_sha256"]
         assert all(hashlib.sha256((root / name).read_bytes()).hexdigest() == digest for name, digest in hashes.items())
+        assert all(hashlib.sha256((args.prefix.resolve() / name).read_bytes()).hexdigest() == digest for name, digest in artifacts.items())
         receipt["status"] = "passed"
     except BaseException as error:
         receipt.update(status="failed", error=str(error))

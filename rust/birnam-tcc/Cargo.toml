@@ -14,6 +14,7 @@ birnam-native-compiler = { path = "../birnam-native-compiler" }
 dev-guarded-slots = []
 # Read-only diagnostics for owned baseline Unit relocation storage.
 resource-metrics = ["birnam-native-compiler/resource-metrics"]
+allocation-metrics = ["resource-metrics", "birnam-native-compiler/allocation-metrics"]
 
 [lib]
 name = "birnam_tcc"

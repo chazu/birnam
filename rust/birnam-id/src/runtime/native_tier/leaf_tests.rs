@@ -14,6 +14,7 @@ mod fused_numeric_tests;
 mod graph_tests;
 mod literal_tests;
 mod loop_invariant_tests;
+mod numeric_closure_tests;
 mod numeric_tests;
 mod tail_entry_tests;
 mod unboxed_numeric_tests;
@@ -744,3 +745,6 @@ mod alias_tests;
 pub(super) use alias_tests::record_box;
 
 mod region_tests;
+
+#[cfg(feature = "allocation-metrics")]
+mod consumer_teardown_tests;

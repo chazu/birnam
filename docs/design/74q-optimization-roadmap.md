@@ -26,9 +26,11 @@ replacement and clone identity checks. The fully enabled interval virtualizes
 64 field-bearing objects without reifying or settling them during that interval.
 This is application correctness/activity evidence, not a timing or promotion
 claim. [74AG](74ag-complete-consumer-composition.md) restored artifact acceptance
-is complete at `a364ae0a`; its interrupted final production verification has
-resumed while retaining 74 successful commands. The consolidated workflow
-supersedes the older parallel predecessor queues described below.
+is complete at `a364ae0a`. [74AJ](74aj-landing-the-combined-consumers.md) integrates
+that implementation after all 24 focused release landing steps passed. The
+exhaustive replay is stopped; further performance/resource experiments and
+promotion of opt-in defaults are deferred. The following predecessor queue
+accounts are historical and do not add requirements to this landing.
 
 The user has waived quiet-host admission for ongoing work. Continue exploratory
 measurements with host diagnostics and explicit `qualified: false`; retain every

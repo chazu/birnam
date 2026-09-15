@@ -13,9 +13,12 @@ def main():
     parser.add_argument('--prefix', type=Path, required=True)
     parser.add_argument('--floor', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--numeric-body', action='store_true', help='Exercise two arithmetic sends in each closure body')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     fixture = root / 'scripts/fixtures/closure-literals.birnam'
+    if args.numeric_body:
+        fixture = root / 'scripts/fixtures/closure-numeric.birnam'
     paths = [fixture, Path(__file__).resolve()]
     paths += sorted((root / 'rust/birnam-codegen/src').rglob('*.rs'))
     paths += sorted((root / 'rust/birnam-id/src').rglob('*'))
@@ -44,7 +47,7 @@ def main():
                 if baseline is None:
                     baseline = output
                 assert output == baseline, (output, baseline)
-                if literals and enabled:
+                if (literals or args.numeric_body) and enabled:
                     if forced < 0:
                         assert 'closure-elision: completed calls=3' in reports, reports
                         assert 'closure-elision: hit materialized=true' in reports, reports

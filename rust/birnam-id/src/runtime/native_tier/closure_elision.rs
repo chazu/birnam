@@ -2,14 +2,54 @@
 use super::*;
 use crate::execution::{DecodedAction, ExecutionError, ResumableEntryCapability, StacklessTarget};
 use crate::runtime::current_thread_token;
-use birnam_codegen::closure_elision::{Plan, Value};
+use birnam_codegen::closure_elision::{NumericPlan, Plan, Value, numeric_body::NumericBody};
 use core::cell::Cell;
 pub(super) mod pending;
 mod region;
 
 pub(super) struct Prepared {
     pub(super) descriptor: Vec<u8>,
-    plan: Plan,
+    plan: Plan<Body>,
+}
+
+enum Body {
+    Leaf(small_callee::Plan),
+    Numeric(Box<NumericBody>),
+}
+impl Body {
+    fn allocation_count(&self) -> usize {
+        match self {
+            Self::Leaf(plan) => plan.allocation_count(),
+            // The caller charges the physical callee's initial PC token.
+            Self::Numeric(body) => body.allocations.len() - 1,
+        }
+    }
+    #[cfg(feature = "ffi-test-hooks")]
+    fn metadata_payload_bytes(&self) -> usize {
+        use core::mem::{size_of, size_of_val};
+        match self {
+            Self::Leaf(p) => {
+                size_of_val(p.recovery_sources())
+                    + size_of_val(p.boxed_indices())
+                    + p.additional_allocation_metadata_bytes()
+            }
+            Self::Numeric(p) => {
+                size_of::<NumericBody>()
+                    + size_of_val(p.allocations.as_slice())
+                    + size_of_val(p.publications.as_slice())
+                    + size_of_val(p.template.inputs())
+                    + size_of_val(p.template.sends())
+                    + p.template
+                        .sends()
+                        .iter()
+                        .map(|s| s.selector.len())
+                        .sum::<usize>()
+                    + p.template.step_count() * size_of::<usize>()
+                    + p.recovery.storage_bytes()
+                    - size_of::<numeric_chain::RecoveryMaps>()
+            }
+        }
+    }
 }
 impl Prepared {
     pub(super) fn new(bytes: &[u8], row: selection::Row<'_>) -> Option<Self> {
@@ -28,10 +68,16 @@ impl Prepared {
             return None;
         }
         let layout = resumable::color_slots(&program).ok()?;
-        let plan = Plan::derive(&program, &layout).ok()?;
-        if plan.callee.has_literal_allocations() && !literal_callees_enabled() {
-            return None;
-        }
+        let plan = if let Ok(plan) = Plan::derive(&program, &layout) {
+            if plan.callee.has_literal_allocations() && !literal_callees_enabled() {
+                return None;
+            }
+            plan.map_callee(Body::Leaf)
+        } else {
+            NumericPlan::derive_numeric(&program, &layout)
+                .ok()?
+                .map_callee(|body| Body::Numeric(Box::new(body)))
+        };
         let descriptor =
             resumable_descriptor::compile_portable_descriptor_v2(&program, &layout, row, 1).ok()?;
         Some(Self { descriptor, plan })
@@ -57,6 +103,19 @@ enum Visit {
     Refused,
 }
 impl Record {
+    #[cfg(all(feature = "ffi-test-hooks", feature = "allocation-metrics"))]
+    pub(super) fn watch_owners(&self, watch: &mut crate::runtime::consumer_lifetime_probe::Owners) {
+        watch.arc("closure-descriptor", self.descriptor.clone());
+        match &self.preparation {
+            Preparation::Pending { input, .. } => watch.rc("closure-input", input),
+            Preparation::Ready(prepared) => watch.rc("closure-plan", prepared),
+            Preparation::Refused => (),
+        }
+        if let Some(constructor) = &self.constructor {
+            watch.rc("closure-constructor", constructor);
+        }
+    }
+
     pub(super) fn new(
         input: Rc<pending::Pending>,
         descriptor: &Arc<FrameDescriptor>,
@@ -111,7 +170,7 @@ impl Record {
         Some(prepared)
     }
 }
-struct EntryLease<'a>(&'a Runtime, ResumableEntryCapability);
+struct EntryLease<'a>(&'a Runtime, Option<ResumableEntryCapability>);
 pub(super) struct Resume {
     machine: Oop,
     frame: crate::execution::FrameHandle,
@@ -120,12 +179,14 @@ pub(super) struct Resume {
 }
 impl Drop for EntryLease<'_> {
     fn drop(&mut self) {
-        unsafe {
-            (*self.0.state.get())
-                .execution
-                .release_acquired_entry(self.1)
+        if let Some(entry) = self.1 {
+            unsafe {
+                (*self.0.state.get())
+                    .execution
+                    .release_acquired_entry(entry)
+            }
+            .expect("owned closure callee lease");
         }
-        .expect("owned closure callee lease");
     }
 }
 
@@ -229,9 +290,7 @@ impl Record {
             + size_of_val(p.capture_sources.as_slice())
             + size_of_val(p.argument_sources.as_slice())
             + p.selector.len()
-            + size_of_val(p.callee.recovery_sources())
-            + size_of_val(p.callee.boxed_indices())
-            + p.callee.additional_allocation_metadata_bytes()
+            + p.callee.metadata_payload_bytes()
             + size_of_val(p.invocation_aliases.as_slice())
             + size_of_val(p.constructor_stores.as_slice())
             + p.continuation.as_ref().map_or(0, |e| {
@@ -476,8 +535,16 @@ impl Runtime {
         let mut budget = snapshot.total_size();
         let integer_bytes = crate::heap::Heap::allocation_total_size(8)?;
         for call in region::calls(plan) {
-            let Some(selected) = region::admit(self, call, plan, block_vtable, &inputs, captures)
-            else {
+            let Some(selected) = region::admit(
+                self,
+                machine,
+                call,
+                plan,
+                block_vtable,
+                &inputs,
+                captures,
+                &admitted,
+            ) else {
                 break;
             };
             let boxes = selected.call.boxes.len()
@@ -525,7 +592,7 @@ impl Runtime {
             // Untraced scratch; the admitted interval cannot collect or observe.
             let mut produced = Vec::new();
             let mut action = nil;
-            for (call_index, selected) in admitted.iter().enumerate() {
+            for (call_index, selected) in admitted.iter_mut().enumerate() {
                 let call = &selected.call;
                 if call_index != 0 && descriptor.driver_argument_count() == 1 {
                     self.make_integer(call.pc as i64);
@@ -594,30 +661,50 @@ impl Runtime {
                     // original constructor and caller prefix are not repeated.
                     return Ok(action);
                 }
-                if selected.descriptor.driver_argument_count() == 1 {
-                    self.make_integer(0);
-                }
-                let mut returned = call.returned.map(|s| inputs[s as usize]).unwrap_or(nil);
-                for (index, word) in plan.callee.allocation_values().enumerate() {
-                    let allocated = self.make_integer(word);
-                    if plan.callee.return_allocation() == Some(index) {
-                        returned = allocated;
+                let entry_token = if selected.descriptor.driver_argument_count() == 1 {
+                    self.make_integer(0)
+                } else {
+                    nil
+                };
+                match &plan.callee {
+                    Body::Leaf(leaf) => {
+                        let mut returned = call.returned.map(|s| inputs[s as usize]).unwrap_or(nil);
+                        for (index, word) in leaf.allocation_values().enumerate() {
+                            let allocated = self.make_integer(word);
+                            if leaf.return_allocation() == Some(index) {
+                                returned = allocated;
+                            }
+                        }
+                        if leaf.return_allocation().is_some() {
+                            produced.push(returned);
+                        }
+                        unsafe {
+                            let state = &mut *self.state.get();
+                            state.execution.commit_inlined_return(
+                                &mut state.heap,
+                                owner,
+                                cap,
+                                result_slot,
+                                leaf.return_slot(),
+                                nil,
+                                returned,
+                            )?;
+                        }
                     }
-                }
-                if plan.callee.return_allocation().is_some() {
-                    produced.push(returned);
-                }
-                unsafe {
-                    let state = &mut *self.state.get();
-                    state.execution.commit_inlined_return(
-                        &mut state.heap,
-                        owner,
-                        cap,
-                        result_slot,
-                        plan.callee.return_slot(),
-                        nil,
-                        returned,
-                    )?;
+                    Body::Numeric(_) => {
+                        let returned = unsafe {
+                            selected.execute_numeric(
+                                self,
+                                machine,
+                                cap,
+                                result_slot,
+                                &entry_token,
+                            )?
+                        };
+                        if plan.return_source.is_none() {
+                            produced.push(returned);
+                        }
+                    }
                 }
                 #[cfg(any(test, feature = "ffi-test-hooks"))]
                 COMPLETED_CALLS.set(COMPLETED_CALLS.get() + 1);

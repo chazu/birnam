@@ -28,6 +28,7 @@ def main():
     parser.add_argument("--pairs", type=int, default=4)
     parser.add_argument("--uses", type=int, nargs="+", choices=range(1, 33), default=[1, 3, 4, 8, 16, 32])
     parser.add_argument("--wait-seconds", type=int, default=120)
+    parser.add_argument("--numeric-body", action="store_true")
     parser.add_argument("--exploratory", action="store_true", help="retain unqualified diagnostic timings when host admission fails")
     args = parser.parse_args()
     args.uses = list(dict.fromkeys(args.uses))
@@ -39,11 +40,11 @@ def main():
     output = proof["commands"][-1]["output"]
     if "closure-timing-smoke:" not in output:
         parser.error("receipt must include measurement-counter correctness")
-    measurement = proof.get("closure_source_matrices", {}).get("measure-release.json")
+    measurement = proof.get("closure_source_matrices", {}).get(("numeric-" if args.numeric_body else "") + "measure-release.json")
     if not measurement or measurement["status"] != "passed":
         parser.error("receipt must retain the release measurement matrix")
     for uses in args.uses:
-        digest = hashlib.sha256(source(uses).encode()).hexdigest()
+        digest = hashlib.sha256(source(uses, numeric=args.numeric_body).encode()).hexdigest()
         rows = [r for r in measurement["rows"] if r["uses"] == uses and r["source_sha256"] == digest]
         if len(rows) != 8 or {(r["shape"], r["enabled"]) for r in rows} != set(product(range(4), (0, 1))):
             parser.error("requested repeated-use source lacks counter verification")
@@ -65,8 +66,8 @@ def main():
     prefix = work / "prefix"
     fixtures = {uses: work / f"uses-{uses}.birnam" for uses in args.uses}
     for uses, fixture in fixtures.items():
-        fixture.write_text(source(uses))
-    result = {"status": "running", "qualified": False, "exploratory_requested": args.exploratory,
+        fixture.write_text(source(uses, numeric=args.numeric_body))
+    result = {"status": "running", "qualified": False, "numeric_body": args.numeric_body, "exploratory_requested": args.exploratory,
               "correctness_receipt": str(args.receipt.resolve()), "correctness_sha256": sha(args.receipt),
               "floor": {"path": str(floor), "sha256": sha(floor)}, "prefix": str(prefix),
               "batches": args.batches, "pairs": args.pairs, "uses": args.uses, "rows": [],
@@ -124,7 +125,7 @@ def main():
                             result["rows"].append(row)
                             rows[enabled] = row
                             save()
-                        check_pair(rows[0], rows[1], args.batches)
+                        check_pair(rows[0], rows[1], args.batches, numeric=args.numeric_body)
             finally:
                 monitor.terminate()
                 monitor.wait()
