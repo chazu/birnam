@@ -1790,44 +1790,14 @@ unsafe fn bind_mapped_code_generation_identity(
     true
 }
 
-#[repr(C)]
-struct DlInfo {
-    filename: *const c_char,
-    base: *mut c_void,
-    symbol_name: *const c_char,
-    symbol_address: *mut c_void,
-}
-
-#[cfg_attr(target_os = "linux", link(name = "dl"))]
-unsafe extern "C" {
-    fn dladdr(address: *const c_void, info: *mut DlInfo) -> c_int;
-}
-
 unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
     if name.last() != Some(&0) {
         return None;
     }
     static FLOOR_HANDLE: OnceLock<usize> = OnceLock::new();
-    let handle = *FLOOR_HANDLE.get_or_init(|| {
-        let mut info = DlInfo {
-            filename: ptr::null(),
-            base: ptr::null_mut(),
-            symbol_name: ptr::null(),
-            symbol_address: ptr::null_mut(),
-        };
-        // The host deliberately loads the selected floor RTLD_LOCAL. Discover
-        // that exact image from one frozen IdApi function pointer, then acquire
-        // a process-lifetime handle to the same image for private symbol lookup.
-        if unsafe { dladdr(api.dlsym as *const () as *const c_void, &mut info) } == 0
-            || info.filename.is_null()
-        {
-            return 0;
-        }
-        #[cfg(target_os = "macos")]
-        const RTLD_NOW_LOCAL: c_int = 2 | 4;
-        #[cfg(not(target_os = "macos"))]
-        const RTLD_NOW_LOCAL: c_int = 2;
-        unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) as usize }
+    let handle = *FLOOR_HANDLE.get_or_init(|| unsafe {
+        birnam_abi::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
+            as usize
     });
     if handle == 0 {
         return None;
