@@ -10,6 +10,7 @@ use crate::resumable::{
 use crate::small_callee;
 pub mod numeric_body;
 mod sequence;
+mod transition;
 pub use sequence::{Invocation, MAX_CALLS};
 
 pub const MAX_SLOTS: usize = 128;
@@ -321,22 +322,8 @@ impl<C> Plan<C> {
         }
         after_boxes.push(call_site.0);
         let continuation_aliases = if let Some(edge) = &continuation {
-            let mut next = aliases.clone();
-            // Read all sources before writing any destinations.
-            for copy in &edge.copies {
-                next[copy.destination as usize] = aliases[copy.source as usize];
-            }
-            next[edge
-                .result_initialization_slot
-                .ok_or(Refusal::InvalidLayout)? as usize] = false;
-            for (word, bits) in edge.clear_bitmap_words.iter().enumerate() {
-                for bit in 0..64 {
-                    if bits & (1 << bit) != 0 {
-                        next[word * 64 + bit] = false;
-                    }
-                }
-            }
-            Some(next)
+            Some(transition::continuation_aliases(&aliases, edge)
+                .ok_or(Refusal::InvalidLayout)?)
         } else {
             None
         };
