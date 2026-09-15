@@ -1595,17 +1595,7 @@ unsafe fn project_window_live(
         Err(status) => return status,
     };
     let projected = project(&facts, &[Clause(terms)], projection as u32);
-    if projected.len() > capacity {
-        return -5;
-    }
-    let projected_len = projected.len();
-    for (slot, value) in projected.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity elements of writable output
-        // storage; the length check above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    unsafe { *written = projected_len };
-    0
+    unsafe { write_projected_values(&projected, output, capacity, written) }
 }
 
 unsafe fn project_join_live(
@@ -1642,18 +1632,7 @@ unsafe fn project_join_live(
         &[Clause(first_terms), Clause(second_terms)],
         projection as u32,
     );
-    if projected.len() > capacity {
-        return -5;
-    }
-    let projected_len = projected.len();
-    for (slot, value) in projected.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity elements of writable output
-        // storage; the length check above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    // `written` is the number of projected values, not the callback snapshot.
-    unsafe { *written = projected_len };
-    0
+    unsafe { write_projected_values(&projected, output, capacity, written) }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1706,17 +1685,7 @@ unsafe fn project_predicate_live(
         &rhs,
         projection as u32,
     );
-    if projected.len() > capacity {
-        return -5;
-    }
-    let projected_len = projected.len();
-    for (slot, value) in projected.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity elements of writable output
-        // storage; the length check above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    unsafe { *written = projected_len };
-    0
+    unsafe { write_projected_values(&projected, output, capacity, written) }
 }
 
 unsafe fn project_negated_live(
@@ -1754,17 +1723,7 @@ unsafe fn project_negated_live(
         &Clause(negative_terms),
         projection as u32,
     );
-    if projected.len() > capacity {
-        return -5;
-    }
-    let projected_len = projected.len();
-    for (slot, value) in projected.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity elements of writable output
-        // storage; the length check above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    unsafe { *written = projected_len };
-    0
+    unsafe { write_projected_values(&projected, output, capacity, written) }
 }
 
 unsafe fn project_disjunction_live(
@@ -1801,17 +1760,7 @@ unsafe fn project_disjunction_live(
         &[Clause(first_terms), Clause(second_terms)],
         projection as u32,
     );
-    if projected.len() > capacity {
-        return -5;
-    }
-    let projected_len = projected.len();
-    for (slot, value) in projected.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity elements of writable output
-        // storage; the length check above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    unsafe { *written = projected_len };
-    0
+    unsafe { write_projected_values(&projected, output, capacity, written) }
 }
 
 unsafe fn project_recursive_live(
@@ -1847,17 +1796,7 @@ unsafe fn project_recursive_live(
         return -4;
     };
     let projected = project_recursive(&facts, &Clause(edge_terms), &root, projection as u32);
-    if projected.len() > capacity {
-        return -5;
-    }
-    let projected_len = projected.len();
-    for (slot, value) in projected.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity elements of writable output
-        // storage; the length check above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    unsafe { *written = projected_len };
-    0
+    unsafe { write_projected_values(&projected, output, capacity, written) }
 }
 
 unsafe fn aggregate_live(
@@ -4140,16 +4079,7 @@ unsafe fn project_rule_live(
         &query_terms,
         result_variable,
     );
-    if values.len() > capacity {
-        return -5;
-    }
-    for (slot, value) in values.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity records and the length check
-        // above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    unsafe { *written = values.len() };
-    0
+    unsafe { write_projected_values(&values, output, capacity, written) }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4198,16 +4128,7 @@ unsafe fn project_rule_tree_live(
         &query_terms,
         result_variable,
     );
-    if values.len() > capacity {
-        return -5;
-    }
-    for (slot, value) in values.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity records and the length check
-        // above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    unsafe { *written = values.len() };
-    0
+    unsafe { write_projected_values(&values, output, capacity, written) }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4262,16 +4183,7 @@ unsafe fn project_rule_store_live(
         &query_terms,
         result_variable,
     );
-    if values.len() > capacity {
-        return -5;
-    }
-    for (slot, value) in values.iter().cloned().enumerate() {
-        // SAFETY: the caller supplied capacity records and the length check
-        // above bounds every write.
-        unsafe { ptr::write(output.add(slot), record(value)) };
-    }
-    unsafe { *written = values.len() };
-    0
+    unsafe { write_projected_values(&values, output, capacity, written) }
 }
 
 fn clause_matches_solution(facts: &[Triple], solution: &[Binding], clause: &Clause) -> bool {
