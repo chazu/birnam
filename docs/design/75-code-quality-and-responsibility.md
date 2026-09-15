@@ -6,6 +6,12 @@
 > writing it. Timing acceptance remains pending. Documentation disposition is
 > specified separately in [Design 76](76-documentation-cleanup-and-archives.md).
 
+> **Follow-up review (2026-09-15):** [Design 78](78-invariant-preserving-refactoring-review.md)
+> rechecks these findings against current source under an invariant-preserving
+> refactor scope. It excludes the worker-arity correction from that batch and
+> adds per-candidate semantic and lifetime gates. This document remains the
+> original proposal.
+
 ## 1. Outcome and scope
 
 Make common rules have one implementation, give related runtime state a clear

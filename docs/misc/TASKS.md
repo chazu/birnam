@@ -245,6 +245,16 @@ bootstrap and existing benchmark thresholds.
 
 ## Code-quality review proposals — 2026-09-06
 
+- [Design 79](../design/79-refactoring-implementation-plan.md) breaks the reviewed
+  scope into bounded commits, investigation gates and final validation tiers,
+  with the completed [adversarial plan review](../design/79a-implementation-plan-adversarial-review.md).
+  It is implementation planning, not an implementation-ready tracker transition.
+
+- [Design 78](../design/78-invariant-preserving-refactoring-review.md) records
+  the September 15 source review, invariant ledger, and bounded refactoring
+  candidates, with the completed [adversarial review](../design/78a-refactoring-adversarial-review.md).
+  It does not begin implementation or amend project invariants.
+
 - [Design 75](../design/75-code-quality-and-responsibility.md) covers shared
   language rules, exact-floor symbol lookup, Codegen and host responsibilities,
   relational adapters, and migration-era lint/comment cleanup.
