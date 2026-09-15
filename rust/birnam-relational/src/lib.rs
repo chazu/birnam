@@ -71,6 +71,10 @@ pub struct ClassifiedTriple {
 const _: () = assert!(size_of::<ClassifiedTriple>() == 120);
 
 fn record(value: Value) -> ClassifiedValue {
+    borrowed_record(&value)
+}
+
+fn borrowed_record(value: &Value) -> ClassifiedValue {
     let mut record = ClassifiedValue {
         tag: 0,
         reserved: [0; 7],
@@ -80,14 +84,14 @@ fn record(value: Value) -> ClassifiedValue {
         byte_len: 0,
     };
     match value {
-        Value::Identity(identity) => record.identity = identity,
+        Value::Identity(identity) => record.identity = *identity,
         Value::Integer(integer) => {
             record.tag = 1;
-            record.integer = integer;
+            record.integer = *integer;
         }
         Value::Float(float) => {
             record.tag = 2;
-            record.float = float;
+            record.float = *float;
         }
         Value::String(string) => {
             record.tag = 3;
@@ -1515,10 +1519,10 @@ unsafe fn write_projected_values(
     if values.len() > capacity {
         return -5;
     }
-    for (slot, value) in values.iter().cloned().enumerate() {
+    for (slot, value) in values.iter().enumerate() {
         // SAFETY: the caller supplied writable record storage; the complete
         // length check bounds writes and all input access has already ended.
-        unsafe { ptr::write(output.add(slot), record(value)) };
+        unsafe { ptr::write(output.add(slot), borrowed_record(value)) };
     }
     unsafe { *written = values.len() };
     0
