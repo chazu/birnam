@@ -249,7 +249,8 @@ bootstrap and existing benchmark thresholds.
   scope into bounded commits, investigation gates and final validation tiers,
   with the completed [adversarial plan review](../design/79a-implementation-plan-adversarial-review.md).
   Implementation is authorized; [79B](../design/79b-refactoring-delivery.md) records
-  delivered commits and acceptance. A/B/C/E and closure-only G are implemented;
+  delivered scope and acceptance. A/C/E and closure-only G are implemented;
+  B covers TCC/Codegen only because Image is a frozen compatibility authority.
   D is limited to cache/CodeBindings ownership. Broader D and F remain gated.
   See [79C](../design/79c-materialization-ownership.md) and
   [79D](../design/79d-optimizer-refactoring-gates.md) for scope and review findings.
