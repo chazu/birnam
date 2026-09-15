@@ -98,3 +98,36 @@ ownership extraction. Remaining path inventories and their integration evidence
 must be closed before the broader D series is accepted. Passing these tests
 cannot authorize new roots, new native metadata requirements, effect replay,
 new allocation accounting, broader layout restrictions or optimizer promotion.
+
+## Delivered scope and adversarial follow-up
+
+D1 (`47a0216a`) and D2 (`685afbb4`) give the cache and CodeBindings registries
+private storage owners, operations and delegated root segments. Image binding
+reservation and post-Store publication remain two operations with the original
+lock scopes. The latter retains its abort after a published Store mutation.
+Compile/registration/cancellation functions, source locks and publication
+orchestration remain in their original stack scopes.
+
+The independent plan-review agent re-inspected this narrower delivery. It found
+no source-level invariant regression in these moves and agreed that D3/D5/D6
+must remain undelivered. Its acceptance objections are recorded here:
+
+1. Opaque-token state tests do not prove real image publication, native reaping
+   or GC lifetime. A-prefix native evidence predates D1/D2. Require the combined
+   candidate release/language and image/CodeBinding/evaluator/native-storage routes.
+2. The temporary baseline/D1/D2 JSON files do not carry source/artifact manifests.
+   They are focused logs. Final `codegen-state` must run through PlanRunner and
+   its hashed inputs/artifact receipt. Fixed token-audit baselines are `b9ae3c77`
+   for D1 and `47a0216a` for D2; do not rerun an audit against a moving HEAD.
+3. Storage extraction is partial materialization ownership, not completion of D.
+
+D3/D5/D6 are deferred at the broader D0 characterization gate. Every compile,
+publication and recovery failure exit still needs a linked native lifetime case,
+including real Oop survival at safe points and physical release authority.
+Existing success/retirement tests and identical function tokens cannot prove
+that moving those functions preserves conservative native-stack reachability.
+D4 is separately deferred for the demonstrated non-equivalent ordering above.
+No shared compile setup, new compensation destructor or new root is included.
+
+The focused D1/D2 state fixture passes at both revisions. Final integrated
+acceptance is recorded in 79B; the D-wide failure matrix and ticket remain open.

@@ -248,7 +248,11 @@ bootstrap and existing benchmark thresholds.
 - [Design 79](../design/79-refactoring-implementation-plan.md) breaks the reviewed
   scope into bounded commits, investigation gates and final validation tiers,
   with the completed [adversarial plan review](../design/79a-implementation-plan-adversarial-review.md).
-  It is implementation planning, not an implementation-ready tracker transition.
+  Implementation is authorized; [79B](../design/79b-refactoring-delivery.md) records
+  delivered commits and acceptance. A/B/C/E and closure-only G are implemented;
+  D is limited to cache/CodeBindings ownership. Broader D and F remain gated.
+  See [79C](../design/79c-materialization-ownership.md) and
+  [79D](../design/79d-optimizer-refactoring-gates.md) for scope and review findings.
 
 - [Design 78](../design/78-invariant-preserving-refactoring-review.md) records
   the September 15 source review, invariant ledger, and bounded refactoring
