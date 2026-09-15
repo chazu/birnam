@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 mod c_string;
+pub mod literal;
 pub mod closure_elision;
 pub mod closure_elision_c;
 pub mod discarded_clone;
@@ -974,28 +975,7 @@ impl Emitter {
         } else {
             source
         };
-        let mut decoded = Vec::with_capacity(inner.len());
-        let mut index = 0;
-        while index < inner.len() {
-            if inner[index] == b'\\' && index + 1 < inner.len() {
-                let escape = match inner[index + 1] {
-                    b'"' => Some(b'"'),
-                    b'\\' => Some(b'\\'),
-                    b'n' => Some(b'\n'),
-                    b't' => Some(b'\t'),
-                    b'r' => Some(b'\r'),
-                    b'0' => Some(0),
-                    _ => None,
-                };
-                if let Some(byte) = escape {
-                    decoded.push(byte);
-                    index += 2;
-                    continue;
-                }
-            }
-            decoded.push(inner[index]);
-            index += 1;
-        }
+        let decoded = literal::decode_body(inner);
         self.emit_string(&decoded);
     }
 

@@ -249,28 +249,7 @@ fn decode_string(source: &[u8]) -> Result<Vec<u8>, Error> {
         .strip_prefix(b"\"")
         .and_then(|source| source.strip_suffix(b"\""))
         .ok_or(Error::InvalidLiteral)?;
-    let mut decoded = Vec::with_capacity(inner.len());
-    let mut index = 0;
-    while index < inner.len() {
-        if inner[index] == b'\\' && index + 1 < inner.len() {
-            let escape = match inner[index + 1] {
-                b'"' => Some(b'"'),
-                b'\\' => Some(b'\\'),
-                b'n' => Some(b'\n'),
-                b't' => Some(b'\t'),
-                b'r' => Some(b'\r'),
-                b'0' => Some(0),
-                _ => None,
-            };
-            if let Some(byte) = escape {
-                decoded.push(byte);
-                index += 2;
-                continue;
-            }
-        }
-        decoded.push(inner[index]);
-        index += 1;
-    }
+    let decoded = crate::literal::decode_body(inner);
     Ok(decoded)
 }
 
