@@ -7032,3 +7032,6 @@ mod worker_arity_contract_tests {
         assert!(!super::selector_has_arity_one("value"));
     }
 }
+
+#[cfg(test)]
+mod host_bridge_contract;

@@ -41,6 +41,14 @@ def plan(suite, prefix, output):
                        '--prefix', prefix, '--output', output/'relational-output.json'],
                        PRODUCTION + ('scripts/relational-output-test.py',),
                        depends=('install',), artifacts=(str(output/'relational-output.json'),), timeout=300))
+    result.append(step('host-bridge', ['python3', 'scripts/host-bridge-test.py',
+                       '--prefix', prefix, '--output', output/'host-bridge.json'],
+                       PRODUCTION + ('scripts/host-bridge-test.py',), depends=('install',),
+                       artifacts=(str(output/'host-bridge.json'),), timeout=300))
+    result.append(step('host-project', ['env', 'BIRNAM_BIN=' + str(prefix/'bin/birnam'),
+                       'bash', 'scripts/rust-project-check-smoke.sh'],
+                       PRODUCTION + ('scripts/rust-project-check-smoke.sh',),
+                       depends=('install',), timeout=600))
     if suite == 'performance':
         result.append(step('performance', ['python3', 'scripts/performance-smoke.py', '--prefix', prefix,
                            '--output', output/'performance.json'], PRODUCTION +
