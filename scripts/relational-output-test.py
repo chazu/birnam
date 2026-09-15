@@ -24,7 +24,7 @@ def main():
     if len(executables) != 1:
         raise RuntimeError('expected one relational test executable')
     result = command([executables[0], '--ignored', '--exact',
-                      'native_output::exported_output_contract', '--nocapture'],
+                      'adapter::native_output::exported_output_contract', '--nocapture'],
                      env=dict(os.environ, BIRNAM_RELATIONAL_FLOOR=str(
                          args.prefix.resolve()/'lib/libbirnam_id.dylib')), timeout=30)
     if result['exit_code'] or '1 passed' not in result['stdout']:
