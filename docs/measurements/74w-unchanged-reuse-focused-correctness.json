@@ -1,21 +1,9 @@
 {
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74w-unchanged-reuse-focused-correctness.json",
+  "bytes": 4941,
+  "sha256": "b1c05e2767e9835911a522dff8ff7eade57a1c2846310fe77029ad662888d89a",
   "status": "passed",
-  "source_sha256": {
-    "rust/birnam-id/src/runtime/numeric/chain/loop_reuse.rs": "f0da4f0dc9f151ee06b6dbaf8243c4588e265668039c926cdf11a7a9f4f1abf4"
-  },
-  "commands": [
-    {
-      "profile": "debug",
-      "command": "CARGO_TARGET_DIR=/tmp/birnam-74w-fast-reuse-target mise exec -- cargo test -p birnam-id loop_ -- --test-threads=1",
-      "exit_code": 0,
-      "output": "   Compiling version_check v0.9.5\n   Compiling typenum v1.20.1\n   Compiling libc v0.2.189\n   Compiling find-msvc-tools v0.1.9\n   Compiling shlex v2.0.1\n   Compiling cfg-if v1.0.4\n   Compiling birnam-abi v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-abi)\n   Compiling birnam-id v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-id)\n   Compiling cc v1.3.0\n   Compiling generic-array v0.14.7\n   Compiling cpufeatures v0.2.17\n   Compiling crypto-common v0.1.7\n   Compiling block-buffer v0.10.4\n   Compiling digest v0.10.7\n   Compiling sha2 v0.10.9\n   Compiling birnam-native-compiler v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-native-compiler)\n   Compiling birnam-artifact v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-artifact)\n   Compiling birnam-codegen v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-codegen)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.10s\n     Running unittests src/lib.rs (/tmp/birnam-74w-fast-reuse-target/debug/deps/birnam_id-c7316b89c40cb24d)\n\nrunning 6 tests\ntest execution::loop_iteration::tests::stamps_require_actual_self_tail_and_do_not_survive_restore_or_slot_reuse ... ok\ntest runtime::native_tier::leaf_tests::loop_invariant_tests::control::loop_reuse_capture_suspend_and_native_retirement_preserve_frames_and_identity ... ok\ntest runtime::native_tier::leaf_tests::loop_invariant_tests::loop_invariant_numeric_work_preserves_inputs_methods_lookup_gc_and_fresh_results ... ok\ntest runtime::native_tier::leaf_tests::tail_entry_tests::tail_loop_entry_plan_preserves_observers_capture_changes_and_rebinding ... ok\ntest runtime::native_tier::leaf_tests::tail_entry_tests::tail_loop_entry_timing ... ignored, paired loop timing; host qualification is external\ntest runtime::numeric::chain::loop_reuse::tests::native_reuse_preserves_transitive_values_and_earliest_arithmetic_failure ... ok\n\ntest result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 210 filtered out; finished in 10.39s\n\n"
-    },
-    {
-      "profile": "release",
-      "command": "CARGO_TARGET_DIR=/tmp/birnam-74w-fast-reuse-target mise exec -- cargo test --release -p birnam-id loop_ -- --test-threads=1",
-      "exit_code": 0,
-      "output": "   Compiling version_check v0.9.5\n   Compiling typenum v1.20.1\n   Compiling libc v0.2.189\n   Compiling find-msvc-tools v0.1.9\n   Compiling shlex v2.0.1\n   Compiling cfg-if v1.0.4\n   Compiling birnam-abi v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-abi)\n   Compiling birnam-id v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-id)\n   Compiling cc v1.3.0\n   Compiling generic-array v0.14.7\n   Compiling cpufeatures v0.2.17\n   Compiling crypto-common v0.1.7\n   Compiling block-buffer v0.10.4\n   Compiling digest v0.10.7\n   Compiling birnam-native-compiler v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-native-compiler)\n   Compiling sha2 v0.10.9\n   Compiling birnam-artifact v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-artifact)\n   Compiling birnam-codegen v0.0.0 (/private/tmp/birnam-74w-fast-reuse/rust/birnam-codegen)\n    Finished `release` profile [optimized] target(s) in 14.95s\n     Running unittests src/lib.rs (/tmp/birnam-74w-fast-reuse-target/release/deps/birnam_id-c8d3d685a9e125b0)\n\nrunning 6 tests\ntest execution::loop_iteration::tests::stamps_require_actual_self_tail_and_do_not_survive_restore_or_slot_reuse ... ok\ntest runtime::native_tier::leaf_tests::loop_invariant_tests::control::loop_reuse_capture_suspend_and_native_retirement_preserve_frames_and_identity ... ok\ntest runtime::native_tier::leaf_tests::loop_invariant_tests::loop_invariant_numeric_work_preserves_inputs_methods_lookup_gc_and_fresh_results ... ok\ntest runtime::native_tier::leaf_tests::tail_entry_tests::tail_loop_entry_plan_preserves_observers_capture_changes_and_rebinding ... ok\ntest runtime::native_tier::leaf_tests::tail_entry_tests::tail_loop_entry_timing ... ignored, paired loop timing; host qualification is external\ntest runtime::numeric::chain::loop_reuse::tests::native_reuse_preserves_transitive_values_and_earliest_arithmetic_failure ... ok\n\ntest result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 210 filtered out; finished in 5.73s\n\n"
-    }
-  ],
   "scope": "Focused debug/release checks of unchanged-input reuse: registered mutation/input/declaration/GC/fresh-identity cases, real capture/suspension/retirement, actual-tail stamps and arithmetic transitive-dependency/earliest-error comparisons. No full production or timing claim."
 }

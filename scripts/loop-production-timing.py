@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Verify Id-driven loops, then time them on the normal production floor."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 from itertools import product
@@ -19,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def source(operations, shape, counters=False):
@@ -90,7 +92,7 @@ def main():
     if args.verify and not args.floor or not args.verify and not args.verified:
         parser.error('verification needs --floor; timing needs --verified')
     prefix = args.prefix.resolve()
-    proof = json.loads(args.receipt.read_text())
+    proof = load_json(args.receipt)
     if proof.get('status') != 'passed' or proof.get('production_verification') != 'passed':
         parser.error('full production verification must pass first')
     if not proof.get('sources') or any(sha(ROOT / n) != h for n, h in proof['sources'].items()):
@@ -99,7 +101,7 @@ def main():
     inputs['scripts/loop-production-timing.py'] = sha(__file__)
     inputs['scripts/bench-host-check.sh'] = sha(ROOT / 'scripts/bench-host-check.sh')
     install_path = prefix / 'share/birnam/rust-install.json'
-    install = json.loads(install_path.read_text())
+    install = load_json(install_path)
     if install['profile'] != 'release' or install['publication']['state'] != 'published':
         parser.error('normal published release installation required')
     binaries = dict(install['staged_manifest'])
@@ -116,7 +118,7 @@ def main():
     fixture_hashes = {f'{n}:{s}:{int(c)}': hashlib.sha256(source(n, s, c).encode()).hexdigest()
                       for n, s, c in product((3, 16, 32), range(4), (False, True))}
     if not args.verify:
-        verified = json.loads(args.verified.read_text())
+        verified = load_json(args.verified)
         if (verified.get('status') != 'passed' or not verified.get('verification')
                 or verified['sources'] != inputs or verified['installed_sha256'] != binaries
                 or verified['fixture_sha256'] != fixture_hashes or len(verified['rows']) != 96
@@ -140,8 +142,7 @@ def main():
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds), BENCH_HOST_RETRY_SECONDS='10')
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+        save_json(args.output, result)
 
     def check():
         if any(sha(ROOT / n) != h for n, h in inputs.items()) or any(sha(prefix / n) != h for n, h in binaries.items()):

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Check current numeric captures/arguments and observing arithmetic replacement."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -21,12 +23,12 @@ def main():
     fixture = root / 'scripts/fixtures/closure-numeric-inputs.birnam'
     if args.numeric_copy_region:
         fixture = root / 'scripts/fixtures/closure-counted-numeric-inputs.birnam'
-    sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+    sha = lambda p: hashlib.sha256(read_bytes(p)).hexdigest()
     paths = [Path(__file__).resolve(), fixture]
     paths += [p for p in (root / 'rust').rglob('*') if p.is_file()]
     sources = {str(p.relative_to(root)): sha(p) for p in paths}
     manifest = prefix / 'share/birnam/rust-install.json'
-    publication = json.loads(manifest.read_text())
+    publication = load_json(manifest)
     assert publication['publication']['state'] == 'published'
     artifacts = dict(publication['staged_manifest'])
     artifacts['share/birnam/rust-install.json'] = sha(manifest)
@@ -46,8 +48,7 @@ def main():
         assert all(sha(prefix / n) == h for n, h in artifacts.items())
         assert sha(floor) == floor_hash
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(args.output, result)
     try:
         for precise in [0, 1]:
             baseline = None

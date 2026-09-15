@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """74T recovery and numeric preparation evidence; no timing claim."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -21,58 +23,22 @@ AUTHORITIES = (
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
 def sources():
-    paths = [ROOT / "Cargo.toml", ROOT / "Cargo.lock", Path(__file__).resolve()]
-    paths += [ROOT / "scripts" / name for name in (
-        "compatibility_authority.py", "rust-cutover-verify.sh",
-        "rust-driver-native-smoke.sh", "rust-driver-cold-archive-smoke.sh",
-        "closure-elision-smoke.sh", "closure-literals-smoke.py", "closure-literal-control-smoke.py",
-        "closure-control-smoke.sh", "closure-sequence-smoke.py",
-        "unboxed-numeric-smoke.py", "unboxed-numeric-control-smoke.py",
-        "unboxed-numeric-measurement-smoke.py", "unboxed_numeric_timing_common.py",
-        "unboxed-numeric-timing.py", "loop-invariant-numeric-smoke.py",
-        "loop-measurement-smoke.py", "loop_timing_common.py", "loop-timing.py",
-        "closure-sequence-mutation-smoke.py",
-        "closure-budget-smoke.py", "closure-numeric-inputs-smoke.py", "closure-string-cleanup-smoke.py", "closure-numeric-actions-smoke.py",
-        "closure-journal-smoke.py",
-        "closure-measurement-smoke.py",
-        "closure-timing.py", "closure_timing_common.py",
-        "closure-production-timing.py", "unboxed-bounded-timing.py",
-        "aggregate-source-smoke.py", "recovery-applications.py", "recovery-memory.py",
-        "counted-frame-indices-smoke.py", "counted-frame-aggregate-smoke.py",
-        "counted-frame-closure-control-smoke.py",
-        "counted-indices-production-timing.py", "counted-indices-id-calls-smoke.py",
-        "bench-host-check.sh",
-        "evaluator-unit-lifetime-smoke.py", "baseline-native-storage-smoke.py",
-    )]
-    paths += [ROOT / path for path in (
-        "vendor/libtcc-src/tcc.h", "vendor/libtcc-src/config.h",
-        "vendor/libtcc-src/tccrun.c", "vendor/libtcc-src/libtcc.c",
-        "abi/native-numeric-semantics-v1.md", "scripts/fixtures/numeric-semantics.c",
-        "scripts/fixtures/numeric-specialization.birnam",
-        "scripts/fixtures/native-numeric-api-context.c",
-        "abi/native-field-projection-v1.md", "scripts/fixtures/field-projection.c",
-        "abi/native-block-construction-v1.md", "scripts/fixtures/native-block-construction.c",
-        "abi/fixtures/portable-code-v1/program-explicit-captures.bin",
-        "scripts/fixtures/closure-elision.birnam", "scripts/fixtures/closure-literals.birnam",
-        "scripts/fixtures/closure-literal-control.birnam",
-        "scripts/fixtures/closure-numeric.birnam", "scripts/fixtures/closure-numeric-control.birnam",
-        "scripts/fixtures/closure-numeric-inputs.birnam",
-        "scripts/fixtures/closure-counted-numeric-control.birnam",
-        "scripts/fixtures/closure-counted-numeric-inputs.birnam",
-        "scripts/fixtures/closure-observation.birnam",
-        "scripts/fixtures/closure-control.birnam",
-        "scripts/fixtures/closure-live-api.birnam",
-        "scripts/fixtures/closure-timing.birnam",
-        "scripts/fixtures/closure-api-context.c",
-    )]
-    for folder in ("rust", "src/id", "modules"):
-        paths.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
-    return {str(p.relative_to(ROOT)): sha(p) for p in sorted(paths)}
-
+    # This runner executes recovery/compiler tests and native admission fixtures.
+    # Timing drivers, publication/cold gates and their output settings have their
+    # own phase bindings; editing them must not invalidate this unit proof.
+    paths = [ROOT / 'Cargo.toml', ROOT / 'Cargo.lock', Path(__file__).resolve()]
+    paths += [ROOT / 'scripts' / name for name in
+              ('compatibility_authority.py', 'measurement_archive.py',
+               'validation_support.py', 'validation_proof.py')]
+    paths += [ROOT / 'scripts/fixtures' / name for name in
+              ('native-block-construction.c', 'closure-api-context.c')]
+    for folder in ('rust', 'src/id', 'modules', 'abi', 'vendor/libtcc-src'):
+        paths.extend(p for p in (ROOT / folder).rglob('*') if p.is_file())
+    return {str(p.relative_to(ROOT)): sha(p) for p in sorted(set(paths))}
 
 
 def check_numeric_closure_matrices(matrices):
@@ -312,9 +278,121 @@ def check_baseline_storage_matrix(storage):
             raise RuntimeError('baseline TCC storage observations differ from raw output')
 
 
+def verify_complete_matrices(evidence, include_unboxed=True):
+    """Preserved full coordinate and semantic oracles; no build or subprocess."""
+    evidence = Path(evidence)
+    unboxed_evidence = evidence
+    receipt = {}
+    output = ''.join(sha(ROOT / '.cargo-target/74t-closure-control-target' / profile / 'libbirnam_id.dylib')
+                     for profile in ('debug', 'release'))
+    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control",
+                                                                      "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs", "numeric-string-cleanup", "numeric-actions", "numeric-measure")
+                for profile in ("debug", "release")}
+    expected.update(f"joint-{family}-{counting}-{profile}.json"
+                    for family in ('sequence', 'budget', 'control', 'inputs')
+                    for counting in ('off', 'on') for profile in ('debug', 'release'))
+    expected.update({"evaluator-lifetime.json", "baseline-native-storage.json"})
+    paths = [p for p in Path(evidence).glob("*.json") if p.name in expected]
+    if {p.name for p in paths} != expected:
+        raise RuntimeError("missing source closure matrix receipts")
+    matrices = {p.name: load_json(p) for p in sorted(paths)}
+    if any(m["status"] != "passed" for m in matrices.values()):
+        raise RuntimeError("source closure matrix did not pass")
+    for profile in ("debug", "release"):
+        hashes = {m["floor_sha256"] for name, m in matrices.items() if name.endswith(f"-{profile}.json")}
+        if len(hashes) != 1 or next(iter(hashes)) not in output:
+            raise RuntimeError("source matrix floor differs from control verification")
+    expected_measurements = {(u, s, e) for u in (1, 3, 4, 8, 16, 32) for s in range(4) for e in (0, 1)}
+    for profile in ("debug", "release"):
+        rows = matrices[f"measure-{profile}.json"]["rows"]
+        if len(rows) != 48 or {(r["uses"], r["shape"], r["enabled"]) for r in rows} != expected_measurements:
+            raise RuntimeError("incomplete closure profitability-threshold measurement matrix")
+    expected_literals = {(p, l, e, f) for p in (0, 1)
+                         for l, e, f in ((0, 1, -1), (1, 0, -1), (1, 1, -1),
+                                         (1, 1, 0), (1, 1, 1), (1, 1, 2))}
+    for profile in ("debug", "release"):
+        rows = matrices[f"literals-{profile}.json"]["rows"]
+        if len(rows) != 12 or {(r["precise"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literals:
+            raise RuntimeError("incomplete fresh literal closure result matrix")
+    expected_literal_control = {(p, c, l, e, f) for p, l, e, f in expected_literals
+                                for c in ("capture", "suspend")}
+    for profile in ("debug", "release"):
+        rows = matrices[f"literal-control-{profile}.json"]["rows"]
+        if len(rows) != 24 or {(r["precise"], r["control"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literal_control:
+            raise RuntimeError("incomplete literal result capture/suspension matrix")
+    check_numeric_closure_matrices(matrices)
+    for profile in ('debug', 'release'):
+        check_closure_string_cleanup_matrix(matrices[f'numeric-string-cleanup-{profile}.json'])
+        for family in ('sequence', 'budget', 'control', 'inputs'):
+            check_joint_numeric_closure_pair(family,
+                matrices[f'joint-{family}-off-{profile}.json'],
+                matrices[f'joint-{family}-on-{profile}.json'])
+    lifetime = matrices.pop("evaluator-lifetime.json")
+    expected_lifetime = {(profile, case) for profile in ("debug", "release")
+                         for case in ("probe-root-boundary", "logicvar-original", "error-original",
+                                      "nested-sync", "nested-sync-block", "nested-persisting")}
+    if len(lifetime["rows"]) != 12 or {(r["profile"], r["case"]) for r in lifetime["rows"]} != expected_lifetime:
+        raise RuntimeError("incomplete evaluator/native root lifetime matrix")
+    for profile in ("debug", "release"):
+        floor = ROOT / ".cargo-target/74t-closure-control-target" / profile / "libbirnam_id.dylib"
+        if lifetime["artifacts"].get(str(floor.resolve())) != matrices[f"sequence-{profile}.json"]["floor_sha256"]:
+            raise RuntimeError("evaluator lifetime floor differs from source matrix floor")
+    receipt["evaluator_lifetime_matrix"] = lifetime
+    baseline_storage = matrices.pop("baseline-native-storage.json")
+    check_baseline_storage_matrix(baseline_storage)
+    receipt["baseline_native_storage_matrix"] = baseline_storage
+    receipt["closure_source_matrices"] = matrices
+    if include_unboxed:
+        expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant", "loop-measure") for p in ("debug", "release")}
+        paths = [p for p in unboxed_evidence.glob("*.json") if p.name in expected_unboxed]
+        if {p.name for p in paths} != expected_unboxed:
+            raise RuntimeError("missing source unboxed matrix receipts")
+        unboxed = {p.name: load_json(p) for p in sorted(paths)}
+        for profile in ("debug", "release"):
+            matrix = unboxed[f"unboxed-{profile}.json"]
+            expected_floor = matrices[f"sequence-{profile}.json"]["floor_sha256"]
+            if matrix["status"] != "passed" or matrix["floor_sha256"] != expected_floor:
+                raise RuntimeError("source unboxed matrix failed or floor differs")
+            if len(matrix["rows"]) != 146 or not matrix["production_probe_absent"]:
+                raise RuntimeError("incomplete source unboxed matrix")
+            captured = unboxed[f"unboxed-captured-{profile}.json"]
+            if captured["status"] != "passed" or captured["floor_sha256"] != expected_floor:
+                raise RuntimeError("source captured numeric matrix failed or floor differs")
+            if len(captured["rows"]) != 146 or not captured["production_probe_absent"] or not captured["captured_inputs"]:
+                raise RuntimeError("incomplete source captured numeric matrix")
+            control = unboxed[f"unboxed-control-{profile}.json"]
+            if control["status"] != "passed" or control["floor_sha256"] != expected_floor:
+                raise RuntimeError("source unboxed control matrix failed or floor differs")
+            if len(control["rows"]) != 448:
+                raise RuntimeError("incomplete source unboxed control matrix")
+            measure = unboxed[f"unboxed-measure-{profile}.json"]
+            if measure["status"] != "passed" or measure["floor_sha256"] != expected_floor:
+                raise RuntimeError("source unboxed measurement matrix failed or floor differs")
+            expected_rows = {(n, s, e) for n in (3, 16, 32) for s in range(5) for e in (0, 1)}
+            if len(measure["rows"]) != 30 or {(r["operations"], r["shape"], r["enabled"]) for r in measure["rows"]} != expected_rows:
+                raise RuntimeError("incomplete source unboxed measurement matrix")
+            costs = unboxed[f"loop-measure-{profile}.json"]
+            if costs["status"] != "passed" or costs["floor_sha256"] != expected_floor:
+                raise RuntimeError("source loop measurement matrix failed or floor differs")
+            expected_costs = {(n, s, p, u, e) for n in (3, 16, 32) for s in range(4) for p in (0, 1) for u in (0, 1) for e in (0, 1)}
+            if len(costs["rows"]) != 96 or {(r["operations"], r["shape"], r["precise"], r["unboxed"], r["enabled"]) for r in costs["rows"]} != expected_costs:
+                raise RuntimeError("incomplete source loop measurement matrix")
+            loop = unboxed[f"loop-invariant-{profile}.json"]
+            if loop["status"] != "passed" or loop["floor_sha256"] != expected_floor:
+                raise RuntimeError("source loop invariant matrix failed or floor differs")
+            expected_loop = {(s, p, u, e) for s in range(4) for p in (0, 1) for u in (0, 1) for e in (0, 1)}
+            if len(loop["rows"]) != 32 or {(r["shape"], r["precise"], r["unboxed"], r["enabled"]) for r in loop["rows"]} != expected_loop:
+                raise RuntimeError("incomplete source loop invariant matrix")
+        receipt["unboxed_source_matrices"] = unboxed
+    return receipt
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--verify", action="store_true", help="Validate retained complete matrices; never launch nested verification")
+    parser.add_argument("--matrix-directory", type=Path, help="Complete retained exhaustive matrices from validate.py")
+    parser.add_argument("--validation-receipt", type=Path, help="Passed release plan supplying production evidence")
+    parser.add_argument("--all-families", action="store_true", help="Explicitly select every family")
     parser.add_argument("--unboxed", action="store_true", help="experimental unboxed source and V2 recovery verification")
     parser.add_argument("--numeric", action="store_true")
     parser.add_argument("--chains", action="store_true", help="production raw-chain verification")
@@ -324,20 +402,13 @@ def main():
     parser.add_argument("--closures", action="store_true", help="experimental source closure elimination and recovery verification")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    if args.unboxed:
-        args.closures = True
-    if args.closures:
-        args.fields = True
-    if args.fields:
-        args.allocations = True
-    if args.allocations:
-        args.tails = True
-    if args.tails:
-        args.chains = True
-    if args.chains:
-        args.numeric = True
+    if args.verify and (not args.matrix_directory or not args.validation_receipt):
+        parser.error("--verify now consumes --matrix-directory and --validation-receipt; run validate.py --suite release first")
+    if args.all_families:
+        args.unboxed = args.closures = args.fields = args.allocations = True
+        args.tails = args.chains = args.numeric = True
     if args.output is None:
-        args.output = ROOT / "docs/measurements" / (
+        args.output = ROOT / ".cargo-target/measurements" / (
             "74v-unboxed-numeric.json" if args.unboxed else
             "74t-closure-plans.json" if args.closures else
             "74t-virtual-fields.json" if args.fields else
@@ -349,8 +420,9 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
     env.update(CARGO_TARGET_DIR=str(ROOT / ".cargo-target"), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
+    source_inputs = sources()
     receipt = {
-        "design": "74T", "status": "running", "sources": sources(), "commands": [],
+        "design": "74T", "status": "running", "sources": dict(source_inputs), "commands": [],
         "scope": ("Experimental source numeric box elimination and V2 identity recovery; default-off and broader acceptance pending"
                   if args.unboxed else "Experimental source closure allocation elimination, guarded capture substitution and identity recovery; disabled by default and broader acceptance pending"
                   if args.closures else "Bounded production live aggregate field projection and identity recovery; broader acceptance remains open"
@@ -363,8 +435,7 @@ def main():
     }
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+        save_json(args.output, receipt)
 
     def run(argv, label):
         print("74T: " + label, flush=True)
@@ -389,14 +460,14 @@ def main():
                 raise RuntimeError("changed compatibility authority: " + name)
             receipt["authorities"][name] = sha(ROOT / name)
         for profile in ("debug", "release"):
-            run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
+            run(["cargo", "test", "--locked", "--offline",
                  "-p", "birnam-native-compiler", "--features", "allocation-metrics"]
                 + (["--release"] if profile == "release" else []), profile + "-native-resource-ownership")
-            run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
+            run(["cargo", "test", "--locked", "--offline",
                  "-p", "birnam-tcc", "--features", "allocation-metrics"]
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
-                run(["mise", "exec", "--", "cargo", "build", "--locked", "--offline",
+                run(["cargo", "build", "--locked", "--offline",
                      "-p", "birnam-id", "-p", "birnam-prelude", "-p", "birnam-collection",
                      "-p", "birnam-error", "-p", "birnam-portable-code",
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
@@ -416,7 +487,7 @@ def main():
                      "scripts/fixtures/closure-api-context.c", "-o", api_fixture], profile + "-closure-api-fixture")
                 run([api_fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
                     ("id", "tcc", "codegen_runtime")], profile + "-closure-api-context")
-            output = run(["mise", "exec", "--", "cargo", "test", "--locked", "--offline",
+            output = run(["cargo", "test", "--locked", "--offline",
                           "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
                          + (["--release"] if profile == "release" else []), profile + "-build")
             binaries = {}
@@ -477,120 +548,16 @@ def main():
                 if not match or int(match[1]) == 0:
                     raise RuntimeError("no passing tests for " + label)
         if args.verify:
-            if args.closures:
-                with tempfile.TemporaryDirectory(prefix="closure-source-", dir=work) as evidence:
-                    env["BIRNAM_TEST_CLOSURE_RECEIPTS"] = evidence
-                    if args.unboxed:
-                        unboxed_evidence = Path(evidence) / "unboxed"
-                        unboxed_evidence.mkdir()
-                        env["BIRNAM_TEST_UNBOXED_RECEIPTS"] = str(unboxed_evidence)
-                    try:
-                        output = run(["mise", "run", "verify"], "production-verification")
-                    finally:
-                        env.pop("BIRNAM_TEST_CLOSURE_RECEIPTS", None)
-                        env.pop("BIRNAM_TEST_UNBOXED_RECEIPTS", None)
-                    expected = {f"{family}-{profile}.json" for family in ("sequence", "mutation", "budget", "journal", "measure", "literals", "literal-control",
-                                                                                      "numeric-source", "numeric-control", "numeric-sequence", "numeric-budget", "numeric-inputs", "numeric-string-cleanup", "numeric-actions", "numeric-measure")
-                                for profile in ("debug", "release")}
-                    expected.update(f"joint-{family}-{counting}-{profile}.json"
-                                    for family in ('sequence', 'budget', 'control', 'inputs')
-                                    for counting in ('off', 'on') for profile in ('debug', 'release'))
-                    expected.update({"evaluator-lifetime.json", "baseline-native-storage.json"})
-                    paths = list(Path(evidence).glob("*.json"))
-                    if {p.name for p in paths} != expected:
-                        raise RuntimeError("missing source closure matrix receipts")
-                    matrices = {p.name: json.loads(p.read_text()) for p in sorted(paths)}
-                    if any(m["status"] != "passed" for m in matrices.values()):
-                        raise RuntimeError("source closure matrix did not pass")
-                    for profile in ("debug", "release"):
-                        hashes = {m["floor_sha256"] for name, m in matrices.items() if name.endswith(f"-{profile}.json")}
-                        if len(hashes) != 1 or next(iter(hashes)) not in output:
-                            raise RuntimeError("source matrix floor differs from control verification")
-                    expected_measurements = {(u, s, e) for u in (1, 3, 4, 8, 16, 32) for s in range(4) for e in (0, 1)}
-                    for profile in ("debug", "release"):
-                        rows = matrices[f"measure-{profile}.json"]["rows"]
-                        if len(rows) != 48 or {(r["uses"], r["shape"], r["enabled"]) for r in rows} != expected_measurements:
-                            raise RuntimeError("incomplete closure profitability-threshold measurement matrix")
-                    expected_literals = {(p, l, e, f) for p in (0, 1)
-                                         for l, e, f in ((0, 1, -1), (1, 0, -1), (1, 1, -1),
-                                                         (1, 1, 0), (1, 1, 1), (1, 1, 2))}
-                    for profile in ("debug", "release"):
-                        rows = matrices[f"literals-{profile}.json"]["rows"]
-                        if len(rows) != 12 or {(r["precise"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literals:
-                            raise RuntimeError("incomplete fresh literal closure result matrix")
-                    expected_literal_control = {(p, c, l, e, f) for p, l, e, f in expected_literals
-                                                for c in ("capture", "suspend")}
-                    for profile in ("debug", "release"):
-                        rows = matrices[f"literal-control-{profile}.json"]["rows"]
-                        if len(rows) != 24 or {(r["precise"], r["control"], r["literals"], r["enabled"], r["forced"]) for r in rows} != expected_literal_control:
-                            raise RuntimeError("incomplete literal result capture/suspension matrix")
-                    check_numeric_closure_matrices(matrices)
-                    for profile in ('debug', 'release'):
-                        check_closure_string_cleanup_matrix(matrices[f'numeric-string-cleanup-{profile}.json'])
-                        for family in ('sequence', 'budget', 'control', 'inputs'):
-                            check_joint_numeric_closure_pair(family,
-                                matrices[f'joint-{family}-off-{profile}.json'],
-                                matrices[f'joint-{family}-on-{profile}.json'])
-                    lifetime = matrices.pop("evaluator-lifetime.json")
-                    expected_lifetime = {(profile, case) for profile in ("debug", "release")
-                                         for case in ("probe-root-boundary", "logicvar-original", "error-original",
-                                                      "nested-sync", "nested-sync-block", "nested-persisting")}
-                    if len(lifetime["rows"]) != 12 or {(r["profile"], r["case"]) for r in lifetime["rows"]} != expected_lifetime:
-                        raise RuntimeError("incomplete evaluator/native root lifetime matrix")
-                    for profile in ("debug", "release"):
-                        floor = ROOT / ".cargo-target/74t-closure-control-target" / profile / "libbirnam_id.dylib"
-                        if lifetime["artifacts"].get(str(floor.resolve())) != matrices[f"sequence-{profile}.json"]["floor_sha256"]:
-                            raise RuntimeError("evaluator lifetime floor differs from source matrix floor")
-                    receipt["evaluator_lifetime_matrix"] = lifetime
-                    baseline_storage = matrices.pop("baseline-native-storage.json")
-                    check_baseline_storage_matrix(baseline_storage)
-                    receipt["baseline_native_storage_matrix"] = baseline_storage
-                    receipt["closure_source_matrices"] = matrices
-                    if args.unboxed:
-                        expected_unboxed = {f"{family}-{p}.json" for family in ("unboxed", "unboxed-captured", "unboxed-control", "unboxed-measure", "loop-invariant", "loop-measure") for p in ("debug", "release")}
-                        paths = list(unboxed_evidence.glob("*.json"))
-                        if {p.name for p in paths} != expected_unboxed:
-                            raise RuntimeError("missing source unboxed matrix receipts")
-                        unboxed = {p.name: json.loads(p.read_text()) for p in sorted(paths)}
-                        for profile in ("debug", "release"):
-                            matrix = unboxed[f"unboxed-{profile}.json"]
-                            expected_floor = matrices[f"sequence-{profile}.json"]["floor_sha256"]
-                            if matrix["status"] != "passed" or matrix["floor_sha256"] != expected_floor:
-                                raise RuntimeError("source unboxed matrix failed or floor differs")
-                            if len(matrix["rows"]) != 146 or not matrix["production_probe_absent"]:
-                                raise RuntimeError("incomplete source unboxed matrix")
-                            captured = unboxed[f"unboxed-captured-{profile}.json"]
-                            if captured["status"] != "passed" or captured["floor_sha256"] != expected_floor:
-                                raise RuntimeError("source captured numeric matrix failed or floor differs")
-                            if len(captured["rows"]) != 146 or not captured["production_probe_absent"] or not captured["captured_inputs"]:
-                                raise RuntimeError("incomplete source captured numeric matrix")
-                            control = unboxed[f"unboxed-control-{profile}.json"]
-                            if control["status"] != "passed" or control["floor_sha256"] != expected_floor:
-                                raise RuntimeError("source unboxed control matrix failed or floor differs")
-                            if len(control["rows"]) != 448:
-                                raise RuntimeError("incomplete source unboxed control matrix")
-                            measure = unboxed[f"unboxed-measure-{profile}.json"]
-                            if measure["status"] != "passed" or measure["floor_sha256"] != expected_floor:
-                                raise RuntimeError("source unboxed measurement matrix failed or floor differs")
-                            expected_rows = {(n, s, e) for n in (3, 16, 32) for s in range(5) for e in (0, 1)}
-                            if len(measure["rows"]) != 30 or {(r["operations"], r["shape"], r["enabled"]) for r in measure["rows"]} != expected_rows:
-                                raise RuntimeError("incomplete source unboxed measurement matrix")
-                            costs = unboxed[f"loop-measure-{profile}.json"]
-                            if costs["status"] != "passed" or costs["floor_sha256"] != expected_floor:
-                                raise RuntimeError("source loop measurement matrix failed or floor differs")
-                            expected_costs = {(n, s, p, u, e) for n in (3, 16, 32) for s in range(4) for p in (0, 1) for u in (0, 1) for e in (0, 1)}
-                            if len(costs["rows"]) != 96 or {(r["operations"], r["shape"], r["precise"], r["unboxed"], r["enabled"]) for r in costs["rows"]} != expected_costs:
-                                raise RuntimeError("incomplete source loop measurement matrix")
-                            loop = unboxed[f"loop-invariant-{profile}.json"]
-                            if loop["status"] != "passed" or loop["floor_sha256"] != expected_floor:
-                                raise RuntimeError("source loop invariant matrix failed or floor differs")
-                            expected_loop = {(s, p, u, e) for s in range(4) for p in (0, 1) for u in (0, 1) for e in (0, 1)}
-                            if len(loop["rows"]) != 32 or {(r["shape"], r["precise"], r["unboxed"], r["enabled"]) for r in loop["rows"]} != expected_loop:
-                                raise RuntimeError("incomplete source loop invariant matrix")
-                        receipt["unboxed_source_matrices"] = unboxed
-            else:
-                run(["mise", "run", "verify"], "production-verification")
-        if receipt["sources"] != sources():
+            from validation_proof import load_proof
+            from validate import plan
+            full = load_json(args.validation_receipt)
+            install_argv = full['steps']['install']['argv']
+            prefix = Path(install_argv[install_argv.index('--prefix') + 1])
+            required = tuple(step['name'] for step in plan('release', prefix, args.matrix_directory.parent))
+            verified = load_proof(args.validation_receipt, applications=True, required=required)
+            receipt["sources"].update(verified["sources"])
+            receipt.update(verify_complete_matrices(args.matrix_directory))
+        if source_inputs != sources() or any(sha(ROOT / name) != digest for name, digest in receipt["sources"].items()):
             raise RuntimeError("sources changed during verification")
         receipt["status"] = "passed"
         receipt["production_verification"] = "passed" if args.verify else "not run"

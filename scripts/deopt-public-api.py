@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Design 74I: test guard substitutes through the unchanged IdApi contract."""
+from measurement_archive import read_bytes
 
 import argparse
 import hashlib
@@ -37,7 +38,7 @@ def run(command, env=None):
 
 
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
 def main():

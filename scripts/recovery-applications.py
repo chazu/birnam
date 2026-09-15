@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Compare default and combined experimental recovery consumers in real applications."""
+from validation_support import save_json
+from validation_proof import load_proof
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -24,7 +27,7 @@ SWITCH_NAMES.update({'discarded-clones': 'BIRNAM_DEV_DISCARDED_CLONES',
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def parse_output(output, scenario):
@@ -59,15 +62,15 @@ def main():
     prefix = args.prefix.resolve()
     scenarios = tuple(dict.fromkeys(args.scenarios))
     switches = tuple(SWITCH_NAMES[name] for name in dict.fromkeys(args.switches))
-    proof = json.loads(args.receipt.read_text())
-    if proof.get('status') != 'passed' or proof.get('production_verification') != 'passed':
-        parser.error('full production correctness must pass first')
+    proof = load_proof(args.receipt, applications=True)
+    if proof.get('status') != 'passed' or (proof.get('production_verification') != 'passed' and not proof.get("phase_verified")):
+        parser.error('required correctness phase must pass first')
     if not proof.get('commands') or any(c['exit_code'] for c in proof['commands']):
         parser.error('production receipt contains unsuccessful commands')
     if not proof.get('sources') or any(sha(ROOT / name) != digest for name, digest in proof['sources'].items()):
         parser.error('production sources differ from the correctness receipt')
     manifest_path = prefix / 'share/birnam/rust-install.json'
-    installed = json.loads(manifest_path.read_text())
+    installed = load_json(manifest_path)
     if installed['profile'] != 'release' or installed['publication']['state'] != 'published':
         parser.error('a published release installation is required')
     fixture = ROOT / 'bench/native-tier-focus.birnam'
@@ -97,8 +100,7 @@ def main():
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds), BENCH_HOST_RETRY_SECONDS='10')
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+        save_json(args.output, result)
 
     def check_inputs():
         if any(sha(ROOT / name) != digest for name, digest in inputs.items()):

@@ -1,13 +1,10 @@
 {
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74ac-controls-and-counted-cost-status.json",
+  "bytes": 949,
+  "sha256": "4cb539723a7a07a2f03501a0476ce1c13efc0b0088cd4dfed6498e86aa0e3551",
   "status": "recorded",
   "qualified": false,
-  "controls_source": "f86a61fd",
-  "controls_queue": "f117cf51",
-  "counted_timing": "88161ebf",
-  "artifacts": {
-    "/tmp/birnam-74ac-counted-closure-controls/docs/measurements/74ac-controls-focused-audit.json": "5c3f26771412b2d8832e01baeae515ac7dcc3567a469bfe342d3cae07d15980c",
-    "/tmp/birnam-74ac-counted-closure-controls/docs/measurements/74ac-controls-acceptance-start.json": "dba7ee51d4a07f4df8424716424dd749a438514ed51a8bbc6aa945569604b33e",
-    "/tmp/birnam-74y-scoped-repl-fixture/docs/measurements/74y-scoped-checkpoint-timing-audit.json": "d8307f9b7935fca00d56baa32ba6059a325b523dac03c76470dbd11ef1bd28c1"
-  },
   "scope": "Main documentation update only. Combined numeric-closure code remains in the isolated controls worktree. Completed exploratory timing refers to the accepted counted composition already integrated into main; it does not promote defaults or complete any family."
 }

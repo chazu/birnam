@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Compare main with counting disabled/enabled on verified normal installations."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import importlib.util
@@ -36,7 +38,7 @@ EXPECTED_CHANGES = {
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def main():
@@ -73,12 +75,12 @@ def main():
         if proof_path.parent.name != 'measurements' or proof_path.parent.parent.name != 'docs':
             parser.error('production proof must be in its repository docs/measurements')
         root = proof_path.parents[2]
-        proof = json.loads(proof_path.read_text())
+        proof = load_json(proof_path)
         if (proof.get('status') != 'passed' or proof.get('production_verification') != 'passed'
                 or len(proof.get('commands', [])) != 75
                 or any(r['exit_code'] for r in proof['commands'])):
             parser.error(name + ' production gate incomplete')
-        verified = json.loads(driver_path.read_text())
+        verified = load_json(driver_path)
         if verified.get('status') != 'passed' or verified.get('batches') != 2:
             parser.error(name + ' driver acceptance incomplete')
         if name == 'before':
@@ -113,7 +115,7 @@ def main():
                     parser.error('baseline fixture differs from candidate')
         prefix = Path(verified['prefix']).resolve()
         manifest_path = prefix / 'share/birnam/rust-install.json'
-        manifest = json.loads(manifest_path.read_text())
+        manifest = load_json(manifest_path)
         installed = dict(manifest['staged_manifest'])
         installed['share/birnam/rust-install.json'] = sha(manifest_path)
         if (manifest['profile'] != 'release' or manifest['publication']['state'] != 'published'
@@ -136,7 +138,7 @@ def main():
     changed = {n for n in before.keys() | after.keys() if before.get(n) != after.get(n)}
     if changed != EXPECTED_CHANGES:
         parser.error('production source differences exceed or differ from the counted main composition')
-    acceptance = json.loads(args.acceptance.read_text())
+    acceptance = load_json(args.acceptance)
     if (acceptance.get('status') != 'passed' or acceptance['proof_sha256'] != sha(args.after_proof)
             or acceptance['sources'] != after):
         parser.error('exact candidate focused acceptance must complete first')
@@ -153,7 +155,7 @@ def main():
             continue
         receipt = Path(step['receipt'])
         bind(receipt, step['receipt_sha256'])
-        data = json.loads(receipt.read_text())
+        data = load_json(receipt)
         if data['status'] != 'passed' or len(data['rows']) != expected_steps[step['label']]:
             parser.error('focused matrix incomplete: ' + step['label'])
         if step['label'] == 'normal-driver' and receipt.resolve() != args.after_driver.resolve():
@@ -170,10 +172,7 @@ def main():
             raise RuntimeError('bound source, installation, fixture generator or receipt changed')
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        temporary = args.output.with_suffix('.json.tmp')
-        temporary.write_text(json.dumps(result, indent=2) + '\n')
-        temporary.replace(args.output)
+        save_json(temporary, result)
 
     try:
         current()

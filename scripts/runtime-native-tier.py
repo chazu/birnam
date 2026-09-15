@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """74K/74L: portable native recovery, guarded lookup, and prefix comparison."""
+from measurement_archive import load_json, read_bytes
 
 import argparse
 import hashlib
@@ -34,7 +35,7 @@ def run(command, env=None, timeout=1200):
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
 def source_manifest(root):
@@ -47,7 +48,7 @@ def source_manifest(root):
 
 
 def prefix(path):
-    receipt = json.loads((path / "share/birnam/rust-install.json").read_text())
+    receipt = load_json(path / "share/birnam/rust-install.json")
     assert receipt["profile"] == "release"
     assert receipt["cargo_invocation"] == ["cargo", "build", "--workspace", "--locked", "--offline", "--release"]
     floor = path / "lib/libbirnam_id.dylib"
@@ -104,7 +105,7 @@ def measure(args, receipt, env):
     manifest_hash = hashlib.sha256(json.dumps(source_manifest(ROOT), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
     assert evidence["candidate"]["receipt"]["source_manifest_sha256"] == manifest_hash, "candidate prefix does not match current source"
     reference = ROOT / ("docs/measurements/74k-runtime-owned-native-tier.json" if args.design == "74L" else "docs/measurements/74j-internal-guarded-sends-rejected-1.json")
-    historical = json.loads(reference.read_text())["prefixes"]
+    historical = load_json(reference)["prefixes"]
     for name, old in (("baseline", "baseline"), ("slots", "candidate")):
         assert evidence[name]["floor_sha256"] == historical[old]["floor_sha256"], f"{name} does not match the preserved reference"
     receipt["prefixes"] = evidence
@@ -160,7 +161,7 @@ def main():
         parser.add_argument(f"--{variant}", type=Path)
     args = parser.parse_args()
     if args.output is None:
-        args.output = ROOT / ("docs/measurements/74l-guarded-default-lookup.json" if args.design == "74L" else "docs/measurements/74k-runtime-owned-native-tier.json")
+        args.output = ROOT / (".cargo-target/measurements/74l-guarded-default-lookup.json" if args.design == "74L" else ".cargo-target/measurements/74k-runtime-owned-native-tier.json")
     assert all(getattr(args, name) is not None for name in VARIANTS) or all(getattr(args, name) is None for name in VARIANTS)
     env = {key: value for key, value in os.environ.items() if not key.startswith("BIRNAM_DEV_")}
     env["CARGO_TARGET_DIR"] = str(ROOT / ".cargo-target")

@@ -1,24 +1,8 @@
 {
-  "status": "different",
-  "rows": [
-    {
-      "path": "/tmp/birnam-74ag-target/debug/libbirnam_id.dylib",
-      "expected": "079d8f864f09d7d3234535508df246411c6b3266c4cb4009e2c88a98543c82f0",
-      "actual": "bc7fc6e589d94b5dded67c3a7c38cc546961887d13aa1f5808aae4acf92c17a3",
-      "identical": false
-    },
-    {
-      "path": "/tmp/birnam-74ag-target/debug/libbirnam_tcc.dylib",
-      "expected": "ac3786f14b85f6d696dd66ed898064a05ea0b97ee01efbe792741c80f384d9e6",
-      "actual": "3896652af3484b74f2cf24ea16ebede370d3693d77fefde714ef9e9b89df60a7",
-      "identical": false
-    },
-    {
-      "path": "/tmp/birnam-74ag-target/debug/libbirnam_codegen_runtime.dylib",
-      "expected": "d76caef6ecc628914fb407716e157a9c4e572bae667863192fe3d07064e7bf3c",
-      "actual": "f0688f4a4d8b1b482d67183fe008a42c8e44d86a5cc6f782ecbdcccc88d600d3",
-      "identical": false
-    }
-  ],
-  "log_sha256": "70110dab13a824ae30982b1ab09a339ceaa62546887c43659d810831efedf0ec"
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74ag-debug-artifact-rebuild.json",
+  "bytes": 964,
+  "sha256": "d37344ba1697d09a81873e3c7076a6f94993236f14d98889bcede6d3dd18bd66",
+  "status": "different"
 }

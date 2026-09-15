@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """74N: verify dependency revalidation and repeat the unchanged 74M comparison."""
+from measurement_archive import load_json
 
 import argparse
 import hashlib
@@ -131,7 +132,7 @@ def main():
         if args.prepare:
             prepare(args)
         if args.prepare or args.diagnose or args.measure or args.probe:
-            builds = json.loads((args.work_dir / "builds.json").read_text())
+            builds = load_json(args.work_dir / "builds.json")
             receipt["builds"] = builds
             for evidence in builds["prefixes"].values():
                 assert focus.sha(Path(evidence["path"]) / "lib/libbirnam_id.dylib") == evidence["floor_sha256"]

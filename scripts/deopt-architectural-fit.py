@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """74O bounded architectural-fit probes; no production admission or timing claim."""
+from measurement_archive import read_bytes
 
 import argparse
 import hashlib
@@ -26,7 +27,7 @@ PREFIXES = ("ARCHITECTURAL_FIT ", "ARCHITECTURAL_FIT_OBJECT ",
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
 def manifest():
@@ -40,7 +41,7 @@ def manifest():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-dir", type=Path, default=ROOT / ".cargo-target/74o-fit")
-    parser.add_argument("--output", type=Path, default=ROOT / "docs/measurements/74o-deoptimization-fit.json")
+    parser.add_argument("--output", type=Path, default=ROOT / ".cargo-target/measurements/74o-deoptimization-fit.json")
     parser.add_argument("--verify", action="store_true", help="also run the full production gate")
     args = parser.parse_args()
     work = args.work_dir.resolve()

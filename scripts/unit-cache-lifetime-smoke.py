@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Source-created Unit cache ownership, closure plans, identity and final release."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -142,7 +144,7 @@ def main():
     p.add_argument('--output', required=True, type=Path)
     args = p.parse_args()
     assert not args.output.exists()
-    sha = lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    sha = lambda path: hashlib.sha256(read_bytes(Path(path))).hexdigest()
     sources = runpy.run_path(str(ROOT/'scripts/recovery-graphs.py'))['sources']()
     sources['scripts/unit-cache-lifetime-smoke.py'] = sha(__file__)
     sources['scripts/closure-cache-lifetime-smoke.py'] = sha(ROOT/'scripts/closure-cache-lifetime-smoke.py')
@@ -150,14 +152,15 @@ def main():
     env.update(BIRNAM_ID_DYLIB=str(args.floor.resolve()), BIRNAM_TEST_CLOSURE_CONTROL='1',
                BIRNAM_DEV_COUNTED_FRAME_INDICES=str(int(args.counted_frame_indices)))
     manifest = args.prefix/'share/birnam/rust-install.json'
-    published = json.loads(manifest.read_text())
+    published = load_json(manifest)
     assert published['publication']['state'] == 'published'
     artifacts = {str(args.prefix/name): digest for name,digest in published['staged_manifest'].items()}
     artifacts.update({str(path):sha(path) for path in (args.floor,args.tcc,args.normal_floor,args.normal_tcc,args.codegen,manifest)})
     result = dict(status='running', qualified=False, profile=args.profile, numeric_body=args.numeric_body,
                   counted_frame_indices=args.counted_frame_indices, sources=sources, artifacts=artifacts, rows=[],
                   scope='Copied published host with explicit TCC, Codegen and test-floor overrides. Three source closure lifetimes/process, real optimization activity, weak owner and private/baseline compiler release; synchronous/resumable vtable and Code identity plus method edits after eviction. Not fresh installed-production or timing evidence.')
-    def save(): args.output.write_text(json.dumps(result,indent=2)+'\n')
+    def save():
+        save_json(args.output, result)
     def current():
         assert all(sha(ROOT/path)==digest for path,digest in sources.items())
         assert all(sha(path)==digest for path,digest in artifacts.items())

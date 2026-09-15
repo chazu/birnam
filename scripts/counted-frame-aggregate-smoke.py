@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Check counted indices composed with aggregate allocation and field consumers."""
+from validation_support import save_json
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 import importlib.util
@@ -18,7 +20,7 @@ MODES = ((), ('discarded-clones',), ('virtual-fields',), ('discarded-clones', 'v
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def compare_pair(off, on):
@@ -60,8 +62,7 @@ def main():
     env.update(BIRNAM_ID_DYLIB=str(floor), BIRNAM_TEST_UNBOXED_NUMERIC='1')
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(args.output, result)
 
     def current():
         assert sha(floor) == result['floor_sha256']

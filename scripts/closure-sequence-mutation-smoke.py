@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Later-target mutation and immediate restoration in real source closure regions."""
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 import json
@@ -36,7 +37,7 @@ def main():
                BIRNAM_DEV_CLOSURE_FORCE_RECOVERY="0", BIRNAM_DEV_CLOSURE_FORCE_AT="-1",
                BIRNAM_DEV_CLOSURE_REPORT="0")
     receipt = {"status": "running", "scope": __doc__ + " No timing claim.",
-               "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(), "rows": []}
+               "floor_sha256": hashlib.sha256(read_bytes(args.floor)).hexdigest(), "rows": []}
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-closure-mutation-") as work:
             fixture = Path(work) / "mutation.birnam"

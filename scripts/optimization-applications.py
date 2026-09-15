@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """74S: production workload comparison with only the runtime floor changed."""
+from measurement_archive import load_json, read_bytes
 import argparse
 import datetime
 import hashlib
@@ -26,7 +27,7 @@ spec.loader.exec_module(families)
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
 def sources():
@@ -56,7 +57,7 @@ def prepare(work):
     for variant, source in [('on', ROOT), ('off', baseline)]:
         prefix = work / ('prefix-' + variant)
         focus.install(source, prefix, work / ('build-' + variant + '.log'))
-        receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
+        receipt = load_json(prefix / 'share/birnam/rust-install.json')
         result['prefixes'][variant] = dict(path=str(prefix), receipt=receipt,
                                           floor_sha256=sha(prefix / 'lib/libbirnam_id.dylib'))
     common = work / 'prefix-on'
@@ -119,7 +120,7 @@ def main():
         return result.returncode == 0
 
     try:
-        builds = prepare(args.work_dir) if args.prepare else json.loads((args.work_dir / 'builds.json').read_text())
+        builds = prepare(args.work_dir) if args.prepare else load_json(args.work_dir / 'builds.json')
         receipt['builds'] = builds
         assert builds['sources'] == sources(), 'build provenance is stale'
         assert builds['helper_sha256'] == sha(args.work_dir / 'lookup.dylib')

@@ -4,32 +4,130 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 5 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  verify:
-    name: arm64 macOS verification
+  core:
+    name: Core contracts and shared builds
     runs-on: macos-14
-    timeout-minutes: 20
-
+    timeout-minutes: 35
+    outputs:
+      suite: ${{ steps.scope.outputs.suite }}
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Install Rust 1.95.0
         run: |
           rustup toolchain install 1.95.0 --profile minimal --no-self-update
           rustup default 1.95.0
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
+      - name: Select scope
+        id: scope
+        env:
+          BIRNAM_DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 scripts/validation-ci.py select
+      - name: Verify core contracts and prepare shared artifacts
+        run: python3 scripts/validation-ci.py core --suite "${{ steps.scope.outputs.suite }}"
+      - name: Share installation and diagnostic artifacts
+        if: steps.scope.outputs.suite != 'routine'
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-seed
+          path: .cargo-target/ci-seed.tgz
+          retention-days: 7
+      - name: Retain core evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-core
+          path: .cargo-target/validation
+          include-hidden-files: true
+          retention-days: 30
 
-      - name: Verify Rust workspace offline
+  matrices:
+    name: Exhaustive matrices (${{ matrix.shard }})
+    needs: core
+    if: needs.core.outputs.suite != 'routine'
+    runs-on: macos-14
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Rust 1.95.0
         run: |
-          CARGO_TARGET_DIR=.cargo-target cargo check --workspace --locked --offline
-          CARGO_TARGET_DIR=.cargo-target cargo test --workspace --locked --offline
+          rustup toolchain install 1.95.0 --profile minimal --no-self-update
+          rustup default 1.95.0
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
+      - uses: actions/download-artifact@v4
+        with:
+          name: validation-seed
+          path: .cargo-target
+      - name: Run disjoint matrix shard using shared artifacts
+        run: python3 scripts/validation-ci.py matrix --suite "${{ needs.core.outputs.suite }}" --shard "${{ matrix.shard }}"
+      - name: Retain matrix evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-matrix-${{ matrix.shard }}
+          path: .cargo-target/validation
+          include-hidden-files: true
+          retention-days: 30
 
-      - name: Verify Rust-only production cutover
-        run: bash scripts/rust-cutover-verify.sh
-
-      - name: Cold source bootstrap
-        run: bash scripts/rust-driver-cold-archive-smoke.sh
+  coverage:
+    name: Verify complete matrix coverage
+    needs: [core, matrices]
+    if: needs.core.outputs.suite != 'routine'
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Rust 1.95.0
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --no-self-update
+          rustup default 1.95.0
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --locked
+      - uses: actions/download-artifact@v4
+        with:
+          name: validation-seed
+          path: .cargo-target
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: validation-matrix-*
+          merge-multiple: true
+          path: .cargo-target/validation
+      - name: Verify every prerequisite and the full coverage oracle
+        run: python3 scripts/validation-ci.py collect --suite "${{ needs.core.outputs.suite }}"
+      - name: Retain complete acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-complete
+          path: .cargo-target/validation
+          include-hidden-files: true
+          retention-days: 30

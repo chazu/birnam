@@ -1,13 +1,10 @@
 {
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74aa-production-and-cost-status.json",
+  "bytes": 853,
+  "sha256": "2ed14f6f25467c89dbb260c2faf5815d55bc728fc4c05158129d25b5430f4fec",
   "status": "recorded",
   "qualified": false,
-  "production_acceptance": "10c2be5f",
-  "comparator": "e378b9fb",
-  "queue": "a4c71220",
-  "artifacts": {
-    "/tmp/birnam-74aa-scoped-control-quiet/docs/measurements/74aa-quiet-production-audit.json": "45c81a05cc43646416c860d917e6a8c0bd7508c5ef6aa204ee63ae023d643ef6",
-    "/tmp/birnam-74aa-scoped-control-quiet/docs/measurements/74aa-scoped-cost-admission-checks.json": "b6cd2be09538c8429426594fcb34d8e214e59f9b2ec78a975d33f1fcc22d731b",
-    "/tmp/birnam-74aa-scoped-control-quiet/docs/measurements/74aa-scoped-cost-start.json": "2bfa5c10c2573e229973daf58679c77dc3a984ab735eae472c8bb775d09e2e20"
-  },
   "scope": "Main documentation only. Scoped-read runtime and comparator remain in isolated worktree; installed acceptance and actual cost measurement are pending. No promotion or family completion."
 }

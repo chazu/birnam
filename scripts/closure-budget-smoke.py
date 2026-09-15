@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compare real automatic GC boundaries around source closure regions."""
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 import json
@@ -35,6 +36,7 @@ def main():
     parser.add_argument("--numeric-body", action="store_true")
     parser.add_argument("--numeric-copy-region", action="store_true")
     parser.add_argument("--counted-frame-indices", action="store_true")
+    parser.add_argument("--coverage", choices=("routine", "exhaustive"), default="exhaustive")
     args = parser.parse_args()
     if args.numeric_copy_region and not args.numeric_body:
         parser.error('--numeric-copy-region requires --numeric-body')
@@ -44,8 +46,8 @@ def main():
                BIRNAM_DEV_CLOSURE_REPORT="0")
     env['BIRNAM_DEV_COUNTED_FRAME_INDICES'] = str(int(args.counted_frame_indices))
     receipt = {"status": "running", "scope": __doc__ + " No timing claim.",
-               "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(),
-               "counted_frame_indices": args.counted_frame_indices,
+               "floor_sha256": hashlib.sha256(read_bytes(args.floor)).hexdigest(),
+               "coverage": args.coverage, "counted_frame_indices": args.counted_frame_indices,
                "numeric_copy_region": args.numeric_copy_region, "rows": []}
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-closure-budget-") as work:
@@ -60,6 +62,8 @@ def main():
                         gaps = [initial_gap, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
                         if args.numeric_body:
                             gaps.extend([16384, 32768])
+                        if args.coverage == "routine":
+                            gaps = [initial_gap, 64]
                         for gap in gaps:
                             code = source(calls, escaping, precise, gap, numeric=args.numeric_body,
                                           numeric_copy_region=args.numeric_copy_region)
@@ -68,7 +72,7 @@ def main():
                             for enabled in (0, 1):
                                 env["BIRNAM_DEV_CLOSURE_ELISION"] = str(enabled)
                                 process = subprocess.run([str(args.prefix.resolve() / "bin/birnam"), str(fixture)],
-                                                         env=env, text=True, capture_output=True)
+                                                         env=env, text=True, capture_output=True, timeout=60)
                                 assert process.returncode == 0, (precise, calls, escaping, gap, enabled, process.stdout, process.stderr)
                                 lines = [line for line in process.stdout.splitlines() if line.startswith("closure-budget ")]
                                 assert len(lines) == 1, process.stdout
@@ -86,7 +90,9 @@ def main():
                                     assert body_bytes > 64 and body_bytes + 8 < gap and body_bytes % 8 == 0, row
                                     # Baseline execution supplies the exact byte
                                     # extent, independent of optimizer metadata.
-                                    gaps.extend(n for n in (body_bytes - 8, body_bytes, body_bytes + 8) if n not in gaps)
+                                    boundaries = [body_bytes - 8, body_bytes, body_bytes + 8]
+                                    if args.coverage == "routine": boundaries.insert(0, body_bytes // 2 // 8 * 8)
+                                    gaps.extend(n for n in boundaries if n not in gaps)
                                 assert values["attempts"] == enabled, row
                                 n = values["completed_calls"]
                                 assert 0 <= n <= calls and (enabled or n == 0), row

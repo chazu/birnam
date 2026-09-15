@@ -1,31 +1,10 @@
 {
-  "batches": 50,
-  "binary": {
-    "path": "/Users/chazu/dev/zig/birnam/.cargo-target/release/deps/birnam_id-c8d3d685a9e125b0",
-    "sha256": "318cbff91d1ff9e706e67d6ec26ba2c8975cc92a1d41435b39bb506bc7d5517f"
-  },
-  "cases": [
-    {
-      "operator": "add",
-      "preflight": {
-        "argv": [
-          "bash",
-          "scripts/bench-host-check.sh",
-          "--wait",
-          "add-0"
-        ],
-        "environment": {},
-        "exit_code": 1,
-        "output": "bash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbash: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory\nbench-host-check: add-0 host is not stable enough for tracked timing\n  idle samples: 67.33 39.49 47.55% (minimum 39.49%, median 47.55%, spread 27.84 points)\n  required: median 50% (two of three samples), hottest process <= 80% of one core\n  hottest process: 80945 121.8 /Users/chazu/.local/bin/rk (limit 80% of one core)\n80945 112.6 /Users/chazu/.local/bin/rk\n 8713  81.7 /System/Library/Frameworks/CoreSpotlight.framework/spotlightknowledged\n79425  76.8 /Applications/Firefox.app/Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container\n  755  29.0 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  366  12.0 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer\n67031   8.4 /System/Library/ExtensionKit/Extensions/WallpaperVideoExtension.appex/Contents/MacOS/WallpaperVideoExtension\n93767   5.5 /Applications/Firefox.app/Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container\n  597   2.8 /System/Library/CoreServices/WindowManager.app/Contents/MacOS/WindowManager\nbench-host-check: add-0 did not become quiet within 0s\n"
-      },
-      "qualified": false,
-      "varying": false
-    }
-  ],
-  "correctness_receipt": "/Users/chazu/dev/zig/birnam/docs/measurements/74t-numeric-chain-cache.json",
-  "correctness_receipt_sha256": "9087a185723dbed0a2c9c7d846eaffa7b666d4f8577460cc2e682feff127fc4e",
-  "driver_sha256": "8cd0ce46cd5072ad6bf5bb0d0b07ab5bca0f32fa1085370baab06c1016d0996c",
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74t-numeric-chain-cache-retiming.json",
+  "bytes": 2292,
+  "sha256": "56ef5f277dc499b8277f2583df3cc885d04467cb3e40cba74848f398e42e2ae4",
+  "status": "not_qualified",
   "qualified": false,
-  "scope": "Paired warm arithmetic intervals with collection between batches; application and cold-start acceptance remain separate.",
-  "status": "not_qualified"
+  "scope": "Paired warm arithmetic intervals with collection between batches; application and cold-start acceptance remain separate."
 }

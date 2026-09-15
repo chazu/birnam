@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Qualify paired registered tail-loop timings against a verified source receipt."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -13,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
 def main():
@@ -25,7 +27,7 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.batches <= 500 or args.wait_seconds < 0:
         parser.error("batches must be 1-500 and wait-seconds nonnegative")
-    proof = json.loads(args.receipt.read_text())
+    proof = load_json(args.receipt)
     if proof["status"] != "passed" or proof["production_verification"] != "passed":
         parser.error("full verification must pass first")
     if not any(c["label"] == "release-tail-entry-loop" and c["exit_code"] == 0 for c in proof["commands"]):
@@ -51,8 +53,7 @@ def main():
               "driver_sha256": sha(Path(__file__))}
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        save_json(args.output, result)
 
     def run(argv):
         completed = subprocess.run(argv, cwd=ROOT, env=env, capture_output=True, text=True)

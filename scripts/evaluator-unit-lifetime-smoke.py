@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Check active synchronous code ownership under precise test-probe collection."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -14,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def fixtures():
@@ -40,13 +42,14 @@ def main():
     parser.add_argument('--floor-root', type=Path, required=True)
     parser.add_argument('--floor-proof', type=Path, help='Optional prior full floor proof; omitted for focused development checks')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument("--profiles", nargs="+", choices=("debug", "release"), default=["debug", "release"])
     args = parser.parse_args()
     prefix = args.prefix.resolve()
-    proof = json.loads(args.floor_proof.read_text()) if args.floor_proof else None
+    proof = load_json(args.floor_proof) if args.floor_proof else None
     if proof:
         assert proof['status'] == proof['production_verification'] == 'passed'
     manifest = prefix / 'share/birnam/rust-install.json'
-    published = json.loads(manifest.read_text())
+    published = load_json(manifest)
     assert published['publication']['state'] == 'published'
     artifacts = {str(prefix / name): digest for name, digest in published['staged_manifest'].items()}
     artifacts.update({str(p): sha(p) for p in [manifest] + ([args.floor_proof.resolve()] if args.floor_proof else [])})
@@ -56,7 +59,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     def save():
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(args.output, result)
 
     def current():
         assert all(sha(n) == h for n, h in sources.items()), 'source changed'
@@ -64,7 +67,7 @@ def main():
 
     env = {k: v for k, v in os.environ.items() if not k.startswith(('BIRNAM_', 'DYLD_'))}
     try:
-        for profile in ['debug', 'release']:
+        for profile in args.profiles:
             floor = (args.floor_root / profile / 'libbirnam_id.dylib').resolve()
             module = (args.target / profile / 'libbirnam_codegen_runtime.dylib').resolve()
             if proof:

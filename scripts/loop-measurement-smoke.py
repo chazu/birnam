@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify installed loop cost counters and retained cache bounds before timing."""
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 from itertools import product
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def main():

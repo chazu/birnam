@@ -6,6 +6,7 @@ hook. Never use these instrumented elapsed times as performance measurements.
 The two snapshots delimit startup from the loop. -allEvents includes freed
 Rust scratch allocations; -allByCount shows only still-live allocations.
 """
+from measurement_archive import load_json
 import argparse
 import hashlib
 import json
@@ -76,7 +77,7 @@ let answer := [1 to: {args.iterations} do: callback]
                 if child.poll() is None:
                     child.kill()
                     child.wait()
-    receipt = json.loads((binary.parent.parent / "share/birnam/rust-install.json").read_text())
+    receipt = load_json(binary.parent.parent / "share/birnam/rust-install.json")
     (args.output / "receipt.json").write_text(json.dumps(dict(
         schema="birnam-control-malloc-probe-v1", iterations=args.iterations,
         automatic_gc=args.gc, captures=args.captures,

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real V2 capture/suspension of repeated literal results, without scratch GC roots."""
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 import itertools
@@ -30,7 +31,7 @@ def main():
     paths = [fixture, Path(__file__).resolve()]
     paths += sorted((root / 'rust/birnam-codegen/src').rglob('*.rs'))
     paths += sorted((root / 'rust/birnam-id/src').rglob('*'))
-    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+    digest = lambda p: hashlib.sha256(read_bytes(p)).hexdigest()
     hashes = {str(p.relative_to(root)): digest(p) for p in paths if p.is_file()}
     installed = {str(p.relative_to(args.prefix)): digest(p) for p in sorted(args.prefix.rglob('*')) if p.is_file()}
     floor_hash = digest(args.floor)

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Ordinary Id factory reuse after eviction, including escaped shared Cells."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -55,11 +57,11 @@ def main():
     p.add_argument('--output', required=True, type=Path)
     args = p.parse_args()
     assert not args.output.exists()
-    sha = lambda path: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    sha = lambda path: hashlib.sha256(read_bytes(Path(path))).hexdigest()
     sources = runpy.run_path(str(ROOT/'scripts/recovery-graphs.py'))['sources']()
     sources['scripts/closure-cache-lifetime-smoke.py'] = sha(__file__)
     manifest_path = args.prefix/'share/birnam/rust-install.json'
-    installed = json.loads(manifest_path.read_text())
+    installed = load_json(manifest_path)
     assert installed['publication']['state'] == 'published'
     artifacts = {str(args.prefix/name): digest for name, digest in installed['staged_manifest'].items()}
     artifacts.update({str(args.floor): sha(args.floor), str(manifest_path): sha(manifest_path)})
@@ -67,7 +69,8 @@ def main():
     env = {k:v for k,v in os.environ.items() if not k.startswith(('BIRNAM_', 'DYLD_'))}
     env['BIRNAM_ID_DYLIB'] = str(args.floor.resolve())
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    def save(): args.output.write_text(json.dumps(result, indent=2)+'\n')
+    def save():
+        save_json(args.output, result)
     try:
         for precise in (0, 1):
             for escaping in (0, 1):

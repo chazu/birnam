@@ -1,37 +1,10 @@
 {
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74aj-application-reproducibility.json",
+  "bytes": 1844,
+  "sha256": "5784f42121ef5c733bcffdb27eb24424028048b802ee6f69f527219909b6d0f3",
   "status": "passed",
   "qualified": false,
-  "scope": "Preserve and revalidate already executed 74AJ normal-floor application outputs with the unchanged 74AH driver. No new application or timing matrix.",
-  "sources": {
-    "bench/recovery-binding-pipeline.birnam": "e0c1204bb2446b1eb65bdc1493cfac15875655c42aed34ac070b90c5b0822bb5",
-    "scripts/recovery-binding-pipeline-smoke.py": "99a81f36257c911a89c6ee0c16421769cfa69234dbfb43623a718d8db5f5bf33"
-  },
-  "landing_receipt_sha256": "271a27711a453cd29e1c01c2a20ded336c9a974f8ba48711ee5bc10adba122e4",
-  "validation": "74AH validate(row, diagnostic=False): exact outputs, exit status and absent diagnostics; stderr was merged into the landing log.",
-  "rows": [
-    {
-      "label": "application-0-0",
-      "exit_code": 0,
-      "stdout": "application-phase baseline\napplication-answer 45152\napplication-changed 47584\napplication-mutation 63152 effects=3 fresh-alias=true\napplication-binding-pipeline passed\n",
-      "stderr": ""
-    },
-    {
-      "label": "application-0-1",
-      "exit_code": 0,
-      "stdout": "application-phase baseline\napplication-answer 45152\napplication-changed 47584\napplication-mutation 63152 effects=3 fresh-alias=true\napplication-binding-pipeline passed\n",
-      "stderr": ""
-    },
-    {
-      "label": "application-1-0",
-      "exit_code": 0,
-      "stdout": "application-phase baseline\napplication-answer 45152\napplication-changed 47584\napplication-mutation 63152 effects=3 fresh-alias=true\napplication-binding-pipeline passed\n",
-      "stderr": ""
-    },
-    {
-      "label": "application-1-1",
-      "exit_code": 0,
-      "stdout": "application-phase baseline\napplication-answer 45152\napplication-changed 47584\napplication-mutation 63152 effects=3 fresh-alias=true\napplication-binding-pipeline passed\n",
-      "stderr": ""
-    }
-  ]
+  "scope": "Preserve and revalidate already executed 74AJ normal-floor application outputs with the unchanged 74AH driver. No new application or timing matrix."
 }

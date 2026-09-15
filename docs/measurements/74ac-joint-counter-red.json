@@ -1,29 +1,9 @@
 {
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74ac-joint-counter-red.json",
+  "bytes": 766,
+  "sha256": "61d2b277301345d25c1a0bd86929fb23f95ec4f69d5d28b97bba9b645c28d737",
   "status": "failed",
-  "scope": "Source sequence correctness and allocation accounting; no timing claim",
-  "floor_sha256": "c9e607bad97f057d7b0e9793cf5cbb7e37785b87f3b229ebecd728dea6f93b7b",
-  "counted_frame_indices": true,
-  "numeric_copy_region": true,
-  "rows": [
-    {
-      "precise": 1,
-      "calls": 3,
-      "escaping": false,
-      "enabled": false,
-      "force": -1,
-      "values": {
-        "calls": 3,
-        "escaping": 0,
-        "invocations": 8,
-        "bytes": 21120,
-        "physical_saved": 168,
-        "attempts": 0,
-        "hits": 0,
-        "materialized": 0,
-        "completed_calls": 0
-      },
-      "source_sha256": "20ca1b29a9b573a93413c0cdf7ef03f62c16d5817046ece888fd2f1e440f5334"
-    }
-  ],
-  "error": "'counted_indices'"
+  "scope": "Source sequence correctness and allocation accounting; no timing claim"
 }

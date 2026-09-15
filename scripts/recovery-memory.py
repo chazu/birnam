@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Sample owned normal-floor REPLs at explicit collection/eviction checkpoints."""
+from validation_support import save_json
+from validation_proof import load_proof
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import importlib.util
@@ -26,7 +29,7 @@ DEFAULT_ON = {'clones', 'fields'}
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def phases(family, refused):
@@ -131,15 +134,15 @@ def main():
     if not 1 <= args.pairs <= 5:
         p.error('pairs must be 1..5')
     prefix = args.prefix.resolve()
-    proof = json.loads(args.receipt.read_text())
-    if proof.get('status') != 'passed' or proof.get('production_verification') != 'passed' or any(c['exit_code'] for c in proof['commands']):
-        p.error('full production verification must pass first')
+    proof = load_proof(args.receipt, applications=True)
+    if proof.get('status') != 'passed' or (proof.get('production_verification') != 'passed' and not proof.get("phase_verified")) or any(c['exit_code'] for c in proof['commands']):
+        p.error('required correctness phase must pass first')
     if not proof.get('sources') or any(sha(ROOT / n) != h for n, h in proof['sources'].items()):
         p.error('production sources differ from the verified checkpoint')
     sources = dict(proof['sources'])
     sources['scripts/recovery-memory.py'] = sha(__file__)
     manifest_path = prefix / 'share/birnam/rust-install.json'
-    manifest = json.loads(manifest_path.read_text())
+    manifest = load_json(manifest_path)
     if manifest['profile'] != 'release' or manifest['publication']['state'] != 'published':
         p.error('published normal release installation required')
     installed = dict(manifest['staged_manifest'])
@@ -154,7 +157,7 @@ def main():
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     def save():
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(args.output, result)
 
     def current():
         assert all(sha(ROOT / n) == h for n, h in sources.items()), 'source changed'

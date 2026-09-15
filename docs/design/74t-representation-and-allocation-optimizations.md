@@ -1,5 +1,9 @@
 # 74T — Numeric, loop, aggregate and closure optimization
 
+Current implementation/default decisions: [74AK](74ak-bounded-qualification-and-defaults.md).
+Current validation commands: [validation guide](../validation.md). Dated
+experiment and queue status below is retained as historical evidence.
+
 Status: all four consumer implementations are integrated; bounded qualification
 is complete with conditional default promotion rejected for the remaining opt-in
 settings. See [74AK](74ak-bounded-qualification-and-defaults.md). This document tracks the user's request to

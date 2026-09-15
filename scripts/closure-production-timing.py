@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Verify and measure repeated closures through ordinary Id on a normal release floor."""
+from validation_support import save_json
+from validation_proof import load_proof
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 from itertools import product
@@ -20,7 +23,7 @@ SHAPES = (0, 1, 3)
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def source(uses, *, numeric=False):
@@ -132,9 +135,9 @@ def main():
         p.error('invalid measurement bounds')
     if not args.verify and not args.verified:
         p.error('timing requires --verified')
-    proof = json.loads(args.receipt.read_text())
-    if proof.get('status') != 'passed' or proof.get('production_verification') != 'passed' or not proof.get('commands') or any(c['exit_code'] for c in proof['commands']):
-        p.error('complete production correctness must pass first')
+    proof = load_proof(args.receipt, measurement=('numeric-measure-release' if args.numeric_body else 'measure-release'))
+    if proof.get('status') != 'passed' or (proof.get('production_verification') != 'passed' and not proof.get("phase_verified")) or not proof.get('commands') or any(c['exit_code'] for c in proof['commands']):
+        p.error('required correctness phase must pass first')
     sources = dict(proof['sources'])
     if not sources or any(sha(ROOT / n) != h for n, h in sources.items()):
         p.error('production sources differ from correctness receipt')
@@ -150,7 +153,7 @@ def main():
         sources[name] = sha(ROOT / name)
     prefix = args.prefix.resolve()
     manifest_path = prefix / 'share/birnam/rust-install.json'
-    install = json.loads(manifest_path.read_text())
+    install = load_json(manifest_path)
     if install['profile'] != 'release' or install['publication']['state'] != 'published':
         p.error('normal published release installation required')
     installed = dict(install['staged_manifest'])
@@ -161,7 +164,7 @@ def main():
     sources.update(shipped)
     fixtures = {str(n): hashlib.sha256(source(n, numeric=args.numeric_body).encode()).hexdigest() for n in USES}
     if not args.verify:
-        verified = json.loads(args.verified.read_text())
+        verified = load_json(args.verified)
         coordinates = {(r['uses'], r['shape'], r['mode'], r['reports']) for r in verified.get('rows', [])}
         expected = {(n, s, m, r) for n, s, m, r in product(USES, SHAPES, ('baseline', 'enabled', 'forced'), (False, True)) if r or m != 'forced'}
         if verified.get('status') != 'passed' or not verified.get('verification') or verified.get('sources') != sources or verified.get('installed_sha256') != installed or verified.get('fixture_sha256') != fixtures or len(verified.get('rows', [])) != 90 or coordinates != expected:
@@ -175,8 +178,7 @@ def main():
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds), BENCH_HOST_RETRY_SECONDS='10')
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+        save_json(args.output, result)
 
     def check():
         if any(sha(ROOT / n) != h for n, h in sources.items()) or any(sha(prefix / n) != h for n, h in installed.items()) or sha(args.receipt) != result['correctness_sha256']:

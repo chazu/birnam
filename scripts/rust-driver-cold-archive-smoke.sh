@@ -49,6 +49,9 @@ with open(sys.argv[2], encoding="utf-8") as handle:
 for receipt in (first, second):
     assert receipt["schema"] == 3
     assert receipt["authority"] == "rust"
+    assert receipt["build_mode"] == "cold"
+    assert receipt["profile"] == "release"
+    assert "--features" not in receipt["cargo_invocation"]
     assert receipt["source_manifest_files"] > 0
     assert receipt["staged_manifest_files"] > 0
     assert receipt["publication"]["method"] == "atomic-sibling-rename"

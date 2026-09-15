@@ -1,55 +1,8 @@
 {
-  "schema": "birnam-native-tier-symbol-invalidation-v1",
-  "result": "confirmed",
-  "scope": "diagnostic entry counts and checked answers; no timing claim",
-  "floor_sha256": "dcb45f8d34c96539fdd50c440b0c74c4511f9201f1901d55e27e68aaf33317a4",
-  "runner_sha256": "0069a5a2fa7f034e27ca2201c6db45b8f8623a6de7bbb801385c87d649ef9ed3",
-  "rows": [
-    {
-      "case": "existing",
-      "source": "// 74M diagnostic follow-up: create and exercise the harness before admission.\n[System load: \"modules/time.birnam\"];\n[System load: \"modules/os.birnam\"];\nlet plain := [:input |\n  let first := [input + 1];\n  let second := [first + 2];\n  [second + 3]];\nlet target := [plain asCell];\nlet answer := [0 asCell];\nlet samples := [#[] asCell];\nlet batch := [|\n  [4096 timesRepeat: [| [answer set: [[target value] value: 7]]]]];\nlet trial := [|\n  let start := [Time monotonicMicros];\n  [batch value];\n  [samples set: [[samples value] add: [[Time monotonicMicros] - start]]]];\nlet run := [| [5 timesRepeat: trial]];\n// Reuse exactly the same closures before and after replacing the target cell.\n[run value];\nlet symbolName := \"oopAt:\";\nlet portable := [[plain codeObject] withoutSourceProvenance];\nlet start := [Time monotonicMicros];\nlet block := [Codegen materializeResumable: portable captures: #[]];\nlet materialize := [[Time monotonicMicros] - start];\n[target set: block];\n[run value];\n[samples set: #[]];\n[symbolName asSymbol];\n[run value];\n[[[answer value] = 13] ifTrue: [| nil] ifFalse: [| [OS exit: 1]]];\n[System println: [\"materialize-us \" , [materialize printString]]];\n[[samples value] do: [:sample | [System println: [\"sample-us \" , [sample printString]]]]];\n[System gc];\n[[[block value: 7] = 13] ifTrue: [| nil] ifFalse: [| [OS exit: 2]]];\n[System println: \"focus-ok steady-chain\"];\n",
-      "source_sha256": "74f8027620869c08bffd689ef0ee0758fc09f0f46be7247eeb899d29538cf4d1",
-      "profile": {
-        "stages": 5,
-        "rows": 5,
-        "eligible": 1,
-        "registered": 1,
-        "selections": 1413689,
-        "entries": 122817,
-        "invalidations": 1,
-        "compiles": 1,
-        "failures": 0,
-        "compile_ns": 517709,
-        "prepare_ns": 106042,
-        "source_bytes": 5704,
-        "live_units": 0,
-        "peak_units": 1
-      },
-      "stdout": "materialize-us 2772\nsample-us 186412\nsample-us 188106\nsample-us 172859\nsample-us 172183\nsample-us 177385\nfocus-ok steady-chain\n",
-      "stderr": "NATIVE_TIER_PROFILE {\"stages\":5,\"rows\":5,\"eligible\":1,\"registered\":1,\"selections\":1413689,\"entries\":122817,\"invalidations\":1,\"compiles\":1,\"failures\":0,\"compile_ns\":517709,\"prepare_ns\":106042,\"source_bytes\":5704,\"live_units\":0,\"peak_units\":1}\n"
-    },
-    {
-      "case": "new",
-      "source": "// 74M diagnostic follow-up: create and exercise the harness before admission.\n[System load: \"modules/time.birnam\"];\n[System load: \"modules/os.birnam\"];\nlet plain := [:input |\n  let first := [input + 1];\n  let second := [first + 2];\n  [second + 3]];\nlet target := [plain asCell];\nlet answer := [0 asCell];\nlet samples := [#[] asCell];\nlet batch := [|\n  [4096 timesRepeat: [| [answer set: [[target value] value: 7]]]]];\nlet trial := [|\n  let start := [Time monotonicMicros];\n  [batch value];\n  [samples set: [[samples value] add: [[Time monotonicMicros] - start]]]];\nlet run := [| [5 timesRepeat: trial]];\n// Reuse exactly the same closures before and after replacing the target cell.\n[run value];\nlet symbolName := \"notPreviouslyInterned74mProbeSymbol\";\nlet portable := [[plain codeObject] withoutSourceProvenance];\nlet start := [Time monotonicMicros];\nlet block := [Codegen materializeResumable: portable captures: #[]];\nlet materialize := [[Time monotonicMicros] - start];\n[target set: block];\n[run value];\n[samples set: #[]];\n[symbolName asSymbol];\n[run value];\n[[[answer value] = 13] ifTrue: [| nil] ifFalse: [| [OS exit: 1]]];\n[System println: [\"materialize-us \" , [materialize printString]]];\n[[samples value] do: [:sample | [System println: [\"sample-us \" , [sample printString]]]]];\n[System gc];\n[[[block value: 7] = 13] ifTrue: [| nil] ifFalse: [| [OS exit: 2]]];\n[System println: \"focus-ok steady-chain\"];\n",
-      "source_sha256": "d8d65c2b4b0360d61c37925c6f37cfe973251493c8d864f6a492952c36025823",
-      "profile": {
-        "stages": 5,
-        "rows": 5,
-        "eligible": 1,
-        "registered": 1,
-        "selections": 1413689,
-        "entries": 61377,
-        "invalidations": 1,
-        "compiles": 1,
-        "failures": 0,
-        "compile_ns": 337709,
-        "prepare_ns": 54707,
-        "source_bytes": 5704,
-        "live_units": 0,
-        "peak_units": 1
-      },
-      "stdout": "materialize-us 891\nsample-us 174399\nsample-us 211675\nsample-us 204903\nsample-us 187093\nsample-us 176900\nfocus-ok steady-chain\n",
-      "stderr": "NATIVE_TIER_PROFILE {\"stages\":5,\"rows\":5,\"eligible\":1,\"registered\":1,\"selections\":1413689,\"entries\":61377,\"invalidations\":1,\"compiles\":1,\"failures\":0,\"compile_ns\":337709,\"prepare_ns\":54707,\"source_bytes\":5704,\"live_units\":0,\"peak_units\":1}\n"
-    }
-  ]
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74m-native-tier-symbol-invalidation.json",
+  "bytes": 5196,
+  "sha256": "13de27b5cb6c03b21a5966252d724e5d45368ac04650dda8a4226ad61f2149f3",
+  "scope": "diagnostic entry counts and checked answers; no timing claim"
 }

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Check counted-index allocation savings with ordinary Id driving numeric calls."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import importlib.util
@@ -26,7 +28,7 @@ aggregate = module('counted_aggregate', 'counted-frame-aggregate-smoke.py')
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def source(operations, shape, precise):
@@ -73,7 +75,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     assert not args.output.exists(), 'preserve existing evidence'
-    proof = json.loads(args.receipt.read_text())
+    proof = load_json(args.receipt)
     assert proof['status'] == proof['production_verification'] == 'passed'
     prefix, floor = args.prefix.resolve(), args.floor.resolve()
     assert sha(floor) == proof['unboxed_source_matrices'][f'unboxed-measure-{args.profile}.json']['floor_sha256']
@@ -81,7 +83,7 @@ def main():
     for name in ('counted-indices-id-calls-smoke.py', 'counted-indices-production-timing.py'):
         sources['scripts/' + name] = sha(ROOT / 'scripts' / name)
     manifest = prefix / 'share/birnam/rust-install.json'
-    installed = json.loads(manifest.read_text())
+    installed = load_json(manifest)
     assert installed['profile'] == 'release' and installed['publication']['state'] == 'published'
     artifacts = dict(installed['staged_manifest'])
     artifacts['share/birnam/rust-install.json'] = sha(manifest)
@@ -97,10 +99,7 @@ def main():
     env.update(BIRNAM_ID_DYLIB=str(floor), BIRNAM_TEST_UNBOXED_NUMERIC='1', BIRNAM_NUMERIC_BATCHES='2')
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        temporary = args.output.with_suffix('.json.tmp')
-        temporary.write_text(json.dumps(result, indent=2) + '\n')
-        temporary.replace(args.output)
+        save_json(temporary, result)
 
     def current():
         assert all(sha(ROOT / n) == h for n, h in sources.items()), 'source changed'

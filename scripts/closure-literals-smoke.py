@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Differential installed source checks for fresh literal closure results."""
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 import json
@@ -23,7 +24,7 @@ def main():
     paths += sorted((root / 'rust/birnam-codegen/src').rglob('*.rs'))
     paths += sorted((root / 'rust/birnam-id/src').rglob('*'))
     paths = [p for p in paths if p.is_file()]
-    digest = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+    digest = lambda p: hashlib.sha256(read_bytes(p)).hexdigest()
     hashes = {str(p.relative_to(root)): digest(p) for p in paths}
     installed = {str(p.relative_to(args.prefix)): digest(p) for p in sorted(args.prefix.rglob('*')) if p.is_file()}
     floor_hash = digest(args.floor)

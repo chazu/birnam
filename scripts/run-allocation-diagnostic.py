@@ -6,6 +6,7 @@ automatic collections between them, excluding startup and final reporting. Zero-
 is not counted as a backing allocation. Counts cover the named source sites,
 not all Rust allocations in the process.
 """
+from measurement_archive import load_json
 import argparse
 from collections import Counter
 import hashlib
@@ -61,7 +62,7 @@ def main():
     args = parser.parse_args()
     if args.recount:
         path = args.output / "results.json"
-        result = json.loads(path.read_text())
+        result = load_json(path)
         for row in result["results"]:
             log = args.output / f"gc-{row['automatic_gc']}-captures-{row['captures']}-n-{row['iterations']}.stderr"
             row["counters"] = summarize(log)
@@ -103,7 +104,7 @@ let answer := [1 to: {count} do: callback]
                     results.append(dict(iterations=count, automatic_gc=gc, captures=captures,
                                         fixture_sha256=hashlib.sha256(body.encode()).hexdigest(),
                                         counters=summarize(log)))
-    receipt = json.loads((binary.parent.parent / "share/birnam/rust-install.json").read_text())
+    receipt = load_json(binary.parent.parent / "share/birnam/rust-install.json")
     (args.output / "results.json").write_text(json.dumps(dict(
         schema="birnam-allocation-counters-v1",
         source_manifest_sha256=receipt["source_manifest_sha256"], results=results), indent=2) + "\n")

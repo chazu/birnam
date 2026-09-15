@@ -1,5 +1,8 @@
 # Birnam work tracker
 
+Current validation commands: [validation guide](../validation.md). Optimization
+qualification/default decisions: [74AK](../design/74ak-bounded-qualification-and-defaults.md).
+
 The repository-local **Beads** tracker (`.beads/`, prefix `birnam`) is the
 authoritative active backlog. Run commands from this checkout:
 

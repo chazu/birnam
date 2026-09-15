@@ -1,11 +1,10 @@
 {
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74ad-joint-release-start.json",
+  "bytes": 836,
+  "sha256": "f070bd2f0211aacffea7833125b2698f46512b3ac728df36ee3a51e5dd51bb47",
   "status": "started",
   "qualified": false,
-  "source_checkpoint": "da7ed262",
-  "source_count": 306,
-  "source_inventory_sha256": "0490b5df7591dc81f58e129cffbd86e0b2ec1f963eb6000591081afb94f7e7f6",
-  "queue_identity": "30235 Mon Sep 14 15:47:58 2026     python3 /tmp/birnam-74ad-joint-release.py",
-  "queue_sha256": "8dfe8ea6f88874432640494980f3b4871d14000d014ff470aa3aeb0a2a0848f4",
-  "live_receipt": "/tmp/birnam-74ad-recovery-production-composition/docs/measurements/74ad-joint-release.json",
   "scope": "Build exact composed release diagnostic floor, then1148joint source cases with counting off/on and original individual plus cross-mode checks. Existing numeric compiler prefix is used with matching compiler sources and explicit floor overlay; this is not a fresh composed normal installation or the full production gate."
 }

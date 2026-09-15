@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Run existing closure V2 capture/suspend checks with counted Frame indices."""
+from validation_support import save_json
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 import itertools
@@ -12,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def main():
@@ -38,8 +40,7 @@ def main():
     env.update(BIRNAM_ID_DYLIB=str(floor), BIRNAM_TEST_CLOSURE_CONTROL='1', BIRNAM_DEV_CLOSURE_REPORT='1')
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(args.output, result)
 
     def current():
         assert sha(floor) == result['floor_sha256']

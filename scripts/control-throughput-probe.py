@@ -7,6 +7,7 @@ python3 scripts/control-throughput-probe.py /path/to/prefix/bin/birnam \
 The sample run is excluded from timing medians. This diagnostic does not alter
 the frozen benchmark suite and is not release acceptance evidence.
 """
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -41,9 +42,9 @@ def main():
     root = Path(__file__).resolve().parent.parent
     elapsed = [probe(binary, root) for _ in range(3)]
     sampled = probe(binary, root, args.sample) if args.sample else None
-    receipt = json.loads((binary.parent.parent / "share/birnam/rust-install.json").read_text())
+    receipt = load_json(binary.parent.parent / "share/birnam/rust-install.json")
     print(json.dumps({"schema": "birnam-control-throughput-probe-v1",
-                      "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                      "binary_sha256": hashlib.sha256(read_bytes(binary)).hexdigest(),
                       "source_manifest_sha256": receipt["source_manifest_sha256"],
                       "iterations": 100000, "elapsed_microseconds": elapsed,
                       "median_ns_per_iteration": statistics.median(elapsed) / 100,

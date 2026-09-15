@@ -13,11 +13,13 @@ loader ports are complete.
 - Prelude can declare exact native integer semantics for guarded stackless calls.
   The floor checks current targets and native API context, preserves allocation
   and error behavior, and pins the declaring library. Design 74T also adds checked
-  raw numeric-chain kernels; production multi-call integration remains pending.
+  raw numeric-chain kernels and production multi-call integration.
 - Design 74T adds checked identity-graph recovery through ordinary Id recipes,
   including exact numeric values and shared acyclic aggregates. Construction is
   rooted across GC and revalidates storage and recovery authority before atomic
-  Frame publication. The four new optimization families remain in progress.
+  Frame publication. The four consumer families are integrated; Design 74AK
+  records bounded qualification and the retained defaults. Unboxed arithmetic,
+  loop reuse, closure/literal elision and counted indices remain opt-in.
 - Design 74S adds bounded inherited-dispatch caching and guarded native Frame
   regions for local copies and call staging. Dependent native copies additionally
   use copy propagation, dead-store elimination and grouped stores. Ordinary target lookup, exact Id
@@ -89,6 +91,11 @@ loader ports are complete.
 
 ### Changed
 
+- Validation now has explicit routine, exhaustive, release and performance plans,
+  resumable per-step evidence and configuration-specific development build reuse.
+  CI shares builds across disjoint matrix workers; cold release builds remain
+  independent. Historical measurement payloads are archived losslessly, and
+  [the validation guide](docs/validation.md) replaces temporary controller instructions.
 - Ordinary sends guard canonical Machine slot access and default lookup inside
   the runtime (Designs 74J/74L). Current methods, inheritance, custom lookup and
   native/resumable overrides retain their effects. IdApi, exported functions,

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """74M follow-up: compare existing/new symbol interning after native warmup."""
+from measurement_archive import read_bytes
 
 import argparse
 import hashlib
@@ -39,8 +40,8 @@ def main():
     assert rows[1]["profile"]["entries"] == 61377, rows[1]["profile"]
     receipt = {"schema": "birnam-native-tier-symbol-invalidation-v1", "result": "confirmed",
                "scope": "diagnostic entry counts and checked answers; no timing claim",
-               "floor_sha256": hashlib.sha256((prefix / "lib/libbirnam_id.dylib").read_bytes()).hexdigest(),
-               "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "rows": rows}
+               "floor_sha256": hashlib.sha256(read_bytes(prefix / "lib/libbirnam_id.dylib")).hexdigest(),
+               "runner_sha256": hashlib.sha256(read_bytes(Path(__file__))).hexdigest(), "rows": rows}
     args.output.write_text(json.dumps(receipt, indent=2) + "\n")
     print("native-tier-invalidation: a new interned symbol withdraws the candidate; existing symbol retains it")
 

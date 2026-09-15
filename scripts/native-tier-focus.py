@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """74M: isolate native-tier cost with unchanged dispatch and separate diagnostics."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 
 import argparse
 import difflib
@@ -35,11 +37,11 @@ def run(command, *, cwd=ROOT, env=None, timeout=1800):
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
-def save(path, value):
-    path.write_text(json.dumps(value, indent=2) + "\n")
+def save():
+    save_json(path, value)
 
 
 def replace_once(source, before, after):
@@ -265,7 +267,7 @@ def main():
     assert args.prepare or args.diagnose or args.measure
     if args.prepare:
         prepare(args)
-    builds = json.loads((args.work_dir / "builds.json").read_text())
+    builds = load_json(args.work_dir / "builds.json")
     for evidence in builds["prefixes"].values():
         assert sha(Path(evidence["path"]) / "lib/libbirnam_id.dylib") == evidence["floor_sha256"]
         for name, digest in evidence["measurement_binary_sha256"].items():

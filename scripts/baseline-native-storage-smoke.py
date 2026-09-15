@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Check diagnostic baseline TCC bytes across eviction, GC and live invocation."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -12,7 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def fixture(size, heap_accounting=False):
@@ -73,25 +75,25 @@ def main():
     p.add_argument('--target', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--heap-accounting', action='store_true')
+    p.add_argument("--profiles", nargs="+", choices=("debug", "release"), default=["debug", "release"])
     args = p.parse_args()
-    assert not args.output.exists(), 'preserve previous evidence'
     prefix, target = args.prefix.resolve(), args.target.resolve()
     manifest = prefix / 'share/birnam/rust-install.json'
-    installed = json.loads(manifest.read_text())
+    installed = load_json(manifest)
     assert installed['publication']['state'] == 'published' and installed['profile'] == 'release'
     inputs = {str(path): sha(path) for path in [Path(__file__), ROOT / 'Cargo.lock']}
     for directory in ['rust', 'vendor/libtcc-src']:
         inputs.update({str(path): sha(path) for path in (ROOT / directory).rglob('*') if path.is_file()})
     artifacts = {str(prefix / name): digest for name, digest in installed['staged_manifest'].items()}
     artifacts[str(manifest)] = sha(manifest)
-    modules = {profile: target / profile / 'libbirnam_tcc.dylib' for profile in ['debug', 'release']}
+    modules = {profile: target / profile / 'libbirnam_tcc.dylib' for profile in args.profiles}
     artifacts.update({str(path): sha(path) for path in modules.values()})
     result = dict(status='running', qualified=False, heap_accounting=args.heap_accounting, scope='Diagnostic baseline TCC module overrides on a normal release installation. Relocation bytes and optional requested compiler heap bytes/blocks are separate overlapping observations, not additive totals. Compiler heap excludes Rust metadata, bookkeeping headers, allocator rounding and floor-private compiler instances. Counter expressions themselves own evaluator units, so comparisons use identical expressions after collection. Cold caches may retire with the target. No timing claim.', sources=inputs, artifacts=artifacts, rows=[])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     base = {k: v for k, v in os.environ.items() if not k.startswith(('BIRNAM_', 'DYLD_'))}
 
     def save():
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(args.output, result)
 
     def current():
         assert all(sha(n) == h for n, h in inputs.items()), 'source changed'

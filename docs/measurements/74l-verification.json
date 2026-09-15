@@ -1,84 +1,9 @@
 {
-  "schema": "birnam-native-tier-verification-v1",
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74l-verification.json",
+  "bytes": 6012,
+  "sha256": "d63940bfb9af352b8ca22588581e078fa36dc9cf56f272b66cb0894292341c13",
   "design": "74L",
-  "result": "passed",
-  "command": "CARGO_TARGET_DIR=.cargo-target MISE_TRUSTED_CONFIG_PATHS=\"$PWD\" mise run verify",
-  "log_sha256": "cc1f7e3c153fe736f47682df2f3367681a334834e77b48891a12ad8442a68e53",
-  "summaries": [
-    "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-    "test result: ok. 59 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.06s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 61 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s",
-    "test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s",
-    "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 85 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 131 passed; 0 failed; 7 ignored; 0 measured; 0 filtered out; finished in 9.76s",
-    "test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.36s",
-    "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 21 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.08s",
-    "test result: ok. 11 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.11s",
-    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
-    "rust-cold-archive: two independent fixture-free Rust snapshots produced identical source/output closures and relocated runtimes",
-    "rust-cutover-verify: workspace, native-prefix, cold-archive, and relocated-runtime gates passed"
-  ],
-  "candidate_source_manifest_sha256": "b208c8dea241cd2c4fb18860d3bbdbb2de197f022344fa727838412f996227c5",
-  "scope": "workspace, normal native prefix, independent cold archives, relocated runtimes; timing and focused regressions recorded separately",
-  "regressions": {
-    "74f": {
-      "path": "docs/measurements/74l-regression-74f.json",
-      "sha256": "82f1eb44168903604d2a2cb142c500db79b684ac3baab2da351d0e77fe9f063f",
-      "result": "passed"
-    },
-    "74g": {
-      "path": "docs/measurements/74l-regression-74g.json",
-      "sha256": "e186ae063c4647da1adc7d758e79dab7ef968b42ba0530809bb63cdf9b9560cd",
-      "result": "passed"
-    },
-    "74h": {
-      "path": "docs/measurements/74l-regression-74h.json",
-      "sha256": "05869913272b6600d4e66960fb33a599e639594428b792b1b40c1032846c7bfe",
-      "result": "passed"
-    },
-    "74i": {
-      "path": "docs/measurements/74l-regression-74i.json",
-      "sha256": "27629acd374d687bfbc27200b623673164782e1f6fcb24a071c4d71049890232",
-      "result": "passed"
-    }
-  },
-  "guarded_machine_release_tests": "3 passed; native/resumable override, same-Frame state, mutation effects and GC",
-  "native_tier_task": {
-    "command": "MISE_TRUSTED_CONFIG_PATHS=\"$PWD\" mise run native-tier-test",
-    "result": "passed; twelve native-tier pairs plus two guarded-lookup tests in debug/release",
-    "log_sha256": "fd9163be32b90cc34076778500dd8799ba93f0db95c3151e516bb0ed88bfd0ff"
-  },
-  "measurement": {
-    "path": "docs/measurements/74l-guarded-default-lookup.json",
-    "sha256": "8dbae3f58ea6eb9f5161f4c6487aee1e82ff0675b90fb7c28762e40d11541da8",
-    "result": "supports-promotion",
-    "scope": "combined 74J/74K/74L improvement on smaller warm portable fixture; incremental 74L comparisons inconclusive"
-  },
-  "floor_exports": "identical to baseline and 74J/74K; 25 symbols"
+  "scope": "workspace, normal native prefix, independent cold archives, relocated runtimes; timing and focused regressions recorded separately"
 }

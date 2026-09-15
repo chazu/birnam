@@ -608,15 +608,18 @@ facts and native-floor documentation.
 
 ## Verification
 
-Run the Rust-only release gate before a production release:
+Run everyday correctness with `mise run verify`. Preview the steps with
+`mise run verify-plan`. Before a production release, run:
 
 ```sh
-mise run verify
+mise run verify-release
 ```
 
 `mise run rust-cutover-verify` is the equivalent explicitly named release gate.
-It runs the Cargo workspace tests, a clean Rust install, a cold source archive,
-and relocated runtime checks.
+It runs the workspace and exhaustive semantic checks, an installed-prefix check,
+and two independent cold-source builds with relocated execution. See the
+[current validation guide](docs/validation.md) for coverage, selective execution,
+evidence reuse and performance checks.
 
 ## Benchmarks
 

@@ -68,7 +68,9 @@ const STAGE1_MODULES: &[(&str, &str, bool)] = &[
 ];
 
 fn usage() {
-    eprintln!("usage: birnam-build install --root DIR --prefix DIR [--profile debug|release]");
+    eprintln!(
+        "usage: birnam-build install --root DIR --prefix DIR [--profile debug|release] [--build-cache DIR]"
+    );
 }
 
 #[derive(Debug)]
@@ -76,6 +78,7 @@ struct InstallOptions {
     root: PathBuf,
     prefix: PathBuf,
     profile: String,
+    build_cache: Option<PathBuf>,
 }
 
 fn absolute(path: PathBuf) -> Result<PathBuf, String> {
@@ -94,11 +97,18 @@ fn parse_install_options(
     let mut root = None;
     let mut prefix = None;
     let mut profile = String::from("debug");
+    let mut build_cache = None;
     let mut args = args.peekable();
     while let Some(option) = args.next() {
         match option.to_string_lossy().as_ref() {
             "--root" => root = args.next().map(PathBuf::from),
             "--prefix" => prefix = args.next().map(PathBuf::from),
+            "--build-cache" => {
+                build_cache =
+                    Some(absolute(PathBuf::from(args.next().ok_or_else(|| {
+                        "--build-cache requires a value".to_owned()
+                    })?))?);
+            }
             "--profile" => {
                 profile = args
                     .next()
@@ -117,6 +127,7 @@ fn parse_install_options(
         root: absolute(root.ok_or_else(|| "--root is required".to_owned())?)?,
         prefix: absolute(prefix.ok_or_else(|| "--prefix is required".to_owned())?)?,
         profile,
+        build_cache,
     })
 }
 
@@ -451,7 +462,7 @@ fn command_stdout(program: &str, arguments: &[&str], directory: &Path) -> Option
 
 struct StagingGuard {
     stage: PathBuf,
-    target: PathBuf,
+    target: Option<PathBuf>,
 }
 
 impl Drop for StagingGuard {
@@ -459,8 +470,8 @@ impl Drop for StagingGuard {
         if self.stage.exists() {
             let _ = fs::remove_dir_all(&self.stage);
         }
-        if self.target.exists() {
-            let _ = fs::remove_dir_all(&self.target);
+        if let Some(target) = &self.target {
+            let _ = fs::remove_dir_all(target);
         }
     }
 }
@@ -544,21 +555,51 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     fs::create_dir_all(stage.join("bin"))
         .map_err(|error| format!("create staging prefix: {error}"))?;
 
-    // Keep the bootstrap build's compiler products outside both the source
-    // tree and the published prefix. This makes each invocation consume only
-    // the authored workspace, never a stale Birnam binary/dylib from a prior
-    // target directory.
-    let target_dir = parent.join(format!(".birnam-rust-target-{process}"));
-    if target_dir.exists() {
+    let mut staging_guard = StagingGuard {
+        stage: stage.clone(),
+        target: None,
+    };
+    let cargo_features = env::var("BIRNAM_BUILD_CARGO_FEATURES")
+        .ok()
+        .filter(|value| !value.trim().is_empty());
+    // Reuse is explicitly requested for development. Cold installs keep their
+    // independent targets. Cargo fingerprints source edits inside a configuration;
+    // separate directories prevent normal/diagnostic products from being mixed.
+    let target_dir = if let Some(cache) = &options.build_cache {
+        let configuration = format!(
+            "{root:?}|{}|{:?}|{}|{:?}|{:?}|{:?}",
+            options.profile,
+            cargo_features,
+            command_version("rustc"),
+            env::var_os("CARGO_BUILD_TARGET"),
+            env::var_os("RUSTFLAGS"),
+            env::var_os("CARGO_ENCODED_RUSTFLAGS")
+        );
+        cache
+            .join("workspace")
+            .join(hex::encode(Sha256::digest(configuration.as_bytes())))
+    } else {
+        parent.join(format!(".birnam-rust-target-{process}"))
+    };
+    if options.build_cache.is_none() && target_dir.exists() {
         return Err(format!(
             "Rust target staging directory already exists: {}",
             target_dir.display()
         ));
     }
-    let _staging_guard = StagingGuard {
-        stage: stage.clone(),
-        target: target_dir.clone(),
-    };
+    staging_guard.target = options.build_cache.is_none().then(|| target_dir.clone());
+    fs::create_dir_all(&target_dir).map_err(|error| format!("create build target: {error}"))?;
+    // Keep the lock through copying products, not just Cargo's build. Otherwise a
+    // second installer can replace a dylib between this build and publication.
+    let target_lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(target_dir.join(".birnam-install.lock"))
+        .map_err(|error| format!("open build target lock: {error}"))?;
+    target_lock
+        .lock()
+        .map_err(|error| format!("lock build target: {error}"))?;
     let cargo_profile = if options.profile == "release" {
         vec!["--release"]
     } else {
@@ -567,9 +608,6 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     // Development-only cargo features (for example Design 74 E1's
     // `birnam-id/dev-guarded-slots,...`). Recorded in the receipt's cargo
     // invocation so a dev prefix is never mistaken for an ordinary build.
-    let cargo_features = env::var("BIRNAM_BUILD_CARGO_FEATURES")
-        .ok()
-        .filter(|value| !value.trim().is_empty());
     let mut cargo = Command::new("cargo");
     cargo
         .current_dir(&root)
@@ -584,7 +622,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     }
     run_status(&mut cargo, "cargo Rust workspace build")?;
 
-    let profile_dir = target_dir.join(&options.profile);
+    let profile_dir = env::var_os("CARGO_BUILD_TARGET")
+        .map_or_else(|| target_dir.clone(), |target| target_dir.join(target))
+        .join(&options.profile);
     let host_source = profile_dir.join("birnam");
     let host_destination = stage.join("bin/birnam");
     copy_file(&host_source, &host_destination)?;
@@ -599,8 +639,11 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             copy_file(&source, &lib_dir.join(name))?;
         }
     }
-    fs::remove_dir_all(&target_dir)
-        .map_err(|error| format!("remove Rust target staging directory: {error}"))?;
+    drop(target_lock);
+    if options.build_cache.is_none() {
+        fs::remove_dir_all(&target_dir)
+            .map_err(|error| format!("remove Rust target staging directory: {error}"))?;
+    }
 
     let source_root = stage.join("share/birnam/src");
     copy_file(&root.join("Cargo.toml"), &source_root.join("Cargo.toml"))?;
@@ -682,6 +725,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "schema": 3,
         "authority": "rust",
         "profile": options.profile,
+        "build_mode": if options.build_cache.is_some() { "development-cache" } else { "cold" },
         "source_identity": {
             "git_commit": git_commit,
             "git_clean": git_clean,
@@ -819,6 +863,47 @@ mod tests {
             "birnam-build-{name}-{}-{nonce}",
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn development_cache_is_explicit_and_requires_a_path() {
+        let args = ["--root", ".", "--prefix", "/tmp/birnam-test-prefix"];
+        let cold = parse_install_options(args.into_iter().map(Into::into)).unwrap();
+        assert!(cold.build_cache.is_none());
+        let cached = parse_install_options(
+            args.into_iter()
+                .chain(["--build-cache", ".cargo-target/install"])
+                .map(Into::into),
+        )
+        .unwrap();
+        assert!(cached.build_cache.unwrap().is_absolute());
+        assert!(
+            parse_install_options(args.into_iter().chain(["--build-cache"]).map(Into::into))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn staging_cleanup_preserves_development_cache_and_removes_owned_targets() {
+        let root = scratch("staging-cleanup");
+        let stage = root.join("stage");
+        let cache = root.join("cache");
+        fs::create_dir_all(&stage).unwrap();
+        fs::create_dir_all(&cache).unwrap();
+        drop(StagingGuard {
+            stage: stage.clone(),
+            target: None,
+        });
+        assert!(!stage.exists());
+        assert!(cache.is_dir());
+        fs::create_dir_all(&stage).unwrap();
+        drop(StagingGuard {
+            stage: stage.clone(),
+            target: Some(cache.clone()),
+        });
+        assert!(!stage.exists());
+        assert!(!cache.exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

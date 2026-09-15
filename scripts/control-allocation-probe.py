@@ -5,6 +5,7 @@ Fresh processes, varying iteration counts, empty/captured callbacks, GC on/off.
 These are live floor-payload bytes, not allocation counts or RSS; temporary Rust
 vectors and registry/arena capacity require separate allocator evidence.
 """
+from measurement_archive import load_json
 import argparse
 import hashlib
 import json
@@ -66,7 +67,7 @@ def main():
                                         before_bytes=before, after_bytes=after,
                                         post_gc_bytes=retained, elapsed_microseconds=elapsed,
                                         fixture_sha256=hashlib.sha256(body.encode()).hexdigest()))
-    receipt = json.loads((binary.parent.parent / "share/birnam/rust-install.json").read_text())
+    receipt = load_json(binary.parent.parent / "share/birnam/rust-install.json")
     print(json.dumps(dict(schema="birnam-control-allocation-probe-v1",
                           source_manifest_sha256=receipt["source_manifest_sha256"],
                           results=results), indent=2))

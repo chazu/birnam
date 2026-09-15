@@ -1,19 +1,9 @@
 {
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74w-loop-production-process-control.json",
+  "bytes": 3782,
+  "sha256": "6d74022a3c609f0b5cd979f898e8d432c9773dc524d32439bd203840ebfd8c55",
   "status": "finished",
-  "pid": 84695,
-  "identity": "Sun Sep 13 01:30:48 2026     /Users/chazu/.local/bin/rk daemon run",
-  "paused": true,
-  "resumed": true,
-  "started": 1789297894.173101,
-  "scope": "User-authorized SIGSTOP/SIGCONT of the verified rk daemon only. Existing compiler children receive no signals. Existing host gates remain unchanged. Finally resumes the same daemon on completion, failure, timeout or handled interruption.",
-  "paused_at": 1789297894.179669,
-  "measurement_pid": 77439,
-  "exit_code": 2,
-  "resumed_at": 1789297996.542509,
-  "state_after_resume": "R",
-  "finished": 1789297996.546886,
-  "resume_verified_identity": "Sun Sep 13 01:30:48 2026     /Users/chazu/.local/bin/rk daemon run",
-  "resume_verified_state": "R",
-  "driver_sha256": "4b128e175b84e0cc714b89b1e1d147b33d5877d07ece410d3a964a2f36a95be7",
-  "driver_source": "import json,os,signal,subprocess,time\nfrom pathlib import Path\nroot=Path('/Users/chazu/dev/zig/birnam');pid=84695\ncontrol=root/'docs/measurements/74w-loop-production-process-control.json'\nexpected_command='/Users/chazu/.local/bin/rk daemon run'\ndef inspect():\n p=subprocess.run(['ps','-ww','-p',str(pid),'-o','lstart=,command='],capture_output=True,text=True)\n return p.stdout.strip() if p.returncode==0 else None\noriginal=inspect()\nassert original and original.endswith(expected_command),original\nassert original.startswith('Sun Sep 13 01:30:48 2026'),original\nstate=subprocess.check_output(['ps','-p',str(pid),'-o','state='],text=True).strip()\nassert 'T' not in state,'rk was already stopped; do not take ownership of its pause'\nr=dict(status='running',pid=pid,identity=original,paused=False,resumed=False,started=time.time(),scope='User-authorized SIGSTOP/SIGCONT of the verified rk daemon only. Existing compiler children receive no signals. Existing host gates remain unchanged. Finally resumes the same daemon on completion, failure, timeout or handled interruption.')\ndef save():control.write_text(json.dumps(r,indent=2)+'\\n')\ndef interrupted(signum,frame):raise KeyboardInterrupt(f'signal {signum}')\nfor signum in (signal.SIGINT,signal.SIGTERM):signal.signal(signum,interrupted)\nchild=None\ntry:\n assert inspect()==original\n os.kill(pid,signal.SIGSTOP);r['paused']=True;r['paused_at']=time.time();save()\n print('Paused verified rk daemon',pid,original,flush=True)\n command=['python3','scripts/loop-production-timing.py','--prefix','/var/folders/f3/n4drgs5d7f3f6zxxxd2snx6m0000gn/T/birnam-loop-timing-kbg1gnea/prefix','--receipt','docs/measurements/74w-loop-cost-production-correctness.json','--verified','docs/measurements/74w-loop-production-driver-correctness.json','--output','docs/measurements/74w-loop-production-paused-timing.json']\n assert not (root/command[-1]).exists(),'refusing to overwrite timing evidence'\n with Path('/tmp/birnam-74w-production-loop-paused-timing.log').open('w') as log:\n  child=subprocess.Popen(command,cwd=root,stdout=log,stderr=subprocess.STDOUT)\n  r['measurement_pid']=child.pid;save()\n  r['exit_code']=child.wait(timeout=3600)\n r['status']='finished'\nexcept BaseException as error:\n r.update(status='failed',error=str(error))\n raise\nfinally:\n if child is not None and child.poll() is None:\n  child.terminate()\n  try:child.wait(timeout=10)\n  except subprocess.TimeoutExpired:child.kill();child.wait()\n if r['paused']:\n  if inspect()==original:\n   os.kill(pid,signal.SIGCONT)\n   r['resumed']=True;r['resumed_at']=time.time()\n   r['state_after_resume']=subprocess.run(['ps','-p',str(pid),'-o','state='],capture_output=True,text=True).stdout.strip()\n   print('Resumed same rk daemon',pid,flush=True)\n  else:r['resume_note']='Original process is no longer present; no signal sent to a changed PID'\n r['finished']=time.time();save()\n"
+  "scope": "User-authorized SIGSTOP/SIGCONT of the verified rk daemon only. Existing compiler children receive no signals. Existing host gates remain unchanged. Finally resumes the same daemon on completion, failure, timeout or handled interruption."
 }

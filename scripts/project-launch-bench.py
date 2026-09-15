@@ -7,6 +7,7 @@ python3 scripts/project-launch-bench.py --binary before=/path/to/old/bin/birnam 
 Build/fetch and one warmup are excluded. Results are diagnostic wall-clock
 measurements, not release acceptance evidence. No existing project is modified.
 """
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -90,9 +91,9 @@ launch_native = {{ git = "{dep}", rev = "{revision}" }}
                 if iteration:
                     samples.append(elapsed)
             receipt_path = binary.parent.parent / "share/birnam/rust-install.json"
-            receipt = json.loads(receipt_path.read_text())
+            receipt = load_json(receipt_path)
             results.append({"label": label, "binary": str(binary),
-                            "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                            "binary_sha256": hashlib.sha256(read_bytes(binary)).hexdigest(),
                             "source_manifest_sha256": receipt["source_manifest_sha256"],
                             "seconds": samples, "median_seconds": statistics.median(samples)})
     print(json.dumps({"schema": "birnam-project-launch-bench-v1",

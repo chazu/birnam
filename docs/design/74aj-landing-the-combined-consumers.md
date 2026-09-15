@@ -1,5 +1,9 @@
 # 74AJ — Land the implemented four-family consumers
 
+Current implementation/default decisions: [74AK](74ak-bounded-qualification-and-defaults.md).
+Current validation commands: [validation guide](../validation.md). Dated
+experiment and queue status below is retained as historical evidence.
+
 Status: accepted for integration, 2026-09-14. All 24 landing steps passed.
 Existing defaults are unchanged; unboxed arithmetic, loop-invariant reuse,
 closure elision, literal callees and counted Frame indices remain opt-in.

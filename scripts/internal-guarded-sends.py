@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """74J: compare ordinary installed floors with unchanged compiled Id sends."""
+from measurement_archive import load_json, read_bytes
 
 import argparse
 import hashlib
@@ -44,7 +45,7 @@ def run(command, env=None, timeout=900):
 
 
 def sha(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(path)).hexdigest()
 
 
 def exports(path):
@@ -52,7 +53,7 @@ def exports(path):
 
 
 def prefix_evidence(prefix):
-    receipt = json.loads((prefix / "share/birnam/rust-install.json").read_text())
+    receipt = load_json(prefix / "share/birnam/rust-install.json")
     if receipt["profile"] != "release":
         raise RuntimeError("74J requires ordinary release prefixes")
     floor = prefix / "lib/libbirnam_id.dylib"

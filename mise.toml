@@ -2,7 +2,8 @@
 #   mise run clean          # remove generated outputs and project artifacts
 #   mise install            # fetch the pinned Rust toolchain
 #   mise run build          # build the Rust development prefix
-#   mise run verify         # Rust-only production verification gate
+#   mise run verify         # bounded everyday correctness
+#   mise run verify-release # exhaustive checks plus independent cold builds
 #   mise run test           # birnam-level module suites (complements verify)
 #   mise run install        # install the Rust prefix
 #   mise run dist           # build a Rust release tarball
@@ -16,7 +17,7 @@ rust = "1.95.0"
 description = "Build the Rust development prefix"
 run = """
 prefix="${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"
-scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile debug
+scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile debug --build-cache "$PWD/.cargo-target/install"
 """
 
 [tasks.clean]
@@ -80,8 +81,24 @@ description = "Run the birnam-mode ERT suite (set BIRNAM_EMACS to pick an Emacs)
 run = "bash scripts/emacs-test.sh"
 
 [tasks.verify]
-description = "Run the Rust source-build, publication, cold-archive, and relocation gate"
-run = "bash scripts/rust-cutover-verify.sh"
+description = "Run bounded everyday correctness (use verify-plan to preview)"
+run = "python3 scripts/validate.py --suite routine"
+
+[tasks.verify-plan]
+description = "List everyday checks and deadlines without executing them"
+run = "python3 scripts/validate.py --suite routine --plan"
+
+[tasks.verify-exhaustive]
+description = "Run complete compiler/recovery matrices for relevant changes"
+run = "python3 scripts/validate.py --suite exhaustive"
+
+[tasks.verify-performance]
+description = "Bounded practical slowdown screen; no quiet-host wait"
+run = "python3 scripts/validate.py --suite performance"
+
+[tasks.verify-release]
+description = "Run exhaustive correctness plus independent cold-source release proof"
+run = "python3 scripts/validate.py --suite release"
 
 [tasks.rust-cutover-verify]
 description = "Alias for the Rust source-build, publication, cold-archive, and relocation gate"

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Real source repeated-closure state/accounting checks, without timing claims."""
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 import json
@@ -38,6 +39,7 @@ def main():
     parser.add_argument("--numeric-copy-region", action="store_true",
                         help="Use a second numeric operation without a new literal, allowing counted copy regions")
     parser.add_argument("--counted-frame-indices", action="store_true")
+    parser.add_argument("--coverage", choices=("routine", "exhaustive"), default="exhaustive")
     args = parser.parse_args()
     if args.numeric_copy_region and not args.numeric_body:
         parser.error('--numeric-copy-region requires --numeric-body')
@@ -46,8 +48,8 @@ def main():
                BIRNAM_DEV_CLOSURE_FORCE_RECOVERY="0", BIRNAM_DEV_CLOSURE_REPORT="0")
     env['BIRNAM_DEV_COUNTED_FRAME_INDICES'] = str(int(args.counted_frame_indices))
     receipt = {"status": "running", "scope": "Source sequence correctness and allocation accounting; no timing claim",
-               "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(),
-               "counted_frame_indices": args.counted_frame_indices,
+               "floor_sha256": hashlib.sha256(read_bytes(args.floor)).hexdigest(),
+               "coverage": args.coverage, "counted_frame_indices": args.counted_frame_indices,
                "numeric_copy_region": args.numeric_copy_region, "rows": []}
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-closure-sequence-") as work:
@@ -60,10 +62,13 @@ def main():
                         fixture.write_text(code)
                         baseline = None
                         force_points = [0, 1, 2] if args.quick else list(range(min(calls, 32)))
+                        if args.coverage == "routine":
+                            last = min(calls, 32) - 1
+                            force_points = sorted({0, last // 2, last})
                         for enabled, force in [(False, -1), (True, -1)] + [(True, n) for n in force_points]:
                             env.update(BIRNAM_DEV_CLOSURE_ELISION=str(int(enabled)), BIRNAM_DEV_CLOSURE_FORCE_AT=str(force))
                             process = subprocess.run([str(args.prefix.resolve() / "bin/birnam"), str(fixture)],
-                                                     env=env, text=True, capture_output=True)
+                                                     env=env, text=True, capture_output=True, timeout=60)
                             assert process.returncode == 0, (calls, escaping, force, process.stdout, process.stderr)
                             lines = [line for line in process.stdout.splitlines() if line.startswith("closure-sequence ")]
                             assert len(lines) == 1, process.stdout

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scope": "Normal bare Cargo floor, without diagnostic features or the published module wrapper",
+  "install_name": "@rpath/libbirnam_id.dylib",
+  "exported_symbols": [
+    "birnam_id_begin_portable_resumable_unit_v1",
+    "birnam_id_begin_resumable_unit_v1",
+    "birnam_id_cancel_resumable_unit_v1",
+    "birnam_id_export_count_v1",
+    "birnam_id_export_name_at_v1",
+    "birnam_id_finish_resumable_unit_v1",
+    "birnam_id_floor_identity",
+    "birnam_id_live_heap_bytes_v1",
+    "birnam_id_live_symbol_count_v1",
+    "birnam_id_live_symbol_name_bytes_v1",
+    "birnam_id_release_stackless_generation_lease_v1",
+    "birnam_id_retire_stackless_code_generation_v1",
+    "birnam_id_rust_abi_descriptor_v1",
+    "birnam_id_rust_crate_identity",
+    "birnam_id_stackless_block_vtable_image_reference_v1",
+    "birnam_id_stackless_block_vtable_matches_v1",
+    "birnam_id_stackless_resumable_manifest_matches_v1",
+    "birnam_id_staged_portable_block_vtable_v1",
+    "birnam_id_symbol_compaction_configure_v1",
+    "birnam_id_try_acquire_stackless_generation_lease_v1",
+    "birnam_id_try_closure_elision_v1",
+    "birnam_id_warm_block_construction_v1",
+    "birnam_register_resumable_v1",
+    "birnam_register_resumable_v2",
+    "id_init"
+  ]
+}

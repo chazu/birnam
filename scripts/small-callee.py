@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """74R correctness, isolated alias timing and production verification receipts."""
+from measurement_archive import load_json
 import argparse
 import hashlib
 import importlib.util
@@ -41,7 +42,7 @@ def main():
     parser.add_argument("--count", type=int, default=10000)
     parser.add_argument("--pause-rk-pid", type=int, help="requires prior user authorization; only the verified rk executable may be paused")
     parser.add_argument("--reference-binary", type=Path, help="optional 74P binary, verified against its recorded hash")
-    parser.add_argument("--output", type=Path, default=ROOT / "docs/measurements/74r-small-callee.json")
+    parser.add_argument("--output", type=Path, default=ROOT / ".cargo-target/measurements/74r-small-callee.json")
     parser.add_argument("--work-dir", type=Path, default=ROOT / ".cargo-target/74r/run")
     args = parser.parse_args()
     assert args.pairs > 0 and args.count > 0
@@ -105,7 +106,7 @@ def main():
             binary = next(r["executable"] for line in output.splitlines() if (r:=json.loads(line)).get("reason")=="compiler-artifact" and r.get("executable") and r["profile"]["test"])
             result["binary_sha256"] = sha(Path(binary).read_bytes())
             if args.reference_binary:
-                expected = json.loads((ROOT / "docs/measurements/74p-unqualified-timing.json").read_text())["binary_sha256"]
+                expected = load_json(ROOT / "docs/measurements/74p-unqualified-timing.json")["binary_sha256"]
                 assert sha(args.reference_binary.read_bytes()) == expected
                 result["reference_binary_sha256"] = expected
             result["power"] = subprocess.check_output(["pmset","-g","batt"],text=True)

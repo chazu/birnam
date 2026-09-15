@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Exercise production aggregate admission and late binding through installed Id source."""
+from validation_proof import load_proof
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 from itertools import product
@@ -14,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def source(projections, shape, precise, *, quiet_repl=False):
@@ -129,9 +131,9 @@ def main():
     parser.add_argument('--counted-frame-indices', action='store_true')
     args = parser.parse_args()
     prefix, floor = args.prefix.resolve(), args.floor.resolve()
-    proof = json.loads(args.receipt.read_text())
-    if proof['status'] != 'passed' or proof.get('production_verification') != 'passed':
-        parser.error('full production verification must pass first')
+    proof = load_proof(args.receipt, measurement=f'unboxed-measure-{args.profile}')
+    if proof['status'] != 'passed' or (proof.get('production_verification') != 'passed' and not proof.get("phase_verified")):
+        parser.error('required correctness phase must pass first')
     expected_floor = proof['unboxed_source_matrices'][f'unboxed-measure-{args.profile}.json']['floor_sha256']
     if sha(floor) != expected_floor:
         parser.error('selected floor differs from the verified production checkpoint')

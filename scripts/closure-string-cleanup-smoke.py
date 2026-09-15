@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Collect real numeric-closure deferred allocations beside String finalizers."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import itertools
@@ -20,15 +22,15 @@ def main():
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--quick', action='store_true')
     args = parser.parse_args()
-    assert not args.output.exists(), 'preserve existing evidence'
+    # The validation runner owns this output; atomic saves support a fresh rerun.
     source = runpy.run_path(str(ROOT / 'scripts/closure-sequence-smoke.py'))['source']
-    sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+    sha = lambda p: hashlib.sha256(read_bytes(Path(p))).hexdigest()
     paths = [Path(__file__).resolve(), ROOT / 'scripts/closure-sequence-smoke.py']
     paths += [p for p in (ROOT / 'rust').rglob('*') if p.is_file()]
     sources = {str(p.relative_to(ROOT)): sha(p) for p in paths}
     prefix = args.prefix.resolve()
     manifest = prefix / 'share/birnam/rust-install.json'
-    publication = json.loads(manifest.read_text())
+    publication = load_json(manifest)
     assert publication['publication']['state'] == 'published'
     installed = dict(publication['staged_manifest'])
     installed['share/birnam/rust-install.json'] = sha(manifest)
@@ -46,8 +48,7 @@ def main():
         assert all(sha(prefix / n) == h for n, h in installed.items())
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(args.output, result)
 
     def values(lines, prefix):
         found = [s for s in lines if s.startswith(prefix + ' ')]

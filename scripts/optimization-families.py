@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """74S per-family correctness and paired timing receipts."""
+from measurement_archive import read_bytes
 import argparse
 import datetime
 import hashlib
@@ -23,7 +24,7 @@ BASE = "d06f7558"
 def sources():
     result = prior.sources()
     for name in ("scripts/optimization-families.py", "scripts/bench-host-check.sh", "scripts/fixtures/native-regions.birnam"):
-        result[name] = hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+        result[name] = hashlib.sha256(read_bytes(ROOT / name)).hexdigest()
     return result
 
 
@@ -92,7 +93,7 @@ def main():
                        "--no-run", "--message-format=json"], "timing-build")
             binary = next(row['executable'] for line in out.splitlines()
                           if (row := json.loads(line)).get('executable') and row['profile']['test'])
-            receipt['binary_sha256'] = hashlib.sha256(Path(binary).read_bytes()).hexdigest()
+            receipt['binary_sha256'] = hashlib.sha256(read_bytes(Path(binary))).hexdigest()
             receipt['power'] = subprocess.check_output(["pmset", "-g", "batt"], text=True)
             paused = False
             try:

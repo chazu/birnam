@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Repeat real native consumer Runtime teardown in isolated test processes."""
+from validation_support import save_json
+from measurement_archive import read_bytes
 import argparse
 import hashlib
 import json
@@ -16,7 +18,7 @@ LINE = re.compile(r'^consumer-teardown family=(\w+) cycle=(\d+) native_units=(\d
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def inventory():
@@ -60,7 +62,7 @@ def main():
     env.update(CARGO_TARGET_DIR=str(args.target.resolve()), MISE_TRUSTED_CONFIG_PATHS=str(ROOT))
 
     def save():
-        output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(output, result)
 
     def run(row, log):
         assert inventory() == result['sources'], 'sources changed'

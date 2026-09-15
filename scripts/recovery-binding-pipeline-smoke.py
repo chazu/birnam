@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Check a real binding pipeline with individual and combined recovery consumers."""
+from validation_support import save_json
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -21,7 +23,7 @@ EXPECTED = ['application-phase baseline', 'application-answer 45152',
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def validate(row, diagnostic):
@@ -75,7 +77,7 @@ def main():
     for name in ('bench/recovery-binding-pipeline.birnam', 'scripts/recovery-binding-pipeline-smoke.py'):
         sources[name] = sha(ROOT / name)
     manifest_path = prefix / 'share/birnam/rust-install.json'
-    manifest = json.loads(manifest_path.read_text())
+    manifest = load_json(manifest_path)
     assert manifest['publication']['state'] == 'published'
     artifacts = {str(p): sha(p) for p in files + [manifest_path]}
     artifacts.update({str(prefix / n): h for n, h in manifest['staged_manifest'].items()})
@@ -90,8 +92,7 @@ def main():
         assert all(sha(n) == h for n, h in artifacts.items()), 'artifact changed'
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2) + '\n')
+        save_json(args.output, result)
 
     configs = [('off', dict.fromkeys(FLAGS, 0)), ('on', dict.fromkeys(FLAGS, 1))]
     for flag in ('UNBOXED_NUMERIC', 'LOOP_INVARIANTS', 'CLOSURE_ELISION', 'VIRTUAL_FIELDS'):

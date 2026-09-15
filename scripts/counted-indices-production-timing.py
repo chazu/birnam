@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Verify and compare counted Frame indices through ordinary Id execution."""
+from validation_support import save_json
+from validation_proof import load_proof
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import itertools
@@ -19,7 +22,7 @@ CASES = tuple(itertools.product((3, 16, 32), range(5), (0, 1), (0, 1)))
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def source(operations, shape, precise):
@@ -129,16 +132,16 @@ def main():
         parser.error('invalid measurement bounds')
     if args.verify and not args.floor or not args.verify and (not args.verified or args.floor):
         parser.error('verification needs --floor; timing needs --verified and no test floor')
-    proof = json.loads(args.receipt.read_text())
-    if proof.get('status') != 'passed' or proof.get('production_verification') != 'passed':
-        parser.error('full production correctness must pass first')
+    proof = load_proof(args.receipt, measurement='unboxed-measure-release')
+    if proof.get('status') != 'passed' or (proof.get('production_verification') != 'passed' and not proof.get("phase_verified")):
+        parser.error('required correctness phase must pass first')
     sources = dict(proof['sources'])
     sources['scripts/counted-indices-production-timing.py'] = sha(__file__)
     sources['scripts/unboxed_numeric_timing_common.py'] = sha(ROOT / 'scripts/unboxed_numeric_timing_common.py')
     sources['scripts/bench-host-check.sh'] = sha(ROOT / 'scripts/bench-host-check.sh')
     if any(sha(ROOT / n) != h for n, h in proof['sources'].items()):
         parser.error('production sources changed')
-    counted = json.loads(args.counted_receipt.read_text())
+    counted = load_json(args.counted_receipt)
     coordinates = set(itertools.product((3, 16, 32), range(5), (0, 1), (0, 1)))
     if (counted.get('status') != 'passed' or counted.get('profile') != 'release'
             or len(counted.get('rows', [])) != 60
@@ -148,7 +151,7 @@ def main():
         parser.error('counted numeric source matrix is stale')
     prefix = args.prefix.resolve()
     manifest_path = prefix / 'share/birnam/rust-install.json'
-    manifest = json.loads(manifest_path.read_text())
+    manifest = load_json(manifest_path)
     if manifest['profile'] != 'release' or manifest['publication']['state'] != 'published':
         parser.error('published normal release installation required')
     installed = dict(manifest['staged_manifest'])
@@ -167,7 +170,7 @@ def main():
                     correctness_sha256=sha(args.receipt), counted_correctness_sha256=sha(args.counted_receipt),
                     test_floor_sha256=floor_sha)
     if not args.verify:
-        verified = json.loads(args.verified.read_text())
+        verified = load_json(args.verified)
         expected = {(n, s, gc, u, c, test) for n, s, gc, u in CASES
                     for c, test in itertools.product((0, 1), (False, True))}
         if (verified.get('status') != 'passed' or verified.get('verification') is not True
@@ -189,10 +192,7 @@ def main():
     env = {k: v for k, v in os.environ.items() if not k.startswith(('BIRNAM_', 'DYLD_', 'BENCH_HOST_'))}
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        temporary = args.output.with_suffix('.json.tmp')
-        temporary.write_text(json.dumps(result, indent=2) + '\n')
-        temporary.replace(args.output)
+        save_json(temporary, result)
 
     def current():
         if (any(sha(ROOT / n) != h for n, h in sources.items())

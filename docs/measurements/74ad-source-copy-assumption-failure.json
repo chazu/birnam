@@ -1,6 +1,10 @@
 {
+  "archive_schema": "birnam-measurement-archive-v1",
+  "archive": "archive-20260914.zip",
+  "member": "74ad-source-copy-assumption-failure.json",
+  "bytes": 423,
+  "sha256": "64e62218df1c590ac1f117f9d03acf596225a3a9c7353a2461faad587aaa9c16",
   "status": "rejected_assumption",
   "qualified": false,
-  "scope": "Initial source audit expected fused_numeric.rs to equal the scoped donor exactly and rejected that assumption. The existing74AC execute_prepared changes are also required. No runtime change or test failure resulted; corrected composition audit verifies the clean three-way merge.",
-  "path": "rust/birnam-id/src/runtime/native_tier/fused_numeric.rs"
+  "scope": "Initial source audit expected fused_numeric.rs to equal the scoped donor exactly and rejected that assumption. The existing74AC execute_prepared changes are also required. No runtime change or test failure resulted; corrected composition audit verifies the clean three-way merge."
 }

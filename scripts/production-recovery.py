@@ -36,7 +36,7 @@ def main():
     parser.add_argument("--pairs", type=int, default=7)
     parser.add_argument("--count", type=int, default=10000)
     parser.add_argument("--work-dir", type=Path, default=ROOT / ".cargo-target/74p-recovery")
-    parser.add_argument("--output", type=Path, default=ROOT / "docs/measurements/74p-production-recovery.json")
+    parser.add_argument("--output", type=Path, default=ROOT / ".cargo-target/measurements/74p-production-recovery.json")
     args = parser.parse_args()
     args.work_dir.mkdir(parents=True, exist_ok=True)
     env = {k:v for k,v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}

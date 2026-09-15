@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate repeated-closure measurement counters; timings here are unqualified."""
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 import json
@@ -30,14 +31,14 @@ def main():
     paths += sorted(p for p in (root / "rust/birnam-native-compiler").rglob("*") if p.is_file())
     paths += sorted(p for p in (root / "rust/birnam-id").rglob("*") if p.is_file())
     paths += [root / "vendor/libtcc-src" / name for name in ("tcc.h", "config.h", "tccrun.c", "libtcc.c")]
-    hashes = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+    hashes = {str(p.relative_to(root)): hashlib.sha256(read_bytes(p)).hexdigest() for p in paths}
     manifest = args.prefix.resolve() / "share/birnam/rust-install.json"
-    publication = json.loads(manifest.read_text())
+    publication = load_json(manifest)
     assert publication["publication"]["state"] == "published"
     artifacts = dict(publication["staged_manifest"])
-    artifacts["share/birnam/rust-install.json"] = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    artifacts["share/birnam/rust-install.json"] = hashlib.sha256(read_bytes(manifest)).hexdigest()
     receipt = {"status": "running", "qualified": False, "numeric_body": args.numeric_body, "installed_sha256": artifacts, "uses": args.uses, "source_sha256": hashes, "scope": __doc__,
-               "floor_sha256": hashlib.sha256(args.floor.read_bytes()).hexdigest(), "rows": []}
+               "floor_sha256": hashlib.sha256(read_bytes(args.floor)).hexdigest(), "rows": []}
     try:
         with tempfile.TemporaryDirectory(prefix="birnam-closure-measurement-") as work:
             fixture = Path(work) / "measurement.birnam"
@@ -59,9 +60,9 @@ def main():
                                                    source_sha256=hashlib.sha256(code.encode()).hexdigest()))
                     check_pair(pair[0], pair[1], 2, numeric=args.numeric_body)
                     print(f"closure-timing-smoke: profile={args.profile} shape={shape} uses={uses} counter/allocation/result checks passed; timings unqualified", flush=True)
-        assert hashlib.sha256(args.floor.read_bytes()).hexdigest() == receipt["floor_sha256"]
-        assert all(hashlib.sha256((root / name).read_bytes()).hexdigest() == digest for name, digest in hashes.items())
-        assert all(hashlib.sha256((args.prefix.resolve() / name).read_bytes()).hexdigest() == digest for name, digest in artifacts.items())
+        assert hashlib.sha256(read_bytes(args.floor)).hexdigest() == receipt["floor_sha256"]
+        assert all(hashlib.sha256(read_bytes(root / name)).hexdigest() == digest for name, digest in hashes.items())
+        assert all(hashlib.sha256(read_bytes(args.prefix.resolve() / name)).hexdigest() == digest for name, digest in artifacts.items())
         receipt["status"] = "passed"
     except BaseException as error:
         receipt.update(status="failed", error=str(error))

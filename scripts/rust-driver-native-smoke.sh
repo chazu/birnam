@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Prove the Rust build driver can create and relocate a production prefix
-# without consuming a prebuilt Birnam runtime artifact.
+# Validate a normal installed release prefix and relocated execution.
+# With no prefix argument, create an independent cold installation first.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 prefix_parent=$(mktemp -d "${TMPDIR:-/tmp}/birnam-rust-driver-smoke.XXXXXX")
 trap 'rm -rf "$prefix_parent"' EXIT
-prefix="$prefix_parent/prefix"
+prefix=${1:-"$prefix_parent/prefix"}
 
-scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release
+if [[ $# == 0 ]]; then
+  scripts/rust-install.sh install --root "$PWD" --prefix "$prefix" --profile release
+fi
 
 test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
@@ -34,7 +36,6 @@ scripts/portable-code-binding-lifecycle-smoke.sh "$prefix"
 scripts/portable-image-v8-smoke.sh "$prefix"
 scripts/stackless-control-smoke.sh "$prefix"
 bash scripts/closure-elision-smoke.sh "$prefix"
-bash scripts/closure-control-smoke.sh "$prefix"
 cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v1 scripts/fixtures/closure-api-context.c -o "$prefix_parent/closure-api-context"
 "$prefix_parent/closure-api-context" "$prefix/lib/libbirnam_id.dylib" \
   "$prefix/lib/libbirnam_id_tcc.dylib" "$prefix/lib/libbirnam_id_codegen.dylib"

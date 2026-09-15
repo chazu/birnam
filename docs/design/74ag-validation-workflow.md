@@ -6,7 +6,14 @@ The exhaustive AG replay and optional AI allocator experiment are stopped.
 All 24 fresh release/compatibility/focused checks passed; the terminal receipt
 is `docs/measurements/74aj-landing-resumed.json`. Completed source evidence was
 reused after exact input checks.
-The broader qualification objective remains open.
+The later bounded qualification is complete; see [74AK](74ak-bounded-qualification-and-defaults.md).
+For current commands and policy, use [the validation guide](../validation.md).
+
+
+## Historical operations — superseded, do not execute
+
+The following is retained to explain old receipts. Named temporary controllers
+and historical instructions are not the current workflow.
 
 The user explicitly requested this consolidation in the side conversation on
 2026-09-14: slim the workflow and speed up the remaining validation.

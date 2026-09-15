@@ -2,14 +2,19 @@
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-target_dir=$(mktemp -d /tmp/birnam-rust-dylib-audit.XXXXXX)
-trap 'rm -rf "$target_dir"' EXIT
-
-expected_exports=$'_birnam_id_floor_identity\n_birnam_id_rust_abi_descriptor_v1\n_birnam_id_rust_crate_identity\n_id_init'
+# An isolated configuration cache avoids rebuilding the workspace or confusing
+# a diagnostic floor with the normal ABI. Cargo revalidates source/toolchain inputs.
+target_dir="$repo/.cargo-target/dylib-audit"
+expected_exports=$(python3 - "$repo/abi/rust-id-dylib-v1.json" <<'PYEXPORTS'
+import json, sys
+proof = json.load(open(sys.argv[1]))
+print("\n".join("_" + name for name in sorted(proof["exported_symbols"])))
+PYEXPORTS
+)
 
 audit_profile() {
   local profile=$1
-  local cargo_args=(build --workspace --locked --offline)
+  local cargo_args=(build --manifest-path "$repo/Cargo.toml" -p birnam-id --locked --offline)
   if [[ $profile == release ]]; then cargo_args+=(--release); fi
   CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
 
@@ -33,14 +38,26 @@ audit_profile() {
   fi
 
   local exports
-  exports=$(nm -gU "$dylib" | awk '$2 == "T" {print $3}' | sort)
+  exports=$(nm -gjU "$dylib" | sort)
   if [[ $exports != "$expected_exports" ]]; then
     printf 'rust-dylib-audit: %s export surface differs\n--- expected ---\n%s\n--- actual ---\n%s\n' \
       "$profile" "$expected_exports" "$exports" >&2
     exit 1
   fi
 
-  if strings "$dylib" | grep -Fq "$repo"; then
+  local path_audit="$dylib"
+  if [[ $profile == debug ]]; then
+    # DWARF deliberately names source locations. Audit executable/runtime data
+    # in a stripped copy, while preserving the original development artifact.
+    path_audit="$target_dir/$profile/libbirnam_id.path-audit.dylib"
+    strip -S -o "$path_audit" "$dylib"
+  fi
+  if python3 - "$path_audit" "$repo" <<'PYPATH'
+from pathlib import Path
+import sys
+raise SystemExit(0 if sys.argv[2].encode() in Path(sys.argv[1]).read_bytes() else 1)
+PYPATH
+  then
     echo "rust-dylib-audit: $profile retains the repository path" >&2
     exit 1
   fi

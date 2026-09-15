@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Measure unboxed arithmetic with a bounded historied-Store refusal control."""
+from validation_proof import load_proof
+from measurement_archive import load_json, read_bytes
 import argparse
 import hashlib
 from itertools import product
@@ -11,13 +13,14 @@ import statistics
 import subprocess
 import tempfile
 import time
+from benchmark_support import Commands, source_checker, host_monitor, save_json, clean_environment
 from unboxed_numeric_timing_common import source, parse_output, check_pair, peak_rss
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return hashlib.sha256(read_bytes(Path(path))).hexdigest()
 
 
 def main():
@@ -31,13 +34,16 @@ def main():
     parser.add_argument("--operations", type=int, nargs="+", choices=(3, 16, 32), default=[3, 16, 32])
     parser.add_argument("--wait-seconds", type=int, default=120)
     parser.add_argument("--exploratory", action="store_true", help="retain unqualified diagnostic timings when host admission fails")
+    parser.add_argument("--deadline", type=int, default=900, help="Total measurement/build budget in seconds")
+    parser.add_argument("--timeout", type=int, default=300, help="Per-command timeout in seconds")
     args = parser.parse_args()
+    if args.deadline <= 0 or args.timeout <= 0: parser.error("deadlines must be positive")
     args.operations = list(dict.fromkeys(args.operations))
     if not 1 <= args.batches <= 500 or not 1 <= args.refusal_batches <= 500 or not 1 <= args.pairs <= 7 or args.wait_seconds < 0:
         parser.error("invalid batches, pairs or wait interval")
-    proof = json.loads(args.receipt.read_text())
-    if proof["status"] != "passed" or proof.get("production_verification") != "passed":
-        parser.error("full correctness verification must pass first")
+    proof = load_proof(args.receipt, measurement='unboxed-measure-release')
+    if proof["status"] != "passed" or (proof.get("production_verification") != "passed" and not proof.get("phase_verified")):
+        parser.error("required correctness phase must pass first")
     output = proof["commands"][-1]["output"]
     if "unboxed-measurement-smoke:" not in output:
         parser.error("receipt must include measurement-counter correctness")
@@ -50,29 +56,29 @@ def main():
         if {(r["shape"], r["enabled"]) for r in rows} != set(product(range(5), (0, 1))):
             parser.error("requested numeric source lacks counter verification")
     floor = args.floor.resolve()
-    digests = set(re.findall(r"profile=release .*?floor_sha256=([a-f0-9]{64})", output))
+    digests = ({measurement["floor_sha256"]} if proof.get("phase_verified") else
+               set(re.findall(r"profile=release .*?floor_sha256=([a-f0-9]{64})", output)))
     if digests != {sha(floor)} or measurement["floor_sha256"] != sha(floor):
         parser.error("instrumented floor differs from verification")
 
     driver_hash = sha(__file__)
 
-    def check_sources():
-        if sha(__file__) != driver_hash:
-            raise RuntimeError("measurement driver changed")
-        for name, digest in proof["sources"].items():
-            if sha(ROOT / name) != digest:
-                raise RuntimeError("source changed since verification: " + name)
-        assert sha(floor) in digests
+    measurement_sources = dict(proof['sources'])
+    for path in (Path(__file__).resolve(), ROOT/'scripts/benchmark_support.py', ROOT/'scripts/validation_proof.py'):
+        measurement_sources[str(path.relative_to(ROOT))] = sha(path)
+    check_sources = source_checker(ROOT, measurement_sources, {floor: sha(floor)})
 
     check_sources()
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_", "BENCH_HOST_"))}
+    env = clean_environment()
     env.update(BENCH_HOST_WAIT_SECONDS=str(args.wait_seconds), BENCH_HOST_RETRY_SECONDS="10")
-    work = Path(tempfile.mkdtemp(prefix="birnam-unboxed-numeric-timing-"))
+    workspace = tempfile.TemporaryDirectory(prefix="birnam-unboxed-numeric-timing-")
+    work = Path(workspace.name)
     prefix = work / "prefix"
     fixtures = {operations: work / f"operations-{operations}.birnam" for operations in args.operations}
     for operations, fixture in fixtures.items():
         fixture.write_text(source(operations))
     result = {"status": "running", "qualified": False, "exploratory_requested": args.exploratory,
+              "measurement_sources": measurement_sources,
               "correctness_receipt": str(args.receipt.resolve()), "correctness_sha256": sha(args.receipt),
               "floor": {"path": str(floor), "sha256": sha(floor)}, "prefix": str(prefix),
               "batches": args.batches, "refusal_batches": args.refusal_batches, "driver_sha256": driver_hash, "pairs": args.pairs, "operations": args.operations, "rows": [],
@@ -82,15 +88,9 @@ def main():
     result["scope"] += " The shape-3 asCell refusal creates historied Store data that survives collection. Its separately recorded batch count bounds that growth; it is not a steady-state control. Paired configurations use identical counts. This driver changes no fixture body, production source or counter rule."
 
     def save():
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        save_json(args.output, result)
 
-    def run(argv, extra=None):
-        start = time.monotonic_ns()
-        p = subprocess.run([str(a) for a in argv], cwd=ROOT, env=dict(env, **(extra or {})),
-                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return {"argv": [str(a) for a in argv], "exit_code": p.returncode,
-                "wall_ns": time.monotonic_ns() - start, "output": p.stdout + p.stderr}
+    run = Commands(ROOT, env, deadline=args.deadline, timeout=args.timeout)
 
     save()
     try:
@@ -110,34 +110,28 @@ def main():
             result["status"] = "not_qualified"
             return 2
         monitor_log = work / "interval.log"
-        with monitor_log.open("w") as stream:
-            monitor = subprocess.Popen(["top", "-l", "0", "-s", "1", "-n", "0", "-stats", "pid"],
-                                       stdout=stream, stderr=subprocess.DEVNULL)
-            try:
-                for operations, shape in product(args.operations, range(5)):
-                    batches = args.refusal_batches if shape == 3 else args.batches
-                    for pair in range(args.pairs):
-                        rows = {}
-                        for enabled in ([0, 1] if pair % 2 == 0 else [1, 0]):
-                            print(f"unboxed-numeric-timing: operations={operations} shape={shape} pair={pair} enabled={enabled}", flush=True)
-                            command = run(["/usr/bin/time", "-l", prefix / "bin/birnam", fixtures[operations]],
-                                {"BIRNAM_ID_DYLIB": str(floor), "BIRNAM_TEST_UNBOXED_NUMERIC": "1",
-                                 "BIRNAM_DEV_UNBOXED_NUMERIC": str(enabled), "BIRNAM_NUMERIC_SHAPE": str(shape),
-                                 "BIRNAM_NUMERIC_BATCHES": str(batches)})
-                            if command["exit_code"]:
-                                result["failed_command"] = command
-                                raise RuntimeError("measurement process failed")
-                            row = dict(parse_output(command["output"]), shape=shape, operations=operations, pair=pair,
-                                       enabled=bool(enabled), batches=batches, process_wall_ns=command["wall_ns"],
-                                       peak_rss_bytes=peak_rss(command["output"]), output=command["output"])
-                            assert row["measure"]["operations"] == operations and row["measure"]["shape"] == shape
-                            result["rows"].append(row)
-                            rows[enabled] = row
-                            save()
-                        check_pair(rows[0], rows[1], batches)
-            finally:
-                monitor.terminate()
-                monitor.wait()
+        with host_monitor(monitor_log):
+            for operations, shape in product(args.operations, range(5)):
+                batches = args.refusal_batches if shape == 3 else args.batches
+                for pair in range(args.pairs):
+                    rows = {}
+                    for enabled in ([0, 1] if pair % 2 == 0 else [1, 0]):
+                        print(f"unboxed-numeric-timing: operations={operations} shape={shape} pair={pair} enabled={enabled}", flush=True)
+                        command = run(["/usr/bin/time", "-l", prefix / "bin/birnam", fixtures[operations]],
+                            {"BIRNAM_ID_DYLIB": str(floor), "BIRNAM_TEST_UNBOXED_NUMERIC": "1",
+                             "BIRNAM_DEV_UNBOXED_NUMERIC": str(enabled), "BIRNAM_NUMERIC_SHAPE": str(shape),
+                             "BIRNAM_NUMERIC_BATCHES": str(batches)})
+                        if command["exit_code"]:
+                            result["failed_command"] = command
+                            raise RuntimeError("measurement process failed")
+                        row = dict(parse_output(command["output"]), shape=shape, operations=operations, pair=pair,
+                                   enabled=bool(enabled), batches=batches, process_wall_ns=command["wall_ns"],
+                                   peak_rss_bytes=peak_rss(command["output"]), output=command["output"])
+                        assert row["measure"]["operations"] == operations and row["measure"]["shape"] == shape
+                        result["rows"].append(row)
+                        rows[enabled] = row
+                        save()
+                    check_pair(rows[0], rows[1], batches)
         result["interval"] = run(["bash", "scripts/bench-host-check.sh", "--samples", monitor_log, "unboxed-numeric-timing"])
         result["interval"]["samples"] = monitor_log.read_text()
         result["shapes"] = []
@@ -168,7 +162,8 @@ def main():
         result["error"] = str(error)
         raise
     finally:
-        save()
+        try: save()
+        finally: workspace.cleanup()
 
 
 if __name__ == "__main__":
