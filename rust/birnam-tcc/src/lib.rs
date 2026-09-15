@@ -222,19 +222,6 @@ unsafe extern "C" fn mark_runtime_roots(mark: birnam_abi::MarkFn) {
     }
 }
 
-#[repr(C)]
-struct DlInfo {
-    filename: *const c_char,
-    base: *mut c_void,
-    symbol_name: *const c_char,
-    symbol_address: *mut c_void,
-}
-
-#[cfg_attr(target_os = "linux", link(name = "dl"))]
-unsafe extern "C" {
-    fn dladdr(address: *const c_void, info: *mut DlInfo) -> c_int;
-}
-
 /// Resolve one private symbol from the exact selected floor image (the one
 /// that owns `api.dlsym`), keeping that floor `RTLD_LOCAL`. Answers 0 when the
 /// image or symbol cannot be found; the result is cached per call site.
@@ -277,22 +264,9 @@ fn floor_retirement(
     address: &'static OnceLock<usize>,
 ) -> Option<unsafe extern "C" fn(u64) -> u32> {
     let address = *address.get_or_init(|| {
-        let mut info = DlInfo {
-            filename: ptr::null(),
-            base: ptr::null_mut(),
-            symbol_name: ptr::null(),
-            symbol_address: ptr::null_mut(),
+        let handle = unsafe {
+            birnam_abi::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
         };
-        if unsafe { dladdr(api.dlsym as *const () as *const c_void, &mut info) } == 0
-            || info.filename.is_null()
-        {
-            return 0;
-        }
-        #[cfg(target_os = "macos")]
-        const RTLD_NOW_LOCAL: c_int = 2 | 4;
-        #[cfg(not(target_os = "macos"))]
-        const RTLD_NOW_LOCAL: c_int = 2;
-        let handle = unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) };
         if handle.is_null() {
             return 0;
         }
