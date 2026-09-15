@@ -234,7 +234,7 @@ fn floor_symbol_address(
         // The selected floor owns this frozen function pointer. This cache
         // retains the acquired reference even when the symbol is absent.
         let handle = unsafe {
-            birnam_abi::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
+            birnam_abi::private::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
         };
         if handle.is_null() {
             return 0;
@@ -265,7 +265,7 @@ fn floor_retirement(
 ) -> Option<unsafe extern "C" fn(u64) -> u32> {
     let address = *address.get_or_init(|| {
         let handle = unsafe {
-            birnam_abi::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
+            birnam_abi::private::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
         };
         if handle.is_null() {
             return 0;

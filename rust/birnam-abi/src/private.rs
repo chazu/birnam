@@ -1,5 +1,9 @@
-//! Private process-local native carriers, independent of the frozen IdApi.
-//! Sharing these declarations adds no runtime provider or dynamic dependency.
+//! Private process-local native carriers and stateless ABI utilities.
+//! These do not extend the frozen IdApi layout or register a runtime provider.
+
+// Stateless private loader mechanics live outside the frozen IdApi mirror.
+#[path = "native_library.rs"]
+pub mod native_library;
 
 /// Versioned Store reservation callbacks. Never persisted in source or images.
 #[derive(Clone, Copy)]

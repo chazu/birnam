@@ -1723,7 +1723,7 @@ unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
     }
     static FLOOR_HANDLE: OnceLock<usize> = OnceLock::new();
     let handle = *FLOOR_HANDLE.get_or_init(|| unsafe {
-        birnam_abi::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
+        birnam_abi::private::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
             as usize
     });
     if handle == 0 {

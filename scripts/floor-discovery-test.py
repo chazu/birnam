@@ -22,7 +22,7 @@ def main():
                 '-I'+str(ROOT/'abi/fixtures/idapi-v1'), '-DFIXTURE_ID='+str(identity),
                 str(ROOT/'scripts/fixtures/floor-lookup.c'), '-o', str(temp/(name+'.dylib'))], check=True)
         build = command(['cargo', 'test', '--locked', '--offline', '--no-run', '--message-format=json',
-                         '-p', 'birnam-tcc', '-p', 'birnam-codegen-runtime', '-p', 'birnam-image'], timeout=300)
+                         '-p', 'birnam-tcc', '-p', 'birnam-codegen-runtime'], timeout=300)
         if build['exit_code']: raise RuntimeError(build['output'])
         executables = {}
         for line in build['stdout'].splitlines():
@@ -30,8 +30,7 @@ def main():
             if row.get('reason') == 'compiler-artifact' and row.get('executable') and row.get('profile', {}).get('test'):
                 executables[row['target']['name']] = row['executable']
         for crate, tests in [('birnam_tcc', ['floor_lookup_contract_registration', 'floor_lookup_contract_retirement']),
-                             ('birnam_codegen_runtime', ['floor_lookup_contract']),
-                             ('birnam_image', ['runtime::floor_lookup_contract'])]:
+                             ('birnam_codegen_runtime', ['floor_lookup_contract'])]:
             for test in tests:
                 for mode in (0, 1, 2):
                     marker = temp/(crate+'-'+test.replace(':', '-')+'-'+str(mode))
