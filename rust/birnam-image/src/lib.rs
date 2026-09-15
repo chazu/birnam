@@ -432,7 +432,7 @@ mod runtime {
         PORTABLE_PROGRAM_VIEW_API_V1_VERSION, PortableCodeApiV2, PortableCodeApiV3,
         PortableProgramViewApiV1, borrowed_oop_args,
     };
-    use core::ffi::{c_char, c_int, c_void};
+    use core::ffi::{c_char, c_void};
     use core::mem::size_of;
     use core::ptr;
     use sha2::{Digest, Sha256};
@@ -562,43 +562,14 @@ mod runtime {
     static PORTABLE_SAVE_RECORDS: Mutex<Option<PortableSaveRecords>> = Mutex::new(None);
     static IMAGE_COMPOSITION_IDENTITY: Mutex<Option<[u8; 64]>> = Mutex::new(None);
 
-    #[repr(C)]
-    struct DlInfo {
-        filename: *const c_char,
-        base: *mut c_void,
-        symbol_name: *const c_char,
-        symbol_address: *mut c_void,
-    }
-
-    #[cfg_attr(target_os = "linux", link(name = "dl"))]
-    unsafe extern "C" {
-        fn dladdr(address: *const c_void, info: *mut DlInfo) -> c_int;
-    }
-
     unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
         if name.last() != Some(&0) {
             return None;
         }
         static FLOOR_HANDLE: OnceLock<usize> = OnceLock::new();
-        let handle = *FLOOR_HANDLE.get_or_init(|| {
-            let mut info = DlInfo {
-                filename: ptr::null(),
-                base: ptr::null_mut(),
-                symbol_name: ptr::null(),
-                symbol_address: ptr::null_mut(),
-            };
-            // The host loads the selected floor RTLD_LOCAL. Resolve private
-            // image seams from that exact image, never from global symbol order.
-            if unsafe { dladdr(api.dlsym as *const () as *const c_void, &mut info) } == 0
-                || info.filename.is_null()
-            {
-                return 0;
-            }
-            #[cfg(target_os = "macos")]
-            const RTLD_NOW_LOCAL: c_int = 2 | 4;
-            #[cfg(not(target_os = "macos"))]
-            const RTLD_NOW_LOCAL: c_int = 2;
-            unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) as usize }
+        let handle = *FLOOR_HANDLE.get_or_init(|| unsafe {
+            birnam_abi::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
+                as usize
         });
         if handle == 0 {
             return None;
