@@ -753,17 +753,7 @@ unsafe extern "C" fn native_copy_program(
     .unwrap_or(0)
 }
 
-fn selector_arity(selector: &[u8]) -> usize {
-    let colons = selector.iter().filter(|byte| **byte == b':').count();
-    if colons != 0 {
-        return colons;
-    }
-    match selector.first() {
-        None => 0,
-        Some(byte) if byte.is_ascii_alphabetic() || *byte == b'_' => 0,
-        Some(_) => 1,
-    }
-}
+use birnam_artifact::selector::arity as selector_arity;
 
 fn vtable_has_value_arity(runtime: &Runtime, vtable: Oop, arity: usize) -> bool {
     let mut index = 0usize;

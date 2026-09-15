@@ -3397,17 +3397,7 @@ fn append_digest_field(input: &mut Vec<u8>, bytes: &[u8]) {
     input.extend_from_slice(bytes);
 }
 
-fn selector_arity(selector: &[u8]) -> usize {
-    let colons = selector.iter().filter(|byte| **byte == b':').count();
-    if colons != 0 {
-        return colons;
-    }
-    match selector.first() {
-        None => 0,
-        Some(byte) if byte.is_ascii_alphabetic() || *byte == b'_' => 0,
-        Some(_) => 1,
-    }
-}
+use birnam_artifact::selector::arity as selector_arity;
 
 fn block_parameter_count(node: &OwnedCst) -> Option<usize> {
     let node = skip_cst_wrappers(node)?;
