@@ -248,10 +248,12 @@ bootstrap and existing benchmark thresholds.
 - [Design 79](../design/79-refactoring-implementation-plan.md) breaks the reviewed
   scope into bounded commits, investigation gates and final validation tiers,
   with the completed [adversarial plan review](../design/79a-implementation-plan-adversarial-review.md).
-  Implementation is authorized; [79B](../design/79b-refactoring-delivery.md) records
-  delivered scope and acceptance. A/C/E and closure-only G are implemented;
+  Complete for the user-accepted scope; epic `birnam-35m` and all series tickets
+  are closed. [79B](../design/79b-refactoring-delivery.md) records the scope and
+  validation limits. A/C/E and closure-only G are implemented;
   B covers TCC/Codegen only because Image is a frozen compatibility authority.
-  D is limited to cache/CodeBindings ownership. Broader D and F remain gated.
+  D is limited to cache/CodeBindings ownership. Broader D and F are deferred
+  outside this batch, with their constraints retained for any future work.
   Validation was reduced to change-focused checks by user direction; the full
   release run was stopped and language qualification reached its time cap.
   See [79C](../design/79c-materialization-ownership.md) and

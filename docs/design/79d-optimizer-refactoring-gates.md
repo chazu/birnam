@@ -1,6 +1,7 @@
 # 79D — Optimizer refactoring gate decisions
 
-Status: F deferred; G1/G2 implemented with focused checks passing. Full language
+Status: F concluded with reuse deferred; G complete for closure callers. The user
+accepted these outcomes and closed both tickets. Focused checks pass; full language
 qualification is incomplete; see 79B. This record
 applies to the Design 79 batch through `2e8d14d6`. It does not promote any native
 family or change the live guards that authorize optimized execution.
@@ -27,9 +28,10 @@ and late refusal paths need separate measurement; disabled maps do no map work.
 No F1–F3 production edits are included. The required paired, source-bound normal
 release comparison has not been produced: targeted successful/refused/disabled
 markers, three alternating pairs, analysis counts and transient/retained lifetime
-accounting remain open. Therefore F stays deferred at its evidence gate. This is
-not a claim that reuse is unprofitable, and the F investigation ticket remains
-open. The existing off/on performance harness cannot stand in for that comparison.
+accounting remain unmeasured. F is closed with reuse deferred by user acceptance;
+those measurements would be needed if reuse is pursued later. Profitability has
+not been established. The existing off/on performance harness cannot stand in
+for that comparison.
 
 ## G: closure-only transition sharing
 

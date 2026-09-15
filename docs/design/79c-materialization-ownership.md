@@ -132,5 +132,6 @@ that moving those functions preserves conservative native-stack reachability.
 D4 is separately deferred for the demonstrated non-equivalent ordering above.
 No shared compile setup, new compensation destructor or new root is included.
 
-The focused D1/D2 state fixture passes at both revisions. Final integrated
-acceptance is recorded in 79B; the D-wide failure matrix and ticket remain open.
+The focused D1/D2 state fixture passes at both revisions. The user accepted D as
+complete at this scope and its ticket is closed; see 79B for validation limits.
+The broader failure matrix remains a prerequisite for any future deferred moves.

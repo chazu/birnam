@@ -7,6 +7,9 @@
 > [79B](79b-refactoring-delivery.md).
 > Validation scope was reduced by explicit user direction during implementation:
 > use the change-focused acceptance in section 5, not a full release matrix.
+> The user subsequently accepted the delivered scope and documented deferrals as
+> complete. See 79B for the final scope and validation limits; unimplemented rows
+> below are future options, not outstanding requirements of the completed batch.
 > This document schedules no deployment, commit, tracker transition or default
 > promotion. Its commit labels are proposed work units, not completed work.
 

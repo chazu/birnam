@@ -1,7 +1,8 @@
 # 79B — Refactoring delivery and evidence
 
-Status: implemented within the scope below; focused checks pass. Full language
-qualification is incomplete after the requested validation cutback. Authorized 2026-09-15. Governing contracts: [78](78-invariant-preserving-refactoring-review.md),
+Status: complete for the delivered scope, accepted by the user with the documented
+deferrals and validation limits. Focused checks pass; full language qualification
+remains incomplete. Authorized 2026-09-15. Governing contracts: [78](78-invariant-preserving-refactoring-review.md),
 [78A](78a-refactoring-adversarial-review.md), [79](79-refactoring-implementation-plan.md),
 and [79A](79a-implementation-plan-adversarial-review.md).
 
@@ -22,9 +23,15 @@ of a technical dependency or permission to bypass a gate.
 | F: analysis reuse | Static caller and ownership audit. No production changes. | Paired preparation-cost and retained-lifetime evidence absent. See [79D](79d-optimizer-refactoring-gates.md). |
 | G: transition sharing | One private alias transition for the two canonical closure callers. | Numeric and aggregate sharing deferred because their contracts differ; see 79D. |
 
-No user installation or remote repository has been changed. All native acceptance
-uses a disposable external prefix. This document does not claim completion of B,
-D or F, or promote an optimizer family.
+The user accepted this batch as done with B limited to TCC/Codegen, D limited to
+cache/CodeBindings ownership, F concluded with reuse deferred, and G limited to
+closure callers. Those exclusions are outside the completed batch. Revisiting
+them is future work, with the recorded constraints still applicable.
+
+Epic `birnam-35m` and all seven series tickets are closed on that basis. This
+closure does not claim that deferred code was implemented or incomplete tests
+passed. No user installation or remote repository has been changed. All native
+acceptance uses a disposable external prefix; no optimizer family is promoted.
 
 ## Preserved boundaries
 
@@ -97,7 +104,7 @@ The language run used the existing private prefix and stopped at its three-minut
 cap. Completed assertions passed; the suite did not finish and is not counted as
 a pass. No retry or supplemental sweep is queued. Receipt:
 `.cargo-target/validation/79-language/run.json`. Full language qualification remains
-open; the implementation and focused-check results above stand on their own.
+incomplete; the user accepted batch completion with that limit recorded.
 
 The interrupted release receipt remains at
 `.cargo-target/validation/79-final/run.json`, with cancellation recorded as a
