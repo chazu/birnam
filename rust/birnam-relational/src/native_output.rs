@@ -242,7 +242,7 @@ fn exported_output_contract() {
                     written_ptr
                 };
                 let before_live = (api.gcLiveCount)();
-                let (status, allocations) = crate::query_matching_tests::allocations(|| match family {
+                let (status, allocations) = crate::evaluator::allocations(|| match family {
                     0 => birnam_relational_rust_project_live(
                         store,
                         2,
