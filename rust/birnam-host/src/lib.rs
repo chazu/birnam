@@ -10250,3 +10250,13 @@ mod tests {
 pub mod bootstrap_receipt;
 pub mod publication_receipt;
 mod receipt_validation;
+
+#[cfg(test)]
+mod worker_arity_contract_tests {
+    #[test]
+    fn underscore_worker_predicate_is_not_corrected_by_byte_rule_sharing() {
+        assert!(super::selector_has_arity_one("_private"));
+        assert!(!super::selector_has_arity_one(""));
+        assert!(!super::selector_has_arity_one("value"));
+    }
+}

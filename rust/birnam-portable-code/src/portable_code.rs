@@ -2723,3 +2723,17 @@ impl Runtime {
         install_native_api(self);
     }
 }
+
+#[cfg(test)]
+mod byte_rule_contract_tests {
+    #[test]
+    fn unchecked_arity_preserves_all_byte_classes() {
+        for (name, expected) in [
+            (&b""[..], 0), (&b"_private"[..], 0), (&b"value"[..], 0),
+            (&b"at:put:"[..], 2), (&b"+"[..], 1), (&b"\xff"[..], 1),
+            (&b"\0"[..], 1), (&b"_x:\0:"[..], 2),
+        ] {
+            assert_eq!(super::selector_arity(name), expected, "{name:?}");
+        }
+    }
+}

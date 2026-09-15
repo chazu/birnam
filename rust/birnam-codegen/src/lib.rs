@@ -3044,3 +3044,35 @@ mod tests {
         assert!(output.contains("__g0 = birnam_intern(\"Integer\");"));
     }
 }
+
+#[cfg(test)]
+mod byte_rule_contract_tests {
+    #[test]
+    fn unchecked_arity_preserves_all_byte_classes() {
+        for (name, expected) in [
+            (&b""[..], 0), (&b"_private"[..], 0), (&b"value"[..], 0),
+            (&b"at:put:"[..], 2), (&b"+"[..], 1), (&b"\xff"[..], 1),
+            (&b"\0"[..], 1), (&b"_x:\0:"[..], 2),
+        ] {
+            assert_eq!(super::selector_arity(name), expected, "{name:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod literal_emission_contract_tests {
+    #[test]
+    fn ordinary_literal_keeps_its_permissive_envelope_and_exact_c() {
+        for (source, expected) in [
+            (&b"abc"[..], &b"birnam_mkString(\"b\", 1L)"[..]),
+            (&b"x"[..], &b"birnam_mkString(\"x\", 1L)"[..]),
+            (&b"\"\""[..], &b"birnam_mkString(\"\", 0L)"[..]),
+            (&b"\"\\q\""[..], &b"birnam_mkString(\"\\\\q\", 2L)"[..]),
+            (&b"\"\\0\""[..], &b"birnam_mkString(\"\\000\", 1L)"[..]),
+        ] {
+            let mut emitter = super::Emitter::new();
+            emitter.emit_string_literal(source);
+            assert_eq!(emitter.finish(), expected, "{source:?}");
+        }
+    }
+}

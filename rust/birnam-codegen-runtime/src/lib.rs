@@ -15254,3 +15254,37 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod byte_rule_contract_tests {
+    #[test]
+    fn unchecked_arity_preserves_all_byte_classes() {
+        for (name, expected) in [
+            (&b""[..], 0), (&b"_private"[..], 0), (&b"value"[..], 0),
+            (&b"at:put:"[..], 2), (&b"+"[..], 1), (&b"\xff"[..], 1),
+            (&b"\0"[..], 1), (&b"_x:\0:"[..], 2),
+        ] {
+            assert_eq!(super::selector_arity(name), expected, "{name:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod literal_body_contract_tests {
+    #[test]
+    fn literal_envelopes_and_escape_bytes_remain_distinct() {
+        for (source, expected) in [
+            (&b"\"\""[..], &b""[..]),
+            (&b"\"\\n\\t\\r\\0\\\"\\\\\""[..], &b"\n\t\r\0\"\\"[..]),
+            (&b"\"\\q\\\""[..], &b"\\q\\"[..]),
+            (&b"\"\xff\0\""[..], &b"\xff\0"[..]),
+        ] {
+            let decoded = super::decode_string_literal(source).unwrap();
+            assert_eq!(decoded, expected, "{source:?}");
+            assert_eq!(decoded.capacity(), source.len() - 2);
+        }
+        for source in [&b""[..], &b"\""[..], &b"abc"[..], &b"\"x"[..], &b"x\""[..]] {
+            assert!(super::decode_string_literal(source).is_none(), "{source:?}");
+        }
+    }
+}

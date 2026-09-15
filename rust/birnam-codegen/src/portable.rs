@@ -342,3 +342,23 @@ mod tests {
         assert_eq!(program.node(5).unwrap().kind, 7);
     }
 }
+
+#[cfg(test)]
+mod literal_body_contract_tests {
+    #[test]
+    fn literal_envelopes_and_escape_bytes_remain_distinct() {
+        for (source, expected) in [
+            (&b"\"\""[..], &b""[..]),
+            (&b"\"\\n\\t\\r\\0\\\"\\\\\""[..], &b"\n\t\r\0\"\\"[..]),
+            (&b"\"\\q\\\""[..], &b"\\q\\"[..]),
+            (&b"\"\xff\0\""[..], &b"\xff\0"[..]),
+        ] {
+            let decoded = super::decode_string(source).unwrap();
+            assert_eq!(decoded, expected, "{source:?}");
+            assert_eq!(decoded.capacity(), source.len() - 2);
+        }
+        for source in [&b""[..], &b"\""[..], &b"abc"[..], &b"\"x"[..], &b"x\""[..]] {
+            assert!(super::decode_string(source).is_err(), "{source:?}");
+        }
+    }
+}
