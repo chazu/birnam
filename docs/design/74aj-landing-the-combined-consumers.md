@@ -54,3 +54,26 @@ This acceptance reuses the completed 672 regular tests, 72 source processes and
 168 lifecycle cycles for identical source inputs. It does not claim a completed
 exhaustive production replay or qualified speedup. The stopped replay and Rust
 allocator experiment are deferred work, not prerequisites for this merge.
+
+## Requirement audit after landing
+
+[The requirement audit](../measurements/74aj-requirement-audit.json) maps the
+original implementation categories to passing debug/release command results:
+
+| Category | Verified behavior in the retained tests |
+| --- | --- |
+| Shared recovery | Id-authored recipes, graph validation, distinct identities and aliases, collecting materialization, stale authority refusal |
+| Numeric representation | Exact arithmetic, original error boundaries, raw-result recovery, late binding, GC budgets and bounded storage |
+| Loop invariants | Actual tail-iteration evidence, changed inputs and bindings, ordered effects, capture/suspension and native retirement |
+| Aggregate allocation and fields | Clone/field plan admission, exact logical allocation observations, alias recovery, collecting observers and forced exits |
+| Closures and captures | Current constructor/API authority, shared captures, ordinary refusal and staging; installed numeric and V2 cases in the landing receipt |
+| Compiler ownership | Native allocation and compiler-heap lifetime, complete consumer teardown and source closure ownership |
+
+The audit rechecks 314 current source hashes, eight compatibility-authority
+files and the retained receipt bindings. It reuses the 74 individually successful
+commands from the interrupted gate; it does not claim that gate completed. The
+24 focused landing steps separately establish installed/image/archive acceptance.
+No new semantic implementation gap was identified in these reviewed categories.
+Full qualification remains unproven: the broader resource/profitability work and
+experimental default promotion are deferred. This audit neither restarts those
+experiments nor closes the persistent full-scope goal.
