@@ -1,12 +1,14 @@
 # 74AH — Ordinary Id application acceptance with active consumers
 
-Status: implementation in progress, based on the 74AG combined candidate.
-The four families retain their full 74T obligations and remain incomplete.
+Status: application source and driver integrated after 74AJ, 2026-09-14.
+The combined runtime is on main; broader family qualification remains open.
 
 Implementation, driver and measurement receipts are committed at `d53d56dd` on
 `codex/74ah-admitted-application` in `/tmp/birnam-74ah-admitted-application`.
-Measurement links below refer to that branch. This main copy records status;
-main has not integrated the candidate runtime or its diagnostic additions.
+The application source and driver are now also on main, byte-identical to that
+commit. Measurement links below refer to the original branch's diagnostic evidence.
+74AJ integrated the runtime and verified four normal installed application cases;
+the AH-only diagnostic counters remain on the original branch.
 
 The existing collection/evaluation application controls admit no aggregate plans.
 Keep those refusal/regression workloads. Add a binding-processing pipeline whose
@@ -66,6 +68,29 @@ Changed Rust files pass formatting checks. Workspace-wide formatting still
 reports pre-existing differences in unchanged `dev_slot_access.rs`.
 
 The consolidated workflow deliberately excludes additional noisy timing matrices.
-Remaining work includes the combined production/fresh-install acceptance,
-application resource and profitability evidence, and any still-open 74T semantic
-coverage. This application result does not complete or promote any family.
+74AJ completed focused production/fresh-install acceptance and superseded the
+exhaustive replay for landing. Application resource and profitability research
+are deferred. This application result does not promote any optimization default.
+
+## Reproduce from main
+
+With a current installed prefix, run `birnam bench/recovery-binding-pipeline.birnam`
+for the ordinary correctness case. The driver below compares all-disabled,
+all-enabled and individual consumer controls under both GC modes:
+
+```sh
+python3 scripts/recovery-binding-pipeline-smoke.py \
+  --prefix /path/to/prefix \
+  --floor /path/to/prefix/lib/libbirnam_id.dylib \
+  --tcc /path/to/prefix/lib/libbirnam_id_tcc.dylib \
+  --codegen /path/to/prefix/lib/libbirnam_id_codegen.dylib \
+  --output /tmp/binding-pipeline-new.json
+```
+
+`--diagnostic` requires the AH diagnostic floor with `applicationActivity`;
+main's ordinary floor does not expose that test probe. Normal mode needs no
+diagnostic floor. The driver refuses to overwrite an existing receipt.
+
+[The reproduction receipt](../measurements/74aj-application-reproducibility.json)
+retains the four previously executed normal landing outputs and revalidates them
+with the unchanged driver. It does not represent another test or timing matrix.

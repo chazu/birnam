@@ -1,0 +1,94 @@
+// 74AH: project immutable binding snapshots, transform values, accumulate weights.
+[System load: "modules/os.birnam"];
+[System preciseGc: [[System getEnv: "BIRNAM_APPLICATION_PRECISE"] = "1"]];
+let diagnostics := [[System getEnv: "BIRNAM_APPLICATION_DIAGNOSTICS"] = "1"];
+let records := [[[1 to: 64] asVector] collect: [:name | [LogicVar named: name]]];
+let projectSource := [:prototype |
+  let copy := [prototype clone];
+  let left := [copy name];
+  let middle := [copy name];
+  let right := [copy name];
+  let subtotal := [left + middle];
+  [subtotal + right]];
+let project := [Codegen materializeResumable: [[projectSource codeObject] withoutSourceProvenance] captures: #[]];
+let transformSource := [:input :bias |
+  let transform := [|
+    let doubled := [input + input];
+    let shifted := [doubled + bias];
+    let scaled := [shifted * 3];
+    scaled];
+  let first := [transform value];
+  let second := [transform value];
+  let third := [transform value];
+  third];
+let transform := [Codegen materializeResumable: [[transformSource codeObject] withoutSourceProvenance] captures: #[]];
+let weightSource := [:factor :index |
+  let weight := [factor + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  let weight := [weight + factor];
+  [weight + index]];
+let weight := [Codegen materializeResumable: [[weightSource codeObject] withoutSourceProvenance] captures: #[]];
+let lastIndex := 63;
+let stop := [:again :index :total :factor :bias | total];
+let loopSource := [:again :index :total :factor :bias |
+  let record := [records at: index];
+  let projected := [project value: record];
+  let transformed := [transform value: projected value: bias];
+  let weighted := [weight value: factor value: index];
+  let item := [transformed + weighted];
+  let nextTotal := [total + item];
+  let next := [[index < lastIndex] ifTrue: [| again] ifFalse: [| stop]];
+  [next value: again value: [index + 1] value: nextTotal value: factor value: bias]];
+let loop := [Codegen materializeResumable: [[loopSource codeObject] withoutSourceProvenance] captures: #[records project transform weight lastIndex stop]];
+let runSource := [:factor :bias | [loop value: loop value: 0 value: 0 value: factor value: bias]];
+let run := [Codegen materializeResumable: [[runSource codeObject] withoutSourceProvenance] captures: #[loop]];
+[4 timesRepeat: [| [run value: 5 value: 3]]];
+[System gc];
+[System println: "application-phase baseline"];
+[diagnostics ifTrue: [| [ClosureControlProbe applicationActivity]] ifFalse: [| nil]];
+let answer := [run value: 5 value: 3];
+[[answer = 45152] ifTrue: [| nil] ifFalse: [| [System println: answer]; [OS exit: 61]]];
+[System println: ["application-answer " , [answer printString]]];
+[diagnostics ifTrue: [| [ClosureControlProbe applicationActivity]] ifFalse: [| nil]];
+let changed := [run value: 7 value: 5];
+[[changed = 47584] ifTrue: [| nil] ifFalse: [| [System println: changed]; [OS exit: 62]]];
+[System println: ["application-changed " , [changed printString]]];
+[System gc];
+[[[[records at: 0] name] = 1] ifTrue: [| nil] ifFalse: [| [OS exit: 63]]];
+[[[[records at: 63] name] = 64] ifTrue: [| nil] ifFalse: [| [OS exit: 64]]];
+// Replace a getter after the application has become hot. Each access must
+// observe the replacement, and all three must receive the same fresh clone.
+let original := [records at: 0];
+let observed := [nil asCell];
+let effects := [0 asCell];
+[Reflect defineMethod: #name on: original as: [:self |
+  [[self == original] ifTrue: [| [OS exit: 66]] ifFalse: [| nil]];
+  [[[observed value] == nil]
+    ifTrue: [| [observed set: self]]
+    ifFalse: [| [[self == [observed value]] ifTrue: [| nil] ifFalse: [| [OS exit: 67]]]]];
+  [effects inc];
+  1001]];
+let mutated := [run value: 5 value: 3];
+[[mutated = 63152] ifTrue: [| nil] ifFalse: [| [OS exit: 68]]];
+[[[effects value] = 3] ifTrue: [| nil] ifFalse: [| [OS exit: 69]]];
+[System gc];
+[[[observed value] == original] ifTrue: [| [OS exit: 70]] ifFalse: [| nil]];
+[Reflect removeMethod: #name on: original];
+[System println: "application-mutation 63152 effects=3 fresh-alias=true"];
+[Codegen evictMaterializations];
+[System gc];
+let afterEviction := [run value: 5 value: 3];
+[[afterEviction = 45152] ifTrue: [| nil] ifFalse: [| [OS exit: 65]]];
+[System println: "application-binding-pipeline passed"];

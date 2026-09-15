@@ -2120,7 +2120,7 @@ recorded binaries and do not silently accept the rebuilt files. No runtime sourc
 or optimization default changed during artifact recovery.
 
 
-### Current application and combined verification status
+### Application and combined verification before 74AJ
 
 [74AH](74ah-admitted-application-workload.md), `d53d56dd`, adds an ordinary Id
 binding pipeline and diagnostic snapshots. All 48 process coordinates pass:
@@ -2138,3 +2138,14 @@ verification, then fresh installation and the agreed focused checks. Do not
 restart the cancelled AC/AD/AE/AF queues or add noisy timing matrices. Full-family
 completion, application resource/performance acceptance and default promotion
 remain unproven.
+
+### Landed implementation and reproducible application
+
+74AJ supersedes the pending integration/queue statements above: main includes the
+combined runtime/compiler changes at `1578a0d3`, and all 24 focused landing steps
+passed. `bench/recovery-binding-pipeline.birnam` and its driver are now included
+on main as well; their source is unchanged from the accepted AH application.
+See [74AJ](74aj-landing-the-combined-consumers.md) for the accepted checks and
+[74AH](74ah-admitted-application-workload.md) for reproduction. Optional resource
+and profitability experiments remain deferred; old queue descriptions must not
+be interpreted as instructions to restart them.
