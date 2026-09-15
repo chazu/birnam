@@ -69,7 +69,7 @@ def closure_plan(prefix, output, suite='exhaustive', installed_dependency=('inst
                 ('unboxed-control','unboxed-numeric-control-smoke.py',[]),
                 ('unboxed-measure','unboxed-numeric-measurement-smoke.py',[]),
                 ('loop-measure','loop-measurement-smoke.py',[]),
-                ('loop-invariant','loop-invariant-numeric-smoke.py',[])):
+                ('loop-invariant','loop-invariant-numeric-smoke.py',['--profile',profile])):
                 if 'measurement' in driver: flags+=['--profile',profile]
                 matrix(label,driver,flags)
     dependencies=installed_dependency+tuple('diagnostics-'+profile for profile in profiles)

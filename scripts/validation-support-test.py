@@ -81,6 +81,39 @@ class ValidationTests(unittest.TestCase):
                 self.assertTrue(all('--quick' not in s['argv'] for s in steps))
             self.assertIn('--all-families',next(s for s in release if s['name']=='recovery')['argv'])
 
+    def test_generated_loop_invariant_commands_satisfy_the_actual_parser(self):
+        import argparse
+        import runpy
+        from unittest import mock
+        from validate import plan
+        original_parse = argparse.ArgumentParser.parse_args
+
+        class Parsed(Exception):
+            pass
+
+        checked = []
+        for suite in ('routine', 'release'):
+            for step in plan(suite, ROOT / 'test-prefix', ROOT / 'test-output'):
+                if not step['name'].startswith('loop-invariant-'):
+                    continue
+                checked.append((suite, step['name']))
+                with self.subTest(suite=suite, step=step['name']):
+                    captured = []
+                    def parse(parser, *args, **kwargs):
+                        captured.append(original_parse(parser, *args, **kwargs))
+                        # Stop after real argument validation, before any floor/file access.
+                        raise Parsed()
+                    argv = step['argv'][1:]
+                    with mock.patch.object(sys, 'argv', argv), \
+                         mock.patch.object(argparse.ArgumentParser, 'parse_args', parse), \
+                         self.assertRaises(Parsed):
+                        runpy.run_path(str(ROOT / argv[0]), run_name='__main__')
+                    expected = step['name'].rsplit('-', 1)[1]
+                    self.assertEqual(captured[0].profile, expected)
+                    self.assertEqual(captured[0].floor.parent.name, expected)
+        self.assertEqual(checked, [('release', 'loop-invariant-debug'),
+                                   ('release', 'loop-invariant-release')])
+
     def test_ci_shards_cover_each_matrix_once(self):
         import importlib.util
         spec=importlib.util.spec_from_file_location('ci',ROOT/'scripts/validation-ci.py')
