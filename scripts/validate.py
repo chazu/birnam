@@ -37,6 +37,10 @@ def plan(suite, prefix, output):
                        PRODUCTION + ('scripts/floor-discovery-test.py', 'scripts/fixtures/floor-lookup.c',
                                      'abi/fixtures/idapi-v1/idapi_v1.h'),
                        depends=('install',), artifacts=(str(output/'floor-discovery.json'),), timeout=300))
+    result.append(step('relational-output', ['python3', 'scripts/relational-output-test.py',
+                       '--prefix', prefix, '--output', output/'relational-output.json'],
+                       PRODUCTION + ('scripts/relational-output-test.py',),
+                       depends=('install',), artifacts=(str(output/'relational-output.json'),), timeout=300))
     if suite == 'performance':
         result.append(step('performance', ['python3', 'scripts/performance-smoke.py', '--prefix', prefix,
                            '--output', output/'performance.json'], PRODUCTION +

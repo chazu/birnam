@@ -4904,3 +4904,6 @@ mod tests {
         assert!(body_values[1].matches(&id(4)));
     }
 }
+
+#[cfg(test)]
+mod native_output;
