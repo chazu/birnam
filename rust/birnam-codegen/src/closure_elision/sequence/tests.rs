@@ -343,3 +343,33 @@ fn literal_closure_results_retain_distinct_origins_and_stop_before_dependent_arg
         }
     }
 }
+
+#[test]
+fn closure_transition_domains_reject_noncanonical_edges_before_derivation() {
+    let bytes = fixture(3, true, true, false);
+    let program = resumable::lower_portable_block(&bytes).unwrap();
+    let layout = resumable::color_slots(&program).unwrap();
+    assert_eq!(Plan::derive(&program, &layout).unwrap().following.len(), 2);
+    for edge_index in 0..layout.edges.len() {
+        for mutation in 0..7 {
+            let mut changed = layout.clone();
+            let edge = &mut changed.edges[edge_index];
+            match mutation {
+                0 => edge.result_initialization_slot = None,
+                1 => edge.result_initialization_slot = Some(layout.slot_count),
+                2 => edge.clear_bitmap_words.clear(),
+                3 => edge.clear_bitmap_words.push(0),
+                4 => edge.clear_bitmap_words.push(1 << 63),
+                5 => edge.copies.push(resumable::SlotCopy {
+                    source: layout.slot_count, destination: 0,
+                }),
+                6 => edge.copies.push(resumable::SlotCopy {
+                    source: 0, destination: layout.slot_count,
+                }),
+                _ => unreachable!(),
+            }
+            assert_eq!(Plan::derive(&program, &changed), Err(Refusal::InvalidLayout),
+                       "edge {edge_index}, mutation {mutation}");
+        }
+    }
+}
