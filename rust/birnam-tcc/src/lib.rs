@@ -244,22 +244,11 @@ fn floor_symbol_address(
     address: &'static OnceLock<usize>,
 ) -> usize {
     *address.get_or_init(|| {
-        let mut info = DlInfo {
-            filename: ptr::null(),
-            base: ptr::null_mut(),
-            symbol_name: ptr::null(),
-            symbol_address: ptr::null_mut(),
+        // The selected floor owns this frozen function pointer. This cache
+        // retains the acquired reference even when the symbol is absent.
+        let handle = unsafe {
+            birnam_abi::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
         };
-        if unsafe { dladdr(api.dlsym as *const () as *const c_void, &mut info) } == 0
-            || info.filename.is_null()
-        {
-            return 0;
-        }
-        #[cfg(target_os = "macos")]
-        const RTLD_NOW_LOCAL: c_int = 2 | 4;
-        #[cfg(not(target_os = "macos"))]
-        const RTLD_NOW_LOCAL: c_int = 2;
-        let handle = unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) };
         if handle.is_null() {
             return 0;
         }
