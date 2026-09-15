@@ -607,6 +607,18 @@ mod runtime {
         (!address.is_null()).then_some(address as usize)
     }
 
+
+    #[cfg(test)]
+    mod floor_lookup_fixture {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../birnam-abi/tests/support/floor_lookup.rs"));
+    }
+
+    #[test]
+    #[ignore = "requires installed floor and fresh-process loader fixture"]
+    fn floor_lookup_contract() {
+        floor_lookup_fixture::check(|api, name| unsafe { floor_symbol(api, name.to_bytes_with_nul()) }, false);
+    }
+
     struct HeapPreflight {
         authority: Option<[u8; AUTHORITY_DIGEST_LEN]>,
         objects: Vec<usize>,

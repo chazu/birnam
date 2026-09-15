@@ -1539,3 +1539,22 @@ mod tests {
         assert_eq!(identity.to_bytes_with_nul(), RUST_TCC_IDENTITY);
     }
 }
+
+#[cfg(test)]
+mod floor_lookup_fixture {
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../birnam-abi/tests/support/floor_lookup.rs"));
+}
+
+#[test]
+#[ignore = "requires installed floor and fresh-process loader fixture"]
+fn floor_lookup_contract_registration() {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    floor_lookup_fixture::check(|api, name| floor_registration(api, name, &ADDRESS).map(|f| f as usize), true);
+}
+
+#[test]
+#[ignore = "requires installed floor and fresh-process loader fixture"]
+fn floor_lookup_contract_retirement() {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    floor_lookup_fixture::check(|api, name| floor_retirement(api, name, &ADDRESS).map(|f| f as usize), true);
+}
