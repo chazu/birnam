@@ -684,17 +684,7 @@ fn sourced_reflect_selector<'a>(
     }
 }
 
-fn selector_arity(selector: &[u8]) -> usize {
-    let colons = selector.iter().filter(|byte| **byte == b':').count();
-    if colons != 0 {
-        return colons;
-    }
-    match selector.first() {
-        None => 0,
-        Some(byte) if byte.is_ascii_alphabetic() || *byte == b'_' => 0,
-        Some(_) => 1,
-    }
-}
+use birnam_artifact::selector::arity as selector_arity;
 
 const C_RUNTIME_PRELUDE: &[u8] = br#"extern void* birnam_mkSmallInt(long v);
 #define MKV(x) (birnam_mkSmallInt((long)(x)))

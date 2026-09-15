@@ -17,6 +17,7 @@ pub mod portable_program;
 pub mod portable_resumable_manifest;
 pub mod resumable_manifest;
 pub mod stackless_selection;
+pub mod selector;
 mod wire;
 
 pub const ABI: &[u8] = b"birnam-artifact-generation-v1";
