@@ -3140,28 +3140,7 @@ fn decode_string_literal(raw: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let inner = &raw[1..raw.len() - 1];
-    let mut decoded = Vec::with_capacity(inner.len());
-    let mut index = 0;
-    while index < inner.len() {
-        if inner[index] == b'\\'
-            && index + 1 < inner.len()
-            && let Some(byte) = match inner[index + 1] {
-                b'"' => Some(b'"'),
-                b'\\' => Some(b'\\'),
-                b'n' => Some(b'\n'),
-                b't' => Some(b'\t'),
-                b'r' => Some(b'\r'),
-                b'0' => Some(0),
-                _ => None,
-            }
-        {
-            decoded.push(byte);
-            index += 2;
-            continue;
-        }
-        decoded.push(inner[index]);
-        index += 1;
-    }
+    let decoded = birnam_codegen::literal::decode_body(inner);
     Some(decoded)
 }
 
