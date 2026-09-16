@@ -1,5 +1,8 @@
 # 80F — Concurrency review synthesis
 
+The latest findings are in [80M — Second review synthesis](80m-concurrency-second-review-synthesis.md).
+This document preserves the first review and subsequent user dispositions.
+
 > **Review synthesis, 2026-09-16.** Four agents reviewed the same proposed
 > concurrency design through distinct historical design lenses. These are
 > interpretations of published work, not participation or endorsement by Ian

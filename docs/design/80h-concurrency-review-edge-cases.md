@@ -56,9 +56,9 @@ let answer := [Tasks scope: [:scope |
   let decode := [scope fork: [| [Parser parse: text]]];
   let other := [scope fork: [| [Index refresh]]];
   let parsed := [decode await];
-  [parsed isError]
+  [[parsed isError]
     ifTrue: [| [Fallback parse: text]]
-    ifFalse: [| parsed]
+    ifFalse: [| parsed]]
 ]];
 ```
 
@@ -72,9 +72,9 @@ Here `isError` is an explicit application decision, not a runtime promotion rule
 ```text
 let decode := [scope fork: [:control |
   let parsed := [Parser parse: text];
-  [parsed isError]
+  [[parsed isError]
     ifTrue: [| [control fail: parsed]]
-    ifFalse: [| parsed]
+    ifFalse: [| parsed]]
 ]];
 ```
 

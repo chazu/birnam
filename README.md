@@ -709,8 +709,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Concurrency domains and structured tasks](docs/design/80-concurrency-domains-and-structured-tasks.md)
   proposes the long-term model: parallel owned Runtimes, local task scheduling,
   explicit messages, and restart-based worker code updates. Detailed semantics
-  remain under discussion; the [four-perspective adversarial review](docs/design/80f-concurrency-review-synthesis.md)
-  records the remaining semantic decisions.
+  remain under discussion; the [second four-perspective adversarial review](docs/design/80m-concurrency-second-review-synthesis.md)
+  records the remaining mechanism and worker-contract questions.
 - [Modules and the self-hosted layer](docs/design/43-modules-and-config.md)
   explains source, artifacts, and loading.
 - [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the

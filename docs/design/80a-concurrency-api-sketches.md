@@ -147,11 +147,12 @@ joining from completing; this example promises no hard completion deadline.
 The proposed successful `await` returns the task body's value and otherwise
 propagates task failure/cancellation. `outcome` observes settlement without that
 propagation. Merely observing an outcome does not suppress an ordinary scope's
-failure policy. Treatment of an explicitly cancelled child at normal scope exit
-still needs a decision; this fragment illustrates cancellation and observation,
-not a guarantee that its enclosing scope succeeds. The exact result types and
-timeout-versus-completion race also remain open. Neither waiting operation retries
-work or claims to undo external effects.
+failure policy. Deliberate child cancellation alone does not fail an otherwise
+successful scope; a genuine cleanup or sibling failure still can. The observer's
+own cancellation can also interrupt its `outcome` wait. Exact result types and
+the observation-timeout race remain design work; final task publication follows
+Design 80's agreed cancellation rule. Neither waiting operation retries work or
+claims to undo external effects.
 
 ## 5. What the sketches let us evaluate
 
