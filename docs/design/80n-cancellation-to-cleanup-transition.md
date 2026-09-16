@@ -4,7 +4,9 @@
 > in `aa58aa4342df1980458e9f1e19225aaa8f459f86` before this exercise. This document
 > works through the remaining cancellation/control mechanism against that source
 > revision. It proposes a concrete transition; it does not claim an implemented
-> mechanism, completed invariant proof, or approval to change runtime code/ABI.
+> mechanism or completed invariant proof. The user subsequently accepted the
+> compatibility constraints below and requested another adversarial review.
+> No runtime implementation or ABI/format break is authorized.
 
 ## 1. Result of the exercise
 
@@ -24,9 +26,60 @@ general control operation and boundary protocol. It must not reuse current fatal
 Birnam chooses cleanup, shielding, failure aggregation, and propagation.
 
 This is the smallest concrete direction identified here. Final action encoding,
-publication selectors, and canonical protocol amendments require a subsequent
-mechanism review. No Frame-layout or public IdApi change is assumed necessary,
-but compatibility is an obligation to prove, not a result of this paper trace.
+publication selectors, and canonical protocol amendments require mechanism
+review. Compatibility is an obligation to prove, not a result of this paper trace.
+
+### Accepted implementation constraints
+
+| Boundary | Required constraint for this mechanism |
+| --- | --- |
+| Public IdApi C table | Preserve its version, layout, entries, signatures, and existing contracts. Expose new operations through ordinary Machine messages rather than new C table slots. |
+| Method and StepMethod calling ABI | Preserve receiver/argument/result conventions. StepMethods continue to return StepAction Oops, not a Rust-only enum or opaque action sink. |
+| Frame/descriptor V2 | Preserve its byte grammar, Call-edge layouts, and root-map rules. Use existing result-bearing Call edges; retain valid old Frames and their entered implementations. |
+| Image format | Preserve the current image format/version and existing serialization contracts. Live boundaries, waits, running/suspended execution, and control bookkeeping remain process-local. |
+| Existing Machine/StepAction meanings | Preserve current action layouts, reflective accessors, publishers, validation, and behavior. In particular, do not reinterpret Abort as language cleanup. |
+
+The permitted change is an explicitly specified extension of the Machine/object
+execution protocol, with private runtime state as needed. That is distinct from
+changing the C ABI or serialized formats. Keep the independent source bootstrap
+and existing artifact/native-module compatibility obligations. New facilities
+may require the updated runtime/library; unchanged format does not promise that
+an older runtime can execute programs that use new operations.
+
+If a concrete mechanism cannot meet these constraints, present the conflicting
+operation and a bounded alternative before proposing a break. Do not silently
+broaden this task to revise an ABI, descriptor grammar, or image format. These
+constraints concern cancellation-to-cleanup; thread-domain routing still needs
+its own review under Design 80.
+
+### Suggested extension approach for review
+
+Expose boundary establishment and checked exit through the existing ordinary
+Machine-message surface, backed initially by runtime primitives. Register those
+method implementations through the existing binding machinery. Keep library
+policy, adapter interpretation, and cleanup handlers in Birnam. No compiler
+recognition of their selector names or bypass of ordinary fresh lookup is needed.
+
+If a new driver action is needed, specify a distinct canonical action kind/vtable
+and a checked Machine publisher. Preserve every existing v1 action object and
+payload; the extension must explicitly define its own schema and reflection.
+The existing common header/validated slot-index discipline is the starting point,
+not permission to reuse Abort or change an old action's size. The new action must
+remain an Oop inspectable through ordinary protocols. Validate boundary identity
+against owner-local runtime records instead of embedding borrowed Frame pointers.
+
+Keep boundary identity, handler-delivery phase, and lifetime metadata in transient
+owner-local runtime state. Satisfy H's already-described Call edge with a rooted
+internal result; do not add cancellation-specific PCs or serialized edge kinds.
+Ordinary library code/outcome objects use existing serialization where admitted;
+the live native-backed execution records remain non-imageable. Check canonical
+object registration, native binding identities, and image admission explicitly:
+unchanged file bytes alone are not sufficient compatibility evidence.
+
+The action encoding and boundary publisher are proposals for reviewers to test,
+not already accepted modifications to the frozen execution protocol. The purpose
+of this review is to identify a concrete counterexample to this additive approach
+or the smallest missing transition, not to assume an ABI break is necessary.
 
 ## 2. What the source actually provides
 
@@ -212,9 +265,11 @@ not reuse the expired parent deadline or force-return through blocked native cod
 
 The mechanism needs an explicit action/protocol extension review against 60A/60B;
 their existing action set and frozen publisher contracts cannot be silently
-reinterpreted. Assess whether the new control boundary and escape can use existing
-descriptor-v2 Call edges and unchanged public ABI/image formats, as proposed.
-No existing `Abort` behavior changes under the same name without such a decision.
+reinterpreted. Demonstrate the new control boundary and escape using existing
+descriptor-v2 Call edges and unchanged public ABI/image formats, under section 1's
+accepted constraints. If this cannot be demonstrated, return the concrete conflict
+for a design decision rather than changing those contracts during implementation.
+No existing `Abort` behavior changes under the same name.
 
 Use a few discriminating examples when implementing, rather than a large rollout
 plan:

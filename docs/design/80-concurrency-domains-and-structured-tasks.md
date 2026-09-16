@@ -731,6 +731,11 @@ the lifecycle exercise; [80N — From a cancelled wait to Birnam cleanup](80n-ca
 now works through the proposed wait-adapter and delimited-exit mechanism. Its
 new control operation and handler-delivery transition require mechanism review
 before implementation; the accepted policies are not reopened by that work.
+For that mechanism, the user explicitly requires preserving the public IdApi,
+Method/StepMethod ABI, descriptor V2, and image format. A separately specified
+Machine/object-protocol extension may add the operation while preserving existing
+meanings. 80N records the proposed additive approach and required compatibility
+evidence; no incompatible change is authorized by this design.
 
 Domain, task, and scope are working names. Public selectors and syntax should
 follow these decisions and a few small program examples rather than precede them.
