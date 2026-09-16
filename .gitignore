@@ -24,3 +24,4 @@ bench/results/dev/
 
 # Historical validation evidence is an intentional source artifact.
 !docs/measurements/archive-20260914.zip
+!docs/archive/reviews/80-concurrency-review-inputs-2026-09-16.zip
