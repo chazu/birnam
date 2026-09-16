@@ -159,6 +159,20 @@ above do not require a VM-level scope engine: supplied lifecycle and completion
 protocols should live in Birnam over the minimum execution mechanisms described
 in Design 80 section 10.
 
+**Accepted after the second review:** a rooted application/service owner strongly
+retains its scopes, which strongly trace every unfinished task and its execution
+and cleanup state. Removing a wait/ready entry therefore does not remove the
+task's last owner. Establish ownership before exposing a task, and release
+execution-specific references after settlement while keeping outcomes and any
+explicit diagnostic retention. Ordinary allocation/temporary roots still apply
+during construction and publication.
+
+For cancellation of a wait, first explore resuming an ordinary Birnam wait adapter
+with an internal tagged wake result. The adapter returns a value or initiates
+task-control exit before returning to the application's continuation. This is
+an accepted mechanism direction, not a claim that the existing driver supplies
+the cleanup control exit. That exit is the next concrete design exercise.
+
 ## 4. Existing invariants this must preserve
 
 - **Malleability and fresh sends:** policy remains ordinary behavior where valid;

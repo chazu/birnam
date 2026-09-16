@@ -79,6 +79,13 @@ exit settles the operations and shuts down its owned domains. This establishes
 an ownership rule rather than relying on whichever task happens to call
 `submit:`. Long-lived borrowed domains and pools need separate ownership APIs.
 
+Each handle initially addresses one default serial dispatcher. Each accepted
+request executes in its own task/scope; the dispatcher waits for its settled
+outcome before starting the next. Request failure/cancellation is isolated from
+the service loop under its explicit Birnam service policy, while ordinary scope
+rules apply inside a request. The caller's owning scope can still cancel the
+whole domain. Submitting to and awaiting one's own serial queue can deadlock.
+
 Domain startup and bounded queue admission can suspend the caller. Submission
 does not await execution completion, so both requests can be outstanding before
 either `await`. The first request may finish before the second is admitted;

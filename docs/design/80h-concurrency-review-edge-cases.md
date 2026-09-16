@@ -147,6 +147,14 @@ the thread. A new connection alone does not settle old work; reconciliation
 requires evidence tied to the old instance and request. Wire representation and
 reconciliation mechanics remain engineering questions.
 
+The accepted post-review service contract in Design 80 gives each request a
+separate task/scope and keeps serial dispatch alive after request failure or
+cancellation. Service cancellation stops admission, cancels active work, and
+cancels queued requests without executing them; graceful shutdown drains them.
+Ingress records lifecycle control independently of the bounded request queue,
+so a cancellation request is not stuck behind the request it must cancel.
+These decisions supplement the fixed input reviewed at `f6bbe471`.
+
 ## 4. A debugger-paused lock holder during cancellation
 
 | Event | Observable result |

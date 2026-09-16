@@ -286,6 +286,16 @@ with evidence, or cancellation with a reason. Terminal publication is one-shot;
 repeated observation does not execute the task again. Retaining the same result
 value does not freeze or copy a mutable object returned within a domain.
 
+The supplied owner strongly traces every unfinished task, its Machine/suspended
+execution, and registered cleanup state through waiting, ready, running, cleanup,
+and debugger pause. The owner is itself retained through the domain's rooted
+application/service ownership tree. Queue entries are not the sole lifetime
+owners. Establish this ownership before exposing a task or removing temporary
+construction roots. After settlement, release execution-specific references while
+retaining outcomes and explicitly retained diagnostics; no permanent registry
+entry is required. This is an ordinary traced-object ownership arrangement, not
+certification of arbitrary replacement policies.
+
 The proposed public surface is:
 
 | Operation | Proposed meaning |
@@ -550,6 +560,41 @@ whole-request handling. Overlapping requests require an explicit policy. Multipl
 domains can execute in parallel on CPU cores without SIMD or GPU execution.
 Graceful shutdown stops admission and drains accepted work; cancellation requests
 interruption. Neither may claim completion before owned work and cleanup settle.
+
+### Accepted serial service contract
+
+Each request has its own task and scope, separate from the long-lived dispatcher.
+The service owner collects each request's settled outcome before starting the
+next. This request-isolating policy is authored in Birnam; placing requests under
+an ordinary fail-fast service scope and merely observing `outcome` would not
+provide it. Descendants inside an individual request use ordinary scope rules.
+
+| Event | Supplied service behavior |
+| --- | --- |
+| Request success | Return its value; begin the next request after settlement. |
+| Request failure | Return its failure; begin the next request after cleanup/settlement. |
+| Request cancellation | Cancel only that request's owned work, settle cleanup, then continue. A queued request can be cancelled without executing its body. |
+| Service cancellation | Stop admission, cancel active work, and cancel queued requests without executing them. Retain ownership through settlement. |
+| Service failure | Stop admission and account for all outstanding requests. Report service failure for known unstarted requests; active/remote effects require honest evidence. |
+| Graceful shutdown | Stop admission and drain accepted requests. |
+
+The initial `domainFrom:` convenience handle addresses one default serial
+dispatcher. Its named-receiver submissions share that queue. Serialization covers
+that queue, not direct local sends or other access to the same receiver. Submitting
+to one's own serial queue and awaiting the result can deadlock; detection and
+automatic reentrant servicing are not part of the supplied contract.
+
+### Lifecycle control admission
+
+Domain ingress distinguishes application requests from lifecycle control.
+Cancellation/shutdown reaches owner-domain lifecycle handling independently of
+application queue capacity and the active request's completion. It can use the
+same connection with demultiplexing; a separate socket or thread is not required.
+Recording control does not bypass eligible execution boundaries, debugger pause,
+native blocking, or network uncertainty. Repeated cancellation can coalesce into
+one pending state; this does not require an unbounded control queue. Transport
+implementation must continue to admit control while application admission is
+backpressured, rather than blocking its ingress loop on the full service queue.
 
 Shared immutable buffers, ownership transfer, and remote references are possible
 extensions. Each needs its own identity, lifetime, and failure rules. Persistent

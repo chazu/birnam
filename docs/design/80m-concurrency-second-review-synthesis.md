@@ -21,6 +21,33 @@ parts; they are not reasons to grow a new framework or release checklist.
 
 ## Fixed reviewed revision
 
+### Accepted dispositions after review
+
+The user accepted the following bounded remedies and requested they be committed
+before working through the cancellation-to-cleanup transition:
+
+- **Cancellation:** explore an ordinary Birnam wait adapter receiving an internal
+  tagged wake result through existing resume machinery. It enters task-control
+  exit on cancellation before returning to application code. The cleanup/control
+  mechanism remains to be worked through; this acceptance does not claim it exists.
+- **Tracing ownership:** rooted application/service owners retain scopes, which
+  strongly trace all unfinished tasks and their execution/cleanup state across
+  queue transfers. Release execution-specific retention after settlement.
+- **Serial workers:** one default dispatcher per initial domain handle; each
+  request has a separate task/scope. Its failure/cancellation settles that request
+  before the next begins, rather than implicitly terminating the service. Service
+  failure/cancellation accounts for queued work; graceful shutdown drains it.
+  Document self-submit-and-await deadlock without adding automatic prevention.
+- **Lifecycle control:** ingress records cancellation/shutdown independently of
+  application queue capacity and serial execution. Repeated cancellation may
+  coalesce; this needs neither another socket nor an unbounded control queue.
+
+The findings below remain the historical review judgments. These dispositions
+select the supplied defaults; implementation and the detailed control transition
+are not yet delivered.
+
+### Baseline
+
 The design was committed **before** dispatching reviewers:
 
 `f6bbe471ec396a0916c7f8011ff80ae112c3053b`
