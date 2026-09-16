@@ -1,5 +1,9 @@
 # 80M — Second concurrency adversarial review: consolidated findings
 
+The subsequent mechanism/compatibility review is consolidated in
+[80S](80s-cleanup-control-review-synthesis.md). This document retains the second
+review and its accepted dispositions.
+
 > **Review synthesis, 2026-09-16.** Four independent agents applied the same
 > Piumarta-, Kay-, Ingalls-, and Cox-inspired lenses as the first review. These
 > are interpretations, not those individuals' participation or endorsement.
