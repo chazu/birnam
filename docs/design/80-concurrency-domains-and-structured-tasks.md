@@ -726,8 +726,11 @@ worker live editing and third-party native-library qualification are excluded.
 The user accepted the semantic recommendations recorded above. Scheduler-policy
 execution rules, checked completion mechanisms, exact cancellation/communication
 races, and API selectors remain design work. These design decisions do not
-authorize implementation. The next exercise is
-[80G — Task lifecycle and minimum runtime guarantees](80g-concurrency-task-lifecycle-exercise.md).
+authorize implementation. [80G](80g-concurrency-task-lifecycle-exercise.md) records
+the lifecycle exercise; [80N — From a cancelled wait to Birnam cleanup](80n-cancellation-to-cleanup-transition.md)
+now works through the proposed wait-adapter and delimited-exit mechanism. Its
+new control operation and handler-delivery transition require mechanism review
+before implementation; the accepted policies are not reopened by that work.
 
 Domain, task, and scope are working names. Public selectors and syntax should
 follow these decisions and a few small program examples rather than precede them.

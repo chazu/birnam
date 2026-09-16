@@ -46,6 +46,12 @@ The findings below remain the historical review judgments. These dispositions
 select the supplied defaults; implementation and the detailed control transition
 are not yet delivered.
 
+The subsequent [80N worked transition](80n-cancellation-to-cleanup-transition.md)
+proposes the pending-Call/adapter/handler sequence and a new generic delimited-exit
+operation. It records the extra protected handoff needed before cleanup and the
+remaining protocol/ABI proof obligations. It is a post-review design proposal,
+not a claim that the second reviewers reviewed or approved that mechanism.
+
 ### Baseline
 
 The design was committed **before** dispatching reviewers:

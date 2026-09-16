@@ -171,7 +171,9 @@ For cancellation of a wait, first explore resuming an ordinary Birnam wait adapt
 with an internal tagged wake result. The adapter returns a value or initiates
 task-control exit before returning to the application's continuation. This is
 an accepted mechanism direction, not a claim that the existing driver supplies
-the cleanup control exit. That exit is the next concrete design exercise.
+the cleanup control exit. [80N](80n-cancellation-to-cleanup-transition.md) works
+through that exit, proposing a retained library handler reached by a checked
+delimited transfer through a valid Call edge.
 
 ## 4. Existing invariants this must preserve
 
