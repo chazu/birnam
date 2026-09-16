@@ -351,6 +351,72 @@ spawn a server until the buffer is actually displayed."
       (should prefetch-started)
       (should-not fallback-called))))
 
+(defun birnam-test-cold-tab (text labels &optional intervening-action)
+  "Run real TAB completion on TEXT, then deliver LABELS asynchronously."
+  (let ((birnam-lsp-automatic-start nil))
+    (save-window-excursion
+      (with-temp-buffer
+        (birnam-mode)
+        (insert text)
+        (set-window-buffer (selected-window) (current-buffer))
+        (setq-local lsp-mode t)
+        (setq-local completion-at-point-functions
+                    '(birnam-cached-completion-at-point))
+        (let (reply fail tables (requests 0))
+          (setq-local completion-in-region-function
+                      (lambda (beg end table &optional predicate)
+                        (push (all-completions
+                               (buffer-substring-no-properties beg end)
+                               table predicate)
+                              tables)
+                        t))
+          (cl-letf (((symbol-function 'birnam--completion-workspace-state)
+                     (lambda () 'ready))
+                    ((symbol-function 'lsp--text-document-position-params)
+                     (lambda () nil))
+                    ((symbol-function 'lsp-request-async)
+                     (lambda (_method _params success &rest args)
+                       (setq requests (1+ requests)
+                             reply success
+                             fail (plist-get args :error-handler)))))
+            (let ((this-command 'indent-for-tab-command))
+              (call-interactively (key-binding (kbd "TAB"))))
+            (should (= requests 1))
+            (should (equal tables '(nil)))
+            (pcase intervening-action
+              ('move (goto-char (point-min)))
+              ;; Even returning to the same text/point invalidates the request.
+              ('edit (insert "x") (delete-char -1))
+              ('leave (set-window-buffer (selected-window)
+                                         (get-buffer-create "*scratch*")))
+              ('failure (funcall fail '(:message "request failed"))))
+            (let ((response (make-hash-table :test #'equal)))
+              (puthash "items"
+                       (vconcat (mapcar (lambda (label)
+                                          (let ((item (make-hash-table :test #'equal)))
+                                            (puthash "label" label item)
+                                            item))
+                                        labels))
+                       response)
+              ;; A late success after an error must not resurrect the request.
+              (funcall reply response))
+            (should (= requests 1))
+            tables))))))
+
+(ert-deftest birnam-mode-cold-tab-displays-arriving-global-completions ()
+  (should (equal (birnam-test-cold-tab "[ Syst" '("System" "SystemVt"))
+                 '(("System" "SystemVt") nil))))
+
+(ert-deftest birnam-mode-cold-tab-displays-arriving-method-completions ()
+  (should (equal (birnam-test-cold-tab "[ System pri" '("print:" "println:"))
+                 '(("print:" "println:") nil))))
+
+(ert-deftest birnam-mode-cold-tab-does-not-replay-after-context-change ()
+  (dolist (action '(move edit leave failure))
+    (should (equal (birnam-test-cold-tab "[ System pri"
+                                       '("print:" "println:") action)
+                   '(nil)))))
+
 (ert-deftest birnam-mode-empty-cached-prefix-does-not-fall-through ()
   "A known receiver with no matching selector must not call a slow CAPF."
   (let ((birnam-lsp-automatic-start nil))

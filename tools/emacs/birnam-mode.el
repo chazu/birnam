@@ -2,7 +2,7 @@
 
 ;; Author: Birnam contributors
 ;; Keywords: languages, birnam
-;; Version: 0.5.2
+;; Version: 0.5.3
 ;; Package-Requires: ((emacs "26.1"))
 
 ;;; Commentary:
@@ -99,6 +99,7 @@ are still retained in the process-stable local cache."
 (defvar-local birnam--completion-cache nil)
 (defvar-local birnam--completion-prefetches nil)
 (defvar-local birnam--completion-prefetch-timer nil)
+(defvar-local birnam--pending-completion nil)
 
 (defun birnam--runtime-completion-context (&optional position)
   "Return literal receiver completion context at POSITION, or nil."
@@ -207,10 +208,35 @@ distinguish a known-empty prefix from a cache that is not ready yet."
       ;; Own a cold runtime context immediately.  Otherwise CAPE falls through
       ;; to lsp-mode and sends a synchronous duplicate while our asynchronous
       ;; request is still queued, freezing TAB until lsp-response-timeout.
+      (when (memq this-command '(indent-for-tab-command completion-at-point
+                                complete-symbol corfu-complete))
+        (setq birnam--pending-completion
+              (list :cache-key cache-key :point (point)
+                    :tick (buffer-chars-modified-tick)
+                    :window (selected-window))))
       (unless (and (hash-table-p birnam--completion-prefetches)
                    (gethash cache-key birnam--completion-prefetches))
         (birnam--start-completion-prefetch (current-buffer)))
       (list (plist-get context :start) (point) nil :exclusive t)))))
+
+(defun birnam--resume-pending-completion (cache-key)
+  "Finish an explicit completion request once CACHE-KEY has arrived.
+Never reopen completion over intervening edits, cursor moves or another buffer."
+  (when (equal cache-key (plist-get birnam--pending-completion :cache-key))
+    (let ((pending birnam--pending-completion))
+      (setq birnam--pending-completion nil)
+      (when (and pending
+                 (eq (selected-window) (plist-get pending :window))
+                 (eq (window-buffer (selected-window)) (current-buffer))
+                 (= (point) (plist-get pending :point))
+                 (= (buffer-chars-modified-tick) (plist-get pending :tick))
+                 (not (active-minibuffer-window))
+                 (not (eq last-command 'keyboard-quit))
+                 (not (input-pending-p)))
+        (let ((context (birnam--completion-context)))
+          (when (and (equal cache-key (plist-get context :cache-key))
+                     (birnam--cached-labels cache-key (plist-get context :prefix)))
+            (completion-at-point)))))))
 
 (defun birnam--prefetch-finished (buffer cache-key response)
   "Record CACHE-KEY RESPONSE for BUFFER and clear its in-flight marker."
@@ -220,14 +246,17 @@ distinguish a known-empty prefix from a cache that is not ready yet."
         (remhash cache-key birnam--completion-prefetches))
       ;; The request starts at the token, so the response contains the complete
       ;; method or global set and applies to every later prefix.
-      (birnam--record-completions cache-key "" response))))
+      (birnam--record-completions cache-key "" response)
+      (birnam--resume-pending-completion cache-key))))
 
 (defun birnam--prefetch-failed (buffer cache-key _error)
   "Clear BUFFER's in-flight CACHE-KEY marker after a failed request."
   (when (buffer-live-p buffer)
     (with-current-buffer buffer
       (when (hash-table-p birnam--completion-prefetches)
-        (remhash cache-key birnam--completion-prefetches)))))
+        (remhash cache-key birnam--completion-prefetches))
+      (when (equal cache-key (plist-get birnam--pending-completion :cache-key))
+        (setq birnam--pending-completion nil)))))
 
 (defun birnam--completion-workspace-state ()
   "Return `starting', `ready', `unsupported', or `unavailable'."
@@ -320,7 +349,8 @@ distinguish a known-empty prefix from a cache that is not ready yet."
   (when (derived-mode-p 'birnam-mode)
     ;; A restarted workspace may expose a different runtime method set.
     (setq birnam--completion-cache (make-hash-table :test #'equal)
-          birnam--completion-prefetches (make-hash-table :test #'equal))
+          birnam--completion-prefetches (make-hash-table :test #'equal)
+          birnam--pending-completion nil)
     (add-to-list 'completion-at-point-functions
                  #'birnam-cached-completion-at-point)
     (birnam--schedule-completion-prefetch)))
@@ -328,7 +358,8 @@ distinguish a known-empty prefix from a cache that is not ready yet."
 (defun birnam--completion-cache-setup ()
   "Initialize bounded runtime completion state in the current buffer."
   (setq birnam--completion-cache (make-hash-table :test #'equal)
-        birnam--completion-prefetches (make-hash-table :test #'equal))
+        birnam--completion-prefetches (make-hash-table :test #'equal)
+        birnam--pending-completion nil)
   (add-hook 'post-command-hook #'birnam--schedule-completion-prefetch nil t))
 
 (with-eval-after-load 'lsp-completion

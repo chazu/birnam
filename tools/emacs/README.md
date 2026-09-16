@@ -72,6 +72,12 @@ A basic Emacs major mode for Birnam source (`.birnam`, `.bim`).
 accumulates multi-line forms until brackets balance); `eval-line` sends the
 current line as one expression.
 
+TAB indents first, then completes an already-indented line. For example,
+`[ Syst` completes runtime global names and `[ System pri` completes methods.
+If the first TAB request needs an LSP reply, completion resumes when it arrives
+while the cursor and buffer remain unchanged. Later requests use cached results.
+Automatic popups are controlled by the completion UI, such as Corfu's `corfu-auto`.
+
 ## Tests
 
 ```sh
