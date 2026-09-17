@@ -3,18 +3,13 @@
 From the repository root:
 
 ```sh
-python3 examples/multicore/run.py
+birnam examples/multicore/main.birnam
 ```
 
-For a longer run:
+For a longer run, change `limit` in `main.birnam` to `100000`.
 
-```sh
-python3 examples/multicore/run.py 100000
-```
-
-Requires a current Birnam installation on `PATH`, Python 3, and a supported
-64-bit Unix host (macOS or Linux). `BIRNAM_BIN=/path/to/birnam` selects another
-installation. To build and install the current release in the normal prefix:
+Requires a current Birnam installation on `PATH` with compiled-unit support
+(currently macOS/arm64). To build and install the current release in the normal prefix:
 
 ```sh
 mise exec -- bash scripts/rust-install.sh install --root "$PWD" \
@@ -29,11 +24,13 @@ odd candidates, keeping the work roughly balanced. The root domain also runs a
 local task during the parallel phase.
 
 - [worker.birnam](worker.birnam) contains the CPU work: trial division in Birnam.
-- [main.birnam](main.birnam) contains sequential requests and parallel structured
+- [main.birnam](main.birnam) creates the worker image, selects resumable execution
+  for the coordinator, runs it, and removes the temporary files.
+- [coordinator.birnam](coordinator.birnam) contains sequential requests and parallel structured
   tasks using `TaskControl request:from:timeout:`.
-- [run.py](run.py) prepares a temporary image, selects resumable execution for
-  the coordinator, and formats the measurements. It removes its temporary files
-  on exit. The counting runs entirely in Birnam worker processes.
+- [platform.birnam](platform.birnam) provides clock and temporary-directory
+  operations through `Alien`, plus coordinator compilation through `CompiledUnit`.
+  All setup, coordination, and reporting are Birnam.
 
 The output compares elapsed time and verifies that both runs return the same
 count. Combined worker CPU time divided by parallel elapsed time measures average
