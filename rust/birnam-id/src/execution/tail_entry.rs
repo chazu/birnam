@@ -69,6 +69,9 @@ impl ExecutionState {
         let arena = self.machine(owner, machine)?.arena();
         let frame = arena.current_handle().ok_or(FrameError::StaleHandle)?;
         let current = arena.require_live(frame)?;
+        if current.control.boundary_result.is_some() {
+            return Err(FrameError::InvalidProgramCounter.into());
+        }
         let next_generation = current
             .generation
             .checked_add(1)

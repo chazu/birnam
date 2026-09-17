@@ -17,6 +17,8 @@ use crate::abi::{MarkFn, Method, Oop};
 use crate::heap::Heap;
 use crate::raw::{AddressMap, MethodAddress};
 
+#[path = "execution/boundary.rs"]
+pub(crate) mod boundary;
 #[cfg(test)]
 #[path = "execution/inline_recovery_experiment.rs"]
 mod inline_recovery_experiment;
@@ -62,6 +64,12 @@ pub(crate) struct ExecutionObjects {
     pub(crate) capture_action_prototype: Oop,
     pub(crate) restore_action_vtable: Oop,
     pub(crate) restore_action_prototype: Oop,
+    pub(crate) boundary_call_action_vtable: Oop,
+    pub(crate) boundary_call_action_prototype: Oop,
+    pub(crate) exit_boundary_action_vtable: Oop,
+    pub(crate) exit_boundary_action_prototype: Oop,
+    pub(crate) boundary_call_kind: Oop,
+    pub(crate) exit_boundary_kind: Oop,
     pub(crate) abort_action_vtable: Oop,
     pub(crate) abort_action_prototype: Oop,
     pub(crate) continue_kind: Oop,
@@ -106,6 +114,12 @@ impl ExecutionObjects {
             self.capture_action_prototype,
             self.restore_action_vtable,
             self.restore_action_prototype,
+            self.boundary_call_action_vtable,
+            self.boundary_call_action_prototype,
+            self.exit_boundary_action_vtable,
+            self.exit_boundary_action_prototype,
+            self.boundary_call_kind,
+            self.exit_boundary_kind,
             self.abort_action_vtable,
             self.abort_action_prototype,
             self.continue_kind,
@@ -849,6 +863,7 @@ struct ArenaSlot {
     program_counter: usize,
     root_state_program_counter: usize,
     pending_edge: Option<usize>,
+    control: boundary::FrameControl,
     return_destination: Option<ReturnDestination>,
     resumable_entry: Option<ResumableEntryCapability>,
     words: Vec<usize>,
@@ -861,6 +876,7 @@ struct DetachedFrame {
     program_counter: usize,
     root_state_program_counter: usize,
     pending_edge: Option<usize>,
+    control: boundary::FrameControl,
     return_destination: Option<ReturnDestination>,
     resumable_entry: Option<ResumableEntryCapability>,
     words: Vec<usize>,
@@ -895,6 +911,7 @@ impl ArenaSlot {
             program_counter: 0,
             root_state_program_counter: 0,
             pending_edge: None,
+            control: boundary::FrameControl::default(),
             return_destination: None,
             resumable_entry: None,
             words: Vec::new(),
@@ -1022,6 +1039,7 @@ impl FrameArena {
         slot.program_counter = program_counter;
         slot.root_state_program_counter = program_counter;
         slot.pending_edge = None;
+        slot.control = boundary::FrameControl::default();
         let scratch_count = slot
             .descriptor
             .as_deref()
@@ -1063,6 +1081,7 @@ impl FrameArena {
         slot.program_counter = 0;
         slot.root_state_program_counter = 0;
         slot.pending_edge = None;
+        slot.control = boundary::FrameControl::default();
         slot.return_destination = None;
         slot.resumable_entry = None;
         slot.generation = next_generation;
@@ -1104,6 +1123,10 @@ impl FrameArena {
         self.validate_push(&descriptor, program_counter, initial_oops)?;
         let current = self.current_handle().ok_or(FrameError::StaleHandle)?;
         let return_destination = self.return_destination(current)?;
+        let control = self.require_live(current)?.control;
+        if control.boundary_result.is_some() {
+            return Err(FrameError::InvalidProgramCounter);
+        }
         let self_tail = Arc::ptr_eq(
             self.require_live(current)?.descriptor.as_ref().unwrap(),
             &descriptor,
@@ -1118,6 +1141,7 @@ impl FrameArena {
             resumable_entry,
         )?;
         self.slots[next.index].self_tail_entry = self_tail;
+        self.slots[next.index].control = control;
         Ok(next)
     }
 
@@ -1160,6 +1184,7 @@ impl FrameArena {
                 program_counter: slot.program_counter,
                 root_state_program_counter: slot.root_state_program_counter,
                 pending_edge: slot.pending_edge.take(),
+                control: core::mem::take(&mut slot.control),
                 return_destination: slot.return_destination.take(),
                 resumable_entry: slot.resumable_entry.take(),
                 words: core::mem::take(&mut slot.words),
@@ -1203,6 +1228,7 @@ impl FrameArena {
             slot.program_counter = frame.program_counter;
             slot.root_state_program_counter = frame.root_state_program_counter;
             slot.pending_edge = frame.pending_edge;
+            slot.control = frame.control;
             slot.return_destination = frame.return_destination;
             slot.resumable_entry = frame.resumable_entry;
             slot.words = frame.words;
@@ -1332,7 +1358,12 @@ impl FrameArena {
         result: Oop,
     ) -> Result<(), FrameError> {
         self.validate_pending_call(handle, result_slot)?;
-        self.commit_v2_transition(handle, nil, Some(result))
+        let deliveries = self.completed_boundary_deliveries(handle, result_slot)?;
+        self.commit_v2_transition(handle, nil, Some(result))?;
+        let slot = self.require_live_mut(handle)?;
+        slot.control.boundary_result = None;
+        slot.control.deliveries = deliveries;
+        Ok(())
     }
 
     pub(crate) fn begin_v2_transition(
@@ -1882,6 +1913,16 @@ impl From<RegistrationError> for ExecutionError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DecodedAction {
+    BoundaryCall {
+        receiver_slot: usize,
+        selector_slot: usize,
+        argument_start: usize,
+        argument_count: usize,
+        result_slot: usize,
+    },
+    ExitBoundary {
+        value_slot: usize,
+    },
     Continue,
     Call {
         receiver_slot: usize,
@@ -1958,6 +1999,8 @@ pub(crate) struct MachineState {
     capture_action: Oop,
     restore_action: Oop,
     abort_action: Oop,
+    pub(crate) boundary_call_action: Oop,
+    pub(crate) exit_boundary_action: Oop,
     delimiters: Vec<DelimiterRecord>,
     delimiter_stack: Vec<usize>,
     suspended_result_slot: Option<usize>,
@@ -2000,6 +2043,8 @@ impl MachineState {
             capture_action,
             restore_action,
             abort_action,
+            boundary_call_action: core::ptr::null_mut(),
+            exit_boundary_action: core::ptr::null_mut(),
             delimiters: Vec::new(),
             delimiter_stack: Vec::new(),
             suspended_result_slot: None,
@@ -2008,6 +2053,17 @@ impl MachineState {
 
     pub(crate) fn lifecycle(&self) -> MachineLifecycle {
         self.lifecycle
+    }
+
+    /// Query from a StepMethod, outside any native callback activation. This
+    /// checks execution eligibility only; cancellation policy stays in Birnam.
+    pub(crate) fn control_eligible(&self) -> bool {
+        self.lifecycle == MachineLifecycle::Running
+            && self.drive_depth == 1
+            && self.drive_boundaries.last().is_some_and(|b| b.current == 0)
+            && self.delimiter_stack.iter().all(|index| {
+                self.delimiters[*index].kind != DelimiterKind::EntryBarrier
+            })
     }
 
     pub(crate) fn drive_epoch(&self) -> u64 {
@@ -2365,6 +2421,8 @@ impl MachineState {
             unsafe { mark(self.tail_call_action) };
         }
         for action in [
+            self.boundary_call_action,
+            self.exit_boundary_action,
             self.suspend_action,
             self.capture_action,
             self.restore_action,
@@ -4526,11 +4584,15 @@ impl ExecutionState {
             .ok_or(ExecutionError::InvalidAction)?;
         let word_count = if vtable == objects.continue_action_vtable {
             4
-        } else if vtable == objects.call_action_vtable {
+        } else if vtable == objects.call_action_vtable
+            || vtable == objects.boundary_call_action_vtable
+        {
             9
         } else if vtable == objects.tail_call_action_vtable {
             8
-        } else if vtable == objects.return_action_vtable {
+        } else if vtable == objects.return_action_vtable
+            || vtable == objects.exit_boundary_action_vtable
+        {
             5
         } else if vtable == objects.suspend_action_vtable
             || vtable == objects.capture_action_vtable
@@ -4561,7 +4623,9 @@ impl ExecutionState {
         }
         if vtable == objects.continue_action_vtable {
             Ok(DecodedAction::Continue)
-        } else if vtable == objects.return_action_vtable {
+        } else if vtable == objects.return_action_vtable
+            || vtable == objects.exit_boundary_action_vtable
+        {
             let value_slot = heap
                 .read_payload_word(action, 4)
                 .ok_or(ExecutionError::InvalidAction)?;
@@ -4570,7 +4634,12 @@ impl ExecutionState {
                 .current_handle()
                 .ok_or(FrameError::StaleHandle)?;
             let _ = machine.arena.read_oop(frame, value_slot)?;
-            Ok(DecodedAction::Return { value_slot })
+            if vtable == objects.exit_boundary_action_vtable {
+                self.preflight_boundary_exit(owner, capability)?;
+                Ok(DecodedAction::ExitBoundary { value_slot })
+            } else {
+                Ok(DecodedAction::Return { value_slot })
+            }
         } else if vtable == objects.suspend_action_vtable {
             let result_slot = heap
                 .read_payload_word(action, 4)
@@ -4680,7 +4749,9 @@ impl ExecutionState {
             let argument_count = heap
                 .read_payload_word(action, 7)
                 .ok_or(ExecutionError::InvalidAction)?;
-            let result_slot = if vtable == objects.call_action_vtable {
+            let result_slot = if vtable == objects.call_action_vtable
+                || vtable == objects.boundary_call_action_vtable
+            {
                 Some(
                     heap.read_payload_word(action, 8)
                         .ok_or(ExecutionError::InvalidAction)?,
@@ -4699,7 +4770,24 @@ impl ExecutionState {
                 argument_count,
                 result_slot,
             )?;
-            if let Some(result_slot) = result_slot {
+            if vtable == objects.boundary_call_action_vtable {
+                let result_slot = result_slot.ok_or(ExecutionError::InvalidAction)?;
+                machine.arena.validate_boundary_call(
+                    frame,
+                    receiver_slot,
+                    selector_slot,
+                    argument_start,
+                    argument_count,
+                    result_slot,
+                )?;
+                Ok(DecodedAction::BoundaryCall {
+                    receiver_slot,
+                    selector_slot,
+                    argument_start,
+                    argument_count,
+                    result_slot,
+                })
+            } else if let Some(result_slot) = result_slot {
                 Ok(DecodedAction::Call {
                     receiver_slot,
                     selector_slot,
@@ -4729,11 +4817,17 @@ impl ExecutionState {
             vtable if vtable == objects.capture_action_vtable => Some(objects.capture_kind),
             vtable if vtable == objects.restore_action_vtable => Some(objects.restore_kind),
             vtable if vtable == objects.abort_action_vtable => Some(objects.abort_kind),
+            vtable if vtable == objects.boundary_call_action_vtable => {
+                Some(objects.boundary_call_kind)
+            }
+            vtable if vtable == objects.exit_boundary_action_vtable => {
+                Some(objects.exit_boundary_kind)
+            }
             _ => None,
         }
     }
 
-    /// Test-floor snapshot of every persistent action buffer. Only Machine
+    /// Test-floor snapshot of the original eight action buffers. Only Machine
     /// identity is normalized, after validating the published owner fields.
     #[cfg(feature = "ffi-test-hooks")]
     pub(crate) fn snapshot_action_words(
@@ -4783,6 +4877,8 @@ impl ExecutionState {
             vtable if vtable == objects.capture_action_vtable => 7,
             vtable if vtable == objects.restore_action_vtable => 6,
             vtable if vtable == objects.abort_action_vtable => 7,
+            vtable if vtable == objects.boundary_call_action_vtable => 9,
+            vtable if vtable == objects.exit_boundary_action_vtable => 5,
             _ => return None,
         };
         if heap.payload_size(action)? != expected_words * size_of::<usize>()

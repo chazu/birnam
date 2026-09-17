@@ -1,6 +1,6 @@
 # 80 — Concurrency domains and structured tasks
 
-> **Status: proposed direction for discussion, 2026-09-16.** The user agreed
+> **Status: agreed direction; cooperative structured tasks implemented, 2026-09-17.** The user agreed
 > with the general direction and requested this design document followed by
 > further exploration. The user subsequently favored automatic timeslicing,
 > subject to preserving the project's vision and invariants and producing an
@@ -10,7 +10,7 @@
 > discussion favors completion after cleanup, automatic scope joining, explicit
 > outcomes, and debugger inspection before terminal failure. The user requested
 > four adversarial reviews of this revision. This records a target model, not
-> delivered capability or implementation authorization. Prepared against
+> delivered capability. The original proposal was prepared against
 > `03312562`; review findings are separate from accepted design decisions.
 > **Scope clarification after review, 2026-09-16:** worker code updates may
 > require stopping and recreating the domain. Cross-domain live-update machinery
@@ -26,6 +26,14 @@
 > Selectors and detailed mechanisms remain design work.
 > [80F](80f-concurrency-review-synthesis.md) records this disposition and links
 > the exact archived review inputs.
+> **Implementation update, 2026-09-16:** the user accepted the third cleanup-control
+> review's four follow-ups and authorized implementation to begin. [80N, sections
+> 9–10](80n-cancellation-to-cleanup-transition.md#9-accepted-third-review-resolutions-and-first-implementation)
+> records the concrete protocol and compatibility evidence plan. [80T](80t-cleanup-control-implementation-evidence.md)
+> tracks the first implemented control slice. [80U](80u-birnam-task-cleanup-slice.md)
+> now implements source-authored cancellation, cleanup, cooperative ready queues,
+> child ownership/joining, and outcome waits. Automatic timeslicing, channels, and
+> parallel domains remain work ahead.
 
 ## 1. Direction
 
@@ -424,8 +432,10 @@ reported honestly; it does not mean every resource release succeeded.
 Cleanup methods retain normal live dispatch. The supplied protocol tracks which
 cleanup remains due and retains Frames, roots, and code pins through suspension.
 Users remain responsible for the consequences of replacing that behavior.
-Selectors, cleanup control representation, and native-boundary mechanics remain
-design work; this acceptance is not an implementation authorization.
+The concrete control extension and subsequent implementation authorization are
+recorded in [80N](80n-cancellation-to-cleanup-transition.md). The supplied
+cooperative task/cleanup protocol is implemented in [80U](80u-birnam-task-cleanup-slice.md);
+the final public convenience API remains implementation/design work.
 
 ### Waiting rules: least astonishment
 
@@ -725,12 +735,14 @@ worker live editing and third-party native-library qualification are excluded.
 
 The user accepted the semantic recommendations recorded above. Scheduler-policy
 execution rules, checked completion mechanisms, exact cancellation/communication
-races, and API selectors remain design work. These design decisions do not
-authorize implementation. [80G](80g-concurrency-task-lifecycle-exercise.md) records
+races, and API selectors remain design work. The user subsequently authorized
+starting with the reviewed cleanup-control mechanism. [80G](80g-concurrency-task-lifecycle-exercise.md) records
 the lifecycle exercise; [80N — From a cancelled wait to Birnam cleanup](80n-cancellation-to-cleanup-transition.md)
-now works through the proposed wait-adapter and delimited-exit mechanism. Its
-new control operation and handler-delivery transition require mechanism review
-before implementation; the accepted policies are not reopened by that work.
+works through the wait-adapter and delimited-exit mechanism, the accepted third-review
+fixes, and the bounded compatibility evidence plan. [80T](80t-cleanup-control-implementation-evidence.md)
+records the first implemented control slice. [80U](80u-birnam-task-cleanup-slice.md)
+records the cooperative task executor, automatic joining, cancellation, and
+cleanup library. The accepted policies are not reopened by that work.
 For that mechanism, the user explicitly requires preserving the public IdApi,
 Method/StepMethod ABI, descriptor V2, and image format. A separately specified
 Machine/object-protocol extension may add the operation while preserving existing

@@ -711,6 +711,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
   explicit messages, and restart-based worker code updates. Detailed semantics
   remain under discussion; the [cleanup-control compatibility review](docs/design/80s-cleanup-control-review-synthesis.md)
   records the latest mechanism findings under the unchanged ABI/image constraints.
+  [Cleanup-control evidence](docs/design/80t-cleanup-control-implementation-evidence.md)
+  and [structured task implementation](docs/design/80u-birnam-task-cleanup-slice.md)
+  track the implemented mechanisms, validation, and remaining concurrency work.
 - [Modules and the self-hosted layer](docs/design/43-modules-and-config.md)
   explains source, artifacts, and loading.
 - [Toward self-hosting](docs/design/44-toward-self-hosting.md) records the

@@ -1,0 +1,302 @@
+[Module named: #taskControlSmoke requires: #[]];
+[Globals at: #TaskChecks put: [0 asCell]];
+[Globals at: #TaskCheckFailures put: [0 asCell]];
+[Globals at: #TaskCheck put: [Object clone]];
+[db assert: #taskControlSmokeHandles attr: #history value: false];
+[db assert: #taskControlSmokeHandles attr: #imageTransient value: true];
+[Globals at: #TaskCleanup put: [Object clone]];
+[Reflect defineMethod: #mark on: TaskCleanup as: [:self | #old]];
+[Reflect defineMethod: #that:label: on: TaskCheck as: [:self :condition :label |
+  [TaskChecks inc];
+  [[condition == true] ifFalse: [|
+    [TaskCheckFailures inc];
+    [System println: #[#FAILED label]]]];
+  condition]];
+
+[Reflect defineMethod: #run on: TaskCheck as: [:self |
+let continued := [0 asCell];
+let cleaned := [0 asCell];
+let finishedCleanup := [0 asCell];
+let task := [TaskControl start: [:task |
+  [task ensure: [|
+    [task wait];
+    [continued inc];
+    42]
+  cleanup: [|
+    [cleaned inc];
+    [task wait];
+    [finishedCleanup inc]]]]];
+let bodyWait := [task waitToken];
+[TaskCheck that: [bodyWait notNil] label: #bodyWaiting];
+[TaskCheck that: [[task pollOutcome] isNil] label: #noEarlyOutcome];
+[System gc];
+[task cancel: #stop];
+let cleanupWait := [task waitToken];
+[TaskCheck that: [[continued value] = 0] label: #cancelSkipsBody];
+[TaskCheck that: [[cleaned value] = 1] label: #cleanupOnce];
+[TaskCheck that: [cleanupWait notNil] label: #cleanupWaiting];
+[TaskCheck that: [[cleanupWait == bodyWait] = false] label: #freshWaitIdentity];
+[TaskCheck that: [[task pollOutcome] isNil] label: #cleanupMustFinish];
+[task cancel: #again];
+[TaskCheck that: [[finishedCleanup value] = 0] label: #repeatedCancelShielded];
+[TaskCheck that: [[task resolve: bodyWait with: 99] = false] label: #staleWakeRejected];
+[TaskCheck that: [[task waitToken] == cleanupWait] label: #staleWakeLeavesCleanup];
+[System gc];
+[TaskCheck that: [task resolve: cleanupWait with: nil] label: #cleanupWakeAccepted];
+[TaskCheck that: [[finishedCleanup value] = 1] label: #cleanupFinishedOnce];
+[TaskCheck that: [[[task pollOutcome] at: 0] = #cancelled] label: #cancelledOutcome];
+[TaskCheck that: [[[task pollOutcome] at: 1] = #stop] label: #firstCancelReason];
+let terminal := [task pollOutcome];
+[task cancel: #tooLate];
+[TaskCheck that: [[task pollOutcome] == terminal] label: #terminalImmutable];
+[TaskCheck that: [[task resolve: cleanupWait with: nil] = false] label: #duplicateWakeRejected];
+[TaskCheck that: [[task machine] isNil] label: #settledTaskReleasesMachine];
+
+let order := [#[] asCell];
+let nested := [TaskControl start: [:task |
+  [task ensure: [|
+    [task ensure: [| [task wait]] cleanup: [|
+      [order set: [[order value] add: #inner]];
+      [task wait];
+      [task fail: #innerCleanupFailed]]];
+    [order set: [[order value] add: #unreachable]]]
+  cleanup: [|
+    [order set: [[order value] add: #outer]];
+    [task wait];
+    [task fail: #outerCleanupFailed]]]]];
+[nested cancel: #stop];
+let innerWait := [nested waitToken];
+[nested resolve: innerWait with: nil];
+[TaskCheck that: [[nested failures] = #[#innerCleanupFailed]] label: #failureRecordedBeforeOuterWait];
+[TaskCheck that: [[nested pollOutcome] isNil] label: #outerCleanupStillOwned];
+[TaskCheck that: [[order value] = #[#inner #outer]] label: #reverseCleanupOrder];
+[nested cancel: #lateCancel];
+[TaskCheck that: [[nested resolve: innerWait with: nil] = false] label: #innerWakeCannotFinishOuter];
+[System gc];
+[nested resolve: [nested waitToken] with: nil];
+[TaskCheck that: [[[nested pollOutcome] at: 0] = #failure] label: #failureBeatsCancellation];
+[TaskCheck that: [[nested failures] = #[#innerCleanupFailed #outerCleanupFailed]] label: #failuresAggregated];
+[TaskCheck that: [[nested shieldDepth] = 0] label: #shieldsBalanced];
+
+let success := [TaskControl start: [:task |
+  [task ensure: [| [task wait]] cleanup: [| [task wait]]]]];
+[success resolve: [success waitToken] with: 42];
+[TaskCheck that: [[success pollOutcome] isNil] label: #normalReturnAlsoWaitsForCleanup];
+[success resolve: [success waitToken] with: nil];
+[TaskCheck that: [[success pollOutcome] = #[#success 42]] label: #normalValuePreserved];
+[success cancel: #tooLate];
+[TaskCheck that: [[success pollOutcome] = #[#success 42]] label: #lateCancelNoOp];
+
+let ordinaryError := [Error kind: #justData];
+let errorTask := [TaskControl start: [:task | ordinaryError]];
+[TaskCheck that: [[[errorTask pollOutcome] at: 0] = #success] label: #errorValueIsSuccess];
+[TaskCheck that: [[[errorTask pollOutcome] at: 1] == ordinaryError] label: #errorIdentityPreserved];
+
+let late := [TaskControl start: [:task |
+  [task ensure: [| 17] cleanup: [| [task wait]]]]];
+[late cancel: #duringCleanup];
+[TaskCheck that: [[late pollOutcome] isNil] label: #lateCancelStillWaits];
+[late resolve: [late waitToken] with: nil];
+[TaskCheck that: [[late pollOutcome] = #[#cancelled #duringCleanup]] label: #cancelBeforePublicationWins];
+
+let observed := [nil asCell];
+let edited := [TaskControl start: [:task |
+  [task ensure: [| [task wait]] cleanup: [|
+    [observed set: [TaskCleanup mark]];
+    [task wait]]]]];
+[Reflect defineMethod: #mark on: TaskCleanup as: [:self | #new]];
+[edited cancel: #stop];
+[TaskCheck that: [[observed value] = #new] label: #freshCleanupDispatch];
+[edited resolve: [edited waitToken] with: nil];
+[TaskCheck that: [[[edited pollOutcome] at: 0] = #cancelled] label: #editedCleanupSettled];
+
+let failedBody := [TaskControl start: [:task |
+  [task ensure: [| [task fail: #bodyFailed]] cleanup: [|
+    [task wait];
+    [task fail: #cleanupFailed]]]]];
+[TaskCheck that: [[failedBody failures] = #[#bodyFailed]] label: #bodyFailureRetainedDuringCleanup];
+[failedBody cancel: #late];
+[failedBody resolve: [failedBody waitToken] with: nil];
+[TaskCheck that: [[failedBody pollOutcome] = #[#failure #[#bodyFailed #cleanupFailed] #late #[]]] label: #bodyAndCleanupFailurePreserved];
+[TaskCheck that: [[failedBody machine] isNil] label: #failedTaskReleasesMachine];
+[Globals at: #TaskControlOutcomeProof put: [failedBody pollOutcome]];
+[Globals at: #TaskControlHandleProof put: failedBody];
+
+// Fork enqueues work; automatic joining owns children beyond the body return.
+let events := [#[] asCell];
+let handles := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let owner := [TaskControl start: [:parent |
+  let a := [parent fork: [:child |
+    [events set: [[events value] add: #a]];
+    [child ensure: [| [child wait]] cleanup: [| [child wait]]]]];
+  let b := [parent fork: [:child |
+    [events set: [[events value] add: #b]];
+    [child wait]]];
+  [handles set: #[a b]];
+  [events set: [[events value] add: #parentBody]];
+  99]];
+let a := [[handles value] at: 0];
+let b := [[handles value] at: 1];
+[TaskCheck that: [[events value] = #[#parentBody #a #b]] label: #forkReturnsBeforeChildRuns];
+[TaskCheck that: [[owner pollOutcome] isNil] label: #bodyReturnJoinsChildren];
+[a cancel: #onlyA];
+[TaskCheck that: [[b pollOutcome] isNil] label: #childCancelLeavesSibling];
+[b resolve: [b waitToken] with: 3];
+[TaskCheck that: [[owner pollOutcome] isNil] label: #joinWaitsForChildCleanup];
+[System gc];
+[a resolve: [a waitToken] with: nil];
+[TaskCheck that: [[owner pollOutcome] = #[#success 99]] label: #deliberateChildCancelDoesNotFailScope];
+[TaskCheck that: [[owner children] = #[]] label: #settlementReleasesChildHandles];
+[TaskCheck that: [[[owner fork: [:child | 1]] kind] = #taskClosed] label: #closedScopeRejectsAdmission];
+
+// Terminal child failure, not its first fail:, triggers sibling cancellation.
+let peers := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let parentCleaned := [false asCell];
+let failingOwner := [TaskControl start: [:parent |
+  [parent ensure: [|
+    let bad := [parent fork: [:child |
+      [child ensure: [| [child fail: #firstChild]] cleanup: [| [child wait]]]]];
+    let peer := [parent fork: [:child |
+      [child ensure: [| [child wait]] cleanup: [|
+        [child wait];
+        [child fail: #secondChild]]]]];
+    [peers set: #[bad peer]];
+    [parent wait]]
+  cleanup: [| [parentCleaned set: true]]]]];
+let bad := [[peers value] at: 0];
+let peer := [[peers value] at: 1];
+let peerBodyWait := [peer waitToken];
+[TaskCheck that: [[parentCleaned value] = false] label: #failureWaitsForFailingChildCleanup];
+[TaskCheck that: [[peer waitToken] == peerBodyWait] label: #peerNotCancelledBeforeTerminalFailure];
+[bad resolve: [bad waitToken] with: nil];
+[TaskCheck that: [parentCleaned value] label: #childFailureCancelsScopeBody];
+[TaskCheck that: [[[peer waitToken] == peerBodyWait] = false] label: #childFailureCancelsSibling];
+[TaskCheck that: [[failingOwner pollOutcome] isNil] label: #failureStillJoinsSiblingCleanup];
+[peer resolve: [peer waitToken] with: nil];
+[TaskCheck that: [[failingOwner failures] = #[#firstChild #secondChild]] label: #independentChildFailuresPreservedOnce];
+[TaskCheck that: [[[failingOwner pollOutcome] at: 0] = #failure] label: #scopeFailureAfterAllCleanup];
+[TaskCheck that: [[[failingOwner pollOutcome] at: 2] = #childFailed] label: #failureRetainsCancellationContext];
+
+let didRun := [false asCell];
+let preCancelled := [TaskControl start: [:parent |
+  let child := [parent fork: [:task | [didRun set: true]]];
+  [child cancel: #beforeStart];
+  [child outcome]]];
+[TaskCheck that: [[didRun value] = false] label: #cancelBeforeStartSkipsBody];
+[TaskCheck that: [[preCancelled pollOutcome] = #[#success #[#cancelled #beforeStart]]] label: #outcomeObservesCancellationAsData];
+let awaitedError := [TaskControl start: [:parent |
+  let child := [parent fork: [:task | ordinaryError]];
+  [child await]]];
+[TaskCheck that: [[awaitedError pollOutcome] = #[#success ordinaryError]] label: #awaitPreservesErrorValuedSuccess];
+let awaitCancelled := [TaskControl start: [:parent |
+  let child := [parent fork: [:task | 7]];
+  [child cancel: #propagated];
+  [child await];
+  #unreachable]];
+[TaskCheck that: [[awaitCancelled pollOutcome] = #[#cancelled #propagated]] label: #awaitPropagatesCancellation];
+
+// Observer cancellation removes its registration but never cancels its target.
+let target := [TaskControl start: [:task | [task wait]]];
+let observer := [TaskControl start: [:task | [target outcome]]];
+let another := [TaskControl start: [:task | [target await]]];
+[observer cancel: #observerOnly];
+[TaskCheck that: [[target pollOutcome] isNil] label: #observerCancellationLeavesTarget];
+[TaskCheck that: [[[[target field: #waiters] value] size] = 1] label: #cancelledObserverUnregistered];
+[System gc];
+[target resolve: [target waitToken] with: 27];
+[TaskCheck that: [[another pollOutcome] = #[#success 27]] label: #completionWakesOtherObserver];
+[TaskCheck that: [[observer pollOutcome] = #[#cancelled #observerOnly]] label: #staleCompletionCannotReviveObserver];
+[TaskCheck that: [[[target field: #waiters] value] = #[]] label: #completedTargetReleasesWaiters];
+
+let cleanupChild := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let cleanupOwner := [TaskControl start: [:parent |
+  [parent ensure: [| [parent wait]] cleanup: [|
+    [cleanupChild set: [parent fork: [:child | [child wait]]]];
+    [[cleanupChild value] await]]]]];
+[cleanupOwner cancel: #stop];
+[TaskCheck that: [[[cleanupChild value] pollOutcome] isNil] label: #cleanupCreatedWorkProtected];
+[cleanupOwner cancel: #again];
+[TaskCheck that: [[cleanupOwner pollOutcome] isNil] label: #cleanupChildKeepsOwnerOpen];
+[[cleanupChild value] resolve: [[cleanupChild value] waitToken] with: 10];
+[TaskCheck that: [[cleanupOwner pollOutcome] = #[#cancelled #stop]] label: #cleanupCreatedChildJoined];
+[TaskCheck that: [[[TaskExecutor field: #queue] value] = #[]] label: #readyQueueDrained];
+
+let stoppedDescendant := [false asCell];
+let failureCleanup := [false asCell];
+let bodyFailureOwner := [TaskControl start: [:parent |
+  [parent ensure: [|
+    [parent fork: [:child | [stoppedDescendant set: true]]];
+    [parent fail: #bodyScopeFailed]]
+  cleanup: [|
+    [[parent children] do: [:child | [child outcome]]];
+    [failureCleanup set: true]]]]];
+[TaskCheck that: [[stoppedDescendant value] = false] label: #bodyFailureCancelsDescendantsBeforeCleanup];
+[TaskCheck that: [failureCleanup value] label: #cleanupCanJoinCancelledDescendants];
+[TaskCheck that: [[bodyFailureOwner failures] = #[#bodyScopeFailed]] label: #bodyScopeFailurePreserved];
+
+let nestedHandles := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let ancestor := [TaskControl start: [:parent |
+  [parent fork: [:child |
+    let grandchild := [child fork: [:grandchild | [grandchild wait]]];
+    [nestedHandles set: grandchild];
+    8]];
+  9]];
+[ancestor cancel: #wholeTree];
+[TaskCheck that: [[[nestedHandles value] pollOutcome] = #[#cancelled #wholeTree]] label: #cancellationReachesGrandchild];
+[TaskCheck that: [[ancestor pollOutcome] = #[#cancelled #wholeTree]] label: #ancestorJoinsWholeTree];
+
+let forbiddenBodyRan := [false asCell];
+let nativeChecks := [TaskControl start: [:parent |
+  let ready := [parent fork: [:child | 5]];
+  [ready await];
+  let pending := [parent fork: [:child | [child wait]]];
+  let refusedFailure := [NativeTaskObserver failTask: parent];
+  let refusedCleanup := [NativeTaskObserver ensureTask: parent body: [| [forbiddenBodyRan set: true]]];
+  [TaskCheck that: [[refusedFailure kind] = #taskContextRequired] label: #nativeFailureRejectedBeforeRecording];
+  [TaskCheck that: [[refusedCleanup kind] = #taskContextRequired] label: #nativeCleanupEntryRejected];
+  [TaskCheck that: [[parent failures] = #[]] label: #rejectedFailureLeavesAccumulatorUnchanged];
+  [TaskCheck that: [[forbiddenBodyRan value] = false] label: #rejectedCleanupDoesNotEnterBody];
+  let result := #[[NativeTaskObserver observe: ready] [NativeTaskObserver observe: pending]];
+  [pending cancel: #done];
+  result]];
+let nativeResults := [[nativeChecks pollOutcome] at: 1];
+[TaskCheck that: [[[nativeResults at: 0] kind] = #taskContextRequired] label: #nativeReadyWaitRejected];
+[TaskCheck that: [[[nativeResults at: 1] kind] = #taskContextRequired] label: #nativePendingWaitRejected];
+[TaskCheck that: [[[owner outcome] kind] = #taskContextRequired] label: #hostUsesExplicitPoll];
+
+let interleaving := [#[] asCell];
+let yielding := [TaskControl start: [:parent |
+  [parent fork: [:child |
+    [interleaving set: [[interleaving value] add: #left1]];
+    [child yield];
+    [interleaving set: [[interleaving value] add: #left2]]]];
+  [parent fork: [:child |
+    [interleaving set: [[interleaving value] add: #right1]];
+    [child yield];
+    [interleaving set: [[interleaving value] add: #right2]]]];
+  #joined]];
+[TaskCheck that: [[interleaving value] = #[#left1 #right1 #left2 #right2]] label: #yieldSharesOwnerWithoutRecursiveDrive];
+[TaskCheck that: [[yielding pollOutcome] = #[#success #joined]] label: #yieldingChildrenJoined];
+let contextualChild := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let contextualOwner := [TaskControl start: [:parent |
+  [contextualChild set: [parent fork: [:child |
+    [child ensure: [| [child wait]] cleanup: [| [child fail: #releaseFailed]]]]]];
+  1]];
+[[contextualChild value] cancel: #originalStop];
+let childEvidence := [[[contextualOwner pollOutcome] at: 3] at: 0];
+[TaskCheck that: [[childEvidence at: 2] = #originalStop] label: #aggregationKeepsChildCancellationContext];
+[TaskCheck that: [[contextualOwner failures] = #[#releaseFailed]] label: #aggregationDoesNotDuplicateFailure];
+
+let afterWake := [false asCell];
+let queuedWake := [TaskControl start: [:parent |
+  let child := [parent fork: [:task | [task wait]; [afterWake set: true]]];
+  [parent fork: [:driver |
+    let token := [child waitToken];
+    [TaskCheck that: [child resolve: token with: 12] label: #queuedWakeClaimed];
+    [TaskCheck that: [[child resolve: token with: 13] = false] label: #queuedDuplicateRejected];
+    [child cancel: #beforeDrive]]];
+  [child outcome]]];
+[TaskCheck that: [[afterWake value] = false] label: #cancelAfterQueuedWakeSkipsBody];
+[TaskCheck that: [[queuedWake pollOutcome] = #[#success #[#cancelled #beforeDrive]]] label: #queuedWakeCancellationSettled];
+
+[System println: #[#taskControlChecks [TaskChecks value] #failures [TaskCheckFailures value]]]]];

@@ -18,12 +18,14 @@ if mapped_output=$("$bin" pre-rewrite.image </dev/null 2>&1); then
   echo "archived v4 image unexpectedly mapped" >&2
   exit 1
 fi
-grep -Fq 'birnam: image: LoadRejected' <<<"$mapped_output"
+# The host rejects obsolete headers before attempting heap admission. Keep the
+# exact version diagnostic, not the older generic loader error spelling.
+grep -Fxq 'birnam: image: VersionMismatch { expected: 8, observed: 4 }' <<<"$mapped_output"
 
 if rebuilt_output=$("$bin" --rebuild pre-rewrite.image </dev/null 2>&1); then
   echo "archived v4 image unexpectedly rebuilt" >&2
   exit 1
 fi
-grep -Fq 'birnam: image: LoadRejected' <<<"$rebuilt_output"
+grep -Fxq 'birnam: image: VersionMismatch { expected: 8, observed: 4 }' <<<"$rebuilt_output"
 
 echo "idapi-v1-fixtures: frozen native client/module passed; archived v4 image rejected"

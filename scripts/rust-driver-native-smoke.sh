@@ -35,6 +35,7 @@ scripts/portable-resumable-lifecycle-smoke.sh "$prefix"
 scripts/portable-code-binding-lifecycle-smoke.sh "$prefix"
 scripts/portable-image-v8-smoke.sh "$prefix"
 scripts/stackless-control-smoke.sh "$prefix"
+bash scripts/task-control-smoke.sh "$prefix"
 bash scripts/closure-elision-smoke.sh "$prefix"
 cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v1 scripts/fixtures/closure-api-context.c -o "$prefix_parent/closure-api-context"
 "$prefix_parent/closure-api-context" "$prefix/lib/libbirnam_id.dylib" \

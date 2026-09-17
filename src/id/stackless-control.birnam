@@ -206,3 +206,323 @@
   let value := [self value];
   [cleanup value];
   value]];
+
+// Structured task policy. These ordinary methods share the selected control
+// unit so waiting never leaves a synchronous library frame on the native stack.
+[Machine prepareBlockControl];
+[Globals at: #TaskControl put: [Object clone]];
+[Globals at: #TaskExecutor put: [Object clone]];
+
+[Reflect defineMethod: #attribute: on: TaskControl as: [:self :name |
+  [["TaskControl." , [name asString]] asSymbol]]];
+[Reflect defineMethod: #stateFields on: TaskControl as: [:self |
+  #[#machine #outcome #waitToken #shieldDepth #failures #cancelled #cancelReason
+    #parent #children #waiters #failureSources #childFailures #body #joining #protectedFromParent
+    #controlError #queue #draining #current]]];
+[Reflect defineMethod: #initializeStateSchema on: TaskControl as: [:self |
+  [[self stateFields] do: [:name |
+    let attribute := [self attribute: name];
+    [db assert: attribute attr: #cardinality value: #one];
+    [db assert: attribute attr: #history value: false];
+    [db assert: attribute attr: #imageTransient value: true]]]]];
+[TaskControl initializeStateSchema];
+[Reflect defineMethod: #field: on: TaskControl as: [:self :name |
+  [db cellFor: self attr: [self attribute: name]]]];
+[Reflect defineMethod: #field: on: TaskExecutor as: [:self :name |
+  [db cellFor: self attr: [TaskControl attribute: name]]]];
+[[TaskExecutor field: #queue] set: #[]];
+[[TaskExecutor field: #draining] set: false];
+[[TaskExecutor field: #current] set: nil];
+[Reflect defineMethod: #current on: TaskExecutor as: [:self | [[self field: #current] value]]];
+[Reflect defineMethod: #initialize on: TaskExecutor as: [:self |
+  [[[[self field: #queue] value] isNil] ifTrue: [|
+    [[self field: #queue] set: #[]];
+    [[self field: #draining] set: false];
+    [[self field: #current] set: nil]]];
+  self]];
+[Reflect defineMethod: #enqueue: on: TaskExecutor as: [:self :job |
+  [self initialize];
+  [[self field: #queue] set: [[[self field: #queue] value] add: job]];
+  self]];
+// Queue notifications; never recursively drive another task from a completing
+// child's native entry. Each drive returns before the next task can run.
+[Reflect defineMethod: #drain on: TaskExecutor as: [:self |
+  [self initialize];
+  [[[self field: #draining] value]
+    ifTrue: [| nil]
+    ifFalse: [|
+      [[self field: #draining] set: true];
+      let result := [[| [[[[self field: #queue] value] size] > 0]] whileTrue: [|
+        let queue := [[self field: #queue] value];
+        let job := [queue at: 0];
+        [[self field: #queue] set: [queue copyFrom: 1 to: [queue size]]];
+        let task := [job at: 0];
+        [[self field: #current] set: task];
+        let progress := [task drive: job];
+        [[self field: #current] set: nil];
+        progress]];
+      [[self field: #draining] set: false];
+      result]]]];
+
+[Reflect defineMethod: #machine on: TaskControl as: [:self | [[self field: #machine] value]]];
+[Reflect defineMethod: #pollOutcome on: TaskControl as: [:self | [[self field: #outcome] value]]];
+[Reflect defineMethod: #waitToken on: TaskControl as: [:self | [[self field: #waitToken] value]]];
+[Reflect defineMethod: #shieldDepth on: TaskControl as: [:self | [[self field: #shieldDepth] value]]];
+[Reflect defineMethod: #failures on: TaskControl as: [:self | [[self field: #failures] value]]];
+[Reflect defineMethod: #children on: TaskControl as: [:self | [[self field: #children] value]]];
+
+[Reflect defineMethod: #prepare:parent: on: TaskControl as: [:self :body :parent |
+  let task := [self clone];
+  [[task field: #machine] set: [Machine new]];
+  [[task field: #outcome] set: nil];
+  [[task field: #waitToken] set: nil];
+  [[task field: #shieldDepth] set: 0];
+  [[task field: #failures] set: #[]];
+  [[task field: #failureSources] set: #[]];
+  [[task field: #childFailures] set: #[]];
+  [[task field: #cancelled] set: false];
+  [[task field: #cancelReason] set: nil];
+  [[task field: #parent] set: parent];
+  [[task field: #children] set: #[]];
+  [[task field: #waiters] set: #[]];
+  [[task field: #body] set: body];
+  [[task field: #joining] set: false];
+  [[task field: #protectedFromParent] set: false];
+  [[task field: #controlError] set: nil];
+  task]];
+
+[Reflect defineMethod: #start: on: TaskControl as: [:self :body |
+  // Calls inside a task remain owned; start: cannot accidentally detach work.
+  [[[TaskExecutor current] isNil]
+    ifTrue: [|
+      let task := [self prepare: body parent: nil];
+      [TaskExecutor enqueue: #[task #start nil]];
+      let progress := [TaskExecutor drain];
+      [[progress isError] ifTrue: [| progress] ifFalse: [| task]]]
+    ifFalse: [| [[TaskExecutor current] fork: body]]]]];
+
+[Reflect defineMethod: #fork: on: TaskControl as: [:self :body |
+  [[[self pollOutcome] notNil]
+    ifTrue: [| [Error kind: #taskClosed]]
+    ifFalse: [|
+      [[[self field: #joining] value]
+        ifTrue: [| [Error kind: #taskClosed]]
+        ifFalse: [|
+          let child := [TaskControl prepare: body parent: self];
+          [[child field: #protectedFromParent] set: [[self shieldDepth] > 0]];
+          [[self field: #children] set: [[self children] add: child]];
+          [[[self shieldDepth] = 0] ifTrue: [|
+            [[[self field: #cancelled] value] ifTrue: [|
+              [child cancel: [[self field: #cancelReason] value]]]]]];
+          [TaskExecutor enqueue: #[child #start nil]];
+          child]]]]]];
+
+[Reflect defineMethod: #drive: on: TaskControl as: [:self :job |
+  let progress := [[[job at: 1] = #start]
+    ifTrue: [|
+      let body := [[self field: #body] value];
+      [[self field: #body] set: nil];
+      [[self machine] runBlock: [| [self execute: body]]]]
+    ifFalse: [| [[self machine] resumeWith: [job at: 2]]]];
+  [[progress isError] ifTrue: [| [[self field: #controlError] set: progress]]];
+  // A native control rejection keeps inspectable execution and ownership. It
+  // is not terminal failure and must not claim that cleanup ran.
+  [[progress isError] ifTrue: [| progress] ifFalse: [| nil]]]];
+
+[Reflect defineMethod: #recordFailures:from: on: TaskControl as: [:self :evidence :source |
+  let known := [[[self field: #failureSources] value] detect: [:each | [each == source]]];
+  [[known isNil] ifTrue: [|
+    [[self field: #failureSources] set: [[[self field: #failureSources] value] add: source]];
+    [evidence do: [:each | [[self field: #failures] set: [[self failures] add: each]]]]]];
+  self]];
+[Reflect defineMethod: #recordOutcome:from: on: TaskControl as: [:self :result :source |
+  let known := [[[self field: #failureSources] value] detect: [:each | [each == source]]];
+  [[known isNil] ifTrue: [|
+    [self recordFailures: [result at: 1] from: source];
+    [[self field: #childFailures] set: [[[self field: #childFailures] value] add: result]]]];
+  self]];
+[Reflect defineMethod: #fail: on: TaskControl as: [:self :evidence |
+  [[self canControl]
+    ifTrue: [|
+      [self recordFailures: #[evidence] from: [Object clone]];
+      [self cancelAllChildren: #parentFailed];
+      [[self machine] leaveBoundary: #[#failure [self failures]]]
+    ]
+    ifFalse: [| [Error kind: #taskContextRequired]]]]];
+
+[Reflect defineMethod: #shield on: TaskControl as: [:self |
+  [[self field: #shieldDepth] set: [[self shieldDepth] + 1]];
+  [[self machine] acknowledgeBoundaryDelivery];
+  self]];
+[Reflect defineMethod: #unshield on: TaskControl as: [:self |
+  [[self field: #shieldDepth] set: [[self shieldDepth] - 1]];
+  self]];
+[Reflect defineMethod: #checkpoint on: TaskControl as: [:self |
+  [[[self shieldDepth] = 0] ifTrue: [|
+    [[[self field: #cancelled] value] ifTrue: [|
+      [[[self machine] boundaryDeliveryPending] ifFalse: [|
+        [[self machine] leaveBoundary: #[#cancelled [[self field: #cancelReason] value]]]]]]]]];
+  self]];
+[Reflect defineMethod: #canControl on: TaskControl as: [:self |
+  [[[TaskExecutor current] == self]
+    ifTrue: [| [[self machine] controlEligible]]
+    ifFalse: [| false]]]];
+[Reflect defineMethod: #wait on: TaskControl as: [:self |
+  [[self canControl]
+    ifTrue: [|
+      [self checkpoint];
+      [[self field: #waitToken] set: [Object clone]];
+      let value := [[self machine] park];
+      [self checkpoint];
+      value]
+    ifFalse: [| [Error kind: #taskContextRequired]]]]];
+// Explicit cooperative yield is a real wait with an owner-queued wake. It is
+// separate from the future budget stop, which will not invent a Call result.
+[Reflect defineMethod: #yield on: TaskControl as: [:self |
+  [[self canControl]
+    ifTrue: [|
+      [self checkpoint];
+      [[self field: #waitToken] set: [Object clone]];
+      [self enqueueResolution: [self waitToken] with: nil];
+      [[self machine] park];
+      [self checkpoint];
+      self]
+    ifFalse: [| [Error kind: #taskContextRequired]]]]];
+
+// Consume the identity before enqueueing: duplicates cannot queue a second
+// resume, and a later cleanup wait cannot be claimed by this notification.
+[Reflect defineMethod: #enqueueResolution:with: on: TaskControl as: [:self :token :value |
+  [[token isNil]
+    ifTrue: [| false]
+    ifFalse: [|
+      [[[self pollOutcome] isNil]
+        ifTrue: [|
+          [[token == [self waitToken]]
+            ifTrue: [|
+              [[self field: #waitToken] set: nil];
+              [TaskExecutor enqueue: #[self #resume value]];
+              true]
+            ifFalse: [| false]]]
+        ifFalse: [| false]]]]]];
+[Reflect defineMethod: #resolve:with: on: TaskControl as: [:self :token :value |
+  let accepted := [self enqueueResolution: token with: value];
+  let progress := [TaskExecutor drain];
+  [[progress isError] ifTrue: [| progress] ifFalse: [| accepted]]]];
+[Reflect defineMethod: #cancelAllChildren: on: TaskControl as: [:self :reason |
+  [[self children] do: [:child | [child requestCancellation: reason]]];
+  self]];
+[Reflect defineMethod: #cancelChildren: on: TaskControl as: [:self :reason |
+  [[self children] do: [:child |
+    [[[child field: #protectedFromParent] value] ifFalse: [| [child requestCancellation: reason]]]]];
+  self]];
+[Reflect defineMethod: #requestCancellation: on: TaskControl as: [:self :reason |
+  [[[self pollOutcome] isNil] ifTrue: [|
+    [[[self field: #cancelled] value] ifFalse: [|
+      [[self field: #cancelled] set: true];
+      [[self field: #cancelReason] set: reason];
+      [self cancelChildren: reason]]];
+    [[[self shieldDepth] = 0] ifTrue: [|
+      [self enqueueResolution: [self waitToken] with: nil]]]]];
+  self]];
+
+[Reflect defineMethod: #cancel: on: TaskControl as: [:self :reason |
+  [self requestCancellation: reason];
+  [TaskExecutor drain];
+  self]];
+
+[Reflect defineMethod: #ensure:cleanup: on: TaskControl as: [:self :body :cleanup |
+  [[self canControl]
+    ifTrue: [|
+      let answer := [[self machine] protectedBlock: [| #[#success [body value]]]];
+      [self shield];
+      let cleaned := [[self machine] protectedBlock: [| #[#success [cleanup value]]]];
+      [[self machine] acknowledgeBoundaryDelivery];
+      [self unshield];
+      [[[cleaned at: 0] = #failure] ifTrue: [|
+        [[self machine] leaveBoundary: cleaned]]];
+      [[[answer at: 0] = #success]
+        ifTrue: [| [self checkpoint]; [answer at: 1]]
+        ifFalse: [| [[self machine] leaveBoundary: answer]]]
+    ]
+    ifFalse: [| [Error kind: #taskContextRequired]]]]];
+
+[Reflect defineMethod: #removeWaiter: on: TaskControl as: [:self :token |
+  [[self field: #waiters] set: [[[self field: #waiters] value] reject: [:entry |
+    [[entry at: 1] == token]]]];
+  self]];
+[Reflect defineMethod: #waitFor: on: TaskControl as: [:self :target |
+  [self checkpoint];
+  [[[target pollOutcome] isNil] ifTrue: [|
+    let token := [Object clone];
+    [self ensure: [|
+      [[self field: #waitToken] set: token];
+      [[target field: #waiters] set: [[[target field: #waiters] value] add: #[self token]]];
+      [[self machine] park];
+      [self checkpoint]]
+    cleanup: [| [target removeWaiter: token]]]]];
+  [target pollOutcome]]];
+[Reflect defineMethod: #outcome on: TaskControl as: [:self |
+  let caller := [TaskExecutor current];
+  [[caller isNil]
+    ifTrue: [| [Error kind: #taskContextRequired]]
+    ifFalse: [|
+      [[[caller machine] controlEligible]
+        ifTrue: [| [caller waitFor: self]]
+        ifFalse: [| [Error kind: #taskContextRequired]]]]]]];
+[Reflect defineMethod: #await on: TaskControl as: [:self |
+  let result := [self outcome];
+  [[result isError]
+    ifTrue: [| result]
+    ifFalse: [|
+      [[[result at: 0] = #success]
+        ifTrue: [| [result at: 1]]
+        ifFalse: [|
+          let caller := [TaskExecutor current];
+          [[caller isNil]
+            ifTrue: [| [Error kind: #taskContextRequired]]
+            ifFalse: [|
+              [[[result at: 0] = #failure]
+                ifTrue: [|
+                  [caller recordOutcome: result from: self];
+                  [caller cancelAllChildren: #parentFailed]]
+                ifFalse: [| [caller cancel: [result at: 1]]]];
+              [[caller machine] leaveBoundary: result]]]]]]]]];
+
+[Reflect defineMethod: #childSettled: on: TaskControl as: [:self :child |
+  let result := [child pollOutcome];
+  [[[result at: 0] = #failure] ifTrue: [|
+    [self recordOutcome: result from: child];
+    [self requestCancellation: #childFailed];
+    [self cancelAllChildren: #childFailed]]];
+  self]];
+[Reflect defineMethod: #publish: on: TaskControl as: [:self :answer |
+  let result := [[[[self failures] size] > 0]
+    ifTrue: [| #[#failure [self failures] [[self field: #cancelReason] value] [[self field: #childFailures] value]]]
+    ifFalse: [|
+      [[[self field: #cancelled] value]
+        ifTrue: [| #[#cancelled [[self field: #cancelReason] value]]]
+        ifFalse: [| answer]]]];
+  [[self field: #outcome] set: result];
+  [[self field: #machine] set: nil];
+  [[self field: #waitToken] set: nil];
+  let parent := [[self field: #parent] value];
+  [[parent notNil] ifTrue: [| [parent childSettled: self]]];
+  let waiters := [[self field: #waiters] value];
+  [[self field: #waiters] set: #[]];
+  [[self field: #children] set: #[]];
+  [[self field: #parent] set: nil];
+  [[self field: #failureSources] set: #[]];
+  [waiters do: [:entry | [[entry at: 0] resolve: [entry at: 1] with: nil]]];
+  result]];
+[Reflect defineMethod: #execute: on: TaskControl as: [:self :body |
+  let answer := [[self machine] protectedBlock: [|
+    [self checkpoint];
+    #[#success [body value: self]]]];
+  [self shield];
+  [[self field: #joining] set: true];
+  [[[answer at: 0] = #failure] ifTrue: [| [self cancelAllChildren: #parentFailed]]];
+  // The join is shielded, but cancellation still reaches ordinary children.
+  // Resource cleanup can explicitly await children before releasing resources.
+  [[self children] do: [:child | [self waitFor: child]]];
+  [self unshield];
+  [self publish: answer]]];

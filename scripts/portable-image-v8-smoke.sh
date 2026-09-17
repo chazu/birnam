@@ -41,6 +41,8 @@ let specialBox := ["special" , ""]
 [db assert: #portableV8Boxes attr: #shared value: specialBox]
 [db assert: #portableV8Boxes attr: #equalA value: ["equal" , ""]]
 [db assert: #portableV8Boxes attr: #equalB value: ["equal" , ""]]
+[Globals at: #PortableV8BoundaryCall put: BoundaryCallAction]
+[Globals at: #PortableV8BoundaryExit put: ExitBoundaryAction]
 [System saveImage: "$image"]
 [[System imageSaveReport] status]
 :quit
@@ -83,6 +85,8 @@ let loadedNested := [loadedOuter value: 52]
 [[db currentValue: #portableV8Boxes attr: #special] imageV8Particular]
 [[db currentValue: #portableV8Boxes attr: #special] == [db currentValue: #portableV8Boxes attr: #shared]]
 [[db currentValue: #portableV8Boxes attr: #equalA] == [db currentValue: #portableV8Boxes attr: #equalB]]
+[[Globals at: #PortableV8BoundaryCall] == BoundaryCallAction]
+[[Globals at: #PortableV8BoundaryExit] == ExitBoundaryAction]
 [[db currentValue: #portableV8Boxes attr: #equalA] = [db currentValue: #portableV8Boxes attr: #equalB]]
 :quit
 EOF
@@ -103,7 +107,7 @@ for mode in ordinary rebuild; do
   grep -Fxq 'birnam> #wordPrototype' "$smoke_root/$mode.out"
   grep -Fxq 'birnam> #stringPrototype' "$smoke_root/$mode.out"
   grep -Fxq 'birnam> #particularBox' "$smoke_root/$mode.out"
-  test "$(grep -Fxc 'birnam> true' "$smoke_root/$mode.out")" -eq 2
+  test "$(grep -Fxc 'birnam> true' "$smoke_root/$mode.out")" -eq 4
   grep -Fxq 'birnam> false' "$smoke_root/$mode.out"
 done
 
@@ -152,4 +156,27 @@ grep -Fxq 'portable image-v8 app' "$smoke_root/app-baked.out"
 grep -Fxq 'main entry ran' "$smoke_root/app-baked.out"
 ! grep -q 'interactive image' "$smoke_root/app-baked.out"
 
-printf 'portable-image-v8-smoke: boxed identity, nested source-less meaning, CodeBinding recovery, ordinary/rebuild entry, baked entry, and resave passed\n'
+# Canonical names above are durable references. Live instances, including an
+# instance given its own method/vtable, must fail before publishing an image.
+for family in BoundaryCallAction ExitBoundaryAction; do
+  for variant in plain private; do
+    rejected="$smoke_root/$family-$variant.image"
+    customization=''
+    if [[ $variant == private ]]; then
+      customization='[Reflect defineMethod: #boundaryImageProbe on: value as: [:self | true]];'
+    fi
+    cat >"$smoke_root/$family-$variant.birnam" <<EOF
+let value := [$family clone];
+$customization
+[db assert: #boundaryCapability attr: #value value: value];
+let result := [System saveImage: "$rejected"];
+[System println: [[result kind] printString]]
+EOF
+    "$bin" "$smoke_root/$family-$variant.birnam" >"$smoke_root/rejected.out" 2>"$smoke_root/rejected.err"
+    test ! -s "$smoke_root/rejected.err"
+    grep -Fxq '#stepActionNotImageable' "$smoke_root/rejected.out"
+    test ! -e "$rejected"
+  done
+done
+
+printf 'portable-image-v8-smoke: boxed identity, nested source-less meaning, CodeBinding recovery, ordinary/rebuild entry, baked entry, resave, and boundary admission passed\n'

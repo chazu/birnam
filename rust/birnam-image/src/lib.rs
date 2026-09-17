@@ -471,6 +471,8 @@ mod runtime {
     const SUSPEND_ACTION_NAME: &[u8] = b"SuspendAction\0";
     const CAPTURE_ACTION_NAME: &[u8] = b"CaptureAction\0";
     const RESTORE_ACTION_NAME: &[u8] = b"RestoreAction\0";
+    const BOUNDARY_CALL_ACTION_NAME: &[u8] = b"BoundaryCallAction\0";
+    const EXIT_BOUNDARY_ACTION_NAME: &[u8] = b"ExitBoundaryAction\0";
     const ABORT_ACTION_NAME: &[u8] = b"AbortAction\0";
     const DISCARD_RECEIPT_NAME: &[u8] = b"DiscardReceipt\0";
     const FOREIGN_ADDRESS_NAME: &[u8] = b"ForeignAddress\0";
@@ -788,6 +790,8 @@ mod runtime {
             CAPTURE_ACTION_NAME,
             RESTORE_ACTION_NAME,
             ABORT_ACTION_NAME,
+            BOUNDARY_CALL_ACTION_NAME,
+            EXIT_BOUNDARY_ACTION_NAME,
         ]
         .into_iter()
         .any(|name| unsafe { belongs_to_exported_capability_family(api, object, name) })

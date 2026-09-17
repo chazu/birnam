@@ -31,6 +31,9 @@ use crate::vtable::{AddMethod, Vtables};
 
 #[cfg(all(test, target_os = "macos"))]
 mod architectural_fit_experiment;
+#[cfg(all(test, target_os = "macos"))]
+mod boundary_control_tests;
+mod task_control;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_action_probe;
 #[cfg(feature = "ffi-test-hooks")]
@@ -1184,6 +1187,14 @@ impl Runtime {
         let capture_action_vtable = self.create_vtable(globals.object_vt);
         let restore_action_vtable = self.create_vtable(globals.object_vt);
         let abort_action_vtable = self.create_vtable(globals.object_vt);
+        let boundary_call_action_vtable = self.create_vtable(globals.object_vt);
+        let exit_boundary_action_vtable = self.create_vtable(globals.object_vt);
+        let boundary_call_action_prototype =
+            self.allocate_empty(boundary_call_action_vtable, Permanence::Permanent);
+        let exit_boundary_action_prototype =
+            self.allocate_empty(exit_boundary_action_vtable, Permanence::Permanent);
+        let boundary_call_kind = self.intern(b"boundaryCall").expect("static symbol");
+        let exit_boundary_kind = self.intern(b"exitBoundary").expect("static symbol");
         let machine_prototype = self.allocate_empty(machine_vtable, Permanence::Permanent);
         let frame_view_prototype = self.allocate_empty(frame_view_vtable, Permanence::Permanent);
         let continuation_prototype =
@@ -1367,6 +1378,8 @@ impl Runtime {
             (capture_action_vtable, capture_action_prototype),
             (restore_action_vtable, restore_action_prototype),
             (abort_action_vtable, abort_action_prototype),
+            (boundary_call_action_vtable, boundary_call_action_prototype),
+            (exit_boundary_action_vtable, exit_boundary_action_prototype),
             (continuation_vtable, continuation_prototype),
         ] {
             self.set_vtable_owner(vtable, owner);
@@ -1397,12 +1410,32 @@ impl Runtime {
             (&b"CaptureAction"[..], capture_action_prototype),
             (&b"RestoreAction"[..], restore_action_prototype),
             (&b"AbortAction"[..], abort_action_prototype),
+            (&b"BoundaryCallAction"[..], boundary_call_action_prototype),
+            (&b"ExitBoundaryAction"[..], exit_boundary_action_prototype),
         ] {
             self.export(name, object).unwrap_or_else(|_| {
                 boundary::fatal_invariant("static execution export name contains NUL")
             });
         }
         for (selector, method) in [
+            (
+                self.intern(b"boundaryCallSite:").expect("static selector"),
+                crate::execution::boundary::machine_boundary_call as crate::abi::Method,
+            ),
+            (
+                self.intern(b"exitBoundaryAt:").expect("static selector"),
+                crate::execution::boundary::machine_exit_boundary as crate::abi::Method,
+            ),
+            (
+                self.intern(b"boundaryDeliveryPending")
+                    .expect("static selector"),
+                crate::execution::boundary::machine_delivery_pending as crate::abi::Method,
+            ),
+            (
+                self.intern(b"acknowledgeBoundaryDelivery")
+                    .expect("static selector"),
+                crate::execution::boundary::machine_acknowledge_delivery as crate::abi::Method,
+            ),
             (
                 new_selector,
                 crate::execution::machine_new as crate::abi::Method,
@@ -1491,6 +1524,8 @@ impl Runtime {
             capture_action_vtable,
             restore_action_vtable,
             abort_action_vtable,
+            boundary_call_action_vtable,
+            exit_boundary_action_vtable,
         ] {
             for (selector, method) in [
                 (
@@ -1522,7 +1557,21 @@ impl Runtime {
             value_slot_selector,
             crate::execution::return_action_value_slot,
         );
-        for vtable in [call_action_vtable, tail_call_action_vtable] {
+        let _ = self.add_method(
+            exit_boundary_action_vtable,
+            value_slot_selector,
+            crate::execution::return_action_value_slot,
+        );
+        let _ = self.add_method(
+            boundary_call_action_vtable,
+            result_slot_selector,
+            crate::execution::call_action_result_slot,
+        );
+        for vtable in [
+            call_action_vtable,
+            tail_call_action_vtable,
+            boundary_call_action_vtable,
+        ] {
             for (selector, method) in [
                 (
                     receiver_slot_selector,
@@ -1689,6 +1738,12 @@ impl Runtime {
                     restore_action_prototype,
                     abort_action_vtable,
                     abort_action_prototype,
+                    boundary_call_action_vtable,
+                    boundary_call_action_prototype,
+                    exit_boundary_action_vtable,
+                    exit_boundary_action_prototype,
+                    boundary_call_kind,
+                    exit_boundary_kind,
                     continue_kind,
                     call_kind,
                     tail_call_kind,
@@ -1708,6 +1763,7 @@ impl Runtime {
                     return_at,
                 })
         };
+        task_control::install(self, machine_vtable);
     }
 
     pub(crate) fn create_stackless_machine(&self) -> Result<Oop, MachineError> {
@@ -1733,6 +1789,10 @@ impl Runtime {
             self.allocate_instance(objects.restore_action_vtable, 6 * size_of::<usize>());
         let abort_action =
             self.allocate_instance(objects.abort_action_vtable, 7 * size_of::<usize>());
+        let boundary_call_action =
+            self.allocate_instance(objects.boundary_call_action_vtable, 9 * size_of::<usize>());
+        let exit_boundary_action =
+            self.allocate_instance(objects.exit_boundary_action_vtable, 5 * size_of::<usize>());
         let owner = current_thread_token();
         // SAFETY: allocations completed; owner-thread serialization permits one
         // short mutable access with no callback or allocation in this scope.
@@ -1750,6 +1810,9 @@ impl Runtime {
                 restore_action,
                 abort_action,
             )?;
+            let machine_state = state.execution.machine_mut(owner, capability)?;
+            machine_state.boundary_call_action = boundary_call_action;
+            machine_state.exit_boundary_action = exit_boundary_action;
             state
                 .execution
                 .initialize_machine_payload(&mut state.heap, machine, capability)
@@ -2172,6 +2235,58 @@ impl Runtime {
                 kind,
             )
         }
+    }
+
+    pub(crate) fn stackless_boundary_action(
+        &self,
+        machine: Oop,
+        index: usize,
+        exit: bool,
+    ) -> Result<Oop, ExecutionError> {
+        let capability = self.stackless_machine_capability(machine)?;
+        // SAFETY: owner-thread serialized, no language call under this borrow.
+        unsafe {
+            let state = &mut *self.state.get();
+            if exit {
+                state.execution.publish_boundary_exit(
+                    &mut state.heap,
+                    current_thread_token(),
+                    capability,
+                    index,
+                )
+            } else {
+                state.execution.publish_boundary_call(
+                    &mut state.heap,
+                    current_thread_token(),
+                    capability,
+                    index,
+                )
+            }
+        }
+    }
+
+    pub(crate) fn stackless_boundary_delivery(
+        &self,
+        machine: Oop,
+        acknowledge: bool,
+    ) -> Result<Oop, ExecutionError> {
+        let capability = self.stackless_machine_capability(machine)?;
+        let pending = unsafe {
+            let state = &mut *self.state.get();
+            if acknowledge {
+                state
+                    .execution
+                    .acknowledge_boundary_delivery(current_thread_token(), capability)?;
+            }
+            state
+                .execution
+                .boundary_delivery_pending(current_thread_token(), capability)?
+        };
+        Ok(if pending {
+            self.canonical().true_object
+        } else {
+            self.canonical().false_object
+        })
     }
 
     pub(crate) fn stackless_action_kind(&self, action: Oop) -> Option<Oop> {
@@ -3312,6 +3427,7 @@ impl Runtime {
                     .ok_or(crate::execution::FrameError::StaleHandle)?;
                 let destination = machine.arena().return_destination(frame)?;
                 let entry = machine.arena().resumable_entry(frame)?;
+                machine.arena_mut().inherit_return_delivery(frame)?;
                 machine.arena_mut().pop()?;
                 let answer = if let Some(destination) = destination {
                     let caller = machine
@@ -3728,13 +3844,32 @@ impl Runtime {
                         .execution
                         .commit_current_continue(owner, capability, nil)?;
                 },
-                DecodedAction::Call {
+                DecodedAction::BoundaryCall {
+                    receiver_slot,
+                    selector_slot,
+                    argument_start,
+                    argument_count,
+                    result_slot,
+                }
+                | DecodedAction::Call {
                     receiver_slot,
                     selector_slot,
                     argument_start,
                     argument_count,
                     result_slot,
                 } => {
+                    let protected = matches!(decoded, DecodedAction::BoundaryCall { .. });
+                    if protected {
+                        // The StepMethod has returned: no native wrapper spans
+                        // the invocation. Establish before lookup/body execution.
+                        unsafe {
+                            (&mut *self.state.get()).execution.establish_boundary(
+                                owner,
+                                capability,
+                                result_slot,
+                            )?;
+                        }
+                    }
                     let operands = unsafe {
                         (*self.state.get()).execution.copy_send_operands(
                             owner,
@@ -3766,15 +3901,17 @@ impl Runtime {
                                 operands.receiver,
                                 &operands.arguments,
                             )?;
-                            if native_tier::inline_call(
-                                self,
-                                machine,
-                                capability,
-                                entry,
-                                result_slot,
-                                &descriptor,
-                                &initial_oops,
-                            )? {
+                            if !protected
+                                && native_tier::inline_call(
+                                    self,
+                                    machine,
+                                    capability,
+                                    entry,
+                                    result_slot,
+                                    &descriptor,
+                                    &initial_oops,
+                                )?
+                            {
                                 continue;
                             }
                             unsafe {
@@ -4098,6 +4235,15 @@ impl Runtime {
                         )?;
                     }
                 }
+                DecodedAction::ExitBoundary { value_slot } => unsafe {
+                    let state = &mut *self.state.get();
+                    let value = state
+                        .execution
+                        .read_current_oop(owner, capability, value_slot)?;
+                    state
+                        .execution
+                        .exit_boundary(owner, capability, value, nil)?;
+                },
                 DecodedAction::Abort {
                     delimiter: _,
                     reason_slot,

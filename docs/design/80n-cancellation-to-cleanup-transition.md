@@ -6,7 +6,10 @@
 > revision. It proposes a concrete transition; it does not claim an implemented
 > mechanism or completed invariant proof. The user subsequently accepted the
 > compatibility constraints below and requested another adversarial review.
-> No runtime implementation or ABI/format break is authorized.
+> The user subsequently accepted the four findings in [80S](80s-cleanup-control-review-synthesis.md)
+> and authorized implementation to begin. ABI/format breaks remain outside scope.
+> Sections 9–10 record the accepted follow-up and supersede the earlier open
+> encoding choices. Implementation evidence is tracked separately in [80T](80t-cleanup-control-implementation-evidence.md).
 
 ## 1. Result of the exercise
 
@@ -291,3 +294,81 @@ These are future evidence requirements, not tests run for this document. The
 worked trace supports the adapter-plus-delimited-exit direction; the remaining
 engineering work is defining and validating that small control primitive and its
 publisher/driver entry, including the protected handler-delivery phase.
+
+## 9. Accepted third-review resolutions and first implementation
+
+The four findings in 80S are accepted. The review itself remains a historical
+assessment of commit `9973f4d7`, not evidence that the new mechanism works.
+
+- **Atomic establishment:** use a distinct `BoundaryCallAction`, published by
+  `Machine boundaryCallSite:` against an existing descriptor V2 Call site. The
+  driver establishes the boundary on the waiting caller before resolving and
+  entering the body. There is no native wrapper activation spanning the body.
+  `ExitBoundaryAction`, published by `Machine exitBoundaryAt:`, delivers a rooted
+  slot value to the nearest active boundary. It never means Abort. Propagation to
+  successive enclosing handlers is ordinary library policy.
+- **Captured execution:** keep the pending boundary and delivery bookkeeping with
+  its owning frame. Detach/restore transfers that bookkeeping with the frame; it
+  does not retain the retired external Frame handle. Existing capture delimiter
+  selection stays unchanged. Detached metadata is unavailable to active execution;
+  abandonment releases it without invoking user cleanup. Task ownership must retain
+  detached execution until supported restoration or explicit abandonment; an empty
+  active arena is not evidence of settlement.
+- **Failure propagation:** the supplied Birnam protocol records accumulated actual
+  failure in task-owned, traced state **before** restoring the enclosing cancellation
+  mask. Every later exit and final publication consults that state. A late cancel
+  therefore cannot erase the failure even if it interrupts further propagation.
+  Error-valued ordinary returns do not enter this accumulator.
+- **Image admission:** explicitly reject instances of both new live action families,
+  including derived families, using existing image preflight. Canonical prototypes
+  remain exported identities; inert outcomes retain ordinary serialization rules.
+  No serialized boundary record, new image version, or live boundary token is needed.
+
+The additive action schemas use the existing four-word v1 header (schema, Machine
+index, Machine generation, drive epoch). BoundaryCall has the same five operand
+slots as Call, under a distinct vtable; ExitBoundary adds one value-slot index.
+Both support ordinary action reflection. Old actions and their publishers retain
+their schemas and meanings. The protected Call must match the actual pending
+descriptor edge, including its operand layout, before boundary installation.
+
+Completing the protected Call, normally or by exit, records handler delivery in
+the same allocation-free transition. `Machine boundaryDeliveryPending` exposes
+this fact; `Machine acknowledgeBoundaryDelivery` acknowledges one handoff after
+the library has installed its cleanup shield. Unacknowledged deliveries travel
+with capture/restore and through ordinary returns/tail replacement until their
+owner acknowledges them. This is bookkeeping for the supplied executor, not a
+native enforcement of cancellation policy. Failure aggregation remains Birnam
+policy; the runtime does not inspect the delivered Oop for cancellation or Error.
+
+The first slice exercises establishment → park → cancelled wake → checked exit →
+cleanup that parks again → completion. It supplies the control mechanism before
+the task/channel/domain API. CPU timeslicing and its owner-side exit entry remain
+separate work; this slice must not claim the entire concurrency design implemented.
+
+## 10. Obtaining compatibility evidence
+
+Keep this within the existing validation workflow, with four evidence groups:
+
+1. Run the committed frozen IdApi client and module against the candidate runtime
+   **without rebuilding fixtures**. Preserve checksums and the existing table,
+   Method/StepMethod ABI, old action behavior, and reflection. The archived v4
+   image must still reject; it is not a supported-image loading promise.
+2. Reuse descriptor V2/compiler-produced execution tests. Add discriminating
+   control traces for normal/cancel handoffs, nested failure, capture/restore,
+   precise GC, code pin retirement, invalid transfer before mutation, and live
+   method replacement. Baseline descriptor bytes must remain unchanged; generating
+   all inputs with a changed producer is not independent compatibility evidence.
+3. Load supported baseline images, exercise existing mapped/rebuilt paths, and
+   round-trip ordinary data/code under the current format. Check new live-action
+   rejection before durable publication, plus canonical references and inert data.
+   A new-runtime self-round-trip alone does not prove old-image compatibility.
+4. Use focused checks during development and `mise run verify-exhaustive` for the
+   runtime change. Release acceptance uses the existing `mise run verify-release`
+   export/dependency audit and two independent cold-source installs. No separate
+   release procedure is introduced.
+
+Record baseline/candidate source identities, unchanged fixture hashes, exact
+commands/results, and outstanding checks in a short implementation evidence note.
+Design review is plausibility evidence; unrun tests and incomplete runs are not
+passes. Full concurrency, production installation, performance qualification, and
+old-runtime execution of new operations are not established by this narrow slice.

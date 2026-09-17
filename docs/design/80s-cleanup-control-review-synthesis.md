@@ -113,3 +113,13 @@ the second-review index pointing here. The reviewed 80N mechanism remains
 unchanged at the fixed baseline. Document validation checks links, whitespace,
 code fences, review provenance, and preservation of the semantic input. Runtime
 compatibility tests remain future implementation evidence.
+
+## Subsequent disposition
+
+The user accepted all four follow-ups and authorized implementation to begin.
+[80N, sections 9–10](80n-cancellation-to-cleanup-transition.md#9-accepted-third-review-resolutions-and-first-implementation)
+records the chosen action protocol, frame-owned metadata, task-owned failure
+accumulator rule, image classification, and compatibility evidence plan.
+[80T](80t-cleanup-control-implementation-evidence.md) records the first control
+slice and its tests. The supplied Birnam cleanup/failure protocol remains next;
+this review's fixed input and original findings above are unchanged.

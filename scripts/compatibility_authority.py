@@ -4,10 +4,28 @@ Receipts still hash the full current file. Only the trailing cfg(test) module
 in registration.rs is outside the production authority comparison.
 The 74T literal-aware PC entry is an additive compiler caller of the original
 emitter. Exclude only that new entry; all baseline emission remains byte-frozen.
+Design 80N adds exactly two live-action names to image admission. Normalize only
+those declarations and rejection-list entries; all other image code stays frozen.
 """
 
 
 def unchanged_authority(name, current, baseline):
+    if name == "rust/birnam-image/src/lib.rs" and current != baseline:
+        additions = (
+            (b'    const ABORT_ACTION_NAME: &[u8] = b"AbortAction\\0";\n',
+             b'    const BOUNDARY_CALL_ACTION_NAME: &[u8] = b"BoundaryCallAction\\0";\n'
+             b'    const EXIT_BOUNDARY_ACTION_NAME: &[u8] = b"ExitBoundaryAction\\0";\n'),
+            (b'            ABORT_ACTION_NAME,\n',
+             b'            BOUNDARY_CALL_ACTION_NAME,\n'
+             b'            EXIT_BOUNDARY_ACTION_NAME,\n'),
+        )
+        declaration_anchor, declarations = additions[0]
+        list_anchor, entries = additions[1]
+        for old, new in ((declaration_anchor, declarations + declaration_anchor),
+                         (list_anchor, list_anchor + entries)):
+            if baseline.count(old) != 1 or new in baseline or current.count(new) != 1:
+                return False
+            current = current.replace(new, old, 1)
     if name == "rust/birnam-id/src/registration.rs":
         marker = b"\n#[cfg(test)]\nmod tests {"
         assert current.count(marker) == baseline.count(marker) == 1

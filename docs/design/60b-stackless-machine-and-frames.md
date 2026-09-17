@@ -355,6 +355,25 @@ The remaining words are fixed by canonical vtable:
 | RestoreAction | 4 `continuation_slot`, 5 `supplied_value_slot` | 6 |
 | AbortAction | 4 `delimiter_index`, 5 `delimiter_generation`, 6 `reason_slot` | 7 |
 
+Design [80N, section 9](80n-cancellation-to-cleanup-transition.md#9-accepted-third-review-resolutions-and-first-implementation)
+adds two distinct canonical families without changing any row above, the C ABI,
+descriptor V2, or image format:
+
+| Canonical Oop | Payload words after the same v1 header | Total words |
+|---|---|---:|
+| BoundaryCallAction | 4 `receiver_slot`, 5 `selector_slot`, 6 `argument_start`, 7 `argument_count`, 8 `result_slot` | 9 |
+| ExitBoundaryAction | 4 `value_slot` | 5 |
+
+Their publishers are `Machine boundaryCallSite:` and `Machine exitBoundaryAt:`;
+their reflected kinds are `#boundaryCall` and `#exitBoundary`, with the same common
+accessors and field accessors as the corresponding Call/Return layouts. A boundary
+Call establishes the retained handler before entering its body. Exit validates and
+abandons only the body segment above the nearest active boundary, committing the
+handler's existing pending Call. It does not invoke Abort or reinterpret Error
+values. `boundaryDeliveryPending` and `acknowledgeBoundaryDelivery` expose the
+transient handoff state; ordinary Birnam policy owns shielding and cleanup.
+Live instances are non-imageable. See 80N for lifetime, capture, and evidence scope.
+
 Every name ending in `_slot` is an index into the current descriptor and must
 match the slot kind required by the operation. In particular,
 `continuation_slot` names an Oop slot containing the Continuation; the action
