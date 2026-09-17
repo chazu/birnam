@@ -31,12 +31,12 @@
 > 9–10](80n-cancellation-to-cleanup-transition.md#9-accepted-third-review-resolutions-and-first-implementation)
 > records the concrete protocol and compatibility evidence plan. [80T](80t-cleanup-control-implementation-evidence.md)
 > tracks the first implemented control slice. [80U](80u-birnam-task-cleanup-slice.md)
-> now implements source-authored cancellation, cleanup, cooperative ready queues,
-> child ownership/joining, and outcome waits. Automatic timeslicing, channels, and
-> parallel domains remain work ahead.
-> [80V](80v-bounded-machine-drives.md) adds opt-in bounded Machine drives and
-> owner-side cleanup entry. Task-executor integration still requires protected
-> multi-send transitions before automatic timeslicing can be enabled.
+> implements source-authored cancellation, cleanup, child ownership/joining,
+> and outcome waits. [80V](80v-bounded-machine-drives.md) adds bounded Machine
+> drives; [80W](80w-timesliced-task-executor.md) integrates automatic timeslicing.
+> [80X](80x-asynchronous-process-domains.md) adds asynchronous process requests
+> and task completion ingress for multicore work. Thread-hosted domains, full
+> channels, and cooperative remote cancellation remain work ahead.
 
 ## 1. Direction
 
@@ -748,7 +748,8 @@ records the first implemented control slice. [80U](80u-birnam-task-cleanup-slice
 records the cooperative task executor, automatic joining, cancellation, and
 cleanup library. [80V](80v-bounded-machine-drives.md) adds bounded Machine
 drives, and [80W](80w-timesliced-task-executor.md) enables automatic timeslicing
-with protected Birnam executor transitions. Parallel domains remain future work.
+with protected Birnam executor transitions. [80X](80x-asynchronous-process-domains.md)
+adds asynchronous process-backed multicore work. Thread hosting remains future work.
 The accepted policies are not reopened by that work.
 For that mechanism, the user explicitly requires preserving the public IdApi,
 Method/StepMethod ABI, descriptor V2, and image format. A separately specified

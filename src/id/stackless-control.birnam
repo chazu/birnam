@@ -218,7 +218,8 @@
 [Reflect defineMethod: #stateFields on: TaskControl as: [:self |
   #[#machine #outcome #waitToken #shieldDepth #failures #cancelled #cancelReason
     #parent #children #waiters #failureSources #childFailures #body #joining #protectedFromParent
-    #controlError #queue #draining #current #quantum #transitionDepth #bodyActive]]];
+    #controlError #queue #draining #current #quantum #transitionDepth #bodyActive
+    #ingress #requestWorker #requestId #externalResult]]];
 [Reflect defineMethod: #initializeStateSchema on: TaskControl as: [:self |
   [[self stateFields] do: [:name |
     let attribute := [self attribute: name];
@@ -231,6 +232,7 @@
 [Reflect defineMethod: #field: on: TaskExecutor as: [:self :name |
   [db cellFor: self attr: [TaskControl attribute: name]]]];
 [[TaskExecutor field: #queue] set: #[]];
+[[TaskExecutor field: #ingress] set: #[]];
 [[TaskExecutor field: #draining] set: false];
 [[TaskExecutor field: #current] set: nil];
 [[TaskExecutor field: #quantum] set: 128];
@@ -238,6 +240,7 @@
 [Reflect defineMethod: #initialize on: TaskExecutor as: [:self |
   [[[[self field: #queue] value] isNil] ifTrue: [|
     [[self field: #queue] set: #[]];
+    [[self field: #ingress] set: #[]];
     [[self field: #draining] set: false];
     [[self field: #quantum] set: 128];
     [[self field: #current] set: nil]]];
@@ -270,21 +273,40 @@
     self]]]];
 // Queue notifications; never recursively drive another task from a completing
 // child's native entry. Each drive returns before the next task can run.
+[Reflect defineMethod: #hasWork on: TaskExecutor as: [:self |
+  [[[[[self field: #queue] value] size] > 0]
+    ifTrue: [| true]
+    ifFalse: [| [[[[self field: #ingress] value] size] > 0]]]]];
+[Reflect defineMethod: #watch: on: TaskExecutor as: [:self :task |
+  [self transition: [|
+    [[self field: #ingress] set: [[[self field: #ingress] value] add: task]]]]]];
+[Reflect defineMethod: #pollIngress on: TaskExecutor as: [:self |
+  [[[self field: #ingress] value] do: [:task | [task pollExternal]]];
+  [[self field: #ingress] set: [[[self field: #ingress] value] select: [:task |
+    [[[task field: #externalResult] value] isNil]]]];
+  self]];
+[Reflect defineMethod: #idle on: TaskExecutor as: [:self |
+  [Isolate idleFor: 1]]];
+[Reflect defineMethod: #driveNext on: TaskExecutor as: [:self |
+  let queue := [[self field: #queue] value];
+  let job := [queue at: 0];
+  [[self field: #queue] set: [queue copyFrom: 1 to: [queue size]]];
+  let task := [job at: 0];
+  [[self field: #current] set: task];
+  let progress := [task drive: job];
+  [[self field: #current] set: nil];
+  progress]];
 [Reflect defineMethod: #drain on: TaskExecutor as: [:self |
   [self initialize];
   [[[self field: #draining] value]
     ifTrue: [| nil]
     ifFalse: [|
       [[self field: #draining] set: true];
-      let result := [[| [[[[self field: #queue] value] size] > 0]] whileTrue: [|
-        let queue := [[self field: #queue] value];
-        let job := [queue at: 0];
-        [[self field: #queue] set: [queue copyFrom: 1 to: [queue size]]];
-        let task := [job at: 0];
-        [[self field: #current] set: task];
-        let progress := [task drive: job];
-        [[self field: #current] set: nil];
-        progress]];
+      let result := [[| [self hasWork]] whileTrue: [|
+        [self pollIngress];
+        [[[[[self field: #queue] value] size] > 0]
+          ifTrue: [| [self driveNext]]
+          ifFalse: [| [[self hasWork] ifTrue: [| [self idle]]]]]]];
       [[self field: #draining] set: false];
       result]]]];
 
@@ -623,3 +645,43 @@
   [[self children] do: [:child | [self waitFor: child]]];
   [self unshield];
   [self publish: answer]]];
+
+// Copied process requests are owned by ordinary structured tasks. Cancellation
+// of the task retains the remote operation through shielded cleanup. Explicit
+// process termination can force it to settle; it is not remote Birnam cleanup.
+[Reflect defineMethod: #request:from:timeout: on: TaskControl as: [:self :value :worker :timeout |
+  [self start: [:task |
+    let answer := [task ensure: [|
+      [TaskExecutor transition: [|
+        let id := [worker submit: value timeout: timeout];
+        [[id isError]
+          ifTrue: [| [[task field: #externalResult] set: id]]
+          ifFalse: [|
+            [[task field: #requestWorker] set: worker];
+            [[task field: #requestId] set: id];
+            [TaskExecutor watch: task]]]]];
+      [task waitExternal]]
+    cleanup: [|
+      // No request was admitted if cancellation arrived before submission.
+      [[[[task field: #requestId] value] notNil] ifTrue: [| [task waitExternal]]];
+      [[task field: #requestWorker] set: nil];
+      [[task field: #requestId] set: nil];
+      [[task field: #externalResult] set: nil]]];
+    [[answer isError]
+      ifTrue: [| [task fail: answer]]
+      ifFalse: [| [answer at: 0]]]]]]];
+[Reflect defineMethod: #waitExternal on: TaskControl as: [:self |
+  [TaskExecutor transition: [|
+    [self checkpoint];
+    [[[[self field: #externalResult] value] isNil] ifTrue: [|
+      [[self field: #waitToken] set: [Object clone]];
+      [[self machine] park]]]]];
+  [self checkpoint];
+  [[self field: #externalResult] value]]];
+[Reflect defineMethod: #pollExternal on: TaskControl as: [:self |
+  let worker := [[self field: #requestWorker] value];
+  let answer := [worker pollRequest: [[self field: #requestId] value]];
+  [[answer notNil] ifTrue: [|
+    [[self field: #externalResult] set: answer];
+    [self enqueueResolution: [self waitToken] with: nil]]];
+  self]];

@@ -19,7 +19,10 @@ use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::process::{Child, Command};
 use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+
+#[cfg(unix)]
+mod asynchronous;
 use std::time::Duration;
 
 pub const MAGIC: &[u8; 4] = b"BISO";
@@ -1003,7 +1006,7 @@ fn oop_error_record(
         return Err(CodecError::InvalidRecord);
     }
     if unsafe { (api.vtableOf)(kind) } != api.symbol_vt
-        || unsafe { (api.vtableOf)(message) } != api.string_vt
+        || (message != api.nilObj && unsafe { (api.vtableOf)(message) } != api.string_vt)
     {
         return Err(CodecError::InvalidRecord);
     }
@@ -1014,6 +1017,11 @@ fn oop_error_record(
     // SAFETY: `symbolName` returns a live NUL-terminated symbol name for the
     // synchronous call, as required by the frozen IdApi contract.
     let kind_bytes = unsafe { CStr::from_ptr(kind_pointer) }.to_bytes();
+    // Language Error permits an absent message; wire-v1 carries a String.
+    // Preserve it as an empty message rather than losing the worker process.
+    if message == api.nilObj {
+        return error_record(schema, kind_bytes, b"");
+    }
     let mut message_len = 0usize;
     let message_pointer = unsafe { (api.stringBytes)(message, &mut message_len) };
     if message_len != 0 && message_pointer.is_null() {
@@ -1118,21 +1126,34 @@ struct Entry {
     next_request: u64,
     exit_status: Option<u32>,
     orphaned: bool,
+    pending: Option<asynchronous::Pending>,
 }
 
 #[cfg(unix)]
-static REGISTRY: OnceLock<Mutex<HashMap<u64, Entry>>> = OnceLock::new();
+static REGISTRY: OnceLock<Mutex<HashMap<u64, Arc<Mutex<Entry>>>>> = OnceLock::new();
 #[cfg(unix)]
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 #[cfg(unix)]
-fn registry() -> &'static Mutex<HashMap<u64, Entry>> {
+fn registry() -> &'static Mutex<HashMap<u64, Arc<Mutex<Entry>>>> {
     REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 #[cfg(unix)]
-fn registry_lock() -> std::sync::MutexGuard<'static, HashMap<u64, Entry>> {
+fn registry_lock() -> std::sync::MutexGuard<'static, HashMap<u64, Arc<Mutex<Entry>>>> {
     registry()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(unix)]
+fn lookup_entry(token: u64) -> Option<Arc<Mutex<Entry>>> {
+    registry_lock().get(&token).cloned()
+}
+
+#[cfg(unix)]
+fn lock_entry(entry: &Mutex<Entry>) -> std::sync::MutexGuard<'_, Entry> {
+    entry
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -1158,7 +1179,9 @@ fn status_of(entry: &mut Entry) -> Option<u32> {
             let value = status_value(status);
             entry.exit_status = Some(value);
             entry.state = Lifecycle::Exited;
-            entry.channel.take();
+            if entry.pending.is_none() {
+                entry.channel.take();
+            }
             Some(value)
         }
         Ok(None) | Err(_) => None,
@@ -1168,6 +1191,7 @@ fn status_of(entry: &mut Entry) -> Option<u32> {
 #[cfg(unix)]
 fn terminate_entry(entry: &mut Entry) {
     if status_of(entry).is_some() {
+        entry.channel.take();
         return;
     }
     entry.channel.take();
@@ -1313,6 +1337,7 @@ fn spawn_host_worker(
         next_request: 1,
         exit_status: None,
         orphaned: false,
+        pending: None,
     })
 }
 
@@ -1443,9 +1468,8 @@ unsafe extern "C" fn finalise_handle(value: Oop) {
     }
     // SAFETY: the finalizer is installed only on `Handle` payloads.
     let token = unsafe { (&*(value as *const Handle)).token };
-    let mut entries = registry_lock();
-    if let Some(entry) = entries.get_mut(&token) {
-        entry.orphaned = true;
+    if let Some(entry) = lookup_entry(token) {
+        lock_entry(&entry).orphaned = true;
     }
 }
 
@@ -1467,13 +1491,13 @@ fn new_handle(api: &IdApi, mut entry: Entry) -> Oop {
             b"isolate handle token space exhausted",
         );
     }
-    let mut entries = registry_lock();
-    entries.insert(token, entry);
+    registry_lock().insert(token, Arc::new(Mutex::new(entry)));
     let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
     let value = unsafe { (api.alloc)(runtime.handle_vt as Oop, std::mem::size_of::<Handle>()) };
     if value.is_null() {
-        if let Some(mut entry) = entries.remove(&token) {
-            terminate_entry(&mut entry);
+        let entry = registry_lock().remove(&token);
+        if let Some(entry) = entry {
+            terminate_entry(&mut lock_entry(&entry));
         }
         return api.nilObj;
     }
@@ -1638,10 +1662,11 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
         }
     };
     let token = handle_object(self_oop).token;
-    let mut entries = registry_lock();
-    let Some(entry) = entries.get_mut(&token) else {
+    let Some(shared) = lookup_entry(token) else {
         return make_failure(api, b"stopped", b"unknownHandle", b"unknown isolate handle");
     };
+    let mut guard = lock_entry(&shared);
+    let entry = &mut *guard;
     if entry.state != Lifecycle::Ready {
         return make_failure(api, b"stopped", b"notReady", b"isolate is not ready");
     }
@@ -1801,10 +1826,11 @@ unsafe extern "C" fn handle_request_default(self_oop: Oop, args: *const Oop, cou
 unsafe extern "C" fn handle_stop(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
     let api = runtime_api();
     let token = handle_object(self_oop).token;
-    let mut entries = registry_lock();
-    let Some(entry) = entries.get_mut(&token) else {
+    let Some(shared) = lookup_entry(token) else {
         return self_oop;
     };
+    let mut guard = lock_entry(&shared);
+    let entry = &mut *guard;
     if entry.state == Lifecycle::Exited {
         return self_oop;
     }
@@ -1844,10 +1870,10 @@ unsafe extern "C" fn handle_stop(self_oop: Oop, _: *const Oop, _: usize) -> Oop 
 unsafe extern "C" fn handle_state(self_oop: Oop, _: *const Oop, _: usize) -> Oop {
     let api = runtime_api();
     let token = handle_object(self_oop).token;
-    let mut entries = registry_lock();
-    let state = entries
-        .get_mut(&token)
-        .map(|entry| {
+    let state = lookup_entry(token)
+        .map(|shared| {
+            let mut guard = lock_entry(&shared);
+            let entry = &mut *guard;
             let _ = status_of(entry);
             match entry.state {
                 Lifecycle::Starting => "starting",
@@ -1957,6 +1983,11 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
         );
         (api_ref.method)(
             isolate_vt,
+            (api_ref.intern)(c"idleFor:".as_ptr()),
+            isolate_sleep,
+        );
+        (api_ref.method)(
+            isolate_vt,
             (api_ref.intern)(c"_isolateSleep:".as_ptr()),
             isolate_sleep,
         );
@@ -1974,6 +2005,21 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
             handle_vt,
             (api_ref.intern)(c"request:".as_ptr()),
             handle_request_default,
+        );
+        (api_ref.method)(
+            handle_vt,
+            (api_ref.intern)(c"submit:timeout:".as_ptr()),
+            asynchronous::submit,
+        );
+        (api_ref.method)(
+            handle_vt,
+            (api_ref.intern)(c"pollRequest:".as_ptr()),
+            asynchronous::poll,
+        );
+        (api_ref.method)(
+            handle_vt,
+            (api_ref.intern)(c"terminate".as_ptr()),
+            asynchronous::terminate,
         );
         (api_ref.method)(handle_vt, (api_ref.intern)(c"stop".as_ptr()), handle_stop);
         (api_ref.method)(handle_vt, (api_ref.intern)(c"state".as_ptr()), handle_state);
@@ -2204,8 +2250,10 @@ pub unsafe extern "C" fn birnam_isolate_worker_boot_error(
 pub extern "C" fn birnam_isolate_drain() {
     #[cfg(unix)]
     {
-        let mut entries = registry_lock();
-        for entry in entries.values_mut() {
+        let entries: Vec<_> = registry_lock().values().cloned().collect();
+        for shared in entries {
+            let mut guard = lock_entry(&shared);
+            let entry = &mut *guard;
             if entry.orphaned && entry.state != Lifecycle::Exited {
                 terminate_entry(entry);
             } else {
@@ -2219,8 +2267,10 @@ pub extern "C" fn birnam_isolate_drain() {
 pub extern "C" fn birnam_isolate_shutdown() {
     #[cfg(unix)]
     {
-        let mut entries = registry_lock();
-        for entry in entries.values_mut() {
+        let entries: Vec<_> = registry_lock().values().cloned().collect();
+        for shared in entries {
+            let mut guard = lock_entry(&shared);
+            let entry = &mut *guard;
             if entry.state != Lifecycle::Exited {
                 terminate_entry(entry);
             }

@@ -1,5 +1,8 @@
 # 80W — Timesliced task executor
 
+**Follow-up:** [80X](80x-asynchronous-process-domains.md) adds process-backed
+multicore work and task completion ingress.
+
 This follows [80V](80v-bounded-machine-drives.md). The supplied Birnam executor
 now uses bounded Machine drives, so resumable CPU work shares its owner without
 explicit `yield` or `wait`. This is single-owner concurrency; parallel domains
