@@ -18,6 +18,15 @@ Commit `.beads/issues.jsonl` with related work; the SQLite database is local.
 Before changing issues, `br where` must resolve this repository's `.beads/`,
 not the unrelated home-directory Maggie tracker.
 
+## Self-hosting exploration — 2026-09-17
+
+[Design 81](../design/81-toward-a-birnam-implementation.md) records the proposed
+major workstreams toward a Birnam implementation. Its companion
+[81A](../design/81a-current-bootstrap-and-runtime-layers.md) traces the current
+stage-0/stage-1 build, runtime load order, implementation languages and replacement
+boundaries. These are exploratory documents; they do not change implementation
+acceptance or the existing Beads backlog.
+
 ## Selected sequence — 2026-09-06
 
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),
