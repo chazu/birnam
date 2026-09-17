@@ -247,7 +247,9 @@ not reuse the expired parent deadline or force-return through blocked native cod
   with a distinct runnable stop, not a fabricated result-bearing suspension.
   The owning Birnam executor can select control exit to the registered library
   boundary before driving the body's next step. This needs an owner-side entry
-  to the same checked transfer for a stopped Machine; it is not supplied today.
+  to the same checked transfer for a stopped Machine. [80V](80v-bounded-machine-drives.md)
+  now supplies that runtime entry and budget stops; protected task-policy
+  transitions are still required before enabling them in the supplied executor.
   Do not inject an arbitrary ordinary Call into a Frame with no matching edge.
   If cancellation is shielded or the boundary is in handler delivery, continue
   the protected path and keep the request pending.

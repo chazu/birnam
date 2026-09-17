@@ -34,6 +34,9 @@
 > now implements source-authored cancellation, cleanup, cooperative ready queues,
 > child ownership/joining, and outcome waits. Automatic timeslicing, channels, and
 > parallel domains remain work ahead.
+> [80V](80v-bounded-machine-drives.md) adds opt-in bounded Machine drives and
+> owner-side cleanup entry. Task-executor integration still requires protected
+> multi-send transitions before automatic timeslicing can be enabled.
 
 ## 1. Direction
 

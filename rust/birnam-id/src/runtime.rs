@@ -34,6 +34,9 @@ mod architectural_fit_experiment;
 #[cfg(all(test, target_os = "macos"))]
 mod boundary_control_tests;
 mod task_control;
+mod scheduling;
+#[cfg(test)]
+mod scheduling_tests;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_action_probe;
 #[cfg(feature = "ffi-test-hooks")]
@@ -3542,6 +3545,20 @@ impl Runtime {
         descriptor: std::sync::Arc<FrameDescriptor>,
         initial_oops: &[(usize, Oop)],
         initial_entry: Option<crate::execution::ResumableEntryCapability>,
+        resolve: impl FnMut(&Runtime, Oop, Oop, &[Oop]) -> Result<StacklessTarget, ExecutionError>,
+    ) -> Result<Oop, ExecutionError> {
+        self.drive_stackless_with_resolver_budget(
+            machine, descriptor, initial_oops, initial_entry, None, resolve,
+        )
+    }
+
+    fn drive_stackless_with_resolver_budget(
+        &self,
+        machine: Oop,
+        descriptor: std::sync::Arc<FrameDescriptor>,
+        initial_oops: &[(usize, Oop)],
+        initial_entry: Option<crate::execution::ResumableEntryCapability>,
+        budget: Option<usize>,
         mut resolve: impl FnMut(&Runtime, Oop, Oop, &[Oop]) -> Result<StacklessTarget, ExecutionError>,
     ) -> Result<Oop, ExecutionError> {
         self.assert_owner();
@@ -3594,7 +3611,7 @@ impl Runtime {
             return Err(error.into());
         }
 
-        let result = self.run_stackless_loop(machine, capability, owner, nil, &mut resolve);
+        let result = self.run_stackless_loop_budget(machine, capability, owner, nil, budget, &mut resolve);
         self.fail_stackless_drive_on_error(owner, capability, result)
     }
 
@@ -3689,8 +3706,34 @@ impl Runtime {
         nil: Oop,
         resolve: &mut impl FnMut(&Runtime, Oop, Oop, &[Oop]) -> Result<StacklessTarget, ExecutionError>,
     ) -> Result<Oop, ExecutionError> {
+        self.run_stackless_loop_budget(machine, capability, owner, nil, None, resolve)
+    }
+
+    fn run_stackless_loop_budget(
+        &self,
+        machine: Oop,
+        capability: MachineCapability,
+        owner: u64,
+        nil: Oop,
+        mut budget: Option<usize>,
+        resolve: &mut impl FnMut(&Runtime, Oop, Oop, &[Oop]) -> Result<StacklessTarget, ExecutionError>,
+    ) -> Result<Oop, ExecutionError> {
         let mut numeric = None;
         loop {
+            // Only between fully committed transitions, after native activations,
+            // optimizer scratch, and entry scopes from the previous turn ended.
+            if let Some(remaining) = budget.as_mut() {
+                if *remaining == 0 {
+                    let state = unsafe { &mut *self.state.get() };
+                    let execution = state.execution.machine_mut(owner, capability)?;
+                    if execution.control_eligible() {
+                        execution.stop_runnable(owner)?;
+                        return Ok(machine);
+                    }
+                } else {
+                    *remaining -= 1;
+                }
+            }
             // Copy all invocation inputs before crossing into generated code.
             let (method, program_counter, argument_count, descriptor_key) = unsafe {
                 let state = &*self.state.get();

@@ -299,4 +299,53 @@ let queuedWake := [TaskControl start: [:parent |
 [TaskCheck that: [[afterWake value] = false] label: #cancelAfterQueuedWakeSkipsBody];
 [TaskCheck that: [[queuedWake pollOutcome] = #[#success #[#cancelled #beforeDrive]]] label: #queuedWakeCancellationSettled];
 
+// Bounded Machine drives are opt-in; ordinary task policy remains cooperative.
+let spins := [0 asCell];
+let spinning := [Machine new];
+[TaskCheck that: [[spinning executionState] = #new] label: #newMachineState];
+let stopped := [spinning runBlock: [| [[| [[spins value] < 100]] whileTrue: [| [spins inc]]]] budget: 0];
+[TaskCheck that: [stopped == spinning] label: #budgetStopReturnsMachine];
+[TaskCheck that: [spinning isRunnable] label: #zeroBudgetRunnable];
+[TaskCheck that: [[spins value] = 0] label: #zeroBudgetRunsNoBody];
+[spinning continueWithBudget: 128];
+let firstSpins := [spins value];
+[TaskCheck that: [firstSpins > 0] label: #budgetRunsCpuLoop];
+[TaskCheck that: [spinning isRunnable] label: #cpuLoopAutomaticallyStops];
+[System gc];
+[spinning continueWithBudget: 128];
+[TaskCheck that: [[spins value] > firstSpins] label: #cpuLoopContinuesAfterGc];
+[TaskCheck that: [[spinning resumeWith: 1 budget: 1] isError] label: #runnableRejectsWaitResult];
+[TaskCheck that: [spinning isRunnable] label: #rejectedResumePreservesRunnable];
+[[| [spinning isRunnable]] whileTrue: [| [spinning continueWithBudget: 128]]];
+
+let bodySpins := [0 asCell];
+let controlled := [Machine new];
+[controlled runBlock: [|
+  [controlled protectedBlock: [| [[| true] whileTrue: [| [bodySpins inc]]]]]] budget: 128];
+[TaskCheck that: [[bodySpins value] > 0] label: #budgetStopsInsideProtectedBody];
+let beforeExit := [bodySpins value];
+[controlled exitRunnableBoundary: #ownerCancelled];
+[TaskCheck that: [controlled isRunnable] label: #ownerExitDoesNotRunHandler];
+[TaskCheck that: [[controlled exitRunnableBoundary: #duplicate] isError] label: #ownerExitRespectsDeliveryGuard];
+[System gc];
+let exitAnswer := [controlled continueWithBudget: 128];
+[TaskCheck that: [exitAnswer = #ownerCancelled] label: #ownerExitDeliversPayload];
+[TaskCheck that: [[bodySpins value] = beforeExit] label: #ownerExitRunsNoMoreBody];
+
+
+let waitingMachine := [Machine new];
+[waitingMachine runBlock: [| [waitingMachine park]] budget: 128];
+[TaskCheck that: [[waitingMachine isRunnable] = false] label: #waitIsNotBudgetStop];
+[TaskCheck that: [[waitingMachine executionState] = #suspended] label: #waitingMachineState];
+[TaskCheck that: [[waitingMachine continueWithBudget: 1] isError] label: #waitNeedsResultResume];
+[waitingMachine resumeWith: 42 budget: 0];
+[TaskCheck that: [waitingMachine isRunnable] label: #waitResultCommittedBeforeBudgetStop];
+[TaskCheck that: [[waitingMachine continueWithBudget: 128] = 42] label: #boundedWaitReturnsSuppliedResult];
+
+let identityMachine := [Machine new];
+let machineResult := [identityMachine runBlock: [| identityMachine] budget: 128];
+[TaskCheck that: [machineResult == identityMachine] label: #ordinaryMachineValuedResult];
+[TaskCheck that: [[identityMachine executionState] = #completed] label: #machineResultIsNotSuspension];
+
+
 [System println: #[#taskControlChecks [TaskChecks value] #failures [TaskCheckFailures value]]]]];

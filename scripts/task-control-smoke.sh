@@ -53,7 +53,7 @@ let unit := [CompiledUnit open: "{candidate}"];
 PY
 "$bin" "$work/run.birnam" >"$work/output" || { cat "$work/output"; exit 1; }
 cat "$work/output"
-grep -Fxq '#[#taskControlChecks 84 #failures 0]' "$work/output"
+grep -Fxq '#[#taskControlChecks 105 #failures 0]' "$work/output"
 grep -Fxq '#rejected' "$work/output"
 test ! -e "$work/handle.image"
 grep -Fxq '#saved' "$work/output"

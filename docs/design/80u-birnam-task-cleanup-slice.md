@@ -204,7 +204,9 @@ inputs bound to that step's receipt. No release step was added.
 
 ## Remaining scope
 
-Automatic timeslicing and owner-side exit from a runnable stop, independent
+The next slice, [80V](80v-bounded-machine-drives.md), adds bounded Machine drives
+and owner-side exit from a runnable stop. Task-executor integration still needs
+protected transitions before automatic timeslicing is enabled. Independent
 cleanup deadlines, capture ownership, asynchronous I/O/cancellation ingress,
 channels, parallel domains, and debugger policy remain unimplemented here.
 This executor shares one owner cooperatively; it does not provide execution

@@ -14,6 +14,12 @@ pub(super) fn install(r: &Runtime, vtable: Oop) {
         (b"prepareBlockControl".as_slice(), prepare as Method),
         (b"runBlock:".as_slice(), run as Method),
         (b"resumeWith:", resume as Method),
+        (b"runBlock:budget:", run_budget as Method),
+        (b"resumeWith:budget:", resume_budget as Method),
+        (b"continueWithBudget:", continue_budget as Method),
+        (b"isRunnable", is_runnable as Method),
+        (b"executionState", execution_state as Method),
+        (b"exitRunnableBoundary:", exit_runnable as Method),
     ] {
         r.add_method(vtable, r.intern(name).expect("static selector"), method);
     }
@@ -168,6 +174,123 @@ unsafe extern "C" fn resume(machine: Oop, args: *const Oop, count: usize) -> Oop
             return rejected(r, ExecutionError::InvalidAction);
         }
         r.resume_stackless_machine(machine, unsafe { args.read() })
+            .unwrap_or_else(|error| rejected(r, error))
+    })
+}
+
+unsafe extern "C" fn run_budget(machine: Oop, args: *const Oop, count: usize) -> Oop {
+    with_active(|r| {
+        if count != 2 || args.is_null() {
+            return rejected(r, ExecutionError::InvalidAction);
+        }
+        let Some(budget) = crate::execution::nonnegative_index(r, unsafe { args.add(1).read() })
+        else {
+            return rejected(r, ExecutionError::InvalidAction);
+        };
+        if let Err(error) = r.stackless_machine_capability(machine) {
+            return rejected(r, error.into());
+        }
+        register(r);
+        r.drive_stackless_budget(
+            machine,
+            descriptor(run_step, 1, true),
+            &[
+                (0, machine),
+                (1, unsafe { args.read() }),
+                (2, r.intern(b"value").expect("static selector")),
+            ],
+            budget,
+        )
+        .unwrap_or_else(|error| rejected(r, error))
+    })
+}
+
+unsafe extern "C" fn resume_budget(machine: Oop, args: *const Oop, count: usize) -> Oop {
+    with_active(|r| {
+        if count != 2 || args.is_null() {
+            return rejected(r, ExecutionError::InvalidAction);
+        }
+        let Some(budget) = crate::execution::nonnegative_index(r, unsafe { args.add(1).read() })
+        else {
+            return rejected(r, ExecutionError::InvalidAction);
+        };
+        r.resume_stackless_budget(machine, unsafe { args.read() }, budget)
+            .unwrap_or_else(|error| rejected(r, error))
+    })
+}
+
+unsafe extern "C" fn continue_budget(machine: Oop, args: *const Oop, count: usize) -> Oop {
+    with_active(|r| {
+        if count != 1 || args.is_null() {
+            return rejected(r, ExecutionError::InvalidAction);
+        }
+        let Some(budget) = crate::execution::nonnegative_index(r, unsafe { args.read() }) else {
+            return rejected(r, ExecutionError::InvalidAction);
+        };
+        r.continue_stackless_budget(machine, budget)
+            .unwrap_or_else(|error| rejected(r, error))
+    })
+}
+
+unsafe extern "C" fn is_runnable(machine: Oop, _: *const Oop, count: usize) -> Oop {
+    with_active(|r| {
+        let result = (|| {
+            if count != 0 {
+                return Err(ExecutionError::InvalidAction);
+            }
+            let capability = r.stackless_machine_capability(machine)?;
+            let state = unsafe { &*r.state.get() };
+            let runnable = state
+                .execution
+                .machine(current_thread_token(), capability)?
+                .lifecycle()
+                == crate::execution::MachineLifecycle::Runnable;
+            Ok(if runnable {
+                r.canonical().true_object
+            } else {
+                r.canonical().false_object
+            })
+        })();
+        result.unwrap_or_else(|error| rejected(r, error))
+    })
+}
+
+unsafe extern "C" fn execution_state(machine: Oop, _: *const Oop, count: usize) -> Oop {
+    with_active(|r| {
+        let result = (|| {
+            if count != 0 {
+                return Err(ExecutionError::InvalidAction);
+            }
+            let capability = r.stackless_machine_capability(machine)?;
+            let lifecycle = unsafe {
+                (*r.state.get())
+                    .execution
+                    .machine(current_thread_token(), capability)?
+                    .lifecycle()
+            };
+            use crate::execution::MachineLifecycle::*;
+            let name: &[u8] = match lifecycle {
+                New => b"new",
+                Running => b"running",
+                Runnable => b"runnable",
+                Suspended => b"suspended",
+                Completed => b"completed",
+                Failed => b"failed",
+                Destroyed => b"destroyed",
+            };
+            Ok(r.intern(name).expect("static lifecycle"))
+        })();
+        result.unwrap_or_else(|error| rejected(r, error))
+    })
+}
+
+unsafe extern "C" fn exit_runnable(machine: Oop, args: *const Oop, count: usize) -> Oop {
+    with_active(|r| {
+        if count != 1 || args.is_null() {
+            return rejected(r, ExecutionError::InvalidAction);
+        }
+        r.exit_stackless_runnable_boundary(machine, unsafe { args.read() })
+            .map(|()| machine)
             .unwrap_or_else(|error| rejected(r, error))
     })
 }

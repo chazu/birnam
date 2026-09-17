@@ -19,6 +19,7 @@ use crate::raw::{AddressMap, MethodAddress};
 
 #[path = "execution/boundary.rs"]
 pub(crate) mod boundary;
+mod scheduling;
 #[cfg(test)]
 #[path = "execution/inline_recovery_experiment.rs"]
 mod inline_recovery_experiment;
@@ -1612,6 +1613,7 @@ impl FrameArena {
 pub(crate) enum MachineLifecycle {
     New,
     Running,
+    Runnable,
     Completed,
     Suspended,
     Failed,
@@ -3966,7 +3968,10 @@ impl ExecutionState {
         let lifecycle = self.machine(owner, capability)?.lifecycle;
         if !matches!(
             lifecycle,
-            MachineLifecycle::Suspended | MachineLifecycle::Completed | MachineLifecycle::Failed
+            MachineLifecycle::Runnable
+                | MachineLifecycle::Suspended
+                | MachineLifecycle::Completed
+                | MachineLifecycle::Failed
         ) {
             return Err(MachineError::InvalidLifecycle);
         }

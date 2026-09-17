@@ -16,6 +16,131 @@ thread_local! {
     static CLEANED: Cell<usize> = const { Cell::new(0) };
 }
 
+unsafe extern "C" fn budget_handler_step(machine: Oop, args: *const Oop, _: usize) -> Oop {
+    with_active(|r| match r.integer_value(unsafe { args.read() }) {
+        0 => r.stackless_boundary_action(machine, 0, false).unwrap(),
+        1 => {
+            assert_eq!(
+                r.stackless_boundary_delivery(machine, false).unwrap(),
+                r.canonical().true_object
+            );
+            r.stackless_boundary_delivery(machine, true).unwrap();
+            r.stackless_call_site(machine, 1, CallSiteKind::Call)
+                .unwrap()
+        }
+        2 => r.stackless_return_at(machine, 2).unwrap(),
+        _ => unreachable!(),
+    })
+}
+
+#[test]
+fn scheduling_owner_exit_retains_compiler_frames_until_transfer_and_dispatches_cleanup_fresh() {
+    let bootstrap = crate::dispatch::build_bootstrap();
+    let r = &bootstrap.runtime;
+    r.publish_canonical_exports();
+    r.install_execution_objects();
+    let program = Program::compile(false);
+    r.register_stackless_resumable(SemanticRegistrationV1::new(
+        thunk,
+        program.descriptor(81001, program.step),
+        2,
+        program.layout.entry_receiver_slot as usize,
+        program.layout.entry_argument_start as usize,
+    ))
+    .unwrap();
+    r.add_method(
+        r.globals().object_vt,
+        r.intern(b"budgetBody:input:").unwrap(),
+        thunk,
+    );
+    r.add_method(
+        r.globals().object_vt,
+        r.intern(b"budgetCleanup").unwrap(),
+        old_cleanup,
+    );
+    CLEANED.set(0);
+    let handler = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+        call_sites: vec![
+            crate::execution::CallSiteDescriptor {
+                kind: CallSiteKind::Call,
+                receiver_slot: 0,
+                selector_slot: 1,
+                argument_start: 5,
+                argument_count: 2,
+                result_slot: Some(2),
+                continuation_pc: Some(1),
+            },
+            crate::execution::CallSiteDescriptor {
+                kind: CallSiteKind::Call,
+                receiver_slot: 0,
+                selector_slot: 4,
+                argument_start: 0,
+                argument_count: 0,
+                result_slot: Some(3),
+                continuation_pc: Some(2),
+            },
+        ],
+        edges: vec![probe_call(0, 1, 0, 2, 7), probe_call(1, 2, 1, 3, 7)],
+        step_method: budget_handler_step,
+        ..probe_spec(7, 3)
+    })
+    .unwrap();
+    r.enter(|| {
+        let machine = r.create_stackless_machine().unwrap();
+        let _root = ScopedOopRootGuard::new(r, machine);
+        let receiver = r.canonical().object_prototype;
+        assert_eq!(
+            r.drive_stackless_budget(
+                machine,
+                handler,
+                &[
+                    (0, receiver),
+                    (1, r.intern(b"budgetBody:input:").unwrap()),
+                    (4, r.intern(b"budgetCleanup").unwrap()),
+                    (5, receiver),
+                    (6, r.make_integer(14)),
+                ],
+                1
+            ),
+            Ok(machine)
+        );
+        assert_eq!(r.stackless_runtime_diagnostics().live_frames, 2);
+        assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 1);
+        r.gc_collect_from_native_range(0, 0);
+        r.add_method(
+            r.globals().object_vt,
+            r.intern(b"budgetBody:input:").unwrap(),
+            old_cleanup,
+        );
+        r.add_method(
+            r.globals().object_vt,
+            r.intern(b"budgetCleanup").unwrap(),
+            new_cleanup,
+        );
+        // The entered implementation remains pinned until its body is abandoned.
+        assert_eq!(r.continue_stackless_budget(machine, 0), Ok(machine));
+        assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 1);
+        let payload = r.make_string_with_finalizer(
+            b"cancelled before next body step",
+            crate::public_api::string_finalizer,
+        );
+        r.exit_stackless_runnable_boundary(machine, payload)
+            .unwrap();
+        assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
+        assert_eq!(r.stackless_runtime_diagnostics().live_frames, 1);
+        assert!(
+            r.exit_stackless_runnable_boundary(machine, payload)
+                .is_err()
+        );
+        r.gc_collect_from_native_range(0, 0);
+        assert_eq!(r.continue_stackless_budget(machine, 1), Ok(machine));
+        assert_eq!(CLEANED.get(), 1);
+        assert_eq!(r.continue_stackless_budget(machine, 1), Ok(payload));
+        assert_eq!(r.stackless_runtime_diagnostics().live_frames, 0);
+        r.destroy_stackless_machine(machine).unwrap();
+    });
+}
+
 fn send_index(r: &Runtime, machine: Oop, name: &[u8], index: usize) -> Oop {
     let index = r.make_integer(index as i64);
     r.send_slice(machine, r.intern(name).unwrap(), &[index])

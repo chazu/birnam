@@ -251,6 +251,15 @@ impl ExecutionState {
     ) -> Result<BoundaryExit, ExecutionError> {
         let machine = self.machine(owner, capability)?;
         machine.require_driving(owner)?;
+        self.preflight_boundary_frames(owner, capability)
+    }
+
+    fn preflight_boundary_frames(
+        &self,
+        owner: u64,
+        capability: MachineCapability,
+    ) -> Result<BoundaryExit, ExecutionError> {
+        let machine = self.machine(owner, capability)?;
         let arena = &machine.arena;
         let depth = arena
             .stack
@@ -330,6 +339,37 @@ impl ExecutionState {
         nil: Oop,
     ) -> Result<(), ExecutionError> {
         let plan = self.preflight_boundary_exit(owner, capability)?;
+        self.commit_boundary_exit(owner, capability, value, nil, plan);
+        Ok(())
+    }
+
+    /// Owner control ingress for a budget-stopped Machine. No body step or
+    /// synthetic send runs before the transfer. Delivery already in progress
+    /// must reach its handler before another external exit can be selected.
+    pub(crate) fn exit_runnable_boundary(
+        &mut self,
+        owner: u64,
+        capability: MachineCapability,
+        value: Oop,
+        nil: Oop,
+    ) -> Result<(), ExecutionError> {
+        self.machine(owner, capability)?.require_runnable(owner)?;
+        if self.boundary_delivery_pending(owner, capability)? {
+            return Err(ExecutionError::ContinuationBarrier);
+        }
+        let plan = self.preflight_boundary_frames(owner, capability)?;
+        self.commit_boundary_exit(owner, capability, value, nil, plan);
+        Ok(())
+    }
+
+    fn commit_boundary_exit(
+        &mut self,
+        owner: u64,
+        capability: MachineCapability,
+        value: Oop,
+        nil: Oop,
+        plan: BoundaryExit,
+    ) {
         // From here to publication: no allocation, user call, GC, or fallible
         // discovery. Value remains in the source frame until the commit starts.
         let machine = self
@@ -347,7 +387,6 @@ impl ExecutionState {
             self.release_entry_frame_pin(*entry)
                 .expect("preflight pin counts");
         }
-        Ok(())
     }
 
     pub(crate) fn publish_boundary_exit(
@@ -474,6 +513,73 @@ mod tests {
             )
             .unwrap();
         (state, machine, handler, body)
+    }
+
+    #[test]
+    fn scheduling_owner_exit_is_atomic_and_delivery_guarded() {
+        for fault in 0..5 {
+            let (mut state, machine, handler, body) = execution();
+            state
+                .machine_mut(1, machine)
+                .unwrap()
+                .stop_runnable(1)
+                .unwrap();
+            let execution = state.machine_mut(1, machine).unwrap();
+            match fault {
+                0 => execution.arena.slots[body.index].generation = u64::MAX,
+                1 => execution.arena.slots[handler.index].pending_edge = None,
+                2 => execution.arena.slots[body.index].control.deliveries = 1,
+                3 => {
+                    execution.arena.slots[body.index].resumable_entry =
+                        Some(ResumableEntryCapability {
+                            index: 999,
+                            generation: 1,
+                        })
+                }
+                _ => (),
+            }
+            let before = execution.arena.recovery_experiment_snapshot();
+            let epoch = execution.drive_epoch;
+            assert!(
+                state
+                    .exit_runnable_boundary(
+                        if fault == 4 { 2 } else { 1 },
+                        machine,
+                        core::ptr::null_mut(),
+                        core::ptr::null_mut()
+                    )
+                    .is_err()
+            );
+            let execution = state.machine(1, machine).unwrap();
+            assert_eq!(execution.arena.recovery_experiment_snapshot(), before);
+            assert_eq!(execution.drive_epoch, epoch);
+            assert_eq!(execution.lifecycle, MachineLifecycle::Runnable);
+        }
+        let (mut state, machine, handler, body) = execution();
+        state
+            .machine_mut(1, machine)
+            .unwrap()
+            .stop_runnable(1)
+            .unwrap();
+        state
+            .exit_runnable_boundary(1, machine, core::ptr::null_mut(), core::ptr::null_mut())
+            .unwrap();
+        let execution = state.machine(1, machine).unwrap();
+        assert_eq!(execution.lifecycle, MachineLifecycle::Runnable);
+        assert_eq!(execution.arena.current_handle(), Some(handler));
+        assert!(execution.arena.read_oop(body, 0).is_err());
+        assert!(state.boundary_delivery_pending(1, machine).unwrap());
+        assert!(
+            state
+                .exit_runnable_boundary(1, machine, core::ptr::null_mut(), core::ptr::null_mut())
+                .is_err()
+        );
+        state
+            .machine_mut(1, machine)
+            .unwrap()
+            .resume_runnable(1)
+            .unwrap();
+        state.acknowledge_boundary_delivery(1, machine).unwrap();
     }
 
     #[test]

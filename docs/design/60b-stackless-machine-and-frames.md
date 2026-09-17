@@ -173,11 +173,18 @@ The lifecycle states are:
 | State | Allowed transition |
 |---|---|
 | New | Running or Failed |
-| Running | Completed, Suspended, or Failed |
+| Running | Completed, Runnable, Suspended, or Failed |
+| Runnable | Running, Failed, or Destroyed |
 | Suspended | Running, Failed, or Destroyed |
 | Completed | Destroyed |
 | Failed | Destroyed |
 | Destroyed | none |
+
+The additive [80V](80v-bounded-machine-drives.md) budget stop enters Runnable
+only between committed transitions and outside native barriers. It retains roots
+and pins without creating a pending Call result; continuation therefore supplies
+no value. An owner-side boundary exit may update a Runnable Machine's frames
+while leaving it Runnable until the owner drives the retained handler.
 
 MachineState carries a drive depth, and Running to Completed requires depth
 zero. A Return at an entry-barrier frame ends that drive and decrements the
