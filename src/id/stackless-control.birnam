@@ -219,7 +219,7 @@
   #[#machine #outcome #waitToken #shieldDepth #failures #cancelled #cancelReason
     #parent #children #waiters #failureSources #childFailures #body #joining #protectedFromParent
     #controlError #queue #draining #current #quantum #transitionDepth #bodyActive
-    #ingress #requestWorker #requestId #externalResult]]];
+    #ingress #requestWorker #requestId #externalResult #serviceTask]]];
 [Reflect defineMethod: #initializeStateSchema on: TaskControl as: [:self |
   [[self stateFields] do: [:name |
     let attribute := [self attribute: name];
@@ -276,11 +276,21 @@
 [Reflect defineMethod: #hasWork on: TaskExecutor as: [:self |
   [[[[[self field: #queue] value] size] > 0]
     ifTrue: [| true]
-    ifFalse: [| [[[[self field: #ingress] value] size] > 0]]]]];
+    ifFalse: [|
+      [[[[[self field: #ingress] value] size] > 0]
+        ifTrue: [| true]
+        ifFalse: [|
+          let task := [[self field: #serviceTask] value];
+          [[task isNil] ifTrue: [| false] ifFalse: [| [[task pollOutcome] isNil]]]]]]]]];
 [Reflect defineMethod: #watch: on: TaskExecutor as: [:self :task |
   [self transition: [|
     [[self field: #ingress] set: [[[self field: #ingress] value] add: task]]]]]];
 [Reflect defineMethod: #pollIngress on: TaskExecutor as: [:self |
+  let service := [[self field: #serviceTask] value];
+  [[service notNil] ifTrue: [|
+    let control := [Isolate pollServiceControl];
+    [[control = true] ifTrue: [| [service cancel: #remoteCancellation]]];
+    [[control = #ownerLost] ifTrue: [| [service cancel: #ownerLost]]]]];
   [[[self field: #ingress] value] do: [:task | [task pollExternal]]];
   [[self field: #ingress] set: [[[self field: #ingress] value] select: [:task |
     [[[task field: #externalResult] value] isNil]]]];
@@ -348,6 +358,22 @@
       let progress := [TaskExecutor drain];
       [[progress isError] ifTrue: [| progress] ifFalse: [| task]]]
     ifFalse: [| [[TaskExecutor current] fork: body]]]]];
+
+// Lifecycle cleanup is owned before its first turn. Cancellation records an
+// outcome but cannot skip resource release merely by arriving before startup.
+[Reflect defineMethod: #startCleanup: on: TaskControl as: [:self :body |
+  let parent := [TaskExecutor current];
+  [[parent isNil]
+    ifTrue: [|
+      let task := [self prepare: body parent: nil];
+      [[task field: #shieldDepth] set: 1];
+      [TaskExecutor enqueue: #[task #start nil]];
+      [TaskExecutor drain]; task]
+    ifFalse: [|
+      [TaskExecutor transition: [|
+        let task := [parent fork: body];
+        [[task isError] ifFalse: [| [[task field: #shieldDepth] set: 1]]];
+        task]]]]]];
 
 [Reflect defineMethod: #fork: on: TaskControl as: [:self :body |
   [TaskExecutor transition: [|
@@ -663,7 +689,10 @@
       [task waitExternal]]
     cleanup: [|
       // No request was admitted if cancellation arrived before submission.
-      [[[[task field: #requestId] value] notNil] ifTrue: [| [task waitExternal]]];
+      [[[[task field: #requestId] value] notNil] ifTrue: [|
+        let settled := [task waitExternal];
+        [[[[task field: #cancelled] value] & [settled isError]] ifTrue: [|
+          [task recordFailures: #[settled] from: worker]]]]];
       [[task field: #requestWorker] set: nil];
       [[task field: #requestId] set: nil];
       [[task field: #externalResult] set: nil]]];
@@ -680,8 +709,121 @@
   [[self field: #externalResult] value]]];
 [Reflect defineMethod: #pollExternal on: TaskControl as: [:self |
   let worker := [[self field: #requestWorker] value];
+  [[[self field: #cancelled] value] ifTrue: [|
+    [worker cancelRequest: [[self field: #requestId] value]]]];
   let answer := [worker pollRequest: [[self field: #requestId] value]];
   [[answer notNil] ifTrue: [|
     [[self field: #externalResult] set: answer];
     [self enqueueResolution: [self waitToken] with: nil]]];
   self]];
+
+
+// A task service has one independent request scope. Failure/cancellation of a
+// request never turns the long-lived serial dispatcher into a failed parent.
+[Globals at: #TaskService put: [Object clone]];
+[Reflect defineMethod: #serve:request: on: TaskService as: [:self :receiver :argument |
+  let task := [TaskControl prepare: [:request | [receiver handle: argument]] parent: nil];
+  [[TaskExecutor field: #serviceTask] set: task];
+  [TaskExecutor enqueue: #[task #start nil]];
+  let progress := [TaskExecutor drain];
+  [[TaskExecutor field: #serviceTask] set: nil];
+  [[progress isError]
+    ifTrue: [| #[#failure #[#[#controlFailure [progress printString]]] nil #[]]]
+    ifFalse: [| [self wireOutcome: [task pollOutcome]]]]]];
+[Reflect defineMethod: #wireOutcome: on: TaskService as: [:self :outcome |
+  [[[outcome at: 0] = #failure]
+    ifTrue: [|
+      let failures := [[outcome at: 1] collect: [:failure |
+        [[failure isError]
+          ifTrue: [| #[#error [failure kind] [failure message]]]
+          ifFalse: [| failure]]]];
+      #[#failure failures [outcome at: 2]
+        [[outcome at: 3] collect: [:child | [self wireOutcome: child]]]]]
+    ifFalse: [| outcome]]]];
+
+[Globals at: #Worker put: [Object clone]];
+[Globals at: #RemoteFailure put: [Object clone]];
+[#["Worker.activeRequest" "Worker.closing"] do: [:name |
+  [db assert: [name asSymbol] attr: #imageTransient value: true]]];
+[Reflect defineMethod: #field: on: Worker as: [:self :name |
+  [db cellFor: self attr: [["Worker." , [name asString]] asSymbol]]]];
+[Reflect defineMethod: #fromHandle: on: Worker as: [:self :handle |
+  [[handle isError]
+    ifTrue: [| handle]
+    ifFalse: [|
+      let worker := [self clone];
+      [[worker field: #workerHandle] set: handle];
+      [[worker field: #activeRequest] set: nil];
+      [[worker field: #closing] set: false];
+      worker]]]];
+[Reflect defineMethod: #request: on: Worker as: [:self :value |
+  [self request: value timeout: 60000]]];
+[Reflect defineMethod: #request:timeout: on: Worker as: [:self :value :timeout |
+  [TaskControl request: value from: self timeout: timeout]]];
+[Reflect defineMethod: #submit:timeout: on: Worker as: [:self :value :timeout |
+  [[[self field: #closing] value]
+    ifTrue: [| [Error kind: #workerClosing]]
+    ifFalse: [|
+      let active := [[self field: #activeRequest] value];
+      let busy := [[active isNil] ifTrue: [| false] ifFalse: [| [[active pollOutcome] isNil]]];
+      [busy ifTrue: [| [Error kind: #workerBusy]] ifFalse: [|
+        let id := [[[self field: #workerHandle] value] submit: value timeout: timeout];
+        [[id isError] ifFalse: [| [[self field: #activeRequest] set: [TaskExecutor current]]]];
+        id]]]]]];
+[Reflect defineMethod: #cancelRequest: on: Worker as: [:self :id |
+  [[[self field: #workerHandle] value] cancelRequest: id]]];
+[Reflect defineMethod: #pollRequest: on: Worker as: [:self :id |
+  let answer := [[[self field: #workerHandle] value] pollRequest: id];
+  [[[answer isNil] | [answer isError]]
+    ifTrue: [| answer]
+    ifFalse: [|
+      let outcome := [answer at: 0];
+      [[[outcome at: 0] = #success]
+        ifTrue: [| #[[outcome at: 1]]]
+        ifFalse: [|
+          [[[outcome at: 0] = #cancelled]
+            ifTrue: [|
+              [[[self field: #activeRequest] value] cancel: [outcome at: 1]];
+              #[nil]]
+            ifFalse: [| [RemoteFailure fromOutcome: outcome]]]]]]]]];
+[Reflect defineMethod: #shutdown on: Worker as: [:self |
+  [TaskExecutor transition: [| [[self field: #closing] set: true]]];
+  [TaskControl startCleanup: [:task |
+    // A cancelled shutdown observer still owns the drain-and-stop cleanup.
+    [task ensure: [| nil] cleanup: [|
+      let active := [[self field: #activeRequest] value];
+      [[active notNil] ifTrue: [| [active outcome]]];
+      let handle := [[self field: #workerHandle] value];
+      [[handle notNil] ifTrue: [|
+        let stopped := [handle stop];
+        [[stopped isError] ifTrue: [| [task fail: stopped]]];
+        [db retract: self attr: ["Worker.workerHandle" asSymbol] value: handle]]];
+      [[self field: #activeRequest] set: nil]]]]]]];
+[Reflect defineMethod: #cancel on: Worker as: [:self |
+  [TaskExecutor transition: [|
+    [[self field: #closing] set: true];
+    let active := [[self field: #activeRequest] value];
+    [[active notNil] ifTrue: [| [active cancel: #serviceCancelled]]]]];
+  [self shutdown]]];
+[Reflect defineMethod: #state on: Worker as: [:self |
+  let handle := [[self field: #workerHandle] value];
+  [[handle isNil] ifTrue: [| #exited] ifFalse: [| [handle state]]]]];
+[Reflect defineMethod: #terminate on: Worker as: [:self |
+  [[self field: #closing] set: true];
+  [[[self field: #workerHandle] value] terminate]]];
+[Reflect defineMethod: #fromOutcome: on: RemoteFailure as: [:self :outcome |
+  let failure := [self clone];
+  [db assert: failure attr: #remoteOutcome value: outcome];
+  failure]];
+[Reflect defineMethod: #isError on: RemoteFailure as: [:self | true]];
+[Reflect defineMethod: #kind on: RemoteFailure as: [:self | #remoteFailure]];
+[Reflect defineMethod: #outcome on: RemoteFailure as: [:self | [db currentValue: self attr: #remoteOutcome]]];
+[Reflect defineMethod: #message on: RemoteFailure as: [:self | [[self outcome] printString]]];
+
+[Reflect defineMethod: #close on: Concurrency as: [:self |
+  [[self field: #closed] set: true];
+  [TaskControl startCleanup: [:task |
+    [task ensure: [| nil] cleanup: [|
+      [[[self field: #workers] value] do: [:worker | [[worker shutdown] outcome]]];
+      [[self field: #workers] set: #[]];
+      [self removeFiles]]]]]]];

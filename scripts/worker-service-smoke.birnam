@@ -1,0 +1,99 @@
+[Module named: #workerServiceSmoke requires: #[]];
+[Globals at: #ServiceProbe put: [Object clone]];
+[Globals at: #ServiceCleaned put: [false asCell]];
+[Globals at: #ServiceCheck put: [Object clone]];
+[Globals at: #ServiceChecks put: [0 asCell]];
+[Globals at: #ServiceFailures put: [0 asCell]];
+[Reflect defineMethod: #assert:label: on: ServiceCheck as: [:self :condition :label |
+  [ServiceChecks inc];
+  [[condition = true] ifFalse: [|
+    [ServiceFailures inc]; [System println: #[#FAILED label]]]]]];
+[Reflect defineMethod: #handle: on: ServiceProbe as: [:self :job |
+  let operation := [job at: 0];
+  let task := [TaskExecutor current];
+  [[operation = #status] ifTrue: [| [ServiceCleaned value]] ifFalse: [|
+  [[operation = #echo] ifTrue: [| [job at: 1]] ifFalse: [|
+  [[operation = #fail] ifTrue: [| [task fail: #requestFailed]] ifFalse: [|
+  [[operation = #errorValue] ifTrue: [| [Error kind: #ordinaryReturnedValue]] ifFalse: [|
+    [task ensure: [|
+      [System writeFile: [job at: 1] contents: "entered"];
+      [[operation = #park]
+        ifTrue: [| [task wait]]
+        ifFalse: [| [[| true] whileTrue: [| nil]]]]]
+    cleanup: [|
+      [ServiceCleaned set: true];
+      [System writeFile: [[job at: 1] , ".done"] contents: "cleaned"];
+      [[operation = #cleanupFailure] ifTrue: [| [task fail: #cleanupFailed]]]]]
+  ]]]]]]]]]];
+[Reflect defineMethod: #waitForEntry: on: ServiceCheck as: [:self :marker |
+  [[| [[System readFile: marker] isError]] whileTrue: [| [[TaskExecutor current] yield]]]]];
+[Reflect defineMethod: #run: on: ServiceCheck as: [:self :program |
+  let worker := [program worker: #ServiceProbe];
+  [[worker isError] ifTrue: [| [System println: worker]; [OS exit: 1]]];
+  [self assert: [[worker isError] = false] label: #started];
+  let echo := [worker request: #[#echo nil]];
+  [self assert: [[echo pollOutcome] = #[#success nil]] label: #nilSuccess];
+
+  let failure := [worker request: #[#fail]];
+  let remote := [[[failure pollOutcome] at: 1] at: 0];
+  [self assert: [[remote kind] = #remoteFailure] label: #explicitRemoteFailure];
+  [self assert: [[[remote outcome] at: 1] = #[#requestFailed]] label: #failureEvidence];
+  [self assert: [[[worker request: #[#echo 42]] pollOutcome] = #[#success 42]] label: #serviceSurvivesRequestFailure];
+  let errorValue := [worker request: #[#errorValue]];
+  [self assert: [[[[[errorValue pollOutcome] at: 1] at: 0] class] = #resultTransfer] label: #ordinaryErrorIsNotTaskFailure];
+
+  let marker := [[[program field: #workspace] value] , "/entered"];
+  let cancelled := [TaskControl start: [:scope |
+    let request := [worker request: #[#loop marker]];
+    [self waitForEntry: marker];
+    [request cancel: #testCancel];
+    [request outcome]]];
+  [self assert: [[cancelled pollOutcome] = #[#success #[#cancelled #testCancel]]] label: #cpuCancellationSettles];
+  [self assert: [[[worker request: #[#status]] pollOutcome] = #[#success true]] label: #remoteCleanupRan];
+  [self assert: [[System readFile: [marker , ".done"]] = "cleaned"] label: #cleanupBeforeSettlement];
+  [marker concurrencyDelete]; [[marker , ".done"] concurrencyDelete];
+
+  let parked := [TaskControl start: [:scope |
+    let request := [worker request: #[#park marker]];
+    [self waitForEntry: marker];
+    [request cancel: #parkCancel];
+    [request outcome]]];
+  [self assert: [[parked pollOutcome] = #[#success #[#cancelled #parkCancel]]] label: #parkedRequestAdmitsControl];
+  [marker concurrencyDelete]; [[marker , ".done"] concurrencyDelete];
+
+  let badCleanup := [TaskControl start: [:scope |
+    let request := [worker request: #[#cleanupFailure marker]];
+    [self waitForEntry: marker];
+    [request cancel: #cleanupCancel];
+    [request outcome]]];
+  [self assert: [[[badCleanup pollOutcome] at: 0] = #failure] label: #cleanupFailureBeatsCancellation];
+  [self assert: [[[[[[badCleanup pollOutcome] at: 1] at: 0] outcome] at: 1] = #[#cleanupFailed]] label: #cleanupFailurePreserved];
+  [marker concurrencyDelete]; [[marker , ".done"] concurrencyDelete];
+
+  let draining := [TaskControl start: [:scope |
+    let request := [worker request: #[#echo 17]];
+    // Let admission occur before closing the service.
+    [[| [[[request field: #requestId] value] isNil]] whileTrue: [| [scope yield]]];
+    let shutdown := [TaskExecutor transition: [|
+      let closing := [worker shutdown];
+      [closing cancel: #observerStopped];
+      closing]];
+    #[[request await] [shutdown outcome]]]];
+  [self assert: [[[draining pollOutcome] at: 0] = #success] label: #shutdownDrainsAcceptedWork];
+  [self assert: [[worker state] = #exited] label: #gracefulShutdownExited];
+  [self assert: [[[[draining pollOutcome] at: 1] at: 1] = #[#cancelled #observerStopped]] label: #prestartShutdownCancellationStillCleansUp];
+  let rejected := [worker request: #[#echo 9]];
+  [self assert: [[[[[rejected pollOutcome] at: 1] at: 0] kind] = #workerClosing] label: #shutdownStopsAdmission];
+
+  let second := [program worker: #ServiceProbe];
+  let stopped := [TaskControl start: [:scope |
+    let request := [second request: #[#loop marker]];
+    [self waitForEntry: marker];
+    let stop := [second cancel];
+    [stop outcome]]];
+  [self assert: [[[stopped pollOutcome] at: 0] = #success] label: #serviceCancellationJoins];
+  [self assert: [[second state] = #exited] label: #serviceCancellationExited];
+  [self assert: [[System readFile: [marker , ".done"]] = "cleaned"] label: #serviceCancellationRunsCleanup];
+  [marker concurrencyDelete]; [[marker , ".done"] concurrencyDelete];
+  [System println: #[#workerServiceChecks [ServiceChecks value] #failures [ServiceFailures value]]];
+  [[ServiceFailures value] = 0]]];

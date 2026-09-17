@@ -1,5 +1,8 @@
 # 80X — Asynchronous process domains
 
+**Follow-up:** [80Y](80y-task-services-and-program-setup.md) adds opt-in task
+services with cooperative remote cancellation and program preparation helpers.
+
 The process backend now supports multicore work through asynchronous requests,
 with completions integrated into the ordinary Birnam task executor. Each worker
 has its own process, Runtime, heap, and execution owner. No GIL is introduced.

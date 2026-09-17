@@ -23,6 +23,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(unix)]
 mod asynchronous;
+#[cfg(unix)]
+mod service;
 use std::time::Duration;
 
 pub const MAGIC: &[u8; 4] = b"BISO";
@@ -1127,6 +1129,7 @@ struct Entry {
     exit_status: Option<u32>,
     orphaned: bool,
     pending: Option<asynchronous::Pending>,
+    task_service: bool,
 }
 
 #[cfg(unix)]
@@ -1280,6 +1283,7 @@ fn spawn_host_worker(
     image: &[u8],
     receiver: &[u8],
     selector: &[u8],
+    task_service: bool,
 ) -> Result<Entry, &'static str> {
     let image = std::str::from_utf8(image).map_err(|_| "invalidImageEncoding")?;
     let receiver = std::str::from_utf8(receiver).map_err(|_| "invalidReceiverEncoding")?;
@@ -1292,6 +1296,7 @@ fn spawn_host_worker(
     let host_fd = host.into_raw_fd();
     let worker_fd = worker.into_raw_fd();
     let mut command = Command::new(executable);
+    command.env("BIRNAM_TASK_SERVICE", if task_service { "1" } else { "0" });
     command.args([
         "--worker",
         image.to_str().ok_or("invalidImageEncoding")?,
@@ -1338,6 +1343,7 @@ fn spawn_host_worker(
         exit_status: None,
         orphaned: false,
         pending: None,
+        task_service,
     })
 }
 
@@ -1508,6 +1514,11 @@ fn new_handle(api: &IdApi, mut entry: Entry) -> Oop {
 
 #[cfg(unix)]
 unsafe extern "C" fn isolate_start(_: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { start_worker(args, count, false) }
+}
+
+#[cfg(unix)]
+unsafe fn start_worker(args: *const Oop, count: usize, task_service: bool) -> Oop {
     let api = runtime_api();
     let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
         return make_failure(
@@ -1560,7 +1571,7 @@ unsafe extern "C" fn isolate_start(_: Oop, args: *const Oop, count: usize) -> Oo
             b"worker selector must have arity one",
         );
     }
-    let mut entry = match spawn_host_worker(&image, &receiver, &selector) {
+    let mut entry = match spawn_host_worker(&image, &receiver, &selector, task_service) {
         Ok(entry) => entry,
         Err(kind) => return make_failure(api, b"boot", kind.as_bytes(), kind.as_bytes()),
     };
@@ -1667,6 +1678,14 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
     };
     let mut guard = lock_entry(&shared);
     let entry = &mut *guard;
+    if entry.task_service {
+        return make_failure(
+            api,
+            b"encode",
+            b"asyncRequired",
+            b"task services use submit/poll or Worker request:",
+        );
+    }
     if entry.state != Lifecycle::Ready {
         return make_failure(api, b"stopped", b"notReady", b"isolate is not ready");
     }
@@ -2021,6 +2040,21 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
             (api_ref.intern)(c"terminate".as_ptr()),
             asynchronous::terminate,
         );
+        (api_ref.method)(
+            isolate_vt,
+            (api_ref.intern)(c"startService:image:".as_ptr()),
+            service::start,
+        );
+        (api_ref.method)(
+            isolate_vt,
+            (api_ref.intern)(c"pollServiceControl".as_ptr()),
+            service::poll_control,
+        );
+        (api_ref.method)(
+            handle_vt,
+            (api_ref.intern)(c"cancelRequest:".as_ptr()),
+            asynchronous::cancel,
+        );
         (api_ref.method)(handle_vt, (api_ref.intern)(c"stop".as_ptr()), handle_stop);
         (api_ref.method)(handle_vt, (api_ref.intern)(c"state".as_ptr()), handle_state);
         (api_ref.method)(
@@ -2081,6 +2115,8 @@ pub unsafe extern "C" fn birnam_isolate_worker_driver(
     // SAFETY: the caller supplies a live descriptor and retains ownership;
     // ManuallyDrop prevents File from closing it on return.
     let mut channel = ManuallyDrop::new(unsafe { File::from_raw_fd(fd as RawFd) });
+    let task_service = std::env::var("BIRNAM_TASK_SERVICE").is_ok_and(|s| s == "1");
+    let _service_guard = service::DriverGuard;
     let ready = Frame {
         header: Header {
             kind: FrameKind::Ready,
@@ -2093,7 +2129,11 @@ pub unsafe extern "C" fn birnam_isolate_worker_driver(
         return 1;
     }
     loop {
-        let frame = match read_frame(borrowed_file(&mut channel)) {
+        let frame = match if task_service {
+            service::read_next(borrowed_file(&mut channel)).map_err(|_| ())
+        } else {
+            read_frame(borrowed_file(&mut channel)).map_err(|_| ())
+        } {
             Ok(frame) => frame,
             Err(_) => return 1,
         };
@@ -2117,7 +2157,16 @@ pub unsafe extern "C" fn birnam_isolate_worker_driver(
                 let Some(api) = (!api.is_null()).then(|| unsafe { &*api }) else {
                     return 1;
                 };
-                let argument = match decode_oop_value(api, &frame.payload) {
+                let payload = if task_service {
+                    match service::request_payload(&frame.payload) {
+                        Ok(Some(value)) => value,
+                        Ok(None) => continue, // A cancellation arriving after publication is stale.
+                        Err(_) => return 1,
+                    }
+                } else {
+                    frame.payload.clone()
+                };
+                let argument = match decode_oop_value(api, &payload) {
                     Ok(value) => value,
                     Err(error) => {
                         let payload = match error_record(
@@ -2140,7 +2189,26 @@ pub unsafe extern "C" fn birnam_isolate_worker_driver(
                         return 1;
                     }
                 };
-                let result = unsafe { (api.send)(receiver, selector, &argument, 1) };
+                let result = if task_service {
+                    if service::begin(fd, frame.header.request_id).is_err() {
+                        return 1;
+                    }
+                    let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+                    let name = unsafe { (api.intern)(c"TaskService".as_ptr()) };
+                    let policy =
+                        unsafe { (api.send)(globals, (api.intern)(c"at:".as_ptr()), &name, 1) };
+                    let result = unsafe {
+                        (api.send)(
+                            policy,
+                            (api.intern)(c"serve:request:".as_ptr()),
+                            [receiver, argument].as_ptr(),
+                            2,
+                        )
+                    };
+                    result
+                } else {
+                    unsafe { (api.send)(receiver, selector, &argument, 1) }
+                };
                 if !result.is_null()
                     && unsafe {
                         (api.send)(result, (api.intern)(c"isError".as_ptr()), ptr::null(), 0)

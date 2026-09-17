@@ -14,6 +14,7 @@ PRODUCTION = ('Cargo.toml', 'Cargo.lock', 'rust/**/*', 'src/id/**/*', 'modules/*
 NATIVE = PRODUCTION + ('scripts/*lifecycle*', 'scripts/portable-image-v8-smoke.sh',
                       'scripts/stackless-control-smoke.sh', 'scripts/task-control-smoke.*',
                       'scripts/multicore-smoke.*',
+                      'scripts/worker-service-smoke.*',
                       'scripts/closure-elision-smoke.sh',
                       'scripts/rust-driver-native-smoke.sh', 'scripts/fixtures/*', 'abi/**/*')
 

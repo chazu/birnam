@@ -13,7 +13,7 @@
 // Worker A visits 3, 7, 11, ...; worker B visits 5, 9, 13, ... .
 // Interleaving the odd candidates gives both workers similar amounts of work.
 // The coordinator counts 2 separately. Every candidate here is odd and >= 3.
-[Reflect defineMethod: #count: on: PrimeWorker as: [:self :job |
+[Reflect defineMethod: #handle: on: PrimeWorker as: [:self :job |
   let cpuStart := [DemoClock cpu];
   let candidate := [[job at: 0] asCell];
   let limit := [job at: 1];

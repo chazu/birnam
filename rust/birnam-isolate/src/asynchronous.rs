@@ -11,6 +11,7 @@ pub(super) struct Pending {
     expected: usize,
     deadline: Instant,
     result: Option<Result<Frame, HostTransportError>>,
+    cancellation_queued: bool,
 }
 
 impl Pending {
@@ -33,6 +34,7 @@ impl Pending {
             expected: HEADER_LEN,
             deadline: Instant::now() + Duration::from_millis(timeout as u64),
             result: None,
+            cancellation_queued: false,
         })
     }
 
@@ -148,6 +150,16 @@ pub(super) unsafe extern "C" fn submit(handle: Oop, args: *const Oop, count: usi
         );
     }
     let timeout = (unsafe { (api.smallIntValue)(args[1]) } as u64).min(u32::MAX as u64) as u32;
+    let payload = if entry.task_service {
+        match service::wrap_request(&payload) {
+            Ok(payload) => payload,
+            Err(error) => {
+                return make_failure(api, b"encode", b"nonTransferable", codec_error_name(error));
+            }
+        }
+    } else {
+        payload
+    };
     let pending = match Pending::new(id, payload, timeout) {
         Ok(pending) => pending,
         Err(_) => {
@@ -194,6 +206,7 @@ pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize
     let Some(shared) = lookup_entry(handle_object(handle).token) else {
         return make_failure(api, b"stopped", b"unknownHandle", b"unknown isolate handle");
     };
+    let task_service;
     let result = {
         let mut entry = lock_entry(&shared);
         if entry.pending.as_ref().is_none_or(|p| p.id != id) {
@@ -204,6 +217,7 @@ pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize
                 b"request is not outstanding on this worker",
             );
         }
+        task_service = entry.task_service;
         let mut pending = entry.pending.take().expect("checked pending request");
         if let Some(channel) = entry.channel.as_mut() {
             pending.progress(channel);
@@ -277,7 +291,13 @@ pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize
     } else {
         decode_oop_error_record(api, APPLICATION_ERROR_SCHEMA, &reply.payload).map(
             |(kind, message)| {
-                let class = unsafe { (api.intern)(c"application".as_ptr()) };
+                let class = unsafe {
+                    (api.intern)(if task_service {
+                        c"resultTransfer".as_ptr()
+                    } else {
+                        c"application".as_ptr()
+                    })
+                };
                 make_failure_objects(api, class, kind, message, api.nilObj, unsafe {
                     (api.mkSmallInt)(id as i64)
                 })
@@ -310,6 +330,44 @@ pub(super) unsafe extern "C" fn terminate(handle: Oop, _: *const Oop, _: usize) 
         terminate_entry(&mut lock_entry(&entry));
     }
     handle
+}
+
+pub(super) unsafe extern "C" fn cancel(handle: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = runtime_api();
+    let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
+        return api.falseObj;
+    };
+    if args.len() != 1 || unsafe { (api.isSmallInt)(args[0]) } == 0 {
+        return api.falseObj;
+    }
+    let id = unsafe { (api.smallIntValue)(args[0]) } as u64;
+    let Some(shared) = lookup_entry(handle_object(handle).token) else {
+        return api.falseObj;
+    };
+    let mut entry = lock_entry(&shared);
+    if !entry.task_service {
+        return api.falseObj;
+    }
+    let Some(pending) = entry.pending.as_mut().filter(|p| p.id == id) else {
+        return api.falseObj;
+    };
+    if !pending.cancellation_queued {
+        let frame = Frame {
+            header: Header {
+                kind: FrameKind::Request,
+                request_id: id,
+                payload_len: 0,
+            },
+            payload: service::cancellation_payload(),
+        };
+        let Ok(bytes) = frame.encode() else {
+            return api.falseObj;
+        };
+        pending.outgoing.extend_from_slice(&bytes);
+        pending.cancellation_queued = true;
+    }
+    // Local control admission is not acknowledgement of remote cancellation.
+    api.trueObj
 }
 
 #[cfg(test)]

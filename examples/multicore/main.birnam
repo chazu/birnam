@@ -1,42 +1,13 @@
-// Run from the repository root:
-//   birnam examples/multicore/main.birnam
-// Change limit for a longer or shorter run.
-let limit := 10000;
-
+// Run from the repository root: birnam examples/multicore/main.birnam
 [Module load: #os];
-[Module load: #file];
-[System load: "examples/multicore/platform.birnam"];
-[System load: "examples/multicore/worker.birnam"];
-[System println: ["Counting primes through " , [limit printString] , " with two Birnam worker processes."]];
-[System println: "Preparing the worker image and coordinator..."];
+let program := [Concurrency load: #[
+  "examples/multicore/platform.birnam"
+  "examples/multicore/worker.birnam"
+  "examples/multicore/coordinator.birnam"]];
+[[program isError] ifTrue: [| [System println: program]; [OS exit: 1]]];
 
-let work := [DemoPlatform temporaryDirectory];
-[[work isNil] ifTrue: [| [System println: "Could not create a temporary directory."]; [OS exit: 1]]];
-let image := [work , "/workers.image"];
-let candidate := [work , "/coordinator.dylib"];
-// Select resumable execution for the task body using Birnam's public compiler
-// API. Worker-image creation, compilation, and startup are outside the timings.
-let source := [System readFile: "examples/multicore/coordinator.birnam"];
-[Codegen eval: source];
-[Codegen recordModuleSource: source named: #multicoreDemo];
-[DispatchGeneration initializeCurrent];
-// Save before selecting the coordinator's task machinery: workers only need
-// ordinary methods for their serial counting jobs.
-[System saveImage: image];
-let success := [[[[System imageSaveReport] status] = #saved]
-  ifTrue: [|
-    let prepared := [DemoPlatform compileCoordinator: source to: candidate];
-    [prepared ifTrue: [| [MulticoreDemo run: image limit: limit]]]]
-  ifFalse: [| [System println: [System imageSaveReport]]; false]];
-
-// Mapped code remains retained by the runtime; these are only its on-disk files.
-[File delete: image];
-[File delete: candidate];
-[File delete: [candidate , ".candidate"]];
-let retained := [Globals at: #DemoContentPath];
-[[retained notNil] ifTrue: [|
-  [File delete: retained];
-  [File delete: [retained , ".candidate"]]]];
-[File removeDir: [work , "/.birnam-candidates"]];
-[File removeDir: work];
+// Change the limit for a longer or shorter run. The library owns compilation,
+// the worker image, and temporary artifacts; requests return ordinary tasks.
+let success := [MulticoreDemo run: program limit: 10000];
+[program close];
 [[success = true] ifFalse: [| [OS exit: 1]]];

@@ -35,8 +35,9 @@
 > and outcome waits. [80V](80v-bounded-machine-drives.md) adds bounded Machine
 > drives; [80W](80w-timesliced-task-executor.md) integrates automatic timeslicing.
 > [80X](80x-asynchronous-process-domains.md) adds asynchronous process requests
-> and task completion ingress for multicore work. Thread-hosted domains, full
-> channels, and cooperative remote cancellation remain work ahead.
+> and task completion ingress for multicore work. [80Y](80y-task-services-and-program-setup.md)
+> adds task-service cancellation, shutdown, and program preparation. Thread-hosted
+> domains, full channels, and general timer/I/O integration remain work ahead.
 
 ## 1. Direction
 
@@ -749,7 +750,9 @@ records the cooperative task executor, automatic joining, cancellation, and
 cleanup library. [80V](80v-bounded-machine-drives.md) adds bounded Machine
 drives, and [80W](80w-timesliced-task-executor.md) enables automatic timeslicing
 with protected Birnam executor transitions. [80X](80x-asynchronous-process-domains.md)
-adds asynchronous process-backed multicore work. Thread hosting remains future work.
+adds asynchronous process-backed multicore work. [80Y](80y-task-services-and-program-setup.md)
+adds program preparation, task-backed serial services, cooperative remote
+cancellation, and graceful shutdown. Thread hosting remains future work.
 The accepted policies are not reopened by that work.
 For that mechanism, the user explicitly requires preserving the public IdApi,
 Method/StepMethod ABI, descriptor V2, and image format. A separately specified

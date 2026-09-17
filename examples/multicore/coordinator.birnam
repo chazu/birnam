@@ -1,9 +1,9 @@
 [Module named: #multicoreDemo requires: #[]];
 [Globals at: #MulticoreDemo put: [Object clone]];
 
-[Reflect defineMethod: #run:limit: on: MulticoreDemo as: [:self :image :limit |
-  let a := [Isolate start: #PrimeWorker selector: #count: image: image];
-  let b := [Isolate start: #PrimeWorker selector: #count: image: image];
+[Reflect defineMethod: #run:limit: on: MulticoreDemo as: [:self :program :limit |
+  let a := [program worker: #PrimeWorker];
+  let b := [program worker: #PrimeWorker];
   let first := #[3 limit];
   let second := #[5 limit];
 
@@ -18,22 +18,23 @@
   let parallelStart := [DemoClock now];
   let root := [TaskControl start: [:scope |
     // Submit both owned child tasks before awaiting either one.
-    let left := [TaskControl request: first from: a timeout: 600000];
-    let right := [TaskControl request: second from: b timeout: 600000];
+    let left := [a request: first timeout: 600000];
+    let right := [b request: second timeout: 600000];
     [scope fork: [:local |
       [System println: "  The root domain can run local tasks while workers compute."]]];
     #[[left await] [right await]]]];
   let parallelTime := [[DemoClock now] - parallelStart];
   let outcome := [root pollOutcome];
-  [a stop];
-  [b stop];
+  [a shutdown];
+  [b shutdown];
 
-  [[[[sequentialA isError] | [sequentialB isError]] | [[[outcome at: 0] = #success] = false]]
+  let sequentialOK := [[[[sequentialA pollOutcome] at: 0] = #success] & [[[sequentialB pollOutcome] at: 0] = #success]];
+  [[[sequentialOK = false] | [[[outcome at: 0] = #success] = false]]
     ifTrue: [| [System println: #[#demoFailed sequentialA sequentialB outcome]]; false]
     ifFalse: [|
       let left := [[outcome at: 1] at: 0];
       let right := [[outcome at: 1] at: 1];
-      let sequentialCount := [[[sequentialA at: 0] + [sequentialB at: 0]] + 1];
+      let sequentialCount := [[[[[sequentialA pollOutcome] at: 1] at: 0] + [[[sequentialB pollOutcome] at: 1] at: 0]] + 1];
       let parallelCount := [[[left at: 0] + [right at: 0]] + 1];
       [[sequentialCount = parallelCount]
         ifTrue: [|

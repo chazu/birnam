@@ -6,7 +6,7 @@ From the repository root:
 birnam examples/multicore/main.birnam
 ```
 
-For a longer run, change `limit` in `main.birnam` to `100000`.
+For a longer run, change `limit: 10000` in `main.birnam` to `limit: 100000`.
 
 Requires a current Birnam installation on `PATH` with compiled-unit support
 (currently macOS/arm64). To build and install the current release in the normal prefix:
@@ -24,12 +24,12 @@ odd candidates, keeping the work roughly balanced. The root domain also runs a
 local task during the parallel phase.
 
 - [worker.birnam](worker.birnam) contains the CPU work: trial division in Birnam.
-- [main.birnam](main.birnam) creates the worker image, selects resumable execution
-  for the coordinator, runs it, and removes the temporary files.
+- [main.birnam](main.birnam) prepares the source modules with `Concurrency load:`,
+  runs the demonstration, and closes the program. The library owns the worker
+  image and compiler artifacts.
 - [coordinator.birnam](coordinator.birnam) contains sequential requests and parallel structured
-  tasks using `TaskControl request:from:timeout:`.
-- [platform.birnam](platform.birnam) provides clock and temporary-directory
-  operations through `Alien`, plus coordinator compilation through `CompiledUnit`.
+  tasks using `worker request:timeout:`.
+- [platform.birnam](platform.birnam) provides clock operations through `Alien`.
   All setup, coordination, and reporting are Birnam.
 
 The output compares elapsed time and verifies that both runs return the same
@@ -41,4 +41,7 @@ also affect these single-run measurements; parallel execution can take longer.
 Setup and worker startup are outside the timings.
 
 These are separate process domains with copied messages and independent heaps.
-The workers exit after the demonstration.
+The workers implement ordinary `handle:` methods, each running in its own request
+scope. They shut down after the demonstration. See
+[task services and program setup](../../docs/design/80y-task-services-and-program-setup.md)
+for cancellation and shutdown behavior.

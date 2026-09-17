@@ -2129,7 +2129,9 @@ unsafe fn register_cell_methods(runtime: &Runtime) {
         unsafe { (api.method)(vt, selector, *method) };
     }
     unsafe {
-        (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        // All three CellState words are object references. RAW preserved stale
+        // native addresses in images instead of relocating store/entity/attr.
+        (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
         (api.setTraceHook)(vt, trace_cell);
     }
 }

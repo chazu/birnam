@@ -1,3 +1,107 @@
 [Module named: #isolate requires: #[#stdlib]];
 
 [Reflect docModule: #isolate is: "Process workers from explicit images, with copied wire-v1 values. Handles support blocking request:timeout: and bounded asynchronous submit:timeout:/pollRequest:. TaskControl request:from:timeout: integrates completion with structured tasks."]
+
+// Batch source preparation and image ownership for ordinary Birnam programs.
+// These setup operations run before tasks/workers start. Scheduling and worker
+// lifecycle methods live in the resumable stacklessControl unit.
+[Globals at: #Concurrency put: [Object clone]];
+// A preparation object's paths and live service ownership are process-local
+// bookkeeping, not state to recreate inside every worker image.
+[#[#workspace #artifacts #workers #image #closed] do: [:name |
+  [db assert: [["Concurrency." , [name asString]] asSymbol] attr: #imageTransient value: true]]];
+[Reflect defineMethod: #field: on: Concurrency as: [:self :name |
+  [db cellFor: self attr: [["Concurrency." , [name asString]] asSymbol]]]];
+[Reflect defineMethod: #initializePlatform on: Concurrency as: [:self |
+  [[[[self field: #platformReady] value] isNil] ifTrue: [|
+    [Alien wrap: "strcpy" signature: "p p s" as: #concurrencyCopy: on: ForeignAddress];
+    [Alien wrap: "mkdtemp" signature: "s p" as: #concurrencyDirectory on: ForeignAddress];
+    [Alien wrap: "unlink" signature: "i s" as: #concurrencyDelete on: String];
+    [Alien wrap: "rmdir" signature: "i s" as: #concurrencyRemoveDirectory on: String];
+    [[self field: #platformReady] set: true]]];
+  self]];
+[Reflect defineMethod: #newWorkspace on: Concurrency as: [:self |
+  [self initializePlatform];
+  let buffer := [Alien alloc: 128];
+  [buffer concurrencyCopy: "/tmp/birnam-concurrency-XXXXXX"];
+  let path := [buffer concurrencyDirectory];
+  [buffer free]; path]];
+[Reflect defineMethod: #readSource: on: Concurrency as: [:self :path |
+  let source := [System readFile: path];
+  [[source isError] ifTrue: [| source] ifFalse: [|
+    let revision := [Codegen sourceRevisionOf: source];
+    [[[revision isNil] | [revision isError]]
+      ifTrue: [| [Error kind: #invalidConcurrencyModule message: path]]
+      ifFalse: [| #[path source [revision at: 1]]]]]]]];
+[Reflect defineMethod: #compileSource: on: Concurrency as: [:self :row |
+  let index := [[[self field: #artifacts] value] size];
+  let path := [[[self field: #workspace] value] , "/unit-" , [index printString] , ".dylib"];
+  [[self field: #artifacts] set: [[[self field: #artifacts] value] add: path]];
+  let compiled := [CompiledUnit compile: [row at: 1] named: [row at: 2] output: path selection: #resumableRequired];
+  [[compiled isNil]
+    ifTrue: [| [Error kind: #concurrencyCompileFailed message: [Codegen lastError]]]
+    ifFalse: [|
+      let unit := [CompiledUnit open: path];
+      let mapped := [unit map];
+      [[mapped isError] ifTrue: [| mapped] ifFalse: [|
+        let retained := [Codegen candidateContentPath: unit];
+        [[retained notNil] ifTrue: [|
+          [[self field: #artifacts] set: [[[self field: #artifacts] value] add: retained]]]];
+        [[unit activate] fulfill]]]]]]];
+[Reflect defineMethod: #prepareSources: on: Concurrency as: [:self :paths |
+  [[[DispatchGeneration current] notNil]
+    ifTrue: [| [Error kind: #concurrencyAlreadyPrepared message: "Load the program's modules together before starting its generation."]]
+    ifFalse: [|
+      let rows := [paths collect: [:path | [self readSource: path]]];
+      let bad := [rows detect: [:row | [row isError]]];
+      [[bad notNil] ifTrue: [| bad] ifFalse: [|
+        let program := [self clone];
+        let workspace := [self newWorkspace];
+        [[workspace isNil] ifTrue: [| [Error kind: #workspaceUnavailable]] ifFalse: [|
+          [[program field: #workspace] set: workspace];
+          [[program field: #artifacts] set: #[]];
+          [[program field: #workers] set: #[]];
+          [[program field: #image] set: nil];
+          [[program field: #closed] set: false];
+          let loaded := [rows collect: [:row | [System load: [row at: 0]]]];
+          let loadError := [loaded detect: [:answer | [answer isError]]];
+          [[loadError notNil] ifTrue: [| [program removeFiles]; loadError] ifFalse: [|
+            [DispatchGeneration initializeCurrent];
+            let compiled := [rows inject: program into: [:answer :row |
+              [[answer isError] ifTrue: [| answer] ifFalse: [|
+                let next := [program compileSource: row];
+                [[next isError] ifTrue: [| next] ifFalse: [| program]]]]]];
+            [[compiled isError] ifTrue: [| [program removeFiles]]];
+            compiled]]]]]]]]]];
+// Image capture must occur after the conditional setup callbacks return: live
+// checked Machine activations intentionally remain ineligible for image capture.
+[Globals at: #ConcurrencyLoadFailure put: [Object clone]];
+[Reflect defineMethod: #finish: on: ConcurrencyLoadFailure as: [:self :error | error]];
+[Reflect defineMethod: #finish: on: Concurrency as: [:self :program |
+  let result := [program captureWorkerImage];
+  [[result isError] ifTrue: [| [program removeFiles]]];
+  result]];
+[Reflect defineMethod: #load: on: Concurrency as: [:self :paths |
+  let prepared := [self prepareSources: paths];
+  let finisher := [[prepared isError] ifTrue: [| ConcurrencyLoadFailure] ifFalse: [| self]];
+  [finisher finish: prepared]]];
+[Reflect defineMethod: #captureWorkerImage on: Concurrency as: [:self |
+  let image := [[[self field: #workspace] value] , "/workers.image"];
+  [System saveImage: image];
+  [[[[System imageSaveReport] status] = #saved]
+    ifTrue: [| [[self field: #image] set: image]; self]
+    ifFalse: [| [Error kind: #workerImageRejected message: [[System imageSaveReport] detail]]]]]];
+[Reflect defineMethod: #worker: on: Concurrency as: [:self :receiver |
+  [[[self field: #closed] value] ifTrue: [| [Error kind: #concurrencyClosed]] ifFalse: [|
+    let worker := [Worker fromHandle: [Isolate startService: receiver image: [[self field: #image] value]]];
+    [[worker isError] ifFalse: [|
+      [[self field: #workers] set: [[[self field: #workers] value] add: worker]]]];
+    worker]]]];
+[Reflect defineMethod: #removeFiles on: Concurrency as: [:self |
+  [[[self field: #artifacts] value] do: [:path |
+    [path concurrencyDelete]; [[path , ".candidate"] concurrencyDelete]]];
+  let workspace := [[self field: #workspace] value];
+  [[workspace , "/workers.image"] concurrencyDelete];
+  [[workspace , "/.birnam-candidates"] concurrencyRemoveDirectory];
+  [workspace concurrencyRemoveDirectory];
+  self]];

@@ -1,8 +1,7 @@
-// The demo's small OS adapter, expressed through the ordinary Alien API.
+// The demo's clocks, expressed through the ordinary Alien API.
+[Module named: #multicoreClock requires: #[]];
 [Alien wrap: "clock_gettime" signature: "i i p" as: #demoTimeInto: on: Integer];
 [Alien wrap: "uname" signature: "i p" as: #demoUname on: ForeignAddress];
-[Alien wrap: "strcpy" signature: "p p s" as: #demoCopy: on: ForeignAddress];
-[Alien wrap: "mkdtemp" signature: "s p" as: #demoTempDirectory on: ForeignAddress];
 [Globals at: #DemoClock put: [Object clone]];
 [Globals at: #DemoPlatform put: [Object clone]];
 
@@ -12,25 +11,6 @@
   let status := [buffer demoUname];
   let name := [[status = 0] ifTrue: [| [buffer peekStringAt: 0]] ifFalse: [| nil]];
   [buffer free]; name]];
-[Reflect defineMethod: #temporaryDirectory on: DemoPlatform as: [:self |
-  let buffer := [Alien alloc: 128];
-  [buffer demoCopy: "/tmp/birnam-multicore-XXXXXX"];
-  let path := [buffer demoTempDirectory];
-  [buffer free]; path]];
-[Reflect defineMethod: #compileCoordinator:to: on: DemoPlatform as: [:self :source :path |
-  let compiled := [CompiledUnit compile: source named: #multicoreDemo output: path selection: #resumableRequired];
-  [[compiled isNil]
-    ifTrue: [| [System println: [Codegen lastError]]; false]
-    ifFalse: [|
-      let unit := [CompiledUnit open: path];
-      let mapped := [unit map];
-      [[mapped isError]
-        ifTrue: [| [System println: mapped]; false]
-        ifFalse: [|
-          [Globals at: #DemoContentPath put: [Codegen candidateContentPath: unit]];
-          let activated := [[unit activate] fulfill];
-          [[activated isError] ifTrue: [| [System println: activated]]];
-          [[activated isError] = false]]]]]]];
 [Reflect defineMethod: #read: on: DemoClock as: [:self :clock |
   let stamp := [Alien alloc: 16];
   let status := [clock demoTimeInto: stamp];
@@ -41,9 +21,11 @@
 [Reflect defineMethod: #now on: DemoClock as: [:self | [self read: DemoMonotonicClock]]];
 [Reflect defineMethod: #cpu on: DemoClock as: [:self | [self read: DemoCpuClock]]];
 
-let system := [DemoPlatform systemName];
-[[[system = "Darwin"] | [system = "Linux"]] ifFalse: [|
-  [System println: "This example supports 64-bit macOS and Linux."];
-  [OS exit: 1]]];
-[Globals at: #DemoMonotonicClock put: [[system = "Darwin"] ifTrue: [| 6] ifFalse: [| 1]]];
-[Globals at: #DemoCpuClock put: [[system = "Darwin"] ifTrue: [| 12] ifFalse: [| 2]]];
+[Reflect defineMethod: #initialize on: DemoPlatform as: [:self |
+  let system := [self systemName];
+  [[[system = "Darwin"] | [system = "Linux"]] ifFalse: [|
+    [System println: "This example supports 64-bit macOS and Linux."];
+    [OS exit: 1]]];
+  [Globals at: #DemoMonotonicClock put: [[system = "Darwin"] ifTrue: [| 6] ifFalse: [| 1]]];
+  [Globals at: #DemoCpuClock put: [[system = "Darwin"] ifTrue: [| 12] ifFalse: [| 2]]]]];
+[DemoPlatform initialize];
