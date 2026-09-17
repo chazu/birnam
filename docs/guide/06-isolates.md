@@ -1,5 +1,10 @@
 # Blocking process isolates
 
+For structured tasks, asynchronous worker requests, cooperative cancellation,
+and multicore programs, start with [Concurrency](07-concurrency.md). This page
+documents the lower-level blocking API; its five-second default differs from
+the task-service API's 60-second default.
+
 I1a isolates run Birnam in clean child processes. Each worker boots one explicit
 image, validates its current dispatch generation, enters the running phase, and
 then receives copied values through a substrate-owned loop. Workers do not run

@@ -562,7 +562,9 @@
         [[acc isError] ifTrue: [| acc] ifFalse: [| [Module load: name]]]]];
       [[loaded isError]
         ifTrue:  [| loaded]
-        ifFalse: [| [Module load: #compiledUnitDocs]]]]]] doc:
+        ifFalse: [|
+          [#[#compiledUnitDocs #concurrencyDocs] inject: self into: [:answer :name |
+            [[answer isError] ifTrue: [| answer] ifFalse: [| [Module load: name]]]]]]]]]] doc:
   "Load every supported runtime module from its compiled unit so its documentation and source metadata become visible. Answers self."];
 
 // Build the full HTML reference to `out`: load the compiled production closure,

@@ -28,6 +28,7 @@ product; compatibility and language surface can and will still change.
   - [Bake an executable](#bake-an-executable)
 - [Staged Code Changes](#staged-code-changes)
 - [Isolated Workers](#isolated-workers)
+- [Concurrency](#concurrency)
 - [Wrapping a Dynamic Library with Alien](#wrapping-a-dynamic-library-with-alien)
   - [Scaffold and build the library](#scaffold-and-build-the-library)
   - [Define the wrapper](#define-the-wrapper)
@@ -429,6 +430,25 @@ birnam examples/multicore/main.birnam
 
 See the [isolate guide](docs/guide/06-isolates.md). Generated API reference is
 available through `birnam doc isolate`.
+
+## Concurrency
+
+Local tasks share a domain and take automatic turns. Independent worker
+processes run concurrently on multiple CPU cores, with separate heaps and copied
+messages. `Concurrency load:` prepares a batch of named source modules;
+`program worker:` creates a serial service with an ordinary `handle:` method.
+Requests return owned tasks, with explicit outcomes, cancellation, and cleanup.
+
+Start with the [concurrency guide](docs/guide/07-concurrency.md) for a complete
+program, the API reference, and the rules for waiting and shutdown. The
+[multicore example](examples/multicore/README.md) demonstrates parallel CPU work.
+
+```sh
+birnam doc concurrency
+birnam doc worker 'request:timeout:'
+birnam doc taskControl await
+birnam doc taskExecutor
+```
 
 For interactive object and fact-store wayfinding, see the
 [image exploration guide](docs/guide/08-exploring-the-image.md).

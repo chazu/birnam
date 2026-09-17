@@ -57,7 +57,8 @@
 
 // Resolve the module from the compiled production closure.
 [Reflect defineMethod: #docNamed:sel: on: Cli as: [:self :mod :sel |
-  let floor := [Module load: #compiledUnitDocs];
+  let floor := [#[#compiledUnitDocs #concurrencyDocs] inject: self into: [:answer :name |
+    [[answer isError] ifTrue: [| answer] ifFalse: [| [Module load: name]]]]];
   [[floor isError]
     ifTrue: [| [self fail: [floor printString]]]
     ifFalse: [|

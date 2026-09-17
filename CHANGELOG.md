@@ -10,6 +10,17 @@ loader ports are complete.
 
 ### Added
 
+- Structured tasks with automatic timeslicing, owned child tasks, joining,
+  explicit success/failure/cancellation outcomes, and shielded cleanup.
+- Process-backed multicore services: `Concurrency load:` prepares named source
+  modules and their worker image; `program worker:` creates a serial service
+  whose ordinary `handle:` method runs in a fresh task scope for each request.
+  Worker requests return tasks, support cooperative remote cancellation, and
+  provide graceful `shutdown` and `cancel` operations.
+- [Concurrency guide](docs/guide/07-concurrency.md), searchable `birnam doc`
+  entries for `concurrency`, `worker`, `taskControl`, and `taskExecutor`, and a
+  multicore example runnable with `birnam examples/multicore/main.birnam`.
+
 - Prelude can declare exact native integer semantics for guarded stackless calls.
   The floor checks current targets and native API context, preserves allocation
   and error behavior, and pins the declaring library. Design 74T also adds checked
@@ -149,6 +160,11 @@ loader ports are complete.
   (five warm launches, release runtime; diagnostic evidence in Design 65).
 
 ### Fixed
+
+- Cell image recovery now relocates its store, entity, and attribute references
+  instead of preserving stale native addresses. The payload ABI and image
+  format are unchanged. Images previously saved with raw Cell addresses must
+  be recreated from source.
 
 - JIT generation keys no longer equal Unit object addresses, preventing pending
   retirement metadata on the native stack from retaining an otherwise dead Unit.

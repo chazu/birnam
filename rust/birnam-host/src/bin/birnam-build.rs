@@ -65,6 +65,7 @@ const STAGE1_MODULES: &[(&str, &str, bool)] = &[
         "compiledUnitDocs",
         false,
     ),
+    ("modules/concurrency-docs.birnam", "concurrencyDocs", false),
 ];
 
 fn usage() {

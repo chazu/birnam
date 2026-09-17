@@ -1,0 +1,66 @@
+// Reference registrations are separate from executable concurrency units so
+// prose changes do not alter their resumable implementation inventories.
+[Module named: #concurrencyDocs requires: #[#doc]];
+
+[Doc module: #concurrency is: "Concurrency prepares named source modules and worker images for process-backed multicore tasks. See the Concurrency guide in birnam docgen."];
+[Doc for: #load: in: #concurrency says:
+  "Concurrency load: paths loads a complete batch of named module sources, selects resumable implementations, and captures a worker image. Answers a program or Error. Call before the initial dispatch generation exists; paths are relative to the working directory. Setup and initializers are synchronous; initializer effects are not rolled back on failure. Keep initializer callbacks inside named methods. Owns temporary artifacts until close."];
+[Doc for: #worker: in: #concurrency says:
+  "program worker: #Receiver starts an independent process from the prepared image. The named global implements handle:. Answers a Worker or Error; a closed program answers concurrencyClosed. Startup is synchronous. Different workers can execute on different cores; requests and results are copied."];
+[Doc for: #close in: #concurrency says:
+  "program close closes admission, joins every owned worker's shutdown, and removes its image/compiler artifacts. Returns a shielded cleanup task; inside a task use outcome to wait for release, or rely on automatic scope joining. At the host boundary it drives synchronously. Shielding begins at creation, including cancellation before the first turn."];
+
+[Doc module: #worker is: "Worker is a serial task service in an independent process. Each handle: request owns a fresh task scope. One outstanding request per worker; no hidden queue."];
+[Doc for: #request: in: #worker says:
+  "worker request: value returns an owned request task inside a task; at the host boundary it drives the executor before returning. Default process deadline: 60000 milliseconds. Use task await for a success value, outcome for a full result inside a task, or pollOutcome at the host boundary."];
+[Doc for: #request:timeout: in: #worker says:
+  "worker request: value timeout: milliseconds returns a request task with an explicit process deadline. Admission occurs when the task submits; overlap fails with workerBusy and closed admission with workerClosing. Expiry terminates the process, even during cleanup. This is not a graceful cleanup deadline. Values must fit the copied isolate codec; arbitrary objects, Cells, closures, handles, and cycles are unsupported."];
+[Doc for: #handle: in: #worker says:
+  "Implement handle: on the named receiver in a prepared module. Each invocation runs in an independent task scope; TaskExecutor current supplies its task. Use task fail: for explicit failure and ensure:cleanup: for cleanup. Request failure leaves the service usable. Returning an Error is an ordinary success value but fails transfer with resultTransfer. Native calls are not forcibly preempted."];
+[Doc for: #shutdown in: #worker says:
+  "worker shutdown closes admission immediately, drains accepted work, and stops the process. Returns an owned cleanup task, shielded from creation so pre-start cancellation cannot skip cleanup. Join with outcome inside a task. At the host boundary it drives synchronously. Successful release drops the wrapper's native handle."];
+[Doc for: #cancel in: #worker says:
+  "worker cancel closes admission, requests cancellation of active work with serviceCancelled, and joins shutdown. Returns a shielded cleanup task. Cancellation uses a separate request-ID control path; it does not forcibly unwind native code. Remote cleanup failures remain failures."];
+[Doc for: #terminate in: #worker says:
+  "worker terminate explicitly terminates the process and closes admission. It does not promise that Birnam cleanup ran. Prefer cancel or shutdown when cleanup is required."];
+[Doc for: #state in: #worker says:
+  "worker state answers the native lifecycle state, including ready, busy, and exited. After graceful shutdown releases its native handle, the wrapper answers exited."];
+[Doc for: #fromHandle: in: #worker says:
+  "Worker fromHandle: handle wraps an Isolate startService:image: handle; an Error argument passes through. This adapter expects service task-outcome envelopes, not legacy isolate replies."];
+
+[Doc module: #taskControl is: "TaskControl provides owned tasks, automatic joining, explicit outcomes, cancellation, and shielded cleanup. Run task bodies from modules selected for resumable execution."];
+[Doc for: #start: in: #taskControl says:
+  "TaskControl start: [:task | ...] creates a root task at the host boundary or an owned child in the current task. At the host boundary it drives the executor before returning. Inspect pollOutcome there; outcome and await require a task context."];
+[Doc for: #fork: in: #taskControl says:
+  "scope fork: [:child | ...] schedules an owned child and returns it. The parent joins its children before publication; unhandled child failure fails the parent and cancels siblings. A settled or joining scope rejects new children with taskClosed."];
+[Doc for: #pollOutcome in: #taskControl says:
+  "Return nil until settlement, then #[#success value], #[#cancelled reason], or #[#failure failures cancelReason childFailures]. Never waits. Publication follows owned-child joining and cleanup; terminal outcomes do not change."];
+[Doc for: #outcome in: #taskControl says:
+  "Inside a task, wait for the target task and return its full outcome. Answers taskContextRequired at the host boundary. Observing a child failure does not suppress parent failure or detach ownership."];
+[Doc for: #await in: #taskControl says:
+  "Inside a task, wait and return the success value; propagate failure or cancellation into the caller. Answers taskContextRequired at the host boundary. Waiting suspends the caller only where the execution path is resumable."];
+[Doc for: #cancel: in: #taskControl says:
+  "task cancel: reason records the first cancellation reason before terminal publication and requests cancellation of ordinary children. Returns the task; join outcome to observe settlement. Failure evidence takes precedence over cancellation. For service requests, admission of remote control is not acknowledgement and remote completion may already have won."];
+[Doc for: #fail: in: #taskControl says:
+  "Fail the current task explicitly with ordinary evidence. Unwind through its cleanup and join owned children before publication. Returning an Error value alone does not invoke this operation."];
+[Doc for: #ensure:cleanup: in: #taskControl says:
+  "task ensure: [| body] cleanup: [| cleanup] installs cleanup for normal return, failure, and cancellation once entered. Cleanup is shielded, may wait, and its failures remain failures. There is no implicit cleanup deadline. Cancellation before entering the operation cannot run cleanup that was never installed."];
+[Doc for: #yield in: #taskControl says:
+  "Yield the current task to other runnable local tasks. Automatic bounded turns also timeslice resumable execution. Blocking native calls are not preempted and may block the entire domain."];
+[Doc for: #startCleanup: in: #taskControl says:
+  "TaskControl startCleanup: [:task | ...] creates an owned cleanup task with shielding already installed before its first turn. Cancellation is recorded for its final outcome but cannot skip its body. Lifecycle code uses this to guarantee drain/release ownership from creation; the cleanup must still finish to settle."];
+[Doc for: #request:from:timeout: in: #taskControl says:
+  "TaskControl request: value from: handle timeout: milliseconds adapts asynchronous submit/poll to an owned task. Inside a task returns promptly; at the host boundary drives synchronously. Legacy isolate handles lack cooperative remote cancellation; Worker service handles provide it. Cancellation retains admitted work until reply collection or transport settlement."];
+
+[Doc module: #taskExecutor is: "TaskExecutor drives automatic turns within one domain. Local tasks share objects and run serially; independent process workers supply multicore execution."];
+[Doc for: #current in: #taskExecutor says:
+  "TaskExecutor current returns the currently executing task, or nil at the host boundary. A service handler can use it for fail:, ensure:cleanup:, and child tasks."];
+[Doc for: #quantum in: #taskExecutor says:
+  "TaskExecutor quantum returns the positive Machine-step budget used per ordinary task turn. This is a work budget, not a millisecond timer or a native-call deadline."];
+
+[Doc module: #remoteFailure is: "RemoteFailure is Error-like local evidence retaining a copied service task failure, including cleanup and child failure details."];
+[Doc for: #outcome in: #remoteFailure says:
+  "Return the remote #[#failure failures cancelReason childFailures] record. Remote Error evidence is copied as #[#error kind message]; nested failed child outcomes are retained."];
+[Doc for: #kind in: #remoteFailure says: "Answer remoteFailure."];
+[Doc for: #isError in: #remoteFailure says: "Answer true."];
+[Doc for: #message in: #remoteFailure says: "Answer the printed remote outcome."];

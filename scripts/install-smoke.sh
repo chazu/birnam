@@ -70,7 +70,7 @@ required_dylibs=(
   libbirnam_lsp.dylib libbirnam_repl.dylib libbirnam_cli.dylib
   libbirnam_http.dylib libbirnam_log.dylib libbirnam_markdown.dylib
   libbirnam_os.dylib libbirnam_process.dylib libbirnam_random.dylib
-  libbirnam_test.dylib libbirnam_compiledUnitDocs.dylib
+  libbirnam_test.dylib libbirnam_compiledUnitDocs.dylib libbirnam_concurrencyDocs.dylib
 )
 for dylib in "${required_dylibs[@]}"; do
   test -f "$tmp/birnam/lib/$dylib"

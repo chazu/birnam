@@ -1,5 +1,8 @@
 # Multicore prime counting
 
+See the [concurrency guide](../../docs/guide/07-concurrency.md) for the task and
+worker API, cancellation, outcomes, and shutdown.
+
 From the repository root:
 
 ```sh
