@@ -1,0 +1,40 @@
+[Module named: #multicoreDemo requires: #[]];
+[Globals at: #MulticoreDemo put: [Object clone]];
+
+[Reflect defineMethod: #run:limit: on: MulticoreDemo as: [:self :image :limit |
+  let a := [Isolate start: #PrimeWorker selector: #count: image: image];
+  let b := [Isolate start: #PrimeWorker selector: #count: image: image];
+  let first := #[3 limit];
+  let second := #[5 limit];
+
+  // Same two jobs, same worker processes, but wait for each result in turn.
+  [System println: "Counting sequentially..."];
+  let sequentialStart := [DemoClock now];
+  let sequentialA := [a request: first timeout: 600000];
+  let sequentialB := [b request: second timeout: 600000];
+  let sequentialTime := [[DemoClock now] - sequentialStart];
+
+  [System println: "Counting with two workers..."];
+  let parallelStart := [DemoClock now];
+  let root := [TaskControl start: [:scope |
+    // Submit both owned child tasks before awaiting either one.
+    let left := [TaskControl request: first from: a timeout: 600000];
+    let right := [TaskControl request: second from: b timeout: 600000];
+    [scope fork: [:local |
+      [System println: "  The root domain can run local tasks while workers compute."]]];
+    #[[left await] [right await]]]];
+  let parallelTime := [[DemoClock now] - parallelStart];
+  let outcome := [root pollOutcome];
+  [a stop];
+  [b stop];
+
+  [[[[sequentialA isError] | [sequentialB isError]] | [[[outcome at: 0] = #success] = false]]
+    ifTrue: [| [System println: #[#demoFailed sequentialA sequentialB outcome]]]
+    ifFalse: [|
+      let left := [[outcome at: 1] at: 0];
+      let right := [[outcome at: 1] at: 1];
+      let sequentialCount := [[[sequentialA at: 0] + [sequentialB at: 0]] + 1];
+      let parallelCount := [[[left at: 0] + [right at: 0]] + 1];
+      // The runner formats this measurement as seconds, speedup, and CPU use.
+      [System println: #[#primeDemo sequentialCount parallelCount
+        sequentialTime parallelTime [[left at: 1] + [right at: 1]]]]]]]];

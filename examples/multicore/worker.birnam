@@ -1,0 +1,24 @@
+[Module named: #primeWorker requires: #[]];
+[Globals at: #PrimeWorker put: [Object clone]];
+
+[Reflect defineMethod: #isPrime: on: PrimeWorker as: [:self :n |
+  let divisor := [3 asCell];
+  let prime := [true asCell];
+  [[| [[[[divisor value] * [divisor value]] <= n]
+    and: [| [prime value]]]] whileTrue: [|
+    [[[n mod: [divisor value]] = 0] ifTrue: [| [prime set: false]]];
+    [divisor set: [[divisor value] + 2]]]];
+  [prime value]]];
+
+// Worker A visits 3, 7, 11, ...; worker B visits 5, 9, 13, ... .
+// Interleaving the odd candidates gives both workers similar amounts of work.
+// The coordinator counts 2 separately. Every candidate here is odd and >= 3.
+[Reflect defineMethod: #count: on: PrimeWorker as: [:self :job |
+  let cpuStart := [DemoClock cpu];
+  let candidate := [[job at: 0] asCell];
+  let limit := [job at: 1];
+  let count := [0 asCell];
+  [[| [[candidate value] <= limit]] whileTrue: [|
+    [[self isPrime: [candidate value]] ifTrue: [| [count inc]]];
+    [candidate set: [[candidate value] + 4]]]];
+  #[[count value] [[DemoClock cpu] - cpuStart]]]];

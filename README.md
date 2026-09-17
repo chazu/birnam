@@ -420,6 +420,13 @@ Run the blocking worker examples with:
 bash examples/isolates/run.sh
 ```
 
+For a [multicore prime-counting demonstration](examples/multicore/README.md)
+that compares sequential and parallel execution:
+
+```sh
+python3 examples/multicore/run.py
+```
+
 See the [isolate guide](docs/guide/06-isolates.md). Generated API reference is
 available through `birnam doc isolate`.
 
