@@ -14,6 +14,9 @@
   condition]];
 
 [Reflect defineMethod: #run on: TaskCheck as: [:self |
+// Preserve the cooperative regression traces under a deliberately large quantum.
+// Separate one-turn tests below exercise automatic scheduling and its races.
+[[TaskExecutor field: #quantum] set: 1000000];
 let continued := [0 asCell];
 let cleaned := [0 asCell];
 let finishedCleanup := [0 asCell];
@@ -299,7 +302,7 @@ let queuedWake := [TaskControl start: [:parent |
 [TaskCheck that: [[afterWake value] = false] label: #cancelAfterQueuedWakeSkipsBody];
 [TaskCheck that: [[queuedWake pollOutcome] = #[#success #[#cancelled #beforeDrive]]] label: #queuedWakeCancellationSettled];
 
-// Bounded Machine drives are opt-in; ordinary task policy remains cooperative.
+// Direct Machine drives retain their explicit budget/wait distinction.
 let spins := [0 asCell];
 let spinning := [Machine new];
 [TaskCheck that: [[spinning executionState] = #new] label: #newMachineState];
@@ -348,4 +351,158 @@ let machineResult := [identityMachine runBlock: [| identityMachine] budget: 128]
 [TaskCheck that: [[identityMachine executionState] = #completed] label: #machineResultIsNotSuspension];
 
 
+[[TaskExecutor field: #quantum] set: 128];
+[self checkTimeslicing: 128];
+[self checkTimeslicing: 1];
+[[TaskExecutor field: #quantum] set: 128];
 [System println: #[#taskControlChecks [TaskChecks value] #failures [TaskCheckFailures value]]]]];
+
+// Exercise the same policy at its default quantum and at every driver turn.
+[Reflect defineMethod: #checkTimeslicing: on: TaskCheck as: [:self :quantum |
+[[TaskExecutor field: #quantum] set: quantum];
+let left := [0 asCell];
+let right := [0 asCell];
+let peers := [TaskControl start: [:parent |
+  [TaskExecutor transition: [|
+    [parent fork: [:child |
+      [left set: 1];
+      [[| [[right value] = 0]] whileTrue: [| nil]];
+      [left set: 2]]];
+    [parent fork: [:child |
+      [right set: 1];
+      [[| [[left value] = 0]] whileTrue: [| nil]];
+      [right set: 2]]]]];
+  #joined]];
+[TaskCheck that: [[left value] = 2] label: #cpuLeftMadeProgress];
+[TaskCheck that: [[right value] = 2] label: #cpuRightMadeProgress];
+[TaskCheck that: [[peers pollOutcome] = #[#success #joined]] label: #cpuPeersAutomaticallyJoined];
+
+// Cancellation enters cleanup without a cooperative checkpoint in the body.
+let entered := [false asCell];
+let cleaned := [0 asCell];
+let cleanupFinished := [0 asCell];
+let worker := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let owner := [TaskControl start: [:parent |
+  [TaskExecutor transition: [|
+    [worker set: [parent fork: [:child |
+      [child ensure: [|
+        [entered set: true];
+        [[| true] whileTrue: [| nil]]]
+      cleanup: [|
+        [cleaned inc];
+        [child wait];
+        [cleanupFinished inc]]]]]];
+    [parent fork: [:child |
+      [[| [[entered value] = false]] whileTrue: [| nil]];
+      [[worker value] cancel: #cpuStop]]]]];
+  73]];
+[TaskCheck that: [[cleaned value] = 1] label: #cpuCancellationEnteredCleanupOnce];
+[TaskCheck that: [[cleanupFinished value] = 0] label: #cpuCleanupActuallyParked];
+[TaskCheck that: [[owner pollOutcome] isNil] label: #cpuCancellationStillJoinsCleanup];
+[System gc];
+[[worker value] cancel: #again];
+[[worker value] resolve: [[worker value] waitToken] with: nil];
+[TaskCheck that: [[cleanupFinished value] = 1] label: #cpuCleanupResumedOnce];
+[TaskCheck that: [[[worker value] pollOutcome] = #[#cancelled #cpuStop]] label: #cpuCancellationReasonPreserved];
+[TaskCheck that: [[owner pollOutcome] = #[#success 73]] label: #cpuCancelledChildJoined];
+
+// A peer can never observe an intermediate scheduler transition, even when the
+// drive budget expires repeatedly inside nested guards.
+let stage := [0 asCell];
+let seenPartial := [false asCell];
+let atomic := [TaskControl start: [:parent |
+  [TaskExecutor transition: [|
+    [parent fork: [:child |
+      [TaskExecutor transition: [|
+        [stage set: 1];
+        [TaskExecutor transition: [|
+          let n := [0 asCell];
+          [[| [[n value] < 10]] whileTrue: [| [n inc]]]]];
+        [stage set: 2]]]]];
+    [parent fork: [:child |
+      [[| [[stage value] < 2]] whileTrue: [|
+        [[[stage value] = 1] ifTrue: [| [seenPartial set: true]]]]]]]]];
+  #atomic]];
+[TaskCheck that: [[seenPartial value] = false] label: #transitionHidesPartialState];
+[TaskCheck that: [[atomic pollOutcome] = #[#success #atomic]] label: #nestedTransitionsFinish];
+
+let restored := [nil asCell];
+let failed := [TaskControl start: [:task |
+  [task ensure: [|
+    [TaskExecutor transition: [|
+      [TaskExecutor transition: [| [task fail: #guardedFailure]]]]]]
+  cleanup: [|
+    [restored set: [[task field: #transitionDepth] value]];
+    [task wait]]]]];
+[TaskCheck that: [[restored value] = 0] label: #failureRestoresTransitionDepth];
+[failed cancel: #duringFailedCleanup];
+[failed resolve: [failed waitToken] with: nil];
+[TaskCheck that: [[failed pollOutcome] = #[#failure #[#guardedFailure] #duringFailedCleanup #[]]] label: #guardedFailureBeatsCancellation];
+let errorValue := [Error kind: #transitionData];
+let returnedError := [TaskControl start: [:task | [TaskExecutor transition: [| errorValue]]]];
+[TaskCheck that: [[[returnedError pollOutcome] at: 1] == errorValue] label: #transitionPreservesErrorIdentity];
+
+let ready := [TaskControl start: [:task | 5]];
+let pending := [TaskControl start: [:task | [task wait]]];
+let rejected := [TaskControl start: [:task |
+  [TaskExecutor transition: [|
+    #[[task wait] [task yield] [ready outcome] [pending outcome]]]]]];
+[[[rejected pollOutcome] at: 1] do: [:answer |
+  [TaskCheck that: [[answer kind] = #taskTransitionWait] label: #transitionRejectsPublicWait]]];
+[TaskCheck that: [[[pending field: #waiters] value] = #[]] label: #rejectedWaitDoesNotRegister];
+[pending cancel: #done];
+
+// Admission, observer registration, wake claiming, and cancellation are forced
+// across budget stops. The driver's guard makes the wake/cancel ordering exact.
+let continued := [false asCell];
+let observed := [0 asCell];
+let raced := [db cellFor: [Object clone] attr: #taskControlSmokeHandles];
+let raceOwner := [TaskControl start: [:parent |
+  [TaskExecutor transition: [|
+    [raced set: [parent fork: [:child | [child wait]; [continued set: true]]]];
+    [parent fork: [:child | [[raced value] outcome]; [observed inc]]];
+    [parent fork: [:child |
+      [[| [[[raced value] waitToken] isNil]] whileTrue: [| nil]];
+      [TaskExecutor transition: [|
+        let token := [[raced value] waitToken];
+        [TaskCheck that: [[raced value] resolve: token with: 42] label: #tinyWakeClaimed];
+        [TaskCheck that: [[[raced value] resolve: token with: 43] = false] label: #tinyDuplicateRejected];
+        [[raced value] cancel: #claimedThenCancelled]]]]]]];
+  [[raced value] outcome]]];
+[TaskCheck that: [[continued value] = false] label: #tinyCancellationSkipsClaimedBody];
+[TaskCheck that: [[observed value] = 1] label: #tinyObserverWokenExactlyOnce];
+[TaskCheck that: [[raceOwner pollOutcome] = #[#success #[#cancelled #claimedThenCancelled]]] label: #tinyRegistrationRaceSettles];
+[TaskCheck that: [[[raced value] machine] isNil] label: #tinyPublicationReleasesMachine];
+[TaskCheck that: [[raceOwner children] = #[]] label: #tinyPublicationReleasesChildren];
+[TaskCheck that: [[[[raced value] field: #waiters] value] = #[]] label: #tinyPublicationReleasesWaiters];
+
+// Cancellation before a newly admitted child starts is explicit ordering, not
+// an assumption that fork's next caller send precedes all child execution.
+let ran := [false asCell];
+let beforeStart := [TaskControl start: [:parent |
+  let child := [TaskExecutor transition: [|
+    let child := [parent fork: [:task | [ran set: true]]];
+    [child cancel: #beforeStart];
+    child]];
+  [child outcome]]];
+[TaskCheck that: [[ran value] = false] label: #tinyPreCancelledBodyNeverEntered];
+[TaskCheck that: [[beforeStart pollOutcome] = #[#success #[#cancelled #beforeStart]]] label: #tinyPreCancelledChildSettled];
+
+let changed := [false asCell];
+let value := [nil asCell];
+[Reflect defineMethod: #mark on: TaskCleanup as: [:self | #beforeQuantumEdit]];
+let editing := [TaskControl start: [:parent |
+  [TaskExecutor transition: [|
+    [parent fork: [:child |
+      [[| [[changed value] = false]] whileTrue: [| nil]];
+      [value set: [TaskCleanup mark]]]];
+    [parent fork: [:child |
+      [System gc];
+      [Reflect defineMethod: #mark on: TaskCleanup as: [:self | #afterQuantumEdit]];
+      [changed set: true]]]]];
+  91]];
+[TaskCheck that: [[value value] = #afterQuantumEdit] label: #tinyFreshDispatchAfterPeerEditAndGc];
+[TaskCheck that: [[editing pollOutcome] = #[#success 91]] label: #tinyEditedTasksJoined];
+[TaskCheck that: [[[TaskExecutor field: #queue] value] = #[]] label: #tinyNoLostOrDuplicateQueueEntries];
+[TaskCheck that: [[TaskExecutor current] isNil] label: #tinyOwnerReleased];
+[System println: #[#timeslicingQuantum quantum #checked]]]];

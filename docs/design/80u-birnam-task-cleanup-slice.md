@@ -1,5 +1,8 @@
 # 80U — Source-authored structured tasks and cleanup
 
+**Follow-up:** [80W](80w-timesliced-task-executor.md) enables automatic task
+timeslicing and protects the executor transitions described here.
+
 This implements a cooperative, single-owner task lifecycle on top of the
 boundary mechanism from [80N](80n-cancellation-to-cleanup-transition.md). It is
 part of the concurrency implementation; automatic timeslicing and parallel

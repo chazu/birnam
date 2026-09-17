@@ -437,8 +437,9 @@ cleanup remains due and retains Frames, roots, and code pins through suspension.
 Users remain responsible for the consequences of replacing that behavior.
 The concrete control extension and subsequent implementation authorization are
 recorded in [80N](80n-cancellation-to-cleanup-transition.md). The supplied
-cooperative task/cleanup protocol is implemented in [80U](80u-birnam-task-cleanup-slice.md);
-the final public convenience API remains implementation/design work.
+task/cleanup protocol is implemented in [80U](80u-birnam-task-cleanup-slice.md),
+with automatic timeslicing added in [80W](80w-timesliced-task-executor.md).
+The final public convenience API remains implementation/design work.
 
 ### Waiting rules: least astonishment
 
@@ -745,7 +746,10 @@ works through the wait-adapter and delimited-exit mechanism, the accepted third-
 fixes, and the bounded compatibility evidence plan. [80T](80t-cleanup-control-implementation-evidence.md)
 records the first implemented control slice. [80U](80u-birnam-task-cleanup-slice.md)
 records the cooperative task executor, automatic joining, cancellation, and
-cleanup library. The accepted policies are not reopened by that work.
+cleanup library. [80V](80v-bounded-machine-drives.md) adds bounded Machine
+drives, and [80W](80w-timesliced-task-executor.md) enables automatic timeslicing
+with protected Birnam executor transitions. Parallel domains remain future work.
+The accepted policies are not reopened by that work.
 For that mechanism, the user explicitly requires preserving the public IdApi,
 Method/StepMethod ABI, descriptor V2, and image format. A separately specified
 Machine/object-protocol extension may add the operation while preserving existing

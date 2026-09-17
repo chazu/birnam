@@ -1,5 +1,8 @@
 # 80V — Bounded Machine drives and owner-side cleanup entry
 
+**Follow-up:** [80W](80w-timesliced-task-executor.md) enables automatic task
+timeslicing and protects the executor transitions described here.
+
 This continues [80U](80u-birnam-task-cleanup-slice.md) with the runtime mechanisms
 needed for timeslicing. The supplied task executor still runs cooperatively.
 Switching that executor to budgeted drives requires protecting its multi-send
