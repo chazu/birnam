@@ -1,6 +1,6 @@
 //! Shared process-local ForeignAddress object contract.
 //!
-//! This is a Rust-side helper over frozen IdApi v1, not a new IdApi field. A
+//! This is a Rust-side helper over the current IdApi, not a new IdApi field. A
 //! ForeignAddress carries a native address plus an ownership kind in two raw
 //! words. Its family prototype is exported, while every non-prototype instance
 //! is a process-local capability and must be rejected by image persistence.
@@ -48,7 +48,7 @@ pub unsafe fn ensure_family(api: &IdApi) -> Option<(Oop, Oop)> {
     unsafe {
         prototype.cast::<usize>().write(0);
         prototype.cast::<usize>().add(1).write(KIND_PROTOTYPE);
-        (api.setOwner)(vtable, prototype);
+        crate::set_vtable_owner(api, vtable, prototype);
     }
     if unsafe { (api.exportObj)(VTABLE_NAME.as_ptr().cast(), vtable) }.is_null()
         || unsafe { (api.exportObj)(PROTOTYPE_NAME.as_ptr().cast(), prototype) }.is_null()
@@ -104,7 +104,7 @@ pub unsafe fn value(api: &IdApi, object: Oop) -> Option<(usize, usize)> {
                 )
             });
         }
-        vtable = unsafe { (api.vtableParent)(vtable) };
+        vtable = unsafe { crate::vtable_parent(api, vtable) };
         remaining -= 1;
     }
     None
@@ -128,7 +128,7 @@ fn validate_family(api: &IdApi, vtable: Oop, prototype: Oop) -> bool {
     !vtable.is_null()
         && !prototype.is_null()
         && unsafe { (api.vtableOf)(prototype) } == vtable
-        && unsafe { (api.vtableOwner)(vtable) } == prototype
+        && unsafe { crate::vtable_owner(api, vtable) } == prototype
         && unsafe { (api.objectPayloadSize)(prototype) } == PAYLOAD_BYTES
         && unsafe { prototype.cast::<usize>().read() } == 0
         && unsafe { prototype.cast::<usize>().add(1).read() } == KIND_PROTOTYPE

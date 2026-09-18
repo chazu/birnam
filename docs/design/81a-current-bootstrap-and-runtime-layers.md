@@ -10,9 +10,10 @@
 **2026-09-18 update:** [81J](81j-private-behavior-extraction.md) extracts the
 private-behavior convenience into `libbirnam_object_model.dylib`, loaded directly
 after Id and before Artifact. The native inventory is now 16 libraries, and IdApi
-v2 has 53 fields. The inventory below includes this extraction. It remains a
-Rust implementation; the build-stage and implementation-language distinction is
-unchanged.
+v3 has 49 fields after [81K](81k-owner-and-parent-protocols.md) moves owner/parent
+access to ordinary messages. The inventory below includes this extraction. It
+remains a Rust implementation; the build-stage and implementation-language
+distinction is unchanged.
 
 ## 1. Stage means build stage, not runtime layer
 

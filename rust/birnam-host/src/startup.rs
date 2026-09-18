@@ -1807,7 +1807,7 @@ unsafe fn receiver_has_selector(
             }
             index = index.saturating_add(1);
         }
-        vtable = unsafe { (api.vtableParent)(vtable) };
+        vtable = unsafe { birnam_abi::vtable_parent(api, vtable) };
     }
     false
 }

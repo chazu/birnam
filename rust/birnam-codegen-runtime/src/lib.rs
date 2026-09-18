@@ -1078,7 +1078,7 @@ pub unsafe extern "C" fn birnam_rust_codegen_remove_method(
         return runtime.store as Oop;
     }
     let vtable = unsafe { (api.vtableOf)(target) };
-    if vtable.is_null() || unsafe { (api.vtableOwner)(vtable) } != target {
+    if vtable.is_null() || unsafe { birnam_abi::vtable_owner(api, vtable) } != target {
         return api.nilObj;
     }
     unsafe {
@@ -1512,7 +1512,7 @@ pub unsafe extern "C" fn birnam_rust_codegen_candidate_validate_binding(
     if target.is_null()
         || target == api.nilObj
         || unsafe { (api.vtableOf)(target) }.is_null()
-        || unsafe { (api.vtableOwner)((api.vtableOf)(target)) } != target
+        || unsafe { birnam_abi::vtable_owner(api, (api.vtableOf)(target)) } != target
         || selector_arity(selector_name) != arity as usize
     {
         return api.falseObj;
@@ -10061,7 +10061,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
             return api.nilObj;
         }
         let vtable = unsafe { (api.vtableOf)(target) };
-        if vtable.is_null() || unsafe { (api.vtableOwner)(vtable) } != target {
+        if vtable.is_null() || unsafe { birnam_abi::vtable_owner(api, vtable) } != target {
             note_error(b"RustCodegen candidate target is unstable");
             return api.nilObj;
         }
@@ -10683,7 +10683,7 @@ unsafe extern "C" fn rust_codegen_adopt_composed_generation(
                 continue;
             }
             let vtable = unsafe { (api.vtableOf)(target) };
-            if vtable.is_null() || unsafe { (api.vtableOwner)(vtable) } != target {
+            if vtable.is_null() || unsafe { birnam_abi::vtable_owner(api, vtable) } != target {
                 continue;
             }
             let selector = unsafe { intern_bytes(api, &operation.selector) };
@@ -11882,15 +11882,19 @@ fn take_vtable_cache_roots(generation: u64) -> Vec<VtableCacheRoot> {
 }
 
 unsafe fn restore_live_vtable_cache_roots(api: &IdApi, roots: Vec<VtableCacheRoot>) {
-    let Ok(mut cache) = VTABLE_CACHE_ROOTS.lock() else {
-        return;
-    };
+    restore_vtable_cache_roots(roots, |value| unsafe { birnam_abi::vtable_parent(api, value) });
+}
+
+fn restore_vtable_cache_roots(roots: Vec<VtableCacheRoot>, mut parent: impl FnMut(Oop) -> Oop) {
     for root in roots {
         let value = root.value as Oop;
-        // vtableParent is an exact registry lookup and does not dereference an
-        // untrusted payload. A null result means GC reclaimed the cache value;
-        // generated code will rebuild that slot on its next use.
-        if !value.is_null() && !(unsafe { (api.vtableParent)(value) }).is_null() {
+        // Preserve the original registered-vtable/non-null-parent criterion.
+        // Query before taking the cache lock: the protocol may reenter or GC.
+        // The default method accepts stale candidates without dereferencing them.
+        if !value.is_null() && !parent(value).is_null() {
+            let Ok(mut cache) = VTABLE_CACHE_ROOTS.lock() else {
+                return;
+            };
             // A reentrant rebuild after withdrawal wins over the old cache,
             // matching the former vector's first-match lookup semantics.
             cache
@@ -12422,7 +12426,7 @@ unsafe fn reflect_method_source_for_target_selector(
 }
 
 unsafe fn reflect_method_target_name(api: &IdApi, vt: Oop, global_rows: &[ReflectFactRow]) -> Oop {
-    let owner = unsafe { (api.vtableOwner)(vt) };
+    let owner = unsafe { birnam_abi::vtable_owner(api, vt) };
     if !owner.is_null() {
         let exported = unsafe { reflect_exported_symbol(api, owner) };
         if exported != api.nilObj {
@@ -12453,7 +12457,7 @@ unsafe fn reflect_method_descriptor(
     if descriptor == api.nilObj {
         return api.nilObj;
     }
-    let owner = unsafe { (api.vtableOwner)(vt) };
+    let owner = unsafe { birnam_abi::vtable_owner(api, vt) };
     let owner = if owner.is_null() { api.nilObj } else { owner };
     let mirror = unsafe {
         send(
@@ -12635,7 +12639,7 @@ unsafe extern "C" fn rust_reflect_export_vtable(
     let name =
         CString::new(name).unwrap_or_else(|_| abort("Symbol name unexpectedly contained NUL"));
     let vt = unsafe { (api.vtableOf)(values[0]) };
-    if vt.is_null() || unsafe { (api.vtableOwner)(vt) } != values[0] {
+    if vt.is_null() || unsafe { birnam_abi::vtable_owner(api, vt) } != values[0] {
         note_error(b"RustReflect exportVtableOf:as: target has no stable vtable");
         return api.nilObj;
     }
@@ -12859,7 +12863,7 @@ unsafe extern "C" fn rust_reflect_all_methods(
                 entries
                     .push(unsafe { reflect_method_descriptor(api, runtime, vt, selector, target) });
             }
-            vt = unsafe { (api.vtableParent)(vt) };
+            vt = unsafe { birnam_abi::vtable_parent(api, vt) };
         }
         unsafe { make_vector(api, vector, &entries) }
     })();
@@ -14033,6 +14037,45 @@ mod tests {
             right
         );
         assert_eq!(take_vtable_cache_roots(RIGHT).len(), 1);
+    }
+
+    #[test]
+    fn cache_restore_queries_may_reenter_and_newer_entries_win() {
+        use super::{Oop, VtableCacheRoot, restore_vtable_cache_roots};
+        const GENERATION: u64 = 0xf021_f021_f021_f021;
+        let live = 0x1000usize as Oop;
+        let unregistered = 0x2000usize as Oop;
+        let replacement = 0x3000usize as Oop;
+        let roots = vec![
+            VtableCacheRoot {
+                generation: GENERATION, index: 0, value: live as usize,
+            },
+            VtableCacheRoot {
+                generation: GENERATION, index: 1, value: unregistered as usize,
+            },
+            VtableCacheRoot {
+                generation: GENERATION, index: 2, value: live as usize,
+            },
+        ];
+        let mut queries = 0;
+        restore_vtable_cache_roots(roots, |value| {
+            queries += 1;
+            // A replacement protocol may rebuild a cache entry while querying.
+            // This acquires the same mutex; restoration must not hold it here.
+            unsafe { birnam_rust_codegen_vtable_cache_set(GENERATION, 0, replacement); }
+            if value == live {
+                live
+            } else {
+                core::ptr::null_mut()
+            }
+        });
+        assert_eq!(queries, 3);
+        unsafe {
+            assert_eq!(birnam_rust_codegen_vtable_cache_get(GENERATION, 0), replacement);
+            assert!(birnam_rust_codegen_vtable_cache_get(GENERATION, 1).is_null());
+            assert_eq!(birnam_rust_codegen_vtable_cache_get(GENERATION, 2), live);
+        }
+        assert_eq!(take_vtable_cache_roots(GENERATION).len(), 2);
     }
 
     #[test]

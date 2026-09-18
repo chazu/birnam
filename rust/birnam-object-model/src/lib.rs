@@ -55,13 +55,13 @@ impl BehaviorAccess for NativeAccess {
         self.api().vtable_vt
     }
     fn owner(&self, behavior: Oop) -> Oop {
-        unsafe { (self.api().vtableOwner)(behavior) }
+        unsafe { birnam_abi::vtable_owner(self.api(), behavior) }
     }
     fn delegate(&self, parent: Oop) -> Oop {
         unsafe { (self.api().proto)(parent) }
     }
     fn set_owner(&self, behavior: Oop, object: Oop) {
-        unsafe { (self.api().setOwner)(behavior, object) };
+        unsafe { birnam_abi::set_vtable_owner(self.api(), behavior, object) };
     }
     fn attach(&self, object: Oop, behavior: Oop) {
         self.send(self.attach, &[object, behavior]);

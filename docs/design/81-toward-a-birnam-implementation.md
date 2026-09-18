@@ -349,3 +349,7 @@ exploration does not change current optimization defaults or validation gates.
   and what explicit construction protocol breaks each cycle?
 - What exact loading/platform operations belong to the siphon, and which
   external-library dependencies remain in the loaded system?
+
+[81K](81k-owner-and-parent-protocols.md) continues the production refactor by
+removing the four owner/parent fields and migrating ordinary consumers to
+default-vtable messages. IdApi v3 has 49 fields / 392 bytes.

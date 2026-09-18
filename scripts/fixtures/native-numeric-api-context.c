@@ -1,4 +1,4 @@
-#include "idapi_v2.h"
+#include "idapi_v3.h"
 #include "object-model-support.h"
 #include <assert.h>
 #include <dlfcn.h>

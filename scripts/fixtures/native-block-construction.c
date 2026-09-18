@@ -1,4 +1,4 @@
-#include "idapi_v2.h"
+#include "idapi_v3.h"
 #include "object-model-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -11,7 +11,7 @@ typedef Oop (*NewBlock)(Oop, Oop, const Oop *, size_t);
 typedef Oop (*NewOwnedBlock)(Oop, Oop, const Oop *, size_t, Oop);
 typedef struct { uint64_t version, size; Admit admit; NewBlock construct; } PortableV1;
 typedef struct { uint64_t version, size; NewOwnedBlock construct; } PortableV2;
-typedef unsigned (*Query)(const void *, Oop, const uintptr_t *, Oop, Oop, size_t, Oop, const uint8_t *, size_t);
+typedef unsigned (*Query)(const void *, Oop, const uintptr_t *, Oop, Oop, size_t, Oop, const uint8_t *, size_t, Oop);
 typedef unsigned (*Admission)(const void *, Oop, Oop, size_t, Oop, const uint8_t *, size_t, unsigned);
 
 static IdApi *api;
@@ -40,6 +40,12 @@ static unsigned floor_admits(const void *constructor, Oop vt, Oop code, size_t c
 }
 static Oop counted_alloc(Oop vt, size_t bytes) { ++allocations; return api->alloc(vt, bytes); }
 static Oop value(Oop self, const Oop *args, size_t count) { (void)self; return count ? args[0] : api->nil_obj; }
+static Method original_accessor;
+static unsigned accessor_calls;
+static Oop counted_accessor(Oop self, const Oop *args, size_t count) {
+    ++accessor_calls;
+    return original_accessor(self, args, count);
+}
 
 int main(int argc, char **argv) {
     assert(argc == 7 || (argc == 8 && strcmp(argv[7], "without-prelude") == 0));
@@ -67,7 +73,7 @@ int main(int argc, char **argv) {
         init(i == 5 ? &module_api : api, NULL);
         if (i == 5) portable = module;
     }
-    Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v1");
+    Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v2");
     assert(query);
     PortableV1 *v1 = api->import_fn("_BirnamPortableCodeApiV1");
     PortableV2 *v2 = api->import_fn("_BirnamPortableCodeApiV2");
@@ -75,9 +81,9 @@ int main(int argc, char **argv) {
     assert(v2 && v2->version == 2 && v2->size == sizeof(*v2));
     uintptr_t context[] = {
         (uintptr_t)api->alloc, (uintptr_t)api->import_fn, (uintptr_t)api->object_payload_size,
-        (uintptr_t)api->vtable_of, (uintptr_t)api->vtable_parent, (uintptr_t)api->vtable_selector_at,
-        (uintptr_t)api->symbol_name, (uintptr_t)api->vtable_owner, (uintptr_t)api->symbol_vt,
-        (uintptr_t)api->exported_name_of,
+        (uintptr_t)api->vtable_of, (uintptr_t)api->send, (uintptr_t)api->vtable_selector_at,
+        (uintptr_t)api->symbol_name, (uintptr_t)api->intern, (uintptr_t)api->symbol_vt,
+        (uintptr_t)api->exported_name_of, (uintptr_t)api->vtable_vt,
     };
     FILE *file = fopen(argv[6], "rb");
     assert(file && fseek(file, 0, SEEK_END) == 0);
@@ -93,7 +99,6 @@ int main(int argc, char **argv) {
         Oop empty_vt = api->proto(api->object_vt);
         api->method(empty_vt, api->intern("value:"), value);
         size_t live = api->gc_live_count();
-        assert(query((void *)v1->construct, api->nil_obj, context, empty_vt, code, 2, NULL, bytes, (size_t)length) == 0);
         assert(floor_admits((void *)v1->construct, empty_vt, code, 2, NULL, bytes, (size_t)length, 0) == 0);
         assert(api->gc_live_count() == live);
         free(bytes);
@@ -107,14 +112,14 @@ int main(int argc, char **argv) {
     Oop capture = api->alloc(api->object_vt, sizeof(Oop));
     *(Oop *)capture = api->true_obj;
     Oop captures[] = { capture, capture };
-#define ASK(fn, table, object, count, owner) query((const void *)(fn), api->nil_obj, context, table, object, count, owner, bytes, (size_t)length)
+#define ASK(fn, table, object, count, owner) query((const void *)(fn), api->nil_obj, context, table, object, count, owner, bytes, (size_t)length, vtable_owner(api, table))
     size_t before = api->gc_live_count();
     assert(ASK(v1->construct, vt, code, 2, NULL) == 0); /* cold setup */
-    assert(api->vtable_owner(vt) == NULL && api->gc_live_count() == before);
+    assert(vtable_owner(api, vt) == NULL && api->gc_live_count() == before);
     Oop first = v1->construct(vt, code, captures, 2);
     assert(api->vtable_of(first) == vt && api->object_payload_size(first) == 3 * sizeof(Oop));
     assert(((Oop *)first)[0] == code && ((Oop *)first)[1] == capture && ((Oop *)first)[2] == capture);
-    Oop carrier = api->vtable_owner(vt);
+    Oop carrier = vtable_owner(api, vt);
     assert(carrier);
     before = api->gc_live_count();
     assert(ASK(v1->construct, vt, code, 2, NULL) == 1);
@@ -133,7 +138,7 @@ int main(int argc, char **argv) {
     bytes[0] ^= 1;
     assert(ASK(v1->construct, vt, code, 2, NULL) == 0);
     bytes[0] ^= 1;
-    for (unsigned i = 0; i < 10; ++i) {
+    for (unsigned i = 0; i < 11; ++i) {
         uintptr_t saved = context[i]; context[i] = 0;
         assert(ASK(v1->construct, vt, code, 2, NULL) == 0);
         context[i] = saved;
@@ -147,14 +152,33 @@ int main(int argc, char **argv) {
     module_api.alloc = api->alloc;
     assert(ASK(v1->construct, vt, code, 2, NULL) == 1);
     assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0) == 1);
+    /* Admission is pure and declines a changed owner/parent/lookup protocol;
+       ordinary construction must still execute that replacement. */
+    const char *accessors[] = {"ownerOf:", "parentOf:", "lookup"};
+    Oop lookup = api->intern("lookup");
+    for (unsigned i = 0; i < 3; ++i) {
+        Oop accessor = api->intern(accessors[i]);
+        Oop raw = api->send(api->vtable_vt, lookup, &accessor, 1);
+        memcpy(&original_accessor, &raw, sizeof(original_accessor));
+        api->method(api->vtable_vt, accessor, counted_accessor);
+        accessor_calls = 0;
+        assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0) == 0);
+        /* The outer probe send itself uses lookup when lookup is replaced. */
+        unsigned before_construct = accessor_calls;
+        if (i != 2) assert(before_construct == 0);
+        Oop ordinary = v1->construct(vt, code, captures, 2);
+        assert(ordinary && accessor_calls > before_construct);
+        api->method(api->vtable_vt, accessor, original_accessor);
+        assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0) == 1);
+    }
     *(Oop *)capture = api->false_obj;
     assert(*(Oop *)((Oop *)first)[1] == api->false_obj && ((Oop *)second)[2] == capture);
-    api->set_owner(vt, api->alloc(api->object_vt, 0));
+    set_owner(api, vt, api->alloc(api->object_vt, 0));
     assert(ASK(v1->construct, vt, code, 2, NULL) == 0); /* no invalid payload read */
-    api->set_owner(vt, carrier);
-    api->set_parent(vt, api->object_vt);
-    assert(ASK(v1->construct, vt, code, 2, NULL) == 0);
-    api->set_parent(vt, family);
+    set_owner(api, vt, carrier);
+    set_parent(api, vt, api->object_vt);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0) == 0);
+    set_parent(api, vt, family);
     assert(ASK(v1->construct, vt, code, 2, NULL) == 1);
     Oop owned_vt = api->proto(family);
     api->method(owned_vt, selector, value);

@@ -82,7 +82,7 @@ inside production libid.
 native field. The arm64 macOS table changes from 54 fields / 432 bytes to
 **53 fields / 424 bytes**. Later fields shift down by eight bytes.
 
-The current declaration is [idapi-v2.json](../../abi/idapi-v2.json), with an
+The declaration at this checkpoint is [idapi-v2.json](../../abi/idapi-v2.json), with an
 independent [C header](../../abi/fixtures/idapi-v2/idapi_v2.h). The diagnostic
 record still uses descriptor format v1, but its schema version is 2 and it
 publishes the new layout fingerprint. The v2 fingerprint is SHA-256 of sorted,
@@ -144,3 +144,7 @@ The complete source/artifact-bound release receipt is
 under the same directory. The separate install smoke log is
 `.cargo-target/81j-install-smoke.log`. These are local validation artifacts, not
 installed runtime dependencies. No performance qualification is claimed.
+
+[81K](81k-owner-and-parent-protocols.md) continues the production refactor by
+removing the four owner/parent fields and migrating ordinary consumers to
+default-vtable messages. IdApi v3 has 49 fields / 392 bytes.

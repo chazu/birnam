@@ -39,6 +39,18 @@ class CompatibilityAuthorityTests(unittest.TestCase):
     def test_exception_does_not_apply_to_other_contracts(self):
         self.assertFalse(unchanged_authority("rust/birnam-image/src/v8.rs", self.current, self.baseline))
 
+    def test_only_complete_owner_parent_call_migration_is_admitted(self):
+        for before, after in (
+            (b'birnam_abi::vtable_parent(api, vtable)', b'birnam_abi::vtable_parent(api, object)'),
+            (b'birnam_abi::vtable_owner(api, vtable)', b'birnam_abi::vtable_parent(api, vtable)'),
+            (b'birnam_abi::set_vtable_owner(api_ref, report_vt, object)',
+             b'birnam_abi::set_vtable_owner(api_ref, object, report_vt)'),
+            (b'birnam_abi::vtable_owner(api, vtable)', b'(api.vtableOwner)(vtable)'),
+        ):
+            self.assertIn(before, self.current)
+            self.assertFalse(unchanged_authority(
+                IMAGE, self.current.replace(before, after, 1), self.baseline))
+
 
 if __name__ == "__main__":
     unittest.main()

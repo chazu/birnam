@@ -114,7 +114,7 @@ impl Runtime {
     }
 
     pub(crate) fn set_vtable_owner(&self, vtable: Oop, owner: Oop) {
-        unsafe { (self.api().setOwner)(vtable, owner) };
+        unsafe { birnam_abi::set_vtable_owner(self.api(), vtable, owner) };
     }
 
     pub(crate) fn set_layout(&self, vtable: Oop, layout: *const u8, count: usize, rest: u8) {
@@ -147,11 +147,11 @@ impl Runtime {
     }
 
     pub(crate) fn vtable_parent(&self, vtable: Oop) -> Oop {
-        unsafe { (self.api().vtableParent)(vtable) }
+        unsafe { birnam_abi::vtable_parent(self.api(), vtable) }
     }
 
     pub(crate) fn vtable_owner(&self, vtable: Oop) -> Oop {
-        unsafe { (self.api().vtableOwner)(vtable) }
+        unsafe { birnam_abi::vtable_owner(self.api(), vtable) }
     }
 
     pub(crate) fn vtable_selector_at(&self, vtable: Oop, index: usize) -> Oop {

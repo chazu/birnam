@@ -895,10 +895,10 @@ unsafe extern "C" fn native_new_block(
 }
 
 /// Optional, pure declaration of the exact warm constructor operation.
-/// See abi/native-block-construction-v1.md. This never constructs an object,
+/// See abi/native-block-construction-v2.md. This never constructs an object,
 /// installs a carrier, calls an Id Method, or grants invocation authority.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_block_construction_v1(
+pub unsafe extern "C" fn birnam_native_block_construction_v2(
     constructor: *const core::ffi::c_void,
     nil: Oop,
     context: *const usize,
@@ -908,6 +908,7 @@ pub unsafe extern "C" fn birnam_native_block_construction_v1(
     materialization_owner: Oop,
     expected_program: *const u8,
     expected_length: usize,
+    behavior_owner: Oop,
 ) -> u32 {
     if context.is_null() || expected_program.is_null() || expected_length > 65_536 {
         return 0;
@@ -927,18 +928,19 @@ pub unsafe extern "C" fn birnam_native_block_construction_v1(
         // Check the current table before calling any entry. Copied tables work;
         // instrumentation or a different floor must withdraw this declaration.
         if nil != api.nilObj
-            || unsafe { core::slice::from_raw_parts(context, 10) }
+            || unsafe { core::slice::from_raw_parts(context, 11) }
                 != [
                     api.alloc as usize,
                     api.import as usize,
                     api.objectPayloadSize as usize,
                     api.vtableOf as usize,
-                    api.vtableParent as usize,
+                    api.send as usize,
                     api.vtableSelectorAt as usize,
                     api.symbolName as usize,
-                    api.vtableOwner as usize,
+                    api.intern as usize,
                     api.symbol_vt as usize,
                     api.exportedNameOf as usize,
+                    api.vtable_vt as usize,
                 ]
         {
             return 0;
@@ -962,24 +964,13 @@ pub unsafe extern "C" fn birnam_native_block_construction_v1(
             let name = unsafe { (api.exportedNameOf)(object) };
             !name.is_null() && unsafe { core::ffi::CStr::from_ptr(name) }.to_bytes() == expected
         };
-        let mut ancestor = block_vtable;
-        let mut family = false;
-        for _ in 0..4096 {
-            if ancestor.is_null() {
-                break;
-            }
-            if named(ancestor, b"BlockVt") {
-                family = true;
-                break;
-            }
-            ancestor = runtime.vtable_parent(ancestor);
-        }
-        if !family
-            || !vtable_has_value_arity(runtime, block_vtable, program.parameter_count as usize)
-        {
+        // The floor attests unchanged default owner/parent protocols and Block
+        // ancestry before this query. It passes facts, not callable accessors.
+        // Reading through a message here would make admission effectful.
+        if !vtable_has_value_arity(runtime, block_vtable, program.parameter_count as usize) {
             return 0;
         }
-        let owner = runtime.vtable_owner(block_vtable);
+        let owner = behavior_owner;
         if owner.is_null()
             || runtime.payload_size(owner) != Some(2 * size_of::<Oop>())
             || !named(runtime.vtable_of(owner), BLOCK_CARRIER_VTABLE_NAME)

@@ -739,7 +739,7 @@ unsafe extern "C" fn tracked_remove_method(
     let selector = args[0];
     let vtable = args[1];
     let api = unsafe { api(runtime) };
-    if unsafe { (api.vtableOwner)(vtable) }.is_null() {
+    if unsafe { birnam_abi::vtable_owner(api, vtable) }.is_null() {
         return mop_error(runtime, b"unstableMethodTarget\0");
     }
     let mut direct = false;
@@ -776,7 +776,7 @@ fn is_type_vtable(api: &birnam_abi::IdApi, vtable: birnam_abi::Oop) -> bool {
         if current == api.object_vt {
             return true;
         }
-        current = unsafe { (api.vtableParent)(current) };
+        current = unsafe { birnam_abi::vtable_parent(api, current) };
     }
     false
 }

@@ -231,6 +231,38 @@ unsafe extern "C" fn vtable_delegated(receiver: Oop, _: *const Oop, _: usize) ->
     with_active(|runtime| runtime.create_vtable(receiver))
 }
 
+// These are protocols on Vtable, taking an explicit candidate. Queries retain
+// the old exact-registry behavior even for null or non-vtable candidates.
+pub(crate) unsafe extern "C" fn vtable_owner_of(_: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some([vtable]) = (unsafe { crate::abi::borrowed_oop_args(args, count) }) else {
+        boundary::fatal_invariant("ownerOf: requires one candidate");
+    };
+    with_active(|runtime| runtime.vtable_owner(*vtable))
+}
+
+unsafe extern "C" fn vtable_owner_put(_: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some([vtable, owner]) = (unsafe { crate::abi::borrowed_oop_args(args, count) }) else {
+        boundary::fatal_invariant("ownerOf:put: requires a vtable and owner");
+    };
+    with_active(|runtime| runtime.set_vtable_owner(*vtable, *owner));
+    *vtable
+}
+
+pub(crate) unsafe extern "C" fn vtable_parent_of(_: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some([vtable]) = (unsafe { crate::abi::borrowed_oop_args(args, count) }) else {
+        boundary::fatal_invariant("parentOf: requires one candidate");
+    };
+    with_active(|runtime| runtime.vtable_parent(*vtable))
+}
+
+unsafe extern "C" fn vtable_parent_put(_: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some([vtable, parent]) = (unsafe { crate::abi::borrowed_oop_args(args, count) }) else {
+        boundary::fatal_invariant("parentOf:put: requires a vtable and parent");
+    };
+    with_active(|runtime| runtime.set_vtable_parent(*vtable, *parent));
+    *vtable
+}
+
 unsafe extern "C" fn prepare_behavior_mutation(_: Oop, args: *const Oop, count: usize) -> Oop {
     let Some([object]) = (unsafe { crate::abi::borrowed_oop_args(args, count) }) else {
         boundary::fatal_invariant("prepareBehaviorMutationOf: requires one object");
@@ -447,6 +479,22 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
         (
             b"reassociateBehaviorOf:with:".as_slice(),
             reassociate_behavior as crate::abi::Method,
+        ),
+        (
+            b"ownerOf:".as_slice(),
+            vtable_owner_of as crate::abi::Method,
+        ),
+        (
+            b"ownerOf:put:".as_slice(),
+            vtable_owner_put as crate::abi::Method,
+        ),
+        (
+            b"parentOf:".as_slice(),
+            vtable_parent_of as crate::abi::Method,
+        ),
+        (
+            b"parentOf:put:".as_slice(),
+            vtable_parent_put as crate::abi::Method,
         ),
     ] {
         let selector = runtime.intern(name).expect("static seed selector");
@@ -834,7 +882,7 @@ mod tests {
             assert_eq!(runtime.payload_size(expected), Some(80));
         }
 
-        let selector_names: [&[u8]; 12] = [
+        let selector_names: [&[u8]; 16] = [
             b"lookup",
             b"addMethod",
             b"removeMethod:",
@@ -847,6 +895,10 @@ mod tests {
             b"Symbol",
             b"prepareBehaviorMutationOf:",
             b"reassociateBehaviorOf:with:",
+            b"ownerOf:",
+            b"ownerOf:put:",
+            b"parentOf:",
+            b"parentOf:put:",
         ];
         assert_eq!(runtime.symbol_count(), selector_names.len());
         for (index, name) in selector_names.iter().copied().enumerate() {
@@ -878,6 +930,10 @@ mod tests {
             bootstrap.selectors.delegated,
             runtime.intern(b"prepareBehaviorMutationOf:").unwrap(),
             runtime.intern(b"reassociateBehaviorOf:with:").unwrap(),
+            runtime.intern(b"ownerOf:").unwrap(),
+            runtime.intern(b"ownerOf:put:").unwrap(),
+            runtime.intern(b"parentOf:").unwrap(),
+            runtime.intern(b"parentOf:put:").unwrap(),
         ];
         for (index, selector) in meta_selectors.into_iter().enumerate() {
             assert_eq!(

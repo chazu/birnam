@@ -1392,7 +1392,7 @@ unsafe fn install_system_protocol(api: &IdApi) {
     } else {
         let system_vt = unsafe { (api.proto)(api.object_vt) };
         let system_object = unsafe { (api.alloc)(system_vt, 0) };
-        unsafe { (api.setOwner)(system_vt, system_object) };
+        unsafe { birnam_abi::set_vtable_owner(api, system_vt, system_object) };
         unsafe { (api.exportObj)(c"SystemVt".as_ptr(), system_vt) };
         unsafe { (api.exportObj)(c"System".as_ptr(), system_object) };
         (system_vt, system_object)
@@ -1439,7 +1439,7 @@ unsafe fn install_block_protocol(api: &IdApi) {
         // first native loop rung does not inspect the payload itself.
         unsafe { (api.setLayout)(block_vt, ptr::null(), 0, birnam_abi::SLOT_OOP) };
         let block_proto = unsafe { (api.alloc)(block_vt, 0) };
-        unsafe { (api.setOwner)(block_vt, block_proto) };
+        unsafe { birnam_abi::set_vtable_owner(api, block_vt, block_proto) };
         unsafe { (api.exportObj)(c"Block".as_ptr(), block_proto) };
         unsafe { (api.exportObj)(c"BlockVt".as_ptr(), block_vt) };
         (block_vt, block_proto)

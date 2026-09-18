@@ -365,3 +365,7 @@ Follow the [validation workflow](../validation.md) for implementation changes,
 including exhaustive runtime/ABI/lifetime coverage and appropriate installed
 import audits. This document records a proposed design, not completed checks or
 authorization to omit existing semantic tests.
+
+[81K](81k-owner-and-parent-protocols.md) continues the production refactor by
+removing the four owner/parent fields and migrating ordinary consumers to
+default-vtable messages. IdApi v3 has 49 fields / 392 bytes.

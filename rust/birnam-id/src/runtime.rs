@@ -4463,6 +4463,53 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.owner_of(vtable) }
     }
 
+    /// Pure facts for the existing warm Block optimization. Ordinary consumers
+    /// send the owner/parent protocols; admission must never execute replacements.
+    /// None withdraws the optimization, so the original constructor performs
+    /// its ordinary sends. This supplies no new public representation interface.
+    pub(crate) fn default_block_behavior_owner(&self, block_vtable: Oop) -> Option<Oop> {
+        self.assert_owner();
+        // SAFETY: owner-thread inspection; no callback, allocation or mutation.
+        let state = unsafe { &*self.state.get() };
+        let meta = state.globals.vtable_vt;
+        if Vtables::checked_vtable_of(&state.heap, meta) != meta {
+            return None;
+        }
+        for (selector, method) in [
+            (
+                state.globals.lookup,
+                crate::dispatch::vtable_lookup_method as Method,
+            ),
+            (
+                state.symbols.existing(b"ownerOf:")?,
+                crate::dispatch::vtable_owner_of as Method,
+            ),
+            (
+                state.symbols.existing(b"parentOf:")?,
+                crate::dispatch::vtable_parent_of as Method,
+            ),
+        ] {
+            let method = MethodAddress::from_method(method);
+            if state.vtables.direct_lookup(meta, selector) != Some(method)
+                || state.execution.has_resumable_thunk(method)
+            {
+                return None;
+            }
+        }
+        let mut ancestor = block_vtable;
+        for _ in 0..4096 {
+            if ancestor.is_null() {
+                break;
+            }
+            let name = state.environment.exported_name_of(ancestor);
+            if state.symbols.bytes_of(name) == Some(b"BlockVt".as_slice()) {
+                return Some(state.vtables.owner_of(block_vtable));
+            }
+            ancestor = state.vtables.parent_of(ancestor);
+        }
+        None
+    }
+
     pub(crate) fn vtable_selector_at(&self, vtable: Oop, index: usize) -> Oop {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied identity.
@@ -6760,6 +6807,40 @@ mod tests {
         runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
         assert_eq!(runtime.checked_vtable_of(object), private);
         assert_eq!(runtime.vtable_owner(private), object);
+    }
+
+    #[test]
+    fn owner_and_parent_messages_preserve_edges_and_release_replaced_edges() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let meta = runtime.globals().vtable_vt;
+        let base = runtime.globals().object_vt;
+        let behavior = runtime.create_vtable(base);
+        let owner = runtime.allocate_instance(base, 0);
+        let parent = runtime.create_vtable(base);
+        let set_owner = runtime.intern(b"ownerOf:put:").unwrap();
+        let set_parent = runtime.intern(b"parentOf:put:").unwrap();
+        runtime.export(b"ProtocolRootedBehavior", behavior).unwrap();
+        runtime.enter(|| {
+            assert_eq!(
+                runtime.send_slice(meta, set_owner, &[behavior, owner]),
+                behavior
+            );
+            assert_eq!(
+                runtime.send_slice(meta, set_parent, &[behavior, parent]),
+                behavior
+            );
+            runtime.gc_collect_from_native_range(0, 0);
+            assert_eq!(runtime.checked_vtable_of(owner), base);
+            assert_eq!(runtime.vtable_parent(behavior), parent);
+            assert_eq!(runtime.checked_vtable_of(parent), meta);
+            let nil = core::ptr::null_mut();
+            runtime.send_slice(meta, set_owner, &[behavior, nil]);
+            runtime.send_slice(meta, set_parent, &[behavior, base]);
+            runtime.gc_collect_from_native_range(0, 0);
+            assert!(runtime.checked_vtable_of(owner).is_null());
+            assert!(runtime.checked_vtable_of(parent).is_null());
+        });
     }
 
     #[test]

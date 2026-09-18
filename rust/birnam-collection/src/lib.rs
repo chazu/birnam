@@ -2632,7 +2632,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             STRING_BUILDER_LAYOUT.len(),
             birnam_abi::SLOT_RAW,
         );
-        (api.setParent)(api.string_vt, runtime.collection_vt as Oop);
+        birnam_abi::set_vtable_parent(api, api.string_vt, runtime.collection_vt as Oop);
         (api.method)(api.object_vt, intern(api, b"isNil\0"), object_is_nil);
         (api.method)(api.object_vt, intern(api, b"notNil\0"), object_not_nil);
         let nil_vt = (api.vtableOf)(api.nilObj);
@@ -2819,7 +2819,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     }
     if unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) == 0 } {
         unsafe {
-            (api.setOwner)(runtime.vector_vt as Oop, runtime.vector_proto as Oop);
+            birnam_abi::set_vtable_owner(api, runtime.vector_vt as Oop, runtime.vector_proto as Oop);
             let _ = (api.exportObj)(
                 COLLECTION_VT_NAME.as_ptr().cast(),
                 runtime.collection_vt as Oop,
@@ -2831,14 +2831,15 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             let _ = (api.exportObj)(VECTOR_VT_NAME.as_ptr().cast(), runtime.vector_vt as Oop);
             let _ = (api.exportObj)(VECTOR_NAME.as_ptr().cast(), runtime.vector_proto as Oop);
             let _ = (api.exportObj)(VECTOR_NODE_NAME.as_ptr().cast(), runtime.node_vt as Oop);
-            (api.setOwner)(runtime.range_vt as Oop, runtime.range_proto as Oop);
+            birnam_abi::set_vtable_owner(api, runtime.range_vt as Oop, runtime.range_proto as Oop);
             let _ = (api.exportObj)(RANGE_VT_NAME.as_ptr().cast(), runtime.range_vt as Oop);
             let _ = (api.exportObj)(RANGE_NAME.as_ptr().cast(), runtime.range_proto as Oop);
-            (api.setOwner)(runtime.map_vt as Oop, runtime.map_proto as Oop);
+            birnam_abi::set_vtable_owner(api, runtime.map_vt as Oop, runtime.map_proto as Oop);
             let _ = (api.exportObj)(MAP_VT_NAME.as_ptr().cast(), runtime.map_vt as Oop);
             let _ = (api.exportObj)(MAP_NAME.as_ptr().cast(), runtime.map_proto as Oop);
             let _ = (api.exportObj)(MAP_NODE_NAME.as_ptr().cast(), runtime.map_node_vt as Oop);
-            (api.setOwner)(
+            birnam_abi::set_vtable_owner(
+                api,
                 runtime.string_builder_vt as Oop,
                 runtime.string_builder_proto as Oop,
             );

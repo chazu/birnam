@@ -6,11 +6,24 @@ The 74T literal-aware PC entry is an additive compiler caller of the original
 emitter. Exclude only that new entry; all baseline emission remains byte-frozen.
 Design 80N adds exactly two live-action names to image admission. Normalize only
 those declarations and rejection-list entries; all other image code stays frozen.
+Design 81K migrates exactly six owner/parent calls to message adapters. Normalize
+only those complete expressions, with their original operands and exact counts.
 """
 
 
 def unchanged_authority(name, current, baseline):
     if name == "rust/birnam-image/src/lib.rs" and current != baseline:
+        migrations = (
+            (b'(api.vtableParent)(vtable)', b'birnam_abi::vtable_parent(api, vtable)', 3),
+            (b'(api.vtableOwner)(vtable)', b'birnam_abi::vtable_owner(api, vtable)', 2),
+            (b'(api_ref.setOwner)(report_vt, object)',
+             b'birnam_abi::set_vtable_owner(api_ref, report_vt, object)', 1),
+        )
+        if any(new in current for _, new, _ in migrations):
+            for old, new, count in migrations:
+                if baseline.count(old) != count or new in baseline or current.count(new) != count:
+                    return False
+                current = current.replace(new, old)
         additions = (
             (b'    const ABORT_ACTION_NAME: &[u8] = b"AbortAction\\0";\n',
              b'    const BOUNDARY_CALL_ACTION_NAME: &[u8] = b"BoundaryCallAction\\0";\n'

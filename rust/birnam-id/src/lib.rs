@@ -141,11 +141,9 @@ pub unsafe extern "C" fn birnam_id_warm_block_construction_v1(
         let Some(summary) = loader::BlockConstructionSummary::discover(constructor) else {
             return 0;
         };
-        let canonical = runtime.canonical();
         u32::from(unsafe {
             summary.warm(
-                canonical.nil,
-                runtime.globals().symbol_vt,
+                runtime,
                 block_vtable,
                 code_object,
                 capture_count,

@@ -15,6 +15,7 @@ pub(crate) struct BlockConstructionSummary {
         Oop,
         *const u8,
         usize,
+        Oop,
     ) -> u32,
     _image: ImagePin,
 }
@@ -22,7 +23,7 @@ pub(crate) struct BlockConstructionSummary {
 impl BlockConstructionSummary {
     pub(crate) fn discover(constructor: *const c_void) -> Option<Self> {
         let (image, declaration) =
-            resident_address_declaration(constructor, c"birnam_native_block_construction_v1")?;
+            resident_address_declaration(constructor, c"birnam_native_block_construction_v2")?;
         Some(Self {
             constructor,
             query: unsafe { core::mem::transmute(declaration) },
@@ -39,8 +40,7 @@ impl BlockConstructionSummary {
     /// all input objects live and separately proves allocation/GC eligibility.
     pub(crate) unsafe fn warm(
         &self,
-        nil: Oop,
-        symbol_vtable: Oop,
+        runtime: &crate::runtime::Runtime,
         block_vtable: Oop,
         code_object: Oop,
         capture_count: usize,
@@ -48,11 +48,16 @@ impl BlockConstructionSummary {
         program: &[u8],
         materialized: bool,
     ) -> bool {
-        let context = crate::public_api::block_construction_context(symbol_vtable);
+        let Some(owner) = runtime.default_block_behavior_owner(block_vtable) else {
+            return false;
+        };
+        let globals = runtime.globals();
+        let context =
+            crate::public_api::block_construction_context(globals.symbol_vt, globals.vtable_vt);
         let mode = unsafe {
             (self.query)(
                 self.constructor,
-                nil,
+                runtime.canonical().nil,
                 context.as_ptr(),
                 block_vtable,
                 code_object,
@@ -60,6 +65,7 @@ impl BlockConstructionSummary {
                 materialization_owner,
                 program.as_ptr(),
                 program.len(),
+                owner,
             )
         };
         mode == if materialized { 2 } else { 1 }

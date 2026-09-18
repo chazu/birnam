@@ -487,8 +487,7 @@ impl Runtime {
         CONSTRUCTOR_QUERIES.set(CONSTRUCTOR_QUERIES.get() + 1);
         if !unsafe {
             summary.warm(
-                nil,
-                self.globals().symbol_vt,
+                self,
                 block_vtable,
                 code_object,
                 captures.len(),

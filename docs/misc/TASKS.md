@@ -68,6 +68,14 @@ mutation notification remain in place. All 84 release-plan steps and the separat
 relocated-install check pass; local exhaustive matrices used extended deadlines.
 New executable ownership/unloading mechanisms are outside the authorized refactor.
 
+[81K](../design/81k-owner-and-parent-protocols.md) removes the four owner/parent
+accessors from IdApi and migrates ordinary consumers to replaceable Vtable
+messages. The current v3 table has 49 fields / 392 bytes. Existing strong GC
+edges, parent validation and lookup invalidation remain unchanged; the warm
+Block optimization declines when the message protocols are replaced.
+All 82 exhaustive-plan steps, 610 workspace tests and the separate relocated
+installation smoke pass on the final sources.
+
 ## Selected sequence — 2026-09-06
 
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),

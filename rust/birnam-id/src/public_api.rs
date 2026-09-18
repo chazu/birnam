@@ -310,14 +310,6 @@ unsafe extern "C" fn api_slot_kind(vtable: Oop, word: usize) -> u8 {
     runtime().slot_kind(vtable, word)
 }
 
-unsafe extern "C" fn api_set_owner(vtable: Oop, owner: Oop) {
-    runtime().set_vtable_owner(vtable, owner);
-}
-
-unsafe extern "C" fn api_set_parent(vtable: Oop, parent: Oop) {
-    runtime().set_vtable_parent(vtable, parent);
-}
-
 unsafe extern "C" fn api_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) {
     runtime().set_method_overwrite_hook(hook);
 }
@@ -332,14 +324,6 @@ unsafe extern "C" fn api_vtable_at(index: usize) -> Oop {
 
 unsafe extern "C" fn api_vtable_selector_at(vtable: Oop, index: usize) -> Oop {
     runtime().vtable_selector_at(vtable, index)
-}
-
-unsafe extern "C" fn api_vtable_parent(vtable: Oop) -> Oop {
-    runtime().vtable_parent(vtable)
-}
-
-unsafe extern "C" fn api_vtable_owner(vtable: Oop) -> Oop {
-    runtime().vtable_owner(vtable)
 }
 
 fn table_for(bootstrap: &Bootstrap) -> IdApi {
@@ -387,18 +371,14 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         objectPayloadSize: api_object_payload_size,
         exportedNameOf: api_exported_name_of,
         slotKind: api_slot_kind,
-        setOwner: api_set_owner,
-        setParent: api_set_parent,
         setMethodOverwriteHook: api_set_method_overwrite_hook,
         vtableCount: api_vtable_count,
         vtableAt: api_vtable_at,
         vtableSelectorAt: api_vtable_selector_at,
-        vtableParent: api_vtable_parent,
         mkWord: api_make_word,
         wordValue: api_word_value,
         isWord: api_is_word,
         word_vt: canonical.word_vt,
-        vtableOwner: api_vtable_owner,
     }
 }
 
@@ -441,18 +421,19 @@ pub(crate) fn numeric_functions() -> [usize; 6] {
 }
 
 /// Current floor operands for the optional warm Block constructor declaration.
-pub(crate) fn block_construction_context(symbol_vtable: Oop) -> [usize; 10] {
+pub(crate) fn block_construction_context(symbol_vtable: Oop, metavtable: Oop) -> [usize; 11] {
     [
         api_alloc as *const () as usize,
         canonical_numeric_functions().import as usize,
         api_object_payload_size as *const () as usize,
         canonical_numeric_functions().vtable_of as usize,
-        api_vtable_parent as *const () as usize,
+        api_send as *const () as usize,
         api_vtable_selector_at as *const () as usize,
         api_symbol_name as *const () as usize,
-        api_vtable_owner as *const () as usize,
+        api_intern as *const () as usize,
         symbol_vtable as usize,
         api_exported_name_of as *const () as usize,
+        metavtable as usize,
     ]
 }
 

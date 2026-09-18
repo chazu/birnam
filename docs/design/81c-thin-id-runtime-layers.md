@@ -147,8 +147,9 @@ layers; do not retain the old table as a compatibility facade. Id-owned operatio
 also need justification as direct entries rather than ordinary messages.
 [81D](81d-id-api-partition.md) partitions the original 54 fields and identifies
 the construction/storage/provider decisions still needed. [81J](81j-private-behavior-extraction.md)
-begins production extraction by removing `ensurePrivateVtable`; the current v2
-table has 53 fields. Do not publish dummy callbacks to disguise a missing service.
+begins production extraction by removing `ensurePrivateVtable`; the current v3
+table has 49 fields after [81K](81k-owner-and-parent-protocols.md). Do not publish
+dummy callbacks to disguise a missing service.
 
 [81E](81e-seed-sufficiency-audit.md) audits the proposed services against the
 seed. The five methods alone do not expose all required state and lifetime

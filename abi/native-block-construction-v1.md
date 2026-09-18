@@ -1,5 +1,7 @@
 # Optional native Block construction declaration, v1
 
+> Historical contract; [v2](native-block-construction-v2.md) replaces it in 81K.
+
 This optional Portable Code native export describes the successful warm path of
 an exact constructor. It changes no IdApi field, Method signature, canonical
 descriptor or image encoding. Unknown constructors remain ordinary operations.

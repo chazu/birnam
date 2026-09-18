@@ -716,7 +716,7 @@ mod runtime {
             if vtable == ancestor {
                 return true;
             }
-            vtable = unsafe { (api.vtableParent)(vtable) };
+            vtable = unsafe { birnam_abi::vtable_parent(api, vtable) };
             remaining -= 1;
         }
         false
@@ -851,8 +851,8 @@ mod runtime {
                 unsafe { c_string_bytes((api.exportedNameOf)(vtable)) }.is_some();
             let has_resumable_vtable =
                 unsafe { self.block_vtable_image_reference(api, vtable).is_some() };
-            let owned_parent = unsafe { (api.vtableOwner)(vtable) } == object;
-            let parent = unsafe { (api.vtableParent)(vtable) };
+            let owned_parent = unsafe { birnam_abi::vtable_owner(api, vtable) } == object;
+            let parent = unsafe { birnam_abi::vtable_parent(api, vtable) };
             let has_exported_parent = owned_parent
                 && !parent.is_null()
                 && unsafe { c_string_bytes((api.exportedNameOf)(parent)) }.is_some();
@@ -971,7 +971,7 @@ mod runtime {
                 {
                     vtable
                 } else {
-                    let parent = unsafe { (api.vtableParent)(vtable) };
+                    let parent = unsafe { birnam_abi::vtable_parent(api, vtable) };
                     unsafe { c_string_bytes((api.exportedNameOf)(parent)) }?;
                     parent
                 };
@@ -1382,7 +1382,7 @@ mod runtime {
         if vtable.is_null() {
             return None;
         }
-        let owner = unsafe { (api.vtableOwner)(vtable) };
+        let owner = unsafe { birnam_abi::vtable_owner(api, vtable) };
         if owner.is_null() {
             return None;
         }
@@ -3052,7 +3052,7 @@ mod runtime {
         } else {
             let object = unsafe { (api_ref.alloc)(report_vt, 0) };
             unsafe {
-                (api_ref.setOwner)(report_vt, object);
+                birnam_abi::set_vtable_owner(api_ref, report_vt, object);
                 let _ = (api_ref.exportObj)(IMAGE_REPORT_VT_NAME.as_ptr().cast(), report_vt);
                 let _ = (api_ref.exportObj)(IMAGE_REPORT_NAME.as_ptr().cast(), object);
             }

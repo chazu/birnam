@@ -17,10 +17,10 @@ test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 44
 
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v2 -Iscripts/fixtures \
-  abi/fixtures/idapi-v2/client.c -o "$prefix_parent/idapi-client"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v3 -Iscripts/fixtures \
+  abi/fixtures/idapi-v3/client.c -o "$prefix_parent/idapi-client"
 cc -std=c11 -Wall -Wextra -Werror -fvisibility=hidden -dynamiclib \
-  abi/fixtures/idapi-v2/module.c -o "$prefix_parent/idapi-module.dylib"
+  abi/fixtures/idapi-v3/module.c -o "$prefix_parent/idapi-module.dylib"
 "$prefix_parent/idapi-client" "$prefix/lib/libbirnam_id.dylib" "$prefix_parent/idapi-module.dylib"
 
 run_root="$prefix_parent/run"
@@ -45,7 +45,7 @@ bash scripts/task-control-smoke.sh "$prefix"
 bash scripts/multicore-smoke.sh "$prefix"
 bash scripts/worker-service-smoke.sh "$prefix"
 bash scripts/closure-elision-smoke.sh "$prefix"
-cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v2 scripts/fixtures/closure-api-context.c -o "$prefix_parent/closure-api-context"
+cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v3 scripts/fixtures/closure-api-context.c -o "$prefix_parent/closure-api-context"
 "$prefix_parent/closure-api-context" "$prefix/lib/libbirnam_id.dylib" \
   "$prefix/lib/libbirnam_id_tcc.dylib" "$prefix/lib/libbirnam_id_codegen.dylib"
 "$prefix/bin/birnam" scripts/fixtures/projection-recovery.birnam >"$prefix_parent/projection.out"
@@ -60,9 +60,9 @@ cat "$prefix_parent/native-regions.out"
 "$prefix/bin/birnam" scripts/fixtures/numeric-specialization.birnam >"$prefix_parent/numeric-specialization.out"
 grep -Fxq "numeric-specialization: arithmetic, mixed values, errors, identity and retirement passed" "$prefix_parent/numeric-specialization.out"
 cat "$prefix_parent/numeric-specialization.out"
-cc -Iabi/fixtures/idapi-v2 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
+cc -Iabi/fixtures/idapi-v3 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
 "$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_id_prelude.dylib"
-cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v2 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"
+cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v3 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"
 "$prefix_parent/block-construction" "$prefix/lib/libbirnam_id.dylib" \
   "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_collection.dylib" \
   "$prefix/lib/libbirnam_id_error.dylib" "$prefix/lib/libbirnam_portable_code.dylib" \
