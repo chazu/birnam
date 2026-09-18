@@ -1518,7 +1518,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         unsafe { (api.method)(api.word_vt, symbol, *method) };
     }
     let boolean_vt = unsafe { (api.vtableOf)(api.trueObj) };
-    let false_vt = unsafe { (api.ensurePrivateVtable)(api.falseObj) };
+    let false_vt = unsafe { birnam_abi::ensure_private_vtable(api, api.falseObj) };
     if false_vt.is_null() || false_vt == boolean_vt {
         abort("could not establish False's private Boolean behavior");
     }

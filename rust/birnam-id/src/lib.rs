@@ -1,6 +1,6 @@
-//! Dependency-free production Rust libid floor.
+//! Production Rust libid floor.
 //!
-//! The crate exports the complete frozen `IdApi` implementation installed as
+//! The crate exports the current `IdApi` v2 implementation installed as
 //! `libbirnam_id.dylib`.
 
 #[cfg(not(any(test, panic = "abort")))]
@@ -70,7 +70,7 @@ pub extern "C" fn id_init() -> *mut core::ffi::c_void {
 
 /// Private host/floor admission seam for Design 60J Symbol compaction.
 ///
-/// This is deliberately outside frozen IdApi v1. `enabled != 0` admits weak
+/// This is deliberately outside the IdApi table. `enabled != 0` admits weak
 /// Symbol sweeping. Compatibility mode requires nonzero identity-count and
 /// owned-name-byte ceilings and is rejected when the current interner already
 /// exceeds either ceiling.

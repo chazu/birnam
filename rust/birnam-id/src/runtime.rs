@@ -696,35 +696,41 @@ impl Runtime {
             .unwrap_or_else(|| boundary::fatal_invariant("clone receiver is not a floor object"))
     }
 
-    pub(crate) fn ensure_private_vtable(&self, object: Oop) -> Oop {
+    /// Preserve the allocation phase check and collection opportunity that
+    /// preceded private-behavior selection before its extraction (Design 81J).
+    pub(crate) fn prepare_behavior_mutation(&self, object: Oop) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
         self.maybe_collect_before_allocation();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        let current = Vtables::checked_vtable_of(&state.heap, object);
+        let current = self.checked_vtable_of(object);
         boundary::require_invariant(
             !current.is_null(),
-            "ensurePrivateVtable receiver is not a floor object",
+            "behavior mutation receiver is not a floor object",
         );
-        if current == state.globals.vtable_vt {
-            return object;
-        }
-        if state.vtables.owner_of(current) == object {
-            return current;
-        }
-        let private =
-            state
-                .vtables
-                .create_collectable(&mut state.heap, current, state.globals.vtable_vt);
-        state.vtables.set_owner(private, object);
+        current
+    }
+
+    /// Id owns object headers and the existing mutation epoch. No convenience
+    /// policy or private-owner bookkeeping is performed by this primitive.
+    pub(crate) fn reassociate_behavior(&self, object: Oop, behavior: Oop) {
+        self.assert_owner();
+        self.require_allocation_allowed();
+        // SAFETY: owner-thread access, with no callback or allocation in scope.
+        let state = unsafe { &mut *self.state.get() };
         boundary::require_invariant(
-            state.heap.set_vtable(object, private),
-            "private-vtable receiver block was not registered",
+            state.heap.payload_size(behavior).is_some(),
+            "behavior is not a floor object",
         );
-        // A vtable that gained a private vtable now dispatches differently.
+        boundary::require_invariant(
+            state.heap.set_vtable(object, behavior),
+            "behavior receiver is not a floor object",
+        );
         state.vtables.note_mutation();
-        private
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ensure_private_vtable(&self, object: Oop) -> Oop {
+        birnam_object_model::ensure_private_vtable(self, object)
     }
 
     /// Design 74A §3: may generated code read or write `machine`'s current
@@ -6745,6 +6751,18 @@ mod tests {
     }
 
     #[test]
+    fn rooted_private_behavior_preserves_its_existing_strong_owner_edge() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let object = runtime.allocate_instance(runtime.globals().object_vt, 0);
+        let private = runtime.ensure_private_vtable(object);
+        runtime.export(b"RootedPrivateBehavior", private).unwrap();
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+        assert_eq!(runtime.checked_vtable_of(object), private);
+        assert_eq!(runtime.vtable_owner(private), object);
+    }
+
+    #[test]
     fn dynamic_vtable_registry_is_weak_and_live_headers_preserve_identity() {
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;
@@ -10612,5 +10630,29 @@ mod tests {
             0,
             "every guarded slot probe agreed"
         );
+    }
+}
+
+// Only the test harness statically links the upper algorithm. Production Id
+// has no dependency on birnam-object-model and exposes only the seed operations.
+#[cfg(test)]
+impl birnam_object_model::BehaviorAccess for Runtime {
+    fn prepare(&self, object: Oop) -> Oop {
+        self.prepare_behavior_mutation(object)
+    }
+    fn metavtable(&self) -> Oop {
+        self.globals().vtable_vt
+    }
+    fn owner(&self, behavior: Oop) -> Oop {
+        self.vtable_owner(behavior)
+    }
+    fn delegate(&self, parent: Oop) -> Oop {
+        self.create_vtable(parent)
+    }
+    fn set_owner(&self, behavior: Oop, object: Oop) {
+        self.set_vtable_owner(behavior, object);
+    }
+    fn attach(&self, object: Oop, behavior: Oop) {
+        self.reassociate_behavior(object, behavior);
     }
 }

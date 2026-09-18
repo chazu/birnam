@@ -231,6 +231,20 @@ unsafe extern "C" fn vtable_delegated(receiver: Oop, _: *const Oop, _: usize) ->
     with_active(|runtime| runtime.create_vtable(receiver))
 }
 
+unsafe extern "C" fn prepare_behavior_mutation(_: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some([object]) = (unsafe { crate::abi::borrowed_oop_args(args, count) }) else {
+        boundary::fatal_invariant("prepareBehaviorMutationOf: requires one object");
+    };
+    with_active(|runtime| runtime.prepare_behavior_mutation(*object))
+}
+unsafe extern "C" fn reassociate_behavior(_: Oop, args: *const Oop, count: usize) -> Oop {
+    let Some([object, behavior]) = (unsafe { crate::abi::borrowed_oop_args(args, count) }) else {
+        boundary::fatal_invariant("reassociateBehaviorOf:with: requires object and behavior");
+    };
+    with_active(|runtime| runtime.reassociate_behavior(*object, *behavior));
+    *object
+}
+
 unsafe extern "C" fn object_does_not_understand(_: Oop, _: *const Oop, _: usize) -> Oop {
     boundary::fatal_invariant("doesNotUnderstand:")
 }
@@ -423,6 +437,20 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
         (bool_vt, true_object),
     ] {
         runtime.set_vtable_owner(vtable, owner);
+    }
+
+    for (name, method) in [
+        (
+            b"prepareBehaviorMutationOf:".as_slice(),
+            prepare_behavior_mutation as crate::abi::Method,
+        ),
+        (
+            b"reassociateBehaviorOf:with:".as_slice(),
+            reassociate_behavior as crate::abi::Method,
+        ),
+    ] {
+        let selector = runtime.intern(name).expect("static seed selector");
+        runtime.add_method(vtable_vt, selector, method);
     }
 
     runtime.install_canonical(CanonicalObjects {
@@ -806,7 +834,7 @@ mod tests {
             assert_eq!(runtime.payload_size(expected), Some(80));
         }
 
-        let selector_names: [&[u8]; 10] = [
+        let selector_names: [&[u8]; 12] = [
             b"lookup",
             b"addMethod",
             b"removeMethod:",
@@ -817,6 +845,8 @@ mod tests {
             b"new",
             b"==",
             b"Symbol",
+            b"prepareBehaviorMutationOf:",
+            b"reassociateBehaviorOf:with:",
         ];
         assert_eq!(runtime.symbol_count(), selector_names.len());
         for (index, name) in selector_names.iter().copied().enumerate() {
@@ -846,6 +876,8 @@ mod tests {
             bootstrap.selectors.remove_method,
             bootstrap.selectors.allocate,
             bootstrap.selectors.delegated,
+            runtime.intern(b"prepareBehaviorMutationOf:").unwrap(),
+            runtime.intern(b"reassociateBehaviorOf:with:").unwrap(),
         ];
         for (index, selector) in meta_selectors.into_iter().enumerate() {
             assert_eq!(

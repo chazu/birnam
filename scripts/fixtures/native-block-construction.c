@@ -1,4 +1,5 @@
-#include "idapi_v1.h"
+#include "idapi_v2.h"
+#include "object-model-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -47,6 +48,7 @@ int main(int argc, char **argv) {
     IdInitFn initialize = (IdInitFn)dlsym(floor, "id_init");
     assert(initialize);
     api = initialize();
+    fixture_mount_object_model(api, argv[1]);
     admission = (Admission)dlsym(floor, "birnam_id_warm_block_construction_v1");
     assert(admission);
     api->gc_set_auto(0);

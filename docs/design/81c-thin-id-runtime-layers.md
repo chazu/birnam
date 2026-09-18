@@ -145,9 +145,10 @@ Backward compatibility is not a constraint for this refactor. Remove services
 that do not belong in minimal IdApi and migrate their consumers to the relevant
 layers; do not retain the old table as a compatibility facade. Id-owned operations
 also need justification as direct entries rather than ordinary messages.
-[81D](81d-id-api-partition.md) partitions all 54 current fields and identifies
-the construction/storage/provider decisions still needed. Do not publish dummy
-callbacks to disguise a missing service.
+[81D](81d-id-api-partition.md) partitions the original 54 fields and identifies
+the construction/storage/provider decisions still needed. [81J](81j-private-behavior-extraction.md)
+begins production extraction by removing `ensurePrivateVtable`; the current v2
+table has 53 fields. Do not publish dummy callbacks to disguise a missing service.
 
 [81E](81e-seed-sufficiency-audit.md) audits the proposed services against the
 seed. The five methods alone do not expose all required state and lifetime
@@ -159,8 +160,10 @@ permission to recreate an aggregate Runtime table.
 
 [81F](81f-isolated-id-seed-proof.md) executes the first bounded witness: a
 standalone Rust seed plus separately loaded private-behavior library, with no
-production runtime dependency. This establishes that particular interface split;
-collector/ownership attachment and production extraction remain open.
+production runtime dependency. This establishes that particular interface split.
+[81J](81j-private-behavior-extraction.md) applies private-behavior extraction to
+production while retaining existing collection and lifetime behavior. New
+ownership/unloading mechanisms are outside the authorized refactor.
 
 Replacing a layer's implementation at build/startup is the first migration
 milestone. Ordinary method replacement must continue to work. Unloading or

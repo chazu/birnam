@@ -61,6 +61,13 @@ nine mutation controls pass. The native SeedApi carrier remains unchanged.
 Behavior/weak-Symbol retirement, production safepoints, acquired-callable ownership
 and Birnam primitive authoring remain separate work.
 
+[81J](../design/81j-private-behavior-extraction.md) extracts the existing production
+private-behavior operation into a loaded Rust object-model module. IdApi v2 removes
+its native field (53 fields / 424 bytes); existing GC, strong owner edges and
+mutation notification remain in place. All 84 release-plan steps and the separate
+relocated-install check pass; local exhaustive matrices used extended deadlines.
+New executable ownership/unloading mechanisms are outside the authorized refactor.
+
 ## Selected sequence — 2026-09-06
 
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),

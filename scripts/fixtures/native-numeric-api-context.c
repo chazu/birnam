@@ -1,4 +1,5 @@
-#include "idapi_v1.h"
+#include "idapi_v2.h"
+#include "object-model-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -14,6 +15,7 @@ int main(int argc, char **argv) {
     IdInitFn initialize = (IdInitFn)dlsym(floor, "id_init");
     assert(initialize);
     floor_api = initialize();
+    fixture_mount_object_model(floor_api, argv[1]);
     IdApi module_api = *floor_api;
     void *prelude = floor_api->dlopen_fn(argv[2], RTLD_NOW | RTLD_LOCAL);
     assert(prelude);

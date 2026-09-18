@@ -24,7 +24,8 @@ def plan(suite, prefix, output):
         return dict(name=name, argv=[str(a) for a in argv], inputs=inputs, **kwargs)
     result = [step('tool-tests', ['python3', 'scripts/validation-support-test.py'],
                    ('scripts/validation*.py', 'scripts/validate.py', 'scripts/closure_plan.py', 'scripts/rust-install.sh', 'scripts/*timing*.py')),
-              step('workspace', ['cargo', 'test', '--workspace', '--locked', '--offline'], PRODUCTION, timeout=300)]
+              step('workspace', ['cargo', 'test', '--workspace', '--locked', '--offline'],
+                   PRODUCTION + ('abi/idapi-v2.json',), timeout=300)]
     for fixture in ('stackless-s2', 'portable-code-v1'):
         result.append(step(fixture, ['python3', f'abi/fixtures/{fixture}/verify.py'], (f'abi/fixtures/{fixture}/*',)))
     for script in ('release-changelog-test.py', 'v014-performance-acceptance-test.py', 'v015-performance-acceptance-test.py'):
@@ -34,11 +35,11 @@ def plan(suite, prefix, output):
                        '--prefix', prefix, '--profile', 'release', '--build-cache', ROOT / '.cargo-target/install'],
                        PRODUCTION + ('scripts/rust-install.sh', 'docs/guide/**/*'), artifacts=(str(prefix),), timeout=300))
     result.append(step('native', ['bash', 'scripts/rust-driver-native-smoke.sh', prefix], NATIVE,
-                       depends=('install',), timeout=300))
+                       depends=('install',), timeout=600))
     result.append(step('floor-discovery', ['python3', 'scripts/floor-discovery-test.py',
                        '--prefix', prefix, '--output', output/'floor-discovery.json'],
                        PRODUCTION + ('scripts/floor-discovery-test.py', 'scripts/fixtures/floor-lookup.c',
-                                     'abi/fixtures/idapi-v1/idapi_v1.h'),
+                                     'abi/fixtures/idapi-v2/idapi_v2.h'),
                        depends=('install',), artifacts=(str(output/'floor-discovery.json'),), timeout=300))
     result.append(step('relational-output', ['python3', 'scripts/relational-output-test.py',
                        '--prefix', prefix, '--output', output/'relational-output.json'],

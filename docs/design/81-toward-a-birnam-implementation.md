@@ -318,6 +318,9 @@ Integer module without changing that seed or ABI. [81H](81h-storage-observation-
 adds storage observation and a separate tracer while keeping the native API
 carrier unchanged. [81I](81i-ordinary-storage-reclamation.md) adds ordinary storage
 reclamation and transactional metadata retirement with forced address reuse.
+[81J](81j-private-behavior-extraction.md) begins production extraction with the
+existing private-behavior operation. Substantial new ownership/unloading designs
+are outside this refactor; preserve existing semantics and lifetime machinery.
 These guide bottom-up extraction
 and Step 2's low-level authoring design. No document assumes
 that today's compiler can already emit a self-sufficient Birnam Id module.

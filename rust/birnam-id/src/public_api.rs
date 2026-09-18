@@ -1,4 +1,4 @@
-//! Complete frozen IdApi table backed only by production implementations.
+//! Current IdApi table backed only by production implementations.
 
 use core::ffi::{c_char, c_int, c_void};
 use std::ffi::CStr;
@@ -310,10 +310,6 @@ unsafe extern "C" fn api_slot_kind(vtable: Oop, word: usize) -> u8 {
     runtime().slot_kind(vtable, word)
 }
 
-unsafe extern "C" fn api_ensure_private_vtable(object: Oop) -> Oop {
-    runtime().ensure_private_vtable(object)
-}
-
 unsafe extern "C" fn api_set_owner(vtable: Oop, owner: Oop) {
     runtime().set_vtable_owner(vtable, owner);
 }
@@ -391,7 +387,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         objectPayloadSize: api_object_payload_size,
         exportedNameOf: api_exported_name_of,
         slotKind: api_slot_kind,
-        ensurePrivateVtable: api_ensure_private_vtable,
         setOwner: api_set_owner,
         setParent: api_set_parent,
         setMethodOverwriteHook: api_set_method_overwrite_hook,
@@ -614,6 +609,9 @@ mod tests {
             bootstrap.runtime.has_finalizer(canonical.string_prototype),
             Some(true)
         );
-        assert_eq!(size_of::<IdApi>(), 54 * size_of::<usize>());
+        assert_eq!(
+            size_of::<IdApi>(),
+            crate::abi::ABI_FIELD_COUNT * size_of::<usize>()
+        );
     }
 }

@@ -16,10 +16,11 @@ from compatibility_authority import unchanged_authority
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "ff71ec23"
 AUTHORITIES = (
-    "rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json", "abi/fixtures/idapi-v1/idapi_v1.h",
     "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-id/src/registration.rs",
     "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs",
 )
+CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v2.json",
+                 "abi/fixtures/idapi-v2/idapi_v2.h")
 
 
 def sha(path):
@@ -35,7 +36,7 @@ def sources():
               ('compatibility_authority.py', 'measurement_archive.py',
                'validation_support.py', 'validation_proof.py')]
     paths += [ROOT / 'scripts/fixtures' / name for name in
-              ('native-block-construction.c', 'closure-api-context.c')]
+              ('native-block-construction.c', 'closure-api-context.c', 'object-model-support.h')]
     for folder in ('rust', 'src/id', 'modules', 'abi', 'vendor/libtcc-src'):
         paths.extend(p for p in (ROOT / folder).rglob('*') if p.is_file())
     return {str(p.relative_to(ROOT)): sha(p) for p in sorted(set(paths))}
@@ -459,6 +460,13 @@ def main():
             if not unchanged_authority(name, data, baseline):
                 raise RuntimeError("changed compatibility authority: " + name)
             receipt["authorities"][name] = sha(ROOT / name)
+        # 81J deliberately breaks IdApi v1. Verify the current independent v2
+        # manifest instead of claiming that this table matches the 74T baseline.
+        run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v2")
+        receipt["current_id_api"] = {
+            "schema_version": 2, "change": "Design 81J private-behavior extraction",
+            "files_sha256": {name: sha(ROOT / name) for name in CURRENT_IDAPI},
+        }
         for profile in ("debug", "release"):
             run(["cargo", "test", "--locked", "--offline",
                  "-p", "birnam-native-compiler", "--features", "allocation-metrics"]
@@ -468,12 +476,12 @@ def main():
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["cargo", "build", "--locked", "--offline",
-                     "-p", "birnam-id", "-p", "birnam-prelude", "-p", "birnam-collection",
+                     "-p", "birnam-id", "-p", "birnam-object-model", "-p", "birnam-prelude", "-p", "birnam-collection",
                      "-p", "birnam-error", "-p", "birnam-portable-code",
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
                 fixture = work / (profile + "-block-construction")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v1",
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v2",
                      "scripts/fixtures/native-block-construction.c", "-o", fixture], profile + "-closure-native-fixture")
                 libraries = ROOT / ".cargo-target" / profile
                 run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
@@ -483,7 +491,7 @@ def main():
                     ("id", "prelude", "collection", "error", "portable_code")]
                     + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin", "without-prelude"], profile + "-closure-native-absent-family")
                 api_fixture = work / (profile + "-closure-api-context")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v1",
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v2",
                      "scripts/fixtures/closure-api-context.c", "-o", api_fixture], profile + "-closure-api-fixture")
                 run([api_fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
                     ("id", "tcc", "codegen_runtime")], profile + "-closure-api-context")

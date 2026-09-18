@@ -18,6 +18,10 @@ obligations. [81F](81f-isolated-id-seed-proof.md) executes a bounded standalone
 Rust seed/private-behavior witness; the production extraction below remains
 future work.
 
+[81J](81j-private-behavior-extraction.md) starts the production refactor: private
+behavior convenience moves into a loaded object-model library and IdApi v2 drops
+that field. The 54-field mapping below remains the original inventory.
+
 ## 1. Reference model and position
 
 The reference is Ian Piumarta and Alessandro Warth,

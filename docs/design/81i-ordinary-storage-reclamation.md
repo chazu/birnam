@@ -184,6 +184,10 @@ runtime, installer or IdApi source changes are part of this proof.
 
 ## 6. What remains
 
+The subsequent scope decision in [81J](81j-private-behavior-extraction.md) is to
+refactor the existing production layers. Extending this experimental collector or
+adding an ownership/unloading system is not a prerequisite or part of that work.
+
 This supplies a bounded ordinary-storage part of I3 reclamation/index retirement
 and I4 collection-phase integration. It does not settle the full seed sufficiency
 audit or make the installed stage 1 a siphon.

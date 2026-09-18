@@ -9,6 +9,11 @@
 > extraction and Birnam primitive authoring remain unproved. This refines
 > [81D](81d-id-api-partition.md), not a claim that all boundaries are executable.
 
+[81J](81j-private-behavior-extraction.md) constrains current implementation work
+to extracting existing production behavior. The broader integration obligations
+below are an audit, not authorization to invent new ownership or unloading systems
+as prerequisites for each refactor slice.
+
 ## 1. Result and scope
 
 **The five-method object-model seed alone is insufficient as a declared

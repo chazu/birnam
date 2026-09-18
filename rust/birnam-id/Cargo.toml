@@ -13,6 +13,7 @@ birnam-native-compiler = { path = "../birnam-native-compiler" }
 sha2.workspace = true
 
 [dev-dependencies]
+birnam-object-model = { path = "../birnam-object-model" }
 birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization", "dev-frame-read-reuse"] }
 
 [features]

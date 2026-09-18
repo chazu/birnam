@@ -1,4 +1,4 @@
-//! No-state C-layout mirror of the frozen `IdApi` v1 boundary.
+//! No-state C-layout mirror of the current `IdApi` v2 boundary.
 //!
 //! Raw data pointers are intentionally nullable. Function-pointer fields are
 //! non-null except for the explicitly optional method-overwrite hook.
@@ -18,7 +18,7 @@ pub type Oop = *mut c_void;
 
 /// Private versioned capability published by the Portable Code native rung.
 ///
-/// This is not an IdApi field and does not change the frozen IdApi v1 layout.
+/// This is not an IdApi field and does not add an IdApi table entry.
 /// Codegen imports the capability object by name, validates this exact raw
 /// payload, and binds thin shims into generated units.
 pub type PortableCodeAdmitProgramV1 = unsafe extern "C" fn(bytes: *const u8, length: usize) -> Oop;
@@ -203,7 +203,6 @@ pub struct IdApi {
     pub objectPayloadSize: unsafe extern "C" fn(Oop) -> usize,
     pub exportedNameOf: unsafe extern "C" fn(Oop) -> *const c_char,
     pub slotKind: unsafe extern "C" fn(Oop, usize) -> u8,
-    pub ensurePrivateVtable: unsafe extern "C" fn(Oop) -> Oop,
     pub setOwner: unsafe extern "C" fn(Oop, Oop),
     pub setParent: unsafe extern "C" fn(Oop, Oop),
 
@@ -221,7 +220,7 @@ pub struct IdApi {
 
 pub const ABI_DESCRIPTOR_MAGIC: [u8; 8] = *b"BIRNABI1";
 pub const ABI_TYPE_COUNT: usize = 8;
-pub const ABI_FIELD_COUNT: usize = 54;
+pub const ABI_FIELD_COUNT: usize = 53;
 
 const LAYOUT_KIND_TYPE: usize = 0;
 const LAYOUT_KIND_DATA_POINTER: usize = 1;
@@ -240,7 +239,7 @@ pub struct AbiLayoutEntryV1 {
 
 /// Pointer-free diagnostic description of the Rust mirror's actual layout.
 ///
-/// Entry order is the canonical order in `abi/idapi-v1.json`. Names and
+/// Entry order is the canonical order in `abi/idapi-v2.json`. Names and
 /// signatures remain owned by that manifest; this value supplies the Rust
 /// compiler's concrete sizes, alignments, offsets, nullability, and field kind.
 #[repr(C)]
@@ -292,7 +291,7 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
     magic: ABI_DESCRIPTOR_MAGIC,
     descriptor_version: 1,
     descriptor_size: size_of::<AbiDescriptorV1>(),
-    schema_version: 1,
+    schema_version: 2,
     target_arch: 1,   // aarch64
     target_os: 1,     // macOS
     target_abi: 0,    // none
@@ -356,7 +355,6 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         field_layout!(objectPayloadSize, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(exportedNameOf, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(slotKind, false, LAYOUT_KIND_FUNCTION_POINTER),
-        field_layout!(ensurePrivateVtable, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(setOwner, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(setParent, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(setMethodOverwriteHook, false, LAYOUT_KIND_FUNCTION_POINTER),
@@ -377,9 +375,9 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         SLOT_UNKNOWN as usize,
     ],
     fingerprint: [
-        0xb0, 0x46, 0x84, 0xb3, 0x10, 0x79, 0x27, 0xc8, 0x6b, 0x41, 0xe6, 0x13, 0xe9, 0x41, 0xdf,
-        0x16, 0x94, 0xfb, 0x7b, 0x52, 0xec, 0x40, 0x1e, 0x42, 0x36, 0x20, 0xfc, 0xc1, 0x74, 0xa0,
-        0xde, 0xe2,
+        0x0d, 0x59, 0x06, 0xc5, 0x0a, 0x1b, 0xef, 0xf8, 0xe3, 0xc4, 0xce, 0x85, 0x10, 0x98, 0x9e,
+        0xe6, 0x6d, 0x94, 0xd6, 0x18, 0x2e, 0xaa, 0xbd, 0x71, 0xa4, 0x37, 0xdf, 0xb6, 0x50, 0x08,
+        0x84, 0x7e,
     ],
 };
 
@@ -411,7 +409,7 @@ const _: () = {
     assert!(size_of::<Option<MethodOverwriteHook>>() == 8);
     assert!(size_of::<IdInitFn>() == 8);
     assert!(size_of::<ModuleInitFn>() == 8);
-    assert!(size_of::<IdApi>() == 432);
+    assert!(size_of::<IdApi>() == 424);
     assert!(align_of::<IdApi>() == 8);
 
     assert_field_offset!(dlopen, 0);
@@ -455,19 +453,18 @@ const _: () = {
     assert_field_offset!(objectPayloadSize, 304);
     assert_field_offset!(exportedNameOf, 312);
     assert_field_offset!(slotKind, 320);
-    assert_field_offset!(ensurePrivateVtable, 328);
-    assert_field_offset!(setOwner, 336);
-    assert_field_offset!(setParent, 344);
-    assert_field_offset!(setMethodOverwriteHook, 352);
-    assert_field_offset!(vtableCount, 360);
-    assert_field_offset!(vtableAt, 368);
-    assert_field_offset!(vtableSelectorAt, 376);
-    assert_field_offset!(vtableParent, 384);
-    assert_field_offset!(mkWord, 392);
-    assert_field_offset!(wordValue, 400);
-    assert_field_offset!(isWord, 408);
-    assert_field_offset!(word_vt, 416);
-    assert_field_offset!(vtableOwner, 424);
+    assert_field_offset!(setOwner, 328);
+    assert_field_offset!(setParent, 336);
+    assert_field_offset!(setMethodOverwriteHook, 344);
+    assert_field_offset!(vtableCount, 352);
+    assert_field_offset!(vtableAt, 360);
+    assert_field_offset!(vtableSelectorAt, 368);
+    assert_field_offset!(vtableParent, 376);
+    assert_field_offset!(mkWord, 384);
+    assert_field_offset!(wordValue, 392);
+    assert_field_offset!(isWord, 400);
+    assert_field_offset!(word_vt, 408);
+    assert_field_offset!(vtableOwner, 416);
 
     assert!(SLOT_RAW == 0);
     assert!(SLOT_OOP == 1);
@@ -480,12 +477,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn primitive_layout_matches_the_v1_manifest() {
+    fn primitive_layout_matches_the_v2_manifest() {
         assert_eq!((size_of::<Oop>(), align_of::<Oop>()), (8, 8));
         assert_eq!((size_of::<Method>(), align_of::<Method>()), (8, 8));
         assert_eq!(size_of::<Option<MethodOverwriteHook>>(), 8);
-        assert_eq!((size_of::<IdApi>(), align_of::<IdApi>()), (432, 8));
-        assert_eq!(offset_of!(IdApi, vtableOwner), 424);
+        assert_eq!((size_of::<IdApi>(), align_of::<IdApi>()), (424, 8));
+        assert_eq!(offset_of!(IdApi, vtableOwner), 416);
         assert_eq!(
             [SLOT_RAW, SLOT_OOP, SLOT_CODE, SLOT_UNKNOWN],
             [0, 1, 2, 255]
@@ -515,5 +512,52 @@ mod tests {
             unsafe { borrowed_bytes(bytes.as_ptr(), bytes.len()) },
             Some(&bytes[..])
         );
+    }
+}
+
+/// Invoke the loaded object-model service. This is a message adapter, not an Id
+/// implementation or a replacement native table entry.
+/// # Safety
+/// The object-model module must be mounted on this live owner-thread floor;
+/// `object` is a live object in it. The ordinary send/root contracts apply.
+pub unsafe fn ensure_private_vtable(api: &IdApi, object: Oop) -> Oop {
+    unsafe {
+        (api.send)(
+            api.vtable_vt,
+            (api.intern)(c"ensurePrivateVtableFor:".as_ptr()),
+            &object,
+            1,
+        )
+    }
+}
+
+#[cfg(test)]
+mod v2_manifest_tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+    #[test]
+    fn current_descriptor_matches_independent_v2_manifest() {
+        let mut manifest: serde_json::Value =
+            serde_json::from_str(include_str!("../../../abi/idapi-v2.json")).unwrap();
+        let expected = manifest
+            .as_object_mut()
+            .unwrap()
+            .remove("fingerprint")
+            .unwrap();
+        let digest = Sha256::digest(serde_json::to_vec(&manifest).unwrap());
+        assert_eq!(format!("{digest:x}"), expected["value"].as_str().unwrap());
+        assert_eq!(digest.as_slice(), ABI_DESCRIPTOR_V1.fingerprint);
+        assert_eq!(manifest["schema_version"], ABI_DESCRIPTOR_V1.schema_version);
+        assert_eq!(manifest["id_api"]["size"], size_of::<IdApi>());
+        assert_eq!(manifest["id_api"]["field_count"], ABI_FIELD_COUNT);
+        let fields = manifest["id_api"]["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), ABI_FIELD_COUNT);
+        for (index, (field, actual)) in fields.iter().zip(&ABI_DESCRIPTOR_V1.fields).enumerate() {
+            assert_eq!(field["index"], index);
+            assert_eq!(field["offset"], actual.offset);
+            assert_eq!(field["size"], actual.size);
+            assert_eq!(field["alignment"], actual.alignment);
+            assert_ne!(field["name"], "ensurePrivateVtable");
+        }
     }
 }

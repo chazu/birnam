@@ -655,7 +655,7 @@ unsafe extern "C" fn m_install(self_object: Oop, args: *const Oop, count: usize)
     let method: Method = unsafe { core::mem::transmute(symbol) };
     // SAFETY: these IdApi calls are the host's canonical vtable mutation path;
     // no Rust reference is held across either callback.
-    let private_vtable = unsafe { (api.ensurePrivateVtable)(target) };
+    let private_vtable = unsafe { birnam_abi::ensure_private_vtable(api, target) };
     unsafe { (api.method)(private_vtable, selector, method) };
     if let Some(payload) = unsafe { unit_payload(self_object) } {
         // SAFETY: the unit remains live and no foreign call is active.
@@ -1136,7 +1136,7 @@ pub unsafe extern "C" fn rt_ensure_private_vtable(object: Oop) -> Oop {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).ensurePrivateVtable)(object) }
+    unsafe { birnam_abi::ensure_private_vtable(api_ref(runtime), object) }
 }
 
 #[unsafe(export_name = "birnam_method")]

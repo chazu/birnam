@@ -5,6 +5,10 @@ version = 4
 [[package]]
 name = "birnam-abi"
 version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+]
 
 [[package]]
 name = "birnam-alien"
@@ -81,6 +85,7 @@ dependencies = [
  "birnam-artifact",
  "birnam-codegen",
  "birnam-native-compiler",
+ "birnam-object-model",
  "sha2",
 ]
 
@@ -112,6 +117,13 @@ name = "birnam-native-compiler"
 version = "0.0.0"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "birnam-object-model"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
 ]
 
 [[package]]

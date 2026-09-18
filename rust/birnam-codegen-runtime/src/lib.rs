@@ -7137,7 +7137,7 @@ unsafe extern "C" fn rust_codegen_install_portable_image_binding(
     let implementation = values[2];
     let provenance = values[3];
     let selector = unsafe { intern_bytes(api, &selector_bytes) };
-    let vtable = unsafe { (api.ensurePrivateVtable)(target) };
+    let vtable = unsafe { birnam_abi::ensure_private_vtable(api, target) };
     if vtable.is_null() {
         return api.nilObj;
     }
@@ -12698,7 +12698,7 @@ unsafe fn reflect_install_method(
         note_error(b"RustReflect defineMethod: expects a selector symbol");
         return api.nilObj;
     };
-    let vt = unsafe { (api.ensurePrivateVtable)(target) };
+    let vt = unsafe { birnam_abi::ensure_private_vtable(api, target) };
     if vt.is_null() {
         note_error(b"RustReflect defineMethod: target has no vtable");
         return api.nilObj;
