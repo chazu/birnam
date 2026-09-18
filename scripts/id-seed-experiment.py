@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Designs 81F/81G: isolated Id seed, Integer and object-model module proofs."""
+"""Designs 81F/81G/81H: isolated Id, Integer, object-model and tracing proofs."""
 
 import hashlib
 import json
@@ -36,29 +36,41 @@ CASES = [
     "ordered-shutdown",
 ]
 INTEGER_ONLY_CASES = CASES[:CASES.index("private-behavior-in-upper-dylib")] + ["integer-only-shutdown"]
+TRACE_CASES = [
+    "trace-existing-storage-facts", "trace-shared-cycles-and-raw-words",
+    "trace-changing-root-scopes", "trace-representation-survives-reassociation",
+    "trace-rejects-incomplete-and-invalid-input", "trace-observation-phase-guards",
+    "trace-error-unwinds-phase-and-nesting", "trace-storage-message-remains-replaceable",
+    "trace-ordered-shutdown",
+]
 ARTIFACTS = [
     "birnam-seed-probe",
     "libbirnam_seed_experiment.dylib",
     "libbirnam_object_model_experiment.dylib",
     "libbirnam_integer_experiment.dylib",
+    "libbirnam_trace_experiment.dylib",
+    "birnam-trace-probe",
 ]
 EXPORTS = {
     ARTIFACTS[1]: {"_birnam_seed_create_v1", "_birnam_seed_destroy_v1"},
     ARTIFACTS[2]: {"_birnam_object_model_create_v1", "_birnam_object_model_destroy_v1"},
     ARTIFACTS[3]: {"_birnam_integer_create_v1", "_birnam_integer_destroy_v1"},
+    ARTIFACTS[4]: {"_birnam_trace_v1"},
 }
 DEPENDENCIES = {
     "birnam-seed-abi": [],
-    "birnam-seed-experiment": ["birnam-seed-abi"],
-    "birnam-object-model-experiment": ["birnam-seed-abi"],
-    "birnam-integer-experiment": ["birnam-seed-abi"],
+    "birnam-observation-abi": ["birnam-seed-abi"],
+    "birnam-seed-experiment": ["birnam-observation-abi", "birnam-seed-abi"],
+    "birnam-object-model-experiment": ["birnam-observation-abi", "birnam-seed-abi"],
+    "birnam-integer-experiment": ["birnam-observation-abi", "birnam-seed-abi"],
     "birnam-seed-probe": ["birnam-seed-abi"],
+    "birnam-trace-experiment": ["birnam-observation-abi", "birnam-seed-abi"],
+    "birnam-trace-probe": ["birnam-observation-abi", "birnam-seed-abi"],
 }
-# Exact seed/ABI sources from 81F's successful 20260918-100341-mgyf_i33 run.
-# Adding Integer must not quietly grow or change either boundary.
-SEED_REFERENCE_SHA256 = {
+# Exact original native SeedApi carrier. 81H intentionally extends seed methods
+# and adds a separate borrowed observation protocol, not more SeedApi entries.
+ABI_REFERENCE_SHA256 = {
     "abi/src/lib.rs": "75a36b36c83462ba591a58fbacd2366547741665a1134752f28a5d1464f5705b",
-    "seed/src/lib.rs": "6e7e7887373023b3784067b5555cf8ae334bb0ad0ca456db006c56c1ad2bc1b6",
 }
 
 
@@ -76,7 +88,7 @@ def system_image(path):
 
 
 def main():
-    require(platform.system() == "Darwin", "81F/81G currently require macOS/dyld")
+    require(platform.system() == "Darwin", "81F/81G/81H currently require macOS/dyld")
     # Broken variants abort on purpose; do not leave large core files behind.
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     base = ROOT / ".cargo-target/id-seed-experiment"
@@ -84,16 +96,16 @@ def main():
     output = Path(tempfile.mkdtemp(prefix=time.strftime("%Y%m%d-%H%M%S-"), dir=base))
     receipt_path = output / "receipt.json"
     receipt = {
-        "schema": "birnam-id-seed-experiment-v2",
-        "design": "81G",
-        "extends": ["81F"],
+        "schema": "birnam-id-seed-experiment-v3",
+        "design": "81H",
+        "extends": ["81F", "81G"],
         "status": "running",
         "host": {"system": platform.system(), "machine": platform.machine()},
         "scope": "Rust boundary witness; no production extraction or Birnam authoring proof",
         "limitations": [
             "single owner thread; bounded storage retained until seed destruction",
             "code and method data pinned through all invocations; no dynamic retirement",
-            "no collector, ownership provider, mutation observers, images or Machine",
+            "reachability only; no reclamation, native stack scan, ownership provider, images or Machine",
             "no performance or minimum-possible-ABI claim",
         ],
         "commands": [],
@@ -131,9 +143,9 @@ def main():
         receipt["git_status"] = run(["git", "status", "--short"]).stdout
         receipt["rustc"] = run(["rustc", "-Vv"]).stdout.strip()
         receipt["cargo"] = run(["cargo", "--version"]).stdout.strip()
-        require(all(digest(SOURCE / name) == value for name, value in SEED_REFERENCE_SHA256.items()),
-                "81G requires the unchanged 81F seed and ABI sources")
-        receipt["unchanged_seed_sha256"] = SEED_REFERENCE_SHA256
+        require(all(digest(SOURCE / name) == value for name, value in ABI_REFERENCE_SHA256.items()),
+                "81H requires the unchanged 81F native SeedApi carrier")
+        receipt["unchanged_abi_sha256"] = ABI_REFERENCE_SHA256
         # Only these source files are copied; no production implementation can
         # enter the build through an accidentally inherited workspace member.
         files = sorted(path for path in SOURCE.rglob("*") if path.is_file()
@@ -201,7 +213,7 @@ def main():
                 audits[name] = {"sha256": digest(artifact), "install_name": identity,
                                 "dependencies": dependencies, "undefined_symbols": imports.splitlines(),
                                 "exports": sorted(exported) if exported is not None else None}
-            for variant in ("full", "integer-only"):
+            for variant in ("full", "integer-only", "trace"):
                 if variant == "integer-only":
                     executed = prefix / variant
                     executed.mkdir()
@@ -212,11 +224,21 @@ def main():
                     require({p.name for p in executed.iterdir()} == set(names), "extra Integer-only artifact")
                     expected_cases = INTEGER_ONLY_CASES
                     object_model = "-"
+                elif variant == "trace":
+                    executed = prefix / variant
+                    executed.mkdir()
+                    names = [ARTIFACTS[index] for index in (5, 1, 2, 3, 4)]
+                    for name in names:
+                        shutil.copy2(prefix / name, executed / name)
+                        require(digest(executed / name) == audits[name]["sha256"], "copied artifact differs")
+                    require({p.name for p in executed.iterdir()} == set(names), "extra trace artifact")
+                    expected_cases = TRACE_CASES
                 else:
-                    executed, names, expected_cases = prefix, ARTIFACTS, CASES
+                    executed, names, expected_cases = prefix, ARTIFACTS[:4], CASES
                     object_model = prefix / ARTIFACTS[2]
-                result = run([executed / ARTIFACTS[0], executed / ARTIFACTS[1], object_model,
-                              executed / ARTIFACTS[3]], cwd=executed, timeout=30)
+                command = ([executed / name for name in names] if variant == "trace" else
+                           [executed / ARTIFACTS[0], executed / ARTIFACTS[1], object_model, executed / ARTIFACTS[3]])
+                result = run(command, cwd=executed, timeout=30)
                 lines = result.stdout.splitlines()
                 passed = [line.removeprefix("PASS\t") for line in lines if line.startswith("PASS\t")]
                 started = [line.removeprefix("BEGIN\t") for line in lines if line.startswith("BEGIN\t")]
@@ -263,6 +285,10 @@ def main():
             ("fixed-root-lookup", "replace-metacircular-lookup", "seed", 1, root_binding, "Method::plain(lookup)"),
             ("wrapping-integer-add", "integer-checked-arithmetic", "integer", 3,
              "i64::checked_add", "|a, b| Some(a.wrapping_add(b))"),
+            ("trace-all-allocations-rooted", "trace-shared-cycles-and-raw-words", "trace", 4,
+             "graph.roots.iter().copied().collect()", "graph.allocations.keys().copied().collect()"),
+            ("trace-ignores-payload-edges", "trace-shared-cycles-and-raw-words", "trace", 4,
+             "target != 0 && graph.edge(object, target) != OK", "target != 0 && !graph.allocations.contains_key(&target)"),
         ]
         for name, expected_case, crate, artifact_index, before, after in controls:
             print(f"id-seed: negative control {name}", flush=True)
@@ -274,12 +300,14 @@ def main():
             (mutant / source_relative).write_text(source_text.replace(before, after))
             env["CARGO_TARGET_DIR"] = str(mutant / "build")
             run(["cargo", "build", "--manifest-path", mutant / "Cargo.toml", "-p", f"birnam-{crate}-experiment", "--locked", "--offline"])
-            paths = [output / "debug" / artifact for artifact in ARTIFACTS]
-            paths[artifact_index] = mutant / "build/debug" / ARTIFACTS[artifact_index]
+            order = (5, 1, 2, 3, 4) if crate == "trace" else (0, 1, 2, 3)
+            expected_cases = TRACE_CASES if crate == "trace" else CASES
+            paths = [output / "debug" / ARTIFACTS[i] for i in order]
+            paths[order.index(artifact_index)] = mutant / "build/debug" / ARTIFACTS[artifact_index]
             result = run(paths, cwd=mutant, timeout=30, allow_failure=True)
             started = [line.removeprefix("BEGIN\t") for line in result.stdout.splitlines() if line.startswith("BEGIN\t")]
             passed = [line.removeprefix("PASS\t") for line in result.stdout.splitlines() if line.startswith("PASS\t")]
-            preceding = CASES[:CASES.index(expected_case)]
+            preceding = expected_cases[:expected_cases.index(expected_case)]
             require(result.returncode != 0 and started == [*preceding, expected_case] and passed == preceding,
                     f"negative control did not fail at expected case {expected_case}: {result.stdout}{result.stderr}")
             receipt["negative_controls"].append({"name": name, "status": "detected", "case": expected_case,
@@ -290,7 +318,7 @@ def main():
         require(all(digest(ROOT / name) == value for name, value in receipt["source_sha256"].items()),
                 "source changed while experiment was running")
         receipt["status"] = "passed"
-        print(f"id-seed: PASS ({len(CASES)} full + {len(INTEGER_ONLY_CASES)} Integer-only cases x 2 profiles; {len(controls)} detected negative controls)", flush=True)
+        print(f"id-seed: PASS ({len(CASES)} full + {len(INTEGER_ONLY_CASES)} Integer-only + {len(TRACE_CASES)} trace cases x 2 profiles; {len(controls)} detected negative controls)", flush=True)
     except BaseException as error:
         receipt["status"] = "failed"
         receipt["error"] = str(error)

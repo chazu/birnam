@@ -13,3 +13,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 birnam-seed-abi = { path = "../abi" }
+birnam-observation-abi = { path = "../observation-abi" }

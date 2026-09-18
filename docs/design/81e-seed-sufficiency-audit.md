@@ -3,7 +3,8 @@
 > **Status:** Source-level dependency audit and proposed contracts, 2026-09-18.
 > Runtime source checked at `162b68fe`. [81F](81f-isolated-id-seed-proof.md) now
 > executes the first bounded Rust seed/object-model witness; [81G](81g-integer-module-proof.md)
-> adds an Integer module through the unchanged boundary. Production runtime
+> adds an Integer module through the unchanged boundary. [81H](81h-storage-observation-and-tracing.md)
+> executes storage observation and separate tracing. Production runtime
 > extraction and Birnam primitive authoring remain unproved. This refines
 > [81D](81d-id-api-partition.md), not a claim that all boundaries are executable.
 
@@ -122,8 +123,9 @@ exists under the listed assumptions. It is not a compiled or executed proof.
 "Blocked" means a named interface must be designed before extraction, not that
 the architecture is impossible. Every row still depends on L for its eventual
 Birnam implementation. 81F supplies an isolated Rust execution receipt for the
-private-behavior part of L1, and 81G for the Integer part of L2. The remaining
-slices remain unexecuted.
+private-behavior part of L1, 81G for the Integer part of L2, and 81H for the
+storage-description/reachability parts of L4/L5. The other obligations remain
+unexecuted.
 
 ### L1. Object-model library and reflection — private behavior witnessed; reflection pending
 
@@ -191,7 +193,7 @@ an environment to find itself. Store-backed Globals remains a later service.
 and roots through collection, without Store or Machine. No seed mutation may be
 required merely to add an exported name.
 
-### L4. Representation descriptions — constructible registry; blocked on core access
+### L4. Representation descriptions — tracing subset witnessed; image/external storage pending
 
 **Evidence:** default vtable layouts are stored in
 [vtable.rs](../../rust/birnam-id/src/vtable.rs); both GC and
@@ -207,7 +209,14 @@ a trace callback alone cannot reconstruct an object's representation.
 without making those consumers share private state. Include a custom behavior
 representation and a buffer outside the Id allocation registry.
 
-### L5. Collector — blocked on I3/I4/I5/I6; largest storage gap
+**Executed subset:** [81H](81h-storage-observation-and-tracing.md) obtains core
+roots/edges and allocation extents through a seed-owned observation message.
+Upper modules describe their payload slots by representation identity; Pair
+tracing survives reassociation with Integer behavior. Missing and conflicting
+descriptions fail closed. External native buffers and image relocation remain
+unproved.
+
+### L5. Collector — reachability witnessed; reclamation and lifetime integration pending
 
 **Evidence:** [gc.rs](../../rust/birnam-id/src/gc.rs) marks through `Heap` and
 captures native roots using a platform register-save operation.
@@ -227,6 +236,12 @@ leaking it; trace native reentry roots, cyclic graphs and Frame roots; retire we
 Symbols and dead method bindings; preserve finalizer ordering and allocation
 restrictions; reclaim while the optimizer is absent. Check construction-root
 release and safe address reuse. General root callbacks alone do not prove this.
+
+**Executed subset:** 81H loads a tracer over existing allocations, computes exact
+live/dead partitions including cycles/shared references, and checks a guarded
+owner-thread observation phase. Native roots are explicit, Symbols remain strong,
+and no memory or indexes are reclaimed. This establishes part of I3/I4, not a
+complete collector or automatic production safepoint/root discipline.
 
 ### L6. Executable ownership — blocked on I5 and binding retirement
 
@@ -387,7 +402,8 @@ objects stay in the same storage/identity domain when GC and libraries attach.
 No examined requirement forces a Values, GC, Frame or Machine implementation to
 remain inside Id. However, **the sufficiency of a concrete minimal API for all
 layers is not proved**: 81F implements a bounded subset of I1/I2 with pinned
-storage/code, while the remaining obligations and L are still open. Their
+storage/code. 81H establishes storage observation and reachability through part
+of I3/I4, while reclamation, lifetime integration and L remain open. Their
 grouping must not be mistaken for six new mandatory C tables.
 
 The first bounded work, now executed in [81F](81f-isolated-id-seed-proof.md),
@@ -408,7 +424,8 @@ private-behavior part of L1 as the first upper-layer witness:
 81F meets this bounded acceptance with a new isolated Rust implementation. It
 does not mechanically extract production Id or provide mutation observers.
 
-Follow with the storage/collector witness and callable-ownership witness before
+[81H](81h-storage-observation-and-tracing.md) now supplies the read-only storage
+and tracing witness. Follow with reclamation/index retirement and callable ownership before
 claiming the harder layers are extractable. Each L1–L13 proof above is a separate
 acceptance obligation. Runtime changes use the [validation workflow](../validation.md);
 existing aggregate-runtime tests remain useful regressions but cannot prove an

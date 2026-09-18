@@ -1,5 +1,6 @@
 //! Integer representation and default behavior, entirely above the seed.
 //! See Design 81G for the native mount and message contracts.
+use birnam_observation_abi::{PROVIDER, ProviderSink, decode};
 use birnam_seed_abi::*;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -215,6 +216,66 @@ unsafe extern "C" fn multiply(
     unsafe { binary(api, data, receiver, args, count, out, i64::checked_mul) }
 }
 
+unsafe extern "C" fn describe(
+    api: *const SeedApi,
+    data: *mut c_void,
+    _: Oop,
+    args: *const Value,
+    count: usize,
+    _: *mut Value,
+) -> Status {
+    let module = match unsafe { module(api, data) } {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let sink = match unsafe { decode::<ProviderSink>(args, count) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    for object in [module.factory, module.behavior, module.from_word] {
+        let status = unsafe { (sink.root)(sink.context, object) };
+        if status != OK {
+            return status;
+        }
+    }
+    // Provenance is not a strong root set. Each initialized Integer has raw
+    // bytes and zero payload reference slots, regardless of current behavior.
+    let instances: Vec<_> = module.instances.borrow().iter().copied().collect();
+    for object in instances {
+        let status =
+            unsafe { (sink.payload)(sink.context, object, size_of::<i64>(), core::ptr::null(), 0) };
+        if status != OK {
+            return status;
+        }
+    }
+    OK
+}
+unsafe extern "C" fn storage_provider(
+    api: *const SeedApi,
+    data: *mut c_void,
+    receiver: Oop,
+    _: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    let module = match unsafe { module(api, data) } {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    if count != 0 || receiver != module.factory {
+        return INVALID;
+    }
+    unsafe {
+        return_value(
+            out,
+            Ok(Value::method(Method {
+                entry: describe,
+                data,
+            })),
+        )
+    }
+}
+
 /// Mount ABI: create(seed, factory_out) -> opaque module lifetime handle.
 /// All value operations, including construction, are ordinary messages.
 /// # Safety
@@ -262,6 +323,7 @@ pub unsafe extern "C" fn birnam_integer_create_v1(
             b"+",
             b"-",
             b"*",
+            PROVIDER,
         ]
         .into_iter()
         .map(|name| unsafe { intern(api, name) })
@@ -290,6 +352,7 @@ pub unsafe extern "C" fn birnam_integer_create_v1(
         (integer_behavior, selectors[3], add as Entry),
         (integer_behavior, selectors[4], subtract as Entry),
         (integer_behavior, selectors[5], multiply as Entry),
+        (factory_behavior, selectors[6], storage_provider as Entry),
     ] {
         let published = unsafe {
             call(

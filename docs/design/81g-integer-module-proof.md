@@ -6,6 +6,11 @@
 > unchanged. Production runtime extraction and Birnam primitive authoring remain
 > separate work.
 
+[81H](81h-storage-observation-and-tracing.md) extends this checkpoint with
+observation/providers and a tracing module. This document's unchanged-seed claim
+and counts describe the recorded 81G run; 81H changes seed methods/state while
+preserving the original native API carrier.
+
 ## 1. Result and dependency
 
 **Integer representation, construction and arithmetic work in a separately

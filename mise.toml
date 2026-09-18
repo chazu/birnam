@@ -41,7 +41,7 @@ description = "Run the test-only Design 74F same-frame recovery experiment"
 run = "python3 scripts/same-frame-deopt.py"
 
 [tasks.id-seed-experiment]
-description = "Run Designs 81F/81G isolated Id, Integer and object-model proofs"
+description = "Run Designs 81F/81G/81H isolated Id, Integer, object-model and tracing proofs"
 run = "python3 scripts/id-seed-experiment.py"
 
 [tasks.generated-deopt-experiment]

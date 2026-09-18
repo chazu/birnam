@@ -6,11 +6,20 @@ version = 4
 name = "birnam-integer-experiment"
 version = "0.0.0"
 dependencies = [
+ "birnam-observation-abi",
  "birnam-seed-abi",
 ]
 
 [[package]]
 name = "birnam-object-model-experiment"
+version = "0.0.0"
+dependencies = [
+ "birnam-observation-abi",
+ "birnam-seed-abi",
+]
+
+[[package]]
+name = "birnam-observation-abi"
 version = "0.0.0"
 dependencies = [
  "birnam-seed-abi",
@@ -24,6 +33,7 @@ version = "0.0.0"
 name = "birnam-seed-experiment"
 version = "0.0.0"
 dependencies = [
+ "birnam-observation-abi",
  "birnam-seed-abi",
 ]
 
@@ -31,5 +41,21 @@ dependencies = [
 name = "birnam-seed-probe"
 version = "0.0.0"
 dependencies = [
+ "birnam-seed-abi",
+]
+
+[[package]]
+name = "birnam-trace-experiment"
+version = "0.0.0"
+dependencies = [
+ "birnam-observation-abi",
+ "birnam-seed-abi",
+]
+
+[[package]]
+name = "birnam-trace-probe"
+version = "0.0.0"
+dependencies = [
+ "birnam-observation-abi",
  "birnam-seed-abi",
 ]

@@ -10,6 +10,9 @@
 independently loaded Integer module and leaves the seed/ABI sources unchanged.
 The artifact inventory and counts below describe the original 81F run; the
 current driver also runs the 81G cases and its Integer-only configuration.
+[81H](81h-storage-observation-and-tracing.md) subsequently adds storage
+observation and tracing, retaining the original native API carrier. Its separate
+protocol and phase guards intentionally change the experimental seed.
 
 ## 1. Result
 

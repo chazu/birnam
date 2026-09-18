@@ -48,8 +48,13 @@ remain observable. This is an isolated prototype, not a production extraction.
 module through the unchanged seed/ABI: construction, checked arithmetic,
 representation checks and replaceable methods. The extended probe passes 19 full
 and 11 Integer-only cases in debug/release, plus three detected negative controls.
-Storage/collector attachment over the original allocation domain, acquired-callable
-ownership/retirement and Birnam primitive authoring remain separate work.
+[81H](../design/81h-storage-observation-and-tracing.md) adds a storage-observation
+message and a separately loaded tracer over the original heap. Nine tracing cases
+pass in debug/release, including exact live/dead sets, representation independent
+of behavior and observation-phase guards. All earlier cases and five negative
+controls pass. The native SeedApi carrier is unchanged. Reclamation/index
+retirement, production safepoints, acquired-callable ownership and Birnam
+primitive authoring remain separate work. 81F/81G are checkpointed as `b7461cc1`.
 
 ## Selected sequence — 2026-09-06
 

@@ -1,5 +1,5 @@
 [workspace]
-members = ["abi", "seed", "object-model", "integer", "probe"]
+members = ["abi", "observation-abi", "seed", "object-model", "integer", "trace", "probe", "trace-probe"]
 resolver = "3"
 
 [workspace.package]

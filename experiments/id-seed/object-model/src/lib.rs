@@ -1,4 +1,5 @@
 //! Upper-layer consumer. Depends on the public carrier ONLY, never Seed state.
+use birnam_observation_abi::{ProviderSink, decode};
 use birnam_seed_abi::*;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -9,6 +10,7 @@ struct Library {
     // Private-vtable owner/reuse policy is owned here, not inside the seed.
     private: RefCell<BTreeMap<Oop, Oop>>,
     created: Cell<usize>,
+    selector: Oop,
 }
 unsafe extern "C" fn ensure_private(
     api: *const SeedApi,
@@ -54,6 +56,47 @@ unsafe extern "C" fn created_count(api: *const LibraryApi) -> usize {
         .created
         .get()
 }
+unsafe extern "C" fn describe(
+    api: *const SeedApi,
+    data: *mut c_void,
+    _: Oop,
+    args: *const Value,
+    count: usize,
+    _: *mut Value,
+) -> Status {
+    let library = unsafe { &*data.cast::<Library>() };
+    if api != library.seed {
+        return INVALID;
+    }
+    let sink = match unsafe { decode::<ProviderSink>(args, count) } {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    // Owner/reuse bookkeeping is a weak cache, not a reason to keep every
+    // private object alive. Header edges supplied by Id retain active behavior.
+    unsafe { (sink.root)(sink.context, library.selector) }
+}
+unsafe extern "C" fn storage_provider(
+    api: *const SeedApi,
+    data: *mut c_void,
+    _: Oop,
+    _: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    let library = unsafe { &*data.cast::<Library>() };
+    if api != library.seed || count != 0 {
+        return INVALID;
+    }
+    unsafe {
+        out.write(Value::method(Method {
+            entry: describe,
+            data,
+        }))
+    };
+    OK
+}
+
 /// # Safety
 /// Seed API and its owner thread/code must remain valid throughout this library.
 #[unsafe(no_mangle)]
@@ -71,6 +114,7 @@ pub unsafe extern "C" fn birnam_object_model_create_v1(api: *const SeedApi) -> *
         seed: api,
         private: RefCell::new(BTreeMap::new()),
         created: Cell::new(0),
+        selector,
     });
     let data = Box::into_raw(library).cast();
     let method = Method {
@@ -92,6 +136,23 @@ pub unsafe extern "C" fn birnam_object_model_create_v1(api: *const SeedApi) -> *
         publication.is_ok(),
         "experimental method publication failed"
     );
+    // Explicitly published service handle, obtained before the observation phase.
+    let provider = unsafe { intern(api, b"objectModelStorageProvider") }.unwrap();
+    unsafe {
+        call(
+            api,
+            (*api).roots.vtable,
+            (*api).selectors.add_method,
+            &[
+                Value::object(provider),
+                Value::method(Method {
+                    entry: storage_provider,
+                    data,
+                }),
+            ],
+        )
+    }
+    .unwrap();
     Box::into_raw(Box::new(LibraryApi {
         version: VERSION,
         size: size_of::<LibraryApi>() as u32,

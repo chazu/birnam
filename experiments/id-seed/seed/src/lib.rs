@@ -1,5 +1,8 @@
 //! Standalone experimental Id: no dependency on birnam-id or any runtime rung.
 //! Storage, interned names and native method code are pinned until shutdown.
+use birnam_observation_abi::{
+    Allocation, BUSY, Edge, OBSERVE, OWNER_PAYLOAD, SEED_PAYLOAD, StorageView, record,
+};
 use birnam_seed_abi::*;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -22,6 +25,7 @@ enum Kind {
 }
 struct Block {
     words: Box<[usize]>,
+    bytes: usize,
     kind: Kind,
 }
 struct Seed {
@@ -31,13 +35,15 @@ struct Seed {
     roots: Roots,
     selectors: Selectors,
     depth: Cell<usize>,
+    observing: Cell<bool>,
 }
 impl Seed {
     fn owns(&self, oop: Oop) -> bool {
         self.objects.borrow().contains_key(&oop)
     }
     fn allocate(&self, behavior: Oop, bytes: usize, kind: Kind) -> Option<Oop> {
-        if bytes > MAX_PAYLOAD || self.objects.borrow().len() >= MAX_OBJECTS {
+        if self.observing.get() || bytes > MAX_PAYLOAD || self.objects.borrow().len() >= MAX_OBJECTS
+        {
             return None;
         }
         // Keep a unique, aligned payload address even for an empty object.
@@ -47,7 +53,7 @@ impl Seed {
         assert!(
             self.objects
                 .borrow_mut()
-                .insert(oop, Block { words, kind })
+                .insert(oop, Block { words, bytes, kind })
                 .is_none()
         );
         Some(oop)
@@ -59,6 +65,9 @@ impl Seed {
             .map_or(0, |block| block.words[0])
     }
     fn reassociate(&self, oop: Oop, behavior: Oop) -> Status {
+        if self.observing.get() {
+            return BUSY;
+        }
         if !self.owns(behavior) {
             return INVALID;
         }
@@ -88,6 +97,9 @@ impl Seed {
         )
     }
     fn intern(&self, bytes: &[u8]) -> Option<Oop> {
+        if self.observing.get() {
+            return None;
+        }
         if bytes.len() > MAX_NAME {
             return None;
         }
@@ -116,6 +128,9 @@ impl Seed {
         Ok((record.methods.get(&selector).copied(), record.parent))
     }
     fn install(&self, behavior: Oop, selector: Oop, method: Method) -> Status {
+        if self.observing.get() {
+            return BUSY;
+        }
         if !self.is_symbol(selector) {
             return INVALID;
         }
@@ -162,6 +177,9 @@ unsafe extern "C" fn send(
     }
     unsafe { out.write(Value::none()) };
     let seed = unsafe { seed(api) };
+    if seed.observing.get() {
+        return BUSY;
+    }
     if !seed.owns(receiver) || !seed.is_symbol(selector) {
         return INVALID;
     }
@@ -266,6 +284,9 @@ unsafe extern "C" fn add_method(
     count: usize,
     out: *mut Value,
 ) -> Status {
+    if unsafe { seed(api) }.observing.get() {
+        return BUSY;
+    }
     let args = unsafe { operands(args, count) };
     if args.len() != 2 || args[0].kind != OBJECT {
         return INVALID;
@@ -288,6 +309,9 @@ unsafe extern "C" fn remove_method(
     count: usize,
     out: *mut Value,
 ) -> Status {
+    if unsafe { seed(api) }.observing.get() {
+        return BUSY;
+    }
     let args = unsafe { operands(args, count) };
     if args.len() != 1 || args[0].kind != OBJECT {
         return INVALID;
@@ -318,6 +342,9 @@ unsafe extern "C" fn allocate(
     count: usize,
     out: *mut Value,
 ) -> Status {
+    if unsafe { seed(api) }.observing.get() {
+        return BUSY;
+    }
     let args = unsafe { operands(args, count) };
     if args.len() != 1 || args[0].kind != WORD {
         return INVALID;
@@ -335,6 +362,9 @@ unsafe extern "C" fn delegated(
     count: usize,
     out: *mut Value,
 ) -> Status {
+    if unsafe { seed(api) }.observing.get() {
+        return BUSY;
+    }
     if count != 0 {
         return INVALID;
     }
@@ -351,6 +381,9 @@ unsafe extern "C" fn intern_method(
     count: usize,
     out: *mut Value,
 ) -> Status {
+    if unsafe { seed(api) }.observing.get() {
+        return BUSY;
+    }
     let args = unsafe { operands(args, count) };
     if args.len() != 1
         || args[0].kind != BYTES
@@ -395,6 +428,9 @@ unsafe extern "C" fn set_parent(
     count: usize,
     out: *mut Value,
 ) -> Status {
+    if unsafe { seed(api) }.observing.get() {
+        return BUSY;
+    }
     let args = unsafe { operands(args, count) };
     if args.len() != 1 || !matches!(args[0].kind, OBJECT | NONE) {
         return INVALID;
@@ -414,6 +450,89 @@ unsafe extern "C" fn set_parent(
     };
     record.parent = parent;
     unsafe { answer(out, Value::object(receiver)) }
+}
+
+struct Observation<'a>(&'a Cell<bool>);
+impl Drop for Observation<'_> {
+    fn drop(&mut self) {
+        self.0.set(false);
+    }
+}
+
+unsafe extern "C" fn with_storage_view(
+    api: *const SeedApi,
+    _: *mut c_void,
+    receiver: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    let seed = unsafe { seed(api) };
+    // The host calls at an explicit quiescent boundary, not from another send.
+    if seed.observing.get() || seed.depth.get() != 1 {
+        return BUSY;
+    }
+    if receiver != seed.roots.vtable || count != 1 {
+        return INVALID;
+    }
+    let Some(visitor) = (unsafe { (*args).as_method() }) else {
+        return INVALID;
+    };
+    seed.observing.set(true);
+    let _phase = Observation(&seed.observing);
+    let mut allocations = Vec::new();
+    let mut edges = Vec::new();
+    {
+        let objects = seed.objects.borrow();
+        for (&object, block) in objects.iter() {
+            allocations.push(Allocation {
+                object,
+                bytes: block.bytes,
+                payload_owner: if matches!(block.kind, Kind::Ordinary) {
+                    OWNER_PAYLOAD
+                } else {
+                    SEED_PAYLOAD
+                },
+            });
+            edges.push(Edge {
+                from: object,
+                to: block.words[0],
+            });
+            if let Kind::Behavior(behavior) = &block.kind {
+                if behavior.parent != 0 {
+                    edges.push(Edge {
+                        from: object,
+                        to: behavior.parent,
+                    });
+                }
+                for &selector in behavior.methods.keys() {
+                    edges.push(Edge {
+                        from: object,
+                        to: selector,
+                    });
+                }
+            }
+        }
+    }
+    let r = seed.roots;
+    let mut roots = vec![r.object, r.vtable, r.symbol, r.symbol_prototype];
+    // This seed deliberately retains interned Symbols strongly. Enumerating
+    // allocations must NOT make every other allocation a root.
+    roots.extend(seed.symbols.borrow().values().copied());
+    roots.sort_unstable();
+    roots.dedup();
+    let view = StorageView {
+        allocations: allocations.as_ptr(),
+        allocation_count: allocations.len(),
+        roots: roots.as_ptr(),
+        root_count: roots.len(),
+        edges: edges.as_ptr(),
+        edge_count: edges.len(),
+    };
+    let arguments = [unsafe { record(&view) }];
+    // No registry borrow crosses this callback. Native code/data stay pinned;
+    // their addresses are not Oop edges. Their owners provide explicit roots.
+    unsafe { (visitor.entry)(api, visitor.data, receiver, arguments.as_ptr(), 1, out) }
 }
 
 #[unsafe(no_mangle)]
@@ -441,6 +560,7 @@ pub extern "C" fn birnam_seed_create_v1() -> *mut SeedApi {
         roots: zero_roots,
         selectors: zero_selectors,
         depth: Cell::new(0),
+        observing: Cell::new(false),
     });
     let vtable = state.new_behavior(0).unwrap();
     state.roots.vtable = vtable;
@@ -474,6 +594,7 @@ pub extern "C" fn birnam_seed_create_v1() -> *mut SeedApi {
         ),
         OK
     );
+    let observe_selector = state.intern(OBSERVE).unwrap();
     let api = Box::into_raw(Box::new(SeedApi {
         version: VERSION,
         size: size_of::<SeedApi>() as u32,
@@ -488,6 +609,7 @@ pub extern "C" fn birnam_seed_create_v1() -> *mut SeedApi {
         (*api).roots = seed(api).roots;
         (*api).selectors = seed(api).selectors;
         for (target, selector, entry) in [
+            (vtable, observe_selector, with_storage_view as Entry),
             (
                 vtable,
                 (*api).selectors.remove_method,
