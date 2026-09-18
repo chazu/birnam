@@ -311,8 +311,11 @@ inventories and exercised execution paths to establish that no statically linked
 Rust system implementation supplies startup, runtime, compilation or recovery.
 
 Step 1 now has the handoff proposal in 81B, decomposition in 81C and IdApi
-partition in 81D. These guide bottom-up extraction and Step 2's low-level
-authoring design. No document assumes
+partition in 81D. [81E](81e-seed-sufficiency-audit.md) audits the integration
+requirements, and [81F](81f-isolated-id-seed-proof.md) executes the first isolated
+Rust seed/private-behavior witness. [81G](81g-integer-module-proof.md) adds an
+Integer module without changing that seed or ABI. These guide bottom-up extraction
+and Step 2's low-level authoring design. No document assumes
 that today's compiler can already emit a self-sufficient Birnam Id module.
 
 ## 4. Progress and acceptance

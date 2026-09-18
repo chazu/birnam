@@ -157,6 +157,11 @@ contracts. Higher-level reflection can move above Id; the primitive access to
 Id-owned state cannot disappear with it. These are interface obligations, not
 permission to recreate an aggregate Runtime table.
 
+[81F](81f-isolated-id-seed-proof.md) executes the first bounded witness: a
+standalone Rust seed plus separately loaded private-behavior library, with no
+production runtime dependency. This establishes that particular interface split;
+collector/ownership attachment and production extraction remain open.
+
 Replacing a layer's implementation at build/startup is the first migration
 milestone. Ordinary method replacement must continue to work. Unloading or
 exchanging a live heap/collector implementation additionally requires a state

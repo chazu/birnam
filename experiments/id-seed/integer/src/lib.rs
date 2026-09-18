@@ -1,0 +1,324 @@
+//! Integer representation and default behavior, entirely above the seed.
+//! See Design 81G for the native mount and message contracts.
+use birnam_seed_abi::*;
+use std::cell::RefCell;
+use std::collections::BTreeSet;
+use std::ffi::c_void;
+
+// Module-specific status, not an addition to the seed ABI's status constants.
+const OVERFLOW: Status = 0x100;
+
+struct IntegerModule {
+    seed: *const SeedApi,
+    factory: Oop,
+    behavior: Oop,
+    from_word: Oop,
+    // Provenance only: values live in payloads, never in this set. Behavior can
+    // change without changing representation. Conversely, attaching Integer
+    // behavior to some other payload does not make that payload safe to read.
+    instances: RefCell<BTreeSet<Oop>>,
+}
+impl IntegerModule {
+    fn read(&self, object: Oop) -> Result<i64, Status> {
+        if !self.instances.borrow().contains(&object) {
+            return Err(INVALID);
+        }
+        // Only our constructor adds identities, after requesting an i64 payload.
+        // Storage is pinned until seed destruction; there is no address reuse.
+        Ok(unsafe { (object as *const i64).read() })
+    }
+}
+
+unsafe fn module<'a>(api: *const SeedApi, data: *mut c_void) -> Result<&'a IntegerModule, Status> {
+    let module = unsafe { &*data.cast::<IntegerModule>() };
+    if module.seed != api {
+        return Err(INVALID);
+    }
+    Ok(module)
+}
+
+unsafe fn return_value(out: *mut Value, result: Result<Value, Status>) -> Status {
+    match result {
+        Ok(value) => {
+            unsafe { out.write(value) };
+            OK
+        }
+        Err(status) => status,
+    }
+}
+
+unsafe extern "C" fn behavior(
+    api: *const SeedApi,
+    data: *mut c_void,
+    receiver: Oop,
+    _: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    let module = match unsafe { module(api, data) } {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    if count != 0 || receiver != module.factory {
+        return INVALID;
+    }
+    unsafe { return_value(out, Ok(Value::object(module.behavior))) }
+}
+
+unsafe extern "C" fn from_word(
+    api: *const SeedApi,
+    data: *mut c_void,
+    receiver: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    let module = match unsafe { module(api, data) } {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    if count != 1 || receiver != module.factory {
+        return INVALID;
+    }
+    let word = unsafe { *args };
+    if word.kind != WORD || word.reserved != 0 || word.b != 0 {
+        return INVALID;
+    }
+    // No provenance borrow spans replaceable allocation, which may reenter.
+    let allocated = unsafe {
+        call(
+            api,
+            module.behavior,
+            (*api).selectors.allocate,
+            &[Value::word(size_of::<i64>())],
+        )
+    };
+    let object = match allocated {
+        Ok(value) if value.kind == OBJECT && value.reserved == 0 && value.b == 0 => value.a,
+        Ok(_) => return INVALID,
+        Err(e) => return e,
+    };
+    if object == 0
+        || !object.is_multiple_of(align_of::<i64>())
+        || unsafe { ((*api).behavior_of)(api, object) } != module.behavior
+        || module.instances.borrow().contains(&object)
+    {
+        return INVALID;
+    }
+    // The allocator protocol promises a fresh, writable allocation of the
+    // requested extent/alignment. An arbitrary lying allocator is not checked
+    // by this trusted native boundary; no seed-private extent table is read.
+    unsafe { (object as *mut i64).write(word.a as i64) };
+    module.instances.borrow_mut().insert(object);
+    unsafe { return_value(out, Ok(Value::object(object))) }
+}
+
+unsafe extern "C" fn as_word(
+    api: *const SeedApi,
+    data: *mut c_void,
+    receiver: Oop,
+    _: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    if count != 0 {
+        return INVALID;
+    }
+    let module = match unsafe { module(api, data) } {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    unsafe {
+        return_value(
+            out,
+            module
+                .read(receiver)
+                .map(|value| Value::word(value as usize)),
+        )
+    }
+}
+
+unsafe fn binary(
+    api: *const SeedApi,
+    data: *mut c_void,
+    receiver: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+    operation: fn(i64, i64) -> Option<i64>,
+) -> Status {
+    if count != 1 {
+        return INVALID;
+    }
+    let module = match unsafe { module(api, data) } {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let operand = unsafe { *args };
+    if operand.kind != OBJECT || operand.reserved != 0 || operand.b != 0 {
+        return INVALID;
+    }
+    let lhs = match module.read(receiver) {
+        Ok(value) => value,
+        Err(e) => return e,
+    };
+    let rhs = match module.read(operand.a) {
+        Ok(value) => value,
+        Err(e) => return e,
+    };
+    let Some(value) = operation(lhs, rhs) else {
+        return OVERFLOW;
+    };
+    // Result construction is itself a send. Replacing the factory method or its
+    // allocation behavior remains observable; no cached native constructor.
+    unsafe {
+        return_value(
+            out,
+            call(
+                api,
+                module.factory,
+                module.from_word,
+                &[Value::word(value as usize)],
+            ),
+        )
+    }
+}
+
+unsafe extern "C" fn add(
+    api: *const SeedApi,
+    data: *mut c_void,
+    receiver: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    unsafe { binary(api, data, receiver, args, count, out, i64::checked_add) }
+}
+unsafe extern "C" fn subtract(
+    api: *const SeedApi,
+    data: *mut c_void,
+    receiver: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    unsafe { binary(api, data, receiver, args, count, out, i64::checked_sub) }
+}
+unsafe extern "C" fn multiply(
+    api: *const SeedApi,
+    data: *mut c_void,
+    receiver: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    unsafe { binary(api, data, receiver, args, count, out, i64::checked_mul) }
+}
+
+/// Mount ABI: create(seed, factory_out) -> opaque module lifetime handle.
+/// All value operations, including construction, are ordinary messages.
+/// # Safety
+/// API must be live on its owner thread; factory_out must be writable. Keep
+/// returned state/code alive until AFTER seed destruction. Overridden allocation
+/// must honor its fresh-storage contract. Failed method publication aborts.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_integer_create_v1(
+    api: *const SeedApi,
+    factory_out: *mut Oop,
+) -> *mut c_void {
+    if api.is_null() || factory_out.is_null() {
+        return core::ptr::null_mut();
+    }
+    unsafe { factory_out.write(0) };
+    if unsafe { (*api).version } != VERSION
+        || unsafe { (*api).size } as usize != size_of::<SeedApi>()
+        || size_of::<usize>() != size_of::<i64>()
+    {
+        return core::ptr::null_mut();
+    }
+    let setup = || -> Result<_, Status> {
+        let delegate =
+            || unsafe { call(api, (*api).roots.object, (*api).selectors.delegated, &[]) };
+        let factory_behavior = delegate()?;
+        let integer_behavior = delegate()?;
+        if factory_behavior.kind != OBJECT || integer_behavior.kind != OBJECT {
+            return Err(INVALID);
+        }
+        let factory = unsafe {
+            call(
+                api,
+                factory_behavior.a,
+                (*api).selectors.allocate,
+                &[Value::word(0)],
+            )
+        }?;
+        if factory.kind != OBJECT {
+            return Err(INVALID);
+        }
+        let selectors: Result<Vec<_>, _> = [
+            b"integerBehavior".as_slice(),
+            b"fromWord:",
+            b"asWord",
+            b"+",
+            b"-",
+            b"*",
+        ]
+        .into_iter()
+        .map(|name| unsafe { intern(api, name) })
+        .collect();
+        Ok((
+            factory_behavior.a,
+            integer_behavior.a,
+            factory.a,
+            selectors?,
+        ))
+    };
+    let Ok((factory_behavior, integer_behavior, factory, selectors)) = setup() else {
+        return core::ptr::null_mut();
+    };
+    let state = Box::into_raw(Box::new(IntegerModule {
+        seed: api,
+        factory,
+        behavior: integer_behavior,
+        from_word: selectors[1],
+        instances: RefCell::new(BTreeSet::new()),
+    }));
+    for (target, selector, entry) in [
+        (factory_behavior, selectors[0], behavior as Entry),
+        (factory_behavior, selectors[1], from_word as Entry),
+        (integer_behavior, selectors[2], as_word as Entry),
+        (integer_behavior, selectors[3], add as Entry),
+        (integer_behavior, selectors[4], subtract as Entry),
+        (integer_behavior, selectors[5], multiply as Entry),
+    ] {
+        let published = unsafe {
+            call(
+                api,
+                target,
+                (*api).selectors.add_method,
+                &[
+                    Value::object(selector),
+                    Value::method(Method {
+                        entry,
+                        data: state.cast(),
+                    }),
+                ],
+            )
+        };
+        // A malleable installer may publish before failing. Without retirement
+        // there is no safe rollback which frees state but keeps the seed alive.
+        assert!(published.is_ok(), "experimental Integer publication failed");
+    }
+    unsafe { factory_out.write(factory) };
+    state.cast()
+}
+
+/// # Safety
+/// Handle must come from create, be destroyed once, and its seed must already be
+/// destroyed. Its methods retain pointers to this state until seed destruction.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_integer_destroy_v1(handle: *mut c_void) {
+    if !handle.is_null() {
+        drop(unsafe { Box::from_raw(handle.cast::<IntegerModule>()) });
+    }
+}

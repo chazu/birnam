@@ -2,9 +2,9 @@
 
 > **Status:** Architectural position, 2026-09-18. Proposed boundaries grounded in
 > Piumarta and Warth's object model and the current Birnam source at `162b68fe`.
-> This rewrites the earlier provisional inventory; no runtime refactor or new
-> ABI has been implemented. Exact signatures and migration details still need
-> field-level review. Backward compatibility is not a requirement.
+> This rewrites the earlier provisional inventory; no production runtime
+> refactor or ABI change has been implemented. Exact signatures and migration
+> details still need field-level review. Backward compatibility is not a requirement.
 
 [81](81-toward-a-birnam-implementation.md) owns the self-hosting roadmap;
 [81A](81a-current-bootstrap-and-runtime-layers.md) describes today's system;
@@ -12,6 +12,11 @@
 [81C](81c-thin-id-runtime-layers.md) describes the larger runtime decomposition.
 This document refines their Id boundary, including keeping Symbol and interning
 in the foundation rather than deferring them to a general naming layer.
+
+[81E](81e-seed-sufficiency-audit.md) records the upper-layer integration
+obligations. [81F](81f-isolated-id-seed-proof.md) executes a bounded standalone
+Rust seed/private-behavior witness; the production extraction below remains
+future work.
 
 ## 1. Reference model and position
 

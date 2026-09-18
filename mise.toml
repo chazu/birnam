@@ -40,6 +40,10 @@ run = "cargo +nightly miri test --workspace --locked --offline"
 description = "Run the test-only Design 74F same-frame recovery experiment"
 run = "python3 scripts/same-frame-deopt.py"
 
+[tasks.id-seed-experiment]
+description = "Run Designs 81F/81G isolated Id, Integer and object-model proofs"
+run = "python3 scripts/id-seed-experiment.py"
+
 [tasks.generated-deopt-experiment]
 description = "Run Design 74G generated same-frame recovery and native unload checks"
 run = "python3 scripts/generated-frame-deopt.py"

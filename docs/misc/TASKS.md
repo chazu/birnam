@@ -39,8 +39,17 @@ execution services above it. Work bottom-up without a compatibility facade.
 upper layers, identifies six integration obligations and specifies each layer's
 required executable proof. The five-method seed alone is insufficient as a
 declared interface; no private RuntimeState access may substitute for a contract.
-Next: define behavior association/default lookup and build the first standalone
-Rust Id plus object-model-library witness. No runtime refactor has started.
+[81F](../design/81f-isolated-id-seed-proof.md) executes that first standalone Rust
+Id plus object-model-library witness: 11 cases pass in debug and release, with
+dependency audits and two detected negative controls. Private-vtable policy lives
+above Id through explicit association operations; custom lookup and replacement
+remain observable. This is an isolated prototype, not a production extraction.
+[81G](../design/81g-integer-module-proof.md) adds a separately loaded Integer
+module through the unchanged seed/ABI: construction, checked arithmetic,
+representation checks and replaceable methods. The extended probe passes 19 full
+and 11 Integer-only cases in debug/release, plus three detected negative controls.
+Storage/collector attachment over the original allocation domain, acquired-callable
+ownership/retirement and Birnam primitive authoring remain separate work.
 
 ## Selected sequence — 2026-09-06
 

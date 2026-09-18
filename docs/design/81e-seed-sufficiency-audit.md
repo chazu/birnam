@@ -1,9 +1,11 @@
 # 81E — Can the upper layers be implemented through the seed?
 
 > **Status:** Source-level dependency audit and proposed contracts, 2026-09-18.
-> Runtime source checked at `162b68fe`; no extracted runtime or Birnam primitive
-> authoring experiment has run. This refines [81D](81d-id-api-partition.md), not
-> a claim that all its boundaries have already been proved executable.
+> Runtime source checked at `162b68fe`. [81F](81f-isolated-id-seed-proof.md) now
+> executes the first bounded Rust seed/object-model witness; [81G](81g-integer-module-proof.md)
+> adds an Integer module through the unchanged boundary. Production runtime
+> extraction and Birnam primitive authoring remain unproved. This refines
+> [81D](81d-id-api-partition.md), not a claim that all boundaries are executable.
 
 ## 1. Result and scope
 
@@ -119,9 +121,11 @@ default-vtable mutation counter alone.
 exists under the listed assumptions. It is not a compiled or executed proof.
 "Blocked" means a named interface must be designed before extraction, not that
 the architecture is impossible. Every row still depends on L for its eventual
-Birnam implementation. None currently has an isolated-seed execution receipt.
+Birnam implementation. 81F supplies an isolated Rust execution receipt for the
+private-behavior part of L1, and 81G for the Integer part of L2. The remaining
+slices remain unexecuted.
 
-### L1. Object-model library and reflection — blocked on I1/I2/I6
+### L1. Object-model library and reflection — private behavior witnessed; reflection pending
 
 **Evidence:** `Runtime::ensure_private_vtable` in
 [runtime.rs](../../rust/birnam-id/src/runtime.rs) reads owner metadata, creates a
@@ -140,7 +144,14 @@ behavior; only that object changes. Exercise a custom parent resolver and a
 late-mounted observer. Reject any implementation that reads a Rust registry or
 assumes all behavior objects use `VtableRecord`.
 
-### L2. Values and collections — constructible; storage/lifetime integration pending
+**Executed subset:** [81F](81f-isolated-id-seed-proof.md) passes private-behavior
+construction/reuse, existing-object reassociation, custom parent lookup, method
+removal/replacement and reentry in a standalone seed and separate upper dylib.
+It uses explicit I1 entries and part of I2's method protocol. Complete reflection,
+late-mounted observation and production migration remain open; uncached sends
+observing changes do not establish I6's observer contract.
+
+### L2. Values and collections — Integer witnessed; remaining values and lifetime integration pending
 
 **Evidence:** [values.rs](../../rust/birnam-id/src/values.rs) writes numeric
 payloads after allocation; Strings additionally own byte buffers in a side map.
@@ -157,6 +168,13 @@ seed's own dictionary implementation.
 Store or compiler; preserve object identity and overridden operations. Then
 mount GC and reclaim owned buffers exactly once while honoring outstanding
 borrows. A bounded no-GC demonstration alone is not production acceptance.
+
+**Executed subset:** [81G](81g-integer-module-proof.md) supplies a separate Integer
+dylib using the unchanged 81F seed/ABI. Construction, payload access, checked
+arithmetic, method/factory/allocator replacement and private-behavior composition
+pass in debug/release. An Integer-only process proves no dependency on the
+object-model library. Other value families, collections, reclamation and Birnam
+authoring remain unproved.
 
 ### L3. Environment and binding — constructible above Symbols/collections
 
@@ -367,12 +385,14 @@ objects stay in the same storage/identity domain when GC and libraries attach.
 ## 6. What this audit settles and the next bounded proof
 
 No examined requirement forces a Values, GC, Frame or Machine implementation to
-remain inside Id. However, **the sufficiency of a concrete minimal API is not
-proved**: I1–I6 and L are obligations, not implemented interfaces. Their grouping
-must not be mistaken for six new mandatory C tables.
+remain inside Id. However, **the sufficiency of a concrete minimal API for all
+layers is not proved**: 81F implements a bounded subset of I1/I2 with pinned
+storage/code, while the remaining obligations and L are still open. Their
+grouping must not be mistaken for six new mandatory C tables.
 
-The next bounded work should establish **Id behavior association and default
-lookup/mutation**, using L1 as the first upper-layer witness:
+The first bounded work, now executed in [81F](81f-isolated-id-seed-proof.md),
+establishes **Id behavior association and default lookup/mutation**, using the
+private-behavior part of L1 as the first upper-layer witness:
 
 1. Specify the seed's existing-object behavior reassociation operation and the
    default behavior access needed to build private-vtable convenience above it.
@@ -384,6 +404,9 @@ lookup/mutation**, using L1 as the first upper-layer witness:
    custom parent resolver; no GC/Machine/compiler inside the test product.
 4. Inspect imports/state ownership to show no fallback to the aggregate Runtime.
    Only then report that first slice as executable through the seed.
+
+81F meets this bounded acceptance with a new isolated Rust implementation. It
+does not mechanically extract production Id or provide mutation observers.
 
 Follow with the storage/collector witness and callable-ownership witness before
 claiming the harder layers are extractable. Each L1–L13 proof above is a separate
