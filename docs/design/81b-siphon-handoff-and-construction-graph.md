@@ -7,6 +7,11 @@
 > [81A](81a-current-bootstrap-and-runtime-layers.md) records today's load order.
 > The first semantic layer is Id; the subsequent thin layers are specified in
 > [81C](81c-thin-id-runtime-layers.md).
+> Updated direction: [81D](81d-id-api-partition.md) partitions IdApi for bottom-up
+> extraction. Backward compatibility is not required; the earlier aggregate
+> compatibility facade is dropped.
+> 81D now proposes a Piumarta-grounded boundary with Symbol/interning in Id;
+> exact interface contracts and semantic gaps remain to be resolved.
 
 ## 1. Proposed boundary
 
@@ -61,7 +66,7 @@ Evidence: `C_RUNTIME_PRELUDE` and `TranslationUnit::finish` in
 An important distinction: today's floor has a raw import/export namespace; the
 ordinary `Globals` object and its Store-backed behavior are installed by
 [Store](../../rust/birnam-store/src/lib.rs). In the proposed split, Id constructs
-minimal identities itself and the general namespace mounts with values/names.
+its own Symbols and interning; the general namespace mounts above Id.
 Neither requires Store-backed Globals to exist first.
 
 ## 3. What the siphon does
@@ -167,9 +172,9 @@ the executable path. The siphon needs no image grammar.
 ## 4. The first loaded component and its construction phases
 
 The first component is thin Id: object headers, vtables, delegation, method
-dictionaries, ordinary lookup/send, identity, minimal selector support and its
-own initial object storage. General values/names, the collector, executable
-ownership, Frames, Machine execution, continuations/control and optimization
+dictionaries, ordinary lookup/send, identity, Symbol/interning and its
+own initial object storage. Object-model libraries, values/environment, the
+collector, executable ownership, Frames, Machine execution, continuations/control and optimization
 are subsequent layers, as specified in 81C. There is no storage-runtime layer
 under Id and no collector bundled into Id as a startup prerequisite.
 
@@ -183,9 +188,9 @@ Construction helpers must not become a second hidden dispatch path after boot.
 |---|---|---|
 | Raw entry | Validate carriers, acquire OS memory, initialize private registries | Storage exists with an explicit owner; no ordinary sends or collecting allocation |
 | Object construction | Create primordial object/vtable/selector identities and install lookup/allocation methods | A real ordinary send works without a collector, Store, compiler or Rust libid |
-| Id ready | Expose the narrow Id construction/storage interface and hand off further bring-up | Subsequent layers can mount without assuming the complete public IdApi exists |
+| Id ready | Expose the minimal Id construction/storage interface and hand off further bring-up | Subsequent layers can mount without assuming higher services exist |
 | Later values/collector layers ready | Adopt initial identities; mount collection over tracked storage, layouts and roots | Reclamation is supported without a second object graph or a collector embedded in Id |
-| Public compatibility ready | Assemble complete IdApi from the layers implementing its services | No dummy required callbacks; existing clients can enter safely |
+| Required services ready | Each mounted layer publishes its own required interface/protocol | Consumers receive the services they actually require, with no aggregate compatibility table |
 | Loaded coordinator and support | Select the startup composition and load its required support | Ordinary module or image admission can begin |
 
 Keep construction allocations stable. Record them from birth in the final
@@ -195,13 +200,13 @@ normal layouts and roots before dropping temporary construction roots. The
 later collector uses its own non-collecting work storage and does not depend on Store
 or the user collection protocol to trace its first heap.
 
-Publish full IdApi v1 only when its required functions actually work, composing
-the implementations supplied by the loaded layers. Its value/GC fields do not
-force those implementations into Id. Early mounting uses a narrow internal Id
-contract whose exact shape remains to be designed, not a partially initialized
-public ABI. Later execution/portable-code capabilities can be mounted separately where
-the existing private capability contracts permit it. This proposal does not
-extend IdApi or change Method/StepMethod or descriptor layouts.
+Minimize IdApi itself. Value, namespace, GC and platform services move to their
+respective owners; the old aggregate table is not retained as a facade.
+Consumers and their initialization contracts change with the partition in 81D.
+Early mounting uses only the Id capabilities already present, with no placeholder
+functions standing in for missing services. Exact carrier shapes remain design
+work. Method/StepMethod and descriptor layouts need not change merely to remove
+unrelated fields, but old IdApi layout compatibility is not an acceptance gate.
 
 Early support layers must therefore expose construction entries that work with
 the capabilities already present; they cannot use today's ordinary `module_init`
@@ -226,7 +231,7 @@ flowchart TD
     OS[Platform loader, memory and I/O] --> S[Siphon]
     S --> ID[Id: object system and initial storage]
     OS -. platform services, no runtime layer .-> ID
-    ID --> V[Values, names and primitive library support]
+    ID --> V[Values, environment and object-model libraries]
     ID --> GC[Collector]
     ID --> O[Executable ownership]
     ID --> A[Artifact and descriptor byte codecs]
@@ -308,8 +313,8 @@ path has been implemented and validated; it is not a claim about image v8 today.
   mechanism. The siphon contains neither inventory nor a second module manager.
 - **Compiler independent of AOT activation:** loading already compiled code
   needs validation, binding and ownership, not source analysis. Extract those
-  mechanisms from Codegen and keep the public Codegen surface as an adapter where
-  compatibility requires it. No early loader calls an uninitialized compiler.
+  mechanisms from Codegen and give their consumers explicit service contracts.
+  No early loader calls an uninitialized compiler.
 - **PEG need not wait for Store:** today's PEG initializes pattern/CST objects
   through IdApi and trace hooks. Lang constructs its grammar through PEG sends.
   Source journaling and reflected compiler behavior subsequently need Store.
@@ -396,10 +401,10 @@ new result. Demonstrate the intended object identities and temporary/root
 ownership. It must run without the Rust floor or Tcc runtime dylib supplying
 runtime services. C/libtcc may have produced the artifact during stage 0.
 
-Initially this proves the raw-entry/object boundary only. Full IdApi publication,
-GC closure, selected Frames, ordinary module admission and image reconstruction
-have their own follow-on gates; no dummy full-API table should disguise their
-absence in the first experiment.
+Initially this proves the raw-entry/object boundary only. Higher service
+publication, GC closure, selected Frames, ordinary module admission and image
+reconstruction have their own follow-on gates; no dummy aggregate API table
+should disguise their absence in the first experiment.
 
 ## 9. Evidence required for the handoff
 
@@ -431,8 +436,8 @@ comparison; it does not replace the construction proof.
 
 Proposed now: a C-only siphon; an explicit, versioned entry to Id as the first
 semantic layer; Id-owned primordial construction and initial storage; thin
-subsequent layers rather than a combined boot runtime; complete IdApi publication
-from the responsible layers rather than an incrementally patched skeleton;
+subsequent layers rather than a combined boot runtime; minimal IdApi with
+higher services published separately and consumers migrated without a facade;
 shared precompiled admission separated from compiler analysis; and one handoff
 for all image/dylib/source compositions.
 
@@ -443,9 +448,9 @@ and the smallest image-restoration support closure. They do not change the
 siphon ownership boundary. Module packaging and compiler-free mapped recovery
 must follow measured dependencies rather than be declared complete by this graph.
 
-This proposal retains current object identity, late-bound dispatch, Store history,
-native participation, public IdApi/Method contracts, selected-frame ownership and
-image-format authority. The new entry contract establishes Id without requiring
-the complete public facade; it introduces no semantic runtime underneath Id.
-Any incompatible change found necessary during implementation must be separately
-specified; none is silently granted by this design.
+This proposal retains object identity, late-bound dispatch, Store history,
+native participation and selected-frame ownership. The user explicitly allows
+breaking IdApi compatibility to establish the smallest boundary; migrate
+consumers and update ABI/admission evidence as part of that work. Unrelated
+image-format changes are not required by this partition. The entry establishes
+Id without a semantic runtime underneath it or an aggregate API above it.

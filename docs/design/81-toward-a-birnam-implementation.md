@@ -66,10 +66,20 @@ language, compiler, GC, Machine, or library behavior.
 **Id is the first semantic layer.** Its loaded Birnam implementation constructs
 its own object graph and manages the initial storage/ownership needed to do so.
 Platform memory services are allowed, but no hidden Rust allocator, registry or
-runtime sits below Id. Values/names, GC, executable ownership, Frames, Machine
+runtime sits below Id. Symbol and interning belong to this seed. Values, the
+environment, GC, executable ownership, Frames, Machine
 execution, control and optimization are thinner subsequent layers; see
 [81C](81c-thin-id-runtime-layers.md). The collector mounts through Id's explicit
 storage/root interfaces rather than being bundled into the first component.
+
+Extract the Rust layers from Id upward. Backward compatibility is not a
+constraint: minimize IdApi, remove higher-layer services from it, and update
+consumers without retaining an aggregate compatibility facade. See the complete
+field partition in [81D](81d-id-api-partition.md).
+
+81D proposes these boundaries against Piumarta and Warth's object model. Exact
+interfaces still require field/caller review, including the semantic difference
+between direct parent-chain traversal and delegation through lookup messages.
 
 The current installer copies the bootstrap host and native libraries unchanged.
 It therefore does not meet this target: both the host's linked semantic machinery
@@ -217,12 +227,14 @@ Its Step-2 findings identify what today's compiler has not yet demonstrated.
 [81C](81c-thin-id-runtime-layers.md) supplies the eight-layer libid decomposition
 and its state/ownership boundaries.
 
-Prepare those boundaries in the existing implementation from the top down:
-first isolate optional optimization and its compiler/libtcc dependencies, then
-execution/control, Frames and code ownership, and finally values/names and
-collector coordination. This extraction can proceed independently of the
-Birnam Id compiler-facility investigation. It enables replacement but is not
-self-hosting progress by itself.
+Prepare those boundaries in the existing implementation from Id upward. Begin
+with [81D's IdApi partition](81d-id-api-partition.md), remove unrelated services
+from the contract, and extract independently operable Id state and dispatch.
+Then extract object-model libraries, values/environment, collection, ownership,
+Frames, execution/control and optimization against the lower boundaries. This
+can proceed independently of
+the Birnam Id compiler-facility investigation. Rust extraction enables
+replacement but is not self-hosting progress by itself.
 
 ### Step 2 — Establish the facilities to compile the first runtime component
 
@@ -251,17 +263,17 @@ does not meet this milestone. This is a bounded proof, not a complete stage-1
 replacement or a usable-system claim.
 
 Id must implement its own initial object storage without a hidden native runtime
-underneath. Collector mounting and complete public IdApi assembly are later
-gates, not justification for putting GC into the first Id component.
+underneath. Collector mounting and higher-layer service publication are later
+gates, not justification for putting GC into IdApi or the first Id component.
 
 ### Step 4 — Expand the loaded Birnam substrate
 
 Migrate the remaining object, memory and execution mechanisms in the dependency
-order established above: values/names, the collector, executable ownership,
-Frames/descriptors, canonical Machine execution, continuations/control and
+order established above: object-model libraries, values/environment, the
+collector, executable ownership, Frames/descriptors, canonical Machine execution, continuations/control and
 optional optimization. Collection structures, Store and the other runtime
-libraries build on these capabilities. The graph branches; its startup order
-is distinct from the top-down Rust extraction order in 81C.
+libraries build on these capabilities. The graph branches; both Rust extraction
+and target construction begin at Id, as described in 81C/81D.
 
 Bring up the existing Birnam module manager, stdlib, CompiledUnit and concurrency
 policy on that substrate. Remove the need to execute superseded Rust control
@@ -298,8 +310,9 @@ available as a distinct build/recovery product. Check installed binary/import
 inventories and exercised execution paths to establish that no statically linked
 Rust system implementation supplies startup, runtime, compilation or recovery.
 
-Step 1 now has the handoff proposal in 81B and decomposition in 81C. These guide
-top-down extraction and Step 2's low-level authoring design. No document assumes
+Step 1 now has the handoff proposal in 81B, decomposition in 81C and IdApi
+partition in 81D. These guide bottom-up extraction and Step 2's low-level
+authoring design. No document assumes
 that today's compiler can already emit a self-sufficient Birnam Id module.
 
 ## 4. Progress and acceptance

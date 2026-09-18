@@ -30,9 +30,17 @@ acceptance or the existing Beads backlog.
 [81B](../design/81b-siphon-handoff-and-construction-graph.md) proposes the siphon
 handoff, construction dependency graph and first-runtime-slice acceptance.
 [81C](../design/81c-thin-id-runtime-layers.md) decomposes libid into eight thin
-layers with Id first and no semantic runtime beneath it. It separates top-down
-extraction of the current runtime from bottom-up construction of the target.
-Low-level Birnam authoring and the early Id mounting contract remain design work.
+layers with Id first and no semantic runtime beneath it.
+[81D](../design/81d-id-api-partition.md) proposes restructuring IdApi against
+Piumarta and Warth's object model and maps all 54 fields. Keep Symbol/interning
+in the Id seed; extract object-model libraries, values, environment, GC and
+execution services above it. Work bottom-up without a compatibility facade.
+[81E](../design/81e-seed-sufficiency-audit.md) audits seed sufficiency for the
+upper layers, identifies six integration obligations and specifies each layer's
+required executable proof. The five-method seed alone is insufficient as a
+declared interface; no private RuntimeState access may substitute for a contract.
+Next: define behavior association/default lookup and build the first standalone
+Rust Id plus object-model-library witness. No runtime refactor has started.
 
 ## Selected sequence — 2026-09-06
 
