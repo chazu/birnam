@@ -316,7 +316,9 @@ requirements, and [81F](81f-isolated-id-seed-proof.md) executes the first isolat
 Rust seed/private-behavior witness. [81G](81g-integer-module-proof.md) adds an
 Integer module without changing that seed or ABI. [81H](81h-storage-observation-and-tracing.md)
 adds storage observation and a separate tracer while keeping the native API
-carrier unchanged. These guide bottom-up extraction
+carrier unchanged. [81I](81i-ordinary-storage-reclamation.md) adds ordinary storage
+reclamation and transactional metadata retirement with forced address reuse.
+These guide bottom-up extraction
 and Step 2's low-level authoring design. No document assumes
 that today's compiler can already emit a self-sufficient Birnam Id module.
 

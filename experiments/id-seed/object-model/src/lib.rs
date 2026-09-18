@@ -1,5 +1,5 @@
 //! Upper-layer consumer. Depends on the public carrier ONLY, never Seed state.
-use birnam_observation_abi::{ProviderSink, decode};
+use birnam_observation_abi::{ProviderSink, RetirementPlan, RetirementRequest, decode};
 use birnam_seed_abi::*;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
@@ -97,6 +97,72 @@ unsafe extern "C" fn storage_provider(
     OK
 }
 
+struct PreparedRetirement {
+    owner: *const Library,
+    replacement: BTreeMap<Oop, Oop>,
+}
+unsafe extern "C" fn commit_retirement(data: *mut c_void) {
+    let plan = unsafe { Box::from_raw(data.cast::<PreparedRetirement>()) };
+    *unsafe { &*plan.owner }.private.borrow_mut() = plan.replacement;
+}
+unsafe extern "C" fn abort_retirement(data: *mut c_void) {
+    drop(unsafe { Box::from_raw(data.cast::<PreparedRetirement>()) });
+}
+unsafe extern "C" fn prepare_retirement(
+    api: *const SeedApi,
+    data: *mut c_void,
+    _: Oop,
+    args: *const Value,
+    count: usize,
+    _: *mut Value,
+) -> Status {
+    let owner = unsafe { &*data.cast::<Library>() };
+    if owner.seed != api {
+        return INVALID;
+    }
+    let request = match unsafe { decode::<RetirementRequest>(args, count) } {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    if request.plan.is_null() || (request.count != 0 && request.objects.is_null()) {
+        return INVALID;
+    }
+    let victims: std::collections::BTreeSet<_> = (0..request.count)
+        .map(|i| unsafe { *request.objects.add(i) })
+        .collect();
+    let mut replacement = owner.private.borrow().clone();
+    replacement.retain(|owner, behavior| !victims.contains(owner) && !victims.contains(behavior));
+    let plan = Box::new(PreparedRetirement { owner, replacement });
+    unsafe {
+        request.plan.write(RetirementPlan {
+            data: Box::into_raw(plan).cast(),
+            commit: commit_retirement,
+            abort: abort_retirement,
+        })
+    };
+    OK
+}
+unsafe extern "C" fn retirement_provider(
+    api: *const SeedApi,
+    data: *mut c_void,
+    _: Oop,
+    _: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    let owner = unsafe { &*data.cast::<Library>() };
+    if owner.seed != api || count != 0 {
+        return INVALID;
+    }
+    unsafe {
+        out.write(Value::method(Method {
+            entry: prepare_retirement,
+            data,
+        }))
+    };
+    OK
+}
+
 /// # Safety
 /// Seed API and its owner thread/code must remain valid throughout this library.
 #[unsafe(no_mangle)]
@@ -147,6 +213,22 @@ pub unsafe extern "C" fn birnam_object_model_create_v1(api: *const SeedApi) -> *
                 Value::object(provider),
                 Value::method(Method {
                     entry: storage_provider,
+                    data,
+                }),
+            ],
+        )
+    }
+    .unwrap();
+    let retirement = unsafe { intern(api, b"objectModelPrepareStorageRetirement") }.unwrap();
+    unsafe {
+        call(
+            api,
+            (*api).roots.vtable,
+            (*api).selectors.add_method,
+            &[
+                Value::object(retirement),
+                Value::method(Method {
+                    entry: retirement_provider,
                     data,
                 }),
             ],

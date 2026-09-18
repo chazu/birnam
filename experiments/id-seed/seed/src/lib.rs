@@ -1,11 +1,12 @@
 //! Standalone experimental Id: no dependency on birnam-id or any runtime rung.
-//! Storage, interned names and native method code are pinned until shutdown.
+//! Ordinary storage can retire; interned names and native code stay pinned.
 use birnam_observation_abi::{
-    Allocation, BUSY, Edge, OBSERVE, OWNER_PAYLOAD, SEED_PAYLOAD, StorageView, record,
+    Allocation, BUSY, Edge, OBSERVE, OWNER_PAYLOAD, RECLAIM, ReclamationView, ReleaseRequest,
+    SEED_PAYLOAD, StorageView, decode, record,
 };
 use birnam_seed_abi::*;
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::c_void;
 use std::thread::ThreadId;
 
@@ -36,6 +37,12 @@ struct Seed {
     selectors: Selectors,
     depth: Cell<usize>,
     observing: Cell<bool>,
+    epoch: Cell<u64>,
+    reclaiming: Cell<bool>,
+    releasing: Cell<bool>,
+    released: Cell<bool>,
+    // One reusable backing block, bounded independently of collection count.
+    spare: RefCell<Option<Box<[usize]>>>,
 }
 impl Seed {
     fn owns(&self, oop: Oop) -> bool {
@@ -47,7 +54,14 @@ impl Seed {
             return None;
         }
         // Keep a unique, aligned payload address even for an empty object.
-        let mut words = vec![0; 1 + bytes.div_ceil(size_of::<usize>()).max(1)].into_boxed_slice();
+        let length = 1 + bytes.div_ceil(size_of::<usize>()).max(1);
+        let mut words = self
+            .spare
+            .borrow_mut()
+            .take()
+            .filter(|block| block.len() == length)
+            .unwrap_or_else(|| vec![0; length].into_boxed_slice());
+        words.fill(0);
         words[0] = behavior;
         let oop = unsafe { words.as_mut_ptr().add(1) } as Oop;
         assert!(
@@ -452,10 +466,11 @@ unsafe extern "C" fn set_parent(
     unsafe { answer(out, Value::object(receiver)) }
 }
 
-struct Observation<'a>(&'a Cell<bool>);
+struct Observation<'a>(&'a Seed);
 impl Drop for Observation<'_> {
     fn drop(&mut self) {
-        self.0.set(false);
+        self.0.observing.set(false);
+        self.0.reclaiming.set(false);
     }
 }
 
@@ -466,6 +481,28 @@ unsafe extern "C" fn with_storage_view(
     args: *const Value,
     count: usize,
     out: *mut Value,
+) -> Status {
+    unsafe { with_view(api, receiver, args, count, out, false) }
+}
+
+unsafe extern "C" fn with_reclamation_view(
+    api: *const SeedApi,
+    _: *mut c_void,
+    receiver: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    unsafe { with_view(api, receiver, args, count, out, true) }
+}
+
+unsafe fn with_view(
+    api: *const SeedApi,
+    receiver: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+    reclaim: bool,
 ) -> Status {
     let seed = unsafe { seed(api) };
     // The host calls at an explicit quiescent boundary, not from another send.
@@ -478,8 +515,14 @@ unsafe extern "C" fn with_storage_view(
     let Some(visitor) = (unsafe { (*args).as_method() }) else {
         return INVALID;
     };
+    let Some(epoch) = seed.epoch.get().checked_add(1) else {
+        return INVALID;
+    };
+    seed.epoch.set(epoch);
+    seed.reclaiming.set(reclaim);
+    seed.released.set(false);
     seed.observing.set(true);
-    let _phase = Observation(&seed.observing);
+    let _phase = Observation(seed);
     let mut allocations = Vec::new();
     let mut edges = Vec::new();
     {
@@ -529,10 +572,111 @@ unsafe extern "C" fn with_storage_view(
         edges: edges.as_ptr(),
         edge_count: edges.len(),
     };
-    let arguments = [unsafe { record(&view) }];
+    let reclamation = ReclamationView {
+        view: &view,
+        epoch,
+        release: Method {
+            entry: release_storage,
+            data: api.cast_mut().cast(),
+        },
+    };
+    let arguments = [if reclaim {
+        unsafe { record(&reclamation) }
+    } else {
+        unsafe { record(&view) }
+    }];
     // No registry borrow crosses this callback. Native code/data stay pinned;
     // their addresses are not Oop edges. Their owners provide explicit roots.
     unsafe { (visitor.entry)(api, visitor.data, receiver, arguments.as_ptr(), 1, out) }
+}
+
+// Only Id can detach identities and release their backing storage. The caller
+// chooses the batch and owns payload liveness and transactional metadata cleanup.
+unsafe extern "C" fn release_storage(
+    api: *const SeedApi,
+    data: *mut c_void,
+    _: Oop,
+    args: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    if data != api.cast_mut().cast() {
+        return INVALID;
+    }
+    let seed = unsafe { seed(api) };
+    if !seed.observing.get()
+        || !seed.reclaiming.get()
+        || seed.releasing.get()
+        || seed.released.get()
+    {
+        return BUSY;
+    }
+    let request = match unsafe { decode::<ReleaseRequest>(args, count) } {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    if request.epoch != seed.epoch.get() || (request.count != 0 && request.objects.is_null()) {
+        return INVALID;
+    }
+    let mut victims = BTreeSet::new();
+    {
+        let objects = seed.objects.borrow();
+        for i in 0..request.count {
+            let object = unsafe { *request.objects.add(i) };
+            if !victims.insert(object)
+                || !objects
+                    .get(&object)
+                    .is_some_and(|b| matches!(b.kind, Kind::Ordinary))
+            {
+                return INVALID;
+            }
+        }
+        // Id validates its own strong edges. Payload closure belongs to the
+        // collector. All seed-owned objects are retained in this first slice.
+        for (_, block) in objects.iter().filter(|(o, _)| !victims.contains(o)) {
+            if victims.contains(&block.words[0]) {
+                return INVALID;
+            }
+            if let Kind::Behavior(behavior) = &block.kind
+                && (victims.contains(&behavior.parent)
+                    || behavior.methods.keys().any(|s| victims.contains(s)))
+            {
+                return INVALID;
+            }
+        }
+    }
+    // Reserve before committing anything; no allocation or fallible callback
+    // remains after successful retirement. No heap borrow crosses upper code.
+    let mut retired = Vec::with_capacity(victims.len());
+    seed.releasing.set(true);
+    let mut ignored = Value::none();
+    let status = unsafe {
+        (request.retire.entry)(
+            api,
+            request.retire.data,
+            0,
+            core::ptr::null(),
+            0,
+            &mut ignored,
+        )
+    };
+    seed.releasing.set(false);
+    if status != OK {
+        return status;
+    }
+    seed.released.set(true);
+    {
+        let mut objects = seed.objects.borrow_mut();
+        for object in &victims {
+            retired.push(objects.remove(object).expect("validated, guarded identity"));
+        }
+    }
+    // Keep at most one block to force deterministic reuse in the witness; all
+    // other backing blocks drop here. None remain allocated object identities.
+    for block in retired {
+        *seed.spare.borrow_mut() = Some(block.words);
+    }
+    unsafe { answer(out, Value::word(victims.len())) }
 }
 
 #[unsafe(no_mangle)]
@@ -561,6 +705,11 @@ pub extern "C" fn birnam_seed_create_v1() -> *mut SeedApi {
         selectors: zero_selectors,
         depth: Cell::new(0),
         observing: Cell::new(false),
+        epoch: Cell::new(0),
+        reclaiming: Cell::new(false),
+        releasing: Cell::new(false),
+        released: Cell::new(false),
+        spare: RefCell::new(None),
     });
     let vtable = state.new_behavior(0).unwrap();
     state.roots.vtable = vtable;
@@ -595,6 +744,7 @@ pub extern "C" fn birnam_seed_create_v1() -> *mut SeedApi {
         OK
     );
     let observe_selector = state.intern(OBSERVE).unwrap();
+    let reclaim_selector = state.intern(RECLAIM).unwrap();
     let api = Box::into_raw(Box::new(SeedApi {
         version: VERSION,
         size: size_of::<SeedApi>() as u32,
@@ -610,6 +760,7 @@ pub extern "C" fn birnam_seed_create_v1() -> *mut SeedApi {
         (*api).selectors = seed(api).selectors;
         for (target, selector, entry) in [
             (vtable, observe_selector, with_storage_view as Entry),
+            (vtable, reclaim_selector, with_reclamation_view as Entry),
             (
                 vtable,
                 (*api).selectors.remove_method,

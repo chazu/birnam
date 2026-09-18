@@ -86,6 +86,15 @@ unsafe extern "C" fn observe(
         Ok(v) => v,
         Err(e) => return e,
     };
+    unsafe { trace_view(api, request, view) }
+}
+
+unsafe fn trace_view(api: *const SeedApi, request: &TraceRequest, view: &StorageView) -> Status {
+    if (request.root_count > 0 && request.roots.is_null())
+        || (request.provider_count > 0 && request.providers.is_null())
+    {
+        return INVALID;
+    }
     let mut graph = Graph {
         allocations: BTreeMap::new(),
         roots: BTreeSet::new(),
@@ -217,4 +226,27 @@ pub unsafe extern "C" fn birnam_trace_v1(
         Ok(_) => OK,
         Err(e) => e,
     }
+}
+
+/// Calculate from a borrowed view while the caller holds the Id phase.
+/// # Safety
+/// Same trusted lifetime/root/payload contract as birnam_trace_v1. The caller
+/// must keep storage excluded throughout this call, including its report.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_trace_view_v1(
+    api: *const SeedApi,
+    _: *mut c_void,
+    _: Oop,
+    args: *const Value,
+    count: usize,
+    _: *mut Value,
+) -> Status {
+    let invocation = match unsafe { decode::<TraceViewRequest>(args, count) } {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    if api.is_null() || invocation.view.is_null() || invocation.request.is_null() {
+        return INVALID;
+    }
+    unsafe { trace_view(api, &*invocation.request, &*invocation.view) }
 }

@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "birnam-collect-experiment"
+version = "0.0.0"
+dependencies = [
+ "birnam-observation-abi",
+ "birnam-seed-abi",
+]
+
+[[package]]
+name = "birnam-collect-probe"
+version = "0.0.0"
+dependencies = [
+ "birnam-observation-abi",
+ "birnam-seed-abi",
+]
+
+[[package]]
 name = "birnam-integer-experiment"
 version = "0.0.0"
 dependencies = [

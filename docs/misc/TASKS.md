@@ -52,9 +52,14 @@ and 11 Integer-only cases in debug/release, plus three detected negative control
 message and a separately loaded tracer over the original heap. Nine tracing cases
 pass in debug/release, including exact live/dead sets, representation independent
 of behavior and observation-phase guards. All earlier cases and five negative
-controls pass. The native SeedApi carrier is unchanged. Reclamation/index
-retirement, production safepoints, acquired-callable ownership and Birnam
-primitive authoring remain separate work. 81F/81G are checkpointed as `b7461cc1`.
+controls pass. 81H is checkpointed as `c4d49b23` (81F/81G: `b7461cc1`).
+[81I](../design/81i-ordinary-storage-reclamation.md) adds a separate collector for
+ordinary objects, transactional metadata cleanup and guarded Id storage release.
+Ten collection cases pass in debug/release, including failed preparation, dead
+cycles, exact-address reuse and stale-capability rejection; all earlier cases and
+nine mutation controls pass. The native SeedApi carrier remains unchanged.
+Behavior/weak-Symbol retirement, production safepoints, acquired-callable ownership
+and Birnam primitive authoring remain separate work.
 
 ## Selected sequence — 2026-09-06
 

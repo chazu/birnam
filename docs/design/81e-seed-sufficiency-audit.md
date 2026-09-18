@@ -4,7 +4,8 @@
 > Runtime source checked at `162b68fe`. [81F](81f-isolated-id-seed-proof.md) now
 > executes the first bounded Rust seed/object-model witness; [81G](81g-integer-module-proof.md)
 > adds an Integer module through the unchanged boundary. [81H](81h-storage-observation-and-tracing.md)
-> executes storage observation and separate tracing. Production runtime
+> executes storage observation and separate tracing; [81I](81i-ordinary-storage-reclamation.md)
+> adds ordinary reclamation and index retirement. Production runtime
 > extraction and Birnam primitive authoring remain unproved. This refines
 > [81D](81d-id-api-partition.md), not a claim that all boundaries are executable.
 
@@ -124,8 +125,8 @@ exists under the listed assumptions. It is not a compiled or executed proof.
 the architecture is impossible. Every row still depends on L for its eventual
 Birnam implementation. 81F supplies an isolated Rust execution receipt for the
 private-behavior part of L1, 81G for the Integer part of L2, and 81H for the
-storage-description/reachability parts of L4/L5. The other obligations remain
-unexecuted.
+storage-description/reachability parts of L4/L5. 81I adds ordinary-storage and
+metadata retirement across L1/L2/L5. The other obligations remain unexecuted.
 
 ### L1. Object-model library and reflection — private behavior witnessed; reflection pending
 
@@ -149,7 +150,8 @@ assumes all behavior objects use `VtableRecord`.
 **Executed subset:** [81F](81f-isolated-id-seed-proof.md) passes private-behavior
 construction/reuse, existing-object reassociation, custom parent lookup, method
 removal/replacement and reentry in a standalone seed and separate upper dylib.
-It uses explicit I1 entries and part of I2's method protocol. Complete reflection,
+It uses explicit I1 entries and part of I2's method protocol. 81I additionally
+checks private-owner retirement before address reuse. Complete reflection,
 late-mounted observation and production migration remain open; uncached sends
 observing changes do not establish I6's observer contract.
 
@@ -175,7 +177,8 @@ borrows. A bounded no-GC demonstration alone is not production acceptance.
 dylib using the unchanged 81F seed/ABI. Construction, payload access, checked
 arithmetic, method/factory/allocator replacement and private-behavior composition
 pass in debug/release. An Integer-only process proves no dependency on the
-object-model library. Other value families, collections, reclamation and Birnam
+object-model library. 81I adds Integer provenance retirement and safe address
+reuse. Other value families, collections, external-buffer reclamation and Birnam
 authoring remain unproved.
 
 ### L3. Environment and binding — constructible above Symbols/collections
@@ -216,7 +219,7 @@ tracing survives reassociation with Integer behavior. Missing and conflicting
 descriptions fail closed. External native buffers and image relocation remain
 unproved.
 
-### L5. Collector — reachability witnessed; reclamation and lifetime integration pending
+### L5. Collector — ordinary reclamation witnessed; full lifetime integration pending
 
 **Evidence:** [gc.rs](../../rust/birnam-id/src/gc.rs) marks through `Heap` and
 captures native roots using a platform register-save operation.
@@ -239,9 +242,13 @@ release and safe address reuse. General root callbacks alone do not prove this.
 
 **Executed subset:** 81H loads a tracer over existing allocations, computes exact
 live/dead partitions including cycles/shared references, and checks a guarded
-owner-thread observation phase. Native roots are explicit, Symbols remain strong,
-and no memory or indexes are reclaimed. This establishes part of I3/I4, not a
-complete collector or automatic production safepoint/root discipline.
+owner-thread observation phase. [81I](81i-ordinary-storage-reclamation.md) adds a
+separate collector that roots seed-owned objects, retires unreachable ordinary
+allocations and transactionally removes upper indexes before storage reuse. It
+checks forced address reuse and aborts all prepared cleanup on failure. Native
+roots remain explicit; Symbols and behaviors stay rooted and code stays pinned.
+This establishes part of I3/I4, not a complete collector or automatic production
+safepoint/root discipline.
 
 ### L6. Executable ownership — blocked on I5 and binding retirement
 
@@ -403,7 +410,8 @@ No examined requirement forces a Values, GC, Frame or Machine implementation to
 remain inside Id. However, **the sufficiency of a concrete minimal API for all
 layers is not proved**: 81F implements a bounded subset of I1/I2 with pinned
 storage/code. 81H establishes storage observation and reachability through part
-of I3/I4, while reclamation, lifetime integration and L remain open. Their
+of I3/I4. 81I adds ordinary reclamation/index retirement; behavior/code retirement,
+full lifetime integration and L remain open. Their
 grouping must not be mistaken for six new mandatory C tables.
 
 The first bounded work, now executed in [81F](81f-isolated-id-seed-proof.md),
@@ -425,8 +433,10 @@ private-behavior part of L1 as the first upper-layer witness:
 does not mechanically extract production Id or provide mutation observers.
 
 [81H](81h-storage-observation-and-tracing.md) now supplies the read-only storage
-and tracing witness. Follow with reclamation/index retirement and callable ownership before
-claiming the harder layers are extractable. Each L1–L13 proof above is a separate
+and tracing witness; [81I](81i-ordinary-storage-reclamation.md) adds ordinary
+reclamation and metadata retirement. Callable ownership, behavior/weak-Symbol
+retirement and execution roots remain before claiming the harder layers are
+extractable. Each L1–L13 proof above is a separate
 acceptance obligation. Runtime changes use the [validation workflow](../validation.md);
 existing aggregate-runtime tests remain useful regressions but cannot prove an
 isolated boundary by themselves. Birnam replacement additionally requires a

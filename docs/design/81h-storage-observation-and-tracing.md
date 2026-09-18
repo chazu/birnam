@@ -5,6 +5,8 @@
 > reachability over the existing seed allocation domain. No reclamation occurs.
 > The original native SeedApi carrier is byte-for-byte unchanged; Id gains a
 > message protocol for observing storage and a scoped observation phase.
+> This records the 81H checkpoint; [81I](81i-ordinary-storage-reclamation.md) extends
+> the workspace with ordinary reclamation and a prepared tracer entry.
 
 ## 1. Result and boundaries
 
@@ -196,8 +198,9 @@ safepoints, automatic native roots, ownership acquisition or a complete collecto
 Storage and Symbols remain retained until shutdown, and no performance claim or
 Birnam implementation claim follows from the Rust prototype.
 
-The next separate proof is reclamation: establish how a selected unreachable
-allocation is retired, remove seed and upper-module indexes before address
-reuse, protect active roots/code, and demonstrate that a later allocation cannot
-inherit stale Integer/private-behavior metadata. Reachability alone does not
+[81I](81i-ordinary-storage-reclamation.md) now executes the next separate proof
+for ordinary allocations: it retires selected unreachable storage and removes
+seed and upper-module indexes before address reuse, while retaining explicit
+roots and pinning code. A later allocation cannot inherit stale Integer or
+private-behavior metadata. Reachability alone does not
 authorize freeing objects with native resources or unretired method bindings.

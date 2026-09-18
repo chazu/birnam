@@ -1,6 +1,8 @@
 //! Integer representation and default behavior, entirely above the seed.
 //! See Design 81G for the native mount and message contracts.
-use birnam_observation_abi::{PROVIDER, ProviderSink, decode};
+use birnam_observation_abi::{
+    PROVIDER, ProviderSink, RETIREMENT, RetirementPlan, RetirementRequest, decode,
+};
 use birnam_seed_abi::*;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -25,7 +27,7 @@ impl IntegerModule {
             return Err(INVALID);
         }
         // Only our constructor adds identities, after requesting an i64 payload.
-        // Storage is pinned until seed destruction; there is no address reuse.
+        // Collection removes provenance before storage becomes reusable.
         Ok(unsafe { (object as *const i64).read() })
     }
 }
@@ -276,6 +278,72 @@ unsafe extern "C" fn storage_provider(
     }
 }
 
+struct PreparedRetirement {
+    owner: *const IntegerModule,
+    replacement: BTreeSet<Oop>,
+}
+unsafe extern "C" fn commit_retirement(data: *mut c_void) {
+    let plan = unsafe { Box::from_raw(data.cast::<PreparedRetirement>()) };
+    *unsafe { &*plan.owner }.instances.borrow_mut() = plan.replacement;
+}
+unsafe extern "C" fn abort_retirement(data: *mut c_void) {
+    drop(unsafe { Box::from_raw(data.cast::<PreparedRetirement>()) });
+}
+unsafe extern "C" fn prepare_retirement(
+    api: *const SeedApi,
+    data: *mut c_void,
+    _: Oop,
+    args: *const Value,
+    count: usize,
+    _: *mut Value,
+) -> Status {
+    let owner = unsafe { &*data.cast::<IntegerModule>() };
+    if owner.seed != api {
+        return INVALID;
+    }
+    let request = match unsafe { decode::<RetirementRequest>(args, count) } {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    if request.plan.is_null() || (request.count != 0 && request.objects.is_null()) {
+        return INVALID;
+    }
+    let victims: std::collections::BTreeSet<_> = (0..request.count)
+        .map(|i| unsafe { *request.objects.add(i) })
+        .collect();
+    let mut replacement = owner.instances.borrow().clone();
+    replacement.retain(|object| !victims.contains(object));
+    let plan = Box::new(PreparedRetirement { owner, replacement });
+    unsafe {
+        request.plan.write(RetirementPlan {
+            data: Box::into_raw(plan).cast(),
+            commit: commit_retirement,
+            abort: abort_retirement,
+        })
+    };
+    OK
+}
+unsafe extern "C" fn retirement_provider(
+    api: *const SeedApi,
+    data: *mut c_void,
+    _: Oop,
+    _: *const Value,
+    count: usize,
+    out: *mut Value,
+) -> Status {
+    let owner = unsafe { &*data.cast::<IntegerModule>() };
+    if owner.seed != api || count != 0 {
+        return INVALID;
+    }
+    unsafe {
+        out.write(Value::method(Method {
+            entry: prepare_retirement,
+            data,
+        }))
+    };
+    OK
+}
+
 /// Mount ABI: create(seed, factory_out) -> opaque module lifetime handle.
 /// All value operations, including construction, are ordinary messages.
 /// # Safety
@@ -324,6 +392,7 @@ pub unsafe extern "C" fn birnam_integer_create_v1(
             b"-",
             b"*",
             PROVIDER,
+            RETIREMENT,
         ]
         .into_iter()
         .map(|name| unsafe { intern(api, name) })
@@ -353,6 +422,7 @@ pub unsafe extern "C" fn birnam_integer_create_v1(
         (integer_behavior, selectors[4], subtract as Entry),
         (integer_behavior, selectors[5], multiply as Entry),
         (factory_behavior, selectors[6], storage_provider as Entry),
+        (factory_behavior, selectors[7], retirement_provider as Entry),
     ] {
         let published = unsafe {
             call(
