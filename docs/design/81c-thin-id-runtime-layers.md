@@ -1,0 +1,203 @@
+# 81C — Thin layers above Id
+
+> **Status:** Proposed decomposition, 2026-09-17. Records the user's direction
+> to replace thinner layers with Birnam and the clarification that Id is the
+> first semantic layer. This does not implement the split.
+> [81A](81a-current-bootstrap-and-runtime-layers.md) describes today's system;
+> [81B](81b-siphon-handoff-and-construction-graph.md) describes the siphon handoff;
+> [81](81-toward-a-birnam-implementation.md) owns the broader roadmap.
+
+## 1. Id is first
+
+The siphon loads Id. **No Birnam semantic layer sits underneath Id.** In
+particular, there is no hidden Rust allocator, object representation, allocation
+registry, dispatch engine or runtime on which the Birnam Id implementation rests.
+
+Id obtains raw storage through platform services and implements the object
+storage and bookkeeping needed to construct its own graph. These operations
+belong to the loaded Id implementation, not a separate prerequisite runtime.
+The OS loader and memory services are platform facilities, not another semantic
+rung. The siphon performs loading and handoff only.
+
+The stage-0 compiler may be Rust and may emit C for the initial Id implementation.
+The compiled Birnam Id must perform its own runtime work when loaded, without
+calling back into that compiler's Rust runtime. This applies to generated helper
+functions as well as explicitly authored calls.
+
+The collector is a later layer. Id must expose tracked storage, layouts and root
+information sufficient for it to mount without changing existing object
+identities. Id does not need to contain the collector's tracing/sweeping algorithm.
+
+## 2. Proposed logical layers
+
+The table is a dependency outline, not a promise that the current source files
+already provide these boundaries or that all components form a single chain.
+
+| Layer | Owns | Must not require |
+|---|---|---|
+| 1. Id object system | Object headers, vtables, delegation, method dictionaries, ordinary lookup/send, identity, minimal selector support, and initial object storage/ownership | Collector algorithm, Frames, Store, compiler or optimizer |
+| 2. Values and names | Numeric/String representations and constructors, full interning facilities and raw import/export namespace | Stackless execution or optimization |
+| 3. Garbage collection | Root discovery, tracing, sweeping, finalization and collection policy | Direct access to particular higher-level registries or types |
+| 4. Executable ownership | Code handles, callable-entry identities, retained owners, leases and retirement | Compiler policy or a particular execution engine |
+| 5. Frames and descriptors | Frame storage, typed slots, program counters, descriptor validation and frame tracing | Task scheduling or optimization |
+| 6. Canonical Machine execution | Driving Frames, calls/returns, tail calls and synchronous native entry | Optimizing compiler or task policy |
+| 7. Continuations and control | Capture/resume, suspension, delimiters, protected boundaries and bounded-driving adapters | Scheduler policy |
+| 8. Optimization | Dispatch caches, guarded specialization, native tiers and optimization/recovery plans | Lower layers must work correctly when this layer is absent |
+
+The existing Birnam TaskControl and TaskExecutor then operate above Machine and
+control services. This decomposition is focused on today's `libbirnam_id`; it
+does not absorb later Prelude, Collection, Store, PEG, Codegen or Image libraries
+into Id.
+
+Minimal selector identity and primordial names must be constructible by Id
+itself. General interning, export enumeration and value protocols can mount
+later. The exact split must preserve selector identity: mounting layer 2 must
+adopt the initial identities, not intern a second set or redirect old keys.
+Likewise, the raw export namespace must not require the Store-backed `Globals`
+object, which is a later superimposition.
+
+Executable ownership is the common lifetime mechanism. Resumable manifest
+admission and Frame-specific registration sit above it and depend on the relevant
+descriptors. This avoids making every code owner depend on the Machine engine.
+
+Optimization is itself more than one optional component. A dispatch cache can
+extend Id without the Machine optimizer. Canonical frame/control operations
+needed to restore execution belong below optimization; optimizer-specific plans,
+guards and reconstruction choices belong above them.
+
+```mermaid
+flowchart TD
+    S[Siphon: loading only] --> ID[1. Id and its initial object storage]
+    ID --> V[2. Values and names]
+    ID --> GC[3. Garbage collection]
+    ID --> O[4. Executable ownership]
+    V --> F[5. Frames and descriptors]
+    O --> F
+    F --> M[6. Canonical Machine]
+    M --> C[7. Continuations and control]
+    C --> T[Existing Birnam task policy]
+    ID --> DC[8a. Optional dispatch caching]
+    C --> OPT[8b. Optional native tiers and optimization]
+    O --> OPT
+    V -. root and trace providers .-> GC
+    F -. root and trace providers .-> GC
+    O -. root and trace providers .-> GC
+```
+
+Solid arrows show capability dependencies. Dotted arrows show registrations
+with the collector, not permission for GC to depend on those layers' private
+representations. The collector must be active before ordinary execution requires
+reclamation; a bounded Id construction phase without collection is not a
+production memory-management policy.
+
+## 3. Interfaces that make replacement possible
+
+### Storage and collection
+
+Id records allocation ownership from the first object, supplies stable identity,
+and supports explicit layout/root discovery and storage reclamation operations.
+The later collector consumes these interfaces. Construction roots remain until
+normal roots and layouts are established; collector mounting must not leak the
+construction heap or move identities to a second object graph.
+
+GC receives root providers and trace descriptions from installed layers. It
+must not reach into a shared `Runtime.execution`, optimizer registry or
+continuation table. Finalizer detachment, callback reentry and reclamation order
+remain explicit. Collector work storage must not recursively require collection.
+
+### Dispatch and extension
+
+Id supplies ordinary lookup/mutation and explicit notifications or checked entry
+interfaces where higher layers participate. A synchronous call remains possible
+without a Machine. Resumable methods enter the registered execution provider;
+Id does not contain its driving loop. Preserve existing lookup effects and native
+participation rather than replacing the send contract with a sealed fast path.
+
+Internal observers must coexist with the public method-overwrite hook and Store
+mirror. Extracting optimization must not steal a single callback slot or change
+observable callback order. Specify the internal fan-out and lifetime contract
+before moving these observers into separate modules.
+
+### Executable lifetimes and Frames
+
+Frames, Blocks, continuations and foreign callbacks retain opaque executable
+owners. They do not refer directly to TCC units or compiler registries. Shared
+ownership must preserve code while any live execution or rollback target needs
+it. Frame-specific admission validates descriptors and takes the appropriate
+owner reference before publishing a callable entry.
+
+The ordinary loader, compiler and optimizer all use this same ownership
+mechanism. Removing optimization must not remove the only implementation of
+retirement, code pinning or canonical recovery operations.
+
+### Independent state and public compatibility
+
+Each layer owns its state. Cross-layer references use explicit interfaces,
+registered providers or owned handles. Splitting dylibs while retaining one
+shared mutable `RuntimeState` is not the intended decomposition.
+
+The public IdApi remains a compatibility facade assembled from the responsible
+layers once all its required services exist. Its inclusion of value and GC
+operations does not require those implementations to live in Id. Early layer
+mounting needs a narrower internal contract; do not publish a partial IdApi with
+dummy required callbacks. Exact internal carrier shapes remain design work.
+
+Replacing a layer's implementation at build/startup is the first migration
+milestone. Ordinary method replacement must continue to work. Unloading or
+exchanging a live heap/collector implementation additionally requires a state
+handoff and lifetime proof; separate modules do not make that automatically safe.
+
+## 4. Existing code and Birnam coverage
+
+The main consolidation point is `RuntimeState`/`Runtime` in
+[`runtime.rs`](../../rust/birnam-id/src/runtime.rs): symbols, values, vtables,
+heap, exports, execution, registration state, caches and native tiers are currently
+owned together. Existing files provide useful extraction starting points:
+
+| Responsibility | Current source starting points |
+|---|---|
+| Id/object storage | `dispatch.rs`, `vtable.rs`, `heap.rs`, parts of `runtime.rs` |
+| Values and names | `values.rs`, `symbol.rs`, `env.rs` |
+| Collection of memory | `gc.rs`, allocation/collection coordination in `runtime.rs` |
+| Registration and ownership | `registration.rs`, staged/committed unit and lease state in `runtime.rs` |
+| Frames and Machine | `execution.rs`, `execution/*`, `run_stackless_loop*` |
+| Control adapters | `runtime/task_control.rs`, `runtime/scheduling.rs`, execution boundaries |
+| Optimization | `runtime/native_tier*`, `runtime/numeric*`, dispatch/lookup guards and recovery consumers |
+
+There is no complete Birnam allocator, collector, interner, Id dispatcher or
+Machine engine ready to substitute for these today. Birnam already implements
+derived value/library methods, task/cancellation/cleanup policy, and compiled-unit
+and generation policy. These are consumers of the mechanisms, not redundant
+implementations of them. The native loop/iteration methods replaced by
+`stackless-control.birnam` mostly come from Prelude/Collection, not libid itself.
+
+## 5. Extraction order versus startup order
+
+**Extract from the top of the current implementation; construct the target from
+Id upward.** These are different sequences.
+
+1. Separate the optional native optimization tier and its compiler/libtcc
+   dependencies. Leave a working canonical runtime with the tier absent.
+2. Separate canonical execution and control from Id dispatch. Identify the
+   provider boundary for resumable entry and preserve synchronous native calls.
+3. Separate frame storage/descriptors and shared executable ownership, resolving
+   their mutual lifetime requirements explicitly. These can require coordinated
+   extractions rather than arbitrary file-by-file moves.
+4. Split values/names and collector coordination out of the remaining Id core.
+   Preserve initial object/selector identities and mount GC through the storage
+   and root protocols above.
+5. Replace the resulting thin implementations with Birnam in dependency-informed
+   slices. A layer can migrate while its neighbors are still native; that is
+   an intermediate development system, not the completed stage-1 target.
+
+Mechanical Rust extraction makes later replacement possible; it is not itself
+self-hosting progress. The stage-0 tool remains available throughout. The
+experimental Birnam Id construction track in 81B can proceed independently as
+the compiler facilities become available; it need not block useful top-down
+extraction in the existing runtime.
+
+Acceptance should show each lower layer operating without the extracted upper
+layer, ownership and mutation behavior across the boundary, and eventual removal
+of the replaced Rust implementation from the installed execution path. Use
+existing semantic/ABI/lifetime checks and representative performance evidence;
+separate correctness from timing claims.

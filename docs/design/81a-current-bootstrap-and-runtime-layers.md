@@ -24,6 +24,10 @@ images and source, without calling statically linked Rust system behavior. This
 inventory records current behavior and the native dependencies to migrate.
 Retained source and source fallback are intended; their presence is not a defect.
 
+[81C](81c-thin-id-runtime-layers.md) proposes splitting the current libid into
+thinner replaceable layers, starting with Id as the first semantic layer. The
+following inventory remains a description of the current combined library.
+
 Separately, either that executable's source-fallback startup or an installed
 startup builds a layered object environment. Later modules install or replace
 methods in this environment. Build stage, implementation language, execution
@@ -95,9 +99,9 @@ The table's native module stems receive `.dylib` in the installed library tree.
 | Order | Component / installed stem | Authored in | Responsibility |
 |---|---|---|---|
 | Before 0 | `bin/birnam` host | Rust | Command routing, resource discovery, startup, execution boundaries, project and image orchestration |
-| 0 | `libbirnam_id` | Rust, with native compiler/C support | Object/vtable bootstrap, dispatch, allocation, symbols, primitive values, Globals, GC, Frames/Machines, checked control and native tiers |
+| 0 | `libbirnam_id` | Rust, with native compiler/C support | Object/vtable bootstrap, dispatch, allocation, symbols, primitive values, raw import/export namespace, GC, Frames/Machines, checked control and native tiers |
 | 1 | `libbirnam_id_artifact` | Rust | Pointer-free compiled-artifact inspection exposed to Birnam |
-| 2 | `libbirnam_store` | Rust | Fact/history/index substrate, db/Cell protocol and object-model mirror |
+| 2 | `libbirnam_store` | Rust | Fact/history/index substrate, db/Cell/Globals protocols and object-model mirror |
 | 3 | `libbirnam_id_peg` | Rust | PEG matching, pattern objects and CST representation |
 | 4 | `libbirnam_id_lang` | Rust | Birnam grammar construction through PEG messages and Lang facade |
 | 5 | `libbirnam_id_tcc` | Rust + C libtcc | C compilation, native units and generated-code runtime shims |

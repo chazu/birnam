@@ -63,6 +63,14 @@ loaded system. Specify the siphon's minimal loading/platform operations and
 implementation separately; do not use that small boundary to retain built-in
 language, compiler, GC, Machine, or library behavior.
 
+**Id is the first semantic layer.** Its loaded Birnam implementation constructs
+its own object graph and manages the initial storage/ownership needed to do so.
+Platform memory services are allowed, but no hidden Rust allocator, registry or
+runtime sits below Id. Values/names, GC, executable ownership, Frames, Machine
+execution, control and optimization are thinner subsequent layers; see
+[81C](81c-thin-id-runtime-layers.md). The collector mounts through Id's explicit
+storage/root interfaces rather than being bundled into the first component.
+
 The current installer copies the bootstrap host and native libraries unchanged.
 It therefore does not meet this target: both the host's linked semantic machinery
 and the Rust-authored native runtime rungs need to be accounted for. The retained
@@ -135,6 +143,12 @@ The deepest migration covers dispatch, vtables, interning, allocation, tracing,
 frame storage, Machine transitions, and code-lifetime management. Existing object
 interfaces permit mechanisms to migrate without requiring every caller to change.
 
+Decompose these responsibilities first according to
+[81C](81c-thin-id-runtime-layers.md). Id owns initial object storage, but GC is
+a later layer; Frames, execution, control and optimization are also separate.
+Each layer owns its state and uses explicit cross-layer interfaces rather than
+continuing to mutate a single shared RuntimeState.
+
 Task scheduling, cancellation, shielding, cleanup, and worker policy already have
 substantial ordinary Birnam implementations. Avoid listing that work as wholly
 native or proposing to reimplement it from scratch. The question is what remains
@@ -196,6 +210,20 @@ minimum executable support needed to restore an image as part of this contract.
 Deliverable: a proposed dependency graph and permitted entry/import surface,
 with unresolved low-level capabilities identified rather than assumed.
 
+[81B — Siphon handoff and construction graph](81b-siphon-handoff-and-construction-graph.md)
+provides the first proposal: a platform-only boot entry, Birnam-owned primordial
+Id construction, thin subsequent layers and explicit image/source support closure.
+Its Step-2 findings identify what today's compiler has not yet demonstrated.
+[81C](81c-thin-id-runtime-layers.md) supplies the eight-layer libid decomposition
+and its state/ownership boundaries.
+
+Prepare those boundaries in the existing implementation from the top down:
+first isolate optional optimization and its compiler/libtcc dependencies, then
+execution/control, Frames and code ownership, and finally values/names and
+collector coordination. This extraction can proceed independently of the
+Birnam Id compiler-facility investigation. It enables replacement but is not
+self-hosting progress by itself.
+
 ### Step 2 — Establish the facilities to compile the first runtime component
 
 Audit today's generated code and primitive facilities against that handoff.
@@ -212,7 +240,7 @@ that the whole runtime has migrated.
 ### Step 3 — Demonstrate a real siphon-to-Birnam runtime slice
 
 Build a separate experimental stage-1 product alongside the retained stage-0
-tool. Have its siphon load a stage-0-compiled Birnam component that establishes
+tool. Have its siphon load a stage-0-compiled Birnam Id module that establishes
 a bounded object/dispatch path: construct initial objects/vtables, install a
 method and send a message without the Rust libid implementing that path.
 
@@ -222,13 +250,18 @@ to libid or a trivial native function that never exercises runtime construction
 does not meet this milestone. This is a bounded proof, not a complete stage-1
 replacement or a usable-system claim.
 
+Id must implement its own initial object storage without a hidden native runtime
+underneath. Collector mounting and complete public IdApi assembly are later
+gates, not justification for putting GC into the first Id component.
+
 ### Step 4 — Expand the loaded Birnam substrate
 
 Migrate the remaining object, memory and execution mechanisms in the dependency
-order established above: symbols, allocation/GC, Frames/Machines, code ownership,
-collection structures, Store and other required runtime services. Split the
-sequence further wherever construction cycles require it; crate boundaries are
-not presumed to be the migration boundaries.
+order established above: values/names, the collector, executable ownership,
+Frames/descriptors, canonical Machine execution, continuations/control and
+optional optimization. Collection structures, Store and the other runtime
+libraries build on these capabilities. The graph branches; its startup order
+is distinct from the top-down Rust extraction order in 81C.
 
 Bring up the existing Birnam module manager, stdlib, CompiledUnit and concurrency
 policy on that substrate. Remove the need to execute superseded Rust control
@@ -265,9 +298,9 @@ available as a distinct build/recovery product. Check installed binary/import
 inventories and exercised execution paths to establish that no statically linked
 Rust system implementation supplies startup, runtime, compilation or recovery.
 
-The immediate next work is Step 1. Its dependency and capability findings select
-the first implementation slice; this document does not assume that today's
-compiler can already emit a self-sufficient runtime component.
+Step 1 now has the handoff proposal in 81B and decomposition in 81C. These guide
+top-down extraction and Step 2's low-level authoring design. No document assumes
+that today's compiler can already emit a self-sufficient Birnam Id module.
 
 ## 4. Progress and acceptance
 

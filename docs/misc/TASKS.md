@@ -27,6 +27,13 @@ stage-0/stage-1 build, runtime load order, implementation languages and replacem
 boundaries. These are exploratory documents; they do not change implementation
 acceptance or the existing Beads backlog.
 
+[81B](../design/81b-siphon-handoff-and-construction-graph.md) proposes the siphon
+handoff, construction dependency graph and first-runtime-slice acceptance.
+[81C](../design/81c-thin-id-runtime-layers.md) decomposes libid into eight thin
+layers with Id first and no semantic runtime beneath it. It separates top-down
+extraction of the current runtime from bottom-up construction of the target.
+Low-level Birnam authoring and the early Id mounting contract remain design work.
+
 ## Selected sequence — 2026-09-06
 
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),
