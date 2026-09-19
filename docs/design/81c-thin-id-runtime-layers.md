@@ -242,3 +242,7 @@ capture and legacy tracing remain in the current runtime; their coverage gaps
 are explicit. [81N](81n-production-storage-tracer.md) adds the loaded scoped graph
 tracer, with strict coverage by default. Production root/provider migration and
 collection remain separate; the automatic mark path is still inside Id.
+
+[81O](81o-production-live-gc-traversal.md) subsequently removes Id's worklist:
+production collection now uses the loaded live tracer. Source policy adapters,
+collection coordination and physical reclamation remain to be extracted.

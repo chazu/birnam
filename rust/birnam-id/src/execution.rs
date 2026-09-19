@@ -2405,22 +2405,18 @@ impl MachineState {
         entry_pins
     }
 
-    fn trace_roots(&self, mark: MarkFn) {
+    fn trace_roots(&self, mut mark: impl FnMut(Oop)) {
         if !self.continue_action.is_null() {
-            // SAFETY: the GC supplies a synchronous callback for this hook.
-            unsafe { mark(self.continue_action) };
+            mark(self.continue_action);
         }
         if !self.return_action.is_null() {
-            // SAFETY: same callback lifetime as above.
-            unsafe { mark(self.return_action) };
+            mark(self.return_action);
         }
         if !self.call_action.is_null() {
-            // SAFETY: same callback lifetime as above.
-            unsafe { mark(self.call_action) };
+            mark(self.call_action);
         }
         if !self.tail_call_action.is_null() {
-            // SAFETY: same callback lifetime as above.
-            unsafe { mark(self.tail_call_action) };
+            mark(self.tail_call_action);
         }
         for action in [
             self.boundary_call_action,
@@ -2431,14 +2427,10 @@ impl MachineState {
             self.abort_action,
         ] {
             if !action.is_null() {
-                // SAFETY: same synchronous callback lifetime as above.
-                unsafe { mark(action) };
+                mark(action);
             }
         }
-        self.arena.trace_roots(|root| {
-            // SAFETY: FrameArena never retains the callback or root.
-            unsafe { mark(root) }
-        });
+        self.arena.trace_roots(mark);
     }
 }
 
@@ -2458,17 +2450,13 @@ struct ContinuationState {
 }
 
 impl ContinuationState {
-    fn trace_roots(&self, machine: Oop, mark: MarkFn) {
+    fn trace_roots(&self, machine: Oop, mut mark: impl FnMut(Oop)) {
         if self.segment.is_some() && !machine.is_null() {
-            // SAFETY: the GC supplies a synchronous callback for this hook.
-            unsafe { mark(machine) };
+            mark(machine);
         }
         if let Some(segment) = &self.segment {
             for frame in segment {
-                frame.trace_roots(|root| {
-                    // SAFETY: detached frames never retain the callback or root.
-                    unsafe { mark(root) }
-                });
+                frame.trace_roots(&mut mark);
             }
         }
     }
@@ -3529,11 +3517,9 @@ impl ExecutionState {
         assert_eq!(popped, machine, "stackless drive roots must unwind LIFO");
     }
 
-    pub(crate) fn trace_scoped_host_roots(&self, mark: MarkFn) {
+    pub(crate) fn trace_scoped_host_roots(&self, mut mark: impl FnMut(Oop)) {
         for root in &self.scoped_host_roots {
-            // SAFETY: the registered root provider receives a synchronous mark
-            // callback and does not retain it beyond this enumeration.
-            unsafe { mark(*root) };
+            mark(*root);
         }
     }
 
@@ -3907,7 +3893,7 @@ impl ExecutionState {
             .resume_suspended(owner, supplied_value, nil)
     }
 
-    pub(crate) fn trace_continuation_roots(&self, heap: &Heap, object: Oop, mark: MarkFn) {
+    pub(crate) fn trace_continuation_roots(&self, heap: &Heap, object: Oop, mark: impl FnMut(Oop)) {
         let Ok(capability) = self.continuation_capability_for_object(heap, object) else {
             return;
         };
@@ -4021,7 +4007,7 @@ impl ExecutionState {
                 .is_some_and(|generation| heap.write_payload_word(object, 2, generation))
     }
 
-    pub(crate) fn trace_object_roots(&self, heap: &Heap, object: Oop, vtable: Oop, mark: MarkFn) {
+    pub(crate) fn trace_object_roots(&self, heap: &Heap, object: Oop, vtable: Oop, mark: impl FnMut(Oop)) {
         let _ = vtable;
         let Ok(capability) = self.capability_for_object(heap, object) else {
             return;

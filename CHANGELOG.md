@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Move actual GC traversal to the loaded tracer (Design 81O). Automatic, explicit
+  and generation-retirement collections use its live worklist through ordered
+  root, first-mark and outgoing-reference callbacks. Id's old `Marker` is removed;
+  the host mounts the tracer explicitly before allocating native modules. Native
+  root capture, current layout/hook semantics, weak retirement, deferred
+  settlement and finalization are preserved. IdApi v4 and image bytes are unchanged.
+
 - Promote the seed's graph tracer into the production `birnam-trace` module
   (Design 81N). It reports reached/not-reached allocation identities from scoped
   storage descriptions, rejects coverage gaps by default and preserves accepted

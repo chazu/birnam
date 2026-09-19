@@ -95,6 +95,12 @@ rejects gaps by default. Automatic GC still traces inside Id. Production provide
 coverage, native roots and transactional reclamation remain to be migrated;
 accepting diagnostic gaps does not satisfy those obligations.
 
+[81O](../design/81o-production-live-gc-traversal.md) moves production traversal
+through the live streaming boundary reviewed in 81N. The old Id worklist is gone;
+automatic, explicit and generation-retirement collection use the loaded tracer.
+Next extract collection coordination and metadata retirement/reclamation while
+preserving current finalizer, weak-index, deferred-allocation and code lifetimes.
+
 ## Selected sequence — 2026-09-06
 
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),

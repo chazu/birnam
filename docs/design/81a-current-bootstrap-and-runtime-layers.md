@@ -1,7 +1,7 @@
 # 81A — Current bootstrap and runtime layers
 
 > **Status:** Source-verified inventory begun 2026-09-17 at `f4d7c0773bfc`;
-> native loading updated through 81N on 2026-09-18.
+> native loading updated through 81O on 2026-09-18.
 > Companion to [81 — Toward a Birnam implementation](81-toward-a-birnam-implementation.md).
 > This describes the checked-out production paths, not a newly run bootstrap or
 > a verification of the currently installed executable. Historical Zig stage
@@ -19,7 +19,9 @@ The remaining Machine and optimizer components acquire Integer explicitly.
 This is still a Rust implementation; build stage and implementation language
 remain distinct. Focused validation passes; release validation was explicitly waived.
 
-Automatic GC marking remains in Id.
+[81O](81o-production-live-gc-traversal.md) mounts the live traversal capability
+before Integer. The loaded tracer owns the automatic collector's worklist;
+source policy adapters, collection coordination and reclamation remain in Id.
 
 ## 1. Stage means build stage, not runtime layer
 
@@ -115,9 +117,9 @@ The table's native module stems receive `.dylib` in the installed library tree.
 | Order | Component / installed stem | Authored in | Responsibility |
 |---|---|---|---|
 | Before 0 | `bin/birnam` host | Rust | Command routing, resource discovery, startup, execution boundaries, project and image orchestration |
-| 0 | `libbirnam_id` | Rust, with native compiler/C support | Object/vtable bootstrap, dispatch, allocation, symbols, primitive values, raw import/export namespace, GC, Frames/Machines, checked control and native tiers |
+| 0 | `libbirnam_id` | Rust, with native compiler/C support | Object/vtable bootstrap, dispatch, allocation, symbols, primitive values, raw import/export namespace, GC source adapters/retirement/reclamation, Frames/Machines, checked control and native tiers |
 | 1 | `libbirnam_storage` | Rust | Validates prepared payload descriptions over protected Id storage facts |
-| 2 | `libbirnam_trace` | Rust | Computes declared-graph reachability over scoped storage descriptions |
+| 2 | `libbirnam_trace` | Rust | Production GC worklist/traversal and scoped described-graph reachability |
 | 3 | `libbirnam_integer` | Rust | Canonical Integer objects, representation, native primitives and methods; numeric implementation declarations |
 | 4 | `libbirnam_object_model` | Rust | Existing private-behavior selection/reuse and construction, through Id primitives and seed messages |
 | 5 | `libbirnam_id_artifact` | Rust | Pointer-free compiled-artifact inspection exposed to Birnam |

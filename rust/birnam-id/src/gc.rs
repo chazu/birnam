@@ -4,7 +4,10 @@ use core::cell::Cell;
 
 use crate::abi::{MarkFn, Oop, RootProvider};
 use crate::boundary;
+#[cfg(test)]
 use crate::heap::Heap;
+use birnam_abi::storage::OK;
+use birnam_abi::trace_live::SinkV1;
 
 const MAX_STACK_SCAN_BYTES: usize = 128 << 20;
 
@@ -52,154 +55,96 @@ pub(crate) fn with_native_root_range<T>(_: usize, _: impl FnOnce(usize) -> T) ->
     None
 }
 
-/// Conservatively mark one validated native root interval. This runs in an
-/// inner collector frame below `start`, so its own locals are excluded.
-pub(crate) fn mark_native_root_range(
-    heap: &mut Heap,
-    marker: &mut Marker,
-    start: usize,
-    stack_bottom: usize,
-) {
+/// Emit native words in their existing low-to-high order. The tracer performs
+/// immediate first-mark admission; its frames stay below the captured interval.
+pub(crate) fn emit_native_root_range(sink: &SinkV1, start: usize, stack_bottom: usize) {
     let mut address = start.next_multiple_of(size_of::<usize>());
     while address
         .checked_add(size_of::<usize>())
         .is_some_and(|end| end <= stack_bottom)
     {
-        // SAFETY: a validated downward-growing stack interval from this live
-        // frame to the caller-supplied outer anchor remains mapped for the
-        // synchronous collection call. Reads are aligned machine words.
-        let candidate = unsafe { (address as *const usize).read() };
-        marker.mark_address(heap, candidate);
+        // SAFETY: the caller supplies a validated live stack interval.
+        emit_candidate(sink, unsafe { (address as *const usize).read() });
         address += size_of::<usize>();
     }
 }
 
-/// One non-reentrant mark phase. Candidate membership is exact: only the
-/// registered payload start of a collectable block can enter the worklist.
-pub(crate) struct Marker {
-    worklist: Vec<usize>,
-}
-
-impl Marker {
-    pub(crate) fn new() -> Self {
-        Self {
-            worklist: Vec::new(),
-        }
-    }
-
-    pub(crate) fn mark_address(&mut self, heap: &mut Heap, address: usize) {
-        if heap.mark_collectable_address(address) {
-            self.worklist.push(address);
-        }
-    }
-
-    pub(crate) fn mark_oop(&mut self, heap: &mut Heap, object: crate::abi::Oop) {
-        if !object.is_null() {
-            self.mark_address(heap, object.addr());
-        }
-    }
-
-    /// Drain the transitive closure by conservatively interpreting each padded
-    /// payload word as an exact-address candidate. Headers and permanent-object
-    /// payloads are never scanned.
-    #[cfg(test)]
-    pub(crate) fn drain_conservative(&mut self, heap: &mut Heap) {
-        while let Some(address) = self.worklist.pop() {
-            self.trace_conservative_payload(heap, address);
-        }
-    }
-
-    pub(crate) fn pop(&mut self) -> Option<usize> {
-        self.worklist.pop()
-    }
-
-    pub(crate) fn trace_conservative_payload(&mut self, heap: &mut Heap, address: usize) {
-        let words = heap
-            .payload_words(address)
-            .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
-        for index in 0..words.len() {
-            // SAFETY: the mark phase neither mutates payloads nor changes heap
-            // registry membership. mark_address only toggles mark metadata and
-            // may grow this Marker's separate worklist.
-            let candidate = unsafe { words.read(index) };
-            self.mark_address(heap, candidate);
-        }
-    }
-
-    pub(crate) fn trace_selected_payload(
-        &mut self,
-        heap: &mut Heap,
-        address: usize,
-        mut traces_word: impl FnMut(usize) -> bool,
-    ) {
-        let words = heap
-            .payload_words(address)
-            .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
-        for index in 0..words.len() {
-            if traces_word(index) {
-                // SAFETY: the mark phase neither mutates payloads nor changes
-                // heap registry membership. The selector closure runs before
-                // this read and cannot receive or retain the payload pointer.
-                let candidate = unsafe { words.read(index) };
-                self.mark_address(heap, candidate);
-            }
-        }
-    }
-}
-
-struct ActiveMarkContext {
-    heap: *mut Heap,
-    marker: *mut Marker,
+pub(crate) fn emit_candidate(sink: &SinkV1, candidate: usize) {
+    // SAFETY: each floor adapter uses the sink only during its synchronous call.
+    let status = unsafe { (sink.emit)(sink.context, candidate) };
+    boundary::require_invariant(status == OK, "GC tracer rejected a candidate");
 }
 
 thread_local! {
-    static ACTIVE_MARK_CONTEXT: Cell<*mut ActiveMarkContext> = const { Cell::new(core::ptr::null_mut()) };
+    static ACTIVE_MARK_SINK: Cell<Option<SinkV1>> = const { Cell::new(None) };
 }
-
 struct ActiveMarkGuard;
-
 impl Drop for ActiveMarkGuard {
     fn drop(&mut self) {
-        ACTIVE_MARK_CONTEXT.set(core::ptr::null_mut());
+        ACTIVE_MARK_SINK.set(None);
+    }
+}
+unsafe extern "C" fn mark_from_foreign(object: Oop) {
+    let sink = ACTIVE_MARK_SINK
+        .get()
+        .unwrap_or_else(|| boundary::fatal_invariant("GC mark callback escaped its invocation"));
+    if !object.is_null() {
+        emit_candidate(&sink, object.addr());
     }
 }
 
-unsafe extern "C" fn mark_from_foreign(object: Oop) {
-    ACTIVE_MARK_CONTEXT.with(|active| {
-        let context = active.get();
-        boundary::require_invariant(
-            !context.is_null(),
-            "GC mark callback escaped its invocation",
-        );
-        // SAFETY: invoke_with_mark_callback installs live, uniquely used raw
-        // pointers for exactly the synchronous foreign callback extent.
-        let context = unsafe { &mut *context };
-        // SAFETY: the dynamic guard guarantees both owners remain live and no
-        // Rust references to them overlap this reentrant mark operation.
-        unsafe { (&mut *context.marker).mark_oop(&mut *context.heap, object) };
-    });
+/// Adapt the legacy synchronous MarkFn without owning a queue or heap borrow.
+pub(crate) fn invoke_with_mark_callback(sink: &SinkV1, operation: impl FnOnce(MarkFn)) {
+    boundary::require_invariant(
+        ACTIVE_MARK_SINK.get().is_none(),
+        "GC mark callback reentered",
+    );
+    ACTIVE_MARK_SINK.set(Some(*sink));
+    let _guard = ActiveMarkGuard;
+    operation(mark_from_foreign);
 }
 
-/// Invoke one foreign provider or trace hook with a dynamically scoped mark
-/// callback. The callback must be used synchronously and must not be retained.
-///
-/// # Safety
-///
-/// `heap` and `marker` must remain live and exclusively available until
-/// `operation` returns. No Rust reference to either may overlap the call.
-pub(crate) unsafe fn invoke_with_mark_callback(
-    heap: *mut Heap,
-    marker: *mut Marker,
-    operation: impl FnOnce(MarkFn),
-) {
-    let mut context = ActiveMarkContext { heap, marker };
-    ACTIVE_MARK_CONTEXT.with(|active| {
-        boundary::require_invariant(active.get().is_null(), "GC mark callback reentered");
-        active.set(core::ptr::from_mut(&mut context));
-    });
-    let guard = ActiveMarkGuard;
-    operation(mark_from_foreign);
-    drop(guard);
+/// Heap-only tests use the real upper traversal with a conservative source.
+#[cfg(test)]
+pub(crate) fn trace_conservative_for_test(heap: &mut Heap, roots: &[Oop]) {
+    use birnam_abi::trace_live::{SourceV1, VERSION};
+    use core::ffi::c_void;
+    struct Source<'a> {
+        heap: *mut Heap,
+        roots: &'a [Oop],
+    }
+    unsafe extern "C" fn emit_roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
+        let source = unsafe { &*context.cast::<Source<'_>>() };
+        for root in source.roots {
+            emit_candidate(unsafe { &*sink }, root.addr());
+        }
+        OK
+    }
+    unsafe extern "C" fn admit(context: *mut c_void, address: usize) -> i32 {
+        let source = unsafe { &*context.cast::<Source<'_>>() };
+        i32::from(unsafe { (&mut *source.heap).mark_collectable_address(address) })
+    }
+    unsafe extern "C" fn edges(context: *mut c_void, address: usize, sink: *const SinkV1) -> i32 {
+        let source = unsafe { &*context.cast::<Source<'_>>() };
+        let words = unsafe { (&*source.heap).payload_words(address) }.unwrap();
+        for index in 0..words.len() {
+            emit_candidate(unsafe { &*sink }, unsafe { words.read(index) });
+        }
+        OK
+    }
+    let mut context = Source { heap, roots };
+    let source = SourceV1 {
+        version: VERSION,
+        byte_size: size_of::<SourceV1>(),
+        context: (&raw mut context).cast(),
+        roots: Some(emit_roots),
+        admit: Some(admit),
+        edges: Some(edges),
+    };
+    assert_eq!(
+        unsafe { birnam_trace::live::birnam_trace_live_v1(&source) },
+        OK
+    );
 }
 
 pub(crate) const MAX_ROOT_PROVIDERS: usize = 32;
@@ -319,9 +264,7 @@ mod tests {
         write_word(first, 1, false_target.addr() + 1);
         write_word(second, 0, first.addr());
 
-        let mut marker = Marker::new();
-        marker.mark_oop(&mut heap, first);
-        marker.drain_conservative(&mut heap);
+        trace_conservative_for_test(&mut heap, &[first]);
 
         assert_eq!(heap.is_marked(first), Some(true));
         assert_eq!(heap.is_marked(second), Some(true));
@@ -336,9 +279,7 @@ mod tests {
         let permanent_carrier = heap.allocate(size_of::<usize>(), Permanence::Permanent);
         write_word(permanent_carrier, 0, owner.addr());
 
-        let mut marker = Marker::new();
-        marker.mark_oop(&mut heap, permanent_carrier);
-        marker.drain_conservative(&mut heap);
+        trace_conservative_for_test(&mut heap, &[permanent_carrier]);
 
         assert_eq!(heap.is_marked(permanent_carrier), Some(false));
         assert_eq!(heap.is_marked(owner), Some(false));

@@ -5,6 +5,10 @@
 > normally loaded production module. The automatic collector's existing mark
 > path remains in Id.
 
+[81O](81o-production-live-gc-traversal.md) subsequently moves automatic collection's
+worklist to this module through a separate live source/admission protocol. The
+scoped report and its coverage rules remain as described here.
+
 ## Boundary choice
 
 Three interface designs were compared using the design-an-interface workflow.

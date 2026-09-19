@@ -952,6 +952,7 @@ pub enum ModuleError {
         path: PathBuf,
     },
     IntegerDependencyRejected { path: PathBuf },
+    TraceDependencyRejected { path: PathBuf },
     MissingModuleInit {
         path: PathBuf,
     },
@@ -2129,6 +2130,22 @@ impl LoadedStack {
             if unsafe { attach(integer) } != 1 { return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() }); }
             self.integer = integer;
         }
+        let provider = unsafe {
+            (self.api().dlsym)(handle.as_ptr(), c"birnam_trace_provider_v1".as_ptr())
+        };
+        if !provider.is_null() {
+            let provide: birnam_abi::trace_live::ProviderV1 = unsafe { std::mem::transmute(provider) };
+            let dependency = unsafe {
+                (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_trace_dependency_v1".as_ptr())
+            };
+            if dependency.is_null() {
+                return Err(ModuleError::TraceDependencyRejected { path: path.to_path_buf() });
+            }
+            let attach: birnam_abi::trace_live::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if unsafe { attach(provide()) } != 1 {
+                return Err(ModuleError::TraceDependencyRejected { path: path.to_path_buf() });
+            }
+        }
         self.modules.push(handle);
         Ok(handle)
     }
@@ -2153,6 +2170,14 @@ impl LoadedStack {
                 resources.lib_dir.join(format!("{name}.dylib"))
             };
             let handle = self.load_module_handle(&path)?;
+            if *name == "libbirnam_trace" {
+                let provider = unsafe {
+                    (self.api().dlsym)(handle.as_ptr(), c"birnam_trace_provider_v1".as_ptr())
+                };
+                if provider.is_null() {
+                    return Err(ModuleError::TraceDependencyRejected { path });
+                }
+            }
             if *name == "libbirnam_store" {
                 let getter = unsafe {
                     (self.floor.api().dlsym)(

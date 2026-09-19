@@ -16,10 +16,7 @@ use crate::execution::{
     ReturnDestination, RuntimeExecutionDiagnostics, SemanticRegistrationV1, SlotKind,
     StacklessTarget,
 };
-use crate::gc::{
-    Marker, MetadataShell, invoke_with_mark_callback, mark_native_root_range,
-    with_native_root_range,
-};
+use crate::gc::{MetadataShell, with_native_root_range};
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::registration::{
@@ -64,6 +61,7 @@ mod guarded_lookup;
 mod native_tier;
 mod numeric;
 mod integer;
+mod tracing;
 mod recovery;
 #[cfg(feature = "ffi-test-hooks")]
 mod source_probe_roots;
@@ -235,6 +233,7 @@ pub(crate) struct Runtime {
     native_tier: core::cell::RefCell<native_tier::Registry>,
     numeric: core::cell::RefCell<numeric::Registry>,
     integer: Cell<Option<integer::Binding>>,
+    trace: Cell<Option<birnam_abi::trace_live::TraceLiveV1>>,
     #[cfg(test)]
     test_integer: UnsafeCell<Option<integer::TestOwner>>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
@@ -421,6 +420,10 @@ impl Runtime {
             native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
             numeric: core::cell::RefCell::new(numeric::Registry::default()),
             integer: Cell::new(None),
+            #[cfg(not(test))]
+            trace: Cell::new(None),
+            #[cfg(test)]
+            trace: Cell::new(Some(birnam_trace::live::birnam_trace_live_v1)),
             #[cfg(test)]
             test_integer: UnsafeCell::new(None),
             recovery_requests: core::cell::RefCell::new(Vec::new()),
@@ -1831,25 +1834,38 @@ impl Runtime {
     }
 
     pub(crate) fn trace_stackless_machine(&self, machine: Oop, mark: MarkFn) {
-        // SAFETY: the trace hook runs under owner-thread Runtime::enter and the
-        // callback may be used only synchronously during this immutable access.
-        unsafe {
+        // Copy roots under the registry borrow. Foreign admission may mutate
+        // heap marks and must run only after the state/heap references expire.
+        let roots = unsafe {
             let state = &*self.state.get();
+            let mut roots = Vec::new();
             if let Some(objects) = state.execution.objects() {
                 state.execution.trace_object_roots(
                     &state.heap,
                     machine,
                     objects.machine_vtable,
-                    mark,
+                    |root| roots.push(root),
                 );
             }
+            roots
+        };
+        for root in roots {
+            unsafe { mark(root) };
         }
     }
 
     pub(crate) fn trace_stackless_scoped_roots(&self, mark: MarkFn) {
-        // SAFETY: root-provider invocation is owner-thread-only, performs no
-        // mutation, and the execution registry does not retain the callback.
-        unsafe { (*self.state.get()).execution.trace_scoped_host_roots(mark) };
+        // The mark callback can write heap metadata; no state borrow crosses it.
+        let roots = unsafe {
+            let mut roots = Vec::new();
+            (&*self.state.get())
+                .execution
+                .trace_scoped_host_roots(|root| roots.push(root));
+            roots
+        };
+        for root in roots {
+            unsafe { mark(root) };
+        }
     }
 
     fn push_stackless_scoped_root(&self, machine: Oop) {
@@ -1929,12 +1945,19 @@ impl Runtime {
     }
 
     pub(crate) fn trace_stackless_continuation(&self, continuation: Oop, mark: MarkFn) {
-        // SAFETY: trace-hook invocation is owner-thread-only and immutable.
-        unsafe {
+        // Snapshot the detached Frame roots before invoking foreign admission.
+        let roots = unsafe {
             let state = &*self.state.get();
-            state
-                .execution
-                .trace_continuation_roots(&state.heap, continuation, mark);
+            let mut roots = Vec::new();
+            state.execution.trace_continuation_roots(
+                &state.heap,
+                continuation,
+                |root| roots.push(root),
+            );
+            roots
+        };
+        for root in roots {
+            unsafe { mark(root) };
         }
     }
 
@@ -4572,15 +4595,10 @@ impl Runtime {
         let collection_guard = CollectionGuard {
             phase: &self.collection_phase,
         };
-        let mut marker = Marker::new();
-        // End this state borrow before run_mark_phase can invoke foreign code.
-        // SAFETY: owner-thread serialization and no callback in this scope.
-        unsafe {
-            let state = &mut *self.state.get();
-            state.heap.clear_marks();
-            mark_native_root_range(&mut state.heap, &mut marker, root_start, stack_bottom);
-        }
-        self.run_mark_phase(marker);
+        // The floor owns marks and sweep bookkeeping; the mounted tracer owns
+        // the complete worklist. A failed trace aborts before any retirement.
+        unsafe { (&mut *self.state.get()).heap.clear_marks() };
+        self.run_mark_phase((root_start, stack_bottom), &[]);
         // Weak identity indexes must lose dead vtable records before the heap
         // detaches their allocations. Each direct binding owns one resumable
         // registration reference, so retiring an unreachable dictionary is a
@@ -4688,84 +4706,6 @@ impl Runtime {
         unsafe { (*self.state.get()).heap.allocated_bytes() }
     }
 
-    fn run_mark_phase(&self, mut marker: Marker) {
-        // Address-only dispatch metadata must not survive collection/retirement.
-        self.dispatch_cache.clear();
-        // 74H: invalidate native-local read caches before any foreign root or
-        // finalizer callback. This includes retirement reachability traversals.
-        #[cfg(all(test, target_os = "macos"))]
-        self.read_reuse_gc_epoch
-            .set(self.read_reuse_gc_epoch.get().saturating_add(1));
-        let state_pointer = self.state.get();
-        // Copy callback authority and raw owner pointers, then end the state
-        // borrow before the first foreign call.
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let providers = unsafe {
-            let state = &mut *state_pointer;
-            mark_floor_roots(state, &mut marker);
-            #[cfg(test)]
-            if let Some(owner) = &*self.test_integer.get() {
-                for root in owner.instance.identities() { marker.mark_oop(&mut state.heap, root); }
-            }
-            state.metadata.root_providers()
-        };
-
-        for provider in providers {
-            // Form callback pointers only for this invocation. Retaining a
-            // field-derived pointer across a later RuntimeState borrow would
-            // invalidate its stacked-borrows provenance.
-            let heap_pointer = unsafe { core::ptr::addr_of_mut!((*state_pointer).heap) };
-            let marker_pointer = core::ptr::addr_of_mut!(marker);
-            // SAFETY: no Rust references to state.heap or marker survive this
-            // call; the provider may use the mark function only synchronously.
-            unsafe {
-                invoke_with_mark_callback(heap_pointer, marker_pointer, |mark| provider(mark))
-            };
-        }
-
-        while let Some(address) = marker.pop() {
-            // Conservative scanning and hook lookup finish before foreign code.
-            // SAFETY: owner-thread serialization and no callback in this scope.
-            let (object, hook) = unsafe {
-                let state = &mut *state_pointer;
-                let object = state
-                    .heap
-                    .object_at_address(address)
-                    .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
-                let vtable = state.heap.vtable_of(object).unwrap_or_else(|| {
-                    boundary::fatal_invariant("marked GC block lost its vtable")
-                });
-                marker.mark_oop(&mut state.heap, vtable);
-                if state.vtables.is_registered_address(address) {
-                    for edge in state.vtables.strong_edges(object) {
-                        marker.mark_oop(&mut state.heap, edge);
-                    }
-                    (object, None)
-                } else {
-                    if state.metadata.precise() && state.vtables.has_layout(vtable) {
-                        marker.trace_selected_payload(&mut state.heap, address, |word| {
-                            state.vtables.slot_kind(vtable, word) == SLOT_OOP
-                        });
-                    } else {
-                        marker.trace_conservative_payload(&mut state.heap, address);
-                    }
-                    (object, state.vtables.trace_hook(vtable))
-                }
-            };
-            if let Some(hook) = hook {
-                let heap_pointer = unsafe { core::ptr::addr_of_mut!((*state_pointer).heap) };
-                let marker_pointer = core::ptr::addr_of_mut!(marker);
-                // SAFETY: no Rust references to state.heap or marker survive
-                // this call; the hook may mark only synchronously.
-                unsafe {
-                    invoke_with_mark_callback(heap_pointer, marker_pointer, |mark| {
-                        hook(object, mark)
-                    })
-                };
-            }
-        }
-    }
-
     pub(crate) fn set_trace_hook(&self, vtable: Oop, hook: crate::abi::TraceHook) {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
@@ -4870,7 +4810,7 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: test calls remain owner-thread and invoke no foreign code.
         unsafe { (&mut *self.state.get()).heap.clear_marks() };
-        self.run_mark_phase(Marker::new());
+        self.run_mark_phase((0, 0), &[]);
     }
 
     #[cfg(test)]
@@ -4925,12 +4865,6 @@ fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
         roots.push(entry.vtable);
     }
     roots
-}
-
-fn mark_floor_roots(state: &mut RuntimeState, marker: &mut Marker) {
-    for root in floor_roots(state) {
-        marker.mark_oop(&mut state.heap, root);
-    }
 }
 
 fn block_registration_for_method(
@@ -5128,7 +5062,6 @@ mod tests {
         FrameDescriptorV2Spec, SemanticRegistrationV1, SlotKind, StacklessTarget,
     };
     use crate::execution::{probe_call, probe_continue, probe_control, probe_spec};
-    use crate::gc::Marker;
     use crate::heap::Permanence;
     use crate::raw::MethodAddress;
     use crate::registration::{
@@ -6503,25 +6436,21 @@ mod tests {
             .drive_stackless(machine, descriptor, &[(0, selected)])
             .unwrap();
 
-        let marker = unsafe {
+        let initial_roots = unsafe {
             let state = &mut *runtime.state.get();
             state.heap.clear_marks();
-            let mut marker = Marker::new();
-            marker.mark_oop(&mut state.heap, continuation);
-            marker
+            [continuation]
         };
-        runtime.enter(|| runtime.run_mark_phase(marker));
+        runtime.enter(|| runtime.run_mark_phase((0, 0), &initial_roots));
         assert_eq!(runtime.is_marked_for_test(machine), Some(true));
         assert_eq!(runtime.is_marked_for_test(selected), Some(true));
 
-        let marker = unsafe {
+        let initial_roots = unsafe {
             let state = &mut *runtime.state.get();
             state.heap.clear_marks();
-            let mut marker = Marker::new();
-            marker.mark_oop(&mut state.heap, machine);
-            marker
+            [machine]
         };
-        runtime.enter(|| runtime.run_mark_phase(marker));
+        runtime.enter(|| runtime.run_mark_phase((0, 0), &initial_roots));
         assert_eq!(runtime.is_marked_for_test(selected), Some(false));
         assert_eq!(runtime.is_marked_for_test(continuation), Some(false));
     }
@@ -6641,14 +6570,12 @@ mod tests {
             )
         };
 
-        let marker = unsafe {
+        let initial_roots = unsafe {
             let state = &mut *runtime.state.get();
             state.heap.clear_marks();
-            let mut marker = Marker::new();
-            marker.mark_oop(&mut state.heap, machine);
-            marker
+            [machine]
         };
-        runtime.enter(|| runtime.run_mark_phase(marker));
+        runtime.enter(|| runtime.run_mark_phase((0, 0), &initial_roots));
         assert_eq!(runtime.is_marked_for_test(rooted), Some(true));
         assert_eq!(runtime.is_marked_for_test(popped_only), Some(true));
         assert_eq!(runtime.is_marked_for_test(continue_action), Some(true));
@@ -6659,7 +6586,7 @@ mod tests {
             assert_eq!(runtime.is_marked_for_test(action), Some(true));
         }
 
-        let marker = unsafe {
+        let initial_roots = unsafe {
             let state = &mut *runtime.state.get();
             let machine_state = state
                 .execution
@@ -6667,11 +6594,9 @@ mod tests {
                 .expect("Machine state remains live");
             assert_eq!(machine_state.arena_mut().pop(), Ok(frame));
             state.heap.clear_marks();
-            let mut marker = Marker::new();
-            marker.mark_oop(&mut state.heap, machine);
-            marker
+            [machine]
         };
-        runtime.enter(|| runtime.run_mark_phase(marker));
+        runtime.enter(|| runtime.run_mark_phase((0, 0), &initial_roots));
         assert_eq!(runtime.is_marked_for_test(rooted), Some(false));
         assert_eq!(runtime.is_marked_for_test(popped_only), Some(false));
         assert_eq!(runtime.is_marked_for_test(continue_action), Some(true));
@@ -7005,14 +6930,12 @@ mod tests {
             );
         });
 
-        let marker = unsafe {
+        let initial_roots = unsafe {
             let state = &mut *runtime.state.get();
             state.heap.clear_marks();
-            let mut marker = Marker::new();
-            marker.mark_oop(&mut state.heap, view);
-            marker
+            [view]
         };
-        runtime.enter(|| runtime.run_mark_phase(marker));
+        runtime.enter(|| runtime.run_mark_phase((0, 0), &initial_roots));
         assert_eq!(runtime.is_marked_for_test(machine), Some(true));
         assert_eq!(runtime.is_marked_for_test(selected), Some(true));
 

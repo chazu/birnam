@@ -732,7 +732,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
   owner-supplied payload descriptions and explicit coverage gaps.
 - [Production storage tracer](docs/design/81n-production-storage-tracer.md) and
   its [native interface](abi/trace-v1.md) calculate reachability over those facts;
-  automatic collection remains in Id.
+  [production GC traversal](docs/design/81o-production-live-gc-traversal.md) also
+  uses the loaded tracer through a [live interface](abi/trace-live-v1.md).
+  Retirement and reclamation remain in Id.
 - [Compiled units](docs/design/45-compiled-units.md) defines executable
   authority, image integrity, recovery, and the next live-reload boundary.
 - [Concurrency](docs/design/48-concurrency-reactors-and-isolates.md) and

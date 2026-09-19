@@ -10,6 +10,10 @@ int birnam_trace_described_v1(
     const TraceRequestV1 *request);
 ```
 
+The same library also supplies [live GC traversal](trace-live-v1.md). Automatic
+collection uses that separate source/admission protocol, not this diagnostic
+report or its accepted coverage gaps.
+
 The [independent C header](fixtures/trace-v1/trace_v1.h) mirrors the
 [Rust carriers](../rust/birnam-abi/src/trace.rs). Request and report have version
 1 and exact `byte_size`; their arm64 sizes are 40 and 80 bytes. Allocation

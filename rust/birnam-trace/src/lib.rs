@@ -6,6 +6,8 @@ use birnam_abi::{IdApi, borrowed_slice};
 use core::ffi::c_void;
 use std::collections::BTreeMap;
 
+pub mod live;
+
 fn aligned<T>(pointer: *const T) -> bool {
     !pointer.is_null() && pointer.addr().is_multiple_of(align_of::<T>())
 }

@@ -1,5 +1,6 @@
 #include "idapi_v4.h"
 #include "object-model-support.h"
+#include "trace-support.h"
 
 #include <dlfcn.h>
 #include <inttypes.h>
@@ -71,6 +72,7 @@ int main(int argc, char **argv) {
     memcpy(&id_init, &raw_init, sizeof(id_init));
     api = id_init();
     if (api == NULL) fail("id_init returned null");
+    fixture_mount_trace(api, argv[1]);
     size_t stack_anchor = 0;
     api->gc_set_stack_bottom((size_t)&stack_anchor);
     Oop private_selector = api->intern("ensurePrivateVtableFor:");

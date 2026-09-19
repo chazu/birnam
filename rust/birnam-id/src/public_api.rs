@@ -579,6 +579,16 @@ mod tests {
     }
 }
 
+/// Explicit traversal dependency of the still-combined collector.
+/// # Safety
+/// The readable table supplies code pinned for the runtime's entire lifetime.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_trace_dependency_v1(
+    api: *const birnam_abi::trace_live::ApiV1,
+) -> c_int {
+    c_int::from(unsafe { runtime().attach_trace(api) })
+}
+
 /// Explicit dependency of the still-combined Machine/optimizer layer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_integer_dependency_v1(ops: *mut birnam_abi::integer::IntegerApiV1) -> c_int {

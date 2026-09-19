@@ -63,3 +63,11 @@ libraries with an independent C graph oracle. `cargo test -p birnam-trace`
 checks graph traversal against transitive closure plus identity, coverage and
 error cases. See the [tracer ABI](../abi/trace-v1.md). These checks do not install
 Birnam or run release validation.
+
+For production GC through the loaded tracer, use `mise run live-tracing`. This
+checks actual explicit/allocation-triggered collection with a C admission/order
+oracle and the current IdApi fixture. `cargo test -p birnam-trace` covers its
+live-driver contract; `cargo test -p birnam-id runtime::tracing` exercises changing
+layout/hook selection during traversal. Id's existing GC, Frame, retirement and
+deferred-allocation tests also use the real upper implementation. See
+[live traversal v1](../abi/trace-live-v1.md).

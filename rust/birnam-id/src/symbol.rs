@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn sweep_removes_dead_identity_and_reinterning_creates_a_fresh_oop() {
-        use crate::gc::Marker;
+        use crate::gc::trace_conservative_for_test;
 
         let (mut heap, symbol_vtable) = symbol_harness();
         let mut symbols = Symbols::new();
@@ -305,9 +305,7 @@ mod tests {
         assert_eq!(symbols.owned_name_bytes(), b"rooted\0ephemeral\0".len());
 
         heap.clear_marks();
-        let mut marker = Marker::new();
-        marker.mark_oop(&mut heap, rooted);
-        marker.drain_conservative(&mut heap);
+        trace_conservative_for_test(&mut heap, &[rooted]);
         assert_eq!(symbols.remove_dead_collectable(&heap), 1);
         assert_eq!(symbols.count(), 1);
         assert_eq!(symbols.owned_name_bytes(), b"rooted\0".len());
@@ -324,7 +322,7 @@ mod tests {
 
     #[test]
     fn colliding_names_survive_middle_compaction_and_all_dead_cycles() {
-        use crate::gc::Marker;
+        use crate::gc::trace_conservative_for_test;
 
         let (mut heap, vt) = symbol_harness();
         let mut symbols = Symbols::new();
@@ -338,10 +336,7 @@ mod tests {
         assert_eq!(symbols.find_hashed(b"absent", 7), None);
 
         heap.clear_marks();
-        let mut marker = Marker::new();
-        marker.mark_oop(&mut heap, middle);
-        marker.mark_oop(&mut heap, last);
-        marker.drain_conservative(&mut heap);
+        trace_conservative_for_test(&mut heap, &[middle, last]);
         assert_eq!(symbols.remove_dead_collectable(&heap), 1);
         assert_eq!(symbols.at(0), middle);
         assert_eq!(symbols.at(1), last);
@@ -367,7 +362,7 @@ mod tests {
 
     #[test]
     fn indexed_lookup_is_runtime_local_and_rebuilds_after_sweep() {
-        use crate::gc::Marker;
+        use crate::gc::trace_conservative_for_test;
 
         let (mut heap, vt) = symbol_harness();
         let (mut other_heap, other_vt) = symbol_harness();
@@ -380,9 +375,7 @@ mod tests {
         assert!(symbols.contains_bytes(b"dead"));
         assert!(!symbols.contains_bytes(b"live\0"));
         heap.clear_marks();
-        let mut marker = Marker::new();
-        marker.mark_oop(&mut heap, live);
-        marker.drain_conservative(&mut heap);
+        trace_conservative_for_test(&mut heap, &[live]);
         assert_eq!(symbols.remove_dead_collectable(&heap), 1);
         assert!(!symbols.contains_bytes(b"dead"));
         assert!(symbols.contains_bytes(b"live"));

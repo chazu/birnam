@@ -10,6 +10,7 @@ pub mod foreign_address;
 pub mod integer;
 pub mod storage;
 pub mod trace;
+pub mod trace_live;
 pub mod private;
 
 pub const SLOT_RAW: u8 = 0;

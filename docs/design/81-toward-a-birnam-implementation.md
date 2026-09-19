@@ -366,3 +366,8 @@ capture and legacy tracing remain in the current runtime; their coverage gaps
 are explicit. [81N](81n-production-storage-tracer.md) promotes the scoped graph
 tracer over those facts into a loaded production module. Automatic GC's mark
 path still awaits its root/provider and collection migration.
+
+[81O](81o-production-live-gc-traversal.md) moves the actual production worklist
+into the tracer using ordered live root/admission/edge callbacks. Every collection
+path uses it; native-root and payload policy adapters, retirement and physical
+reclamation remain in Id. Observation gaps are not used to authorize collection.

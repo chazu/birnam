@@ -42,3 +42,8 @@ check with `scripts/storage-observation-test.sh`.
 described observations. Its report is strict by default and never authorizes
 reclamation. Run `scripts/storage-tracing-test.sh` for the independent C oracle
 against actual production dylibs.
+
+[Live GC traversal v1](trace-live-v1.md) moves the production collector's worklist
+to that same loaded module. The host and custom native embedders mount its explicit
+capability before collection. Run `scripts/live-tracing-test.sh` for focused
+native GC and current IdApi checks.
