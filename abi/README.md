@@ -115,3 +115,7 @@ Integer, String and collection-value dependencies.
 
 [Map v2](map-v2.md) owns canonical objects, HAMT storage, methods, traversal
 and printing. Collection installs it through the ordered construction boundary. The [Map export inventory](rust-map-dylib-v1.json) adds no IdApi fields.
+
+[String collection v1](string-collection-v1.md) installs String split: through a
+late adapter that depends on String and Vector. Its [export inventory](rust-string-collection-dylib-v1.json)
+adds no IdApi fields, objects or roots; Collection preserves ordered installation.

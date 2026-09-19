@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move String split: into the late `birnam-string-collection` adapter (Design
+  81AH). Preserve byte snapshots, invalid/empty separator behavior, native Vector
+  construction, callback timing and the original execution table across reentry.
+  Collection retains the existing parent and installation order.
+
 - Move Map's thirteen method bindings, traversal and printing into `birnam-map`
   (Design 81AG). Preserve registration order, live callbacks, null handling and
   native Vector iteration. Map v2 reduces the native boundary to construction

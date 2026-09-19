@@ -1,8 +1,8 @@
-//! Collection parent, ordered family construction and String splitting.
+//! Collection parent and ordered native family construction.
 
 #![allow(clippy::missing_safety_doc)]
 
-use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
+use birnam_abi::{IdApi, MarkFn, Oop};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::{Once, OnceLock};
@@ -43,18 +43,6 @@ fn abort(message: &str) -> ! {
     std::process::abort();
 }
 
-fn runtime() -> &'static Runtime {
-    RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("module_init was not called"))
-}
-
-unsafe fn api_ref() -> &'static IdApi {
-    // SAFETY: module_init records the process-owned table for the process
-    // lifetime; the host retains it while every dynamic rung is live.
-    unsafe { &*(runtime().api as *const IdApi) }
-}
-
 unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
     // SAFETY: selectors are static NUL-terminated byte strings.
     unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
@@ -63,65 +51,6 @@ unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
 unsafe fn import(api: &IdApi, name: &[u8]) -> Oop {
     // SAFETY: names are static NUL-terminated byte strings.
     unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
-    // SAFETY: the host owns this carrier for the duration of the method call.
-    unsafe { borrowed_oop_args(args, count)?.first().copied() }
-}
-
-unsafe fn string_copy(api: &IdApi, object: Oop) -> Option<Vec<u8>> {
-    if object.is_null() || unsafe { (api.vtableOf)(object) } != unsafe { birnam_abi::string::behavior() } {
-        return None;
-    }
-    let mut length = 0;
-    let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
-    if length == 0 {
-        return Some(Vec::new());
-    }
-    if bytes.is_null() {
-        return None;
-    }
-    Some(unsafe { core::slice::from_raw_parts(bytes, length) }.to_vec())
-}
-
-unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(separator) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (api.vtableOf)(separator) } != unsafe { birnam_abi::string::behavior() } {
-        let result = unsafe { birnam_abi::vector::empty() };
-        return unsafe { birnam_abi::vector::push(result, self_object) };
-    }
-    let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
-        return api.nilObj;
-    };
-    let Some(separator) = (unsafe { string_copy(api, separator) }) else {
-        return api.nilObj;
-    };
-    let mut result = unsafe { birnam_abi::vector::empty() };
-    if separator.is_empty() {
-        let item = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
-        return unsafe { birnam_abi::vector::push(result, item) };
-    }
-    let mut start = 0usize;
-    let mut cursor = 0usize;
-    while cursor + separator.len() <= bytes.len() {
-        if bytes[cursor..cursor + separator.len()] == separator[..] {
-            let item = unsafe { (birnam_abi::string::make)(bytes[start..cursor].as_ptr(), cursor - start) };
-            result = unsafe { birnam_abi::vector::push(result, item) };
-            cursor += separator.len();
-            start = cursor;
-        } else {
-            cursor += 1;
-        }
-    }
-    let item = unsafe { (birnam_abi::string::make)(bytes[start..].as_ptr(), bytes.len() - start) };
-    unsafe { birnam_abi::vector::push(result, item) }
 }
 
 unsafe fn bring_up(api_pointer: *mut IdApi) {
@@ -164,7 +93,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         birnam_abi::range::set_layout(api_pointer);
         birnam_abi::map::set_layout(api_pointer);
         birnam_abi::set_vtable_parent(api, birnam_abi::string::behavior(), runtime.collection_vt as Oop);
-        (api.method)(birnam_abi::string::behavior(), intern(api, b"split:\0"), string_split);
+        birnam_abi::string_collection::install(api_pointer, runtime.api as *const IdApi);
         let vector_comma = birnam_abi::vector::install(
             api_pointer,
             runtime.value1 as Oop,
@@ -230,3 +159,5 @@ birnam_abi::string_dependency!();
 birnam_abi::range_dependency!();
 
 birnam_abi::vector_dependency!();
+
+birnam_abi::string_collection_dependency!();

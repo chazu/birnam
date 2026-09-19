@@ -15,6 +15,11 @@ Activation stays immediately before Collection: publish owner/exports once and
 reinstall the fourteen existing String methods on every activation. Repeated
 preparation must use the same IdApi. Native handles remain pinned on failure.
 
+String split: lives in the separately loaded [String collection adapter](string-collection-v1.md),
+which loads after Vector. Collection installs it after String parenting, retaining
+its original execution table and native Vector construction. The early String
+module has no Vector dependency.
+
 The 64-byte `StringApiV1` has version, extent, opaque context, behavior, prototype,
 live `make` and `bytes` operations, and an immutable storage descriptor. Consumers
 copy current operations before invoking callbacks. Id's internal consumers use
