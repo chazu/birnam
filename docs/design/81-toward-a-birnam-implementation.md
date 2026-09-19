@@ -431,3 +431,8 @@ and enumeration remain in Id for subsequent extractions.
 into Namespace-owned descriptors and migrates Reflect while retaining its live
 selected-floor discovery. The two Id operation exports are removed; import,
 export and presence are still later work.
+
+[81AZ](81az-production-namespace-lookup.md) moves canonical intern-then-find
+policy into Namespace, using Id's existing Symbol interner and the selected raw
+find. The factory becomes v4; public import/presence capability transport remains
+a separate extraction, preserving each caller's live API selection.

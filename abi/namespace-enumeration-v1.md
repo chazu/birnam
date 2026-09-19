@@ -20,7 +20,7 @@ are independent selections. The [C mirror](fixtures/namespace-enumeration-v1/nam
 checks all layouts. Malformed publications or descriptors are unavailable, with
 no invocation of their operations.
 
-[Namespace storage v3](namespace-v3.md) creates a 64-byte pair of descriptors in
+[Namespace storage v4](namespace-v4.md) creates a 64-byte pair of descriptors in
 one owned service. Creation copies the opaque storage context, selected storage
 count/name-at operations and a 32-byte floor access descriptor (version, extent,
 context and required preflight). It calls none of them. Null context/operations,

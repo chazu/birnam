@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Move canonical interned lookup into Namespace (Design 81AZ), preserving absent
+  name interning, selected storage, null bindings and independent runtime state.
+  Namespace factory is v4; IdApi v8 and its live import/presence slots are unchanged.
+
 - Move count/name-at into Namespace (Design 81AY), replacing private Id function
   exports with Namespace-owned descriptors. Reflect retains live selected-floor
   discovery, callback order and enumeration snapshots. Namespace factory is v3;

@@ -1,11 +1,11 @@
 //! Per-runtime ownership of the explicitly prepared Namespace storage.
 use crate::abi::Oop;
-use birnam_abi::namespace::ApiV3;
+use birnam_abi::namespace::ApiV4;
 use core::ffi::c_void;
 use core::ptr::NonNull;
 
 pub(crate) struct Environment {
-    api: ApiV3,
+    api: ApiV4,
     context: NonNull<c_void>,
     enumeration: NonNull<birnam_abi::namespace_enumeration::ApiV1>,
     names: NonNull<birnam_abi::namespace_names::ApiV1>,
@@ -16,7 +16,7 @@ impl Environment {
         // Tests select the same implementation for each independent Runtime;
         // production only accepts the host's explicitly attached descriptor.
         #[cfg(test)]
-        let api = unsafe { *birnam_namespace::birnam_namespace_provider_v3() };
+        let api = unsafe { *birnam_namespace::birnam_namespace_provider_v4() };
         #[cfg(not(test))]
         let api = unsafe { birnam_abi::namespace::operations() };
         let context =
@@ -50,6 +50,10 @@ impl Environment {
     }
     pub(crate) fn export(&mut self, name: Oop, value: Oop) -> Oop {
         unsafe { self.api.bind.unwrap()(self.context.as_ptr(), name, value) }
+    }
+    /// Copy selection before the interner mutably borrows RuntimeState.
+    pub(crate) fn lookup(&self) -> (birnam_abi::namespace::LookupV1, *const c_void, birnam_abi::namespace::FindV1) {
+        (self.api.lookup.unwrap(), self.context.as_ptr(), self.api.find.unwrap())
     }
     pub(crate) fn import(&self, name: Oop) -> Oop {
         unsafe { self.api.find.unwrap()(self.context.as_ptr(), name) }

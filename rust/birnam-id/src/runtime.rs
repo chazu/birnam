@@ -987,10 +987,20 @@ impl Runtime {
 
     pub(crate) fn import(&self, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
         self.assert_owner();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        let symbol = intern_in_state(state, bytes)?;
-        Ok(state.environment.import(symbol))
+        // Copy selection before entering Namespace. No RuntimeState/Environment
+        // borrow survives its restricted interner callback, and no movable
+        // Runtime address is retained by the service.
+        let (lookup, namespace, find) = unsafe { (*self.state.get()).environment.lookup() };
+        let mut value = core::ptr::null_mut();
+        let status = unsafe {
+            lookup(namespace, find, self.state.get().cast(), namespace_intern,
+                   bytes.as_ptr(), bytes.len(), &mut value)
+        };
+        match status {
+            0 => Err(EmbeddedNul),
+            1 => Ok(value),
+            _ => boundary::fatal_invariant("Namespace lookup returned invalid status"),
+        }
     }
 
     pub(crate) fn export(&self, bytes: &[u8], value: Oop) -> Result<Oop, EmbeddedNul> {
@@ -4695,6 +4705,15 @@ fn note_block_vtable_replaced(state: &mut RuntimeState, vtable: Oop, method: Met
     }
 }
 
+/// Namespace borrows this primitive only during the owner-checked import call.
+/// It must not collect, send, reenter, or keep the transient RuntimeState pointer.
+unsafe extern "C" fn namespace_intern(context: *mut core::ffi::c_void, bytes: *const u8, length: usize) -> Oop {
+    let bytes = unsafe { birnam_abi::borrowed_slice(bytes, length) }
+        .expect("Namespace interner received invalid bytes");
+    unsafe { intern_in_state(&mut *context.cast::<RuntimeState>(), bytes) }
+        .unwrap_or(core::ptr::null_mut())
+}
+
 fn intern_in_state(state: &mut RuntimeState, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
     if !state.symbol_compaction_enabled
         && !state.symbols.contains_bytes(bytes)
@@ -6194,6 +6213,30 @@ mod tests {
         runtime.enter(|| runtime.run_mark_phase((0, 0), &initial_roots));
         assert_eq!(runtime.is_marked_for_test(selected), Some(false));
         assert_eq!(runtime.is_marked_for_test(continuation), Some(false));
+    }
+
+    #[test]
+    fn namespace_lookup_preserves_interning_rejection_and_runtime_isolation() {
+        let runtimes = vec![build_bootstrap(), build_bootstrap()];
+        let name = b"namespace-lookup-absent-\xff";
+        for bootstrap in &runtimes {
+            let runtime = &bootstrap.runtime;
+            let before = unsafe { (*runtime.state.get()).symbols.count() };
+            assert_eq!(runtime.import(b"namespace-lookup-invalid\0name"), Err(crate::symbol::EmbeddedNul));
+            assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before);
+            assert_eq!(runtime.import(name), Ok(core::ptr::null_mut()));
+            assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before + 1);
+            let symbol = runtime.intern(name).unwrap();
+            assert_eq!(runtime.intern(name).unwrap(), symbol);
+            assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before + 1);
+            let value = runtime.canonical().nil;
+            runtime.export(name, value).unwrap();
+            assert_eq!(runtime.import(name), Ok(value));
+            runtime.export(b"", value).unwrap();
+            assert_eq!(runtime.import(b""), Ok(value));
+            assert_eq!(runtime.import(name), Ok(runtime.canonical().nil));
+        }
+        assert_ne!(runtimes[0].runtime.intern(name).unwrap(), runtimes[1].runtime.intern(name).unwrap());
     }
 
     #[test]

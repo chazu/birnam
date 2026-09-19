@@ -63,6 +63,13 @@ void *module_init(IdApi *selected,void *state) {
     Dl_info info;assert(dladdr((void *)api->import_fn,&info) && info.dli_fname);
     void *floor=api->dlopen_fn(info.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(floor);
     NamespaceNamesProviderV1 provide=(NamespaceNamesProviderV1)api->dlsym_fn(floor,"birnam_namespace_names_provider_v1");assert(provide);names=provide();assert(names);
+    const char *slash=strrchr(info.dli_fname,'/');assert(slash);char path[PATH_MAX];
+    int length=snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-info.dli_fname),info.dli_fname);
+    assert(length>0 && (size_t)length<sizeof(path));
+    void *namespace=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(namespace);
+    NamespaceProviderV4 factory=(NamespaceProviderV4)api->dlsym_fn(namespace,"birnam_namespace_provider_v4");assert(factory);
+    const NamespaceApiV4 *operations=factory();assert(operations && operations->version==4 && operations->byte_size==sizeof(*operations));
+    assert(dladdr((void *)operations->lookup,&info) && strstr(info.dli_fname,"libbirnam_namespace.dylib"));
     fixture_namespace_floor=floor;count_exports=fixture_namespace_count;name_at=fixture_namespace_name_at;
     api->method(api->import_fn("SystemVt"),api->intern("namespaceExercise:"),exercise);
     api->method(api->import_fn("SystemVt"),api->intern("namespaceObserveNames"),observe_names);

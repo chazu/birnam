@@ -4,9 +4,9 @@
 #include "trace-support.h"
 #include <stdlib.h>
 
-static const NamespaceApiV3 *storage;
-static NamespaceApiV3 observed;
-static size_t creates, binds, finds, reverses, views, counts, names_at;
+static const NamespaceApiV4 *storage;
+static NamespaceApiV4 observed;
+static size_t creates, binds, finds, reverses, views, counts, names_at, lookups;
 static void *floor_context;
 static void *create(void) { creates++; return floor_context=storage->create(); }
 static Oop bind(void *context,Oop name,Oop value) { assert(context==floor_context);binds++;return storage->bind(context,name,value); }
@@ -15,10 +15,33 @@ static Oop reverse(const void *context,Oop value) { assert(context==floor_contex
 static NamespaceViewV1 bindings(const void *context) { assert(context==floor_context);views++;return storage->bindings(context); }
 static size_t selected_count(const void *context) { assert(context==floor_context);counts++;return storage->count(context); }
 static Oop selected_name_at(const void *context,size_t index) { assert(context==floor_context);names_at++;return storage->name_at(context,index); }
+static int selected_lookup(const void *context,Oop (*selected_find)(const void *,Oop),void *interner,Oop (*intern)(void *,const uint8_t *,size_t),const uint8_t *bytes,size_t length,Oop *result) {
+    assert(context==floor_context && selected_find==find && interner && intern && result);
+    lookups++;return storage->lookup(context,selected_find,interner,intern,bytes,length,result);
+}
 static Oop forbidden_intern(const char *name) { (void)name;abort(); }
 static Oop forbidden_alloc(Oop type,size_t size) { (void)type;(void)size;abort(); }
 static void forbidden_method(Oop type,Oop selector,Method method) { (void)type;(void)selector;(void)method;abort(); }
 static void forbidden_roots(RootProvider roots) { (void)roots;abort(); }
+
+static void lookup_oracle(void) {
+    uintptr_t identities[3]={0};
+    void *context=storage->create();assert(context);
+    /* The real interner's invalid-name policy is separately tested through Id. */
+    extern Oop lookup_probe_intern(void *,const uint8_t *,size_t);
+    Oop symbol=(Oop)&identities[0],value=(Oop)&identities[1],sentinel=(Oop)&identities[2];
+    storage->bind(context,symbol,value);
+    Oop output=sentinel;
+    assert(storage->lookup(context,storage->find,&symbol,lookup_probe_intern,(const uint8_t *)"raw\xff",4,&output)==1 && output==value);
+    storage->bind(context,symbol,NULL);
+    assert(storage->lookup(context,storage->find,&symbol,lookup_probe_intern,(const uint8_t *)"raw\xff",4,&output)==1 && !output);
+    symbol=NULL;output=sentinel;
+    assert(storage->lookup(context,storage->find,&symbol,lookup_probe_intern,(const uint8_t *)"raw\xff",4,&output)==0 && output==sentinel);
+    storage->destroy(context);
+}
+Oop lookup_probe_intern(void *context,const uint8_t *bytes,size_t length) {
+    assert(length==4 && !memcmp(bytes,"raw\xff",4));return *(Oop *)context;
+}
 
 __attribute__((noinline)) static void collect_now(IdApi *api) {
     uintptr_t anchor=0;
@@ -60,7 +83,7 @@ int main(int argc,char **argv) {
     assert(argc==2 || argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_namespace_floor=floor;
-    NamespaceDependencyV3 attach=(NamespaceDependencyV3)dlsym(floor,"birnam_namespace_dependency_v3");
+    NamespaceDependencyV4 attach=(NamespaceDependencyV4)dlsym(floor,"birnam_namespace_dependency_v4");
     assert(argc==2 || attach);
     void *namespace_image=NULL,*extra=NULL;ModuleInitFn reload=NULL;
     if(attach) {
@@ -68,16 +91,16 @@ int main(int argc,char **argv) {
         snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-argv[1]),argv[1]);
         namespace_image=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(namespace_image);
         extra=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(extra);
-        NamespaceProviderV3 provide=(NamespaceProviderV3)dlsym(namespace_image,"birnam_namespace_provider_v3");assert(provide);
+        NamespaceProviderV4 provide=(NamespaceProviderV4)dlsym(namespace_image,"birnam_namespace_provider_v4");assert(provide);
         storage=provide();assert(storage && storage==provide());
-        assert(storage->version==3 && storage->byte_size==sizeof(*storage));
-        storage_oracle();
-        assert(!attach(NULL));NamespaceApiV3 bad=*storage;bad.version++;assert(!attach(&bad));
+        assert(storage->version==4 && storage->byte_size==sizeof(*storage));
+        storage_oracle();lookup_oracle();
+        assert(!attach(NULL));NamespaceApiV4 bad=*storage;bad.version++;assert(!attach(&bad));
         bad=*storage;bad.byte_size--;assert(!attach(&bad));
 #define REJECT(field) bad=*storage;bad.field=NULL;assert(!attach(&bad))
-        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);REJECT(create_enumeration);REJECT(destroy_enumeration);
+        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);REJECT(create_enumeration);REJECT(destroy_enumeration);REJECT(lookup);
 #undef REJECT
-        observed=*storage;observed.create=create;observed.bind=bind;observed.find=find;observed.reverse=reverse;observed.bindings=bindings;observed.count=selected_count;observed.name_at=selected_name_at;
+        observed=*storage;observed.create=create;observed.bind=bind;observed.find=find;observed.reverse=reverse;observed.bindings=bindings;observed.count=selected_count;observed.name_at=selected_name_at;observed.lookup=selected_lookup;
         assert(attach(&observed)==1 && attach(&observed)==1 && !attach(storage));
         reload=(ModuleInitFn)dlsym(namespace_image,"module_init");assert(reload);
     }
@@ -94,6 +117,14 @@ int main(int argc,char **argv) {
     for(size_t i=0;i<base;i++)original[i]=name_at(i);
     size_t symbols=symbol_count();assert(!api->import_fn("namespace-absent-probe"));assert(symbol_count()==symbols+1);
     assert(!api->is_exported("namespace-second-absent"));assert(symbol_count()==symbols+2);
+    /* Canonical presence/import use the primitive interner, never live slots. */
+    Oop (*original_intern)(const char *)=api->intern;
+    Oop (*original_import)(const char *)=api->import_fn;
+    api->intern=forbidden_intern;api->import_fn=forbidden_intern;
+    assert(!api->is_exported("namespace-canonical-presence"));
+    assert(!original_import("namespace-canonical-import"));
+    assert(symbol_count()==symbols+4);
+    api->intern=original_intern;api->import_fn=original_import;
     assert(count()==base);
     char names[32][40];Oop current[32]={0},keys[32]={0},values[16];size_t order[32],used=0;
     for(size_t i=0;i<32;i++)snprintf(names[i],sizeof(names[i]),"namespace-probe-%zu",i);
@@ -134,7 +165,7 @@ int main(int argc,char **argv) {
         size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL));assert(!reload(api,NULL));
         assert(count()==before && binds==was_binds && creates==1);
         assert(api->import_fn("namespace-second-alias")==retained);
-        assert(finds && reverses && views && counts && names_at);
+        assert(finds && reverses && views && counts && names_at && lookups);
         // Descriptor/code remain mapped after relinquishing this extra open.
         assert(dlclose(extra)==0);assert(api->import_fn("namespace-second-alias")==retained);
     }

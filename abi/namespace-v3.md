@@ -1,5 +1,7 @@
 # Namespace storage v3
 
+> Historical contract; [v4](namespace-v4.md) adds interned lookup in 81AZ.
+
 Design [81AY](../docs/design/81ay-production-namespace-enumeration.md) adds
 [enumeration-service ownership](namespace-enumeration-v1.md) to the
 [previous v2 factory](namespace-v2.md). The host prepares
