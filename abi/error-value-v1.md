@@ -1,5 +1,7 @@
 # Lazy Error value policy v1
 
+> Historical contract; [v2](error-value-v2.md) makes per-call presence explicit.
+
 Design [81AM](../docs/design/81am-production-error-value.md) moves Prelude's
 lazy Error construction and exact-recognition helpers into `birnam-error-value`.
 All existing Prelude, Integer and Float consumers, plus Word's asInteger overflow

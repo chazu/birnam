@@ -14,6 +14,7 @@ static Oop factory,other_factory,error_factory,error_type,alternate_type,answer,
 static Oop made_value,kind_arg,message_arg,seen_factory,constructor_answer;
 static size_t interns,makes,imports,exports,vt_calls,sends,factory_calls,lookups,cases,condition_step;
 static int capture,error_present=1,type_present=1,override_kind,override_message,replace_make;
+static int replace_presence_slot;
 static int collect,nested,mutate_factory,mutate_type,reported_match,recognition_phase,current_phase;
 static const uint8_t *borrowed_message;
 static size_t borrowed_length;
@@ -39,7 +40,9 @@ static Oop imported(const char *name) {
     imports++;if(capture) printf("import %s\n",name);if(collect) api->gc_collect();
     return !strcmp(name,"Error")?error_factory:error_type;
 }
+static int late_absent(const char *name) { assert(!strcmp(name,"Error"));return 0; }
 static Oop intern(const char *name) {
+    if(replace_presence_slot==1) { replace_presence_slot=0;selected.is_exported=late_absent; }
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(!strcmp(name,"kind:message:")) {
         if(mutate_factory==2) { mutate_factory=0;error_factory=other_factory; }
@@ -50,6 +53,7 @@ static Oop intern(const char *name) {
     return api->intern(name);
 }
 static Oop make(void *context,const uint8_t *bytes,size_t length) {
+    if(replace_presence_slot==2) { replace_presence_slot=0;selected.is_exported=late_absent; }
     assert(context==original_context);makes++;if(capture) printf("make %zu\n",length);
     if(borrowed_message) assert(bytes==borrowed_message && length==borrowed_length);
     if(collect) api->gc_collect();
@@ -86,8 +90,8 @@ static void expect_message(const char *message) {
 static void begin(const char *name) { printf("case %s\n",name);capture=1;interns=makes=imports=exports=vt_calls=sends=factory_calls=0;condition_step=0; }
 static void end(void) { capture=0;printf("done intern=%zu make=%zu import=%zu export=%zu vtable=%zu send=%zu factory=%zu\n",interns,makes,imports,exports,vt_calls,sends,factory_calls); }
 static void validate(void *image,int attached) {
-    ErrorValueDependencyV1 attach=(ErrorValueDependencyV1)api->dlsym_fn(image,"birnam_error_value_dependency_v1");if(!attach) return;
-    ErrorValueApiV1 bad=*fixture_error_value;assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_error_value;
+    ErrorValueDependencyV2 attach=(ErrorValueDependencyV2)api->dlsym_fn(image,"birnam_error_value_dependency_v2");if(!attach) return;
+    ErrorValueApiV2 bad=*fixture_error_value;assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_error_value;
     bad.byte_size--;assert(!attach(&bad));bad=*fixture_error_value;bad.is_error=NULL;assert(!attach(&bad));bad=*fixture_error_value;bad.from_bytes=NULL;assert(!attach(&bad));
     if(attached) { bad=*fixture_error_value;assert(!attach(&bad) && attach(fixture_error_value)==1); }
 }
@@ -96,8 +100,16 @@ static void forbidden_method(Oop type,Oop selector,Method method) { (void)type;(
 static void forbidden_roots(RootProvider provider) { (void)provider;assert(!"Error value registered roots during initialization"); }
 static void mount(const char *path,IdApi *table,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    if(prelude && api->dlsym_fn(image,"birnam_error_value_dependency_v1")) { IdApi watched=*api;watched.alloc=forbidden_alloc;watched.method=forbidden_method;watched.gc_register_root_provider=forbidden_roots;fixture_prepare_error_value(&watched);assert(!api->is_exported("Error") && !api->is_exported("System"));validate(image,0); }
+    if(prelude && api->dlsym_fn(image,"birnam_error_value_dependency_v2")) { IdApi watched=*api;watched.alloc=forbidden_alloc;watched.method=forbidden_method;watched.gc_register_root_provider=forbidden_roots;fixture_prepare_error_value(&watched);assert(!api->is_exported("Error") && !api->is_exported("System"));validate(image,0); }
     fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL);
+}
+static int provider_is_error(const IdApi *table,Oop value) {
+    NamespacePresenceV1 presence=namespace_presence_borrow_slot_v1(&table->is_exported);
+    return fixture_error_value->is_error(table,&presence,value);
+}
+static Oop provider_from_bytes(const IdApi *table,const uint8_t *kind,size_t kind_length,const uint8_t *message,size_t message_length) {
+    NamespacePresenceV1 presence=namespace_presence_borrow_slot_v1(&table->is_exported);
+    return fixture_error_value->from_bytes(table,&presence,kind,kind_length,message,message_length);
 }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
@@ -111,6 +123,12 @@ int main(int argc,char **argv) {
     Oop factory_type=api->proto(api->object_vt);factory=api->alloc(factory_type,0);other_factory=api->alloc(factory_type,0);api->method(factory_type,api->intern("kind:message:"),construct);
     error_factory=factory;error_type=api->proto(api->object_vt);alternate_type=api->proto(error_type);
     error_present=0;begin("absent factory still interns and makes message");assert(read_file(system_object,&bad_path,1)==api->nil_obj);end();assert(interns==1 && makes==1 && exports==1 && !imports && !sends);
+    error_present=1;
+    for(int stage=1;stage<=2;stage++) {
+        replace_presence_slot=stage;
+        assert(read_file(system_object,&bad_path,1)==api->nil_obj);
+        assert(!replace_presence_slot);selected.is_exported=exported;
+    }
     error_present=1;error_factory=NULL;begin("null factory returns current nil");selected.nil_obj=second_answer;assert(read_file(system_object,&bad_path,1)==second_answer);end();assert(makes==1 && imports==1 && !sends);selected.nil_obj=api->nil_obj;error_factory=factory;
     begin("negative export flag remains present");error_present=-1;assert(get_env(system_object,&bad_path,1)==answer);end();assert(seen_factory==factory);expect_message("could not read environment");error_present=1;
     for(int kind=0;kind<2;kind++) for(int message=0;message<3;message++) for(int result=0;result<3;result++) {
@@ -148,12 +166,12 @@ int main(int argc,char **argv) {
     assert(read_line(system_object,NULL,0)==answer);assert(dup2(saved,STDIN_FILENO)>=0);close(saved);expect_message("stdin read failed");end();
     if(fixture_error_value) {
         Dl_info owner;assert(dladdr((const void *)fixture_error_value->from_bytes,&owner) && strstr(owner.dli_fname,"/libbirnam_error_value.dylib"));
-        IdApi alternate=selected;alternate.is_exported=api->is_exported;assert(!fixture_error_value->is_error(&alternate,candidates[4]));
-        recognition_phase=current_phase=1;candidate=candidates[4];reported_match=1;assert(fixture_error_value->is_error(&selected,candidate)==1);recognition_phase=0;
+        IdApi alternate=selected;alternate.is_exported=api->is_exported;assert(!provider_is_error(&alternate,candidates[4]));
+        recognition_phase=current_phase=1;candidate=candidates[4];reported_match=1;assert(provider_is_error(&selected,candidate)==1);recognition_phase=0;
         const uint8_t bytes[]="bytes";borrowed_message=bytes;borrowed_length=5;
-        assert(fixture_error_value->from_bytes(&selected,(const uint8_t *)"ioError",8,bytes,5)==answer);expect_message("bytes");borrowed_message=NULL;
-        assert(fixture_error_value->from_bytes(&selected,(const uint8_t *)"ioError",8,(const uint8_t *)"",0)==answer);expect_message("");
-        alternate.nil_obj=second_answer;assert(fixture_error_value->from_bytes(&alternate,(const uint8_t *)"ioError",8,(const uint8_t *)"",0)==second_answer);
+        assert(provider_from_bytes(&selected,(const uint8_t *)"ioError",8,bytes,5)==answer);expect_message("bytes");borrowed_message=NULL;
+        assert(provider_from_bytes(&selected,(const uint8_t *)"ioError",8,(const uint8_t *)"",0)==answer);expect_message("");
+        alternate.nil_obj=second_answer;assert(provider_from_bytes(&alternate,(const uint8_t *)"ioError",8,(const uint8_t *)"",0)==second_answer);
     }
     IdApi other=selected;other.nil_obj=second_answer;prelude_init(&other,NULL);error_present=0;
     begin("reloaded Prelude preserves original execution selection");assert(read_file(system_object,&bad_path,1)==api->nil_obj);end();error_present=1;

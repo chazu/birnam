@@ -3,7 +3,7 @@
 `libbirnam_integer.dylib` owns Integer's canonical behavior and prototype, signed
 64-bit payload, primitive construction/reading/recognition, and thirteen methods.
 It depends on IdApi v7, prepared Float/String capabilities and
-[Error Value](error-value-v1.md) for its existing lazy errors and exact recognition
+[Error Value](error-value-v2.md) for its existing lazy errors and exact recognition
 (Design [81AP](../docs/design/81ap-production-integer-error-value.md)). Id boots without Integer; its remaining Machine and
 optimizer components explicitly acquire Integer when the host composes the stack.
 

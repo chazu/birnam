@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Pass each caller's live namespace presence capability explicitly to Error Value
+  (Design 81BA). Native Error Value ABI is v2; preserve late callback selection,
+  reentry and copied API contexts. IdApi fields and language behavior are unchanged.
+
 - Move canonical interned lookup into Namespace (Design 81AZ), preserving absent
   name interning, selected storage, null bindings and independent runtime state.
   Namespace factory is v4; IdApi v8 and its live import/presence slots are unchanged.

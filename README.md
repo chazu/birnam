@@ -783,8 +783,10 @@ artifact required. The Rust host owns the complete runtime and build closure.
   shares lazy overflow construction without changing its earlier storage preparation.
   Run `mise run word-error-value` for focused checks.
 - [Error value policy](docs/design/81am-production-error-value.md) shares Prelude's
-  [lazy factory and exact-recognition helpers](abi/error-value-v1.md), preserving
-  callback order and pre-Error nil behavior. Run `mise run error-value`.
+  [lazy factory and exact-recognition helpers](abi/error-value-v2.md), preserving
+  callback order and pre-Error nil behavior. Its [per-call presence handoff](docs/design/81ba-production-error-presence-handoff.md)
+  preserves each caller's live selection. Run `mise run error-value` and
+  `scripts/error-presence-image-smoke.sh PREFIX` for the native handoff image check.
 - [Namespace state](docs/design/81aw-production-namespace-state.md) owns raw
   Symbol/value bindings through an [opaque storage contract](abi/namespace-v4.md).
   [Namespace names](docs/design/81ax-production-namespace-names.md) owns reverse

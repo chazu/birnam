@@ -436,3 +436,8 @@ export and presence are still later work.
 policy into Namespace, using Id's existing Symbol interner and the selected raw
 find. The factory becomes v4; public import/presence capability transport remains
 a separate extraction, preserving each caller's live API selection.
+
+[81BA](81ba-production-error-presence-handoff.md) moves the shared Error Value
+presence consumer onto an explicit per-call capability. Callers lend their live
+slots without early function snapshots; native initialization transport and
+removing the remaining IdApi namespace fields remain separate work.

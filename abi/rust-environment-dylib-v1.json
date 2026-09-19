@@ -4,7 +4,7 @@
   "install_name": "@rpath/libbirnam_environment.dylib",
   "exported_symbols": [
     "birnam_environment_provider_v1",
-    "birnam_error_value_dependency_v1",
+    "birnam_error_value_dependency_v2",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
     "birnam_text_view_dependency_v1",

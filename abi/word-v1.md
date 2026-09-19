@@ -2,7 +2,7 @@
 
 `birnam-word` owns Word's canonical behavior, zero prototype, eight-byte unsigned
 payload and three existing methods. It depends on IdApi v7 and explicitly acquires
-Integer for conversion, String for printing and [Error Value](error-value-v1.md)
+Integer for conversion, String for printing and [Error Value](error-value-v2.md)
 for the existing lazy overflow error (Design [81AN](../docs/design/81an-production-word-error-value.md)). Id initializes without Word; its still-combined Machine
 layer receives Word through `birnam_word_dependency_v1`.
 

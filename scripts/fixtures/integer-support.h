@@ -21,7 +21,7 @@
 #include "../../abi/fixtures/file-io-v1/file_io_v1.h"
 #include "../../abi/fixtures/block-loop-v1/block_loop_v1.h"
 #include "../../abi/fixtures/text-view-v1/text_view_v1.h"
-#include "../../abi/fixtures/error-value-v1/error_value_v1.h"
+#include "../../abi/fixtures/error-value-v2/error_value_v2.h"
 #include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -66,7 +66,7 @@ static const CollectionValueApiV1 *fixture_collection_value;
 static const MapApiV1 *fixture_map; /* Historical storage oracle only. */
 static const MapApiV2 *fixture_map_v2;
 static inline void fixture_prepare_map(IdApi *api);
-static const ErrorValueApiV1 *fixture_error_value;
+static const ErrorValueApiV2 *fixture_error_value;
 static inline void fixture_prepare_error_value(IdApi *api);
 static const TextViewApiV1 *fixture_text_view;
 static inline void fixture_prepare_text_view(IdApi *api);
@@ -164,7 +164,7 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
         if(map_v2_attach) assert(map_v2_attach(fixture_map_v2)==1);
         else assert(map_attach(fixture_map)==1);
     }
-    ErrorValueDependencyV1 error_attach=(ErrorValueDependencyV1)api->dlsym_fn(image,"birnam_error_value_dependency_v1");
+    ErrorValueDependencyV2 error_attach=(ErrorValueDependencyV2)api->dlsym_fn(image,"birnam_error_value_dependency_v2");
     if(error_attach) { fixture_prepare_error_value(api); assert(error_attach(fixture_error_value)==1); }
     TextViewDependencyV1 text_attach=(TextViewDependencyV1)api->dlsym_fn(image,"birnam_text_view_dependency_v1");
     if(text_attach) { fixture_prepare_text_view(api); assert(text_attach(fixture_text_view)==1); }
@@ -231,7 +231,7 @@ static inline void fixture_prepare_error_value(IdApi *api) {
     assert(n>0 && (size_t)n<sizeof(path));
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    ErrorValueProviderV1 provide=(ErrorValueProviderV1)api->dlsym_fn(image,"birnam_error_value_provider_v1"); assert(provide && !provide());
+    ErrorValueProviderV2 provide=(ErrorValueProviderV2)api->dlsym_fn(image,"birnam_error_value_provider_v2"); assert(provide && !provide());
     init(api,NULL); fixture_error_value=provide(); assert(fixture_error_value);
 }
 static inline void fixture_prepare_text_view(IdApi *api) {
