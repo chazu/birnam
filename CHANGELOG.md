@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Use shared Error Value policy for Float recognition and construction
+  (Design 81AO), preserving numeric behavior, preparation and live dispatch.
+
 - Use shared Error Value policy for Word asInteger overflow (Design 81AN),
   preserving storage preparation, live callbacks and lazy Error dispatch.
 

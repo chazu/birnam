@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
-  "scope": "Float canonical representation, methods, pure bits codec and explicit Integer dependency",
+  "scope": "Float representation, methods, bits codec and explicit Integer/String/Error Value dependencies",
   "install_name": "@rpath/libbirnam_float.dylib",
   "exported_symbols": [
+    "birnam_error_value_dependency_v1",
     "birnam_float_prepare_v1",
     "birnam_float_provider_v1",
     "birnam_integer_dependency_v1",

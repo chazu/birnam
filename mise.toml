@@ -44,6 +44,10 @@ run = "python3 scripts/same-frame-deopt.py"
 description = "Check loaded collection value comparison and hashing in debug"
 run = "scripts/collection-value-test.sh"
 
+[tasks.float-error-value]
+description = "Focused debug Float error policy migration checks"
+run = "scripts/float-error-value-test.sh"
+
 [tasks.word-error-value]
 description = "Focused debug Word overflow policy migration checks"
 run = "scripts/word-error-value-test.sh"

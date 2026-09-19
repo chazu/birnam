@@ -2,7 +2,10 @@
 
 `birnam-float` owns Float's canonical behavior, zero prototype and eight-byte
 IEEE payload. It depends on IdApi v7 and explicitly acquires Integer for mixed
-operations and conversions. Id initializes without Float; its still-combined
+operations and conversions, String for printing, and
+[Error Value](error-value-v1.md) for its existing recognition/construction policy
+(Design [81AO](../docs/design/81ao-production-float-error-value.md)).
+Id initializes without Float; its still-combined
 Machine and image/recovery consumers acquire the family through
 `birnam_float_dependency_v1`. There is no Float compatibility facade in IdApi.
 
@@ -28,7 +31,7 @@ initializing Integer. Preparation registers partially initialized roots before
 allocating, then returns a complete primitive table. The provider returns null
 until preparation completes. Attach that table to the host, combined runtime
 and Integer before Integer's `module_init`. After Integer publishes its table,
-attach Integer to Float and call Float's ordinary `module_init`: this performs
+attach Integer, String and Error Value to Float and call its ordinary `module_init`: this performs
 owner association, exports `Float`/`FloatVt`, and installs the seventeen methods.
 Other modules declare `birnam_float_dependency_v1` when they consume Float.
 
@@ -43,7 +46,8 @@ is permitted after callback publication. Test runtimes own separate instances
 with explicit local Id adapters instead of using image-global attachment slots.
 
 Preparation runs after the floor/tracer/coordinator and before Integer; Float
-activation retains its existing slot after Integer. As with Integer's extraction,
+activation retains its existing slot after Integer; Error Value now loads between
+them without changing storage preparation. As with Integer's extraction,
 Float leaves the floor bootstrap enumeration and its names enter the namespace
 when the loaded module publishes them. Canonical names, identities, first-alias
 selection and binding replacement rules are unchanged; numeric enumeration
@@ -53,3 +57,6 @@ All native modules must be rebuilt for the 34-field, 272-byte IdApi v7. Historic
 v1-v5 manifests/fixtures remain unchanged. Method, Frame and image formats remain
 unchanged. Run `mise run float` and `scripts/float-image-smoke.sh PREFIX` against a
 debug prefix for the focused native and compiled-image checks.
+
+For the shared policy migration, run `mise run float-error-value` and
+`scripts/float-error-value-image-smoke.sh PREFIX`.
