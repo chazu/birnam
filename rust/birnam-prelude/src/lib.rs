@@ -407,56 +407,6 @@ unsafe extern "C" fn system_read_line(_self_object: Oop, _args: *const Oop, coun
     }
 }
 
-unsafe extern "C" fn system_gc(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::integer::make)((api.gcCollect)() as i64) }
-}
-
-unsafe extern "C" fn system_live_objects(
-    _self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::integer::make)((api.gcLiveCount)() as i64) }
-}
-
-unsafe extern "C" fn system_auto_gc(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if value != api.trueObj && value != api.falseObj {
-        return api.nilObj;
-    }
-    unsafe { (api.gcSetAuto)(if value == api.trueObj { 1 } else { 0 }) };
-    self_object
-}
-
-unsafe extern "C" fn system_precise_gc(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if value != api.trueObj && value != api.falseObj {
-        return api.nilObj;
-    }
-    unsafe { (api.gcSetPrecise)(if value == api.trueObj { 1 } else { 0 }) };
-    self_object
-}
-
 unsafe fn system_output(self_object: Oop, args: *const Oop, count: usize, newline: bool) -> Oop {
     let api = unsafe { api_ref() };
     if count != 1 {
@@ -532,10 +482,10 @@ unsafe fn install_system_protocol(api: &IdApi) {
         (api.method)(system_vt, load, system_load);
         (api.method)(system_vt, load_module, system_load_module);
         (api.method)(system_vt, read_line, system_read_line);
-        (api.method)(system_vt, gc, system_gc);
-        (api.method)(system_vt, live_objects, system_live_objects);
-        (api.method)(system_vt, auto_gc, system_auto_gc);
-        (api.method)(system_vt, precise_gc, system_precise_gc);
+        birnam_abi::system_gc::install(
+            api, runtime().api as *const IdApi, system_vt,
+            gc, live_objects, auto_gc, precise_gc,
+        );
     }
     let _ = system_object;
 }
@@ -652,3 +602,5 @@ birnam_abi::integer_dependency!();
 birnam_abi::string_dependency!();
 
 birnam_abi::printing_dependency!();
+
+birnam_abi::system_gc_dependency!();

@@ -124,3 +124,8 @@ adds no IdApi fields, objects or roots; Collection preserves ordered installatio
 Prelude supplies separate registration and original execution tables at its
 existing installation point. The [export inventory](rust-printing-dylib-v1.json)
 adds no IdApi fields, objects or roots.
+
+[System GC v1](system-gc-v1.md) owns System's four collector control methods.
+Prelude supplies its selected behavior, selectors and original execution table at
+the final four installation slots. The [export inventory](rust-system-gc-dylib-v1.json)
+adds no IdApi fields, collector state, objects or roots.

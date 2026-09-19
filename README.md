@@ -707,6 +707,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
+- `rust/birnam-system-gc/` — System collector queries and policy controls, installed by Prelude.
 - `rust/birnam-printing/` — Object/Symbol printing defaults and live `asString` dispatch.
 - `rust/birnam-collection-value/` — shared native value comparison and key hashing for Vector and Map.
 - `rust/birnam-vector/` — independently loaded Vector storage, trie helpers, canonical objects, methods and sorting roots.
@@ -762,6 +763,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
   canonical objects and lookup/update operations through an
   [explicit dependency](abi/map-v2.md). [Map methods and traversal](docs/design/81ag-production-map-methods.md)
   complete native Map ownership. Run `mise run map` for focused checks.
+- [System GC controls](docs/design/81aj-production-system-gc.md) have a separate
+  [native installation interface](abi/system-gc-v1.md), preserving collector callbacks
+  and live Integer construction. Run `mise run system-gc` for focused checks.
 - [Printing defaults](docs/design/81ai-production-printing-methods.md) now load
   independently, with Prelude retaining the [installation point](abi/printing-v1.md).
   Run `mise run printing` for focused checks.

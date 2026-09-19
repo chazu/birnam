@@ -961,6 +961,7 @@ pub enum ModuleError {
     MapDependencyRejected { path: PathBuf },
     StringCollectionDependencyRejected { path: PathBuf },
     PrintingDependencyRejected { path: PathBuf },
+    SystemGcDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
@@ -1058,6 +1059,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_id_codegen",
     "libbirnam_boolean",
     "libbirnam_printing",
+    "libbirnam_system_gc",
     "libbirnam_id_prelude",
     "libbirnam_nil",
     "libbirnam_string",
@@ -2048,6 +2050,7 @@ pub struct LoadedStack {
     map: *const birnam_abi::map::ApiV2,
     string_collection: *const birnam_abi::string_collection::ApiV1,
     printing: *const birnam_abi::printing::ApiV1,
+    system_gc: *const birnam_abi::system_gc::ApiV1,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2080,6 +2083,7 @@ impl LoadedStack {
             map: std::ptr::null(),
             string_collection: std::ptr::null(),
             printing: std::ptr::null(),
+            system_gc: std::ptr::null(),
             collection_value: std::ptr::null(),
             prepared_float: None,
             prepared_word: None,
@@ -2288,6 +2292,13 @@ impl LoadedStack {
                 return Err(ModuleError::CollectionValueDependencyRejected { path: path.to_path_buf() });
             }
         }
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_dependency_v1".as_ptr()) };
+        if !dependency.is_null() {
+            let attach: birnam_abi::system_gc::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if self.system_gc.is_null() || unsafe { attach(self.system_gc) } != 1 {
+                return Err(ModuleError::SystemGcDependencyRejected { path: path.to_path_buf() });
+            }
+        }
         let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_printing_dependency_v1".as_ptr()) };
         if !dependency.is_null() {
             let attach: birnam_abi::printing::DependencyV1 = unsafe { std::mem::transmute(dependency) };
@@ -2364,6 +2375,15 @@ impl LoadedStack {
                 return Err(ModuleError::CollectionValueDependencyRejected { path: path.to_path_buf() });
             }
             self.collection_value = provided;
+        }
+        let system_gc_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_provider_v1".as_ptr()) };
+        if !system_gc_provider.is_null() {
+            let provide: birnam_abi::system_gc::ProviderV1 = unsafe { std::mem::transmute(system_gc_provider) };
+            let provided = unsafe { provide() };
+            if unsafe { birnam_abi::system_gc::attach(provided) } != 1 {
+                return Err(ModuleError::SystemGcDependencyRejected { path: path.to_path_buf() });
+            }
+            self.system_gc = provided;
         }
         let printing_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_printing_provider_v1".as_ptr()) };
         if !printing_provider.is_null() {

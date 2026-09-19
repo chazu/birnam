@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Move System gc/liveObjects/autoGc:/preciseGc: into `birnam-system-gc`
+  (Design 81AJ). Preserve registration snapshots, original execution callbacks,
+  live Boolean identities, count conversion and Integer construction after queries.
+
 - Move Object printString/asString and Symbol printString into `birnam-printing`
   (Design 81AI). Preserve Prelude's registration order, original execution table,
   fresh lookup, borrowed Symbol-name copies and live String construction.
