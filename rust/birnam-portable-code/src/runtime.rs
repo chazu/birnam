@@ -171,11 +171,11 @@ impl Runtime {
     }
 
     pub(crate) fn string_bytes(&self, object: Oop) -> Option<&'static [u8]> {
-        if object.is_null() || unsafe { (self.api().vtableOf)(object) } != self.api().string_vt {
+        if object.is_null() || unsafe { (self.api().vtableOf)(object) } != unsafe { birnam_abi::string::behavior() } {
             return None;
         }
         let mut length = 0usize;
-        let bytes = unsafe { (self.api().stringBytes)(object, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
         if length == 0 {
             return Some(&[]);
         }
@@ -202,11 +202,11 @@ impl Runtime {
         bytes: &[u8],
         _finalizer: Finalizer,
     ) -> Oop {
-        unsafe { (self.api().mkString)(bytes.as_ptr(), bytes.len()) }
+        unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
     }
 
     pub(crate) fn make_string(&self, bytes: &[u8]) -> Oop {
-        unsafe { (self.api().mkString)(bytes.as_ptr(), bytes.len()) }
+        unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
     }
 
     pub(crate) fn temporary_root_scope(&self) -> TemporaryRootScope {

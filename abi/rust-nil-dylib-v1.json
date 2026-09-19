@@ -3,6 +3,7 @@
   "scope": "Object and nil methods through existing IdApi",
   "install_name": "@rpath/libbirnam_nil.dylib",
   "exported_symbols": [
+    "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
     "module_init"
   ]

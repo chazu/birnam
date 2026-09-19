@@ -100,8 +100,8 @@ impl HostRuntime {
                 selector,
                 [
                     values,
-                    (api.mkString)(rust_workspace.as_ptr(), rust_workspace.len()),
-                    (api.mkString)(guides.as_ptr(), guides.len()),
+                    (birnam_abi::string::make)(rust_workspace.as_ptr(), rust_workspace.len()),
+                    (birnam_abi::string::make)(guides.as_ptr(), guides.len()),
                 ]
                 .as_ptr(),
                 3,
@@ -368,7 +368,7 @@ impl HostRuntime {
             return Err(SocketReplError::MissingRepl);
         };
         let bind = CString::new(bind).map_err(|_| SocketReplError::ServeRejected)?;
-        let bind = unsafe { (api.mkString)(bind.as_bytes().as_ptr(), bind.as_bytes().len()) };
+        let bind = unsafe { (birnam_abi::string::make)(bind.as_bytes().as_ptr(), bind.as_bytes().len()) };
         let selector = unsafe { (api.intern)(c"serveOn:bind:".as_ptr()) };
         let result = unsafe {
             (api.send)(
@@ -438,11 +438,11 @@ impl HostRuntime {
             unsafe { global_named(api, "Codegen") }.ok_or(WorkerStartupError::MissingCodegen)?;
         let digest_selector = unsafe { (api.intern)(c"currentGenerationDigest".as_ptr()) };
         let digest = unsafe { (api.send)(codegen, digest_selector, std::ptr::null(), 0) };
-        if digest == api.nilObj || unsafe { (api.vtableOf)(digest) } != api.string_vt {
+        if digest == api.nilObj || unsafe { (api.vtableOf)(digest) } != unsafe { birnam_abi::string::behavior() } {
             return Err(WorkerStartupError::InvalidGenerationDigest);
         }
         let mut digest_len = 0usize;
-        let digest_bytes = unsafe { (api.stringBytes)(digest, &mut digest_len) };
+        let digest_bytes = unsafe { (birnam_abi::string::bytes)(digest, &mut digest_len) };
         if digest_bytes.is_null() || digest_len != 64 {
             return Err(WorkerStartupError::InvalidGenerationDigest);
         }

@@ -85,7 +85,7 @@ unsafe fn send2(api: &IdApi, receiver: Oop, selector: &[u8], first: Oop, second:
 }
 
 unsafe fn literal(api: &IdApi, peg: Oop, bytes: &[u8]) -> Oop {
-    let string = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+    let string = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
     unsafe { send1(api, peg, b"literal:\0", string) }
 }
 
@@ -794,3 +794,5 @@ mod tests {
 }
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::string_dependency!();

@@ -657,9 +657,9 @@ impl<'a> OopEncoder<'a> {
             return Ok(());
         }
         let vtable = unsafe { (self.api.vtableOf)(value) };
-        if vtable == self.api.string_vt {
+        if vtable == unsafe { birnam_abi::string::behavior() } {
             let mut length = 0usize;
-            let pointer = unsafe { (self.api.stringBytes)(value, &mut length) };
+            let pointer = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
             if length != 0 && pointer.is_null() {
                 return Err(CodecError::InvalidRecord);
             }
@@ -749,7 +749,7 @@ impl<'a> OopEncoder<'a> {
             return true;
         }
         let vtable = unsafe { (self.api.vtableOf)(key) };
-        vtable == self.api.string_vt || vtable == self.api.symbol_vt
+        vtable == unsafe { birnam_abi::string::behavior() } || vtable == self.api.symbol_vt
     }
 
     fn map(&mut self, object: Oop, depth: usize) -> Result<(), CodecError> {
@@ -861,7 +861,7 @@ impl<'a> OopDecoder<'a> {
             TAG_FLOAT => Ok(unsafe { (birnam_abi::float::make)(f64::from_bits(self.u64()?)) }),
             TAG_STRING => {
                 let bytes = self.sized()?;
-                Ok(unsafe { (self.api.mkString)(bytes.as_ptr(), bytes.len()) })
+                Ok(unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) })
             }
             TAG_SYMBOL => {
                 let bytes = self.sized()?;
@@ -913,7 +913,7 @@ impl<'a> OopDecoder<'a> {
             return true;
         }
         let vtable = unsafe { (self.api.vtableOf)(key) };
-        vtable == self.api.string_vt || vtable == self.api.symbol_vt
+        vtable == unsafe { birnam_abi::string::behavior() } || vtable == self.api.symbol_vt
     }
 
     fn map(&mut self, depth: usize) -> Result<Oop, CodecError> {
@@ -988,7 +988,7 @@ fn decode_oop_error_record(
     let kind = decoder.value(1)?;
     let message = decoder.value(1)?;
     if unsafe { (api.vtableOf)(kind) } != api.symbol_vt
-        || unsafe { (api.vtableOf)(message) } != api.string_vt
+        || unsafe { (api.vtableOf)(message) } != unsafe { birnam_abi::string::behavior() }
     {
         return Err(CodecError::InvalidRecord);
     }
@@ -1008,7 +1008,7 @@ fn oop_error_record(
         return Err(CodecError::InvalidRecord);
     }
     if unsafe { (api.vtableOf)(kind) } != api.symbol_vt
-        || (message != api.nilObj && unsafe { (api.vtableOf)(message) } != api.string_vt)
+        || (message != api.nilObj && unsafe { (api.vtableOf)(message) } != unsafe { birnam_abi::string::behavior() })
     {
         return Err(CodecError::InvalidRecord);
     }
@@ -1025,7 +1025,7 @@ fn oop_error_record(
         return error_record(schema, kind_bytes, b"");
     }
     let mut message_len = 0usize;
-    let message_pointer = unsafe { (api.stringBytes)(message, &mut message_len) };
+    let message_pointer = unsafe { (birnam_abi::string::bytes)(message, &mut message_len) };
     if message_len != 0 && message_pointer.is_null() {
         return Err(CodecError::InvalidRecord);
     }
@@ -1402,7 +1402,7 @@ fn make_failure(api: &IdApi, class: &[u8], kind: &[u8], message: &[u8]) -> Oop {
         .collect::<Vec<_>>();
     let class_o = unsafe { (api.intern)(class_z.as_ptr().cast()) };
     let kind_o = unsafe { (api.intern)(kind_z.as_ptr().cast()) };
-    let message_o = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    let message_o = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
     make_failure_objects(api, class_o, kind_o, message_o, api.nilObj, api.nilObj)
 }
 
@@ -1441,9 +1441,9 @@ fn oop_text(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
         // SAFETY: `symbolName` returns a live NUL-terminated symbol name.
         return Some(unsafe { CStr::from_ptr(pointer) }.to_bytes().to_vec());
     }
-    if vtable == api.string_vt {
+    if vtable == unsafe { birnam_abi::string::behavior() } {
         let mut length = 0usize;
-        let pointer = unsafe { (api.stringBytes)(value, &mut length) };
+        let pointer = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
         if length != 0 && pointer.is_null() {
             return None;
         }
@@ -1753,7 +1753,7 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
                 .collect::<Vec<_>>();
             let class_o = unsafe { (api.intern)(class_z.as_ptr().cast()) };
             let kind_o = unsafe { (api.intern)(kind_z.as_ptr().cast()) };
-            let message_o = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+            let message_o = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
             let status_o = entry
                 .exit_status
                 .map(|status| unsafe { (birnam_abi::integer::make)(status as i64) })
@@ -2739,3 +2739,5 @@ mod tests {
 birnam_abi::integer_dependency!();
 
 birnam_abi::float_dependency!();
+
+birnam_abi::string_dependency!();

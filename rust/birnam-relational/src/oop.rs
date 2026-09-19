@@ -33,10 +33,10 @@ pub unsafe fn classify(api: &IdApi, object: Oop) -> Option<Value> {
         return Some(Value::Float(unsafe { (birnam_abi::float::value)(object) }));
     }
     // SAFETY: vtableOf is valid for every non-null live Oop.
-    if unsafe { (api.vtableOf)(object) } == api.string_vt {
+    if unsafe { (api.vtableOf)(object) } == unsafe { birnam_abi::string::behavior() } {
         let mut length = 0usize;
         // SAFETY: stringBytes is the frozen accessor for a live String object.
-        let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
         // SAFETY: borrowed_bytes validates null/count/alignment before copying.
         let bytes = unsafe { borrowed_bytes(bytes, length) }?;
         return Some(Value::String(bytes.to_vec()));

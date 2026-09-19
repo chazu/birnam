@@ -69,6 +69,16 @@ class CompatibilityAuthorityTests(unittest.TestCase):
             self.assertIn(before, self.current)
             self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
 
+    def test_string_migration_preserves_bytes_and_inherited_recognition(self):
+        for before, after in (
+            (b'(birnam_abi::string::bytes)(object, &mut length)', b'(birnam_abi::string::bytes)(vtable, &mut length)'),
+            (b'vtable_inherits_from(api, vtable, birnam_abi::string::behavior())', b'vtable == birnam_abi::string::behavior()'),
+            (b'birnam_abi::string_dependency!();', b''),
+            (b'(birnam_abi::string::make)(bytes.as_ptr(), bytes.len())', b'(birnam_abi::string::make)(bytes.as_ptr(), 0)'),
+        ):
+            self.assertIn(before, self.current)
+            self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
+
     def test_exception_does_not_apply_to_other_contracts(self):
         self.assertFalse(unchanged_authority("rust/birnam-image/src/v8.rs", self.current, self.baseline))
 

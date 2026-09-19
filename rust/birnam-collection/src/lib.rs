@@ -598,15 +598,15 @@ unsafe fn same_value(api: &IdApi, left: Oop, right: Oop) -> bool {
     if unsafe { (birnam_abi::float::is_float)(left) } != 0 && unsafe { (birnam_abi::float::is_float)(right) } != 0 {
         return unsafe { (birnam_abi::float::value)(left) == (birnam_abi::float::value)(right) };
     }
-    if unsafe { (api.vtableOf)(left) } != api.string_vt
-        || unsafe { (api.vtableOf)(right) } != api.string_vt
+    if unsafe { (api.vtableOf)(left) } != unsafe { birnam_abi::string::behavior() }
+        || unsafe { (api.vtableOf)(right) } != unsafe { birnam_abi::string::behavior() }
     {
         return false;
     }
     let mut left_len = 0;
     let mut right_len = 0;
-    let left_bytes = unsafe { (api.stringBytes)(left, &mut left_len) };
-    let right_bytes = unsafe { (api.stringBytes)(right, &mut right_len) };
+    let left_bytes = unsafe { (birnam_abi::string::bytes)(left, &mut left_len) };
+    let right_bytes = unsafe { (birnam_abi::string::bytes)(right, &mut right_len) };
     if left_len != right_len {
         return false;
     }
@@ -843,7 +843,7 @@ unsafe extern "C" fn vector_print_string(self_object: Oop, _args: *const Oop, co
             return api.nilObj;
         }
         let mut length = 0;
-        let bytes = unsafe { (api.stringBytes)(printed, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(printed, &mut length) };
         if bytes.is_null() {
             return api.nilObj;
         }
@@ -852,7 +852,7 @@ unsafe extern "C" fn vector_print_string(self_object: Oop, _args: *const Oop, co
     }
     output.push(b']');
     // SAFETY: the floor copies this transient byte buffer into a String.
-    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
 }
 
 unsafe extern "C" fn vector_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1013,9 +1013,9 @@ unsafe fn map_key_hash(api: &IdApi, key: Oop) -> u32 {
         return map_mix(unsafe { (birnam_abi::integer::value)(key) } as u64);
     }
     let value_type = unsafe { (api.vtableOf)(key) };
-    if value_type == api.string_vt {
+    if value_type == unsafe { birnam_abi::string::behavior() } {
         let mut length = 0;
-        let bytes = unsafe { (api.stringBytes)(key, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(key, &mut length) };
         if length == 0 {
             return map_fnv1a(&[]);
         }
@@ -1370,7 +1370,7 @@ unsafe fn map_append_print(api: &IdApi, node: Oop, output: &mut Vec<u8>, first: 
                 return false;
             }
             let mut length = 0;
-            let bytes = unsafe { (api.stringBytes)(printed, &mut length) };
+            let bytes = unsafe { (birnam_abi::string::bytes)(printed, &mut length) };
             if bytes.is_null() {
                 return false;
             }
@@ -1603,7 +1603,7 @@ unsafe extern "C" fn map_print_string(self_object: Oop, _args: *const Oop, count
         return api.nilObj;
     }
     output.push(b'}');
-    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
 }
 
 unsafe fn string_builder_payload(object: Oop) -> *mut StringBuilderPayload {
@@ -1714,14 +1714,14 @@ unsafe extern "C" fn string_builder_add(self_object: Oop, args: *const Oop, coun
     let Some(mut value) = (unsafe { argument(args, count) }) else {
         return self_object;
     };
-    if unsafe { (api.vtableOf)(value) } != api.string_vt {
+    if unsafe { (api.vtableOf)(value) } != unsafe { birnam_abi::string::behavior() } {
         value = unsafe { (api.send)(value, runtime().print_string as Oop, ptr::null(), 0) };
     }
-    if value.is_null() || unsafe { (api.vtableOf)(value) } != api.string_vt {
+    if value.is_null() || unsafe { (api.vtableOf)(value) } != unsafe { birnam_abi::string::behavior() } {
         return self_object;
     }
     let mut length = 0;
-    let bytes = unsafe { (api.stringBytes)(value, &mut length) };
+    let bytes = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
     if length == 0 {
         return self_object;
     }
@@ -1781,21 +1781,21 @@ unsafe extern "C" fn string_builder_as_string(
     let payload = unsafe { string_builder_payload(self_object) };
     let length = unsafe { (*payload).len };
     if length == 0 {
-        return unsafe { (api.mkString)(b"".as_ptr(), 0) };
+        return unsafe { (birnam_abi::string::make)(b"".as_ptr(), 0) };
     }
     let bytes = unsafe { (*payload).ptr };
     if bytes.is_null() {
         return api.nilObj;
     }
-    unsafe { (api.mkString)(bytes, length) }
+    unsafe { (birnam_abi::string::make)(bytes, length) }
 }
 
 unsafe fn string_copy(api: &IdApi, object: Oop) -> Option<Vec<u8>> {
-    if object.is_null() || unsafe { (api.vtableOf)(object) } != api.string_vt {
+    if object.is_null() || unsafe { (api.vtableOf)(object) } != unsafe { birnam_abi::string::behavior() } {
         return None;
     }
     let mut length = 0;
-    let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+    let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
     if length == 0 {
         return Some(Vec::new());
     }
@@ -1813,7 +1813,7 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
     let Some(separator) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.vtableOf)(separator) } != api.string_vt {
+    if unsafe { (api.vtableOf)(separator) } != unsafe { birnam_abi::string::behavior() } {
         let result = unsafe { empty_vector(api, runtime()) };
         return unsafe { vector_push(api, runtime(), result, self_object) };
     }
@@ -1825,14 +1825,14 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
     };
     let mut result = unsafe { empty_vector(api, runtime()) };
     if separator.is_empty() {
-        let item = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+        let item = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
         return unsafe { vector_push(api, runtime(), result, item) };
     }
     let mut start = 0usize;
     let mut cursor = 0usize;
     while cursor + separator.len() <= bytes.len() {
         if bytes[cursor..cursor + separator.len()] == separator[..] {
-            let item = unsafe { (api.mkString)(bytes[start..cursor].as_ptr(), cursor - start) };
+            let item = unsafe { (birnam_abi::string::make)(bytes[start..cursor].as_ptr(), cursor - start) };
             result = unsafe { vector_push(api, runtime(), result, item) };
             cursor += separator.len();
             start = cursor;
@@ -1840,7 +1840,7 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
             cursor += 1;
         }
     }
-    let item = unsafe { (api.mkString)(bytes[start..].as_ptr(), bytes.len() - start) };
+    let item = unsafe { (birnam_abi::string::make)(bytes[start..].as_ptr(), bytes.len() - start) };
     unsafe { vector_push(api, runtime(), result, item) }
 }
 
@@ -1994,7 +1994,7 @@ unsafe extern "C" fn range_print_string(self_object: Oop, _args: *const Oop, cou
             return api.nilObj;
         }
         let mut length = 0;
-        let bytes = unsafe { (api.stringBytes)(printed, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(printed, &mut length) };
         if bytes.is_null() {
             return api.nilObj;
         }
@@ -2002,7 +2002,7 @@ unsafe extern "C" fn range_print_string(self_object: Oop, _args: *const Oop, cou
         value += 1;
     }
     output.push(b']');
-    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
 }
 
 unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -2282,8 +2282,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             STRING_BUILDER_LAYOUT.len(),
             birnam_abi::SLOT_RAW,
         );
-        birnam_abi::set_vtable_parent(api, api.string_vt, runtime.collection_vt as Oop);
-        (api.method)(api.string_vt, intern(api, b"split:\0"), string_split);
+        birnam_abi::set_vtable_parent(api, birnam_abi::string::behavior(), runtime.collection_vt as Oop);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"split:\0"), string_split);
         (api.method)(
             runtime.vector_vt as Oop,
             intern(api, b"size\0"),
@@ -2541,3 +2541,5 @@ mod tests {
 birnam_abi::integer_dependency!();
 
 birnam_abi::float_dependency!();
+
+birnam_abi::string_dependency!();

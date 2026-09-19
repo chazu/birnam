@@ -29,8 +29,10 @@
     "birnam_id_try_closure_elision_v2",
     "birnam_id_warm_block_construction_v1",
     "birnam_integer_dependency_v1",
+    "birnam_native_allocation_provider_v1",
     "birnam_register_resumable_v1",
     "birnam_register_resumable_v2",
+    "birnam_string_dependency_v1",
     "birnam_trace_dependency_v1",
     "birnam_word_dependency_v1",
     "id_init"

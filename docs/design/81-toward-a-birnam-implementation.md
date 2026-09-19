@@ -398,3 +398,9 @@ out of Collection. Nil's identity and roots still await their separate audit.
 [81W](81w-production-string-methods.md) extracts fourteen String methods with
 explicit numeric dependencies and selector roots. Array splitting stays with
 Collection, and String's byte ownership/cleanup remains in Id for later review.
+
+[81X](81x-production-string-storage.md) moves String's canonical objects, owned
+byte buffers, primitive operations and cleanup into its loaded module. The floor
+supplies generic native construction with the existing collection/copy/finalizer
+schedule; retirement uses String's exact ownership proof. IdApi v7 has 34 fields /
+272 bytes. Array splitting and StringBuilder remain in Collection.

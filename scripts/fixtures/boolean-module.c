@@ -1,8 +1,9 @@
-#include "idapi_v6.h"
+#include "idapi_v7.h"
 #include "integer-support.h"
 #include "trace-support.h"
 
 static IdApi *api;
+static Oop (*original_string)(void *, const uint8_t *, size_t);
 static IdApi boolean_api;
 static unsigned evaluations, forwarded_values, strings;
 static int collect_in_branch;
@@ -38,12 +39,12 @@ static Oop forwarded(Oop receiver, Oop selector, const Oop *args, size_t count) 
     if(selector==api->intern("value")) ++forwarded_values;
     return api->send(receiver,selector,args,count);
 }
-static Oop counted_string(const uint8_t *bytes, size_t count) {
-    ++strings; return api->mk_string(bytes,count);
+static Oop counted_string(void *context, const uint8_t *bytes, size_t count) {
+    ++strings; return original_string(context,bytes,count);
 }
 static void expect_text(Oop object, const char *text) {
     Oop result=send0(object,"printString"); size_t length=0;
-    const uint8_t *bytes=api->string_bytes(result,&length);
+    const uint8_t *bytes=fixture_string_bytes(result,&length);
     assert(length==strlen(text) && !memcmp(bytes,text,length));
 }
 
@@ -118,9 +119,9 @@ int main(int argc, char **argv) {
     api->method(branch_vt,api->intern("value"),replacement_value);
     assert(send(api->true_obj,"and:",left)==api->true_obj && forwarded_values==2);
     boolean_api.send=api->send; api->method(branch_vt,api->intern("value"),value);
-    boolean_api.mk_string=counted_string;
+    original_string=fixture_string->make; fixture_string->make=counted_string;
     expect_text(api->true_obj,"true"); expect_text(api->false_obj,"false"); assert(strings==2);
-    boolean_api.mk_string=api->mk_string;
+    fixture_string->make=original_string;
     Method not=lookup(true_vt,"not"); api->method(true_vt,api->intern("not"),identity);
     assert(send0(api->false_obj,"not")==api->false_obj);
     api->export_obj("Boolean",api->nil_obj);

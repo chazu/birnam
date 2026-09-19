@@ -213,7 +213,7 @@ unsafe extern "C" fn boolean_print_string(
         Some(false) => b"false".as_slice(),
         None => return api.nilObj,
     };
-    unsafe { (api.mkString)(text.as_ptr(), text.len()) }
+    unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
 }
 
 /// Install the existing Boolean protocol through ordinary object-model messages.
@@ -262,3 +262,5 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) ->
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
+
+birnam_abi::string_dependency!();

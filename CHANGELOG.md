@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Move String identity, representation, byte ownership, construction and cleanup
+  into `birnam-string` (Design 81X). Migrate native consumers to an explicit
+  dependency and remove three IdApi fields: v7 has 34 fields / 272 bytes.
+  Preserve allocation/clone/finalizer schedules, byte borrowing, cleanup ownership,
+  method reinitialization and image encoding. Native consumers require rebuilding.
+
 - Extract fourteen String methods from Collection into `birnam-string`
   (Design 81W), with explicit numeric dependencies and its own printing-selector
   root. Preserve current byte/text/conversion behavior, live callbacks and

@@ -81,7 +81,7 @@ unsafe extern "C" fn object_print_string(
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkString)(b"anObject".as_ptr(), b"anObject".len()) }
+    unsafe { (birnam_abi::string::make)(b"anObject".as_ptr(), b"anObject".len()) }
 }
 
 unsafe extern "C" fn object_as_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -107,7 +107,7 @@ unsafe extern "C" fn symbol_print_string(self_object: Oop, _args: *const Oop, co
     let mut rendered = Vec::with_capacity(name.len().saturating_add(1));
     rendered.push(b'#');
     rendered.extend_from_slice(name);
-    unsafe { (api.mkString)(rendered.as_ptr(), rendered.len()) }
+    unsafe { (birnam_abi::string::make)(rendered.as_ptr(), rendered.len()) }
 }
 
 unsafe fn block_loop(
@@ -186,16 +186,16 @@ unsafe fn make_error(api: &IdApi, kind: Oop, message: Oop) -> Oop {
 
 unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
     let kind = unsafe { intern(api, kind) };
-    let message = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
     unsafe { make_error(api, kind, message) }
 }
 
 unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<&[u8]> {
-    if value.is_null() || unsafe { (api.vtableOf)(value) } != api.string_vt {
+    if value.is_null() || unsafe { (api.vtableOf)(value) } != unsafe { birnam_abi::string::behavior() } {
         return None;
     }
     let mut length = 0usize;
-    let bytes = unsafe { (api.stringBytes)(value, &mut length) };
+    let bytes = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
     if length == 0 {
         return Some(&[]);
     }
@@ -251,7 +251,7 @@ unsafe extern "C" fn system_read_file(_self_object: Oop, args: *const Oop, count
     {
         return unsafe { numeric_error(api, b"ioError\0", b"could not read file") };
     }
-    unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
+    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
 }
 
 unsafe extern "C" fn system_write_file(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -292,7 +292,7 @@ unsafe extern "C" fn system_get_env(_self_object: Oop, args: *const Oop, count: 
         return unsafe { numeric_error(api, b"ioError\0", b"could not read environment") };
     };
     match env::var(name) {
-        Ok(value) => unsafe { (api.mkString)(value.as_ptr(), value.len()) },
+        Ok(value) => unsafe { (birnam_abi::string::make)(value.as_ptr(), value.len()) },
         Err(env::VarError::NotPresent) => api.nilObj,
         Err(env::VarError::NotUnicode(_)) => unsafe {
             numeric_error(api, b"ioError\0", b"could not read environment")
@@ -334,7 +334,7 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
     if codegen.is_null() {
         return unsafe { numeric_error(api, b"noCodegen\0", b"Codegen module is not loaded") };
     }
-    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
 
     // Preserve the module-source staging protocol used by the native prelude:
     // inspect a declaration first, record it by declared identity, then run
@@ -444,7 +444,7 @@ unsafe extern "C" fn system_read_line(_self_object: Oop, _args: *const Oop, coun
             if line.last() == Some(&b'\n') {
                 line.pop();
             }
-            unsafe { (api.mkString)(line.as_ptr(), line.len()) }
+            unsafe { (birnam_abi::string::make)(line.as_ptr(), line.len()) }
         }
         Err(_) => unsafe { numeric_error(api, b"ioError\0", b"stdin read failed") },
     }
@@ -702,3 +702,5 @@ mod tests {
 }
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::string_dependency!();

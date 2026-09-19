@@ -319,11 +319,11 @@ unsafe fn arg(args: *const Oop, count: usize, index: usize) -> Option<Oop> {
     unsafe { borrowed_oop_args(args, count)?.get(index).copied() }
 }
 
-unsafe fn string_arg(api: &IdApi, object: Oop) -> Option<CString> {
+unsafe fn string_arg(_api: &IdApi, object: Oop) -> Option<CString> {
     let mut length = 0usize;
     // SAFETY: the Oop is supplied by the host message ABI and the output slot
     // is valid for the duration of this call.
-    let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+    let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
     if length != 0 && bytes.is_null() {
         return None;
     }
@@ -1073,7 +1073,7 @@ pub unsafe extern "C" fn rt_mk_string(bytes: *const u8, length: usize) -> Oop {
     if length != 0 && bytes.is_null() {
         return api.nilObj;
     }
-    unsafe { (api.mkString)(bytes, length) }
+    unsafe { (birnam_abi::string::make)(bytes, length) }
 }
 
 #[unsafe(export_name = "birnam_nil")]
@@ -1167,9 +1167,9 @@ pub unsafe extern "C" fn rt_cstr(object: Oop) -> *mut c_char {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
+    let _api = unsafe { api_ref(runtime) };
     let mut length = 0usize;
-    let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+    let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
     if length != 0 && bytes.is_null() {
         return ptr::null_mut();
     }
@@ -1526,3 +1526,5 @@ birnam_abi::integer_dependency!();
 birnam_abi::float_dependency!();
 
 birnam_abi::word_dependency!();
+
+birnam_abi::string_dependency!();

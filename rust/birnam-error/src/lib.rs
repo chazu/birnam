@@ -190,7 +190,7 @@ unsafe extern "C" fn object_dnu(_self_object: Oop, args: *const Oop, count: usiz
     let mut message = Vec::with_capacity(b"does not understand #".len() + name.len());
     message.extend_from_slice(b"does not understand #");
     message.extend_from_slice(name);
-    let message = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
     if message.is_null() {
         return api.nilObj;
     }
@@ -303,3 +303,5 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mu
     unsafe { bring_up(api) };
     ptr::null_mut()
 }
+
+birnam_abi::string_dependency!();

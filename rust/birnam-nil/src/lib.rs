@@ -44,7 +44,7 @@ unsafe extern "C" fn nil_not_nil(_self_object: Oop, _args: *const Oop, count: us
 unsafe extern "C" fn nil_print_string(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count == 0 {
-        unsafe { (api.mkString)(b"nil".as_ptr(), 3) }
+        unsafe { (birnam_abi::string::make)(b"nil".as_ptr(), 3) }
     } else {
         api.nilObj
     }
@@ -73,3 +73,5 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) ->
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
+
+birnam_abi::string_dependency!();

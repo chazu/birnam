@@ -745,9 +745,9 @@ mod runtime {
         if unsafe { vtable_inherits_from(api, vtable, birnam_abi::word::behavior()) } {
             return Some(BoxedValue::Word(unsafe { (birnam_abi::word::value)(object) }));
         }
-        if unsafe { vtable_inherits_from(api, vtable, api.string_vt) } {
+        if unsafe { vtable_inherits_from(api, vtable, birnam_abi::string::behavior()) } {
             let mut length = 0usize;
-            let pointer = unsafe { (api.stringBytes)(object, &mut length) };
+            let pointer = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
             if pointer.is_null() && length != 0 {
                 return None;
             }
@@ -1281,11 +1281,11 @@ mod runtime {
     }
 
     unsafe fn oop_string_bytes(api: &IdApi, object: Oop) -> Option<Vec<u8>> {
-        if object.is_null() || unsafe { (api.vtableOf)(object) } != api.string_vt {
+        if object.is_null() || unsafe { (api.vtableOf)(object) } != unsafe { birnam_abi::string::behavior() } {
             return None;
         }
         let mut length = 0usize;
-        let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
         if bytes.is_null() && length != 0 {
             return None;
         }
@@ -1578,12 +1578,12 @@ mod runtime {
         let digest = unsafe { send0(api, codegen, b"currentGenerationDigest\0") };
         if digest.is_null()
             || digest == api.nilObj
-            || unsafe { (api.vtableOf)(digest) } != api.string_vt
+            || unsafe { (api.vtableOf)(digest) } != unsafe { birnam_abi::string::behavior() }
         {
             return None;
         }
         let mut length = 0;
-        let bytes = unsafe { (api.stringBytes)(digest, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(digest, &mut length) };
         if bytes.is_null() && length != 0 {
             return None;
         }
@@ -1604,10 +1604,10 @@ mod runtime {
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
-        let programs = unsafe { (api.mkString)(records.programs.as_ptr(), records.programs.len()) };
-        let bindings = unsafe { (api.mkString)(records.bindings.as_ptr(), records.bindings.len()) };
+        let programs = unsafe { (birnam_abi::string::make)(records.programs.as_ptr(), records.programs.len()) };
+        let bindings = unsafe { (birnam_abi::string::make)(records.bindings.as_ptr(), records.bindings.len()) };
         let selection =
-            unsafe { (api.mkString)(records.selection.as_ptr(), records.selection.len()) };
+            unsafe { (birnam_abi::string::make)(records.selection.as_ptr(), records.selection.len()) };
         let arguments = [programs, bindings, selection];
         let code = unsafe {
             (api.send)(
@@ -1617,7 +1617,7 @@ mod runtime {
                 arguments.len(),
             )
         };
-        if code.is_null() || code == api.nilObj || unsafe { (api.vtableOf)(code) } != api.string_vt
+        if code.is_null() || code == api.nilObj || unsafe { (api.vtableOf)(code) } != unsafe { birnam_abi::string::behavior() }
         {
             return None;
         }
@@ -1812,7 +1812,7 @@ mod runtime {
                 V8Value::BoxedFloat(bits) => unsafe { (birnam_abi::float::make)(f64::from_bits(bits)) },
                 V8Value::BoxedWord(value) => unsafe { (birnam_abi::word::make)(value) },
                 V8Value::BoxedString(bytes) => unsafe {
-                    (api.mkString)(bytes.as_ptr(), bytes.len())
+                    (birnam_abi::string::make)(bytes.as_ptr(), bytes.len())
                 },
                 _ => continue,
             };
@@ -2146,14 +2146,14 @@ mod runtime {
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
-        let programs = unsafe { (api.mkString)(decoded.programs.as_ptr(), decoded.programs.len()) };
-        let bindings = unsafe { (api.mkString)(decoded.bindings.as_ptr(), decoded.bindings.len()) };
+        let programs = unsafe { (birnam_abi::string::make)(decoded.programs.as_ptr(), decoded.programs.len()) };
+        let bindings = unsafe { (birnam_abi::string::make)(decoded.bindings.as_ptr(), decoded.bindings.len()) };
         let selection =
-            unsafe { (api.mkString)(decoded.selection.as_ptr(), decoded.selection.len()) };
+            unsafe { (birnam_abi::string::make)(decoded.selection.as_ptr(), decoded.selection.len()) };
         if !rebuild {
             if let Some(code) = decoded.code {
                 let unit = code.get(72..)?;
-                let unit = unsafe { (api.mkString)(unit.as_ptr(), unit.len()) };
+                let unit = unsafe { (birnam_abi::string::make)(unit.as_ptr(), unit.len()) };
                 let arguments = [unit, programs, bindings, selection];
                 let owner = unsafe {
                     (api.send)(
@@ -2238,11 +2238,11 @@ mod runtime {
     }
 
     unsafe fn runtime_image_path_bytes(api: &IdApi, path: Oop) -> Option<Vec<u8>> {
-        if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
+        if path.is_null() || unsafe { (api.vtableOf)(path) } != unsafe { birnam_abi::string::behavior() } {
             return None;
         }
         let mut length = 0;
-        let bytes = unsafe { (api.stringBytes)(path, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(path, &mut length) };
         if bytes.is_null() && length != 0 {
             return None;
         }
@@ -2582,7 +2582,7 @@ mod runtime {
             return api.nilObj;
         };
         let path = arguments[0];
-        if path.is_null() || unsafe { (api.vtableOf)(path) } != api.string_vt {
+        if path.is_null() || unsafe { (api.vtableOf)(path) } != unsafe { birnam_abi::string::behavior() } {
             reject_save("saveImage: expects one String path");
             return api.nilObj;
         }
@@ -2793,7 +2793,7 @@ mod runtime {
         let Some(identity) = identity else {
             return api.nilObj;
         };
-        unsafe { (api.mkString)(identity.as_ptr(), identity.len()) }
+        unsafe { (birnam_abi::string::make)(identity.as_ptr(), identity.len()) }
     }
 
     unsafe extern "C" fn system_bake_exe(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -2908,7 +2908,7 @@ mod runtime {
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             (report.detail, report.detail_len)
         };
-        unsafe { (api.mkString)(detail.as_ptr(), detail_len) }
+        unsafe { (birnam_abi::string::make)(detail.as_ptr(), detail_len) }
     }
 
     unsafe extern "C" fn collector_collect(
@@ -3185,3 +3185,5 @@ birnam_abi::integer_dependency!();
 birnam_abi::float_dependency!();
 
 birnam_abi::word_dependency!();
+
+birnam_abi::string_dependency!();

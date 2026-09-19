@@ -23,7 +23,6 @@ use crate::registration::{
     ABORT_V1, DescriptorAdmission, PREPARE_V1, ResumableRegistrationEnvelope, StagedUnit,
 };
 use crate::symbol::{EmbeddedNul, Symbols};
-use crate::values::Values;
 use crate::vtable::{AddMethod, Vtables};
 
 #[cfg(all(test, target_os = "macos"))]
@@ -63,6 +62,8 @@ mod numeric;
 mod integer;
 mod float;
 mod word;
+mod string;
+mod native_allocation;
 mod tracing;
 mod collect;
 mod recovery;
@@ -103,30 +104,26 @@ impl DispatchGlobals {
 pub(crate) struct CanonicalObjects {
     pub(crate) symbol_list: Oop,
     pub(crate) environment: Oop,
-    pub(crate) string_vt: Oop,
     pub(crate) nil_vt: Oop,
     pub(crate) bool_vt: Oop,
     pub(crate) nil: Oop,
     pub(crate) true_object: Oop,
     pub(crate) false_object: Oop,
     pub(crate) object_prototype: Oop,
-    pub(crate) string_prototype: Oop,
     pub(crate) symbol_prototype: Oop,
 }
 
 impl CanonicalObjects {
-    fn roots(self) -> [Oop; 11] {
+    fn roots(self) -> [Oop; 9] {
         [
             self.symbol_list,
             self.environment,
-            self.string_vt,
             self.nil_vt,
             self.bool_vt,
             self.nil,
             self.true_object,
             self.false_object,
             self.object_prototype,
-            self.string_prototype,
             self.symbol_prototype,
         ]
     }
@@ -136,7 +133,6 @@ struct RuntimeState {
     // Ordered authorities are dropped before the raw heap owner at harness
     // teardown. No destructor dereferences a heap payload.
     symbols: Symbols,
-    values: Values,
     vtables: Vtables,
     heap: Heap,
     globals: DispatchGlobals,
@@ -230,6 +226,7 @@ pub(crate) struct Runtime {
     integer: Cell<Option<integer::Binding>>,
     float: Cell<Option<float::Binding>>,
     word: Cell<Option<word::Binding>>,
+    string: Cell<Option<string::Binding>>,
     trace: Cell<Option<birnam_abi::trace_live::TraceLiveV1>>,
     collect: Cell<Option<birnam_abi::collect::CollectV1>>,
     #[cfg(test)]
@@ -238,6 +235,8 @@ pub(crate) struct Runtime {
     test_float: UnsafeCell<Option<float::TestOwner>>,
     #[cfg(test)]
     test_word: UnsafeCell<Option<word::TestOwner>>,
+    #[cfg(test)]
+    test_string: UnsafeCell<Option<string::TestOwner>>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
     #[cfg(test)]
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
@@ -401,16 +400,6 @@ impl Runtime {
         symbols: Symbols,
         globals: DispatchGlobals,
     ) -> Self {
-        Self::new_with_values(heap, vtables, symbols, Values::new(), globals)
-    }
-
-    pub(crate) fn new_with_values(
-        heap: Heap,
-        vtables: Vtables,
-        symbols: Symbols,
-        values: Values,
-        globals: DispatchGlobals,
-    ) -> Self {
         Self {
             owner: current_thread_token(),
             observation: storage::ObservationState::new(),
@@ -424,6 +413,7 @@ impl Runtime {
             integer: Cell::new(None),
             float: Cell::new(None),
             word: Cell::new(None),
+            string: Cell::new(None),
             #[cfg(not(test))]
             trace: Cell::new(None),
             #[cfg(test)]
@@ -438,6 +428,8 @@ impl Runtime {
             test_float: UnsafeCell::new(None),
             #[cfg(test)]
             test_word: UnsafeCell::new(None),
+            #[cfg(test)]
+            test_string: UnsafeCell::new(None),
             recovery_requests: core::cell::RefCell::new(Vec::new()),
             #[cfg(test)]
             deopt_trial: core::cell::RefCell::new(None),
@@ -447,7 +439,6 @@ impl Runtime {
             read_reuse_gc_epoch: Cell::new(0),
             state: UnsafeCell::new(RuntimeState {
                 symbols,
-                values,
                 vtables,
                 heap,
                 globals,
@@ -937,87 +928,7 @@ impl Runtime {
         self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
-        state
-            .values
-            .allocate_empty(&mut state.heap, vtable, permanence)
-    }
-
-    pub(crate) fn allocate_string(&self, vtable: Oop, bytes: &[u8]) -> Oop {
-        self.assert_owner();
-        self.require_allocation_allowed();
-        self.maybe_collect_before_allocation();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        state.values.allocate_string(&mut state.heap, vtable, bytes)
-    }
-
-    pub(crate) fn make_string_with_finalizer(
-        &self,
-        bytes: &[u8],
-        finalizer: crate::abi::Finalizer,
-    ) -> Oop {
-        self.assert_owner();
-        // SAFETY: assert_owner established the same authority as Runtime::enter.
-        unsafe { self.make_string_with_finalizer_active(bytes, finalizer) }
-    }
-
-    /// Allocate a canonical String and install its finalizer after `enter` has
-    /// established owner-thread authority for this runtime.
-    ///
-    /// # Safety
-    ///
-    /// The caller must be executing within this exact runtime's active dynamic
-    /// extent. Collection-phase and automatic-collection checks remain active.
-    pub(crate) unsafe fn make_string_with_finalizer_active(
-        &self,
-        bytes: &[u8],
-        finalizer: crate::abi::Finalizer,
-    ) -> Oop {
-        self.require_allocation_allowed();
-        self.maybe_collect_before_allocation();
-        // SAFETY: active-runtime serialization and no foreign call in this
-        // scope. Automatic collection completed before this state borrow.
-        let state = unsafe { &mut *self.state.get() };
-        let string_vtable = state
-            .canonical
-            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
-            .string_vt;
-        let object = state
-            .values
-            .allocate_string(&mut state.heap, string_vtable, bytes);
-        boundary::require_invariant(
-            state.heap.set_finalizer(object, finalizer),
-            "new String did not retain finalizer metadata",
-        );
-        object
-    }
-
-    pub(crate) fn clone_string(&self, object: Oop, finalizer: crate::abi::Finalizer) -> Oop {
-        if object.is_null() {
-            return object;
-        }
-        self.assert_owner();
-        self.require_allocation_allowed();
-        self.maybe_collect_before_allocation();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        let bytes = state
-            .values
-            .string_bytes(object)
-            .unwrap_or_else(|| boundary::fatal_invariant("String clone lost byte ownership"))
-            .to_vec();
-        let string_vtable = state
-            .canonical
-            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
-            .string_vt;
-        let clone = state
-            .values
-            .allocate_string(&mut state.heap, string_vtable, &bytes);
-        boundary::require_invariant(
-            state.heap.set_finalizer(clone, finalizer),
-            "String clone did not retain finalizer metadata",
-        );
-        clone
+        crate::values::allocate_empty(&mut state.heap, vtable, permanence)
     }
 
     pub(crate) fn install_canonical(&self, canonical: CanonicalObjects) {
@@ -1110,14 +1021,12 @@ impl Runtime {
         let canonical = self.canonical();
         for (name, value) in [
             (&b"Object"[..], canonical.object_prototype),
-            (&b"String"[..], canonical.string_prototype),
             (&b"Boolean"[..], canonical.true_object),
             (&b"False"[..], canonical.false_object),
             (&b"Vtable"[..], globals.vtable_vt),
             (&b"Symbol"[..], canonical.symbol_prototype),
             (&b"SymbolVt"[..], globals.symbol_vt),
             (&b"ObjectVt"[..], globals.object_vt),
-            (&b"StringVt"[..], canonical.string_vt),
         ] {
             self.export(name, value)
                 .unwrap_or_else(|_| boundary::fatal_invariant("static export name contains NUL"));
@@ -4608,20 +4517,6 @@ impl Runtime {
         unsafe { (*self.state.get()).heap.permanence_of(object) }
     }
 
-    pub(crate) fn string_bytes(&self, object: Oop) -> Option<&[u8]> {
-        self.assert_owner();
-        // SAFETY: caller supplies a String object and performs no mutation or
-        // foreign call while inspecting the owned bytes.
-        unsafe { (*self.state.get()).values.string_bytes(object) }
-    }
-
-    pub(crate) fn release_string(&self, object: Oop) {
-        self.assert_owner();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let released = unsafe { (&mut *self.state.get()).values.release_string(object) };
-        boundary::require_invariant(released, "String finalizer lost byte ownership");
-    }
-
     #[cfg(test)]
     pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {
         self.assert_owner();
@@ -6308,7 +6203,6 @@ mod tests {
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;
         let globals = runtime.globals();
-        let canonical = runtime.canonical();
 
         runtime.enter(|| {
             // SAFETY: Runtime::enter established owner-thread authority for
@@ -6329,7 +6223,7 @@ mod tests {
                 "active instance allocation retains its requested vtable"
             );
             assert_eq!(runtime.string_bytes(string), Some(&b"Birnam"[..]));
-            assert_eq!(runtime.checked_vtable_of(string), canonical.string_vt);
+            assert_eq!(runtime.checked_vtable_of(string), runtime.string_behavior());
             assert_eq!(runtime.has_finalizer(string), Some(true));
         });
     }

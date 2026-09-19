@@ -31,6 +31,7 @@
     "birnam_rust_codegen_record_global_src",
     "birnam_rust_codegen_record_module_source",
     "birnam_rust_codegen_remove_method",
+    "birnam_string_dependency_v1",
     "module_init"
   ]
 }

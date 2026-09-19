@@ -1,10 +1,14 @@
 //! Existing String methods, independently loaded from Collection (81W).
-//! String representation remains in Id; splitting remains with Array storage.
+//! Owns canonical representation and external byte buffers (81X).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::{Once, OnceLock};
+use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
+pub mod storage;
+static INSTANCE: AtomicPtr<storage::Instance> = AtomicPtr::new(ptr::null_mut());
+static PHASE: AtomicU8 = AtomicU8::new(0);
 
 struct Runtime {
     api: usize,
@@ -35,12 +39,54 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
     }
 }
 
+unsafe extern "C" fn storage_roots(mark: MarkFn) {
+    let instance = INSTANCE.load(Ordering::Acquire);
+    if !instance.is_null() { unsafe { (*instance).trace(mark) }; }
+}
+unsafe extern "C" fn cleanup(object: Oop) {
+    let ops = unsafe { birnam_string_provider_v1().read() };
+    assert_eq!(unsafe { ((*ops.storage).release)(ops.context, object) }, 1, "String finalizer lost byte ownership");
+}
+unsafe extern "C" fn cleanup_owner(finalizer: birnam_abi::Finalizer) -> *mut c_void {
+    if finalizer as usize == cleanup as *const () as usize {
+        INSTANCE.load(Ordering::Acquire).cast()
+    } else { ptr::null_mut() }
+}
+unsafe extern "C" fn string_clone(receiver: Oop, _: *const Oop, _: usize) -> Oop {
+    let ops = unsafe { birnam_string_provider_v1().read() };
+    unsafe { ((*ops.storage).clone)(ops.context, receiver, cleanup) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_string_provider_v1() -> *mut birnam_abi::string::StringApiV1 {
+    if PHASE.load(Ordering::Acquire) < 2 { return ptr::null_mut(); }
+    unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_string_prepare_v1(api: *mut IdApi, allocation: *const birnam_abi::native_allocation::NativeAllocationV1) -> *mut birnam_abi::string::StringApiV1 {
+    if api.is_null() { abort("preparation received a null IdApi"); }
+    if PHASE.load(Ordering::Acquire) != 0 {
+        let instance = INSTANCE.load(Ordering::Acquire);
+        if instance.is_null() || unsafe { (*instance).api() } != api { abort("another IdApi is already mounted"); }
+        if PHASE.load(Ordering::Acquire) == 1 { abort("recursive String preparation"); }
+        return unsafe { birnam_string_provider_v1() };
+    }
+    if allocation.is_null() { abort("native allocation capability missing"); }
+    PHASE.store(1, Ordering::Release);
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api, allocation.read(), cleanup, cleanup_owner) });
+    INSTANCE.store(instance, Ordering::Release);
+    unsafe { ((*api).gcRegisterRootProvider)(storage_roots); (*instance).prepare(string_clone); }
+    let ops = unsafe { (*instance).operations() };
+    if unsafe { birnam_abi::string::attach(ops) } != 1 { abort("invalid String table"); }
+    PHASE.store(2, Ordering::Release);
+    ops
+}
+
 unsafe fn string_copy(api: &IdApi, object: Oop) -> Option<Vec<u8>> {
-    if object.is_null() || unsafe { (api.vtableOf)(object) } != api.string_vt {
+    if object.is_null() || unsafe { (api.vtableOf)(object) } != unsafe { birnam_abi::string::behavior() } {
         return None;
     }
     let mut length = 0;
-    let bytes = unsafe { (api.stringBytes)(object, &mut length) };
+    let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
     if length == 0 {
         return Some(Vec::new());
     }
@@ -66,19 +112,19 @@ unsafe extern "C" fn string_comma(self_object: Oop, args: *const Oop, count: usi
     let Some(mut other) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.vtableOf)(other) } != api.string_vt {
+    if unsafe { (api.vtableOf)(other) } != unsafe { birnam_abi::string::behavior() } {
         other = unsafe { (api.send)(other, runtime().print_string as Oop, ptr::null(), 0) };
     }
     let Some(left) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
     };
     let Some(right) = (unsafe { string_copy(api, other) }) else {
-        return unsafe { (api.mkString)(left.as_ptr(), left.len()) };
+        return unsafe { (birnam_abi::string::make)(left.as_ptr(), left.len()) };
     };
     let mut output = Vec::with_capacity(left.len() + right.len());
     output.extend_from_slice(&left);
     output.extend_from_slice(&right);
-    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
 }
 
 unsafe extern "C" fn string_equals(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -125,7 +171,7 @@ unsafe extern "C" fn string_at(self_object: Oop, args: *const Oop, count: usize)
         return api.nilObj;
     }
     let byte = [bytes[index as usize]];
-    unsafe { (api.mkString)(byte.as_ptr(), 1) }
+    unsafe { (birnam_abi::string::make)(byte.as_ptr(), 1) }
 }
 
 unsafe extern "C" fn string_byte_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -171,7 +217,7 @@ unsafe extern "C" fn string_copy_from_to(self_object: Oop, args: *const Oop, cou
         return api.nilObj;
     }
     unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             bytes[from as usize..to as usize].as_ptr(),
             (to - from) as usize,
         )
@@ -195,7 +241,7 @@ unsafe extern "C" fn string_trimmed(self_object: Oop, _args: *const Oop, count: 
         .iter()
         .rposition(|byte| !is_space(*byte))
         .map_or(start, |index| index + 1);
-    unsafe { (api.mkString)(bytes[start..end].as_ptr(), end - start) }
+    unsafe { (birnam_abi::string::make)(bytes[start..end].as_ptr(), end - start) }
 }
 
 unsafe extern "C" fn string_index_of(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -286,7 +332,7 @@ unsafe extern "C" fn string_replace_with(self_object: Oop, args: *const Oop, cou
         return api.nilObj;
     };
     if needle.is_empty() {
-        return unsafe { (api.mkString)(haystack.as_ptr(), haystack.len()) };
+        return unsafe { (birnam_abi::string::make)(haystack.as_ptr(), haystack.len()) };
     }
     let mut output = Vec::new();
     let mut index = 0usize;
@@ -301,7 +347,7 @@ unsafe extern "C" fn string_replace_with(self_object: Oop, args: *const Oop, cou
             index += 1;
         }
     }
-    unsafe { (api.mkString)(output.as_ptr(), output.len()) }
+    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
 }
 
 unsafe extern "C" fn string_as_symbol(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -374,51 +420,55 @@ fn trim_ascii(bytes: &[u8]) -> &[u8] {
 /// Install the existing String methods through the selected floor API.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) -> *mut c_void {
-    if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
-    }
+    let _ = unsafe { birnam_string_prepare_v1(api_pointer, ptr::null()) };
+    let previous = PHASE.swap(3, Ordering::AcqRel);
+    if previous != 2 && previous != 4 { abort("recursive String activation"); }
+    let _ = unsafe { birnam_abi::integer::operations() };
+    let _ = unsafe { birnam_abi::float::operations() };
     let api = unsafe { &*api_pointer };
+    if previous == 2 { unsafe { (*INSTANCE.load(Ordering::Acquire)).publish() }; }
     ROOTS_REGISTERED.call_once(|| unsafe { (api.gcRegisterRootProvider)(mark_roots) });
     let _ = RUNTIME.get_or_init(|| Runtime {
         api: api_pointer as usize,
         print_string: unsafe { intern(api, b"printString\0") } as usize,
     });
     unsafe {
-        (api.method)(api.string_vt, intern(api, b",\0"), string_comma);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b",\0"), string_comma);
         (api.method)(
-            api.string_vt,
+            birnam_abi::string::behavior(),
             intern(api, b"printString\0"),
             string_print_string,
         );
-        (api.method)(api.string_vt, intern(api, b"=\0"), string_equals);
-        (api.method)(api.string_vt, intern(api, b"size\0"), string_size);
-        (api.method)(api.string_vt, intern(api, b"at:\0"), string_at);
-        (api.method)(api.string_vt, intern(api, b"byteAt:\0"), string_byte_at);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"=\0"), string_equals);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"size\0"), string_size);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"at:\0"), string_at);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"byteAt:\0"), string_byte_at);
         (api.method)(
-            api.string_vt,
+            birnam_abi::string::behavior(),
             intern(api, b"copyFrom:to:\0"),
             string_copy_from_to,
         );
-        (api.method)(api.string_vt, intern(api, b"trimmed\0"), string_trimmed);
-        (api.method)(api.string_vt, intern(api, b"indexOf:\0"), string_index_of);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"trimmed\0"), string_trimmed);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"indexOf:\0"), string_index_of);
         (api.method)(
-            api.string_vt,
+            birnam_abi::string::behavior(),
             intern(api, b"bracketDepth\0"),
             string_bracket_depth,
         );
         (api.method)(
-            api.string_vt,
+            birnam_abi::string::behavior(),
             intern(api, b"replace:with:\0"),
             string_replace_with,
         );
-        (api.method)(api.string_vt, intern(api, b"asSymbol\0"), string_as_symbol);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"asSymbol\0"), string_as_symbol);
         (api.method)(
-            api.string_vt,
+            birnam_abi::string::behavior(),
             intern(api, b"asInteger\0"),
             string_as_integer,
         );
-        (api.method)(api.string_vt, intern(api, b"asNumber\0"), string_as_number);
+        (api.method)(birnam_abi::string::behavior(), intern(api, b"asNumber\0"), string_as_number);
     }
+    PHASE.store(4, Ordering::Release);
     ptr::null_mut()
 }
 

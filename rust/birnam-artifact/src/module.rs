@@ -122,20 +122,20 @@ unsafe fn failure(api: &abi::IdApi) -> abi::Oop {
     }
 }
 
-unsafe fn string_bytes<'a>(api: &abi::IdApi, value: abi::Oop) -> Option<&'a [u8]> {
+unsafe fn string_bytes<'a>(_api: &abi::IdApi, value: abi::Oop) -> Option<&'a [u8]> {
     let mut length = 0usize;
     // SAFETY: the caller supplies an object known to be a String by the vtable
     // check in the public method; the IdApi returns its stable byte payload.
-    let pointer = unsafe { (api.stringBytes)(value, &mut length) };
+    let pointer = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
     // SAFETY: IdApi's stringBytes contract is the same borrowed byte contract
     // used by the ABI crate; zero length accepts a null pointer.
     unsafe { abi::borrowed_bytes(pointer, length) }
 }
 
-unsafe fn mk_string(api: &abi::IdApi, bytes: &[u8]) -> abi::Oop {
+unsafe fn mk_string(_api: &abi::IdApi, bytes: &[u8]) -> abi::Oop {
     // SAFETY: the bytes remain readable for this synchronous call and a zero
     // length slice carries the ABI's permitted null/count shape.
-    unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
+    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
 }
 
 fn list_field(bytes: &[u8], index: usize) -> Option<&[u8]> {
@@ -301,7 +301,7 @@ unsafe extern "C" fn inspect_method(
     let Some(arguments) = (unsafe { abi::borrowed_oop_args(arguments, count) }) else {
         return unsafe { fail(api, b"artifactPathInvalid") };
     };
-    if arguments.len() != 1 || unsafe { (api.vtableOf)(arguments[0]) } != api.string_vt {
+    if arguments.len() != 1 || unsafe { (api.vtableOf)(arguments[0]) } != unsafe { birnam_abi::string::behavior() } {
         return unsafe { fail(api, b"artifactPathInvalid") };
     }
     // SAFETY: arguments[0] is a String according to the vtable check.

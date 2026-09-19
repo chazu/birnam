@@ -2,6 +2,10 @@
 
 Status: isolated experiment. No default promotion or main integration.
 
+Subsequent boundary: [81X](81x-production-string-storage.md) moves the production
+String byte owner and this exact cleanup witness into the loaded String module.
+The experiment below records the original floor-owned implementation.
+
 The 74Y normal-floor profile for the 16-operation boxed earlier-result case
 shows deferred-allocation settlement only with counting enabled. The GC currently
 settles every deferred identity if any dead finalizer can observe the sweep.

@@ -1,4 +1,4 @@
-//! No-state C-layout mirror of the current `IdApi` v6 boundary.
+//! No-state C-layout mirror of the current `IdApi` v7 boundary.
 //!
 //! Raw data pointers are intentionally nullable. Function-pointer fields are
 //! non-null except for the explicitly optional method-overwrite hook.
@@ -10,6 +10,8 @@ pub mod foreign_address;
 pub mod integer;
 pub mod float;
 pub mod word;
+pub mod string;
+pub mod native_allocation;
 pub mod storage;
 pub mod trace;
 pub mod trace_live;
@@ -181,9 +183,6 @@ pub struct IdApi {
     pub trueObj: Oop,
     pub falseObj: Oop,
 
-    pub string_vt: Oop,
-    pub mkString: unsafe extern "C" fn(*const u8, usize) -> Oop,
-    pub stringBytes: unsafe extern "C" fn(Oop, *mut usize) -> *const u8,
     pub symbolName: unsafe extern "C" fn(Oop) -> *const c_char,
     pub vtableOf: unsafe extern "C" fn(Oop) -> Oop,
 
@@ -211,7 +210,7 @@ pub struct IdApi {
 
 pub const ABI_DESCRIPTOR_MAGIC: [u8; 8] = *b"BIRNABI1";
 pub const ABI_TYPE_COUNT: usize = 8;
-pub const ABI_FIELD_COUNT: usize = 37;
+pub const ABI_FIELD_COUNT: usize = 34;
 
 const LAYOUT_KIND_TYPE: usize = 0;
 const LAYOUT_KIND_DATA_POINTER: usize = 1;
@@ -230,7 +229,7 @@ pub struct AbiLayoutEntryV1 {
 
 /// Pointer-free diagnostic description of the Rust mirror's actual layout.
 ///
-/// Entry order is the canonical order in `abi/idapi-v6.json`. Names and
+/// Entry order is the canonical order in `abi/idapi-v7.json`. Names and
 /// signatures remain owned by that manifest; this value supplies the Rust
 /// compiler's concrete sizes, alignments, offsets, nullability, and field kind.
 #[repr(C)]
@@ -282,7 +281,7 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
     magic: ABI_DESCRIPTOR_MAGIC,
     descriptor_version: 1,
     descriptor_size: size_of::<AbiDescriptorV1>(),
-    schema_version: 6,
+    schema_version: 7,
     target_arch: 1,   // aarch64
     target_os: 1,     // macOS
     target_abi: 0,    // none
@@ -321,9 +320,6 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         field_layout!(nilObj, true, LAYOUT_KIND_DATA_POINTER),
         field_layout!(trueObj, true, LAYOUT_KIND_DATA_POINTER),
         field_layout!(falseObj, true, LAYOUT_KIND_DATA_POINTER),
-        field_layout!(string_vt, true, LAYOUT_KIND_DATA_POINTER),
-        field_layout!(mkString, false, LAYOUT_KIND_FUNCTION_POINTER),
-        field_layout!(stringBytes, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(symbolName, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(vtableOf, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(gcSetStackBottom, false, LAYOUT_KIND_FUNCTION_POINTER),
@@ -349,7 +345,7 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         SLOT_CODE as usize,
         SLOT_UNKNOWN as usize,
     ],
-    fingerprint: [0x18, 0x12, 0x3c, 0x5e, 0x82, 0x73, 0x54, 0x32, 0x09, 0x7d, 0x15, 0x2e, 0x63, 0x86, 0x22, 0x59, 0xbf, 0xa2, 0x5f, 0x25, 0x96, 0x05, 0xad, 0xdf, 0x72, 0x68, 0xe1, 0x95, 0x33, 0x5a, 0xfc, 0x35],
+    fingerprint: [0xbf, 0x3f, 0x61, 0x1f, 0x09, 0x0a, 0x6b, 0x68, 0x70, 0x19, 0x16, 0xc8, 0x91, 0x18, 0x91, 0x4b, 0x61, 0xe4, 0x6e, 0x5e, 0x33, 0x2e, 0x78, 0xb9, 0x03, 0xf6, 0x9e, 0xbf, 0x4b, 0x75, 0xe4, 0x0a],
 };
 
 macro_rules! assert_field_offset {
@@ -380,7 +376,7 @@ const _: () = {
     assert!(size_of::<Option<MethodOverwriteHook>>() == 8);
     assert!(size_of::<IdInitFn>() == 8);
     assert!(size_of::<ModuleInitFn>() == 8);
-    assert!(size_of::<IdApi>() == 296);
+    assert!(size_of::<IdApi>() == 272);
     assert!(align_of::<IdApi>() == 8);
 
     assert_field_offset!(dlopen, 0);
@@ -399,27 +395,24 @@ const _: () = {
     assert_field_offset!(nilObj, 104);
     assert_field_offset!(trueObj, 112);
     assert_field_offset!(falseObj, 120);
-    assert_field_offset!(string_vt, 128);
-    assert_field_offset!(mkString, 136);
-    assert_field_offset!(stringBytes, 144);
-    assert_field_offset!(symbolName, 152);
-    assert_field_offset!(vtableOf, 160);
-    assert_field_offset!(gcSetStackBottom, 168);
-    assert_field_offset!(gcRegisterRootProvider, 176);
-    assert_field_offset!(gcCollect, 184);
-    assert_field_offset!(gcLiveCount, 192);
-    assert_field_offset!(setTraceHook, 200);
-    assert_field_offset!(gcSetAuto, 208);
-    assert_field_offset!(setFinalizer, 216);
-    assert_field_offset!(setLayout, 224);
-    assert_field_offset!(gcSetPrecise, 232);
-    assert_field_offset!(objectPayloadSize, 240);
-    assert_field_offset!(exportedNameOf, 248);
-    assert_field_offset!(slotKind, 256);
-    assert_field_offset!(setMethodOverwriteHook, 264);
-    assert_field_offset!(vtableCount, 272);
-    assert_field_offset!(vtableAt, 280);
-    assert_field_offset!(vtableSelectorAt, 288);
+    assert_field_offset!(symbolName, 128);
+    assert_field_offset!(vtableOf, 136);
+    assert_field_offset!(gcSetStackBottom, 144);
+    assert_field_offset!(gcRegisterRootProvider, 152);
+    assert_field_offset!(gcCollect, 160);
+    assert_field_offset!(gcLiveCount, 168);
+    assert_field_offset!(setTraceHook, 176);
+    assert_field_offset!(gcSetAuto, 184);
+    assert_field_offset!(setFinalizer, 192);
+    assert_field_offset!(setLayout, 200);
+    assert_field_offset!(gcSetPrecise, 208);
+    assert_field_offset!(objectPayloadSize, 216);
+    assert_field_offset!(exportedNameOf, 224);
+    assert_field_offset!(slotKind, 232);
+    assert_field_offset!(setMethodOverwriteHook, 240);
+    assert_field_offset!(vtableCount, 248);
+    assert_field_offset!(vtableAt, 256);
+    assert_field_offset!(vtableSelectorAt, 264);
 
     assert!(SLOT_RAW == 0);
     assert!(SLOT_OOP == 1);
@@ -436,8 +429,8 @@ mod tests {
         assert_eq!((size_of::<Oop>(), align_of::<Oop>()), (8, 8));
         assert_eq!((size_of::<Method>(), align_of::<Method>()), (8, 8));
         assert_eq!(size_of::<Option<MethodOverwriteHook>>(), 8);
-        assert_eq!((size_of::<IdApi>(), align_of::<IdApi>()), (296, 8));
-        assert_eq!(offset_of!(IdApi, vtableSelectorAt), 288);
+        assert_eq!((size_of::<IdApi>(), align_of::<IdApi>()), (272, 8));
+        assert_eq!(offset_of!(IdApi, vtableSelectorAt), 264);
         assert_eq!(
             [SLOT_RAW, SLOT_OOP, SLOT_CODE, SLOT_UNKNOWN],
             [0, 1, 2, 255]
@@ -535,13 +528,13 @@ unsafe fn vtable_protocol(api: &IdApi, selector: &core::ffi::CStr, args: &[Oop])
 }
 
 #[cfg(test)]
-mod v6_manifest_tests {
+mod v7_manifest_tests {
     use super::*;
     use sha2::{Digest, Sha256};
     #[test]
-    fn current_descriptor_matches_independent_v6_manifest() {
+    fn current_descriptor_matches_independent_v7_manifest() {
         let mut manifest: serde_json::Value =
-            serde_json::from_str(include_str!("../../../abi/idapi-v6.json")).unwrap();
+            serde_json::from_str(include_str!("../../../abi/idapi-v7.json")).unwrap();
         let expected = manifest
             .as_object_mut()
             .unwrap()
@@ -561,6 +554,7 @@ mod v6_manifest_tests {
             assert_eq!(field["size"], actual.size);
             assert_eq!(field["alignment"], actual.alignment);
             for removed in [
+                "string_vt", "mkString", "stringBytes",
                 "smallint_vt", "mkSmallInt", "smallIntValue", "isSmallInt",
                 "ensurePrivateVtable",
                 "setOwner",

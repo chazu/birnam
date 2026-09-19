@@ -91,14 +91,14 @@ unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
     unsafe { borrowed_oop_args(args, count)?.first().copied() }
 }
 
-unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
+unsafe fn string_bytes(_api: &IdApi, value: Oop) -> Option<Vec<u8>> {
     if value.is_null() {
         return None;
     }
     let mut length = 0usize;
     // SAFETY: `value` is expected to be a String; the IdApi returns a borrowed
     // byte span valid until the current send returns.
-    let pointer = unsafe { (api.stringBytes)(value, &mut length) };
+    let pointer = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
     if length != 0 && pointer.is_null() {
         return None;
     }
@@ -196,7 +196,7 @@ unsafe fn record_alien_source(api: &IdApi, source: &[u8]) {
     }
     let key = format!("__alien_{next}");
     let key = unsafe { intern(api, [key.as_bytes(), b"\0"].concat().as_slice()) };
-    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
     unsafe {
         (api.send)(
             store,
@@ -290,7 +290,7 @@ unsafe fn make_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
         return api.nilObj;
     }
     let kind = unsafe { intern(api, kind) };
-    let message = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
     if kind.is_null() || message.is_null() {
         return api.nilObj;
     }
@@ -501,7 +501,7 @@ unsafe extern "C" fn foreign_address_print_string(
         return api.nilObj;
     };
     let text = format!("ForeignAddress(0x{address:x})");
-    unsafe { (api.mkString)(text.as_ptr(), text.len()) }
+    unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
 }
 
 unsafe extern "C" fn alien_buffer_finalize(object: Oop) {
@@ -596,7 +596,7 @@ unsafe extern "C" fn alien_peek_string(receiver: Oop, args: *const Oop, count: u
     // SAFETY: this operation deliberately adopts the C NUL-terminated string
     // contract; the result is copied into a managed Birnam String immediately.
     let bytes = unsafe { std::ffi::CStr::from_ptr(address as *const c_char) }.to_bytes();
-    unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
+    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
 }
 
 unsafe extern "C" fn alien_poke_int(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -820,7 +820,7 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
         return unsafe { make_error(api, b"compileFailed\0", b"could not create a compile unit") };
     }
     let compile_selector = unsafe { intern(api, b"compile:\0") };
-    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
     if source_object.is_null()
         || unsafe { (api.send)(unit, compile_selector, &source_object, 1) } == api.nilObj
     {
@@ -838,7 +838,7 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
     }
     let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
     let function_name_object =
-        unsafe { (api.mkString)(function_name.as_ptr(), function_name.len()) };
+        unsafe { (birnam_abi::string::make)(function_name.as_ptr(), function_name.len()) };
     let Some(address_object) = (unsafe { foreign_address::allocate(api, address, KIND_BORROWED) })
     else {
         return unsafe { make_error(api, b"outOfMemory\0", b"could not box the symbol address") };
@@ -863,7 +863,7 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
     }
     if !signature.aggregates.is_empty() {
         let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
-        let vector_name = unsafe { (api.mkString)(c"__vecFactory".as_ptr().cast(), 12) };
+        let vector_name = unsafe { (birnam_abi::string::make)(c"__vecFactory".as_ptr().cast(), 12) };
         let Some(vector_address) =
             (unsafe { foreign_address::allocate(api, vector as usize, KIND_BORROWED) })
         else {
@@ -891,7 +891,7 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
         return unsafe { make_error(api, b"relocateFailed\0", b"could not relocate the shim") };
     }
     let install_selector = unsafe { intern(api, b"install:as:on:\0") };
-    let shim_name = unsafe { (api.mkString)(c"__shim".as_ptr().cast(), 6) };
+    let shim_name = unsafe { (birnam_abi::string::make)(c"__shim".as_ptr().cast(), 6) };
     let install_arguments = [shim_name, selector, target];
     let installed = unsafe {
         (api.send)(
@@ -979,7 +979,7 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
     if unit.is_null() || unit == api.nilObj {
         return unsafe { make_error(api, b"compileFailed\0", b"could not create a callback unit") };
     }
-    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
     if source_object.is_null()
         || unsafe { (api.send)(unit, intern(api, b"compile:\0"), &source_object, 1) } == api.nilObj
     {
@@ -995,7 +995,7 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
         return unsafe { make_error(api, b"compileFailed\0", b"TCC runtime binding failed") };
     }
     let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
-    let block_name = unsafe { (api.mkString)(c"__cbBlock".as_ptr().cast(), 9) };
+    let block_name = unsafe { (birnam_abi::string::make)(c"__cbBlock".as_ptr().cast(), 9) };
     let Some(block_address) =
         (unsafe { foreign_address::allocate(api, block as usize, KIND_BORROWED) })
     else {
@@ -1015,7 +1015,7 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
     }
     if !signature.aggregates.is_empty() {
         let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
-        let vector_name = unsafe { (api.mkString)(c"__vecFactory".as_ptr().cast(), 12) };
+        let vector_name = unsafe { (birnam_abi::string::make)(c"__vecFactory".as_ptr().cast(), 12) };
         let Some(vector_address) =
             (unsafe { foreign_address::allocate(api, vector as usize, KIND_BORROWED) })
         else {
@@ -1041,7 +1041,7 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
     if unsafe { (api.send)(unit, intern(api, b"relocate\0"), ptr::null(), 0) } == api.nilObj {
         return unsafe { make_error(api, b"relocateFailed\0", b"could not relocate the callback") };
     }
-    let symbol_name = unsafe { (api.mkString)(c"__cb".as_ptr().cast(), 4) };
+    let symbol_name = unsafe { (birnam_abi::string::make)(c"__cb".as_ptr().cast(), 4) };
     let callback_address = unsafe { (api.send)(unit, intern(api, b"symbol:\0"), &symbol_name, 1) };
     let Some(address) = (unsafe { address_value(api, callback_address) }) else {
         return unsafe {

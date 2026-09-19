@@ -1,6 +1,7 @@
 #ifndef FIXTURE_WORD_SUPPORT_H
 #define FIXTURE_WORD_SUPPORT_H
 #include "../../abi/fixtures/word-v1/word_v1.h"
+#include "string-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -21,10 +22,12 @@ static inline int fixture_is_word(Oop value) {
     return fixture_word->is_exact(fixture_word->context, value);
 }
 static inline void fixture_attach_word(IdApi *api, void *image) {
+    fixture_attach_string(api, image);
     WordDependencyV1 attach = (WordDependencyV1)api->dlsym_fn(image, "birnam_word_dependency_v1");
     if (attach) { assert(fixture_word); assert(attach(fixture_word) == 1); }
 }
 static inline void fixture_prepare_word(IdApi *api, const char *floor_path) {
+    fixture_prepare_string(api, floor_path);
     if (fixture_word) return;
     const char *slash = strrchr(floor_path, '/'); assert(slash);
     char path[PATH_MAX];

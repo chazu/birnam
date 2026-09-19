@@ -446,7 +446,7 @@ pub unsafe fn activate_preflighted_artifact(
     let directory = path.parent().unwrap_or_else(|| Path::new("."));
     let directory_bytes = path_bytes(directory);
     let directory_value =
-        unsafe { (api.mkString)(directory_bytes.as_ptr(), directory_bytes.len()) };
+        unsafe { (birnam_abi::string::make)(directory_bytes.as_ptr(), directory_bytes.len()) };
     let lib_dir_selector = unsafe { (api.intern)(c"libDir:".as_ptr()) };
     unsafe {
         (api.send)(
@@ -462,7 +462,7 @@ pub unsafe fn activate_preflighted_artifact(
         unsafe { (api.send)(alien, selector, [directory_value].as_ptr(), 1) };
     }
     let path_bytes = path_bytes(path);
-    let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
+    let path_value = unsafe { (birnam_abi::string::make)(path_bytes.as_ptr(), path_bytes.len()) };
     let selector = unsafe { (api.intern)(c"load:".as_ptr()) };
     let result = unsafe { (api.send)(runtime.codegen, selector, [path_value].as_ptr(), 1) };
     if result == api.nilObj || send_is_error(api, result) {
@@ -526,9 +526,9 @@ pub unsafe fn eval_script(
     if codegen == api.nilObj {
         return Err(ScriptError::MissingCodegen);
     }
-    let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
     let path_bytes = path_bytes(path);
-    let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
+    let path_value = unsafe { (birnam_abi::string::make)(path_bytes.as_ptr(), path_bytes.len()) };
     let selector = unsafe { (api.intern)(c"evalPersisting:from:".as_ptr()) };
     let result = unsafe { (api.send)(codegen, selector, [source_value, path_value].as_ptr(), 2) };
     let last_error_selector = unsafe { (api.intern)(c"lastError".as_ptr()) };
@@ -572,11 +572,11 @@ pub unsafe fn compile_module(
     if codegen == api.nilObj {
         return Err(CompileModuleError::MissingCodegen);
     }
-    let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
     let output_bytes = path_bytes(output_path);
-    let output_value = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
+    let output_value = unsafe { (birnam_abi::string::make)(output_bytes.as_ptr(), output_bytes.len()) };
     let source_bytes = path_bytes(source_path);
-    let source_path_value = unsafe { (api.mkString)(source_bytes.as_ptr(), source_bytes.len()) };
+    let source_path_value = unsafe { (birnam_abi::string::make)(source_bytes.as_ptr(), source_bytes.len()) };
     let result = if initial_generation_resumable {
         let record_selector = unsafe { (api.intern)(c"recordModuleSource:named:".as_ptr()) };
         for module in std::iter::once(&MODULE_MANAGER).chain(SELF_HOSTED_MODULES.iter()) {
@@ -587,7 +587,7 @@ pub unsafe fn compile_module(
                 CompileModuleError::CompilationRejected("invalid module name".to_owned())
             })?;
             let name = unsafe { (api.intern)(name.as_ptr()) };
-            let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+            let source = unsafe { (birnam_abi::string::make)(module.source.as_ptr(), module.source.len()) };
             let recorded =
                 unsafe { (api.send)(codegen, record_selector, [source, name].as_ptr(), 2) };
             if recorded == api.nilObj || send_is_error(api, recorded) {
@@ -621,9 +621,9 @@ pub unsafe fn compile_module(
         let selector = unsafe { (api.intern)(c"lastError".as_ptr()) };
         let diagnostic = unsafe { (api.send)(codegen, selector, std::ptr::null(), 0) };
         let diagnostic =
-            if diagnostic != api.nilObj && unsafe { (api.vtableOf)(diagnostic) } == api.string_vt {
+            if diagnostic != api.nilObj && unsafe { (api.vtableOf)(diagnostic) } == unsafe { birnam_abi::string::behavior() } {
                 let mut length = 0usize;
-                let bytes = unsafe { (api.stringBytes)(diagnostic, &mut length) };
+                let bytes = unsafe { (birnam_abi::string::bytes)(diagnostic, &mut length) };
                 if bytes.is_null() {
                     "compilation rejected".to_owned()
                 } else {
@@ -683,7 +683,7 @@ pub unsafe fn load_image(
         return Err(ImageError::MissingSystem);
     }
     let path_bytes = path_bytes(path);
-    let path_value = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
+    let path_value = unsafe { (birnam_abi::string::make)(path_bytes.as_ptr(), path_bytes.len()) };
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
@@ -712,7 +712,7 @@ pub unsafe fn load_image_bytes(
     if system == api.nilObj {
         return Err(ImageError::MissingSystem);
     }
-    let image_value = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+    let image_value = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImageBytes:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [image_value, rebuild_value].as_ptr(), 2) };
@@ -954,6 +954,7 @@ pub enum ModuleError {
     IntegerDependencyRejected { path: PathBuf },
     FloatDependencyRejected { path: PathBuf },
     WordDependencyRejected { path: PathBuf },
+    StringDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
@@ -1323,11 +1324,11 @@ impl IsolateHooks {
 }
 
 pub(super) unsafe fn bridge_string(api: &IdApi, value: birnam_abi::Oop) -> Option<String> {
-    if value == api.nilObj || unsafe { (api.vtableOf)(value) } != api.string_vt {
+    if value == api.nilObj || unsafe { (api.vtableOf)(value) } != unsafe { birnam_abi::string::behavior() } {
         return None;
     }
     let mut length = 0usize;
-    let bytes = unsafe { (api.stringBytes)(value, &mut length) };
+    let bytes = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
     if bytes.is_null() {
         return (length == 0).then(String::new);
     }
@@ -1399,7 +1400,7 @@ impl HostRuntime {
         let path = CString::new(path_bytes(&path)).map_err(|_| RuntimeModuleError::EmbeddedNul)?;
         let selector = unsafe { (self.stack.api().intern)(c"loadHostCapability:".as_ptr()) };
         let value =
-            unsafe { (self.stack.api().mkString)(path.as_bytes().as_ptr(), path.as_bytes().len()) };
+            unsafe { (birnam_abi::string::make)(path.as_bytes().as_ptr(), path.as_bytes().len()) };
         let api = self.stack.api();
         let result = unsafe { (api.send)(self.codegen, selector, [value].as_ptr(), 1) };
         if result == self.stack.api().nilObj || send_is_error(self.stack.api(), result) {
@@ -1643,7 +1644,7 @@ pub(super) unsafe fn native_os_string_vector(
         let Some(argument) = argument.to_str() else {
             return Err(CliError::NonUtf8Argument(index));
         };
-        let value = unsafe { (api.mkString)(argument.as_bytes().as_ptr(), argument.len()) };
+        let value = unsafe { (birnam_abi::string::make)(argument.as_bytes().as_ptr(), argument.len()) };
         let updated = unsafe { (api.send)(vector, add_selector, [value].as_ptr(), 1) };
         if updated == api.nilObj || send_is_error(api, updated) {
             return Err(CliError::ArgumentVectorRejected);
@@ -1669,7 +1670,7 @@ pub unsafe fn record_and_eval_source(
     module: &SelfHostedModule,
 ) -> Result<birnam_abi::Oop, BootstrapSourceError> {
     let name = CString::new(module.name).map_err(|_| BootstrapSourceError::RecordRejected)?;
-    let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+    let source = unsafe { (birnam_abi::string::make)(module.source.as_ptr(), module.source.len()) };
     let name_symbol = unsafe { (api.intern)(name.as_ptr()) };
     let record_selector = unsafe { (api.intern)(c"recordModuleSource:named:".as_ptr()) };
     let recorded =
@@ -1708,7 +1709,7 @@ pub unsafe fn load_self_hosted(
         if std::fs::metadata(&candidate).is_ok() {
             let candidate_bytes = path_bytes(&candidate);
             let candidate_string =
-                unsafe { (api.mkString)(candidate_bytes.as_ptr(), candidate_bytes.len()) };
+                unsafe { (birnam_abi::string::make)(candidate_bytes.as_ptr(), candidate_bytes.len()) };
             let load_selector = if selected {
                 unsafe { (api.intern)(c"loadInitialModule:".as_ptr()) }
             } else {
@@ -1735,9 +1736,9 @@ pub unsafe fn load_self_hosted(
             }
         }
         let _remove = RemoveCompiled(output.clone());
-        let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+        let source = unsafe { (birnam_abi::string::make)(module.source.as_ptr(), module.source.len()) };
         let output_bytes = path_bytes(&output);
-        let output_value = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
+        let output_value = unsafe { (birnam_abi::string::make)(output_bytes.as_ptr(), output_bytes.len()) };
         let selection = unsafe { (api.intern)(c"resumableRequired".as_ptr()) };
         let compile_selector =
             unsafe { (api.intern)(c"compileInitialModule:output:selection:".as_ptr()) };
@@ -1853,7 +1854,7 @@ unsafe fn refresh_module_manager(
         unsafe { (api.send)(module_manager, selector, [name].as_ptr(), 1) };
     }
     let path = path_bytes(&resources.lib_dir);
-    let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) };
+    let value = unsafe { (birnam_abi::string::make)(path.as_ptr(), path.len()) };
     let selector = unsafe { (api.intern)(c"libDir:".as_ptr()) };
     unsafe { (api.send)(module_manager, selector, [value].as_ptr(), 1) };
 }
@@ -2028,8 +2029,10 @@ pub struct LoadedStack {
     integer: *mut birnam_abi::integer::IntegerApiV1,
     float: *mut birnam_abi::float::FloatApiV1,
     word: *mut birnam_abi::word::WordApiV1,
+    string: *mut birnam_abi::string::StringApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
+    prepared_string: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
 }
 
 impl LoadedStack {
@@ -2052,8 +2055,10 @@ impl LoadedStack {
             integer: std::ptr::null_mut(),
             float: std::ptr::null_mut(),
             word: std::ptr::null_mut(),
+            string: std::ptr::null_mut(),
             prepared_float: None,
             prepared_word: None,
+            prepared_string: None,
         }
     }
 
@@ -2131,6 +2136,25 @@ impl LoadedStack {
         self.attach_word(path, ops)
     }
 
+    fn prepare_string(&mut self, path: &Path) -> Result<(), ModuleError> {
+        if self.prepared_string.is_some() { return Ok(()); }
+        let encoded = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
+        let handle = unsafe { (self.api().dlopen)(encoded.as_ptr(), RTLD_LAZY) };
+        let handle = NonNull::new(handle).ok_or_else(|| ModuleError::OpenFailed { path: path.to_path_buf() })?;
+        self.prepared_string = Some((path.to_path_buf(), handle));
+        self.configure_symbol_borrow(path, handle)?;
+        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_prepare_v1".as_ptr()) };
+        if prepare.is_null() { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
+        let prepare: birnam_abi::string::StringPrepareV1 = unsafe { std::mem::transmute(prepare) };
+        let provider = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_native_allocation_provider_v1".as_ptr()) };
+        if provider.is_null() { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
+        let provider: birnam_abi::native_allocation::NativeAllocationProviderV1 = unsafe { std::mem::transmute(provider) };
+        let allocation = unsafe { provider() };
+        if allocation.is_null() { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
+        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi, allocation) };
+        self.attach_string(path, ops)
+    }
+
     fn attach_float(&mut self, path: &Path, ops: *mut birnam_abi::float::FloatApiV1) -> Result<(), ModuleError> {
         if (!self.float.is_null() && self.float != ops) || unsafe { birnam_abi::float::attach(ops) } != 1 {
             return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
@@ -2155,6 +2179,18 @@ impl LoadedStack {
         Ok(())
     }
 
+    fn attach_string(&mut self, path: &Path, ops: *mut birnam_abi::string::StringApiV1) -> Result<(), ModuleError> {
+        if (!self.string.is_null() && self.string != ops) || unsafe { birnam_abi::string::attach(ops) } != 1 {
+            return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() });
+        }
+        let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_string_dependency_v1".as_ptr()) };
+        if dependency.is_null() { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
+        let attach: birnam_abi::string::StringDependencyV1 = unsafe { std::mem::transmute(dependency) };
+        if unsafe { attach(ops) } != 1 { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
+        self.string = ops;
+        Ok(())
+    }
+
     /// Load one higher rung through the selected floor's dynamic-loader API.
     /// No host-side `dlopen` is used after the floor has initialized.
     fn load_module_handle(
@@ -2165,7 +2201,8 @@ impl LoadedStack {
         // SAFETY: the floor API is process-owned and the C string lives across
         // this synchronous call.
         let prepared = self.prepared_float.as_ref().filter(|(prepared, _)| prepared == path)
-            .or_else(|| self.prepared_word.as_ref().filter(|(prepared, _)| prepared == path));
+            .or_else(|| self.prepared_word.as_ref().filter(|(prepared, _)| prepared == path))
+            .or_else(|| self.prepared_string.as_ref().filter(|(prepared, _)| prepared == path));
         let handle = match prepared {
             Some((_, handle)) => handle.as_ptr(),
             None => unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) },
@@ -2196,6 +2233,13 @@ impl LoadedStack {
             let attach: birnam_abi::float::FloatDependencyV1 = unsafe { std::mem::transmute(dependency) };
             if self.float.is_null() || unsafe { attach(self.float) } != 1 {
                 return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
+            }
+        }
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_dependency_v1".as_ptr()) };
+        if !dependency.is_null() {
+            let attach: birnam_abi::string::StringDependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if self.string.is_null() || unsafe { attach(self.string) } != 1 {
+                return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() });
             }
         }
         let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v1".as_ptr()) };
@@ -2246,6 +2290,13 @@ impl LoadedStack {
             self.attach_float(path, unsafe { provide() })?;
         } else if self.prepared_float.as_ref().is_some_and(|(prepared, _)| prepared == path) {
             return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
+        }
+        let string_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_provider_v1".as_ptr()) };
+        if !string_provider.is_null() {
+            let provide: birnam_abi::string::StringProviderV1 = unsafe { std::mem::transmute(string_provider) };
+            self.attach_string(path, unsafe { provide() })?;
+        } else if self.prepared_string.as_ref().is_some_and(|(prepared, _)| prepared == path) {
+            return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() });
         }
         if !word_provider.is_null() {
             let provide: birnam_abi::word::WordProviderV1 = unsafe { std::mem::transmute(word_provider) };
@@ -2299,6 +2350,7 @@ impl LoadedStack {
         let mut store_compensation_api = None;
         for name in SCRIPT_MODULES {
             if *name == "libbirnam_integer" {
+                self.prepare_string(&resources.lib_dir.join("libbirnam_string.dylib"))?;
                 self.prepare_word(&resources.lib_dir.join("libbirnam_word.dylib"))?;
                 self.prepare_float(&resources.lib_dir.join("libbirnam_float.dylib"))?;
             }

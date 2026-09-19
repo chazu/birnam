@@ -1,24 +1,45 @@
-#include "idapi_v6.h"
+#include "idapi_v7.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <math.h>
 
 static IdApi *api;
+static Oop (*original_string)(void *, const uint8_t *, size_t);
 static IdApi string_api;
 static RootProvider provider;
 static unsigned registrations, marked_selector, strings, integers, floats, reads, sends;
 static Oop print_selector;
 static Oop (*original_integer)(void *, int64_t);
 static Oop (*original_float)(void *, double);
+static unsigned preparation_collections, publication_reentries;
+static void collecting_layout(Oop behavior, const uint8_t *kinds, size_t count, uint8_t rest) {
+    ++preparation_collections; (void)api->gc_collect(); api->set_layout(behavior,kinds,count,rest);
+}
+static void collecting_method(Oop behavior, Oop selector, Method method) {
+    ++preparation_collections; (void)api->gc_collect(); api->method(behavior,selector,method);
+}
+static Oop forbidden_alloc(Oop behavior, size_t size) { (void)behavior; (void)size; assert(!"String used replaceable alloc"); return NULL; }
+static void forbidden_finalizer(Oop object, Finalizer finalizer) { (void)object; (void)finalizer; assert(!"String used replaceable finalizer setter"); }
+static Oop reenter_publication(Oop receiver, Oop selector, const Oop *args, size_t count) {
+    if(receiver==api->vtable_vt && selector==api->intern("ownerOf:put:")) {
+        ++publication_reentries;
+        Oop value=fixture_string_make((const uint8_t *)"reenter",7);
+        size_t length=0; assert(!memcmp(fixture_string_bytes(value,&length),"reenter",7) && length==7);
+        (void)api->gc_collect();
+        assert(api->vtable_of(fixture_string->prototype)==fixture_string->behavior);
+    }
+    return api->send(receiver,selector,args,count);
+}
+static void inert_cleanup(Oop object) { (void)object; }
 static void register_roots(RootProvider roots) {
     ++registrations; provider=roots; api->gc_register_root_provider(roots);
 }
 static void record_mark(Oop object) { if(object==print_selector) ++marked_selector; }
-static Oop counted_string(const uint8_t *bytes, size_t length) { ++strings; return api->mk_string(bytes,length); }
+static Oop counted_string(void *context, const uint8_t *bytes, size_t length) { ++strings; return original_string(context,bytes,length); }
 static Oop counted_integer(void *context, int64_t value) { ++integers; return original_integer(context,value); }
 static Oop counted_float(void *context, double value) { ++floats; return original_float(context,value); }
-static const uint8_t *shim_bytes(Oop object, size_t *length) {
-    (void)object; ++reads; *length=4; return (const uint8_t *)"shim";
+static const uint8_t *shim_bytes(void *context, Oop object, size_t *length) {
+    (void)context; (void)object; ++reads; *length=4; return (const uint8_t *)"shim";
 }
 static Oop forwarded(Oop receiver, Oop selector, const Oop *args, size_t count) {
     if(selector==print_selector) ++sends;
@@ -29,17 +50,17 @@ static void mount(const char *path, IdApi *selected) {
     fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL);
 }
-static Oop raw(const uint8_t *bytes, size_t length) { return api->mk_string(bytes,length); }
+static Oop raw(const uint8_t *bytes, size_t length) { return fixture_string_make(bytes,length); }
 static Oop text(const char *value) { return raw((const uint8_t *)value,strlen(value)); }
 static Oop send0(Oop self, const char *name) { return api->send(self,api->intern(name),NULL,0); }
 static Oop send(Oop self, const char *name, Oop arg) { return api->send(self,api->intern(name),&arg,1); }
 static Oop send2(Oop self, const char *name, Oop a, Oop b) {
     Oop args[]={a,b}; return api->send(self,api->intern(name),args,2);
 }
-static Method lookup(const char *name) { return (Method)send(api->string_vt,"lookup",api->intern(name)); }
+static Method lookup(const char *name) { return (Method)send(fixture_string->behavior,"lookup",api->intern(name)); }
 static void expect_bytes(Oop value, const uint8_t *expected, size_t length) {
-    assert(api->vtable_of(value)==api->string_vt);
-    size_t count=0; const uint8_t *bytes=api->string_bytes(value,&count);
+    assert(api->vtable_of(value)==fixture_string->behavior);
+    size_t count=0; const uint8_t *bytes=fixture_string_bytes(value,&count);
     assert(count==length && (!length || !memcmp(bytes,expected,length)));
 }
 static void expect_text(Oop value, const char *expected) { expect_bytes(value,(const uint8_t *)expected,strlen(expected)); }
@@ -63,10 +84,43 @@ int main(int argc, char **argv) {
     int baseline=argc==6;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)dlsym(floor,"id_init"))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1]); mount(argv[2],api);
+    fixture_mount_trace(api,argv[1]);
+    string_api=*api; string_api.gc_register_root_provider=register_roots;
+    string_api.set_layout=collecting_layout; string_api.method=collecting_method;
+    string_api.alloc=forbidden_alloc; string_api.set_finalizer=forbidden_finalizer;
+    fixture_prepare_string(&string_api,argv[1]);
+    assert(preparation_collections==3);
+    string_api.set_layout=api->set_layout; string_api.method=api->method;
+    fixture_mount_integer(api,argv[1]); mount(argv[2],api);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
-    assert(!lookup("size")); string_api=*api; string_api.gc_register_root_provider=register_roots;
-    mount(argv[3],&string_api); assert(registrations==1 && provider);
+    assert(!lookup("size"));
+    string_api.send=reenter_publication;
+    mount(argv[3],&string_api); assert(registrations==2 && provider && publication_reentries==1);
+    string_api.send=api->send;
+    StringProviderV1 provide=(StringProviderV1)api->dlsym_fn(fixture_string_image,"birnam_string_provider_v1");
+    StringPrepareV1 prepare=(StringPrepareV1)api->dlsym_fn(fixture_string_image,"birnam_string_prepare_v1");
+    assert(provide && prepare && provide()==fixture_string && prepare(&string_api,NULL)==fixture_string);
+    StringDependencyV1 attach=(StringDependencyV1)api->dlsym_fn(floor,"birnam_string_dependency_v1");
+    assert(attach && !attach(NULL) && attach(fixture_string)==1);
+    StringApiV1 copy=*fixture_string; copy.version=999; assert(!attach(&copy));
+    copy=*fixture_string; assert(!attach(&copy));
+    const StringStorageV1 *storage=fixture_string->storage;
+    assert(storage->version==1 && storage->byte_size==sizeof(*storage) && storage->payload_size==16 && storage->payload_alignment==8);
+    assert(storage->cleanup_owner(storage->cleanup)==fixture_string->context && !storage->cleanup_owner(inert_cleanup));
+    size_t absent_length=123; assert(!storage->borrow(fixture_string->context,api->true_obj,&absent_length));
+    assert(!storage->release(fixture_string->context,api->true_obj));
+    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V7_SLOT_RAW);
+    Oop owner=text("owned"); size_t owned_length=0; const uint8_t *owned=fixture_string_bytes(owner,&owned_length);
+    assert(api->object_payload_size(owner)==16 && owned_length==5);
+    uintptr_t *words=(uintptr_t *)owner; assert(words[0]==(uintptr_t)owned && words[1]==5);
+    words[0]=0; words[1]=SIZE_MAX; expect_text(owner,"owned");
+    api->set_finalizer(owner,inert_cleanup);
+    Method clone=lookup("clone"), create=lookup("new");
+    assert(clone && clone==create && clone(NULL,NULL,99)==NULL);
+    Oop copied=clone(owner,NULL,99); expect_text(copied,"owned");
+    assert(copied!=owner && fixture_string_bytes(copied,&owned_length)!=owned);
+    /* Restore cleanup after proving clone did not rely on raw payload words. */
+    api->set_finalizer(owner,storage->cleanup);
     print_selector=api->intern("printString"); provider(record_mark); assert(marked_selector==1);
     if(!baseline) assert(!api->is_exported("Array") && !lookup("split:"));
     static const uint8_t binary[]={0,'a',0xff}, utf8[]={0xc3,0xa9,0xff};
@@ -147,12 +201,13 @@ int main(int argc, char **argv) {
     assert(lookup("printString")(api->true_obj,NULL,0)==api->true_obj);
     assert(send(kept,"=",api->true_obj)==api->false_obj);
     assert(send(kept,"at:",api->true_obj)==api->nil_obj);
-    Oop inherited=text("kept"), child=api->proto(api->string_vt), reassociate[]={inherited,child};
+    Oop inherited=text("kept"), child=api->proto(fixture_string->behavior), reassociate[]={inherited,child};
     api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),reassociate,2);
     assert(send0(inherited,"printString")==inherited && send0(inherited,"size")==api->nil_obj);
     assert(send(inherited,"=",kept)==api->false_obj);
-    string_api.string_bytes=shim_bytes; expect_integer(send0(kept,"size"),4); assert(reads==1); string_api.string_bytes=api->string_bytes;
-    string_api.mk_string=counted_string; expect_text(send0(kept,"trimmed"),"kept"); assert(strings==1); string_api.mk_string=api->mk_string;
+    expect_text(send0(inherited,"clone"),"kept"); expect_text(send0(inherited,"new"),"kept");
+    const uint8_t *(*original_bytes)(void *,Oop,size_t *)=fixture_string->bytes; fixture_string->bytes=shim_bytes; expect_integer(send0(kept,"size"),4); assert(reads==1); fixture_string->bytes=original_bytes;
+    original_string=fixture_string->make; fixture_string->make=counted_string; expect_text(send0(kept,"trimmed"),"kept"); assert(strings==1); fixture_string->make=original_string;
     original_integer=fixture_integer->make; fixture_integer->make=counted_integer;
     expect_integer(send0(text("42"),"asInteger"),42); assert(integers==1); fixture_integer->make=original_integer;
     original_float=fixture_float->make; fixture_float->make=counted_float;
@@ -163,18 +218,23 @@ int main(int argc, char **argv) {
     api->method(printer_vt,print_selector,print_two); expect_text(send(kept,",",printer),"kepttwo"); assert(sends==2);
     api->method(printer_vt,print_selector,identity); Oop fallback=send(kept,",",printer); expect_text(fallback,"kept"); assert(fallback!=kept);
     string_api.send=api->send;
-    Method size=lookup("size"); api->method(api->string_vt,api->intern("size"),identity);
+    api->method(fixture_string->behavior,api->intern("clone"),identity);
+    api->method(fixture_string->behavior,api->intern("new"),identity);
+    Method size=lookup("size"); api->method(fixture_string->behavior,api->intern("size"),identity);
     Oop prototype=api->import_fn("String"); api->export_obj("String",api->nil_obj);
-    mount(argv[3],&string_api); assert(registrations==1 && lookup("size")==size);
+    mount(argv[3],&string_api); assert(registrations==2 && lookup("size")==size);
+    assert(lookup("clone")==identity && lookup("new")==identity);
+    api->method(fixture_string->behavior,api->intern("clone"),clone);
+    api->method(fixture_string->behavior,api->intern("new"),create);
     assert(api->import_fn("String")==api->nil_obj); api->export_obj("String",prototype);
-    api->method(api->string_vt,api->intern("size"),identity);
+    api->method(fixture_string->behavior,api->intern("size"),identity);
     if(!baseline) { mount(argv[4],api); assert(lookup("size")==identity && send0(kept,"size")==kept); }
-    api->method(api->string_vt,api->intern("size"),size);
+    api->method(fixture_string->behavior,api->intern("size"),size);
     Oop array=send(text(",a,"),"split:",text(",")); expect_integer(send0(array,"size"),3);
     expect_text(send(array,"at:",fixture_integer_make(0)),"");
     expect_text(send(array,"at:",fixture_integer_make(1)),"a");
     expect_text(send(array,"at:",fixture_integer_make(2)),"");
     api->gc_set_precise(1); (void)api->gc_collect(); expect_integer(send0(kept,"size"),4);
     marked_selector=0; provider(record_mark); assert(marked_selector==1);
-    printf("string-module: %u binary/index/slice cases, 18 numeric boundaries, trimming, search, replacement, symbols, bracket depth, exact recognition, live operations, roots, reinitialization and GC passed%s\n",checked,baseline?" (Collection baseline)":"");
+    printf("string-module: %u binary/index/slice cases, 18 numeric boundaries, trimming, search, replacement, symbols, bracket depth, exact recognition, live operations, ownership, clone/new, partial roots, publication reentry, reinitialization and GC passed%s\n",checked,baseline?" (Collection baseline)":"");
 }

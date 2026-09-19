@@ -1,4 +1,4 @@
-#include "idapi_v6.h"
+#include "idapi_v7.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <inttypes.h>
@@ -45,7 +45,7 @@ static Method lookup(const char *selector) {
 }
 static void expect_text(Oop receiver, const char *expected) {
     Oop value=send0(receiver,"printString"); size_t count=0;
-    const uint8_t *bytes=api->string_bytes(value,&count);
+    const uint8_t *bytes=fixture_string_bytes(value,&count);
     assert(count==strlen(expected) && !memcmp(bytes,expected,count));
 }
 static Oop right(Oop receiver, const Oop *args, size_t count) {
@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
     unsigned pairs=0;
     for(size_t i=0;i<sizeof(inputs)/sizeof(*inputs);i++) {
         Oop word=fixture_word_make(inputs[i]);
-        assert(api->object_payload_size(word)==8 && api->slot_kind(fixture_word->behavior,0)==IDAPI_V6_SLOT_RAW);
+        assert(api->object_payload_size(word)==8 && api->slot_kind(fixture_word->behavior,0)==IDAPI_V7_SLOT_RAW);
         assert(!memcmp(word,&inputs[i],8));
         uint8_t raw[10]; memset(raw,0xab,sizeof(raw));
         fixture_word->storage->initialize(raw+1,inputs[i]);

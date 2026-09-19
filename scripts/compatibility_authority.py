@@ -13,6 +13,24 @@ only those complete expressions, with their original operands and exact counts.
 
 def unchanged_authority(name, current, baseline):
     if name == "rust/birnam-image/src/lib.rs" and current != baseline:
+        string_migrations = (
+            (b'(api.mkString)', b'(birnam_abi::string::make)', 10),
+            (b'(api.stringBytes)', b'(birnam_abi::string::bytes)', 4),
+            (b'api.string_vt', b'birnam_abi::string::behavior()', 6),
+        )
+        if any(new in current for _, new, _ in string_migrations):
+            guarded = b'unsafe { birnam_abi::string::behavior() }'
+            if current.count(guarded) != 5:
+                return False
+            current = current.replace(guarded, b'birnam_abi::string::behavior()')
+            for old, new, count in string_migrations:
+                if baseline.count(old) != count or new in baseline or current.count(new) != count:
+                    return False
+                current = current.replace(new, old)
+            dependency = b'\nbirnam_abi::string_dependency!();\n'
+            if dependency in baseline or current.count(dependency) != 1:
+                return False
+            current = current.replace(dependency, b'')
         word_migrations = (
             (b'(api.mkWord)', b'(birnam_abi::word::make)', 1),
             (b'(api.wordValue)', b'(birnam_abi::word::value)', 1),

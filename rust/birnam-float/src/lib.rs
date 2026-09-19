@@ -352,7 +352,7 @@ unsafe extern "C" fn float_print_string(self_object: Oop, _args: *const Oop, cou
         text.push_str(".0");
     }
     // SAFETY: `text` remains alive for the duration of mkString's copy.
-    unsafe { (api.mkString)(text.as_ptr(), text.len()) }
+    unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
 }
 
 unsafe fn is_error(api: &IdApi, value: Oop) -> bool {
@@ -384,7 +384,7 @@ unsafe fn make_error(api: &IdApi, kind: Oop, message: Oop) -> Oop {
 
 unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
     let kind = unsafe { intern(api, kind) };
-    let message = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
     unsafe { make_error(api, kind, message) }
 }
 
@@ -439,3 +439,5 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
 }
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::string_dependency!();

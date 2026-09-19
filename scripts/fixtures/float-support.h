@@ -1,6 +1,7 @@
 #ifndef FIXTURE_FLOAT_SUPPORT_H
 #define FIXTURE_FLOAT_SUPPORT_H
 #include "../../abi/fixtures/float-v1/float_v1.h"
+#include "string-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -21,10 +22,12 @@ static inline int fixture_is_float(Oop value) {
     return fixture_float->is_exact(fixture_float->context, value);
 }
 static inline void fixture_attach_float(IdApi *api, void *image) {
+    fixture_attach_string(api, image);
     FloatDependencyV1 attach = (FloatDependencyV1)api->dlsym_fn(image, "birnam_float_dependency_v1");
     if (attach) { assert(fixture_float); assert(attach(fixture_float) == 1); }
 }
 static inline void fixture_prepare_float(IdApi *api, const char *floor_path) {
+    fixture_prepare_string(api, floor_path);
     if (fixture_float) return;
     const char *slash = strrchr(floor_path, '/'); assert(slash);
     char path[PATH_MAX];

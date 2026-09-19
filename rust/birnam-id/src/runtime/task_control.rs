@@ -353,7 +353,7 @@ fn rejected_in(r: &Runtime, operation: &str, error: ExecutionError) -> Oop {
     let kind = r.intern(b"machineControlRejected").expect("static symbol");
     let message = r.make_string_with_finalizer(
         format!("{operation}: {error:?}").as_bytes(),
-        crate::public_api::string_finalizer,
+        r.string_finalizer(),
     );
     let _message_root = ScopedOopRootGuard::new(r, message);
     r.send_slice(

@@ -1,7 +1,7 @@
 # Native Word dependency v1
 
 `birnam-word` owns Word's canonical behavior, zero prototype, eight-byte unsigned
-payload and three existing methods. It depends on IdApi v6 and explicitly acquires
+payload and three existing methods. It depends on IdApi v7 and explicitly acquires
 Integer for conversion. Id initializes without Word; its still-combined Machine
 layer receives Word through `birnam_word_dependency_v1`.
 
@@ -38,8 +38,8 @@ own separate instances and API adapters instead of using native global bindings.
 Word no longer occupies a floor bootstrap enumeration position; its identities
 and names follow module construction/publication. Names, first-alias selection,
 rebinding and value semantics retain their contracts. ForeignAddress is a separate
-family and is unchanged. All native modules require rebuilding for IdApi v6's
-37 fields / 296 bytes. Historical v1-v5 manifests and fixtures remain unchanged;
+family and is unchanged. All native modules require rebuilding for IdApi v7's
+34 fields / 272 bytes. Historical v1-v6 manifests and fixtures remain unchanged;
 Method, Frame and image formats remain unchanged.
 
 Run `mise run word` and `scripts/word-image-smoke.sh PREFIX` against a debug prefix.

@@ -1,8 +1,9 @@
-#include "idapi_v6.h"
+#include "idapi_v7.h"
 #include "integer-support.h"
 #include "trace-support.h"
 
 static IdApi *api;
+static Oop (*original_string)(void *, const uint8_t *, size_t);
 static IdApi nil_api;
 static unsigned strings;
 static void mount(const char *path, IdApi *selected) {
@@ -18,11 +19,11 @@ static Method lookup(Oop behavior, const char *name) {
     Oop selector=api->intern(name);
     return (Method)api->send(behavior,api->intern("lookup"),&selector,1);
 }
-static Oop counted_string(const uint8_t *bytes, size_t count) {
-    ++strings; return api->mk_string(bytes,count);
+static Oop counted_string(void *context, const uint8_t *bytes, size_t count) {
+    ++strings; return original_string(context,bytes,count);
 }
 static void expect_text(Oop string) {
-    size_t length=0; const uint8_t *bytes=api->string_bytes(string,&length);
+    size_t length=0; const uint8_t *bytes=fixture_string_bytes(string,&length);
     assert(length==3 && !memcmp(bytes,"nil",length));
 }
 static Oop identity(Oop self, const Oop *args, size_t count) {
@@ -61,8 +62,8 @@ int main(int argc, char **argv) {
     assert(send0(inherited,"isNil")==api->true_obj && send0(inherited,"notNil")==api->false_obj);
     Oop first=send0(api->nil_obj,"printString"), second=send0(api->nil_obj,"printString");
     assert(first!=second); expect_text(first); expect_text(second);
-    nil_api.mk_string=counted_string; expect_text(send0(api->nil_obj,"printString")); assert(strings==1);
-    nil_api.mk_string=api->mk_string;
+    original_string=fixture_string->make; fixture_string->make=counted_string; expect_text(send0(api->nil_obj,"printString")); assert(strings==1);
+    fixture_string->make=original_string;
     nil_api.true_obj=ordinary; assert(send0(api->nil_obj,"isNil")==ordinary); nil_api.true_obj=api->true_obj;
     nil_api.false_obj=ordinary; assert(send0(api->nil_obj,"notNil")==ordinary); nil_api.false_obj=api->false_obj;
     api->method(nil_vt,api->intern("isNil"),identity);

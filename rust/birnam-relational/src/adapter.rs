@@ -247,7 +247,7 @@ unsafe extern "C" fn rust_logicvar_print_string(
     let mut text = Vec::with_capacity(name.len() + 1);
     text.push(b'?');
     text.extend_from_slice(name);
-    unsafe { (api.mkString)(text.as_ptr(), text.len()) }
+    unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
 }
 
 unsafe fn ensure_relational_contract(api: &IdApi) {
@@ -355,12 +355,12 @@ unsafe extern "C" fn rust_entity(_self_object: Oop, _args: *const Oop, _count: u
     unsafe { (api.alloc)(*vtable as Oop, 0) }
 }
 
-unsafe fn value_oop(api: &IdApi, value: Value) -> Oop {
+unsafe fn value_oop(_api: &IdApi, value: Value) -> Oop {
     match value {
         Value::Identity(identity) => identity as usize as Oop,
         Value::Integer(integer) => unsafe { (birnam_abi::integer::make)(integer) },
         Value::Float(float) => unsafe { (birnam_abi::float::make)(float) },
-        Value::String(bytes) => unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) },
+        Value::String(bytes) => unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) },
     }
 }
 

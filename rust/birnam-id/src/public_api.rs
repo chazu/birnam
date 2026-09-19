@@ -163,49 +163,19 @@ pub(crate) fn test_dispatch_reentry(method: Method) -> usize {
 /// This exact cleanup routes only to the process-published Runtime and removes
 /// its private byte owner without reading Id state or invoking another callback.
 /// The caller must additionally prove that this Runtime owns the object's bytes.
+#[cfg(test)]
 pub(crate) fn string_cleanup_matches_runtime(active: &Runtime, finalizer: Finalizer) -> bool {
-    finalizer as usize == string_finalizer as *const () as usize
-        && core::ptr::eq(PUBLIC_RUNTIME.load(Ordering::Acquire).cast_const(), active)
+    active.string_cleanup_matches_runtime(finalizer)
 }
-
+#[cfg(test)]
 pub(crate) unsafe extern "C" fn string_finalizer(object: Oop) {
     runtime().release_string(object);
 }
-
-unsafe extern "C" fn api_make_string(bytes: *const u8, length: usize) -> Oop {
-    boundary::require_invariant(
-        length == 0 || !bytes.is_null(),
-        "IdApi.mkString bytes is null with nonzero length",
-    );
-    let bytes = if length == 0 {
-        &[][..]
-    } else {
-        // SAFETY: the IdApi caller supplies length readable bytes, which are
-        // copied synchronously and never retained through this borrowed slice.
-        unsafe { std::slice::from_raw_parts(bytes, length) }
-    };
-    if let Some(object) = with_active_if_present(|active| {
-        // SAFETY: with_active_if_present proves a surrounding owner-checked
-        // Runtime::enter for this exact runtime.
-        unsafe { active.make_string_with_finalizer_active(bytes, string_finalizer) }
-    }) {
-        return object;
-    }
-    runtime().make_string_with_finalizer(bytes, string_finalizer)
-}
-
-unsafe extern "C" fn api_string_bytes(object: Oop, out_length: *mut usize) -> *const u8 {
-    boundary::require_invariant(
-        !out_length.is_null(),
-        "IdApi.stringBytes length output is null",
-    );
-    let bytes = runtime()
-        .string_bytes(object)
-        .unwrap_or_else(|| boundary::fatal_invariant("IdApi.stringBytes object is not a String"));
-    // SAFETY: caller supplies one writable usize and the stable boxed byte owner
-    // remains in the runtime until the object's future finalization.
-    unsafe { out_length.write(bytes.len()) };
-    bytes.as_ptr()
+#[cfg(test)]
+pub(crate) unsafe extern "C" fn test_string_cleanup_owner(finalizer: Finalizer) -> *mut c_void {
+    let pointer = PUBLIC_RUNTIME.load(Ordering::Acquire);
+    if finalizer as usize != string_finalizer as *const () as usize || pointer.is_null() { return core::ptr::null_mut(); }
+    unsafe { (*pointer).string_context() }
 }
 
 unsafe extern "C" fn api_symbol_name(symbol: Oop) -> *const c_char {
@@ -315,9 +285,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         nilObj: canonical.nil,
         trueObj: canonical.true_object,
         falseObj: canonical.false_object,
-        string_vt: canonical.string_vt,
-        mkString: api_make_string,
-        stringBytes: api_string_bytes,
         symbolName: api_symbol_name,
         vtableOf: canonical_numeric_functions().vtable_of,
         gcSetStackBottom: api_gc_set_stack_bottom,
@@ -397,7 +364,6 @@ pub(crate) fn closure_codegen_context_matches(api: &IdApi, nil: Oop, integer: &b
 fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [
-        canonical.string_vt,
         canonical.nil_vt,
         canonical.bool_vt,
     ] {
@@ -407,9 +373,6 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     }
     bootstrap.runtime.publish_canonical_exports();
     bootstrap.runtime.install_execution_objects();
-    bootstrap
-        .runtime
-        .set_finalizer(canonical.string_prototype, string_finalizer);
 }
 
 /// Perform the one supported process-lifetime initialization transition.
@@ -432,6 +395,7 @@ pub(crate) fn initialize_once() -> *mut IdApi {
     }
     let _ = Box::into_raw(bootstrap);
     let _ = Box::into_raw(api);
+    NATIVE_ALLOCATION.store(Box::into_raw(Box::new(runtime().native_allocation())), Ordering::Release);
     PUBLIC_API.store(api_pointer, Ordering::Release);
     api_pointer
 }
@@ -524,9 +488,8 @@ mod tests {
         assert_eq!(table.nilObj, canonical.nil);
         assert_eq!(table.trueObj, canonical.true_object);
         assert_eq!(table.falseObj, canonical.false_object);
-        assert_eq!(table.string_vt, canonical.string_vt);
         assert_eq!(
-            bootstrap.runtime.has_finalizer(canonical.string_prototype),
+            bootstrap.runtime.has_finalizer(bootstrap.runtime.string_prototype()),
             Some(true)
         );
         assert_eq!(
@@ -590,6 +553,10 @@ pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
         with_active(|r| unsafe { r.send_abi(receiver, selector, args, count) })
     }
     let mut api = Box::new(table_for(bootstrap));
+    unsafe extern "C" fn method(vt: Oop, selector: Oop, method: Method) {
+        with_active(|r| { r.add_method(vt, selector, method); });
+    }
+    api.method = method;
     api.proto = proto; api.exportObj = export; api.intern = intern;
     api.setLayout = layout; api.send = send;
     // alloc and vtableOf already route through the active runtime. Every
@@ -609,4 +576,16 @@ pub unsafe extern "C" fn birnam_float_dependency_v1(ops: *mut birnam_abi::float:
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_word_dependency_v1(ops: *mut birnam_abi::word::WordApiV1) -> c_int {
     c_int::from(unsafe { runtime().attach_word(ops) })
+}
+
+/// Explicit dependency of internal String construction and retirement checks.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_string_dependency_v1(ops: *mut birnam_abi::string::StringApiV1) -> c_int {
+    c_int::from(unsafe { runtime().attach_string(ops) })
+}
+static NATIVE_ALLOCATION: AtomicPtr<birnam_abi::native_allocation::NativeAllocationV1> = AtomicPtr::new(core::ptr::null_mut());
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_native_allocation_provider_v1() -> *const birnam_abi::native_allocation::NativeAllocationV1 {
+    let _ = runtime();
+    NATIVE_ALLOCATION.load(Ordering::Acquire)
 }

@@ -10,7 +10,7 @@ birnam-abi = { path = "../birnam-abi" }
 
 [lib]
 name = "birnam_string"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [lints]
 workspace = true

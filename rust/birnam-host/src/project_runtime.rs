@@ -51,11 +51,11 @@ pub unsafe fn decode_project_source_metadata(
             .into_owned())
     };
     let string = |value: birnam_abi::Oop| -> Result<String, ProjectMetadataError> {
-        if value == api.nilObj || unsafe { (api.vtableOf)(value) } != api.string_vt {
+        if value == api.nilObj || unsafe { (api.vtableOf)(value) } != unsafe { birnam_abi::string::behavior() } {
             return Err(ProjectMetadataError::InvalidString);
         }
         let mut length = 0usize;
-        let bytes = unsafe { (api.stringBytes)(value, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
         if bytes.is_null() {
             return Err(ProjectMetadataError::InvalidString);
         }
@@ -125,7 +125,7 @@ impl<'a> ProjectManifestDecoder<'a> {
         if map == self.api.nilObj || unsafe { (self.api.vtableOf)(map) } != self.map_vt {
             return Err(ProjectManifestDecodeError::InvalidMap("manifest map"));
         }
-        let key_value = unsafe { (self.api.mkString)(key.as_bytes().as_ptr(), key.len()) };
+        let key_value = unsafe { (birnam_abi::string::make)(key.as_bytes().as_ptr(), key.len()) };
         let selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
         Ok(unsafe { (self.api.send)(map, selector, [key_value].as_ptr(), 1) })
     }
@@ -135,11 +135,11 @@ impl<'a> ProjectManifestDecoder<'a> {
         value: birnam_abi::Oop,
         field: &'static str,
     ) -> Result<String, ProjectManifestDecodeError> {
-        if value == self.api.nilObj || unsafe { (self.api.vtableOf)(value) } != self.api.string_vt {
+        if value == self.api.nilObj || unsafe { (self.api.vtableOf)(value) } != unsafe { birnam_abi::string::behavior() } {
             return Err(ProjectManifestDecodeError::InvalidString(field));
         }
         let mut length = 0usize;
-        let bytes = unsafe { (self.api.stringBytes)(value, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
         if bytes.is_null() {
             return Err(ProjectManifestDecodeError::InvalidString(field));
         }
@@ -154,11 +154,11 @@ impl<'a> ProjectManifestDecoder<'a> {
         value: birnam_abi::Oop,
         field: &'static str,
     ) -> Result<Vec<u8>, ProjectManifestDecodeError> {
-        if value == self.api.nilObj || unsafe { (self.api.vtableOf)(value) } != self.api.string_vt {
+        if value == self.api.nilObj || unsafe { (self.api.vtableOf)(value) } != unsafe { birnam_abi::string::behavior() } {
             return Err(ProjectManifestDecodeError::InvalidString(field));
         }
         let mut length = 0usize;
-        let bytes = unsafe { (self.api.stringBytes)(value, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
         if bytes.is_null() {
             return Err(ProjectManifestDecodeError::InvalidString(field));
         }
@@ -174,7 +174,7 @@ impl<'a> ProjectManifestDecoder<'a> {
         if value == self.api.nilObj {
             return Ok(Vec::new());
         }
-        if allow_single && unsafe { (self.api.vtableOf)(value) } == self.api.string_vt {
+        if allow_single && unsafe { (self.api.vtableOf)(value) } == unsafe { birnam_abi::string::behavior() } {
             return Ok(vec![unsafe { self.string(value, field)? }]);
         }
         if unsafe { (self.api.vtableOf)(value) } != self.vector_vt {
@@ -777,7 +777,7 @@ unsafe fn project_bridge_failure(api: &IdApi, kind: &str, message: &str) -> birn
     };
     result = updated;
     let Ok(updated) =
-        (unsafe { builder.put(result, "kind", (api.mkString)(kind.as_ptr(), kind.len())) })
+        (unsafe { builder.put(result, "kind", (birnam_abi::string::make)(kind.as_ptr(), kind.len())) })
     else {
         return api.nilObj;
     };
@@ -786,7 +786,7 @@ unsafe fn project_bridge_failure(api: &IdApi, kind: &str, message: &str) -> birn
         builder.put(
             result,
             "message",
-            (api.mkString)(message.as_ptr(), message.len()),
+            (birnam_abi::string::make)(message.as_ptr(), message.len()),
         )
     }) else {
         return api.nilObj;
@@ -816,7 +816,7 @@ unsafe extern "C" fn project_path_for_uri_native(
         };
     };
     let bytes = path_bytes(&path);
-    unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
+    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
 }
 
 unsafe extern "C" fn project_snapshot_for_uri_native(
@@ -948,7 +948,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         key: &str,
         value: birnam_abi::Oop,
     ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
-        let key = unsafe { (self.api.mkString)(key.as_bytes().as_ptr(), key.len()) };
+        let key = unsafe { (birnam_abi::string::make)(key.as_bytes().as_ptr(), key.len()) };
         let selector = unsafe { (self.api.intern)(c"at:put:".as_ptr()) };
         let updated = unsafe { (self.api.send)(map, selector, [key, value].as_ptr(), 2) };
         if updated == self.api.nilObj || send_is_error(self.api, updated) {
@@ -959,11 +959,11 @@ impl<'a> ProjectSnapshotBuilder<'a> {
     }
 
     unsafe fn string(&self, value: &str) -> birnam_abi::Oop {
-        unsafe { (self.api.mkString)(value.as_bytes().as_ptr(), value.len()) }
+        unsafe { (birnam_abi::string::make)(value.as_bytes().as_ptr(), value.len()) }
     }
 
     unsafe fn bytes(&self, value: &[u8]) -> birnam_abi::Oop {
-        unsafe { (self.api.mkString)(value.as_ptr(), value.len()) }
+        unsafe { (birnam_abi::string::make)(value.as_ptr(), value.len()) }
     }
 
     unsafe fn strings(&self, values: &[String]) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
@@ -1480,7 +1480,7 @@ impl HostRuntime {
         })?;
         let api = self.stack.api();
         let toml = unsafe { global_named(api, "Toml") }.ok_or(ProjectManifestError::MissingToml)?;
-        let source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let source = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"parse:".as_ptr()) };
         let result = unsafe { (api.send)(toml, selector, [source].as_ptr(), 1) };
         if result == api.nilObj || send_is_error(api, result) {
@@ -1810,11 +1810,11 @@ impl HostRuntime {
         let mut diagnostics = Vec::new();
         for (index, module) in resolution.modules.iter().enumerate() {
             let output = temporary.0.join(format!("module-{index}.dylib"));
-            let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+            let source = unsafe { (birnam_abi::string::make)(module.source.as_ptr(), module.source.len()) };
             let output_bytes = path_bytes(&output);
-            let output = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
+            let output = unsafe { (birnam_abi::string::make)(output_bytes.as_ptr(), output_bytes.len()) };
             let root_bytes = module.project_root.as_bytes();
-            let root = unsafe { (api.mkString)(root_bytes.as_ptr(), root_bytes.len()) };
+            let root = unsafe { (birnam_abi::string::make)(root_bytes.as_ptr(), root_bytes.len()) };
             let result = unsafe {
                 (api.send)(
                     self.codegen,
@@ -1827,10 +1827,10 @@ impl HostRuntime {
                 let detail_value =
                     unsafe { (api.send)(self.codegen, last_error_selector, std::ptr::null(), 0) };
                 let detail = if detail_value != api.nilObj
-                    && unsafe { (api.vtableOf)(detail_value) } == api.string_vt
+                    && unsafe { (api.vtableOf)(detail_value) } == unsafe { birnam_abi::string::behavior() }
                 {
                     let mut length = 0usize;
-                    let bytes = unsafe { (api.stringBytes)(detail_value, &mut length) };
+                    let bytes = unsafe { (birnam_abi::string::bytes)(detail_value, &mut length) };
                     if bytes.is_null() {
                         "compiler did not provide a diagnostic".to_owned()
                     } else {
@@ -1876,11 +1876,11 @@ impl HostRuntime {
     ) -> Result<String, ProjectArtifactCompileError> {
         let api = self.stack.api();
         let selector = unsafe { (api.intern)(c"compile:output:root:".as_ptr()) };
-        let source = unsafe { (api.mkString)(module.source.as_ptr(), module.source.len()) };
+        let source = unsafe { (birnam_abi::string::make)(module.source.as_ptr(), module.source.len()) };
         let output_bytes = path_bytes(output);
-        let output_value = unsafe { (api.mkString)(output_bytes.as_ptr(), output_bytes.len()) };
+        let output_value = unsafe { (birnam_abi::string::make)(output_bytes.as_ptr(), output_bytes.len()) };
         let root_value = unsafe {
-            (api.mkString)(
+            (birnam_abi::string::make)(
                 module.project_root.as_bytes().as_ptr(),
                 module.project_root.len(),
             )
@@ -1898,10 +1898,10 @@ impl HostRuntime {
             let detail_value =
                 unsafe { (api.send)(self.codegen, last_error_selector, std::ptr::null(), 0) };
             let detail = if detail_value != api.nilObj
-                && unsafe { (api.vtableOf)(detail_value) } == api.string_vt
+                && unsafe { (api.vtableOf)(detail_value) } == unsafe { birnam_abi::string::behavior() }
             {
                 let mut length = 0usize;
-                let bytes = unsafe { (api.stringBytes)(detail_value, &mut length) };
+                let bytes = unsafe { (birnam_abi::string::bytes)(detail_value, &mut length) };
                 if bytes.is_null() {
                     "compiler did not provide a diagnostic".to_owned()
                 } else {
@@ -1941,7 +1941,7 @@ impl HostRuntime {
         let api = self.stack.api();
         let codegen = unsafe { global_named(api, "Codegen") }
             .ok_or(ProjectSourceIndexError::MissingCodegen)?;
-        let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
         let metadata = unsafe { (api.send)(codegen, selector, [source_value].as_ptr(), 1) };
         if metadata == api.nilObj || send_is_error(api, metadata) {
@@ -2673,7 +2673,7 @@ impl HostRuntime {
         let api = self.stack.api();
         let codegen = unsafe { global_named(api, "Codegen") }
             .ok_or(ProjectSourceIndexError::MissingCodegen)?;
-        let source = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let source = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
         let metadata = unsafe { (api.send)(codegen, selector, [source].as_ptr(), 1) };
         if metadata == api.nilObj {
@@ -2712,7 +2712,7 @@ impl HostRuntime {
         let api = self.stack.api();
         let codegen = unsafe { global_named(api, "Codegen") }
             .ok_or(ProjectSourceIndexError::MissingCodegen)?;
-        let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
         let metadata = unsafe { (api.send)(codegen, selector, [source_value].as_ptr(), 1) };
         if metadata == api.nilObj {
@@ -2753,7 +2753,7 @@ impl HostRuntime {
         let api = self.stack.api();
         let codegen = unsafe { global_named(api, "Codegen") }
             .ok_or(ProjectSourceIndexError::MissingCodegen)?;
-        let source_value = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+        let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
         let metadata = unsafe { (api.send)(codegen, selector, [source_value].as_ptr(), 1) };
         if metadata == api.nilObj {
@@ -2811,7 +2811,7 @@ impl HostRuntime {
         }
         for path in paths {
             let bytes = path_bytes(path);
-            let value = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+            let value = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
             let updated = unsafe { (api.send)(source_paths, add_selector, [value].as_ptr(), 1) };
             if updated == api.nilObj || send_is_error(api, updated) {
                 return Err(ProjectCompositionError::AllocationRejected);
@@ -2823,11 +2823,11 @@ impl HostRuntime {
         if send_is_error(api, result) {
             return Err(ProjectCompositionError::Rejected);
         }
-        if result == api.nilObj || unsafe { (api.vtableOf)(result) } != api.string_vt {
+        if result == api.nilObj || unsafe { (api.vtableOf)(result) } != unsafe { birnam_abi::string::behavior() } {
             return Err(ProjectCompositionError::NonString);
         }
         let mut length = 0usize;
-        let bytes = unsafe { (api.stringBytes)(result, &mut length) };
+        let bytes = unsafe { (birnam_abi::string::bytes)(result, &mut length) };
         if bytes.is_null() {
             return Err(ProjectCompositionError::NonString);
         }

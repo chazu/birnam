@@ -32,6 +32,8 @@ let main := [|
   [System gc];
   [System println: [[retained size] printString]];
   [System println: [[retained == alias] printString]];
+  [System println: [[[retained clone] size] printString]];
+  [System println: [[[retained new] == retained] printString]];
   [System println: [retained copyFrom: 1 to: 4]];
   [System println: [[" 42 " asInteger] printString]];
   [System println: [["1.5" asNumber] printString]];
@@ -59,7 +61,7 @@ while offset < len(data):
 assert offset == len(data) and records[-1][0] == 4 and records[-1][1] > 72, records
 PY
 rm "$scratch/save.birnam"
-printf '6\ntrue\nirn\n42\n1.5\n2\n99\nstring-image-ok\n' >"$scratch/expected.out"
+printf '6\ntrue\n6\nfalse\nirn\n42\n1.5\n2\n99\nstring-image-ok\n' >"$scratch/expected.out"
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
 cmp "$scratch/expected.out" "$scratch/image.out"
 grep -Fq '/libbirnam_string.dylib' "$scratch/image.err"
@@ -67,4 +69,4 @@ grep -Fq '/libbirnam_string.dylib' "$scratch/image.err"
 BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
 grep -Fq '/libbirnam_string.dylib' "$scratch/baked.err"
-printf 'string-image-smoke: dynamic startup, compiled module, saved compiled image and baked image preserve String bytes, conversions, alias identity, Array splitting, live dispatch and GC\n'
+printf 'string-image-smoke: dynamic startup, compiled module, saved compiled image and baked image preserve String bytes, clone/new, conversions, alias identity, Array splitting, live dispatch and GC\n'

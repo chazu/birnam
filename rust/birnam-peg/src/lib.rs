@@ -357,10 +357,10 @@ unsafe fn new_grammar() -> Oop {
     object
 }
 
-unsafe fn string_bytes(api: &IdApi, object: Oop) -> Vec<u8> {
+unsafe fn string_bytes(_api: &IdApi, object: Oop) -> Vec<u8> {
     let mut length = 0;
     // SAFETY: the object is expected to satisfy the existing String protocol.
-    let pointer = unsafe { (api.stringBytes)(object, &mut length) };
+    let pointer = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
     if pointer.is_null() && length != 0 {
         abort("String protocol returned null bytes");
     }
@@ -372,7 +372,7 @@ unsafe fn string_bytes(api: &IdApi, object: Oop) -> Vec<u8> {
 }
 
 unsafe fn rule_symbol(api: &IdApi, object: Oop) -> Oop {
-    if unsafe { (api.vtableOf)(object) } != api.string_vt {
+    if unsafe { (api.vtableOf)(object) } != unsafe { birnam_abi::string::behavior() } {
         return object;
     }
     let bytes = unsafe { string_bytes(api, object) };
@@ -624,7 +624,7 @@ unsafe fn peg_error(kind: &[u8], message: &[u8]) -> Oop {
         return api.nilObj;
     }
     let kind_symbol = unsafe { intern(api, kind) };
-    let message_string = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
+    let message_string = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
     let selector = unsafe { intern(api, b"kind:message:\0") };
     let values = [kind_symbol, message_string];
     // SAFETY: values is a live, contiguous argument buffer for this send.
@@ -910,7 +910,7 @@ unsafe extern "C" fn peg_any_of(_self_object: Oop, pointer: *const Oop, count: u
 }
 
 unsafe fn byte_argument(api: &IdApi, object: Oop) -> u8 {
-    if unsafe { (api.vtableOf)(object) } == api.string_vt {
+    if unsafe { (api.vtableOf)(object) } == unsafe { birnam_abi::string::behavior() } {
         return unsafe { string_bytes(api, object) }
             .first()
             .copied()
@@ -1055,7 +1055,7 @@ unsafe extern "C" fn cst_rule_name(self_object: Oop, pointer: *const Oop, count:
     let bytes = unsafe { std::ffi::CStr::from_ptr(name.cast()) }
         .to_bytes()
         .to_vec();
-    unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) }
+    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
 }
 
 unsafe extern "C" fn cst_start(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
@@ -1295,3 +1295,5 @@ mod tests {
 }
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::string_dependency!();

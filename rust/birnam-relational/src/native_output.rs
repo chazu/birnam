@@ -224,8 +224,8 @@ fn exported_output_contract() {
                 // case 3 has no matches; case 4 supplies malformed callback arity.
                 let values = match case {
                     7 => [
-                        (api.mkString)(b"x".as_ptr(), 1),
-                        (api.mkString)(b"a\0b".as_ptr(), 3),
+                        (birnam_abi::string::make)(b"x".as_ptr(), 1),
+                        (birnam_abi::string::make)(b"a\0b".as_ptr(), 3),
                     ],
                     8 => [(birnam_abi::float::make)(1.25), (birnam_abi::float::make)(2.5)],
                     9 => [

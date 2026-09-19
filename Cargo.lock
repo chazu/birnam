@@ -110,6 +110,7 @@ dependencies = [
  "birnam-integer",
  "birnam-native-compiler",
  "birnam-object-model",
+ "birnam-string",
  "birnam-trace",
  "birnam-word",
  "sha2",

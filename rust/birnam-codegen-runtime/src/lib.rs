@@ -940,7 +940,7 @@ pub unsafe extern "C" fn birnam_rust_codegen_record_global_src(
     if name.is_null() || source.is_null() || length < 0 {
         return;
     }
-    let source = unsafe { (api.mkString)(source, length as usize) };
+    let source = unsafe { (birnam_abi::string::make)(source, length as usize) };
     let entity = unsafe { intern(api, GLOBAL_SOURCES_ENTITY_NAME) };
     let key = unsafe { (api.intern)(name) };
     let _ = unsafe {
@@ -977,7 +977,7 @@ pub unsafe extern "C" fn birnam_rust_codegen_record_module_source(
     if name.is_null() || source.is_null() || length < 0 {
         return;
     }
-    let source = unsafe { (api.mkString)(source, length as usize) };
+    let source = unsafe { (birnam_abi::string::make)(source, length as usize) };
     let key = unsafe { (api.intern)(name) };
     if let Ok(mut modules) = MODULE_SOURCES.lock() {
         modules.push(ModuleSourceEntry {
@@ -1544,7 +1544,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
                 .set(unsafe { core::mem::transmute::<usize, ClosureAttempt>(address) });
         }
         let symbol = b"birnam_portable_block_or_inline_v1";
-        let name = unsafe { (api.mkString)(symbol.as_ptr(), symbol.len()) };
+        let name = unsafe { (birnam_abi::string::make)(symbol.as_ptr(), symbol.len()) };
         let Some(address) = (unsafe {
             borrowed_address(
                 api,
@@ -1557,7 +1557,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
             return false;
         }
     }
-    let name = unsafe { (api.mkString)(b"birnam_global".as_ptr(), 13) };
+    let name = unsafe { (birnam_abi::string::make)(b"birnam_global".as_ptr(), 13) };
     let Some(address) = (unsafe { borrowed_address(api, birnam_global as *const () as usize) })
     else {
         return false;
@@ -1565,7 +1565,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
-    let name = unsafe { (api.mkString)(b"birnam_global_b".as_ptr(), 15) };
+    let name = unsafe { (birnam_abi::string::make)(b"birnam_global_b".as_ptr(), 15) };
     let Some(address) =
         (unsafe { borrowed_address(api, birnam_rust_codegen_global_b as *const () as usize) })
     else {
@@ -1574,7 +1574,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
-    let name = unsafe { (api.mkString)(b"birnam_global_set".as_ptr(), 17) };
+    let name = unsafe { (birnam_abi::string::make)(b"birnam_global_set".as_ptr(), 17) };
     let Some(address) = (unsafe { borrowed_address(api, birnam_global_set as *const () as usize) })
     else {
         return false;
@@ -1589,7 +1589,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
             return false;
         }
     } else {
-        let name = unsafe { (api.mkString)(b"birnam_vtable_cache_get".as_ptr(), 23) };
+        let name = unsafe { (birnam_abi::string::make)(b"birnam_vtable_cache_get".as_ptr(), 23) };
         let Some(address) =
             (unsafe { borrowed_address(api, birnam_vtable_cache_get as *const () as usize) })
         else {
@@ -1598,7 +1598,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
         if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
             return false;
         }
-        let name = unsafe { (api.mkString)(b"birnam_vtable_cache_set".as_ptr(), 23) };
+        let name = unsafe { (birnam_abi::string::make)(b"birnam_vtable_cache_set".as_ptr(), 23) };
         let Some(address) =
             (unsafe { borrowed_address(api, birnam_vtable_cache_set as *const () as usize) })
         else {
@@ -1608,7 +1608,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
             return false;
         }
     }
-    let name = unsafe { (api.mkString)(b"birnam_portable_code_admit_v1".as_ptr(), 29) };
+    let name = unsafe { (birnam_abi::string::make)(b"birnam_portable_code_admit_v1".as_ptr(), 29) };
     let Some(address) =
         (unsafe { borrowed_address(api, birnam_portable_code_admit_v1 as *const () as usize) })
     else {
@@ -1617,7 +1617,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
-    let name = unsafe { (api.mkString)(b"birnam_portable_block_new_v1".as_ptr(), 28) };
+    let name = unsafe { (birnam_abi::string::make)(b"birnam_portable_block_new_v1".as_ptr(), 28) };
     let Some(address) =
         (unsafe { borrowed_address(api, birnam_portable_block_new_v1 as *const () as usize) })
     else {
@@ -1627,7 +1627,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
         return false;
     }
     let name = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             b"birnam_portable_materialized_block_new_v2".as_ptr(),
             b"birnam_portable_materialized_block_new_v2".len(),
         )
@@ -1647,7 +1647,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
     else {
         return false;
     };
-    let name = unsafe { (api.mkString)(b"birnam_register_resumable_v1".as_ptr(), 28) };
+    let name = unsafe { (birnam_abi::string::make)(b"birnam_register_resumable_v1".as_ptr(), 28) };
     let Some(address) = (unsafe { borrowed_address(api, registration) }) else {
         return false;
     };
@@ -1658,7 +1658,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
     else {
         return false;
     };
-    let name = unsafe { (api.mkString)(b"birnam_register_resumable_v2".as_ptr(), 28) };
+    let name = unsafe { (birnam_abi::string::make)(b"birnam_register_resumable_v2".as_ptr(), 28) };
     let Some(address) = (unsafe { borrowed_address(api, registration) }) else {
         return false;
     };
@@ -1683,7 +1683,7 @@ fn jit_code_generation_identity(unit: Oop) -> u64 {
 
 unsafe fn bind_jit_code_generation_identity(api: &IdApi, unit: Oop) -> bool {
     let name = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             b"__birnam_code_generation_identity".as_ptr(),
             b"__birnam_code_generation_identity".len(),
         )
@@ -1739,7 +1739,7 @@ unsafe fn bind_baked_global_shims(api: &IdApi, unit: Oop, baked_globals: &[Vec<u
     for (index, name_bytes) in baked_globals.iter().enumerate() {
         let symbol = unsafe { intern_bytes(api, name_bytes) };
         let mut name = format!("__g{index}").into_bytes();
-        let name_object = unsafe { (api.mkString)(name.as_mut_ptr(), name.len()) };
+        let name_object = unsafe { (birnam_abi::string::make)(name.as_mut_ptr(), name.len()) };
         let Some(address) = (unsafe { borrowed_address(api, symbol as usize) }) else {
             return false;
         };
@@ -2967,12 +2967,12 @@ unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
 }
 
 unsafe fn string_bytes(api: &IdApi, object: Oop) -> Option<Vec<u8>> {
-    if object.is_null() || unsafe { (api.vtableOf)(object) } != api.string_vt {
+    if object.is_null() || unsafe { (api.vtableOf)(object) } != unsafe { birnam_abi::string::behavior() } {
         return None;
     }
     let mut length = 0;
     // SAFETY: object is a live String Oop returned by the host.
-    let pointer = unsafe { (api.stringBytes)(object, &mut length) };
+    let pointer = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
     if length == 0 {
         return Some(Vec::new());
     }
@@ -3710,7 +3710,7 @@ unsafe fn register_artifact_source(
     }
     let _auto_gc = AutoGc(api);
     let name = unsafe { intern_bytes(api, identity) };
-    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
     let Some((_, metadata)) = (unsafe { parse_revision_metadata(api, source_object) }) else {
         return true;
     };
@@ -4142,7 +4142,7 @@ unsafe fn initial_module_authority(
             metadata,
         });
     }
-    let source_object = unsafe { (api.mkString)(source.as_ptr(), source.len()) };
+    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
     let (source, metadata) = unsafe { parse_revision_metadata(api, source_object) }?;
     if metadata.name != identity || !artifact_selection_matches_inventory(&metadata, selection) {
         return None;
@@ -4757,8 +4757,8 @@ unsafe extern "C" fn rust_codegen_initial_generation_projection(
         note_error(b"RustCodegen generation projection is malformed");
         return api.nilObj;
     };
-    let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
-    let selection_object = unsafe { (api.mkString)(selection.as_ptr(), selection.len()) };
+    let digest_object = unsafe { (birnam_abi::string::make)(digest.as_ptr(), digest.len()) };
+    let selection_object = unsafe { (birnam_abi::string::make)(selection.as_ptr(), selection.len()) };
     let tag = unsafe { intern(api, b"generationProjection\0") };
     unsafe {
         make_vector(
@@ -4901,9 +4901,9 @@ unsafe extern "C" fn rust_codegen_successor_generation_projection(
         return api.nilObj;
     }
     let digest = raw_digest_spelling(projected_authority);
-    let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let digest_object = unsafe { (birnam_abi::string::make)(digest.as_ptr(), digest.len()) };
     let selection_object =
-        unsafe { (api.mkString)(projected_selection.as_ptr(), projected_selection.len()) };
+        unsafe { (birnam_abi::string::make)(projected_selection.as_ptr(), projected_selection.len()) };
     let tag = unsafe { intern(api, b"generationProjection\0") };
     unsafe {
         make_vector(
@@ -5001,7 +5001,7 @@ unsafe fn ordered_method_operation_sources(api: &IdApi) -> Vec<MethodOperationSo
         let source = unsafe { send(api, store, CURRENT_VALUE_SELECTOR, &[entity, attribute]) };
         if source.is_null()
             || source == api.nilObj
-            || unsafe { (api.vtableOf)(source) } != api.string_vt
+            || unsafe { (api.vtableOf)(source) } != unsafe { birnam_abi::string::behavior() }
         {
             continue;
         }
@@ -5132,7 +5132,7 @@ unsafe extern "C" fn rust_codegen_generation_method_sources(
     }
     let method_objects = methods
         .iter()
-        .map(|source| unsafe { (api.mkString)(source.as_ptr(), source.len()) })
+        .map(|source| unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) })
         .collect::<Vec<_>>();
     unsafe { make_vector(api, vector, &method_objects) }
 }
@@ -5263,7 +5263,7 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
             .cloned()
             .collect::<Vec<_>>();
         if !module_requests.is_empty() {
-            let source_object = unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) };
+            let source_object = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
             let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
             let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
             let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
@@ -5337,7 +5337,7 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
         program.extend_from_slice(&bytes);
         program.extend_from_slice(b";\n");
     }
-    let source_object = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
+    let source_object = unsafe { (birnam_abi::string::make)(program.as_ptr(), program.len()) };
     let _ = self_object;
     entries.sort_by_key(|entry| entry.request.key());
     let selection = match inspect_artifact_selection(&artifact_selection) {
@@ -5455,8 +5455,8 @@ unsafe extern "C" fn rust_codegen_rebuild_image_code(
         code: &code_path,
         manifest: &manifest_path,
     };
-    let code_object = unsafe { (api.mkString)(code_path.as_ptr(), code_path.len()) };
-    let manifest_object = unsafe { (api.mkString)(manifest_path.as_ptr(), manifest_path.len()) };
+    let code_object = unsafe { (birnam_abi::string::make)(code_path.as_ptr(), code_path.len()) };
+    let manifest_object = unsafe { (birnam_abi::string::make)(manifest_path.as_ptr(), manifest_path.len()) };
     let compiled = unsafe {
         rust_codegen_compile_image_code(self_object, [code_object, manifest_object].as_ptr(), 2)
     };
@@ -5607,7 +5607,7 @@ unsafe fn derive_named_global(api: &IdApi, self_object: Oop, name: Oop) -> bool 
     program.extend_from_slice(&name_bytes);
     program.extend_from_slice(b" := ");
     program.extend_from_slice(&source_bytes);
-    let program = unsafe { (api.mkString)(program.as_ptr(), program.len()) };
+    let program = unsafe { (birnam_abi::string::make)(program.as_ptr(), program.len()) };
     clear_error();
     let result = unsafe { send(api, self_object, EVAL_PERSISTING_SELECTOR, &[program]) };
     result != api.nilObj && LAST_ERROR.lock().ok().is_none_or(|error| error.is_none())
@@ -5822,7 +5822,7 @@ unsafe extern "C" fn rust_codegen_emit(
         return api.nilObj;
     };
     // SAFETY: mkString copies the generated bytes before this call returns.
-    unsafe { (api.mkString)(output.bytes.as_ptr(), output.bytes.len()) }
+    unsafe { (birnam_abi::string::make)(output.bytes.as_ptr(), output.bytes.len()) }
 }
 
 unsafe extern "C" fn rust_codegen_embedded_files(
@@ -5860,7 +5860,7 @@ unsafe extern "C" fn rust_codegen_embedded_files(
     collect_embedded_paths(&tree, &source, 0, &mut paths);
     let mut result = result;
     for path in paths {
-        let value = unsafe { (api.mkString)(path.as_ptr(), path.len()) };
+        let value = unsafe { (birnam_abi::string::make)(path.as_ptr(), path.len()) };
         result = unsafe { send(api, result, b"add:\0", &[value]) };
     }
     result
@@ -5900,9 +5900,9 @@ unsafe extern "C" fn rust_codegen_module_metadata(
         .map(|requirement| unsafe { intern_bytes(api, requirement) })
         .collect::<Vec<_>>();
     let digest = sha256_hex(&source);
-    let digest_object = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
+    let digest_object = unsafe { (birnam_abi::string::make)(digest.as_ptr(), digest.len()) };
     let revision_object = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             metadata.revision_digest.as_ptr(),
             metadata.revision_digest.len(),
         )
@@ -5964,19 +5964,19 @@ unsafe fn source_revision_from_metadata(
         .collect::<Vec<_>>();
     let requires_vector = make_vector(&require_symbols);
     let non_method_digest = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             metadata.non_method_digest.as_ptr(),
             metadata.non_method_digest.len(),
         )
     };
     let method_digest = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             metadata.method_digest.as_ptr(),
             metadata.method_digest.len(),
         )
     };
     let revision_digest = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             metadata.revision_digest.as_ptr(),
             metadata.revision_digest.len(),
         )
@@ -6041,7 +6041,7 @@ unsafe extern "C" fn rust_codegen_eval(
         note_error(b"RustCodegen could not create a Tcc unit");
         return api.nilObj;
     }
-    let c_source = unsafe { (api.mkString)(source.bytes.as_ptr(), source.bytes.len()) };
+    let c_source = unsafe { (birnam_abi::string::make)(source.bytes.as_ptr(), source.bytes.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
         || !unsafe { bind_global_shims(api, unit, false) }
         || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
@@ -6053,7 +6053,7 @@ unsafe extern "C" fn rust_codegen_eval(
         note_error(b"RustCodegen generated C failed to compile");
         return api.nilObj;
     }
-    let entry_name = unsafe { (api.mkString)(b"__ev".as_ptr(), 4) };
+    let entry_name = unsafe { (birnam_abi::string::make)(b"__ev".as_ptr(), 4) };
     let entry_selector = unsafe { intern(api, ENTRY_SELECTOR) };
     if !source.bytes.windows(5).any(|window| window == b"__blk") {
         let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
@@ -6137,7 +6137,7 @@ unsafe fn compile_synchronous_materialization(
     if unit.is_null() || unit == api.nilObj {
         return None;
     }
-    let c_source = unsafe { (api.mkString)(compiled.c_source.as_ptr(), compiled.c_source.len()) };
+    let c_source = unsafe { (birnam_abi::string::make)(compiled.c_source.as_ptr(), compiled.c_source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
         || !unsafe { bind_global_shims(api, unit, true) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
@@ -6157,7 +6157,7 @@ unsafe fn compile_synchronous_materialization(
     // number is a scalar key and cannot retain the native implementation.
     unsafe { (owner_address as *mut Oop).write(unit) };
     let entry_name =
-        unsafe { (api.mkString)(compiled.entry_symbol.as_ptr(), compiled.entry_symbol.len()) };
+        unsafe { (birnam_abi::string::make)(compiled.entry_symbol.as_ptr(), compiled.entry_symbol.len()) };
     let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
     let Some(address) = (unsafe { foreign_address_value(api, symbol) }) else {
         unsafe { dispose_unit(api, unit) };
@@ -6695,8 +6695,8 @@ unsafe fn compile_portable_image_code_bytes(
         std::process::id()
     ));
     let path_bytes = path.as_os_str().as_bytes();
-    let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
-    let path_oop = unsafe { (api.mkString)(path_bytes.as_ptr(), path_bytes.len()) };
+    let source = unsafe { (birnam_abi::string::make)(plan.c_source.as_ptr(), plan.c_source.len()) };
+    let path_oop = unsafe { (birnam_abi::string::make)(path_bytes.as_ptr(), path_bytes.len()) };
     let kind = unsafe { intern(api, b"dll\0") };
     let result = unsafe {
         send(
@@ -6741,7 +6741,7 @@ unsafe extern "C" fn rust_codegen_compile_portable_image_code(
         note_error(b"RustCodegen could not compile portable image Code");
         return api.nilObj;
     };
-    unsafe { (api.mkString)(code.as_ptr(), code.len()) }
+    unsafe { (birnam_abi::string::make)(code.as_ptr(), code.len()) }
 }
 
 unsafe extern "C" fn rust_codegen_begin_portable_image_rebuild(
@@ -6772,7 +6772,7 @@ unsafe extern "C" fn rust_codegen_begin_portable_image_rebuild(
     if unit.is_null() || unit == api.nilObj {
         return api.nilObj;
     }
-    let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
+    let source = unsafe { (birnam_abi::string::make)(plan.c_source.as_ptr(), plan.c_source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
         || !unsafe { bind_global_shims(api, unit, false) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
@@ -7331,7 +7331,7 @@ fn portable_resumable_plan(program: &[u8]) -> Option<PortableResumablePlan> {
 }
 
 unsafe fn unit_symbol_address(api: &IdApi, unit: Oop, name: &[u8]) -> Option<usize> {
-    let name = unsafe { (api.mkString)(name.as_ptr(), name.len()) };
+    let name = unsafe { (birnam_abi::string::make)(name.as_ptr(), name.len()) };
     let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[name]) };
     unsafe { foreign_address_value(api, symbol) }.filter(|address| *address != 0)
 }
@@ -7407,7 +7407,7 @@ unsafe fn compile_portable_named_materialization(
         unsafe { dispose_unit(api, unit) };
         return None;
     }
-    let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
+    let source = unsafe { (birnam_abi::string::make)(plan.c_source.as_ptr(), plan.c_source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
         || !unsafe { bind_global_shims(api, unit, false) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
@@ -7539,7 +7539,7 @@ unsafe fn compile_resumable_materialized_block(
     if unit.is_null() || unit == api.nilObj {
         return None;
     }
-    let source = unsafe { (api.mkString)(plan.c_source.as_ptr(), plan.c_source.len()) };
+    let source = unsafe { (birnam_abi::string::make)(plan.c_source.as_ptr(), plan.c_source.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[source]) } == api.nilObj
         || !unsafe { bind_global_shims(api, unit, true) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
@@ -7872,7 +7872,7 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
         note_error(b"RustCodegen could not create a Tcc unit");
         return api.nilObj;
     }
-    let c_source = unsafe { (api.mkString)(source.bytes.as_ptr(), source.bytes.len()) };
+    let c_source = unsafe { (birnam_abi::string::make)(source.bytes.as_ptr(), source.bytes.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
         || !unsafe { bind_global_shims(api, unit, false) }
         || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
@@ -7884,7 +7884,7 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
         note_error(b"RustCodegen generated C failed to compile");
         return api.nilObj;
     }
-    let entry_name = unsafe { (api.mkString)(b"__ev".as_ptr(), 4) };
+    let entry_name = unsafe { (birnam_abi::string::make)(b"__ev".as_ptr(), 4) };
     let symbol = unsafe { send(api, unit, SYMBOL_SELECTOR, &[entry_name]) };
     let Some(address) = (unsafe { foreign_address_value(api, symbol) }) else {
         unsafe { dispose_unit(api, unit) };
@@ -8139,7 +8139,7 @@ unsafe fn write_emitted_artifact(
         explicit_selection,
         resumable_manifest,
     );
-    let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
+    let c_source = unsafe { (birnam_abi::string::make)(artifact.as_ptr(), artifact.len()) };
     let kind = unsafe { intern(api, b"dll\0") };
     let result = unsafe {
         send(
@@ -8456,7 +8456,7 @@ unsafe fn rust_codegen_compile_candidate_impl(
             program.extend_from_slice(&operation.source);
             program.extend_from_slice(b";\n");
         }
-        unsafe { (api.mkString)(program.as_ptr(), program.len()) }
+        unsafe { (birnam_abi::string::make)(program.as_ptr(), program.len()) }
     } else {
         values[0]
     };
@@ -8508,7 +8508,7 @@ unsafe fn rust_codegen_compile_candidate_impl(
         note_error(b"RustCodegen Tcc is unavailable");
         return api.nilObj;
     }
-    let c_source = unsafe { (api.mkString)(artifact.as_ptr(), artifact.len()) };
+    let c_source = unsafe { (birnam_abi::string::make)(artifact.as_ptr(), artifact.len()) };
     let kind = unsafe { intern(api, b"dll\0") };
     let result = unsafe {
         send(
@@ -8816,7 +8816,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
         }
     }
     let _auto_gc = AutoGc(api);
-    let source_object = unsafe { (api.mkString)(envelope.source.as_ptr(), envelope.source.len()) };
+    let source_object = unsafe { (birnam_abi::string::make)(envelope.source.as_ptr(), envelope.source.len()) };
     let Some((source, metadata)) = (unsafe { parse_revision_metadata(api, source_object) }) else {
         note_error(b"RustCodegen candidate source is not indexable");
         return api.nilObj;
@@ -8864,27 +8864,27 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
     }
     let digest = sha256_hex(&source);
     let non_method = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             metadata.non_method_digest.as_ptr(),
             metadata.non_method_digest.len(),
         )
     };
     let method = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             metadata.method_digest.as_ptr(),
             metadata.method_digest.len(),
         )
     };
     let revision = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             metadata.revision_digest.as_ptr(),
             metadata.revision_digest.len(),
         )
     };
-    let source_hash = unsafe { (api.mkString)(digest.as_ptr(), digest.len()) };
-    let checksum_object = unsafe { (api.mkString)(checksum.as_ptr(), checksum.len()) };
+    let source_hash = unsafe { (birnam_abi::string::make)(digest.as_ptr(), digest.len()) };
+    let checksum_object = unsafe { (birnam_abi::string::make)(checksum.as_ptr(), checksum.len()) };
     let expected_predecessor_object = unsafe {
-        (api.mkString)(
+        (birnam_abi::string::make)(
             expected_predecessor_digest.as_ptr(),
             expected_predecessor_digest.len(),
         )
@@ -9867,7 +9867,7 @@ unsafe extern "C" fn rust_codegen_candidate_content_path(
         note_error(b"RustCodegen candidate publication failed");
         return api.nilObj;
     };
-    unsafe { (api.mkString)(path.as_ptr(), path.len()) }
+    unsafe { (birnam_abi::string::make)(path.as_ptr(), path.len()) }
 }
 
 unsafe fn parse_publication_plan(
@@ -11839,7 +11839,7 @@ unsafe extern "C" fn rust_codegen_last_error(
     let Some(message) = error.as_deref() else {
         return api.nilObj;
     };
-    unsafe { (api.mkString)(message.as_ptr(), message.len()) }
+    unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -12420,7 +12420,7 @@ unsafe fn reflect_method_source_for_target_selector(
                 && operation.selector == selector_bytes
             {
                 found =
-                    unsafe { (api.mkString)(operation.source.as_ptr(), operation.source.len()) };
+                    unsafe { (birnam_abi::string::make)(operation.source.as_ptr(), operation.source.len()) };
             }
         }
     }
@@ -12552,14 +12552,14 @@ unsafe extern "C" fn rust_reflect_name_of(
         }
         let kind = unsafe { intern(api, b"notASymbol\0") };
         let message = unsafe {
-            (api.mkString)(
+            (birnam_abi::string::make)(
                 b"nameOf: expects a symbol".as_ptr(),
                 b"nameOf: expects a symbol".len(),
             )
         };
         return unsafe { send(api, error, b"kind:message:\0", &[kind, message]) };
     };
-    unsafe { (api.mkString)(name.as_ptr(), name.len()) }
+    unsafe { (birnam_abi::string::make)(name.as_ptr(), name.len()) }
 }
 
 unsafe extern "C" fn rust_reflect_global_named(
@@ -14680,3 +14680,5 @@ fn floor_lookup_contract() {
 mod state_contract;
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::string_dependency!();

@@ -46,13 +46,13 @@ unsafe extern "C" fn inspect_retirement(context: *mut c_void) -> i32 {
         let required = state.heap.has_dead_allocations()
             && (!source.dead_bindings.is_empty()
                 || state.heap.dead_finalizers().any(|(object, finalizer)| {
-                    // Only this exact floor cleanup on its published runtime
+                    // Only the exact String cleanup on its owning mounting
                     // and owned storage cannot observe the physical sweep.
                     // It still runs normally below. Wrappers, replacement
                     // finalizers and missing owners retain ordinary settlement.
                     let string_cleanup =
-                        crate::public_api::string_cleanup_matches_runtime(runtime, finalizer)
-                            && state.values.string_bytes(object).is_some();
+                        runtime.string_cleanup_matches_runtime(finalizer)
+                            && runtime.string_bytes(object).is_some();
                     !string_cleanup
                         && !state
                             .execution

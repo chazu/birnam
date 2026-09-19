@@ -706,8 +706,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
 
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
-- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v6.
-- `rust/birnam-string/` — independently loaded String methods; splitting remains with Collection.
+- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
+- `rust/birnam-string/` — independently loaded String representation, byte owner and methods; splitting remains with Collection.
 - `rust/birnam-nil/` — independently loaded Object/nil methods; singleton identity remains in Id.
 - `rust/birnam-boolean/` — independently loaded Boolean methods; singleton objects remain in Id.
 - `rust/birnam-word/` — independently loaded Word representation and methods;
@@ -745,7 +745,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
   from Prelude; [Float representation](docs/design/81r-production-float-storage.md)
   also lives in that module through an explicit native dependency.
 - [String methods](docs/design/81w-production-string-methods.md) load before
-  Collection; Id still owns String representation and external byte buffers.
+  Collection; [String representation](docs/design/81x-production-string-storage.md)
+  and external byte ownership also live in the String module.
 - [Nil methods](docs/design/81v-production-nil-methods.md) load before Collection
   through the existing Method interface.
 - [Boolean methods](docs/design/81u-production-boolean-methods.md) load before

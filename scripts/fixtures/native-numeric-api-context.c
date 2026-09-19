@@ -1,4 +1,4 @@
-#include "idapi_v6.h"
+#include "idapi_v7.h"
 #include "integer-support.h"
 static unsigned boxes;
 static Oop (*original_make)(void *, int64_t);
