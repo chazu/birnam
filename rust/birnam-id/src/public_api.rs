@@ -8,7 +8,7 @@ use crate::abi::{Finalizer, IdApi, Method, MethodOverwriteHook, Oop, RootProvide
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
 use crate::runtime::{Runtime, with_active_if_present};
-use crate::values::{float_value_unchecked, word_value_unchecked};
+use crate::values::word_value_unchecked;
 
 static PUBLIC_API: AtomicPtr<IdApi> = AtomicPtr::new(core::ptr::null_mut());
 
@@ -159,21 +159,6 @@ pub(crate) fn test_dispatch_reentry(method: Method) -> usize {
     runtime
         .enter(|| runtime.send_slice(receiver, outer, &[inner]))
         .addr()
-}
-
-unsafe extern "C" fn api_make_float(value: f64) -> Oop {
-    runtime().make_float(value)
-}
-
-unsafe extern "C" fn api_float_value(object: Oop) -> f64 {
-    // SAFETY: the frozen IdApi contract requires a live Float object. The
-    // payload read needs no mutable runtime state; callers remain subject to
-    // the floor's owner-thread rule.
-    unsafe { float_value_unchecked(object) }
-}
-
-unsafe extern "C" fn api_is_float(object: Oop) -> c_int {
-    i32::from(runtime().is_float(object))
 }
 
 unsafe extern "C" fn api_make_word(value: u64) -> Oop {
@@ -357,10 +342,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         gcLiveCount: api_gc_live_count,
         setTraceHook: api_set_trace_hook,
         gcSetAuto: api_gc_set_auto,
-        float_vt: canonical.float_vt,
-        mkFloat: api_make_float,
-        floatValue: api_float_value,
-        isFloat: api_is_float,
         setFinalizer: api_set_finalizer,
         setLayout: api_set_layout,
         gcSetPrecise: api_gc_set_precise,
@@ -437,7 +418,6 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [
         canonical.string_vt,
-        canonical.float_vt,
         canonical.word_vt,
         canonical.nil_vt,
         canonical.bool_vt,
@@ -566,7 +546,6 @@ mod tests {
         assert_eq!(table.trueObj, canonical.true_object);
         assert_eq!(table.falseObj, canonical.false_object);
         assert_eq!(table.string_vt, canonical.string_vt);
-        assert_eq!(table.float_vt, canonical.float_vt);
         assert_eq!(table.word_vt, canonical.word_vt);
         assert_eq!(
             bootstrap.runtime.has_finalizer(canonical.string_prototype),
@@ -617,7 +596,7 @@ pub unsafe extern "C" fn birnam_integer_dependency_v1(ops: *mut birnam_abi::inte
 }
 
 #[cfg(test)]
-pub(crate) fn test_integer_api(bootstrap: &Bootstrap) -> Box<IdApi> {
+pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
     use crate::runtime::with_active;
     unsafe extern "C" fn proto(parent: Oop) -> Oop { with_active(|r| r.create_vtable(parent)) }
     unsafe extern "C" fn export(name: *const c_char, value: Oop) -> Oop {
@@ -641,3 +620,9 @@ pub(crate) fn test_integer_api(bootstrap: &Bootstrap) -> Box<IdApi> {
 }
 
 pub(crate) fn canonical_allocator() -> usize { canonical_numeric_functions().alloc as usize }
+
+/// Explicit dependency of the still-combined Machine and recovery layer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_float_dependency_v1(ops: *mut birnam_abi::float::FloatApiV1) -> c_int {
+    c_int::from(unsafe { runtime().attach_float(ops) })
+}

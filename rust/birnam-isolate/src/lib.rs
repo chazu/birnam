@@ -649,9 +649,9 @@ impl<'a> OopEncoder<'a> {
                 .extend_from_slice(&(integer as u64).to_be_bytes());
             return Ok(());
         }
-        if unsafe { (self.api.isFloat)(value) } != 0 {
+        if unsafe { (birnam_abi::float::is_float)(value) } != 0 {
             self.byte(TAG_FLOAT)?;
-            let float = unsafe { (self.api.floatValue)(value) };
+            let float = unsafe { (birnam_abi::float::value)(value) };
             self.reserve(8)?;
             self.bytes.extend_from_slice(&float.to_bits().to_be_bytes());
             return Ok(());
@@ -858,7 +858,7 @@ impl<'a> OopDecoder<'a> {
             TAG_FALSE => Ok(self.api.falseObj),
             TAG_TRUE => Ok(self.api.trueObj),
             TAG_INT => Ok(unsafe { (birnam_abi::integer::make)(self.u64()? as i64) }),
-            TAG_FLOAT => Ok(unsafe { (self.api.mkFloat)(f64::from_bits(self.u64()?)) }),
+            TAG_FLOAT => Ok(unsafe { (birnam_abi::float::make)(f64::from_bits(self.u64()?)) }),
             TAG_STRING => {
                 let bytes = self.sized()?;
                 Ok(unsafe { (self.api.mkString)(bytes.as_ptr(), bytes.len()) })
@@ -2737,3 +2737,5 @@ mod tests {
 }
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::float_dependency!();

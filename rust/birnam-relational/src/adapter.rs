@@ -359,7 +359,7 @@ unsafe fn value_oop(api: &IdApi, value: Value) -> Oop {
     match value {
         Value::Identity(identity) => identity as usize as Oop,
         Value::Integer(integer) => unsafe { (birnam_abi::integer::make)(integer) },
-        Value::Float(float) => unsafe { (api.mkFloat)(float) },
+        Value::Float(float) => unsafe { (birnam_abi::float::make)(float) },
         Value::String(bytes) => unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) },
     }
 }

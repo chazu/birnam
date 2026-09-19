@@ -995,18 +995,18 @@ pub unsafe extern "C" fn rt_small_int_value(object: Oop) -> i64 {
 
 #[unsafe(export_name = "birnam_mkFloat")]
 pub unsafe extern "C" fn rt_mk_float(value: f64) -> Oop {
-    let runtime = RUNTIME
+    let _runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).mkFloat)(value) }
+    unsafe { (birnam_abi::float::make)(value) }
 }
 
 #[unsafe(export_name = "birnam_floatValue")]
 pub unsafe extern "C" fn rt_float_value(object: Oop) -> f64 {
-    let runtime = RUNTIME
+    let _runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).floatValue)(object) }
+    unsafe { (birnam_abi::float::value)(object) }
 }
 
 #[unsafe(export_name = "birnam_mkWord")]
@@ -1523,3 +1523,5 @@ fn floor_lookup_contract_retirement() {
 }
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::float_dependency!();

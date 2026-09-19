@@ -578,7 +578,7 @@ unsafe extern "C" fn alien_peek_double(receiver: Oop, args: *const Oop, count: u
         Err(error) => return error,
     };
     let value = unsafe { ptr::read_unaligned(address as *const f64) };
-    unsafe { (api.mkFloat)(value) }
+    unsafe { (birnam_abi::float::make)(value) }
 }
 
 unsafe extern "C" fn alien_peek_string(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -671,7 +671,7 @@ unsafe extern "C" fn alien_poke_double(receiver: Oop, args: *const Oop, count: u
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
-    if arguments.len() != 2 || unsafe { (api.isFloat)(arguments[0]) } == 0 {
+    if arguments.len() != 2 || unsafe { (birnam_abi::float::is_float)(arguments[0]) } == 0 {
         return if arguments.len() == 2 {
             unsafe { make_error(api, b"typeMismatch\0", b"pokeDouble: needs a Float value") }
         } else {
@@ -682,7 +682,7 @@ unsafe extern "C" fn alien_poke_double(receiver: Oop, args: *const Oop, count: u
         Ok(address) => address,
         Err(error) => return error,
     };
-    let value = unsafe { (api.floatValue)(arguments[0]) };
+    let value = unsafe { (birnam_abi::float::value)(arguments[0]) };
     unsafe { ptr::write_unaligned(address as *mut f64, value) };
     receiver
 }

@@ -706,7 +706,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
-- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v4.
+- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v5.
+- `rust/birnam-float/` — independently loaded Float representation and behavior;
+  [native dependency contract](abi/float-v1.md).
 - `rust/birnam-integer/` — independently loaded Integer representation and behavior;
   [native dependency contract](abi/integer-v1.md).
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
@@ -735,7 +737,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [production GC traversal](docs/design/81o-production-live-gc-traversal.md) also
   uses the loaded tracer through a [live interface](abi/trace-live-v1.md).
 - [Float methods](docs/design/81q-production-float-methods.md) now load separately
-  from Prelude; representation migration is the next checkpoint.
+  from Prelude; [Float representation](docs/design/81r-production-float-storage.md)
+  also lives in that module through an explicit native dependency.
 - [Production collection coordination](docs/design/81p-production-collection-coordinator.md)
   moves phase order and finalization into `birnam-collect`, through its
   [scoped native interface](abi/collect-v1.md).

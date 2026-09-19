@@ -70,6 +70,9 @@ or performance claim is made.
 
 ## Next checkpoint
 
+Implemented by [81R](81r-production-float-storage.md); the following records
+the boundary identified at the method-only checkpoint.
+
 Move canonical Float objects, its eight-byte representation, constructor,
 accessor and exact recognizer into this module; migrate all production consumers
 and remove their four IdApi fields. Keep shared image/recovery payload handling

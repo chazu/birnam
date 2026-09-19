@@ -151,7 +151,7 @@ enum Numeric {
     Float(f64),
 }
 
-unsafe fn numeric(api: &IdApi, value: Oop) -> Option<Numeric> {
+unsafe fn numeric(_api: &IdApi, value: Oop) -> Option<Numeric> {
     if value.is_null() {
         return None;
     }
@@ -160,8 +160,8 @@ unsafe fn numeric(api: &IdApi, value: Oop) -> Option<Numeric> {
             (birnam_abi::integer::value)(value)
         }));
     }
-    if unsafe { (api.isFloat)(value) } != 0 {
-        return Some(Numeric::Float(unsafe { (api.floatValue)(value) }));
+    if unsafe { (birnam_abi::float::is_float)(value) } != 0 {
+        return Some(Numeric::Float(unsafe { (birnam_abi::float::value)(value) }));
     }
     None
 }
@@ -196,13 +196,13 @@ unsafe fn numeric_binary(
             result(api, integer_operation(left as i128, right as i128))
         },
         (Numeric::Integer(left), Numeric::Float(right)) => unsafe {
-            (api.mkFloat)(float_operation(left as f64, right))
+            (birnam_abi::float::make)(float_operation(left as f64, right))
         },
         (Numeric::Float(left), Numeric::Integer(right)) => unsafe {
-            (api.mkFloat)(float_operation(left, right as f64))
+            (birnam_abi::float::make)(float_operation(left, right as f64))
         },
         (Numeric::Float(left), Numeric::Float(right)) => unsafe {
-            (api.mkFloat)(float_operation(left, right))
+            (birnam_abi::float::make)(float_operation(left, right))
         },
     }
 }
@@ -274,12 +274,12 @@ unsafe extern "C" fn integer_div(self_object: Oop, args: *const Oop, count: usiz
             result(api, (left as i128) / (right as i128))
         },
         (Numeric::Integer(left), Numeric::Float(right)) => unsafe {
-            (api.mkFloat)(left as f64 / right)
+            (birnam_abi::float::make)(left as f64 / right)
         },
         (Numeric::Float(left), Numeric::Integer(right)) => unsafe {
-            (api.mkFloat)(left / right as f64)
+            (birnam_abi::float::make)(left / right as f64)
         },
-        (Numeric::Float(left), Numeric::Float(right)) => unsafe { (api.mkFloat)(left / right) },
+        (Numeric::Float(left), Numeric::Float(right)) => unsafe { (birnam_abi::float::make)(left / right) },
     }
 }
 
@@ -399,8 +399,8 @@ unsafe extern "C" fn integer_as_float(self_object: Oop, _args: *const Oop, count
     let Some(value) = (unsafe { integer(api, self_object) }) else {
         return api.nilObj;
     };
-    // SAFETY: the floor owns the boxed Float constructor.
-    unsafe { (api.mkFloat)(value as f64) }
+    // SAFETY: the mounted Float module owns the boxed constructor.
+    unsafe { (birnam_abi::float::make)(value as f64) }
 }
 
 unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -554,3 +554,5 @@ mod tests {
         assert_eq!(declared_numeric_operator(ptr::null()), 0);
     }
 }
+
+birnam_abi::float_dependency!();

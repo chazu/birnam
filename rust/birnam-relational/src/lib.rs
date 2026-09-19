@@ -71,3 +71,5 @@ pub use adapter::{
 };
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::float_dependency!();

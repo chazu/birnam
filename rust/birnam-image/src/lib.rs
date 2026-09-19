@@ -737,9 +737,9 @@ mod runtime {
         if unsafe { vtable_inherits_from(api, vtable, birnam_abi::integer::behavior()) } {
             return Some(BoxedValue::Integer(unsafe { (birnam_abi::integer::value)(object) }));
         }
-        if unsafe { vtable_inherits_from(api, vtable, api.float_vt) } {
+        if unsafe { vtable_inherits_from(api, vtable, birnam_abi::float::behavior()) } {
             return Some(BoxedValue::Float(
-                unsafe { (api.floatValue)(object) }.to_bits(),
+                unsafe { (birnam_abi::float::value)(object) }.to_bits(),
             ));
         }
         if unsafe { vtable_inherits_from(api, vtable, api.word_vt) } {
@@ -1809,7 +1809,7 @@ mod runtime {
         for (index, object) in objects.iter().enumerate() {
             relocations[index] = match object.locator {
                 V8Value::BoxedInteger(value) => unsafe { (birnam_abi::integer::make)(value) },
-                V8Value::BoxedFloat(bits) => unsafe { (api.mkFloat)(f64::from_bits(bits)) },
+                V8Value::BoxedFloat(bits) => unsafe { (birnam_abi::float::make)(f64::from_bits(bits)) },
                 V8Value::BoxedWord(value) => unsafe { (api.mkWord)(value) },
                 V8Value::BoxedString(bytes) => unsafe {
                     (api.mkString)(bytes.as_ptr(), bytes.len())
@@ -3181,3 +3181,5 @@ mod runtime {
 }
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::float_dependency!();

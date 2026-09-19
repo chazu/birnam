@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move Float's canonical objects, payload and primitive operations into
+  `birnam-float` (Design 81R), with explicit dependencies for all consumers.
+  Prepare Float before Integer to preserve mixed numeric initialization. IdApi
+  v5 drops four fields to 41 fields / 328 bytes; native modules require rebuilding.
+  IEEE bits, live replacement, GC roots and image formats retain their contracts.
 - Extract the seventeen existing Float methods from Prelude into `birnam-float`
   (Design 81Q), loaded after Integer. Arithmetic, conversions, errors and current
   method replacement retain their behavior. This first checkpoint leaves Float

@@ -217,7 +217,7 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
                 if mode == "counted-refused" {
                     // A pending ledger for another retained vtable must decline
                     // atomically; original physical body allocations still run.
-                    let other_vtable = r.canonical().float_vt;
+                    let other_vtable = r.float_behavior();
                     let state = unsafe { &mut *r.state.get() };
                     state.heap.settle_dead_allocations();
                     assert!(state.heap.record_dead_frame_indices(other_vtable, &[0]));

@@ -89,7 +89,6 @@ impl Runtime {
             self.validate_graph_storage(plan, inputs)?;
             let value = {
                 let state = unsafe { &mut *self.state.get() };
-                let canonical = state.canonical.expect("installed canonical values");
                 match node {
                     Node::Integer(value) => {
                         let storage = self.integer_storage();
@@ -98,11 +97,13 @@ impl Runtime {
                         unsafe { (storage.initialize)(object.cast(), *value) };
                         object
                     },
-                    Node::FloatBits(bits) => state.values.allocate_float(
-                        &mut state.heap,
-                        canonical.float_vt,
-                        f64::from_bits(*bits),
-                    ),
+                    Node::FloatBits(bits) => {
+                        let storage = self.float_storage();
+                        let object = state.heap.allocate(storage.payload_size, Permanence::Collectable);
+                        assert!(state.heap.set_vtable(object, self.float_behavior()));
+                        unsafe { (storage.initialize_bits)(object.cast(), *bits) };
+                        object
+                    },
                     Node::Aggregate {
                         vtable_input,
                         fields,

@@ -2,12 +2,12 @@
 # Focused debug GC boundary checks; no installation or release validation.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mise exec -- cargo build -p birnam-id -p birnam-trace -p birnam-collect -p birnam-integer -p birnam-object-model --locked --offline
+mise exec -- cargo build -p birnam-id -p birnam-trace -p birnam-collect -p birnam-integer -p birnam-float -p birnam-object-model --locked --offline
 trace_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-live-tracing.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 cc -std=c11 -Wall -Wextra -Werror scripts/fixtures/live-tracing.c -o "$scratch/live"
 "$scratch/live" "$trace_target/debug/libbirnam_id.dylib" "$trace_target/debug/libbirnam_trace.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v4 -Iscripts/fixtures abi/fixtures/idapi-v4/client.c -o "$scratch/client"
-cc -std=c11 -Wall -Wextra -Werror -fvisibility=hidden -dynamiclib abi/fixtures/idapi-v4/module.c -o "$scratch/module.dylib"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v5 -Iscripts/fixtures abi/fixtures/idapi-v5/client.c -o "$scratch/client"
+cc -std=c11 -Wall -Wextra -Werror -fvisibility=hidden -dynamiclib abi/fixtures/idapi-v5/module.c -o "$scratch/module.dylib"
 "$scratch/client" "$trace_target/debug/libbirnam_id.dylib" "$scratch/module.dylib"

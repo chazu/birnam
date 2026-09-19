@@ -1,5 +1,5 @@
 #include "../../abi/fixtures/storage-v1/storage_v1.h"
-#include "../../abi/fixtures/integer-v1/integer_v1.h"
+#include "integer-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <signal.h>
@@ -157,10 +157,8 @@ int main(int argc, char **argv) {
     ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL);
     StorageRequestV1 bare_request={1,sizeof(bare_request),NULL,bare};
     assert(observe(&bare_request)==STORAGE_OK);
-    void *integer_image=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL); assert(integer_image);
-    ((ModuleInitFn)api->dlsym_fn(integer_image,"module_init"))(api,NULL);
-    integers=((IntegerProviderV1)api->dlsym_fn(integer_image,"birnam_integer_provider_v1"))();
-    assert(((IntegerDependencyV1)api->dlsym_fn(floor,"birnam_integer_dependency_v1"))(integers)==1);
+    fixture_mount_integer(api, argv[1]);
+    integers=fixture_integer;
     storage_selector=api->intern("withStorageView:"); lookup_selector=api->intern("lookup");
     owner_selector=api->intern("ownerOf:put:"); parent_selector=api->intern("parentOf:put:");
     original=method(storage_selector); captured_owner=method(owner_selector); captured_parent=method(parent_selector);

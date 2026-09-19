@@ -1,4 +1,4 @@
-#include "idapi_v4.h"
+#include "idapi_v5.h"
 #include "integer-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -22,6 +22,7 @@ static void mount(const char *path) {
         copied = *fixture_integer;
         assert(attach(&copied) == 0); /* no silent remount onto another table */
     }
+    fixture_attach_float(api, image);
     init(api, NULL);
 }
 static Method lookup(Oop behavior, const char *name) {
@@ -90,9 +91,9 @@ int main(int argc, char **argv) {
             }
         }
     }
-    Oop two = fixture_integer_make(2), half = api->mk_float(0.5);
+    Oop two = fixture_integer_make(2), half = fixture_float_make(0.5);
     Oop mixed = send(two, "+", half);
-    assert(api->is_float(mixed) && api->float_value(mixed) == 2.5);
+    assert(fixture_is_float(mixed) && fixture_float_value(mixed) == 2.5);
     Method original = lookup(fixture_integer->behavior, "+");
     api->method(fixture_integer->behavior, api->intern("+"), right_identity);
     assert(send(two, "+", half) == half);

@@ -1,5 +1,5 @@
 #include "../../abi/fixtures/trace-v1/trace_v1.h"
-#include "../../abi/fixtures/integer-v1/integer_v1.h"
+#include "integer-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -170,10 +170,8 @@ int main(int argc, char **argv) {
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);
     describe=(StorageDescribeV1)api->dlsym_fn(storage,"birnam_storage_describe_v1"); assert(describe);
     ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL);
-    void *integer_image=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL); assert(integer_image);
-    ((ModuleInitFn)api->dlsym_fn(integer_image,"module_init"))(api,NULL);
-    IntegerApiV1 *integer=((IntegerProviderV1)api->dlsym_fn(integer_image,"birnam_integer_provider_v1"))();
-    assert(((IntegerDependencyV1)api->dlsym_fn(floor,"birnam_integer_dependency_v1"))(integer)==1);
+    fixture_mount_integer(api, argv[1]);
+    IntegerApiV1 *integer=fixture_integer;
     pair_vt=api->proto(api->object_vt);
     for(size_t i=0; i<8; i++) if(i!=5) nodes[i]=api->alloc(pair_vt,(i==0||i==1||i==3||i==4)?2*sizeof(Oop):0);
     nodes[5]=integer->make(integer->context,(int64_t)(uintptr_t)nodes[3]);

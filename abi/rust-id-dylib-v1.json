@@ -3,6 +3,8 @@
   "scope": "Normal bare Cargo floor, without diagnostic features or the published module wrapper",
   "install_name": "@rpath/libbirnam_id.dylib",
   "exported_symbols": [
+    "birnam_collect_dependency_v1",
+    "birnam_float_dependency_v1",
     "birnam_id_begin_portable_resumable_unit_v1",
     "birnam_id_begin_resumable_unit_v1",
     "birnam_id_cancel_resumable_unit_v1",
@@ -30,7 +32,6 @@
     "birnam_register_resumable_v1",
     "birnam_register_resumable_v2",
     "birnam_trace_dependency_v1",
-    "birnam_collect_dependency_v1",
     "id_init"
   ]
 }

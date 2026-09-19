@@ -1,7 +1,7 @@
 #ifndef BIRNAM_STORAGE_V1_H
 #define BIRNAM_STORAGE_V1_H
 /* Independent C mirror of the storage boundary. Includes current Id types. */
-#include "../idapi-v4/idapi_v4.h"
+#include "../idapi-v5/idapi_v5.h"
 enum { STORAGE_OK=0, STORAGE_INVALID=1, STORAGE_BUSY=2, STORAGE_INCOMPLETE=3 };
 enum { STORAGE_PERMANENT=1, STORAGE_CORE_PAYLOAD=2, STORAGE_HAS_FINALIZER=4, STORAGE_HAS_GC_LAYOUT=8 };
 enum { STORAGE_NATIVE_ROOTS=1, STORAGE_LEGACY_ROOTS=2, STORAGE_LEGACY_HOOKS=4, STORAGE_DEFERRED=8, STORAGE_MISSING=16 };

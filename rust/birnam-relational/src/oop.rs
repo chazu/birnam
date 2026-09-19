@@ -28,9 +28,9 @@ pub unsafe fn classify(api: &IdApi, object: Oop) -> Option<Value> {
         return Some(Value::Integer(unsafe { (birnam_abi::integer::value)(object) }));
     }
     // SAFETY: the caller supplies a live floor object and process-owned table.
-    if unsafe { (api.isFloat)(object) } != 0 {
+    if unsafe { (birnam_abi::float::is_float)(object) } != 0 {
         // SAFETY: isFloat accepted the same object for this accessor.
-        return Some(Value::Float(unsafe { (api.floatValue)(object) }));
+        return Some(Value::Float(unsafe { (birnam_abi::float::value)(object) }));
     }
     // SAFETY: vtableOf is valid for every non-null live Oop.
     if unsafe { (api.vtableOf)(object) } == api.string_vt {

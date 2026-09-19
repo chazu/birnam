@@ -13,6 +13,20 @@ only those complete expressions, with their original operands and exact counts.
 
 def unchanged_authority(name, current, baseline):
     if name == "rust/birnam-image/src/lib.rs" and current != baseline:
+        float_migrations = (
+            (b'(api.mkFloat)', b'(birnam_abi::float::make)', 1),
+            (b'(api.floatValue)', b'(birnam_abi::float::value)', 1),
+            (b'api.float_vt', b'birnam_abi::float::behavior()', 1),
+        )
+        if any(new in current for _, new, _ in float_migrations):
+            for old, new, count in float_migrations:
+                if baseline.count(old) != count or new in baseline or current.count(new) != count:
+                    return False
+                current = current.replace(new, old)
+            dependency = b'\nbirnam_abi::float_dependency!();\n'
+            if dependency in baseline or current.count(dependency) != 1:
+                return False
+            current = current.replace(dependency, b'')
         integer_migrations = (
             (b'(api.mkSmallInt)', b'(birnam_abi::integer::make)', 12),
             (b'(api.smallIntValue)', b'(birnam_abi::integer::value)', 8),

@@ -952,6 +952,7 @@ pub enum ModuleError {
         path: PathBuf,
     },
     IntegerDependencyRejected { path: PathBuf },
+    FloatDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
@@ -2020,6 +2021,8 @@ pub struct LoadedStack {
     symbol_compaction_control: Option<SymbolCompactionControl>,
     all_modules_borrow_safe: bool,
     integer: *mut birnam_abi::integer::IntegerApiV1,
+    float: *mut birnam_abi::float::FloatApiV1,
+    prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
 }
 
 impl LoadedStack {
@@ -2040,6 +2043,8 @@ impl LoadedStack {
             symbol_compaction_control,
             all_modules_borrow_safe: true,
             integer: std::ptr::null_mut(),
+            float: std::ptr::null_mut(),
+            prepared_float: None,
         }
     }
 
@@ -2051,29 +2056,7 @@ impl LoadedStack {
         self.floor.api()
     }
 
-    /// Load one higher rung through the selected floor's dynamic-loader API.
-    /// No host-side `dlopen` is used after the floor has initialized.
-    fn load_module_handle(
-        &mut self,
-        path: &Path,
-    ) -> Result<NonNull<std::ffi::c_void>, ModuleError> {
-        let path_bytes = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
-        // SAFETY: the floor API is process-owned and the C string lives across
-        // this synchronous call.
-        let handle = unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) };
-        let Some(handle) = NonNull::new(handle) else {
-            return Err(ModuleError::OpenFailed {
-                path: path.to_path_buf(),
-            });
-        };
-        let init_name = c"module_init";
-        // SAFETY: the handle came from the selected floor's successful dlopen.
-        let init = unsafe { (self.floor.api().dlsym)(handle.as_ptr(), init_name.as_ptr().cast()) };
-        let Some(init) = NonNull::new(init) else {
-            return Err(ModuleError::MissingModuleInit {
-                path: path.to_path_buf(),
-            });
-        };
+    fn configure_symbol_borrow(&mut self, path: &Path, handle: NonNull<std::ffi::c_void>) -> Result<(), ModuleError> {
         let declaration = unsafe {
             (self.floor.api().dlsym)(handle.as_ptr(), c"birnam_symbol_borrow_v1".as_ptr().cast())
         };
@@ -2104,11 +2087,76 @@ impl LoadedStack {
             }
             self.all_modules_borrow_safe = false;
         }
+        Ok(())
+    }
+
+    /// Prepare Float before Integer installs any mixed numeric methods. The
+    /// handle is pinned before publishing callbacks, including on startup failure.
+    fn prepare_float(&mut self, path: &Path) -> Result<(), ModuleError> {
+        if self.prepared_float.is_some() { return Ok(()); }
+        let encoded = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
+        let handle = unsafe { (self.api().dlopen)(encoded.as_ptr(), RTLD_LAZY) };
+        let handle = NonNull::new(handle).ok_or_else(|| ModuleError::OpenFailed { path: path.to_path_buf() })?;
+        self.prepared_float = Some((path.to_path_buf(), handle));
+        self.configure_symbol_borrow(path, handle)?;
+        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_float_prepare_v1".as_ptr()) };
+        if prepare.is_null() { return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() }); }
+        let prepare: birnam_abi::float::FloatPrepareV1 = unsafe { std::mem::transmute(prepare) };
+        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi) };
+        self.attach_float(path, ops)
+    }
+
+    fn attach_float(&mut self, path: &Path, ops: *mut birnam_abi::float::FloatApiV1) -> Result<(), ModuleError> {
+        if (!self.float.is_null() && self.float != ops) || unsafe { birnam_abi::float::attach(ops) } != 1 {
+            return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
+        }
+        let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_float_dependency_v1".as_ptr()) };
+        if dependency.is_null() { return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() }); }
+        let attach: birnam_abi::float::FloatDependencyV1 = unsafe { std::mem::transmute(dependency) };
+        if unsafe { attach(ops) } != 1 { return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() }); }
+        self.float = ops;
+        Ok(())
+    }
+
+    /// Load one higher rung through the selected floor's dynamic-loader API.
+    /// No host-side `dlopen` is used after the floor has initialized.
+    fn load_module_handle(
+        &mut self,
+        path: &Path,
+    ) -> Result<NonNull<std::ffi::c_void>, ModuleError> {
+        let path_bytes = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
+        // SAFETY: the floor API is process-owned and the C string lives across
+        // this synchronous call.
+        let handle = match &self.prepared_float {
+            Some((prepared_path, handle)) if prepared_path == path => handle.as_ptr(),
+            _ => unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) },
+        };
+        let Some(handle) = NonNull::new(handle) else {
+            return Err(ModuleError::OpenFailed {
+                path: path.to_path_buf(),
+            });
+        };
+        let init_name = c"module_init";
+        // SAFETY: the handle came from the selected floor's successful dlopen.
+        let init = unsafe { (self.floor.api().dlsym)(handle.as_ptr(), init_name.as_ptr().cast()) };
+        let Some(init) = NonNull::new(init) else {
+            return Err(ModuleError::MissingModuleInit {
+                path: path.to_path_buf(),
+            });
+        };
+        self.configure_symbol_borrow(path, handle)?;
         let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_integer_dependency_v1".as_ptr()) };
         if !dependency.is_null() {
             let attach: birnam_abi::integer::IntegerDependencyV1 = unsafe { std::mem::transmute(dependency) };
             if self.integer.is_null() || unsafe { attach(self.integer) } != 1 {
                 return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() });
+            }
+        }
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_float_dependency_v1".as_ptr()) };
+        if !dependency.is_null() {
+            let attach: birnam_abi::float::FloatDependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if self.float.is_null() || unsafe { attach(self.float) } != 1 {
+                return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
             }
         }
         // SAFETY: module_init is the frozen higher-rung ABI and the floor table
@@ -2132,6 +2180,13 @@ impl LoadedStack {
             let attach: birnam_abi::integer::IntegerDependencyV1 = unsafe { std::mem::transmute(dependency) };
             if unsafe { attach(integer) } != 1 { return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() }); }
             self.integer = integer;
+        }
+        let provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_float_provider_v1".as_ptr()) };
+        if !provider.is_null() {
+            let provide: birnam_abi::float::FloatProviderV1 = unsafe { std::mem::transmute(provider) };
+            self.attach_float(path, unsafe { provide() })?;
+        } else if self.prepared_float.as_ref().is_some_and(|(prepared, _)| prepared == path) {
+            return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
         }
         let provider = unsafe {
             (self.api().dlsym)(handle.as_ptr(), c"birnam_trace_provider_v1".as_ptr())
@@ -2180,6 +2235,9 @@ impl LoadedStack {
         let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
         let mut store_compensation_api = None;
         for name in SCRIPT_MODULES {
+            if *name == "libbirnam_integer" {
+                self.prepare_float(&resources.lib_dir.join("libbirnam_float.dylib"))?;
+            }
             let path = if *name == "libbirnam_id_tcc" {
                 tcc_override
                     .as_deref()

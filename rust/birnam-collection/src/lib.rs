@@ -595,8 +595,8 @@ unsafe fn same_value(api: &IdApi, left: Oop, right: Oop) -> bool {
     if unsafe { (birnam_abi::integer::is_integer)(left) } != 0 && unsafe { (birnam_abi::integer::is_integer)(right) } != 0 {
         return unsafe { (birnam_abi::integer::value)(left) == (birnam_abi::integer::value)(right) };
     }
-    if unsafe { (api.isFloat)(left) } != 0 && unsafe { (api.isFloat)(right) } != 0 {
-        return unsafe { (api.floatValue)(left) == (api.floatValue)(right) };
+    if unsafe { (birnam_abi::float::is_float)(left) } != 0 && unsafe { (birnam_abi::float::is_float)(right) } != 0 {
+        return unsafe { (birnam_abi::float::value)(left) == (birnam_abi::float::value)(right) };
     }
     if unsafe { (api.vtableOf)(left) } != api.string_vt
         || unsafe { (api.vtableOf)(right) } != api.string_vt
@@ -1031,8 +1031,8 @@ unsafe fn map_key_hash(api: &IdApi, key: Oop) -> u32 {
         }
         return map_fnv1a(unsafe { CStr::from_ptr(name) }.to_bytes());
     }
-    if value_type == api.float_vt {
-        let value = unsafe { (api.floatValue)(key) };
+    if value_type == unsafe { birnam_abi::float::behavior() } {
+        let value = unsafe { (birnam_abi::float::value)(key) };
         let bits = if value == 0.0 { 0 } else { value.to_bits() };
         return map_mix(bits);
     }
@@ -2147,7 +2147,7 @@ unsafe extern "C" fn string_as_number(self_object: Oop, _args: *const Oop, count
         return unsafe { (birnam_abi::integer::make)(value) };
     }
     match text.parse::<f64>() {
-        Ok(value) => unsafe { (api.mkFloat)(value) },
+        Ok(value) => unsafe { (birnam_abi::float::make)(value) },
         Err(_) => api.nilObj,
     }
 }
@@ -2929,3 +2929,5 @@ mod tests {
 }
 
 birnam_abi::integer_dependency!();
+
+birnam_abi::float_dependency!();

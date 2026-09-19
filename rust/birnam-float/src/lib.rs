@@ -1,25 +1,70 @@
 //! Existing Float methods, loaded independently of Prelude.
-//! Representation remains in Id for this first checkpoint (Design 81Q).
+//! Owns the canonical representation and explicit native Float dependency (81R).
 #![allow(clippy::missing_safety_doc)]
 
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
+pub mod storage;
 
-static API: OnceLock<usize> = OnceLock::new();
-
+static INSTANCE: AtomicPtr<storage::Instance> = AtomicPtr::new(ptr::null_mut());
+// 0 unprepared, 1 preparing, 2 prepared, 3 activating, 4 active.
+static PHASE: AtomicU8 = AtomicU8::new(0);
 fn abort(message: &str) -> ! {
     eprintln!("birnam Float: {message}");
     std::process::abort();
 }
-
 unsafe fn api_ref() -> &'static IdApi {
-    let api = *API
-        .get()
-        .unwrap_or_else(|| abort("module_init was not called"));
-    // SAFETY: the host pins the selected floor table and this module's code.
-    unsafe { &*(api as *const IdApi) }
+    let instance = INSTANCE.load(Ordering::Acquire);
+    if instance.is_null() {
+        abort("Float was not prepared");
+    }
+    unsafe { &*(*instance).api() }
+}
+unsafe extern "C" fn float_roots(mark: birnam_abi::MarkFn) {
+    let instance = INSTANCE.load(Ordering::Acquire);
+    if !instance.is_null() {
+        unsafe { (*instance).trace(mark) };
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_float_provider_v1() -> *mut birnam_abi::float::FloatApiV1 {
+    if PHASE.load(Ordering::Acquire) < 2 {
+        return ptr::null_mut();
+    }
+    unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_float_prepare_v1(
+    api: *mut IdApi,
+) -> *mut birnam_abi::float::FloatApiV1 {
+    if api.is_null() {
+        abort("preparation received a null IdApi");
+    }
+    if PHASE.load(Ordering::Acquire) != 0 {
+        let instance = INSTANCE.load(Ordering::Acquire);
+        if instance.is_null() || unsafe { (*instance).api() } != api {
+            abort("another IdApi is already mounted");
+        }
+        if PHASE.load(Ordering::Acquire) == 1 {
+            abort("recursive Float preparation");
+        }
+        return unsafe { birnam_float_provider_v1() };
+    }
+    PHASE.store(1, Ordering::Release);
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api) });
+    INSTANCE.store(instance, Ordering::Release);
+    unsafe {
+        ((*api).gcRegisterRootProvider)(float_roots);
+        (*instance).prepare();
+    }
+    let operations = unsafe { (*instance).operations() };
+    if unsafe { birnam_abi::float::attach(operations) } != 1 {
+        abort("invalid Float table");
+    }
+    PHASE.store(2, Ordering::Release);
+    operations
 }
 
 unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
@@ -37,7 +82,7 @@ enum Numeric {
     Float(f64),
 }
 
-unsafe fn numeric(api: &IdApi, value: Oop) -> Option<Numeric> {
+unsafe fn numeric(_api: &IdApi, value: Oop) -> Option<Numeric> {
     if value.is_null() {
         return None;
     }
@@ -46,17 +91,17 @@ unsafe fn numeric(api: &IdApi, value: Oop) -> Option<Numeric> {
             (birnam_abi::integer::value)(value)
         }));
     }
-    if unsafe { (api.isFloat)(value) } != 0 {
-        return Some(Numeric::Float(unsafe { (api.floatValue)(value) }));
+    if unsafe { (birnam_abi::float::is_float)(value) } != 0 {
+        return Some(Numeric::Float(unsafe { (birnam_abi::float::value)(value) }));
     }
     None
 }
 
-unsafe fn float_self(api: &IdApi, value: Oop) -> Option<f64> {
-    if value.is_null() || unsafe { (api.isFloat)(value) } == 0 {
+unsafe fn float_self(_api: &IdApi, value: Oop) -> Option<f64> {
+    if value.is_null() || unsafe { (birnam_abi::float::is_float)(value) } == 0 {
         return None;
     }
-    Some(unsafe { (api.floatValue)(value) })
+    Some(unsafe { (birnam_abi::float::value)(value) })
 }
 
 unsafe fn float_binary(
@@ -87,7 +132,7 @@ unsafe fn float_binary(
         Numeric::Integer(value) => value as f64,
         Numeric::Float(value) => value,
     };
-    unsafe { (api.mkFloat)(operation(left, right)) }
+    unsafe { (birnam_abi::float::make)(operation(left, right)) }
 }
 
 unsafe extern "C" fn float_add(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -128,7 +173,7 @@ unsafe extern "C" fn float_div(self_object: Oop, args: *const Oop, count: usize)
     if right == 0.0 {
         return unsafe { numeric_error(api, b"zeroDivide\0", b"division by zero") };
     }
-    unsafe { (api.mkFloat)(left / right) }
+    unsafe { (birnam_abi::float::make)(left / right) }
 }
 
 unsafe fn float_compare(
@@ -209,7 +254,7 @@ unsafe extern "C" fn float_negated(self_object: Oop, _args: *const Oop, count: u
     let Some(value) = (unsafe { float_self(api, self_object) }) else {
         return api.nilObj;
     };
-    unsafe { (api.mkFloat)(-value) }
+    unsafe { (birnam_abi::float::make)(-value) }
 }
 
 unsafe fn float_to_integer(api: &IdApi, value: f64) -> Oop {
@@ -244,7 +289,7 @@ unsafe extern "C" fn float_abs(self_object: Oop, _args: *const Oop, count: usize
     let Some(value) = (unsafe { float_self(api, self_object) }) else {
         return api.nilObj;
     };
-    unsafe { (api.mkFloat)(value.abs()) }
+    unsafe { (birnam_abi::float::make)(value.abs()) }
 }
 
 unsafe extern "C" fn float_floor(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -291,7 +336,7 @@ unsafe extern "C" fn float_sqrt(self_object: Oop, _args: *const Oop, count: usiz
     if value < 0.0 {
         return unsafe { numeric_error(api, b"domain\0", b"square root of a negative number") };
     }
-    unsafe { (api.mkFloat)(value.sqrt()) }
+    unsafe { (birnam_abi::float::make)(value.sqrt()) }
 }
 
 unsafe extern "C" fn float_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -343,14 +388,21 @@ unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
     unsafe { make_error(api, kind, message) }
 }
 
-/// Install the existing Float protocol on the canonical floor behavior.
+/// Install the existing Float protocol on this module's canonical behavior.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) -> *mut c_void {
-    if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
+    let operations = unsafe { birnam_float_prepare_v1(api_pointer) };
+    if PHASE.load(Ordering::Acquire) == 4 {
+        return ptr::null_mut();
     }
+    if PHASE.swap(3, Ordering::AcqRel) != 2 {
+        abort("recursive Float activation");
+    }
+    // Verify the peer before the first replaceable publication callback.
+    let _ = unsafe { birnam_abi::integer::operations() };
     let api = unsafe { &*api_pointer };
-    let _ = API.get_or_init(|| api_pointer as usize);
+    unsafe { (*INSTANCE.load(Ordering::Acquire)).publish() };
+    let behavior = unsafe { (*operations).behavior };
     let float_methods: &[(&[u8], birnam_abi::Method)] = &[
         (b"+\0", float_add),
         (b"-\0", float_sub),
@@ -372,9 +424,10 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) ->
     ];
     for (selector, method) in float_methods {
         let symbol = unsafe { intern(api, selector) };
-        // SAFETY: float_vt and each method are live for the process lifetime.
-        unsafe { (api.method)(api.float_vt, symbol, *method) };
+        // SAFETY: the behavior and each method are live for the process lifetime.
+        unsafe { (api.method)(behavior, symbol, *method) };
     }
+    PHASE.store(4, Ordering::Release);
     ptr::null_mut()
 }
 

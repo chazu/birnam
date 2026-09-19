@@ -47,6 +47,17 @@ class CompatibilityAuthorityTests(unittest.TestCase):
             self.assertIn(before, self.current)
             self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
 
+    def test_float_migration_preserves_bits_and_inherited_recognition(self):
+        for before, after in (
+            (b'(birnam_abi::float::value)(object)', b'(birnam_abi::float::value)(vtable)'),
+            (b'vtable_inherits_from(api, vtable, birnam_abi::float::behavior())',
+             b'vtable == birnam_abi::float::behavior()'),
+            (b'birnam_abi::float_dependency!();', b''),
+            (b'(birnam_abi::float::make)', b'(api.mkFloat)'),
+        ):
+            self.assertIn(before, self.current)
+            self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
+
     def test_exception_does_not_apply_to_other_contracts(self):
         self.assertFalse(unchanged_authority("rust/birnam-image/src/v8.rs", self.current, self.baseline))
 

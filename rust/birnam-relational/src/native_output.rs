@@ -78,6 +78,35 @@ fn exported_output_contract() {
         let api = &*init();
         // This fixture tests synchronous pointer use; GC lifetime has separate suites.
         (api.gcSetAuto)(0);
+        // Mount the same explicit numeric pair as the production host. Handles
+        // remain pinned for all method, context and codec addresses below.
+        let lib_dir = std::path::Path::new(path.to_str().unwrap()).parent().unwrap();
+        let load = |name: &str| {
+            let path = CString::new(lib_dir.join(name).as_os_str().as_encoded_bytes()).unwrap();
+            let handle = (api.dlopen)(path.as_ptr(), 6);
+            assert!(!handle.is_null());
+            handle
+        };
+        macro_rules! entry {
+            ($handle:expr, $name:expr, $ty:ty) => {{
+                let address = (api.dlsym)($handle, $name.as_ptr());
+                assert!(!address.is_null());
+                std::mem::transmute::<*mut c_void, $ty>(address)
+            }};
+        }
+        let api_pointer = api as *const _ as *mut IdApi;
+        let float_image = load("libbirnam_float.dylib");
+        let floats = entry!(float_image, c"birnam_float_prepare_v1", birnam_abi::float::FloatPrepareV1)(api_pointer);
+        assert_eq!(birnam_abi::float::attach(floats), 1);
+        assert_eq!(entry!(floor, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
+        let integer_image = load("libbirnam_integer.dylib");
+        assert_eq!(entry!(integer_image, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
+        entry!(integer_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut());
+        let integers = entry!(integer_image, c"birnam_integer_provider_v1", unsafe extern "C" fn() -> *mut birnam_abi::integer::IntegerApiV1)();
+        assert_eq!(birnam_abi::integer::attach(integers), 1);
+        assert_eq!(entry!(floor, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
+        assert_eq!(entry!(float_image, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
+        entry!(float_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut());
         module_init(api as *const _ as *mut _, ptr::null_mut());
         let integer = |n| (birnam_abi::integer::make)(n);
         let null = ptr::null_mut();
@@ -198,7 +227,7 @@ fn exported_output_contract() {
                         (api.mkString)(b"x".as_ptr(), 1),
                         (api.mkString)(b"a\0b".as_ptr(), 3),
                     ],
-                    8 => [(api.mkFloat)(1.25), (api.mkFloat)(2.5)],
+                    8 => [(birnam_abi::float::make)(1.25), (birnam_abi::float::make)(2.5)],
                     9 => [
                         (api.intern)(c"first".as_ptr()),
                         (api.intern)(c"second".as_ptr()),

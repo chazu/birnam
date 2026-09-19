@@ -99,6 +99,7 @@ dependencies = [
  "birnam-artifact",
  "birnam-codegen",
  "birnam-collect",
+ "birnam-float",
  "birnam-integer",
  "birnam-native-compiler",
  "birnam-object-model",

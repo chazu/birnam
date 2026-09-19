@@ -41,7 +41,7 @@ description = "Run the test-only Design 74F same-frame recovery experiment"
 run = "python3 scripts/same-frame-deopt.py"
 
 [tasks.float]
-description = "Check the loaded Float methods in debug"
+description = "Check the loaded Float representation and methods in debug"
 run = "scripts/float-test.sh"
 
 [tasks.collection]

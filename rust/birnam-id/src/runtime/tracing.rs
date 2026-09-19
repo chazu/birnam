@@ -44,6 +44,19 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
             }
         }
     }
+    #[cfg(test)]
+    {
+        let roots = unsafe {
+            (&*runtime.test_float.get())
+                .as_ref()
+                .map(|owner| owner.instance.identities())
+        };
+        if let Some(roots) = roots {
+            for root in roots {
+                emit_candidate(sink, root.addr());
+            }
+        }
+    }
     for provider in providers {
         invoke_with_mark_callback(sink, |mark| unsafe { provider(mark) });
     }
