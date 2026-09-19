@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move Range reversal and concatenation into `birnam-range` (Design 81AC).
+  Preserve bounds snapshots, allocation order and direct native Vector calls.
+  Range construction v2 retains the existing Vector comma function and removes
+  the unused external bounds reader; all eight Range methods now live together.
+
 - Extract Vector storage, canonical objects and native trie helpers from
   Collection into `birnam-vector` (Design 81AB). Preserve allocation order,
   persistent sharing, layouts, adoption and reload behavior. Existing Vector

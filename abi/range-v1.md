@@ -1,5 +1,8 @@
 # Range representation and construction v1
 
+> Historical 81AA/81AB checkpoint. Production now uses [Range v2](range-v2.md).
+> This definition remains available only for independent baseline comparison.
+
 Design [81AA](../docs/design/81aa-production-range-storage.md) moves canonical
 Range identities, the two-i64 RAW payload, construction/layout and Integer `to:`
 into the existing Range module. Collection keeps its two Vector-backed method

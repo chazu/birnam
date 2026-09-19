@@ -1,60 +1,50 @@
-//! Immutable Range construction and pure bounds dependency (81AA).
+//! Immutable Range construction dependency (81AC).
 use crate::{IdApi, Method, Oop};
 use core::ffi::c_int;
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct BoundsV1 {
-    pub start: i64,
-    pub end: i64,
-}
-pub type PrepareV1 = unsafe extern "C" fn(*mut IdApi, Oop, c_int) -> Oop;
-pub type StageV1 = unsafe extern "C" fn(*mut IdApi);
-pub type InstallV1 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop, Method, Method);
-pub type ReadV1 = unsafe extern "C" fn(Oop) -> BoundsV1;
+pub type PrepareV2 = unsafe extern "C" fn(*mut IdApi, Oop, c_int) -> Oop;
+pub type StageV2 = unsafe extern "C" fn(*mut IdApi);
+pub type InstallV2 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop, Method);
 
 /// Stages run synchronously at Collection's existing construction points. The
 /// first selected table and canonical identities persist for the process. The
-/// descriptor and its code are immutable and process-pinned. `bounds` is pure:
-/// no Id calls, allocation, collection, reentry or mutable family state access.
+/// descriptor and its code are immutable and process-pinned. The supplied Vector
+/// comma Method is a direct native callback retained at initial installation.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV1 {
+pub struct ApiV2 {
     pub version: u32,
     pub byte_size: usize,
-    pub prepare: Option<PrepareV1>,
-    pub finish_prototype: Option<StageV1>,
-    pub set_layout: Option<StageV1>,
-    pub install: Option<InstallV1>,
-    pub publish: Option<StageV1>,
-    pub bounds: Option<ReadV1>,
+    pub prepare: Option<PrepareV2>,
+    pub finish_prototype: Option<StageV2>,
+    pub set_layout: Option<StageV2>,
+    pub install: Option<InstallV2>,
+    pub publish: Option<StageV2>,
 }
 const _: () = {
-    assert!(size_of::<ApiV1>() == 64);
-    assert!(core::mem::offset_of!(ApiV1, bounds) == 56);
-    assert!(size_of::<BoundsV1>() == 16);
+    assert!(size_of::<ApiV2>() == 56);
+    assert!(core::mem::offset_of!(ApiV2, publish) == 48);
 };
-pub type ProviderV1 = unsafe extern "C" fn() -> *const ApiV1;
-pub type DependencyV1 = unsafe extern "C" fn(*const ApiV1) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV1> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV2 = unsafe extern "C" fn() -> *const ApiV2;
+pub type DependencyV2 = unsafe extern "C" fn(*const ApiV2) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV2> = AtomicPtr::new(ptr::null_mut());
 
 /// # Safety
 /// Mount on the owner thread; the immutable descriptor/code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV1) -> c_int {
+pub unsafe fn attach(api: *const ApiV2) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 1
-        || value.byte_size != size_of::<ApiV1>()
+    if value.version != 2
+        || value.byte_size != size_of::<ApiV2>()
         || value.prepare.is_none()
         || value.finish_prototype.is_none()
         || value.set_layout.is_none()
         || value.install.is_none()
         || value.publish.is_none()
-        || value.bounds.is_none()
     {
         return 0;
     }
@@ -68,7 +58,7 @@ pub unsafe fn attach(api: *const ApiV1) -> c_int {
         Err(existing) => c_int::from(ptr::eq(existing, api)),
     }
 }
-fn operations() -> ApiV1 {
+fn operations() -> ApiV2 {
     let api = DEPENDENCY.load(Ordering::Acquire);
     assert!(!api.is_null(), "native Range dependency was not mounted");
     unsafe { *api }
@@ -90,17 +80,16 @@ pub unsafe fn set_layout(api: *mut IdApi) {
     unsafe { operations().set_layout.unwrap()(api) };
 }
 /// # Safety
-/// Call with retained selectors and process-pinned Vector Method pointers at
+/// Call with retained selectors and the process-pinned native Vector comma at
 /// the original Range registration point, after layout and before publication.
 pub unsafe fn install(
     api: *mut IdApi,
     value1: Oop,
     value2: Oop,
     print_string: Oop,
-    reversed: Method,
-    comma: Method,
+    vector_comma: Method,
 ) {
-    unsafe { operations().install.unwrap()(api, value1, value2, print_string, reversed, comma) };
+    unsafe { operations().install.unwrap()(api, value1, value2, print_string, vector_comma) };
 }
 /// # Safety
 /// Call only inside Collection's existing Vector-absent publication branch,
@@ -108,18 +97,12 @@ pub unsafe fn install(
 pub unsafe fn publish(api: *mut IdApi) {
     unsafe { operations().publish.unwrap()(api) };
 }
-/// # Safety
-/// `object` has the initialized Range payload, including inherited receivers.
-pub unsafe fn bounds(object: Oop) -> (i64, i64) {
-    let value = unsafe { operations().bounds.unwrap()(object) };
-    (value.start, value.end)
-}
 #[macro_export]
 macro_rules! range_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_range_dependency_v1(
-            api: *const $crate::range::ApiV1,
+        pub unsafe extern "C" fn birnam_range_dependency_v2(
+            api: *const $crate::range::ApiV2,
         ) -> core::ffi::c_int {
             unsafe { $crate::range::attach(api) }
         }

@@ -1,7 +1,6 @@
-//! Range representation, construction and existing non-Vector methods.
-//! Collection retains the two Vector-backed method bodies.
+//! Range representation, construction and all existing Range methods.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::range::{ApiV1, BoundsV1};
+use birnam_abi::range::ApiV2;
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -25,6 +24,7 @@ struct Runtime {
     value1: usize,
     value2: usize,
     print_string: usize,
+    vector_comma: Method,
 }
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static ROOTS_REGISTERED: Once = Once::new();
@@ -102,14 +102,7 @@ unsafe extern "C" fn prepare(api_pointer: *mut IdApi, parent: Oop, adopting: i32
 }
 unsafe extern "C" fn finish_prototype(api_pointer: *mut IdApi) {
     if IDENTITY_ROOTS[1].load(Ordering::Acquire) == 0 {
-        let state = Runtime {
-            api: family().api,
-            range_vt: family().range_vt,
-            value1: 0,
-            value2: 0,
-            print_string: 0,
-        };
-        let prototype = unsafe { empty_range(&*api_pointer, &state, 0, 0) };
+        let prototype = unsafe { empty_range(&*api_pointer, family().range_vt as Oop, 0, 0) };
         IDENTITY_ROOTS[1].store(prototype as usize, Ordering::Release);
     }
 }
@@ -134,13 +127,8 @@ unsafe extern "C" fn publish(api_pointer: *mut IdApi) {
         (api.exportObj)(RANGE_NAME.as_ptr().cast(), prototype);
     }
 }
-unsafe extern "C" fn read_bounds(object: Oop) -> BoundsV1 {
-    let (start, end) = unsafe { range_bounds(object) };
-    BoundsV1 { start, end }
-}
-
-unsafe fn empty_range(api: &IdApi, runtime: &Runtime, start: i64, end: i64) -> Oop {
-    let range = unsafe { (api.alloc)(runtime.range_vt as Oop, size_of::<RangePayload>()) };
+unsafe fn empty_range(api: &IdApi, behavior: Oop, start: i64, end: i64) -> Oop {
+    let range = unsafe { (api.alloc)(behavior, size_of::<RangePayload>()) };
     if range.is_null() {
         abort("Range allocation failed");
     }
@@ -164,7 +152,7 @@ unsafe extern "C" fn integer_to(self_object: Oop, args: *const Oop, count: usize
     unsafe {
         empty_range(
             api,
-            runtime(),
+            runtime().range_vt as Oop,
             (birnam_abi::integer::value)(self_object),
             (birnam_abi::integer::value)(end),
         )
@@ -316,14 +304,51 @@ unsafe extern "C" fn range_print_string(self_object: Oop, _args: *const Oop, cou
     unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
 }
 
+unsafe extern "C" fn range_reversed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let (start, end) = unsafe { range_bounds(self_object) };
+    let mut result = unsafe { birnam_abi::vector::empty() };
+    let mut value = i128::from(end);
+    let start = i128::from(start);
+    while value >= start {
+        result = unsafe { birnam_abi::vector::push(result, (birnam_abi::integer::make)(value as i64)) };
+        value -= 1;
+    }
+    result
+}
+
+unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(other) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (api.vtableOf)(other) } != unsafe { birnam_abi::vector::behavior() } {
+        return api.nilObj;
+    }
+    let (start, end) = unsafe { range_bounds(self_object) };
+    let mut result = unsafe { birnam_abi::vector::empty() };
+    let mut value = i128::from(start);
+    let end = i128::from(end);
+    while value <= end {
+        result = unsafe { birnam_abi::vector::push(result, (birnam_abi::integer::make)(value as i64)) };
+        value += 1;
+    }
+    unsafe { (runtime().vector_comma)(result, args, count) }
+}
+
 // Called at Collection's original Range registration point, before publication.
 unsafe extern "C" fn install(
     api_pointer: *mut IdApi,
     value1: Oop,
     value2: Oop,
     print_string: Oop,
-    range_reversed: Method,
-    range_comma: Method,
+    vector_comma: Method,
 ) {
     if !READY.load(Ordering::Acquire)
         || api_pointer.is_null()
@@ -340,6 +365,7 @@ unsafe extern "C" fn install(
         value1: value1 as usize,
         value2: value2 as usize,
         print_string: print_string as usize,
+        vector_comma,
     });
     let behavior = family().range_vt as Oop;
     unsafe {
@@ -358,15 +384,14 @@ unsafe extern "C" fn install(
         );
     }
 }
-static API: ApiV1 = ApiV1 {
-    version: 1,
-    byte_size: size_of::<ApiV1>(),
+static API: ApiV2 = ApiV2 {
+    version: 2,
+    byte_size: size_of::<ApiV2>(),
     prepare: Some(prepare),
     finish_prototype: Some(finish_prototype),
     set_layout: Some(set_layout),
     install: Some(install),
     publish: Some(publish),
-    bounds: Some(read_bounds),
 };
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
@@ -377,7 +402,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_range_provider_v1() -> *const ApiV1 {
+pub extern "C" fn birnam_range_provider_v2() -> *const ApiV2 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {
@@ -390,3 +415,5 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
 }
 birnam_abi::integer_dependency!();
 birnam_abi::string_dependency!();
+
+birnam_abi::vector_dependency!();

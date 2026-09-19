@@ -13,3 +13,6 @@ for mode in normal adopted missing-prototype rebound-prototype range-only-export
   "$scratch/storage" "$range_target/debug/libbirnam_id.dylib" "$range_target/debug/libbirnam_object_model.dylib" "$range_target/debug/libbirnam_collection.dylib" "$mode" >"$scratch/$mode.log"
   tail -1 "$scratch/$mode.log"
 done
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 -Iscripts/fixtures scripts/fixtures/range-vector.c -o "$scratch/vector"
+"$scratch/vector" "$range_target/debug/libbirnam_id.dylib" "$range_target/debug/libbirnam_object_model.dylib" "$range_target/debug/libbirnam_collection.dylib" >"$scratch/vector.log"
+tail -1 "$scratch/vector.log"

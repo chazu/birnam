@@ -1215,44 +1215,6 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
     unsafe { birnam_abi::vector::push(result, item) }
 }
 
-unsafe extern "C" fn range_reversed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let (start, end) = unsafe { birnam_abi::range::bounds(self_object) };
-    let mut result = unsafe { birnam_abi::vector::empty() };
-    let mut value = i128::from(end);
-    let start = i128::from(start);
-    while value >= start {
-        result = unsafe { birnam_abi::vector::push(result, (birnam_abi::integer::make)(value as i64)) };
-        value -= 1;
-    }
-    result
-}
-
-unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(other) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (api.vtableOf)(other) } != unsafe { birnam_abi::vector::behavior() } {
-        return api.nilObj;
-    }
-    let (start, end) = unsafe { birnam_abi::range::bounds(self_object) };
-    let mut result = unsafe { birnam_abi::vector::empty() };
-    let mut value = i128::from(start);
-    let end = i128::from(end);
-    while value <= end {
-        result = unsafe { birnam_abi::vector::push(result, (birnam_abi::integer::make)(value as i64)) };
-        value += 1;
-    }
-    unsafe { vector_comma(result, args, count) }
-}
-
 unsafe fn bring_up(api_pointer: *mut IdApi) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
@@ -1419,8 +1381,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.value1 as Oop,
             runtime.value2 as Oop,
             runtime.print_string as Oop,
-            range_reversed,
-            range_comma,
+            vector_comma,
         );
         (api.method)(runtime.map_vt as Oop, intern(api, b"new\0"), map_new);
         (api.method)(runtime.map_vt as Oop, intern(api, b"clone\0"), map_new);

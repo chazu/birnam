@@ -96,11 +96,9 @@ C oracle; `scripts/string-builder-image-smoke.sh PREFIX` checks installed startu
 and compiled images. Captured live buffers retain their existing nonportable RAW
 image handling; compiled entries can construct builders and capture their Strings.
 
-The [Range method module](../docs/design/81z-production-range-methods.md) supplies
-an explicit [construction dependency](range-methods-v1.md) to Collection so its
-six extracted methods are installed before publication. The
-[export inventory](rust-range-dylib-v1.json) adds no IdApi or image fields.
-
-[Range representation and construction](range-v1.md) now belong to the Range
-module as well. The method-only descriptor is historical; native Collection
-consumers must mount the current Range provider. IdApi v7 remains unchanged.
+The [Range module](../docs/design/81ac-production-range-vector-methods.md) owns
+its representation, construction and all eight Range methods plus Integer `to:`.
+Its [current construction dependency](range-v2.md) preserves installation order
+and a direct native Vector comma callback. Vector storage is mounted separately
+through [Vector v1](vector-v1.md). The [export inventory](rust-range-dylib-v1.json)
+adds no IdApi or image fields. Earlier Range interfaces remain historical evidence.

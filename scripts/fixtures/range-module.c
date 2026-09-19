@@ -124,7 +124,7 @@ int main(int argc,char **argv) {
     for(size_t i=0;i<3;i++) assert(api->slot_kind(behavior,i)==IDAPI_V7_SLOT_RAW);
     if(!baseline) {
         assert(range_roots); range_roots(record_mark); assert(marks==3);
-        if(!methods_baseline) {
+        if(!methods_baseline && !fixture_range_v2) {
             void *collection=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL); assert(collection);
             RangeDependencyV1 attach=(RangeDependencyV1)api->dlsym_fn(collection,"birnam_range_dependency_v1"); assert(attach);
             RangeApiV1 bad=*fixture_range;
@@ -143,7 +143,7 @@ int main(int argc,char **argv) {
     void *range_module=NULL;
     for(unsigned i=0;i<8;i++) {
         Dl_info owner; assert(dladdr((const void *)implementations[i],&owner));
-        if(!baseline && i!=5 && i!=7) {
+        if(!baseline && ((i!=5 && i!=7) || fixture_range_v2)) {
             assert(strstr(owner.dli_fname,"/libbirnam_range.dylib"));
             range_module=api->dlopen_fn(owner.dli_fname,RTLD_NOW|RTLD_LOCAL); assert(range_module);
         } else assert(strstr(owner.dli_fname,"_collection.dylib"));

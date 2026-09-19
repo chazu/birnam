@@ -1057,8 +1057,8 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_nil",
     "libbirnam_string",
     "libbirnam_string_builder",
-    "libbirnam_range",
     "libbirnam_vector",
+    "libbirnam_range",
     "libbirnam_id_collection",
     "libbirnam_id_error",
     "libbirnam_portable_code",
@@ -2035,7 +2035,7 @@ pub struct LoadedStack {
     float: *mut birnam_abi::float::FloatApiV1,
     word: *mut birnam_abi::word::WordApiV1,
     string: *mut birnam_abi::string::StringApiV1,
-    range: *const birnam_abi::range::ApiV1,
+    range: *const birnam_abi::range::ApiV2,
     vector: *const birnam_abi::vector::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2251,9 +2251,9 @@ impl LoadedStack {
                 return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::range::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::range::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.range.is_null() || unsafe { attach(self.range) } != 1 {
                 return Err(ModuleError::RangeDependencyRejected { path: path.to_path_buf() });
             }
@@ -2294,9 +2294,9 @@ impl LoadedStack {
                 std::ptr::null_mut(),
             )
         };
-        let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v1".as_ptr()) };
+        let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v2".as_ptr()) };
         if !range_provider.is_null() {
-            let provide: birnam_abi::range::ProviderV1 = unsafe { std::mem::transmute(range_provider) };
+            let provide: birnam_abi::range::ProviderV2 = unsafe { std::mem::transmute(range_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::range::attach(provided) } != 1 {
                 return Err(ModuleError::RangeDependencyRejected { path: path.to_path_buf() });

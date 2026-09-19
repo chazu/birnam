@@ -167,7 +167,7 @@ int main(int argc,char **argv) {
     api->export_obj("RangeStorageRoot",created);
     Oop clone=send0(created,"clone"); assert(clone!=created && api->vtable_of(clone)==behavior);
     assert(((Payload *)clone)->start==-17 && ((Payload *)clone)->end==23);
-    if(modern) { RangeBoundsV1 bounds=fixture_range->bounds(created); assert(bounds.start==-17 && bounds.end==23); }
+    if(fixture_range) { RangeBoundsV1 bounds=fixture_range->bounds(created); assert(bounds.start==-17 && bounds.end==23); }
     api->export_obj("RangeVt",api->nil_obj); api->export_obj("Range",api->nil_obj);
     /* Selection comes from the first table, including after a different reload table. */
     IdApi other=selected; other.nil_obj=created;

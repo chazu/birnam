@@ -1,6 +1,6 @@
 # Range protocol construction v1
 
-> Historical 81Z checkpoint. Production now uses [Range v1](range-v1.md);
+> Historical 81Z checkpoint. Production now uses [Range v2](range-v2.md);
 > the method-only provider/dependency and Rust mirror have been removed.
 
 Design [81Z](../docs/design/81z-production-range-methods.md) extracts six Range
