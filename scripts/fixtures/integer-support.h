@@ -5,6 +5,7 @@
 #include "word-support.h"
 #include "string-support.h"
 #include "../../abi/fixtures/range-methods-v1/range_methods_v1.h"
+#include "../../abi/fixtures/range-v1/range_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -12,7 +13,8 @@
 #include <string.h>
 static IntegerApiV1 *fixture_integer;
 static char fixture_floor_path[PATH_MAX];
-static const RangeMethodsApiV1 *fixture_range_methods;
+static const RangeMethodsApiV1 *fixture_range_methods; /* Historical 81Z oracle only. */
+static const RangeApiV1 *fixture_range;
 static inline Oop fixture_integer_make(int64_t value) {
     assert(fixture_integer);
     return fixture_integer->make(fixture_integer->context, value);
@@ -31,9 +33,11 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
     fixture_attach_word(api, image);
     IntegerDependencyV1 attach = (IntegerDependencyV1)api->dlsym_fn(image, "birnam_integer_dependency_v1");
     if (attach) { assert(fixture_integer); assert(attach(fixture_integer) == 1); }
-    RangeMethodsDependencyV1 range_attach=(RangeMethodsDependencyV1)api->dlsym_fn(image,"birnam_range_methods_dependency_v1");
-    if (range_attach) {
-        if (!fixture_range_methods) {
+    RangeDependencyV1 range_attach=(RangeDependencyV1)api->dlsym_fn(image,"birnam_range_dependency_v1");
+    /* Previous build support is confined to the independent baseline oracle. */
+    RangeMethodsDependencyV1 previous_attach=(RangeMethodsDependencyV1)api->dlsym_fn(image,"birnam_range_methods_dependency_v1");
+    if (range_attach || previous_attach) {
+        if (!fixture_range && !fixture_range_methods) {
             const char *slash=strrchr(fixture_floor_path,'/'); assert(slash);
             char path[PATH_MAX];
             int n=snprintf(path,sizeof(path),"%.*s/libbirnam_range.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
@@ -41,10 +45,16 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
             void *range=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(range);
             fixture_attach_integer(api,range);
             ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL);
-            RangeMethodsProviderV1 provide=(RangeMethodsProviderV1)api->dlsym_fn(range,"birnam_range_methods_provider_v1"); assert(provide);
-            fixture_range_methods=provide(); assert(fixture_range_methods);
+            if (range_attach) {
+                RangeProviderV1 provide=(RangeProviderV1)api->dlsym_fn(range,"birnam_range_provider_v1"); assert(provide);
+                fixture_range=provide(); assert(fixture_range);
+            } else {
+                RangeMethodsProviderV1 provide=(RangeMethodsProviderV1)api->dlsym_fn(range,"birnam_range_methods_provider_v1"); assert(provide);
+                fixture_range_methods=provide(); assert(fixture_range_methods);
+            }
         }
-        assert(range_attach(fixture_range_methods)==1);
+        if (range_attach) assert(range_attach(fixture_range)==1);
+        else assert(previous_attach(fixture_range_methods)==1);
     }
 }
 static inline void fixture_mount_integer(IdApi *api, const char *floor_path) {

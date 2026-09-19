@@ -414,3 +414,9 @@ callbacks, and leaves IdApi/image encoding unchanged.
 uses its construction dependency at the original registration point, preserving
 publication and reload semantics. Range storage and its two Vector-backed methods
 remain for later construction and storage checkpoints.
+
+[81AA](81aa-production-range-storage.md) moves Range representation, canonical
+objects and Integer `to:` into the Range module. Explicit construction stages
+retain the existing interleaving with Vector/Map; the two remaining Vector-backed
+methods read bounds through the immutable Range dependency. IdApi v7 and Image
+encoding remain unchanged.

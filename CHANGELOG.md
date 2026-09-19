@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Move Range representation, canonical objects, layout, constructor and Integer
+  `to:` into `birnam-range` (Design 81AA). Preserve creation/publication order,
+  adoption, ordinary alloc callbacks and reload behavior through explicit
+  construction stages. Collection's two Vector-backed methods use pure bounds
+  access; IdApi and image encoding stay unchanged.
+
 - Extract six Range methods from Collection into `birnam-range` (Design 81Z).
   An explicit construction dependency preserves registration order, publication
   reentry, selected Id callbacks and repeated initialization. Vector-producing

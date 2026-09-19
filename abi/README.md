@@ -100,3 +100,7 @@ The [Range method module](../docs/design/81z-production-range-methods.md) suppli
 an explicit [construction dependency](range-methods-v1.md) to Collection so its
 six extracted methods are installed before publication. The
 [export inventory](rust-range-dylib-v1.json) adds no IdApi or image fields.
+
+[Range representation and construction](range-v1.md) now belong to the Range
+module as well. The method-only descriptor is historical; native Collection
+consumers must mount the current Range provider. IdApi v7 remains unchanged.

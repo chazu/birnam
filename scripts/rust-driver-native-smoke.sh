@@ -86,6 +86,11 @@ for mode in normal adopted present adopted-present; do
 done
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 -Iscripts/fixtures scripts/fixtures/range-module.c -o "$prefix_parent/range-module"
 "$prefix_parent/range-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_collection.dylib"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 -Iscripts/fixtures scripts/fixtures/range-storage.c -o "$prefix_parent/range-storage"
+for mode in normal adopted missing-prototype rebound-prototype range-only-exports; do
+  "$prefix_parent/range-storage" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_collection.dylib" "$mode" >"$prefix_parent/range-$mode.log"
+  tail -1 "$prefix_parent/range-$mode.log"
+done
 cc -Iabi/fixtures/idapi-v7 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
 "$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_integer.dylib"
 cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"

@@ -1,5 +1,8 @@
 # Range protocol construction v1
 
+> Historical 81Z checkpoint. Production now uses [Range v1](range-v1.md);
+> the method-only provider/dependency and Rust mirror have been removed.
+
 Design [81Z](../docs/design/81z-production-range-methods.md) extracts six Range
 methods while preserving Collection's original construction/publication schedule.
 Range loads before Collection. The host discovers `birnam_range_methods_provider_v1`

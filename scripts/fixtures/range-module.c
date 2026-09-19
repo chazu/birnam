@@ -22,7 +22,9 @@ static void mount(const char *path,IdApi *table) {
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL);
 }
 static void roots(RootProvider provider) {
-    registrations++; if(registrations==2) range_roots=provider;
+    registrations++;
+    Dl_info owner; assert(dladdr((const void *)provider,&owner));
+    if(strstr(owner.dli_fname,"/libbirnam_range.dylib")) range_roots=provider;
     api->gc_register_root_provider(provider);
 }
 static void record_mark(Oop object) {
@@ -105,7 +107,9 @@ static Oop print_first(Oop self,const Oop *args,size_t count) {
 static Oop print_null(Oop self,const Oop *args,size_t count) { (void)self; (void)args; (void)count; return NULL; }
 static Oop identity(Oop self,const Oop *args,size_t count) { (void)args; (void)count; return self; }
 int main(int argc,char **argv) {
-    assert(argc==4 || (argc==5 && !strcmp(argv[4],"baseline"))); int baseline=argc==5;
+    assert(argc==4 || (argc==5 && (!strcmp(argv[4],"baseline") || !strcmp(argv[4],"methods-baseline"))));
+    int baseline=argc==5 && !strcmp(argv[4],"baseline");
+    int methods_baseline=argc==5 && !strcmp(argv[4],"methods-baseline");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)dlsym(floor,"id_init"))(); assert(api); api->gc_set_auto(0);
     fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1]);
@@ -120,13 +124,20 @@ int main(int argc,char **argv) {
     for(size_t i=0;i<3;i++) assert(api->slot_kind(behavior,i)==IDAPI_V7_SLOT_RAW);
     if(!baseline) {
         assert(range_roots); range_roots(record_mark); assert(marks==3);
-        void *collection=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL); assert(collection);
-        RangeMethodsDependencyV1 attach=(RangeMethodsDependencyV1)api->dlsym_fn(collection,"birnam_range_methods_dependency_v1"); assert(attach);
-        RangeMethodsApiV1 bad=*fixture_range_methods;
-        assert(!attach(NULL)); bad.version=9; assert(!attach(&bad)); bad=*fixture_range_methods;
-        bad.byte_size--; assert(!attach(&bad)); bad=*fixture_range_methods;
-        bad.install=NULL; assert(!attach(&bad)); bad=*fixture_range_methods;
-        assert(!attach(&bad) && attach(fixture_range_methods)==1);
+        if(!methods_baseline) {
+            void *collection=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL); assert(collection);
+            RangeDependencyV1 attach=(RangeDependencyV1)api->dlsym_fn(collection,"birnam_range_dependency_v1"); assert(attach);
+            RangeApiV1 bad=*fixture_range;
+            assert(!attach(NULL)); bad.version=9; assert(!attach(&bad)); bad=*fixture_range;
+            bad.byte_size--; assert(!attach(&bad)); bad=*fixture_range;
+            bad.prepare=NULL; assert(!attach(&bad)); bad=*fixture_range;
+            bad.finish_prototype=NULL; assert(!attach(&bad)); bad=*fixture_range;
+            bad.set_layout=NULL; assert(!attach(&bad)); bad=*fixture_range;
+            bad.install=NULL; assert(!attach(&bad)); bad=*fixture_range;
+            bad.publish=NULL; assert(!attach(&bad)); bad=*fixture_range;
+            bad.bounds=NULL; assert(!attach(&bad)); bad=*fixture_range;
+            assert(!attach(&bad) && attach(fixture_range)==1);
+        }
     }
     Method implementations[8]; for(unsigned i=0;i<8;i++) implementations[i]=lookup(behavior,order[i]);
     void *range_module=NULL;
@@ -208,5 +219,5 @@ int main(int argc,char **argv) {
     assert(bindings==24 && publications==2 && api->import_fn("Range")==prototype && api->import_fn("RangeVt")==behavior);
     Oop reversed=send0(r,"reversed"); integer_result(send1(reversed,"at:",fixture_integer_make(0)),3);
     Oop combined=send1(r,",",reversed); integer_result(send0(combined,"size"),6);
-    printf("range-module: %u boundary/index cases, ordered installation, publication reentry, native iteration, live callbacks, GC, roots and reinitialization passed%s\n",checked,baseline?" (Collection baseline)":"");
+    printf("range-module: %u boundary/index cases, ordered installation, publication reentry, native iteration, live callbacks, GC, roots and reinitialization passed%s\n",checked,baseline?" (Collection baseline)":(methods_baseline?" (methods baseline)":""));
 }

@@ -209,8 +209,6 @@ const COLLECTION_VT_NAME: &[u8] = b"CollectionVt\0";
 const VECTOR_NAME: &[u8] = b"Vector\0";
 const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
 const VECTOR_NODE_NAME: &[u8] = b"VectorNode\0";
-const RANGE_NAME: &[u8] = b"Range\0";
-const RANGE_VT_NAME: &[u8] = b"RangeVt\0";
 const MAP_NAME: &[u8] = b"Map\0";
 const MAP_VT_NAME: &[u8] = b"MapVt\0";
 const MAP_NODE_NAME: &[u8] = b"MapNode\0";
@@ -224,13 +222,6 @@ struct VecPayload {
     tail_len: usize,
 }
 
-#[repr(C)]
-struct RangePayload {
-    start: i64,
-    end: i64,
-}
-
-static RANGE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW, birnam_abi::SLOT_RAW];
 static MAP_LAYOUT: [u8; 2] = [birnam_abi::SLOT_OOP, birnam_abi::SLOT_RAW];
 static HNODE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW, birnam_abi::SLOT_RAW];
 
@@ -259,8 +250,6 @@ struct Runtime {
     vector_vt: usize,
     vector_proto: usize,
     node_vt: usize,
-    range_vt: usize,
-    range_proto: usize,
     map_vt: usize,
     map_proto: usize,
     map_node_vt: usize,
@@ -309,8 +298,6 @@ unsafe extern "C" fn mark_sort_roots(mark: MarkFn) {
             runtime.vector_vt,
             runtime.vector_proto,
             runtime.node_vt,
-            runtime.range_vt,
-            runtime.range_proto,
             runtime.map_vt,
             runtime.map_proto,
             runtime.map_node_vt,
@@ -457,17 +444,6 @@ unsafe fn empty_vector(api: &IdApi, runtime: &Runtime) -> Oop {
         };
     }
     vector
-}
-
-unsafe fn empty_range(api: &IdApi, runtime: &Runtime, start: i64, end: i64) -> Oop {
-    let range = unsafe { (api.alloc)(runtime.range_vt as Oop, size_of::<RangePayload>()) };
-    if range.is_null() {
-        abort("Range allocation failed");
-    }
-    unsafe {
-        *range.cast::<RangePayload>() = RangePayload { start, end };
-    }
-    range
 }
 
 unsafe fn oop_array_for(vector: *const VecPayload, index: usize) -> Oop {
@@ -1641,24 +1617,12 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
     unsafe { vector_push(api, runtime(), result, item) }
 }
 
-unsafe fn range_payload(object: Oop) -> *mut RangePayload {
-    if object.is_null() {
-        abort("Range method received a null receiver");
-    }
-    object.cast::<RangePayload>()
-}
-
-unsafe fn range_bounds(object: Oop) -> (i64, i64) {
-    let payload = unsafe { range_payload(object) };
-    unsafe { ((*payload).start, (*payload).end) }
-}
-
 unsafe extern "C" fn range_reversed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
         return api.nilObj;
     }
-    let (start, end) = unsafe { range_bounds(self_object) };
+    let (start, end) = unsafe { birnam_abi::range::bounds(self_object) };
     let mut result = unsafe { empty_vector(api, runtime()) };
     let mut value = i128::from(end);
     let start = i128::from(start);
@@ -1680,7 +1644,7 @@ unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usiz
     if unsafe { (api.vtableOf)(other) } != runtime().vector_vt as Oop {
         return api.nilObj;
     }
-    let (start, end) = unsafe { range_bounds(self_object) };
+    let (start, end) = unsafe { birnam_abi::range::bounds(self_object) };
     let mut result = unsafe { empty_vector(api, runtime()) };
     let mut value = i128::from(start);
     let end = i128::from(end);
@@ -1689,27 +1653,6 @@ unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usiz
         value += 1;
     }
     unsafe { vector_comma(result, args, count) }
-}
-
-unsafe extern "C" fn integer_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 || unsafe { (birnam_abi::integer::is_integer)(self_object) } == 0 {
-        return api.nilObj;
-    }
-    let Some(end) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(end) } == 0 {
-        return api.nilObj;
-    }
-    unsafe {
-        empty_range(
-            api,
-            runtime(),
-            (birnam_abi::integer::value)(self_object),
-            (birnam_abi::integer::value)(end),
-        )
-    }
 }
 
 unsafe fn bring_up(api_pointer: *mut IdApi) {
@@ -1725,18 +1668,17 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             vector_vt,
             vector_proto,
             range_vt,
-            range_proto,
             map_vt,
             map_proto,
             map_node_vt,
         ) = if reloading {
+            let collection_vt = unsafe { import(api, COLLECTION_VT_NAME) };
+            let node_vt = unsafe { import(api, VECTOR_NODE_NAME) };
+            let vector_vt = unsafe { import(api, VECTOR_VT_NAME) };
+            let vector_proto = unsafe { import(api, VECTOR_NAME) };
+            let range_vt = unsafe { birnam_abi::range::prepare(api_pointer, collection_vt, true) };
             (
-                unsafe { import(api, COLLECTION_VT_NAME) },
-                unsafe { import(api, VECTOR_NODE_NAME) },
-                unsafe { import(api, VECTOR_VT_NAME) },
-                unsafe { import(api, VECTOR_NAME) },
-                unsafe { import(api, RANGE_VT_NAME) },
-                unsafe { import(api, RANGE_NAME) },
+                collection_vt, node_vt, vector_vt, vector_proto, range_vt,
                 unsafe { import(api, MAP_VT_NAME) },
                 unsafe { import(api, MAP_NAME) },
                 unsafe { import(api, MAP_NODE_NAME) },
@@ -1745,7 +1687,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             let collection_vt = unsafe { (api.proto)(api.object_vt) };
             let node_vt = unsafe { (api.proto)(api.object_vt) };
             let vector_vt = unsafe { (api.proto)(collection_vt) };
-            let range_vt = unsafe { (api.proto)(collection_vt) };
+            let range_vt = unsafe { birnam_abi::range::prepare(api_pointer, collection_vt, false) };
             let map_vt = unsafe { (api.proto)(collection_vt) };
             let map_node_vt = unsafe { (api.proto)(api.object_vt) };
             (
@@ -1754,7 +1696,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                 vector_vt,
                 ptr::null_mut(),
                 range_vt,
-                ptr::null_mut(),
                 map_vt,
                 ptr::null_mut(),
                 map_node_vt,
@@ -1783,8 +1724,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         vector_vt: vector_vt as usize,
                         vector_proto: 0,
                         node_vt: node_vt as usize,
-                        range_vt: range_vt as usize,
-                        range_proto: 0,
                         map_vt: map_vt as usize,
                         map_proto: 0,
                         map_node_vt: map_node_vt as usize,
@@ -1798,33 +1737,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         } else {
             vector_proto
         };
-        let range_proto = if range_proto.is_null() {
-            unsafe {
-                empty_range(
-                    api,
-                    &Runtime {
-                        api: api_pointer as usize,
-                        collection_vt: collection_vt as usize,
-                        vector_vt: vector_vt as usize,
-                        vector_proto: vector_proto as usize,
-                        node_vt: node_vt as usize,
-                        range_vt: range_vt as usize,
-                        range_proto: 0,
-                        map_vt: map_vt as usize,
-                        map_proto: 0,
-                        map_node_vt: map_node_vt as usize,
-                        value: 0,
-                        value1: 0,
-                        value2: 0,
-                        print_string: 0,
-                    },
-                    0,
-                    0,
-                )
-            }
-        } else {
-            range_proto
-        };
+        unsafe { birnam_abi::range::finish_prototype(api_pointer) };
         let map_proto = if map_proto.is_null() {
             unsafe {
                 empty_map(
@@ -1835,8 +1748,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                         vector_vt: vector_vt as usize,
                         vector_proto: vector_proto as usize,
                         node_vt: node_vt as usize,
-                        range_vt: range_vt as usize,
-                        range_proto: range_proto as usize,
                         map_vt: map_vt as usize,
                         map_proto: 0,
                         map_node_vt: map_node_vt as usize,
@@ -1856,8 +1767,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             vector_vt: vector_vt as usize,
             vector_proto: vector_proto as usize,
             node_vt: node_vt as usize,
-            range_vt: range_vt as usize,
-            range_proto: range_proto as usize,
             map_vt: map_vt as usize,
             map_proto: map_proto as usize,
             map_node_vt: map_node_vt as usize,
@@ -1878,12 +1787,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             VECTOR_LAYOUT.len(),
             birnam_abi::SLOT_RAW,
         );
-        (api.setLayout)(
-            runtime.range_vt as Oop,
-            RANGE_LAYOUT.as_ptr(),
-            RANGE_LAYOUT.len(),
-            birnam_abi::SLOT_RAW,
-        );
+        birnam_abi::range::set_layout(api_pointer);
         (api.setLayout)(
             runtime.map_node_vt as Oop,
             HNODE_LAYOUT.as_ptr(),
@@ -1947,16 +1851,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             intern(api, b"clone\0"),
             vector_new,
         );
-        birnam_abi::range_methods::install(
+        birnam_abi::range::install(
             api_pointer,
-            runtime.range_vt as Oop,
             runtime.value1 as Oop,
             runtime.value2 as Oop,
             runtime.print_string as Oop,
             range_reversed,
             range_comma,
         );
-        (api.method)(birnam_abi::integer::behavior(), intern(api, b"to:\0"), integer_to);
         (api.method)(runtime.map_vt as Oop, intern(api, b"new\0"), map_new);
         (api.method)(runtime.map_vt as Oop, intern(api, b"clone\0"), map_new);
         (api.method)(runtime.map_vt as Oop, intern(api, b"at:put:\0"), map_at_put);
@@ -2005,9 +1907,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             let _ = (api.exportObj)(VECTOR_VT_NAME.as_ptr().cast(), runtime.vector_vt as Oop);
             let _ = (api.exportObj)(VECTOR_NAME.as_ptr().cast(), runtime.vector_proto as Oop);
             let _ = (api.exportObj)(VECTOR_NODE_NAME.as_ptr().cast(), runtime.node_vt as Oop);
-            birnam_abi::set_vtable_owner(api, runtime.range_vt as Oop, runtime.range_proto as Oop);
-            let _ = (api.exportObj)(RANGE_VT_NAME.as_ptr().cast(), runtime.range_vt as Oop);
-            let _ = (api.exportObj)(RANGE_NAME.as_ptr().cast(), runtime.range_proto as Oop);
+            birnam_abi::range::publish(api_pointer);
             birnam_abi::set_vtable_owner(api, runtime.map_vt as Oop, runtime.map_proto as Oop);
             let _ = (api.exportObj)(MAP_VT_NAME.as_ptr().cast(), runtime.map_vt as Oop);
             let _ = (api.exportObj)(MAP_NAME.as_ptr().cast(), runtime.map_proto as Oop);
@@ -2095,4 +1995,4 @@ birnam_abi::float_dependency!();
 
 birnam_abi::string_dependency!();
 
-birnam_abi::range_methods_dependency!();
+birnam_abi::range_dependency!();

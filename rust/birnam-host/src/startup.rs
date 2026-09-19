@@ -955,7 +955,7 @@ pub enum ModuleError {
     FloatDependencyRejected { path: PathBuf },
     WordDependencyRejected { path: PathBuf },
     StringDependencyRejected { path: PathBuf },
-    RangeMethodsDependencyRejected { path: PathBuf },
+    RangeDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
@@ -2033,7 +2033,7 @@ pub struct LoadedStack {
     float: *mut birnam_abi::float::FloatApiV1,
     word: *mut birnam_abi::word::WordApiV1,
     string: *mut birnam_abi::string::StringApiV1,
-    range_methods: *const birnam_abi::range_methods::ApiV1,
+    range: *const birnam_abi::range::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_string: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2060,7 +2060,7 @@ impl LoadedStack {
             float: std::ptr::null_mut(),
             word: std::ptr::null_mut(),
             string: std::ptr::null_mut(),
-            range_methods: std::ptr::null(),
+            range: std::ptr::null(),
             prepared_float: None,
             prepared_word: None,
             prepared_string: None,
@@ -2247,11 +2247,11 @@ impl LoadedStack {
                 return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_methods_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_dependency_v1".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::range_methods::DependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.range_methods.is_null() || unsafe { attach(self.range_methods) } != 1 {
-                return Err(ModuleError::RangeMethodsDependencyRejected { path: path.to_path_buf() });
+            let attach: birnam_abi::range::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if self.range.is_null() || unsafe { attach(self.range) } != 1 {
+                return Err(ModuleError::RangeDependencyRejected { path: path.to_path_buf() });
             }
         }
         let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v1".as_ptr()) };
@@ -2283,14 +2283,14 @@ impl LoadedStack {
                 std::ptr::null_mut(),
             )
         };
-        let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_methods_provider_v1".as_ptr()) };
+        let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v1".as_ptr()) };
         if !range_provider.is_null() {
-            let provide: birnam_abi::range_methods::ProviderV1 = unsafe { std::mem::transmute(range_provider) };
+            let provide: birnam_abi::range::ProviderV1 = unsafe { std::mem::transmute(range_provider) };
             let provided = unsafe { provide() };
-            if unsafe { birnam_abi::range_methods::attach(provided) } != 1 {
-                return Err(ModuleError::RangeMethodsDependencyRejected { path: path.to_path_buf() });
+            if unsafe { birnam_abi::range::attach(provided) } != 1 {
+                return Err(ModuleError::RangeDependencyRejected { path: path.to_path_buf() });
             }
-            self.range_methods = provided;
+            self.range = provided;
         }
         let provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_integer_provider_v1".as_ptr()) };
         if !provider.is_null() {

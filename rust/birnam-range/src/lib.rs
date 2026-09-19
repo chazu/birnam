@@ -1,14 +1,14 @@
-//! Range's existing non-Vector methods and ordered protocol installation.
-//! Collection retains construction/storage and the two Vector-backed methods.
+//! Range representation, construction and existing non-Vector methods.
+//! Collection retains the two Vector-backed method bodies.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::range_methods::ApiV1;
+use birnam_abi::range::{ApiV1, BoundsV1};
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Once, OnceLock};
 
-// Existing RAW representation, still constructed by Collection (81Z).
+// Owned RAW representation; Image continues to use its generic RAW codec.
 #[repr(C)]
 struct RangePayload {
     start: i64,
@@ -21,6 +21,7 @@ const _: () = {
 };
 struct Runtime {
     api: usize,
+    range_vt: usize,
     value1: usize,
     value2: usize,
     print_string: usize,
@@ -46,11 +47,127 @@ unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
 unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
     unsafe { borrowed_oop_args(args, count)?.first().copied() }
 }
+const RANGE_NAME: &[u8] = b"Range\0";
+const RANGE_VT_NAME: &[u8] = b"RangeVt\0";
+static RANGE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW; 2];
+struct Family {
+    api: usize,
+    range_vt: usize,
+}
+static FAMILY: OnceLock<Family> = OnceLock::new();
+static IDENTITY_ROOTS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
+fn family() -> &'static Family {
+    FAMILY
+        .get()
+        .unwrap_or_else(|| abort("Range family was not prepared"))
+}
 unsafe extern "C" fn mark_roots(mark: MarkFn) {
+    for root in &IDENTITY_ROOTS {
+        let object = root.load(Ordering::Acquire) as Oop;
+        if !object.is_null() {
+            unsafe { mark(object) };
+        }
+    }
     if let Some(runtime) = RUNTIME.get() {
         for object in [runtime.value1, runtime.value2, runtime.print_string] {
             unsafe { mark(object as Oop) };
         }
+    }
+}
+unsafe extern "C" fn prepare(api_pointer: *mut IdApi, parent: Oop, adopting: i32) -> Oop {
+    if !READY.load(Ordering::Acquire) || api_pointer.is_null() {
+        abort("invalid Range preparation");
+    }
+    let api = unsafe { &*api_pointer };
+    ROOTS_REGISTERED.call_once(|| unsafe { (api.gcRegisterRootProvider)(mark_roots) });
+    let family = FAMILY.get_or_init(|| {
+        let behavior = if adopting != 0 {
+            unsafe { (api.import)(RANGE_VT_NAME.as_ptr().cast()) }
+        } else {
+            unsafe { (api.proto)(parent) }
+        };
+        IDENTITY_ROOTS[0].store(behavior as usize, Ordering::Release);
+        let prototype = if adopting != 0 {
+            unsafe { (api.import)(RANGE_NAME.as_ptr().cast()) }
+        } else {
+            ptr::null_mut()
+        };
+        IDENTITY_ROOTS[1].store(prototype as usize, Ordering::Release);
+        Family {
+            api: api_pointer as usize,
+            range_vt: behavior as usize,
+        }
+    });
+    family.range_vt as Oop
+}
+unsafe extern "C" fn finish_prototype(api_pointer: *mut IdApi) {
+    if IDENTITY_ROOTS[1].load(Ordering::Acquire) == 0 {
+        let state = Runtime {
+            api: family().api,
+            range_vt: family().range_vt,
+            value1: 0,
+            value2: 0,
+            print_string: 0,
+        };
+        let prototype = unsafe { empty_range(&*api_pointer, &state, 0, 0) };
+        IDENTITY_ROOTS[1].store(prototype as usize, Ordering::Release);
+    }
+}
+unsafe extern "C" fn set_layout(api_pointer: *mut IdApi) {
+    let api = unsafe { &*api_pointer };
+    unsafe {
+        (api.setLayout)(
+            family().range_vt as Oop,
+            RANGE_LAYOUT.as_ptr(),
+            RANGE_LAYOUT.len(),
+            birnam_abi::SLOT_RAW,
+        )
+    };
+}
+unsafe extern "C" fn publish(api_pointer: *mut IdApi) {
+    let api = unsafe { &*api_pointer };
+    let behavior = family().range_vt as Oop;
+    let prototype = IDENTITY_ROOTS[1].load(Ordering::Acquire) as Oop;
+    unsafe {
+        birnam_abi::set_vtable_owner(api, behavior, prototype);
+        (api.exportObj)(RANGE_VT_NAME.as_ptr().cast(), behavior);
+        (api.exportObj)(RANGE_NAME.as_ptr().cast(), prototype);
+    }
+}
+unsafe extern "C" fn read_bounds(object: Oop) -> BoundsV1 {
+    let (start, end) = unsafe { range_bounds(object) };
+    BoundsV1 { start, end }
+}
+
+unsafe fn empty_range(api: &IdApi, runtime: &Runtime, start: i64, end: i64) -> Oop {
+    let range = unsafe { (api.alloc)(runtime.range_vt as Oop, size_of::<RangePayload>()) };
+    if range.is_null() {
+        abort("Range allocation failed");
+    }
+    unsafe {
+        *range.cast::<RangePayload>() = RangePayload { start, end };
+    }
+    range
+}
+
+unsafe extern "C" fn integer_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 || unsafe { (birnam_abi::integer::is_integer)(self_object) } == 0 {
+        return api.nilObj;
+    }
+    let Some(end) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    if unsafe { (birnam_abi::integer::is_integer)(end) } == 0 {
+        return api.nilObj;
+    }
+    unsafe {
+        empty_range(
+            api,
+            runtime(),
+            (birnam_abi::integer::value)(self_object),
+            (birnam_abi::integer::value)(end),
+        )
     }
 }
 
@@ -202,7 +319,6 @@ unsafe extern "C" fn range_print_string(self_object: Oop, _args: *const Oop, cou
 // Called at Collection's original Range registration point, before publication.
 unsafe extern "C" fn install(
     api_pointer: *mut IdApi,
-    behavior: Oop,
     value1: Oop,
     value2: Oop,
     print_string: Oop,
@@ -211,7 +327,6 @@ unsafe extern "C" fn install(
 ) {
     if !READY.load(Ordering::Acquire)
         || api_pointer.is_null()
-        || behavior.is_null()
         || value1.is_null()
         || value2.is_null()
         || print_string.is_null()
@@ -220,12 +335,13 @@ unsafe extern "C" fn install(
     }
     let api = unsafe { &*api_pointer };
     RUNTIME.get_or_init(|| Runtime {
-        api: api_pointer as usize,
+        api: family().api,
+        range_vt: family().range_vt,
         value1: value1 as usize,
         value2: value2 as usize,
         print_string: print_string as usize,
     });
-    ROOTS_REGISTERED.call_once(|| unsafe { (api.gcRegisterRootProvider)(mark_roots) });
+    let behavior = family().range_vt as Oop;
     unsafe {
         (api.method)(behavior, intern(api, b"size\0"), range_size);
         (api.method)(behavior, intern(api, b"includes:\0"), range_includes);
@@ -235,12 +351,22 @@ unsafe extern "C" fn install(
         (api.method)(behavior, intern(api, b"reversed\0"), range_reversed);
         (api.method)(behavior, intern(api, b"printString\0"), range_print_string);
         (api.method)(behavior, intern(api, b",\0"), range_comma);
+        (api.method)(
+            birnam_abi::integer::behavior(),
+            intern(api, b"to:\0"),
+            integer_to,
+        );
     }
 }
 static API: ApiV1 = ApiV1 {
     version: 1,
     byte_size: size_of::<ApiV1>(),
+    prepare: Some(prepare),
+    finish_prototype: Some(finish_prototype),
+    set_layout: Some(set_layout),
     install: Some(install),
+    publish: Some(publish),
+    bounds: Some(read_bounds),
 };
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
@@ -251,7 +377,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_range_methods_provider_v1() -> *const ApiV1 {
+pub extern "C" fn birnam_range_provider_v1() -> *const ApiV1 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {
