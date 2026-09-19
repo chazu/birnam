@@ -23,8 +23,9 @@
     "birnam_id_staged_portable_block_vtable_v1",
     "birnam_id_symbol_compaction_configure_v1",
     "birnam_id_try_acquire_stackless_generation_lease_v1",
-    "birnam_id_try_closure_elision_v1",
+    "birnam_id_try_closure_elision_v2",
     "birnam_id_warm_block_construction_v1",
+    "birnam_integer_dependency_v1",
     "birnam_register_resumable_v1",
     "birnam_register_resumable_v2",
     "id_init"

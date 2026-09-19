@@ -45,15 +45,15 @@ unsafe extern "C" fn store_send(receiver: Oop, args: *const Oop, count: usize) -
     api.nilObj
 }
 unsafe extern "C" fn vector_size(receiver: Oop, _: *const Oop, _: usize) -> Oop {
-    let api = unsafe { &*(*API.get().unwrap() as *const IdApi) };
-    unsafe { (api.mkSmallInt)(*receiver.cast::<usize>() as i64) }
+    let _api = unsafe { &*(*API.get().unwrap() as *const IdApi) };
+    unsafe { (birnam_abi::integer::make)(*receiver.cast::<usize>() as i64) }
 }
 unsafe extern "C" fn vector_at(receiver: Oop, args: *const Oop, _: usize) -> Oop {
-    let api = unsafe { &*(*API.get().unwrap() as *const IdApi) };
+    let _api = unsafe { &*(*API.get().unwrap() as *const IdApi) };
     unsafe {
         *receiver
             .cast::<Oop>()
-            .add(1 + (api.smallIntValue)(*args) as usize)
+            .add(1 + (birnam_abi::integer::value)(*args) as usize)
     }
 }
 unsafe fn vector(api: &IdApi, vt: Oop, values: &[Oop]) -> Oop {
@@ -79,7 +79,7 @@ fn exported_output_contract() {
         // This fixture tests synchronous pointer use; GC lifetime has separate suites.
         (api.gcSetAuto)(0);
         module_init(api as *const _ as *mut _, ptr::null_mut());
-        let integer = |n| (api.mkSmallInt)(n);
+        let integer = |n| (birnam_abi::integer::make)(n);
         let null = ptr::null_mut();
         let attribute = integer(7);
         let name = (api.intern)(c"fixture-query".as_ptr());

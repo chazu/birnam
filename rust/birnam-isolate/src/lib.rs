@@ -641,9 +641,9 @@ impl<'a> OopEncoder<'a> {
         if value.is_null() {
             return Err(CodecError::NonTransferable);
         }
-        if unsafe { (self.api.isSmallInt)(value) } != 0 {
+        if unsafe { (birnam_abi::integer::is_integer)(value) } != 0 {
             self.byte(TAG_INT)?;
-            let integer = unsafe { (self.api.smallIntValue)(value) };
+            let integer = unsafe { (birnam_abi::integer::value)(value) };
             self.reserve(8)?;
             self.bytes
                 .extend_from_slice(&(integer as u64).to_be_bytes());
@@ -710,10 +710,10 @@ impl<'a> OopEncoder<'a> {
     fn size(&self, object: Oop) -> Result<usize, CodecError> {
         let selector = unsafe { (self.api.intern)(c"size".as_ptr()) };
         let size = unsafe { (self.api.send)(object, selector, ptr::null(), 0) };
-        if unsafe { (self.api.isSmallInt)(size) } == 0 {
+        if unsafe { (birnam_abi::integer::is_integer)(size) } == 0 {
             return Err(CodecError::NonTransferable);
         }
-        let size = unsafe { (self.api.smallIntValue)(size) };
+        let size = unsafe { (birnam_abi::integer::value)(size) };
         if size < 0 {
             return Err(CodecError::ContainerTooLarge);
         }
@@ -735,7 +735,7 @@ impl<'a> OopEncoder<'a> {
         self.reserve(4)?;
         self.bytes.extend_from_slice(&(size as u32).to_be_bytes());
         for index in 0..size {
-            let item = self.at(object, unsafe { (self.api.mkSmallInt)(index as i64) });
+            let item = self.at(object, unsafe { (birnam_abi::integer::make)(index as i64) });
             self.value(item, depth + 1)?;
         }
         Ok(())
@@ -745,7 +745,7 @@ impl<'a> OopEncoder<'a> {
         if key == self.api.nilObj || key == self.api.falseObj || key == self.api.trueObj {
             return true;
         }
-        if unsafe { (self.api.isSmallInt)(key) } != 0 {
+        if unsafe { (birnam_abi::integer::is_integer)(key) } != 0 {
             return true;
         }
         let vtable = unsafe { (self.api.vtableOf)(key) };
@@ -768,7 +768,7 @@ impl<'a> OopEncoder<'a> {
         self.bytes
             .extend_from_slice(&(at_put_size as u32).to_be_bytes());
         for index in 0..size {
-            let key = self.at(keys, unsafe { (self.api.mkSmallInt)(index as i64) });
+            let key = self.at(keys, unsafe { (birnam_abi::integer::make)(index as i64) });
             if !self.valid_map_key(key) {
                 return Err(CodecError::InvalidMapKey);
             }
@@ -857,7 +857,7 @@ impl<'a> OopDecoder<'a> {
             TAG_NIL => Ok(self.api.nilObj),
             TAG_FALSE => Ok(self.api.falseObj),
             TAG_TRUE => Ok(self.api.trueObj),
-            TAG_INT => Ok(unsafe { (self.api.mkSmallInt)(self.u64()? as i64) }),
+            TAG_INT => Ok(unsafe { (birnam_abi::integer::make)(self.u64()? as i64) }),
             TAG_FLOAT => Ok(unsafe { (self.api.mkFloat)(f64::from_bits(self.u64()?)) }),
             TAG_STRING => {
                 let bytes = self.sized()?;
@@ -909,7 +909,7 @@ impl<'a> OopDecoder<'a> {
         if key == self.api.nilObj || key == self.api.falseObj || key == self.api.trueObj {
             return true;
         }
-        if unsafe { (self.api.isSmallInt)(key) } != 0 {
+        if unsafe { (birnam_abi::integer::is_integer)(key) } != 0 {
             return true;
         }
         let vtable = unsafe { (self.api.vtableOf)(key) };
@@ -1625,8 +1625,8 @@ unsafe extern "C" fn isolate_sleep(_: Oop, args: *const Oop, count: usize) -> Oo
         return api.nilObj;
     }
     let value = args[0];
-    if unsafe { (api.isSmallInt)(value) } != 0 {
-        let milliseconds = unsafe { (api.smallIntValue)(value) };
+    if unsafe { (birnam_abi::integer::is_integer)(value) } != 0 {
+        let milliseconds = unsafe { (birnam_abi::integer::value)(value) };
         if milliseconds > 0 {
             std::thread::sleep(Duration::from_millis(milliseconds as u64));
         }
@@ -1657,7 +1657,7 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
             b"request expects value and timeout",
         );
     }
-    if unsafe { (api.isSmallInt)(args[1]) } == 0 || unsafe { (api.smallIntValue)(args[1]) } < 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(args[1]) } == 0 || unsafe { (birnam_abi::integer::value)(args[1]) } < 0 {
         return make_failure(
             api,
             b"encode",
@@ -1665,7 +1665,7 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
             b"timeout must be a nonnegative Integer",
         );
     }
-    let timeout = (unsafe { (api.smallIntValue)(args[1]) } as u64).min(u32::MAX as u64) as u32;
+    let timeout = (unsafe { (birnam_abi::integer::value)(args[1]) } as u64).min(u32::MAX as u64) as u32;
     let argument = match encode_oop_value(api, args[0]) {
         Ok(argument) => argument,
         Err(error) => {
@@ -1756,9 +1756,9 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
             let message_o = unsafe { (api.mkString)(message.as_ptr(), message.len()) };
             let status_o = entry
                 .exit_status
-                .map(|status| unsafe { (api.mkSmallInt)(status as i64) })
+                .map(|status| unsafe { (birnam_abi::integer::make)(status as i64) })
                 .unwrap_or(api.nilObj);
-            let request_o = unsafe { (api.mkSmallInt)(request_id as i64) };
+            let request_o = unsafe { (birnam_abi::integer::make)(request_id as i64) };
             return make_failure_objects(api, class_o, kind_o, message_o, status_o, request_o);
         }
     };
@@ -1788,7 +1788,7 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
             match decode_oop_error_record(api, APPLICATION_ERROR_SCHEMA, &reply.payload) {
                 Ok((kind, message)) => {
                     entry.state = Lifecycle::Ready;
-                    let request = unsafe { (api.mkSmallInt)(request_id as i64) };
+                    let request = unsafe { (birnam_abi::integer::make)(request_id as i64) };
                     let class = unsafe { (api.intern)(c"application".as_ptr()) };
                     make_failure_objects(api, class, kind, message, api.nilObj, request)
                 }
@@ -1836,7 +1836,7 @@ unsafe extern "C" fn handle_request_default(self_oop: Oop, args: *const Oop, cou
             b"request expects one argument",
         );
     }
-    let timeout = unsafe { (api.mkSmallInt)(5_000) };
+    let timeout = unsafe { (birnam_abi::integer::make)(5_000) };
     let packed = [args[0], timeout];
     unsafe { handle_request(self_oop, packed.as_ptr(), 2) }
 }
@@ -2735,3 +2735,5 @@ mod tests {
         assert_eq!(encode_value(&nested), Err(CodecError::TooDeep));
     }
 }
+
+birnam_abi::integer_dependency!();

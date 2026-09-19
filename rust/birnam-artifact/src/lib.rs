@@ -365,3 +365,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(feature = "module")]
+birnam_abi::integer_dependency!();

@@ -142,8 +142,8 @@ unsafe fn charset(api: &IdApi, peg: Oop, ranges: &[(u8, u8)]) -> Oop {
                 api,
                 result,
                 b"from:to:\0",
-                (api.mkSmallInt)(i64::from(*lo)),
-                (api.mkSmallInt)(i64::from(*hi)),
+                (birnam_abi::integer::make)(i64::from(*lo)),
+                (birnam_abi::integer::make)(i64::from(*hi)),
             )
         };
     }
@@ -792,3 +792,5 @@ mod tests {
         assert_eq!(identity.to_bytes_with_nul(), RUST_LANG_IDENTITY);
     }
 }
+
+birnam_abi::integer_dependency!();

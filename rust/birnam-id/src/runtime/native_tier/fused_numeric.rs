@@ -12,6 +12,7 @@ thread_local! {
 }
 
 pub(super) fn controls(runtime: &Runtime, machine: Oop) -> bool {
+    if !runtime.integer_context_current() { return false; }
     if !runtime.guarded_slot_access_eligible(machine) {
         return false;
     }
@@ -92,7 +93,7 @@ pub(super) unsafe fn execute(
     }
     let room = {
         let state = unsafe { &*runtime.state.get() };
-        let bytes = crate::heap::Heap::allocation_total_size(8)?
+        let bytes = crate::heap::Heap::allocation_total_size(runtime.integer_storage().payload_size)?
             .checked_mul(ticket.fusion_template().body_boxes())?;
         !state
             .metadata

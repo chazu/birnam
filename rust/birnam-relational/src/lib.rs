@@ -69,3 +69,5 @@ pub use adapter::{
     birnam_symbol_borrow_v1,
     module_init,
 };
+
+birnam_abi::integer_dependency!();

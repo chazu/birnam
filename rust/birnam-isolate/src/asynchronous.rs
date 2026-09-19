@@ -111,8 +111,8 @@ pub(super) unsafe extern "C" fn submit(handle: Oop, args: *const Oop, count: usi
         return api.nilObj;
     };
     if args.len() != 2
-        || unsafe { (api.isSmallInt)(args[1]) } == 0
-        || unsafe { (api.smallIntValue)(args[1]) } < 0
+        || unsafe { (birnam_abi::integer::is_integer)(args[1]) } == 0
+        || unsafe { (birnam_abi::integer::value)(args[1]) } < 0
     {
         return make_failure(
             api,
@@ -149,7 +149,7 @@ pub(super) unsafe extern "C" fn submit(handle: Oop, args: *const Oop, count: usi
             b"request id space exhausted",
         );
     }
-    let timeout = (unsafe { (api.smallIntValue)(args[1]) } as u64).min(u32::MAX as u64) as u32;
+    let timeout = (unsafe { (birnam_abi::integer::value)(args[1]) } as u64).min(u32::MAX as u64) as u32;
     let payload = if entry.task_service {
         match service::wrap_request(&payload) {
             Ok(payload) => payload,
@@ -186,7 +186,7 @@ pub(super) unsafe extern "C" fn submit(handle: Oop, args: *const Oop, count: usi
     entry.next_request += 1;
     entry.state = Lifecycle::Busy;
     entry.pending = Some(pending);
-    unsafe { (api.mkSmallInt)(id as i64) }
+    unsafe { (birnam_abi::integer::make)(id as i64) }
 }
 
 pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize) -> Oop {
@@ -194,7 +194,7 @@ pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize
     let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
-    if args.len() != 1 || unsafe { (api.isSmallInt)(args[0]) } == 0 {
+    if args.len() != 1 || unsafe { (birnam_abi::integer::is_integer)(args[0]) } == 0 {
         return make_failure(
             api,
             b"protocol",
@@ -202,7 +202,7 @@ pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize
             b"poll expects a request id",
         );
     }
-    let id = unsafe { (api.smallIntValue)(args[0]) } as u64;
+    let id = unsafe { (birnam_abi::integer::value)(args[0]) } as u64;
     let Some(shared) = lookup_entry(handle_object(handle).token) else {
         return make_failure(api, b"stopped", b"unknownHandle", b"unknown isolate handle");
     };
@@ -272,9 +272,9 @@ pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize
             };
             let failure = make_failure(api, class, kind, message);
             failure_object(failure).exit_status = status
-                .map(|status| unsafe { (api.mkSmallInt)(status as i64) })
+                .map(|status| unsafe { (birnam_abi::integer::make)(status as i64) })
                 .unwrap_or(api.nilObj);
-            failure_object(failure).request_id = unsafe { (api.mkSmallInt)(id as i64) };
+            failure_object(failure).request_id = unsafe { (birnam_abi::integer::make)(id as i64) };
             return failure;
         }
     };
@@ -299,7 +299,7 @@ pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize
                     })
                 };
                 make_failure_objects(api, class, kind, message, api.nilObj, unsafe {
-                    (api.mkSmallInt)(id as i64)
+                    (birnam_abi::integer::make)(id as i64)
                 })
             },
         )
@@ -337,10 +337,10 @@ pub(super) unsafe extern "C" fn cancel(handle: Oop, args: *const Oop, count: usi
     let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
         return api.falseObj;
     };
-    if args.len() != 1 || unsafe { (api.isSmallInt)(args[0]) } == 0 {
+    if args.len() != 1 || unsafe { (birnam_abi::integer::is_integer)(args[0]) } == 0 {
         return api.falseObj;
     }
-    let id = unsafe { (api.smallIntValue)(args[0]) } as u64;
+    let id = unsafe { (birnam_abi::integer::value)(args[0]) } as u64;
     let Some(shared) = lookup_entry(handle_object(handle).token) else {
         return api.falseObj;
     };

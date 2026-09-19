@@ -8,7 +8,9 @@ use crate::abi::{Finalizer, IdApi, Method, MethodOverwriteHook, Oop, RootProvide
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
 use crate::runtime::{Runtime, with_active_if_present};
-use crate::values::{float_value_unchecked, integer_value_unchecked, word_value_unchecked};
+use crate::values::{float_value_unchecked, word_value_unchecked};
+
+static PUBLIC_API: AtomicPtr<IdApi> = AtomicPtr::new(core::ptr::null_mut());
 
 static PUBLIC_RUNTIME: AtomicPtr<Runtime> = AtomicPtr::new(core::ptr::null_mut());
 
@@ -144,21 +146,6 @@ pub(crate) fn test_dispatch_reentry(method: Method) -> usize {
     runtime
         .enter(|| runtime.send_slice(receiver, outer, &[inner]))
         .addr()
-}
-
-unsafe extern "C" fn api_make_smallint(value: i64) -> Oop {
-    runtime().make_integer(value)
-}
-
-unsafe extern "C" fn api_smallint_value(object: Oop) -> i64 {
-    // SAFETY: the frozen IdApi contract requires a live Integer object. The
-    // payload read needs no mutable runtime state; callers remain subject to
-    // the floor's owner-thread rule.
-    unsafe { integer_value_unchecked(object) }
-}
-
-unsafe extern "C" fn api_is_smallint(object: Oop) -> c_int {
-    i32::from(runtime().is_integer(object))
 }
 
 unsafe extern "C" fn api_make_float(value: f64) -> Oop {
@@ -338,18 +325,14 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         intern: api_intern,
         proto: api_proto,
         method: api_method,
-        alloc: api_alloc,
+        alloc: canonical_numeric_functions().alloc,
         import: canonical_numeric_functions().import,
         exportObj: api_export_object,
         isExported: canonical_numeric_functions().is_exported,
         send: api_send,
-        smallint_vt: canonical.smallint_vt,
         nilObj: canonical.nil,
         trueObj: canonical.true_object,
         falseObj: canonical.false_object,
-        mkSmallInt: canonical_numeric_functions().make_smallint,
-        smallIntValue: canonical_numeric_functions().smallint_value,
-        isSmallInt: canonical_numeric_functions().is_smallint,
         string_vt: canonical.string_vt,
         mkString: api_make_string,
         stringBytes: api_string_bytes,
@@ -386,44 +369,37 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
 /// publication and declaration checks. Re-taking a private function's address
 /// in another codegen unit can select a different compiled copy in release.
 struct NumericFunctions {
-    is_smallint: unsafe extern "C" fn(Oop) -> c_int,
-    smallint_value: unsafe extern "C" fn(Oop) -> i64,
+    alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
     is_exported: unsafe extern "C" fn(*const c_char) -> c_int,
     import: unsafe extern "C" fn(*const c_char) -> Oop,
     vtable_of: unsafe extern "C" fn(Oop) -> Oop,
-    make_smallint: unsafe extern "C" fn(i64) -> Oop,
 }
 
 fn canonical_numeric_functions() -> &'static NumericFunctions {
     static FUNCTIONS: std::sync::OnceLock<NumericFunctions> = std::sync::OnceLock::new();
     FUNCTIONS.get_or_init(|| NumericFunctions {
-        is_smallint: api_is_smallint,
-        smallint_value: api_smallint_value,
+        alloc: api_alloc,
         is_exported: api_is_exported,
         import: api_import,
         vtable_of: api_vtable_of,
-        make_smallint: api_make_smallint,
     })
 }
 
 /// Process-local comparison operands for an optional native declaration. This
 /// does not publish another IdApi entry or call any of these functions.
-pub(crate) fn numeric_functions() -> [usize; 6] {
+pub(crate) fn numeric_functions(runtime: &Runtime) -> [usize; 10] {
     let functions = canonical_numeric_functions();
-    [
-        functions.is_smallint as usize,
-        functions.smallint_value as usize,
-        functions.is_exported as usize,
-        functions.import as usize,
-        functions.vtable_of as usize,
-        functions.make_smallint as usize,
-    ]
+    let ops = runtime.integer_operations();
+    [ops.is_exact as usize, ops.read as usize, functions.is_exported as usize,
+     functions.import as usize, functions.vtable_of as usize, ops.make as usize,
+     ops.context as usize, ops.storage as usize, ops.prototype as usize,
+     canonical_numeric_functions().alloc as usize]
 }
 
 /// Current floor operands for the optional warm Block constructor declaration.
 pub(crate) fn block_construction_context(symbol_vtable: Oop, metavtable: Oop) -> [usize; 11] {
     [
-        api_alloc as *const () as usize,
+        canonical_numeric_functions().alloc as usize,
         canonical_numeric_functions().import as usize,
         api_object_payload_size as *const () as usize,
         canonical_numeric_functions().vtable_of as usize,
@@ -437,10 +413,10 @@ pub(crate) fn block_construction_context(symbol_vtable: Oop, metavtable: Oop) ->
     ]
 }
 
-pub(crate) fn closure_codegen_context_matches(api: &IdApi, nil: Oop) -> bool {
+pub(crate) fn closure_codegen_context_matches(api: &IdApi, nil: Oop, integer: &birnam_abi::integer::IntegerApiV1, expected: &birnam_abi::integer::IntegerApiV1) -> bool {
+    if !integer.same_contract(expected) { return false; }
     api.send as usize == api_send as *const () as usize
         && api.intern as usize == api_intern as *const () as usize
-        && api.mkSmallInt as usize == canonical_numeric_functions().make_smallint as usize
         && api.nilObj == nil
 }
 
@@ -448,7 +424,6 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [
         canonical.string_vt,
-        canonical.smallint_vt,
         canonical.float_vt,
         canonical.word_vt,
         canonical.nil_vt,
@@ -471,14 +446,6 @@ pub(crate) fn initialize_once() -> *mut IdApi {
     install_bootstrap_metadata(&bootstrap);
     let mut api = Box::new(table_for(&bootstrap));
     let api_pointer = core::ptr::from_mut(api.as_mut());
-    #[cfg(feature = "ffi-test-hooks")]
-    if std::env::var_os("BIRNAM_TEST_CLOSURE_CONTROL").is_some_and(|v| v == "1") {
-        bootstrap.runtime.install_closure_control_probe(api_pointer);
-    }
-    #[cfg(feature = "ffi-test-hooks")]
-    if std::env::var_os("BIRNAM_TEST_UNBOXED_NUMERIC").is_some_and(|v| v == "1") {
-        bootstrap.runtime.install_unboxed_numeric_probe();
-    }
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
     if PUBLIC_RUNTIME
         .compare_exchange(
@@ -493,6 +460,7 @@ pub(crate) fn initialize_once() -> *mut IdApi {
     }
     let _ = Box::into_raw(bootstrap);
     let _ = Box::into_raw(api);
+    PUBLIC_API.store(api_pointer, Ordering::Release);
     api_pointer
 }
 
@@ -540,10 +508,12 @@ mod tests {
         let other = build_bootstrap();
         let nil = bootstrap.runtime.canonical().nil;
         let mut table = table_for(&bootstrap);
-        assert!(closure_codegen_context_matches(&table, nil));
+        let expected = bootstrap.runtime.integer_operations();
+        let mut integer_ops = expected;
+        assert!(closure_codegen_context_matches(&table, nil, &integer_ops, &expected));
         assert!(!closure_codegen_context_matches(
             &table,
-            other.runtime.canonical().nil
+            other.runtime.canonical().nil, &integer_ops, &expected
         ));
         unsafe extern "C" fn send(_: Oop, _: Oop, _: *const Oop, _: usize) -> Oop {
             panic!("guard must not send");
@@ -551,22 +521,22 @@ mod tests {
         unsafe extern "C" fn intern(_: *const core::ffi::c_char) -> Oop {
             panic!("guard must not intern");
         }
-        unsafe extern "C" fn integer(_: i64) -> Oop {
+        unsafe extern "C" fn integer(_: *mut c_void, _: i64) -> Oop {
             panic!("guard must not allocate");
         }
         table.send = send;
-        assert!(!closure_codegen_context_matches(&table, nil));
+        assert!(!closure_codegen_context_matches(&table, nil, &integer_ops, &expected));
         table.send = api_send;
         table.intern = intern;
-        assert!(!closure_codegen_context_matches(&table, nil));
+        assert!(!closure_codegen_context_matches(&table, nil, &integer_ops, &expected));
         table.intern = api_intern;
-        table.mkSmallInt = integer;
-        assert!(!closure_codegen_context_matches(&table, nil));
-        table.mkSmallInt = canonical_numeric_functions().make_smallint;
+        integer_ops.make = integer;
+        assert!(!closure_codegen_context_matches(&table, nil, &integer_ops, &expected));
+        integer_ops.make = expected.make;
         table.nilObj = other.runtime.canonical().nil;
-        assert!(!closure_codegen_context_matches(&table, nil));
+        assert!(!closure_codegen_context_matches(&table, nil, &integer_ops, &expected));
         table.nilObj = nil;
-        assert!(closure_codegen_context_matches(&table, nil));
+        assert!(closure_codegen_context_matches(&table, nil, &integer_ops, &expected));
     }
 
     #[test]
@@ -579,7 +549,6 @@ mod tests {
         assert_eq!(table.object_vt, globals.object_vt);
         assert_eq!(table.vtable_vt, globals.vtable_vt);
         assert_eq!(table.symbol_vt, globals.symbol_vt);
-        assert_eq!(table.smallint_vt, canonical.smallint_vt);
         assert_eq!(table.nilObj, canonical.nil);
         assert_eq!(table.trueObj, canonical.true_object);
         assert_eq!(table.falseObj, canonical.false_object);
@@ -596,3 +565,46 @@ mod tests {
         );
     }
 }
+
+/// Explicit dependency of the still-combined Machine/optimizer layer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_integer_dependency_v1(ops: *mut birnam_abi::integer::IntegerApiV1) -> c_int {
+    let attached = runtime().integer_dependency_attached();
+    if !unsafe { runtime().attach_integer(ops) } { return 0; }
+    if attached { return 1; }
+    #[cfg(feature = "ffi-test-hooks")]
+    if std::env::var_os("BIRNAM_TEST_CLOSURE_CONTROL").is_some_and(|v| v == "1") {
+        runtime().install_closure_control_probe(PUBLIC_API.load(Ordering::Acquire));
+    }
+    #[cfg(feature = "ffi-test-hooks")]
+    if std::env::var_os("BIRNAM_TEST_UNBOXED_NUMERIC").is_some_and(|v| v == "1") {
+        runtime().install_unboxed_numeric_probe();
+    }
+    1
+}
+
+#[cfg(test)]
+pub(crate) fn test_integer_api(bootstrap: &Bootstrap) -> Box<IdApi> {
+    use crate::runtime::with_active;
+    unsafe extern "C" fn proto(parent: Oop) -> Oop { with_active(|r| r.create_vtable(parent)) }
+    unsafe extern "C" fn export(name: *const c_char, value: Oop) -> Oop {
+        with_active(|r| r.export(unsafe { CStr::from_ptr(name) }.to_bytes(), value).unwrap())
+    }
+    unsafe extern "C" fn intern(name: *const c_char) -> Oop {
+        with_active(|r| r.intern(unsafe { CStr::from_ptr(name) }.to_bytes()).unwrap())
+    }
+    unsafe extern "C" fn layout(vt: Oop, kinds: *const u8, count: usize, rest: u8) {
+        with_active(|r| r.set_layout(vt, kinds, count, rest));
+    }
+    unsafe extern "C" fn send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
+        with_active(|r| unsafe { r.send_abi(receiver, selector, args, count) })
+    }
+    let mut api = Box::new(table_for(bootstrap));
+    api.proto = proto; api.exportObj = export; api.intern = intern;
+    api.setLayout = layout; api.send = send;
+    // alloc and vtableOf already route through the active runtime. Every
+    // callback used by Instance is local to this test's owner-thread entry.
+    api
+}
+
+pub(crate) fn canonical_allocator() -> usize { canonical_numeric_functions().alloc as usize }

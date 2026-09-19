@@ -18,7 +18,7 @@ fn numeric_entry_preflight_is_pure_current_and_requires_a_warm_callee() {
             r.gc_set_precise(precise);
             let native = Fixture::load(r);
             let blend = r.intern(b"blend:").unwrap();
-            r.add_method(r.canonical().smallint_vt, blend, native.method(1));
+            r.add_method(r.integer_behavior(), blend, native.method(1));
             let bytes = super::fused_numeric_tests::program(tail);
             let block = install(r, &bytes, 741601, None);
             let _block = ScopedOopRootGuard::new(r, block.receiver);
@@ -101,12 +101,12 @@ fn numeric_entry_preflight_is_pure_current_and_requires_a_warm_callee() {
                 )
                 .is_none()
             );
-            r.add_method(r.canonical().smallint_vt, blend, native.method(2));
+            r.add_method(r.integer_behavior(), blend, native.method(2));
             assert!(
                 r.prepare_numeric_entry_prediction(machine, &block.descriptor, &initial)
                     .is_none()
             );
-            r.add_method(r.canonical().smallint_vt, blend, native.method(1));
+            r.add_method(r.integer_behavior(), blend, native.method(1));
             assert!(
                 r.prepare_numeric_entry_prediction(machine, &block.descriptor, &initial)
                     .is_some(),
@@ -139,7 +139,7 @@ fn numeric_entry_preflight_is_pure_current_and_requires_a_warm_callee() {
             );
             let error_symbol = r.intern(b"ErrorVt").unwrap();
             let original_error = unsafe { (*r.state.get()).environment.import(error_symbol) };
-            r.export(b"ErrorVt", r.canonical().smallint_vt).unwrap();
+            r.export(b"ErrorVt", r.integer_behavior()).unwrap();
             assert!(
                 r.prepare_numeric_entry_prediction(machine, &block.descriptor, &initial)
                     .is_none()
@@ -194,7 +194,7 @@ fn numeric_entry_predictions_share_only_current_equal_bits_and_compiled_owner() 
     r.install_execution_objects();
     let native = Fixture::load(r);
     let blend = r.intern(b"blend:").unwrap();
-    r.add_method(r.canonical().smallint_vt, blend, native.method(1));
+    r.add_method(r.integer_behavior(), blend, native.method(1));
     let bytes = super::fused_numeric_tests::program(false);
     let block = install(r, &bytes, 741602, None);
     let _block = ScopedOopRootGuard::new(r, block.receiver);
@@ -257,7 +257,7 @@ fn numeric_entry_predictions_share_only_current_equal_bits_and_compiled_owner() 
         .unwrap();
     assert!(!Rc::ptr_eq(&first, &changed));
     assert_eq!(numeric::ENTRY_PREDICTION_KERNELS.get() - before, 2);
-    r.add_method(r.canonical().smallint_vt, blend, native.method(2));
+    r.add_method(r.integer_behavior(), blend, native.method(2));
     assert!(
         r.prepare_numeric_entry_prediction_reusing(
             machine,
@@ -269,7 +269,7 @@ fn numeric_entry_predictions_share_only_current_equal_bits_and_compiled_owner() 
         "cached bits do not grant current arithmetic authority"
     );
     assert_eq!(numeric::ENTRY_PREDICTION_KERNELS.get() - before, 2);
-    r.add_method(r.canonical().smallint_vt, blend, native.method(1));
+    r.add_method(r.integer_behavior(), blend, native.method(1));
     assert!(Rc::ptr_eq(
         &first,
         &r.prepare_numeric_entry_prediction_reusing(

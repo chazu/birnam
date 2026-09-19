@@ -5,47 +5,25 @@ use super::*;
 pub(crate) const MAX_FRAME_INDEX: usize = 128;
 pub(crate) const MAX_COUNTED_FRAME_INDICES: usize = 1_048_576;
 
-#[derive(Clone, Copy)]
-struct Count {
-    value: i64,
-    count: usize,
-}
-
 pub(in crate::heap) struct CountedFrameIndices {
-    vtable: usize,
+    batch: std::rc::Rc<super::numeric::Batch>,
     total: usize,
-    allocation_size: usize,
-    values: [Count; MAX_FRAME_INDEX],
-}
-
-impl CountedFrameIndices {
-    fn new(vtable: Oop, allocation_size: usize) -> Box<Self> {
-        // Allocate zeroed storage before filling any potentially pointer-shaped
-        // metadata. This ledger never contributes conservative or precise roots.
-        let mut ledger = Box::new(Self {
-            vtable: 0,
-            total: 0,
-            allocation_size: 0,
-            values: [Count { value: 0, count: 0 }; MAX_FRAME_INDEX],
-        });
-        ledger.vtable = vtable.addr();
-        ledger.allocation_size = allocation_size;
-        for (index, entry) in ledger.values.iter_mut().enumerate() {
-            entry.value = index as i64;
-        }
-        ledger
-    }
+    counts: [usize; MAX_FRAME_INDEX],
 }
 
 impl Heap {
     /// The caller proves these are canonical raw Integer indices whose
     /// identities are already dead, retains their vtable, and checks the full
     /// original collection budget before entering the no-observation region.
-    pub(crate) fn record_dead_frame_indices(&mut self, vtable: Oop, indices: &[u32]) -> bool {
+    pub(crate) fn record_dead_payload_indices(
+        &mut self,
+        batch: std::rc::Rc<super::numeric::Batch>,
+        indices: &[u32],
+    ) -> bool {
         if indices.is_empty() {
             return true;
         }
-        let size = Self::allocation_total_size(core::mem::size_of::<i64>()).unwrap();
+        let size = batch.total_size;
         let previous = self.counted_frame_index_count();
         let Some(bytes) = indices.len().checked_mul(size) else {
             return false;
@@ -53,29 +31,70 @@ impl Heap {
         let Some(charged) = self.bytes_since_collection.checked_add(bytes) else {
             return false;
         };
-        if !self.contains(vtable)
+        if !self.contains(core::ptr::with_exposed_provenance_mut(batch.vtable))
+            || batch.count() != MAX_FRAME_INDEX
             || indices.len() > MAX_COUNTED_FRAME_INDICES.saturating_sub(previous)
             || indices
                 .iter()
                 .any(|&index| index as usize >= MAX_FRAME_INDEX)
-            || self
-                .counted_frame_indices
-                .as_ref()
-                .is_some_and(|ledger| ledger.total != 0 && ledger.vtable != vtable.addr())
+            || self.counted_frame_indices.as_ref().is_some_and(|ledger| {
+                ledger.total != 0 && !std::rc::Rc::ptr_eq(&ledger.batch, &batch)
+            })
         {
             return false;
         }
         // Every refusal precedes allocation, charging and counter mutation.
-        let ledger = self
-            .counted_frame_indices
-            .get_or_insert_with(|| CountedFrameIndices::new(vtable, size));
-        ledger.vtable = vtable.addr();
+        let ledger = self.counted_frame_indices.get_or_insert_with(|| {
+            Box::new(CountedFrameIndices {
+                batch: batch.clone(),
+                total: 0,
+                counts: [0; MAX_FRAME_INDEX],
+            })
+        });
+        ledger.batch = batch;
         for &index in indices {
-            ledger.values[index as usize].count += 1;
+            ledger.counts[index as usize] += 1;
         }
         ledger.total += indices.len();
         self.bytes_since_collection = charged;
         true
+    }
+
+    #[cfg(test)]
+    pub(crate) fn record_dead_frame_indices(&mut self, vtable: Oop, indices: &[u32]) -> bool {
+        if indices.is_empty() {
+            return true;
+        }
+        let batch = match self
+            .counted_frame_indices
+            .as_ref()
+            .filter(|l| l.batch.vtable == vtable.addr())
+        {
+            Some(ledger) => ledger.batch.clone(),
+            None => {
+                let mut batch = super::numeric::Batch::zeroed(vtable, 8, MAX_FRAME_INDEX).unwrap();
+                for i in 0..MAX_FRAME_INDEX {
+                    batch
+                        .payload_mut(i)
+                        .copy_from_slice(&(i as i64).to_ne_bytes());
+                }
+                std::rc::Rc::new(batch)
+            }
+        };
+        self.record_dead_payload_indices(batch, indices)
+    }
+
+    pub(crate) fn retained_payload_indices(
+        &self,
+        vtable: Oop,
+        payload_size: usize,
+    ) -> Option<std::rc::Rc<super::numeric::Batch>> {
+        self.counted_frame_indices
+            .as_ref()
+            .filter(|ledger| {
+                ledger.batch.vtable == vtable.addr() && ledger.batch.payload_size == payload_size
+            })
+            .map(|ledger| ledger.batch.clone())
     }
 
     pub(crate) fn counted_frame_index_count(&self) -> usize {
@@ -87,39 +106,35 @@ impl Heap {
     pub(in crate::heap) fn counted_frame_index_bytes(&self) -> usize {
         self.counted_frame_indices
             .as_ref()
-            .map_or(0, |ledger| ledger.total * ledger.allocation_size)
+            .map_or(0, |ledger| ledger.total * ledger.batch.total_size)
     }
 
     pub(super) fn settle_dead_frame_indices(&mut self) {
         let Some(ledger) = self.counted_frame_indices.take() else {
             return;
         };
-        for entry in &ledger.values {
-            let bytes = unsafe {
-                core::slice::from_raw_parts(
-                    core::ptr::from_ref(&entry.value).cast::<u8>(),
-                    core::mem::size_of::<i64>(),
-                )
-            };
-            for _ in 0..entry.count {
-                self.materialize_raw(ledger.vtable, bytes);
+        for (index, &count) in ledger.counts.iter().enumerate() {
+            for _ in 0..count {
+                self.materialize_raw(ledger.batch.vtable, ledger.batch.payload(index));
             }
         }
     }
 
     pub(super) fn clear_dead_frame_indices(&mut self) {
         if let Some(ledger) = &mut self.counted_frame_indices {
-            for entry in &mut ledger.values {
-                entry.count = 0;
-            }
+            ledger.counts.fill(0);
             ledger.total = 0;
         }
     }
 
     #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(super) fn counted_frame_index_storage_bytes(&self) -> usize {
-        usize::from(self.counted_frame_indices.is_some())
-            * core::mem::size_of::<CountedFrameIndices>()
+        self.counted_frame_indices.as_ref().map_or(0, |ledger| {
+            size_of::<CountedFrameIndices>()
+                + size_of::<super::numeric::Batch>()
+                + 2 * size_of::<usize>()
+                + ledger.batch.storage_bytes()
+        })
     }
 }
 

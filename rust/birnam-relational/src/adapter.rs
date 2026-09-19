@@ -358,17 +358,17 @@ unsafe extern "C" fn rust_entity(_self_object: Oop, _args: *const Oop, _count: u
 unsafe fn value_oop(api: &IdApi, value: Value) -> Oop {
     match value {
         Value::Identity(identity) => identity as usize as Oop,
-        Value::Integer(integer) => unsafe { (api.mkSmallInt)(integer) },
+        Value::Integer(integer) => unsafe { (birnam_abi::integer::make)(integer) },
         Value::Float(float) => unsafe { (api.mkFloat)(float) },
         Value::String(bytes) => unsafe { (api.mkString)(bytes.as_ptr(), bytes.len()) },
     }
 }
 
-unsafe fn smallint_u64(api: &IdApi, object: Oop) -> Option<u64> {
-    if object.is_null() || unsafe { (api.isSmallInt)(object) } == 0 {
+unsafe fn smallint_u64(_api: &IdApi, object: Oop) -> Option<u64> {
+    if object.is_null() || unsafe { (birnam_abi::integer::is_integer)(object) } == 0 {
         return None;
     }
-    let value = unsafe { (api.smallIntValue)(object) };
+    let value = unsafe { (birnam_abi::integer::value)(object) };
     (value >= 0).then_some(value as u64)
 }
 
@@ -510,10 +510,10 @@ unsafe fn rust_aggregate(store: Oop, args: *const Oop, count: usize, kind: u8) -
     let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
     let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
     let size = unsafe { (api.send)(values, size_selector, ptr::null(), 0) };
-    if size.is_null() || unsafe { (api.isSmallInt)(size) } == 0 {
+    if size.is_null() || unsafe { (birnam_abi::integer::is_integer)(size) } == 0 {
         return api.nilObj;
     }
-    let count_value = unsafe { (api.smallIntValue)(size) };
+    let count_value = unsafe { (birnam_abi::integer::value)(size) };
     if count_value < 0 {
         return api.nilObj;
     }
@@ -522,7 +522,7 @@ unsafe fn rust_aggregate(store: Oop, args: *const Oop, count: usize, kind: u8) -
     }
     if count_value == 0 {
         return if kind == 1 {
-            unsafe { (api.mkSmallInt)(0) }
+            unsafe { (birnam_abi::integer::make)(0) }
         } else {
             api.nilObj
         };
@@ -530,7 +530,7 @@ unsafe fn rust_aggregate(store: Oop, args: *const Oop, count: usize, kind: u8) -
     ACTIVE_PROBE_BLOCK.store(values as usize, Ordering::Release);
     let mut copied = Vec::with_capacity(count_value as usize);
     for index in 0..count_value {
-        let argument = unsafe { (api.mkSmallInt)(index) };
+        let argument = unsafe { (birnam_abi::integer::make)(index) };
         let value = unsafe { (api.send)(values, at_selector, &argument, 1) };
         let Some(value) = (unsafe { oop::classify(api, value) }) else {
             ACTIVE_PROBE_BLOCK.store(0, Ordering::Release);
@@ -1337,8 +1337,8 @@ unsafe fn collect_window(
         return -7;
     }
     let selector = unsafe { (api.intern)(selector_name.as_ptr().cast()) };
-    let lower_oop = unsafe { (api.mkSmallInt)(lower as i64) };
-    let upper_oop = unsafe { (api.mkSmallInt)(upper as i64) };
+    let lower_oop = unsafe { (birnam_abi::integer::make)(lower as i64) };
+    let upper_oop = unsafe { (birnam_abi::integer::make)(upper as i64) };
     let arguments: [Oop; 3] = match mode {
         0 => [callback, ptr::null_mut(), ptr::null_mut()],
         1 => [upper_oop, callback, ptr::null_mut()],
@@ -1416,8 +1416,8 @@ unsafe fn collect_project_facts_window_with_rules(
         return Err(-7);
     }
     let selector = unsafe { (api.intern)(selector_name.as_ptr().cast()) };
-    let lower_oop = unsafe { (api.mkSmallInt)(lower as i64) };
-    let upper_oop = unsafe { (api.mkSmallInt)(upper as i64) };
+    let lower_oop = unsafe { (birnam_abi::integer::make)(lower as i64) };
+    let upper_oop = unsafe { (birnam_abi::integer::make)(upper as i64) };
     let arguments: [Oop; 3] = match mode {
         0 => [callback, ptr::null_mut(), ptr::null_mut()],
         1 => [upper_oop, callback, ptr::null_mut()],
@@ -2828,16 +2828,16 @@ unsafe fn vector_elements(api: &IdApi, vector: Oop) -> Result<Vec<Oop>, i32> {
     let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
     let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
     let size = unsafe { (api.send)(vector, size_selector, ptr::null(), 0) };
-    if size.is_null() || unsafe { (api.isSmallInt)(size) } == 0 {
+    if size.is_null() || unsafe { (birnam_abi::integer::is_integer)(size) } == 0 {
         return Err(-7);
     }
-    let size = unsafe { (api.smallIntValue)(size) };
+    let size = unsafe { (birnam_abi::integer::value)(size) };
     if size < 0 || size as usize > MAX_RULE_BODY_CLAUSES {
         return Err(-7);
     }
     let mut elements = Vec::with_capacity(size as usize);
     for index in 0..size {
-        let argument = unsafe { (api.mkSmallInt)(index) };
+        let argument = unsafe { (birnam_abi::integer::make)(index) };
         let element = unsafe { (api.send)(vector, at_selector, &argument, 1) };
         if element.is_null() {
             return Err(-4);

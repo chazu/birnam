@@ -13,6 +13,21 @@ only those complete expressions, with their original operands and exact counts.
 
 def unchanged_authority(name, current, baseline):
     if name == "rust/birnam-image/src/lib.rs" and current != baseline:
+        integer_migrations = (
+            (b'(api.mkSmallInt)', b'(birnam_abi::integer::make)', 12),
+            (b'(api.smallIntValue)', b'(birnam_abi::integer::value)', 8),
+            (b'(api.isSmallInt)', b'(birnam_abi::integer::is_integer)', 5),
+            (b'api.smallint_vt', b'birnam_abi::integer::behavior()', 1),
+        )
+        if any(new in current for _, new, _ in integer_migrations):
+            for old, new, count in integer_migrations:
+                if baseline.count(old) != count or new in baseline or current.count(new) != count:
+                    return False
+                current = current.replace(new, old)
+            dependency = b'\nbirnam_abi::integer_dependency!();\n'
+            if dependency in baseline or current.count(dependency) != 1:
+                return False
+            current = current.replace(dependency, b'')
         migrations = (
             (b'(api.vtableParent)(vtable)', b'birnam_abi::vtable_parent(api, vtable)', 3),
             (b'(api.vtableOwner)(vtable)', b'birnam_abi::vtable_owner(api, vtable)', 2),

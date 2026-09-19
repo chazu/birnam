@@ -23,9 +23,9 @@ pub unsafe fn classify(api: &IdApi, object: Oop) -> Option<Value> {
         return Some(Value::Identity(0));
     }
     // SAFETY: the caller supplies a live floor object and process-owned table.
-    if unsafe { (api.isSmallInt)(object) } != 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(object) } != 0 {
         // SAFETY: isSmallInt accepted the same object for this accessor.
-        return Some(Value::Integer(unsafe { (api.smallIntValue)(object) }));
+        return Some(Value::Integer(unsafe { (birnam_abi::integer::value)(object) }));
     }
     // SAFETY: the caller supplies a live floor object and process-owned table.
     if unsafe { (api.isFloat)(object) } != 0 {

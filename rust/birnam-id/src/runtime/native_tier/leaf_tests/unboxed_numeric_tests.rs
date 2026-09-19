@@ -141,7 +141,7 @@ pub(super) fn unboxed_numeric_driver_saves_results_and_recovers_each_original_bo
             r.install_execution_objects();
             let native = Fixture::load(r);
             let selector = r.intern(b"blend:").unwrap();
-            r.add_method(r.canonical().smallint_vt, selector, native.method(1));
+            r.add_method(r.integer_behavior(), selector, native.method(1));
             let block = install(r, &bytes, 741601, None);
             let _block = ScopedOopRootGuard::new(r, block.receiver);
             let a = r.make_integer(11);

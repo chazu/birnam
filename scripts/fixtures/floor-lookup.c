@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v3.h"
+#include "idapi_v4.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>

@@ -107,10 +107,10 @@ impl HostRuntime {
                 3,
             )
         };
-        if unsafe { (api.isSmallInt)(result) } == 0 {
+        if unsafe { (birnam_abi::integer::is_integer)(result) } == 0 {
             return Err(CliError::MalformedStatus);
         }
-        let status = unsafe { (api.smallIntValue)(result) };
+        let status = unsafe { (birnam_abi::integer::value)(result) };
         if status == 0 {
             Ok(())
         } else {
@@ -254,7 +254,7 @@ impl HostRuntime {
             return Err(ReplError::MalformedStep);
         }
         let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
-        let tag = unsafe { (api.send)(step, at_selector, [(api.mkSmallInt)(0)].as_ptr(), 1) };
+        let tag = unsafe { (api.send)(step, at_selector, [(birnam_abi::integer::make)(0)].as_ptr(), 1) };
         if tag == api.nilObj {
             return Err(ReplError::MalformedStep);
         }
@@ -267,7 +267,7 @@ impl HostRuntime {
             return Ok(ReplStep::Done);
         }
         if unsafe { CStr::from_ptr(tag_name) }.to_bytes() == b"evaluated" {
-            let value = unsafe { (api.send)(step, at_selector, [(api.mkSmallInt)(1)].as_ptr(), 1) };
+            let value = unsafe { (api.send)(step, at_selector, [(birnam_abi::integer::make)(1)].as_ptr(), 1) };
             return Ok(ReplStep::Evaluated(value));
         }
         Ok(ReplStep::Other)
@@ -374,7 +374,7 @@ impl HostRuntime {
             (api.send)(
                 repl,
                 selector,
-                [(api.mkSmallInt)(i64::from(port)), bind].as_ptr(),
+                [(birnam_abi::integer::make)(i64::from(port)), bind].as_ptr(),
                 2,
             )
         };

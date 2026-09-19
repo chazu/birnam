@@ -10,11 +10,14 @@ loader ports are complete.
 
 ### Changed
 
-- Integer's native arithmetic, comparison, conversion and iteration methods now
-  load from `libbirnam_integer.dylib` before the other upper native modules.
-  Prelude no longer installs those methods. This first production extraction
-  preserves numeric behavior and native optimization declarations; Integer
-  representation and construction still reside in Id pending the next stage.
+- Integer now owns its canonical objects, payload, construction, access and native
+  methods in `libbirnam_integer.dylib`, loaded directly above Id. Native consumers
+  acquire its explicit dependency; Prelude no longer installs Integer methods.
+  IdApi v4 removes the four Integer fields (45 fields / 360 bytes); native
+  consumers must be rebuilt. Method, Frame and image formats are unchanged.
+  Recovery uses Integer's pure codec, and deferred Heap allocations hold opaque
+  bytes. Arithmetic dispatch, fresh identity, Error propagation and the native
+  constructor's collection opportunity are preserved.
 
 ### Added
 

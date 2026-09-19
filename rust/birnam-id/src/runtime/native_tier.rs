@@ -822,9 +822,10 @@ fn leaf_allocation_guard(
     plan: &small_callee::Plan,
 ) -> bool {
     let state = unsafe { &*runtime.state.get() };
+    if !runtime.integer_context_current() { return false; }
     // Preserve the baseline's housekeeping boxes and its collection boundary.
     // If any of those allocations could collect, create the callee first.
-    let bytes = crate::heap::Heap::allocation_total_size(core::mem::size_of::<i64>())
+    let bytes = crate::heap::Heap::allocation_total_size(runtime.integer_storage().payload_size)
         .unwrap()
         .saturating_mul(plan.allocation_count() + descriptor.driver_argument_count());
     !state

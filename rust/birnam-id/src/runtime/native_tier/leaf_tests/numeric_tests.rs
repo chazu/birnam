@@ -63,7 +63,7 @@ fn production_numeric_calls_use_current_targets_and_preserve_observing_lookup() 
             r.install_execution_objects();
             let native = Fixture::load(r);
             let blend = r.intern(b"blend:").unwrap();
-            r.add_method(r.canonical().smallint_vt, blend, native.method(1));
+            r.add_method(r.integer_behavior(), blend, native.method(1));
             let block = install(r, &bytes, 741500, None);
             let _block = ScopedOopRootGuard::new(r, block.receiver);
             let input = r.make_integer(11);
@@ -92,7 +92,7 @@ fn production_numeric_calls_use_current_targets_and_preserve_observing_lookup() 
             evidence.push((allocation_bytes, OBSERVATIONS.get()));
             // A familiar or unfamiliar selector says nothing about its meaning.
             // Rebinding the same site to subtraction changes the next answer.
-            r.add_method(r.canonical().smallint_vt, blend, native.method(2));
+            r.add_method(r.integer_behavior(), blend, native.method(2));
             assert_eq!(r.integer_value(invoke()), -11);
             r.enter(|| r.gc_collect_from_native_range(0, 0));
             assert_eq!(r.integer_value(invoke()), -11);
@@ -167,13 +167,13 @@ fn before_publication(machine: Oop, operand: Oop) {
                 }
                 Change::Operator => {
                     r.add_method(
-                        r.canonical().smallint_vt,
+                        r.integer_behavior(),
                         r.intern(b"blend:").unwrap(),
                         SUBTRACT.get().unwrap(),
                     );
                 }
                 Change::Error => {
-                    r.export(b"ErrorVt", r.canonical().smallint_vt).unwrap();
+                    r.export(b"ErrorVt", r.integer_behavior()).unwrap();
                 }
                 Change::Collect => {
                     r.gc_collect_from_native_range(0, 0);
@@ -251,7 +251,7 @@ fn production_raw_chains_revalidate_after_changes_at_every_operation() {
                 r.install_execution_objects();
                 let native = Fixture::load(r);
                 r.add_method(
-                    r.canonical().smallint_vt,
+                    r.integer_behavior(),
                     r.intern(b"blend:").unwrap(),
                     native.method(1),
                 );
@@ -410,7 +410,7 @@ fn production_numeric_chain_timing() {
                 r.install_execution_objects();
                 let native = Fixture::load(r);
                 r.add_method(
-                    r.canonical().smallint_vt,
+                    r.integer_behavior(),
                     r.intern(b"blend:").unwrap(),
                     native.method(if operator == "divide" { 4 } else { 1 }),
                 );

@@ -344,7 +344,6 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     let symbol_vt = vtables.create(&mut heap, object_vt, vtable_vt);
     let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
     let environment = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
-    let smallint_vt = vtables.create(&mut heap, object_vt, vtable_vt);
     let string_vt = vtables.create(&mut heap, object_vt, vtable_vt);
     let float_vt = vtables.create(&mut heap, object_vt, vtable_vt);
     let word_vt = vtables.create(&mut heap, object_vt, vtable_vt);
@@ -450,7 +449,6 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     });
 
     let object_prototype = runtime.allocate_empty(object_vt, Permanence::Permanent);
-    let integer_prototype = runtime.allocate_integer(smallint_vt, 0);
     let float_prototype = runtime.allocate_float(float_vt, 0.0);
     let word_prototype = runtime.allocate_word(word_vt, 0);
     let string_prototype = runtime.allocate_string(string_vt, b"");
@@ -460,7 +458,6 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
 
     for (vtable, owner) in [
         (object_vt, object_prototype),
-        (smallint_vt, integer_prototype),
         (float_vt, float_prototype),
         (word_vt, word_prototype),
         (string_vt, string_prototype),
@@ -504,7 +501,6 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     runtime.install_canonical(CanonicalObjects {
         symbol_list,
         environment,
-        smallint_vt,
         string_vt,
         float_vt,
         word_vt,
@@ -514,14 +510,16 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
         true_object,
         false_object,
         object_prototype,
-        integer_prototype,
         float_prototype,
         word_prototype,
         string_prototype,
         symbol_prototype,
     });
 
-    Bootstrap { runtime, selectors }
+    let bootstrap = Bootstrap { runtime, selectors };
+    #[cfg(test)]
+    bootstrap.runtime.mount_test_integer(crate::public_api::test_integer_api(&bootstrap));
+    bootstrap
 }
 
 pub(crate) struct DispatchHarness {
@@ -852,12 +850,12 @@ mod tests {
             globals.symbol_vt,
             canonical.symbol_list,
             canonical.environment,
-            canonical.smallint_vt,
             canonical.string_vt,
             canonical.float_vt,
             canonical.word_vt,
             canonical.nil_vt,
             canonical.bool_vt,
+            runtime.integer_behavior(),
         ];
         let expected_parents = [
             globals.object_vt,
@@ -878,11 +876,11 @@ mod tests {
             assert_eq!(runtime.vtable_at(index), expected);
             assert_eq!(runtime.vtable_parent(expected), expected_parents[index]);
             assert_eq!(runtime.checked_vtable_of(expected), globals.vtable_vt);
-            assert_eq!(runtime.permanence_of(expected), Some(Permanence::Permanent));
+            assert_eq!(runtime.permanence_of(expected), Some(if expected == runtime.integer_behavior() { Permanence::Collectable } else { Permanence::Permanent }));
             assert_eq!(runtime.payload_size(expected), Some(80));
         }
 
-        let selector_names: [&[u8]; 16] = [
+        let selector_names: [&[u8]; 18] = [
             b"lookup",
             b"addMethod",
             b"removeMethod:",
@@ -899,6 +897,8 @@ mod tests {
             b"ownerOf:put:",
             b"parentOf:",
             b"parentOf:put:",
+            b"Integer",
+            b"IntegerVt",
         ];
         assert_eq!(runtime.symbol_count(), selector_names.len());
         for (index, name) in selector_names.iter().copied().enumerate() {
@@ -916,11 +916,8 @@ mod tests {
                 .vtable_selector_at(canonical.symbol_list, selector_names.len())
                 .is_null()
         );
-        assert!(
-            runtime
-                .vtable_selector_at(canonical.environment, 0)
-                .is_null()
-        );
+        assert_eq!(runtime.export_count(), 2);
+        assert_eq!(runtime.import(b"Integer").unwrap(), runtime.integer_prototype());
 
         let meta_selectors = [
             bootstrap.selectors.lookup,
@@ -1023,8 +1020,8 @@ mod tests {
         });
 
         assert_eq!(
-            runtime.ensure_private_vtable(canonical.integer_prototype),
-            canonical.smallint_vt
+            runtime.ensure_private_vtable(runtime.integer_prototype()),
+            runtime.integer_behavior()
         );
         assert_eq!(
             runtime.ensure_private_vtable(globals.object_vt),
@@ -1071,7 +1068,7 @@ mod tests {
             globals.symbol_vt,
             canonical.symbol_list,
             canonical.environment,
-            canonical.smallint_vt,
+            runtime.integer_behavior(),
             canonical.string_vt,
             canonical.float_vt,
             canonical.word_vt,
@@ -1081,7 +1078,7 @@ mod tests {
             canonical.true_object,
             canonical.false_object,
             canonical.object_prototype,
-            canonical.integer_prototype,
+            runtime.integer_prototype(),
             canonical.float_prototype,
             canonical.word_prototype,
             canonical.string_prototype,
@@ -1096,7 +1093,7 @@ mod tests {
             (canonical.true_object, canonical.bool_vt),
             (canonical.false_object, canonical.bool_vt),
             (canonical.object_prototype, globals.object_vt),
-            (canonical.integer_prototype, canonical.smallint_vt),
+            (runtime.integer_prototype(), runtime.integer_behavior()),
             (canonical.float_prototype, canonical.float_vt),
             (canonical.word_prototype, canonical.word_vt),
             (canonical.string_prototype, canonical.string_vt),
@@ -1108,7 +1105,7 @@ mod tests {
             (canonical.nil_vt, canonical.nil),
             (canonical.bool_vt, canonical.true_object),
             (globals.object_vt, canonical.object_prototype),
-            (canonical.smallint_vt, canonical.integer_prototype),
+            (runtime.integer_behavior(), runtime.integer_prototype()),
             (canonical.float_vt, canonical.float_prototype),
             (canonical.word_vt, canonical.word_prototype),
             (canonical.string_vt, canonical.string_prototype),
@@ -1125,7 +1122,7 @@ mod tests {
             assert_eq!(runtime.permanence_of(object), Some(Permanence::Permanent));
         }
         for object in [
-            canonical.integer_prototype,
+            runtime.integer_prototype(),
             canonical.float_prototype,
             canonical.word_prototype,
             canonical.string_prototype,
@@ -1141,12 +1138,12 @@ mod tests {
         ] {
             assert_eq!(runtime.payload_size(object), Some(0));
         }
-        assert_eq!(runtime.payload_size(canonical.integer_prototype), Some(8));
+        assert_eq!(runtime.payload_size(runtime.integer_prototype()), Some(8));
         assert_eq!(runtime.payload_size(canonical.float_prototype), Some(8));
         assert_eq!(runtime.payload_size(canonical.word_prototype), Some(8));
         assert_eq!(runtime.payload_size(canonical.string_prototype), Some(16));
         assert_eq!(runtime.payload_size(canonical.symbol_prototype), Some(8));
-        assert_eq!(runtime.integer_value(canonical.integer_prototype), 0);
+        assert_eq!(runtime.integer_value(runtime.integer_prototype()), 0);
         assert_eq!(runtime.float_value(canonical.float_prototype), 0.0);
         assert_eq!(runtime.word_value(canonical.word_prototype), 0);
         assert_eq!(
@@ -1336,8 +1333,9 @@ mod tests {
         let globals = runtime.globals();
         let canonical = runtime.canonical();
         let expected: [(&[u8], Oop); 15] = [
+            (b"Integer", runtime.integer_prototype()),
+            (b"IntegerVt", runtime.integer_behavior()),
             (b"Object", canonical.object_prototype),
-            (b"Integer", canonical.integer_prototype),
             (b"Float", canonical.float_prototype),
             (b"Word", canonical.word_prototype),
             (b"String", canonical.string_prototype),
@@ -1347,7 +1345,6 @@ mod tests {
             (b"Symbol", canonical.symbol_prototype),
             (b"SymbolVt", globals.symbol_vt),
             (b"ObjectVt", globals.object_vt),
-            (b"IntegerVt", canonical.smallint_vt),
             (b"FloatVt", canonical.float_vt),
             (b"WordVt", canonical.word_vt),
             (b"StringVt", canonical.string_vt),
@@ -1382,11 +1379,11 @@ mod tests {
             b"Object"
         );
         assert_eq!(
-            runtime.export(b"Object", canonical.integer_prototype),
-            Ok(canonical.integer_prototype)
+            runtime.export(b"Object", runtime.integer_prototype()),
+            Ok(runtime.integer_prototype())
         );
         assert_eq!(runtime.export_count(), expected.len() + 1);
-        assert_eq!(runtime.import(b"Object"), Ok(canonical.integer_prototype));
+        assert_eq!(runtime.import(b"Object"), Ok(runtime.integer_prototype()));
         assert_eq!(
             unsafe { std::ffi::CStr::from_ptr(runtime.exported_name(canonical.object_prototype)) }
                 .to_bytes(),

@@ -14,6 +14,7 @@
     "birnam_global_b",
     "birnam_global_set",
     "birnam_install_method",
+    "birnam_integer_dependency_v1",
     "birnam_is_error",
     "birnam_record_global_src",
     "birnam_record_module_source",

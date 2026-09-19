@@ -49,7 +49,7 @@ pub(super) unsafe fn execute(
         let mut snapshots = Vec::with_capacity(plan.sites().len());
         let mut cache: Vec<(usize, Rc<crate::heap::DeadAllocation>)> = Vec::new();
         let mut bytes =
-            crate::heap::Heap::allocation_total_size(8)?.checked_mul(plan.integer_boxes())?;
+            crate::heap::Heap::allocation_total_size(runtime.integer_storage().payload_size)?.checked_mul(plan.integer_boxes())?;
         for site in plan.sites() {
             let prototype = arena.read_oop(frame, site.source_slot).ok()?;
             if cache

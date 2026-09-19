@@ -71,11 +71,11 @@ impl NumericSummary {
     /// only its resident image; never load a different file to obtain a fact.
     pub(crate) fn discover(
         method: crate::abi::Method,
-        integer_vtable: crate::abi::Oop,
+        runtime: &crate::runtime::Runtime,
     ) -> Option<Self> {
         let address = method as *const c_void;
         let (image, declaration) =
-            resident_declaration(method, c"birnam_native_numeric_semantics_v1")?;
+            resident_declaration(method, c"birnam_native_numeric_semantics_v2")?;
         // A native image exporting this optional symbol promises the versioned
         // pure query contract, just as it promises its Method/TraceHook ABI.
         let query: unsafe extern "C" fn(*const c_void, crate::abi::Oop, *const usize) -> u32 =
@@ -85,16 +85,17 @@ impl NumericSummary {
             query,
             _image: image,
         };
-        summary.operator(integer_vtable)?;
+        summary.operator(runtime)?;
         Some(summary)
     }
 
-    pub(crate) fn operator(&self, integer_vtable: crate::abi::Oop) -> Option<Operator> {
+    pub(crate) fn operator(&self, runtime: &crate::runtime::Runtime) -> Option<Operator> {
         // A module may have an instrumented/copied IdApi table. Revalidate
         // every invocation rather than caching assumptions about its pointers.
-        let functions = crate::public_api::numeric_functions();
+        if !runtime.integer_context_current() { return None; }
+        let functions = crate::public_api::numeric_functions(runtime);
         Operator::from_declaration(unsafe {
-            (self.query)(self.method, integer_vtable, functions.as_ptr())
+            (self.query)(self.method, runtime.integer_behavior(), functions.as_ptr())
         })
     }
 }

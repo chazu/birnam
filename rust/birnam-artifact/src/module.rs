@@ -233,7 +233,7 @@ unsafe fn value_at(
     };
     // SAFETY: descriptor list objects and count carriers were created by this
     // module; calls are synchronous and do not retain the borrowed slice.
-    let count = unsafe { (api.smallIntValue)(count) };
+    let count = unsafe { (birnam_abi::integer::value)(count) };
     if index >= count as usize {
         return api.nilObj;
     }
@@ -275,12 +275,12 @@ unsafe fn vector_of(state: &Runtime, receiver: abi::Oop, kind: ListKind) -> abi:
     let object = unsafe { descriptor(receiver) };
     let count = match kind {
         ListKind::Roots => 1,
-        ListKind::Requires => unsafe { (api.smallIntValue)((*object).requires_count) as usize },
+        ListKind::Requires => unsafe { (birnam_abi::integer::value)((*object).requires_count) as usize },
         ListKind::NativeRequires => unsafe {
-            (api.smallIntValue)((*object).native_requires_count) as usize
+            (birnam_abi::integer::value)((*object).native_requires_count) as usize
         },
         ListKind::Capabilities => unsafe {
-            (api.smallIntValue)((*object).capabilities_count) as usize
+            (birnam_abi::integer::value)((*object).capabilities_count) as usize
         },
     };
     for index in 0..count {
@@ -349,9 +349,9 @@ fn materialize(state: &Runtime, parsed: ParsedDescriptor<'_>, path: &[u8]) -> ab
             requires: mk_string(api, requires),
             native_requires: mk_string(api, native_requires),
             capabilities: mk_string(api, capabilities),
-            requires_count: (api.mkSmallInt)(parsed.requires.count() as i64),
-            native_requires_count: (api.mkSmallInt)(parsed.native_requires.count() as i64),
-            capabilities_count: (api.mkSmallInt)(parsed.capabilities.count() as i64),
+            requires_count: (birnam_abi::integer::make)(parsed.requires.count() as i64),
+            native_requires_count: (birnam_abi::integer::make)(parsed.native_requires.count() as i64),
+            capabilities_count: (birnam_abi::integer::make)(parsed.capabilities.count() as i64),
         };
     }
     LAST_FAILURE.store(oop_address(api.nilObj), Ordering::Release);
@@ -423,15 +423,15 @@ unsafe extern "C" fn path_method(
 }
 
 unsafe fn count_of(object: *mut DescriptorObject, kind: ListKind) -> usize {
-    let api = api(runtime());
+    let _api = api(runtime());
     match kind {
         ListKind::Roots => 1,
-        ListKind::Requires => (unsafe { (api.smallIntValue)((*object).requires_count) }) as usize,
+        ListKind::Requires => (unsafe { (birnam_abi::integer::value)((*object).requires_count) }) as usize,
         ListKind::NativeRequires => {
-            (unsafe { (api.smallIntValue)((*object).native_requires_count) }) as usize
+            (unsafe { (birnam_abi::integer::value)((*object).native_requires_count) }) as usize
         }
         ListKind::Capabilities => {
-            (unsafe { (api.smallIntValue)((*object).capabilities_count) }) as usize
+            (unsafe { (birnam_abi::integer::value)((*object).capabilities_count) }) as usize
         }
     }
 }
@@ -441,8 +441,8 @@ unsafe fn list_method(receiver: abi::Oop, kind: ListKind) -> abi::Oop {
 }
 
 unsafe fn count_method(receiver: abi::Oop, kind: ListKind) -> abi::Oop {
-    let api = api(runtime());
-    unsafe { (api.mkSmallInt)(count_of(descriptor(receiver), kind) as i64) }
+    let _api = api(runtime());
+    unsafe { (birnam_abi::integer::make)(count_of(descriptor(receiver), kind) as i64) }
 }
 
 unsafe fn item_method(
@@ -457,10 +457,10 @@ unsafe fn item_method(
     let Some(arguments) = (unsafe { abi::borrowed_oop_args(arguments, count) }) else {
         return api.nilObj;
     };
-    if arguments.len() != 1 || unsafe { (api.vtableOf)(arguments[0]) } != api.smallint_vt {
+    if arguments.len() != 1 || unsafe { (api.vtableOf)(arguments[0]) } != unsafe { birnam_abi::integer::behavior() } {
         return api.nilObj;
     }
-    let index = unsafe { (api.smallIntValue)(arguments[0]) };
+    let index = unsafe { (birnam_abi::integer::value)(arguments[0]) };
     if index < 0 {
         return api.nilObj;
     }

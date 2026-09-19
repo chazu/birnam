@@ -951,6 +951,7 @@ pub enum ModuleError {
     OpenFailed {
         path: PathBuf,
     },
+    IntegerDependencyRejected { path: PathBuf },
     MissingModuleInit {
         path: PathBuf,
     },
@@ -1897,13 +1898,13 @@ unsafe fn order_from_manager(
     let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
     let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
     let size = unsafe { (api.send)(order, size_selector, std::ptr::null(), 0) };
-    let size = unsafe { (api.smallIntValue)(size) };
+    let size = unsafe { (birnam_abi::integer::value)(size) };
     if size < 0 {
         return None;
     }
     let mut result = Vec::with_capacity(size as usize);
     for index in 0..size as usize {
-        let index = unsafe { (api.mkSmallInt)(index as i64) };
+        let index = unsafe { (birnam_abi::integer::make)(index as i64) };
         let name = unsafe { (api.send)(order, at_selector, [index].as_ptr(), 1) };
         if name == api.nilObj {
             return None;
@@ -2012,6 +2013,7 @@ pub struct LoadedStack {
     modules: Vec<NonNull<std::ffi::c_void>>,
     symbol_compaction_control: Option<SymbolCompactionControl>,
     all_modules_borrow_safe: bool,
+    integer: *mut birnam_abi::integer::IntegerApiV1,
 }
 
 impl LoadedStack {
@@ -2031,6 +2033,7 @@ impl LoadedStack {
             modules: Vec::new(),
             symbol_compaction_control,
             all_modules_borrow_safe: true,
+            integer: std::ptr::null_mut(),
         }
     }
 
@@ -2095,6 +2098,13 @@ impl LoadedStack {
             }
             self.all_modules_borrow_safe = false;
         }
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_integer_dependency_v1".as_ptr()) };
+        if !dependency.is_null() {
+            let attach: birnam_abi::integer::IntegerDependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if self.integer.is_null() || unsafe { attach(self.integer) } != 1 {
+                return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() });
+            }
+        }
         // SAFETY: module_init is the frozen higher-rung ABI and the floor table
         // remains live for the module's initialization call.
         let init: birnam_abi::ModuleInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
@@ -2104,6 +2114,19 @@ impl LoadedStack {
                 std::ptr::null_mut(),
             )
         };
+        let provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_integer_provider_v1".as_ptr()) };
+        if !provider.is_null() {
+            let provide: unsafe extern "C" fn() -> *mut birnam_abi::integer::IntegerApiV1 = unsafe { std::mem::transmute(provider) };
+            let integer = unsafe { provide() };
+            if !self.integer.is_null() || unsafe { birnam_abi::integer::attach(integer) } != 1 {
+                return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() });
+            }
+            let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_integer_dependency_v1".as_ptr()) };
+            if dependency.is_null() { return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() }); }
+            let attach: birnam_abi::integer::IntegerDependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if unsafe { attach(integer) } != 1 { return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() }); }
+            self.integer = integer;
+        }
         self.modules.push(handle);
         Ok(handle)
     }

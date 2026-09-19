@@ -1,4 +1,5 @@
-#include "idapi_v3.h"
+#include "idapi_v4.h"
+#include "integer-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -11,6 +12,16 @@ static void mount(const char *path) {
     assert(image);
     ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(image, "module_init");
     assert(init);
+    IntegerDependencyV1 attach = (IntegerDependencyV1)api->dlsym_fn(image, "birnam_integer_dependency_v1");
+    if (attach) {
+        assert(attach(NULL) == 0);
+        IntegerApiV1 copied = *fixture_integer;
+        copied.version = 999;
+        assert(attach(&copied) == 0);
+        assert(attach(fixture_integer) == 1 && attach(fixture_integer) == 1);
+        copied = *fixture_integer;
+        assert(attach(&copied) == 0); /* no silent remount onto another table */
+    }
     init(api, NULL);
 }
 static Method lookup(Oop behavior, const char *name) {
@@ -33,9 +44,15 @@ int main(int argc, char **argv) {
     assert(initialize);
     api = initialize();
     api->gc_set_auto(0);
-    assert(!lookup(api->smallint_vt, "+"));
-    mount(argv[2]);
-    assert(lookup(api->smallint_vt, "+"));
+    assert(!api->import_fn("Integer"));
+    assert(!api->import_fn("IntegerVt"));
+    Oop lower = api->alloc(api->object_vt, 0);
+    Oop cloned = api->send(lower, api->intern("clone"), NULL, 0);
+    assert(cloned != lower && api->vtable_of(cloned) == api->object_vt);
+    assert(api->send(lower, api->intern("=="), &lower, 1) == api->true_obj);
+    assert(!api->import_fn("Integer"));
+    fixture_mount_integer(api, argv[1]);
+    assert(lookup(fixture_integer->behavior, "+"));
     mount(argv[3]); /* Errors are independently mounted, without Prelude. */
     const int64_t inputs[] = {INT64_MIN, INT64_MIN + 1, -17, -1, 0, 1, 17,
                               INT64_MAX - 1, INT64_MAX};
@@ -43,7 +60,7 @@ int main(int argc, char **argv) {
     unsigned checked = 0;
     for (unsigned i = 0; i < sizeof(inputs)/sizeof(*inputs); ++i) {
         for (unsigned j = 0; j < sizeof(inputs)/sizeof(*inputs); ++j) {
-            Oop a = api->mk_smallint(inputs[i]), b = api->mk_smallint(inputs[j]);
+            Oop a = fixture_integer_make(inputs[i]), b = fixture_integer_make(inputs[j]);
             for (unsigned op = 0; op < 5; ++op) {
                 __int128 x = inputs[i], y = inputs[j], answer = 0;
                 int zero_divide = op >= 3 && y == 0;
@@ -63,28 +80,44 @@ int main(int argc, char **argv) {
                     assert(kind == api->intern(zero_divide ? "zeroDivide" : "overflow"));
                     assert(send(a, operators[op], value) == value);
                 } else {
-                    assert(api->is_smallint(value));
-                    assert(api->smallint_value(value) == (int64_t)answer);
+                    assert(fixture_is_integer(value));
+                    assert(fixture_integer_value(value) == (int64_t)answer);
                     assert(value != a && value != b);
                 }
-                assert(api->smallint_value(a) == inputs[i]);
-                assert(api->smallint_value(b) == inputs[j]);
+                assert(fixture_integer_value(a) == inputs[i]);
+                assert(fixture_integer_value(b) == inputs[j]);
                 ++checked;
             }
         }
     }
-    Oop two = api->mk_smallint(2), half = api->mk_float(0.5);
+    Oop two = fixture_integer_make(2), half = api->mk_float(0.5);
     Oop mixed = send(two, "+", half);
     assert(api->is_float(mixed) && api->float_value(mixed) == 2.5);
-    Method original = lookup(api->smallint_vt, "+");
-    api->method(api->smallint_vt, api->intern("+"), right_identity);
+    Method original = lookup(fixture_integer->behavior, "+");
+    api->method(fixture_integer->behavior, api->intern("+"), right_identity);
     assert(send(two, "+", half) == half);
     mount(argv[4]); /* Private behavior is a prerequisite of Prelude. */
     mount(argv[5]);
-    assert(lookup(api->smallint_vt, "+") == right_identity);
+    assert(lookup(fixture_integer->behavior, "+") == right_identity);
     assert(send(two, "+", half) == half);
-    api->method(api->smallint_vt, api->intern("+"), original);
-    assert(api->smallint_value(send(two, "+", two)) == 4);
+    api->method(fixture_integer->behavior, api->intern("+"), original);
+    assert(fixture_integer_value(send(two, "+", two)) == 4);
+    /* Exact recognition remains distinct from inherited image handling. */
+    Oop child = api->proto(fixture_integer->behavior);
+    Oop object = fixture_integer_make(-42);
+    Oop args[] = {object, child};
+    api->send(api->vtable_vt, api->intern("reassociateBehaviorOf:with:"), args, 2);
+    assert(!fixture_is_integer(object));
+    assert(fixture_integer_value(object) == -42);
+    assert(!fixture_is_integer(NULL) && !fixture_is_integer((void *)(uintptr_t)0x12345));
+    /* Module roots survive namespace rebinding in precise collection. */
+    Oop prototype = fixture_integer->prototype, behavior = fixture_integer->behavior;
+    api->export_obj("Integer", api->nil_obj);
+    api->export_obj("IntegerVt", api->nil_obj);
+    api->gc_set_precise(1); api->gc_set_stack_bottom(0); api->gc_collect();
+    assert(api->vtable_of(prototype) == behavior && fixture_integer_value(prototype) == 0);
+    assert(fixture_integer_value(fixture_integer_make(INT64_MIN)) == INT64_MIN);
+    api->export_obj("Integer", prototype); api->export_obj("IntegerVt", behavior);
     printf("integer-module: %u oracle cases, mixed values, identity, errors and replacement before/after Prelude passed\n", checked);
     return 0;
 }

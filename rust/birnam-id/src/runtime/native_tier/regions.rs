@@ -63,18 +63,16 @@ fn counted_indices_enabled() -> bool {
 /// so neither an Integer method lookup nor an exported IntegerVt name grants
 /// authority here. Use the same retained canonical vtable and raw payload shape.
 fn record_dead_indices(runtime: &Runtime, indices: &[u32], enabled: bool) -> bool {
-    if !enabled {
+    if !enabled || !runtime.integer_context_current() {
         return false;
     }
     runtime.assert_owner();
     runtime.require_allocation_allowed();
+    let batch = runtime.integer_index_batch();
     let state = unsafe { &mut *runtime.state.get() };
-    let Some(canonical) = state.canonical else {
-        return false;
-    };
     state
         .heap
-        .record_dead_frame_indices(canonical.smallint_vt, indices)
+        .record_dead_payload_indices(batch, indices)
 }
 
 impl Compiled {
@@ -160,9 +158,9 @@ impl Compiled {
                 None => Some(core::ptr::null_mut()),
             }
         };
-        let room = {
+        let room = runtime.integer_context_current() && {
             let state = unsafe { &*runtime.state.get() };
-            let bytes = crate::heap::Heap::allocation_total_size(core::mem::size_of::<i64>())
+            let bytes = crate::heap::Heap::allocation_total_size(runtime.integer_storage().payload_size)
                 .unwrap()
                 .saturating_mul(self.plan.boxed_indices.len());
             !state

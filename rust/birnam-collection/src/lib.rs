@@ -592,8 +592,8 @@ unsafe fn same_value(api: &IdApi, left: Oop, right: Oop) -> bool {
     if left.is_null() || right.is_null() {
         return false;
     }
-    if unsafe { (api.isSmallInt)(left) } != 0 && unsafe { (api.isSmallInt)(right) } != 0 {
-        return unsafe { (api.smallIntValue)(left) == (api.smallIntValue)(right) };
+    if unsafe { (birnam_abi::integer::is_integer)(left) } != 0 && unsafe { (birnam_abi::integer::is_integer)(right) } != 0 {
+        return unsafe { (birnam_abi::integer::value)(left) == (birnam_abi::integer::value)(right) };
     }
     if unsafe { (api.isFloat)(left) } != 0 && unsafe { (api.isFloat)(right) } != 0 {
         return unsafe { (api.floatValue)(left) == (api.floatValue)(right) };
@@ -623,7 +623,7 @@ unsafe extern "C" fn vector_size(self_object: Oop, _args: *const Oop, count: usi
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)((*vec_payload(self_object)).count as i64) }
+    unsafe { (birnam_abi::integer::make)((*vec_payload(self_object)).count as i64) }
 }
 
 unsafe extern "C" fn vector_at_method(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -634,10 +634,10 @@ unsafe extern "C" fn vector_at_method(self_object: Oop, args: *const Oop, count:
     let Some(index) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(index) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(index) } == 0 {
         return api.nilObj;
     }
-    let index = unsafe { (api.smallIntValue)(index) };
+    let index = unsafe { (birnam_abi::integer::value)(index) };
     if index < 0 {
         return api.nilObj;
     }
@@ -711,7 +711,7 @@ unsafe extern "C" fn vector_index_of(self_object: Oop, args: *const Oop, count: 
     for index in 0..total {
         let value = unsafe { vector_at(vec_payload(self_object), index) };
         if unsafe { same_value(api, value, needle) } {
-            return unsafe { (api.mkSmallInt)(index as i64) };
+            return unsafe { (birnam_abi::integer::make)(index as i64) };
         }
     }
     api.nilObj
@@ -725,13 +725,13 @@ unsafe extern "C" fn vector_copy_from_to(self_object: Oop, args: *const Oop, cou
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(arguments[0]) } == 0
-        || unsafe { (api.isSmallInt)(arguments[1]) } == 0
+    if unsafe { (birnam_abi::integer::is_integer)(arguments[0]) } == 0
+        || unsafe { (birnam_abi::integer::is_integer)(arguments[1]) } == 0
     {
         return api.nilObj;
     }
-    let from = unsafe { (api.smallIntValue)(arguments[0]) };
-    let to = unsafe { (api.smallIntValue)(arguments[1]) };
+    let from = unsafe { (birnam_abi::integer::value)(arguments[0]) };
+    let to = unsafe { (birnam_abi::integer::value)(arguments[1]) };
     let total = unsafe { (*vec_payload(self_object)).count };
     if from < 0 || to < from || to as usize > total {
         return api.nilObj;
@@ -1009,8 +1009,8 @@ fn map_sparse_index(bitmap: u32, bit: u32) -> usize {
 }
 
 unsafe fn map_key_hash(api: &IdApi, key: Oop) -> u32 {
-    if unsafe { (api.isSmallInt)(key) } != 0 {
-        return map_mix(unsafe { (api.smallIntValue)(key) } as u64);
+    if unsafe { (birnam_abi::integer::is_integer)(key) } != 0 {
+        return map_mix(unsafe { (birnam_abi::integer::value)(key) } as u64);
     }
     let value_type = unsafe { (api.vtableOf)(key) };
     if value_type == api.string_vt {
@@ -1511,7 +1511,7 @@ unsafe extern "C" fn map_size(self_object: Oop, _args: *const Oop, count: usize)
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)((*map_payload(self_object)).count as i64) }
+    unsafe { (birnam_abi::integer::make)((*map_payload(self_object)).count as i64) }
 }
 
 unsafe extern "C" fn map_keys(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -1748,12 +1748,12 @@ unsafe extern "C" fn string_builder_add_byte(
     let Some(value) = (unsafe { argument(args, count) }) else {
         return self_object;
     };
-    if unsafe { (api.isSmallInt)(value) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(value) } == 0 {
         return self_object;
     }
     let payload = unsafe { string_builder_payload(self_object) };
     unsafe { string_builder_ensure(payload, 1) };
-    let byte = unsafe { (api.smallIntValue)(value) } as u8;
+    let byte = unsafe { (birnam_abi::integer::value)(value) } as u8;
     unsafe {
         (*payload).ptr.add((*payload).len).write(byte);
         (*payload).len += 1;
@@ -1766,7 +1766,7 @@ unsafe extern "C" fn string_builder_size(self_object: Oop, _args: *const Oop, co
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)((*string_builder_payload(self_object)).len as i64) }
+    unsafe { (birnam_abi::integer::make)((*string_builder_payload(self_object)).len as i64) }
 }
 
 unsafe extern "C" fn string_builder_as_string(
@@ -1858,7 +1858,7 @@ unsafe extern "C" fn string_size(self_object: Oop, _args: *const Oop, count: usi
     let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
     };
-    unsafe { (api.mkSmallInt)(bytes.len() as i64) }
+    unsafe { (birnam_abi::integer::make)(bytes.len() as i64) }
 }
 
 unsafe extern "C" fn string_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1869,10 +1869,10 @@ unsafe extern "C" fn string_at(self_object: Oop, args: *const Oop, count: usize)
     let Some(index) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(index) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(index) } == 0 {
         return api.nilObj;
     }
-    let index = unsafe { (api.smallIntValue)(index) };
+    let index = unsafe { (birnam_abi::integer::value)(index) };
     let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
     };
@@ -1891,17 +1891,17 @@ unsafe extern "C" fn string_byte_at(self_object: Oop, args: *const Oop, count: u
     let Some(index) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(index) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(index) } == 0 {
         return api.nilObj;
     }
-    let index = unsafe { (api.smallIntValue)(index) };
+    let index = unsafe { (birnam_abi::integer::value)(index) };
     let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
     };
     if index < 0 || index as usize >= bytes.len() {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)(i64::from(bytes[index as usize])) }
+    unsafe { (birnam_abi::integer::make)(i64::from(bytes[index as usize])) }
 }
 
 unsafe extern "C" fn string_copy_from_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1914,11 +1914,11 @@ unsafe extern "C" fn string_copy_from_to(self_object: Oop, args: *const Oop, cou
     };
     let from = arguments[0];
     let to = arguments[1];
-    if unsafe { (api.isSmallInt)(from) } == 0 || unsafe { (api.isSmallInt)(to) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(from) } == 0 || unsafe { (birnam_abi::integer::is_integer)(to) } == 0 {
         return api.nilObj;
     }
-    let from = unsafe { (api.smallIntValue)(from) };
-    let to = unsafe { (api.smallIntValue)(to) };
+    let from = unsafe { (birnam_abi::integer::value)(from) };
+    let to = unsafe { (birnam_abi::integer::value)(to) };
     let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
     };
@@ -2007,13 +2007,13 @@ unsafe extern "C" fn string_index_of(self_object: Oop, args: *const Oop, count: 
         return api.nilObj;
     };
     if needle.is_empty() {
-        return unsafe { (api.mkSmallInt)(0) };
+        return unsafe { (birnam_abi::integer::make)(0) };
     }
     haystack
         .windows(needle.len())
         .position(|window| window == needle.as_slice())
         .map_or(api.nilObj, |index| unsafe {
-            (api.mkSmallInt)(index as i64)
+            (birnam_abi::integer::make)(index as i64)
         })
 }
 
@@ -2059,7 +2059,7 @@ unsafe extern "C" fn string_bracket_depth(
         }
         index += 1;
     }
-    unsafe { (api.mkSmallInt)(depth) }
+    unsafe { (birnam_abi::integer::make)(depth) }
 }
 
 unsafe extern "C" fn string_replace_with(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -2124,7 +2124,7 @@ unsafe extern "C" fn string_as_integer(self_object: Oop, _args: *const Oop, coun
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
     {
-        Some(value) => unsafe { (api.mkSmallInt)(value) },
+        Some(value) => unsafe { (birnam_abi::integer::make)(value) },
         None => api.nilObj,
     }
 }
@@ -2144,7 +2144,7 @@ unsafe extern "C" fn string_as_number(self_object: Oop, _args: *const Oop, count
     if !text.contains(['.', 'e', 'E'])
         && let Ok(value) = text.parse::<i64>()
     {
-        return unsafe { (api.mkSmallInt)(value) };
+        return unsafe { (birnam_abi::integer::make)(value) };
     }
     match text.parse::<f64>() {
         Ok(value) => unsafe { (api.mkFloat)(value) },
@@ -2213,13 +2213,13 @@ unsafe extern "C" fn range_size(self_object: Oop, _args: *const Oop, count: usiz
     }
     let (start, end) = unsafe { range_bounds(self_object) };
     if end < start {
-        return unsafe { (api.mkSmallInt)(0) };
+        return unsafe { (birnam_abi::integer::make)(0) };
     }
     let size = i128::from(end) - i128::from(start) + 1;
     if size > i128::from(i64::MAX) {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)(size as i64) }
+    unsafe { (birnam_abi::integer::make)(size as i64) }
 }
 
 unsafe extern "C" fn range_includes(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -2230,10 +2230,10 @@ unsafe extern "C" fn range_includes(self_object: Oop, args: *const Oop, count: u
     let Some(value) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(value) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(value) } == 0 {
         return api.falseObj;
     }
-    let value = unsafe { (api.smallIntValue)(value) };
+    let value = unsafe { (birnam_abi::integer::value)(value) };
     let (start, end) = unsafe { range_bounds(self_object) };
     if start <= end && value >= start && value <= end {
         api.trueObj
@@ -2250,16 +2250,16 @@ unsafe extern "C" fn range_at(self_object: Oop, args: *const Oop, count: usize) 
     let Some(index) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(index) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(index) } == 0 {
         return api.nilObj;
     }
-    let index = unsafe { (api.smallIntValue)(index) };
+    let index = unsafe { (birnam_abi::integer::value)(index) };
     let (start, end) = unsafe { range_bounds(self_object) };
     let value = i128::from(start) + i128::from(index);
     if index < 0 || start > end || value > i128::from(end) || value > i128::from(i64::MAX) {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)(value as i64) }
+    unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 unsafe extern "C" fn range_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -2275,7 +2275,7 @@ unsafe extern "C" fn range_do(self_object: Oop, args: *const Oop, count: usize) 
     let mut value = i128::from(start);
     let end = i128::from(end);
     while value <= end {
-        let item = unsafe { (api.mkSmallInt)(value as i64) };
+        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
         let arguments = [item];
         unsafe { (api.send)(block, selector, arguments.as_ptr(), 1) };
         value += 1;
@@ -2297,7 +2297,7 @@ unsafe extern "C" fn range_inject(self_object: Oop, args: *const Oop, count: usi
     let end = i128::from(end);
     let mut accumulator = arguments[0];
     while value <= end {
-        let item = unsafe { (api.mkSmallInt)(value as i64) };
+        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
         let call_arguments = [accumulator, item];
         accumulator = unsafe { (api.send)(arguments[1], selector, call_arguments.as_ptr(), 2) };
         if accumulator.is_null() {
@@ -2318,7 +2318,7 @@ unsafe extern "C" fn range_reversed(self_object: Oop, _args: *const Oop, count: 
     let mut value = i128::from(end);
     let start = i128::from(start);
     while value >= start {
-        result = unsafe { vector_push(api, runtime(), result, (api.mkSmallInt)(value as i64)) };
+        result = unsafe { vector_push(api, runtime(), result, (birnam_abi::integer::make)(value as i64)) };
         value -= 1;
     }
     result
@@ -2338,7 +2338,7 @@ unsafe extern "C" fn range_print_string(self_object: Oop, _args: *const Oop, cou
         if value != i128::from(start) {
             output.push(b' ');
         }
-        let item = unsafe { (api.mkSmallInt)(value as i64) };
+        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
         let printed = unsafe { (api.send)(item, selector, ptr::null(), 0) };
         if printed.is_null() {
             return api.nilObj;
@@ -2371,7 +2371,7 @@ unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usiz
     let mut value = i128::from(start);
     let end = i128::from(end);
     while value <= end {
-        result = unsafe { vector_push(api, runtime(), result, (api.mkSmallInt)(value as i64)) };
+        result = unsafe { vector_push(api, runtime(), result, (birnam_abi::integer::make)(value as i64)) };
         value += 1;
     }
     unsafe { vector_comma(result, args, count) }
@@ -2379,21 +2379,21 @@ unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usiz
 
 unsafe extern "C" fn integer_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
-    if count != 1 || unsafe { (api.isSmallInt)(self_object) } == 0 {
+    if count != 1 || unsafe { (birnam_abi::integer::is_integer)(self_object) } == 0 {
         return api.nilObj;
     }
     let Some(end) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(end) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(end) } == 0 {
         return api.nilObj;
     }
     unsafe {
         empty_range(
             api,
             runtime(),
-            (api.smallIntValue)(self_object),
-            (api.smallIntValue)(end),
+            (birnam_abi::integer::value)(self_object),
+            (birnam_abi::integer::value)(end),
         )
     }
 }
@@ -2747,7 +2747,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             range_print_string,
         );
         (api.method)(runtime.range_vt as Oop, intern(api, b",\0"), range_comma);
-        (api.method)(api.smallint_vt, intern(api, b"to:\0"), integer_to);
+        (api.method)(birnam_abi::integer::behavior(), intern(api, b"to:\0"), integer_to);
         (api.method)(runtime.map_vt as Oop, intern(api, b"new\0"), map_new);
         (api.method)(runtime.map_vt as Oop, intern(api, b"clone\0"), map_new);
         (api.method)(runtime.map_vt as Oop, intern(api, b"at:put:\0"), map_at_put);
@@ -2927,3 +2927,5 @@ mod tests {
         assert_eq!(vector.to_vec().len(), 1_057);
     }
 }
+
+birnam_abi::integer_dependency!();

@@ -878,8 +878,8 @@ unsafe extern "C" fn image_facts_into(
             fact.e,
             fact.a,
             fact.v,
-            unsafe { (api.mkSmallInt)(fact.tx as i64) },
-            unsafe { (api.mkSmallInt)(fact.op as u8 as i64) },
+            unsafe { (birnam_abi::integer::make)(fact.tx as i64) },
+            unsafe { (birnam_abi::integer::make)(fact.op as u8 as i64) },
             if fact.historied {
                 api.trueObj
             } else {
@@ -913,8 +913,8 @@ unsafe extern "C" fn image_add_fact_current(
 ) -> birnam_abi::Oop {
     let runtime = runtime();
     let args = unsafe { core::slice::from_raw_parts(args, 6) };
-    let tx = unsafe { (api(runtime).smallIntValue)(args[3]) } as u64;
-    let op = match unsafe { (api(runtime).smallIntValue)(args[4]) } {
+    let tx = unsafe { (birnam_abi::integer::value)(args[3]) } as u64;
+    let op = match unsafe { (birnam_abi::integer::value)(args[4]) } {
         0 => Op::Assert,
         1 => Op::Retract,
         _ => abort("image fact op was not assert/retract"),
@@ -945,10 +945,10 @@ unsafe extern "C" fn image_load_end_current(
 ) -> birnam_abi::Oop {
     let runtime = runtime();
     let args = unsafe { core::slice::from_raw_parts(args, 5) };
-    let tx = unsafe { (api(runtime).smallIntValue)(args[0]) };
-    let oldest = unsafe { (api(runtime).smallIntValue)(args[2]) };
-    let policy = unsafe { (api(runtime).smallIntValue)(args[3]) };
-    let argument = unsafe { (api(runtime).smallIntValue)(args[4]) };
+    let tx = unsafe { (birnam_abi::integer::value)(args[0]) };
+    let oldest = unsafe { (birnam_abi::integer::value)(args[2]) };
+    let policy = unsafe { (birnam_abi::integer::value)(args[3]) };
+    let argument = unsafe { (birnam_abi::integer::value)(args[4]) };
     if tx < 0 || oldest < 0 || oldest > tx || argument < 0 {
         abort("current image Store retention metadata was invalid");
     }
@@ -1047,7 +1047,7 @@ unsafe extern "C" fn count(
         count_values(state, args[0], args[1])
     };
     // SAFETY: the floor owns the returned boxed integer.
-    unsafe { (api(runtime).mkSmallInt)(count as i64) }
+    unsafe { (birnam_abi::integer::make)(count as i64) }
 }
 
 fn live_attributes(
@@ -1082,7 +1082,7 @@ unsafe extern "C" fn attr_count(
     let entity = unsafe { *args };
     let state = unsafe { state_mut(self_object) };
     let count = live_attributes(state, entity, runtime).len();
-    unsafe { (api(runtime).mkSmallInt)(count as i64) }
+    unsafe { (birnam_abi::integer::make)(count as i64) }
 }
 
 unsafe extern "C" fn attr_at(
@@ -1093,7 +1093,7 @@ unsafe extern "C" fn attr_at(
     let runtime = runtime();
     // SAFETY: this selector has exactly two arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 2) };
-    let index = unsafe { (api(runtime).smallIntValue)(args[1]) } as usize;
+    let index = unsafe { (birnam_abi::integer::value)(args[1]) } as usize;
     let attributes = live_attributes(unsafe { state_mut(self_object) }, args[0], runtime);
     attributes.get(index).copied().unwrap_or(ptr::null_mut())
 }
@@ -1103,7 +1103,7 @@ unsafe extern "C" fn history(
     args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     // SAFETY: this selector has exactly two arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 2) };
     let history_len = unsafe { state_mut(self_object) }
@@ -1112,7 +1112,7 @@ unsafe extern "C" fn history(
         .filter(|fact| same(fact.e, args[0]) && same(fact.a, args[1]))
         .count();
     // SAFETY: the floor owns the returned boxed integer.
-    unsafe { (api(runtime).mkSmallInt)(history_len as i64) }
+    unsafe { (birnam_abi::integer::make)(history_len as i64) }
 }
 
 unsafe extern "C" fn basis(
@@ -1120,10 +1120,10 @@ unsafe extern "C" fn basis(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     let tx = unsafe { state_mut(self_object) }.tx;
     // SAFETY: the floor owns the returned boxed integer.
-    unsafe { (api(runtime).mkSmallInt)(tx as i64) }
+    unsafe { (birnam_abi::integer::make)(tx as i64) }
 }
 
 unsafe extern "C" fn oldest_retained_basis(
@@ -1131,9 +1131,9 @@ unsafe extern "C" fn oldest_retained_basis(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     let basis = unsafe { state_mut(self_object) }.oldest_retained_basis;
-    unsafe { (api(runtime).mkSmallInt)(basis as i64) }
+    unsafe { (birnam_abi::integer::make)(basis as i64) }
 }
 
 unsafe extern "C" fn retained_fact_count(
@@ -1141,9 +1141,9 @@ unsafe extern "C" fn retained_fact_count(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     let count = unsafe { state_mut(self_object) }.facts.len();
-    unsafe { (api(runtime).mkSmallInt)(count as i64) }
+    unsafe { (birnam_abi::integer::make)(count as i64) }
 }
 
 unsafe extern "C" fn retained_fact_bytes(
@@ -1151,9 +1151,9 @@ unsafe extern "C" fn retained_fact_bytes(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     let bytes = semantic_fact_count(unsafe { state_mut(self_object) }) * size_of::<Fact>();
-    unsafe { (api(runtime).mkSmallInt)(bytes as i64) }
+    unsafe { (birnam_abi::integer::make)(bytes as i64) }
 }
 
 unsafe extern "C" fn reserved_compensation_fact_count_method(
@@ -1161,9 +1161,9 @@ unsafe extern "C" fn reserved_compensation_fact_count_method(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     let count = reserved_compensation_fact_count(unsafe { state_mut(self_object) });
-    unsafe { (api(runtime).mkSmallInt)(count as i64) }
+    unsafe { (birnam_abi::integer::make)(count as i64) }
 }
 
 unsafe extern "C" fn reserved_compensation_fact_bytes(
@@ -1171,10 +1171,10 @@ unsafe extern "C" fn reserved_compensation_fact_bytes(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     let bytes = reserved_compensation_fact_count(unsafe { state_mut(self_object) })
         .saturating_mul(size_of::<Fact>());
-    unsafe { (api(runtime).mkSmallInt)(bytes as i64) }
+    unsafe { (birnam_abi::integer::make)(bytes as i64) }
 }
 
 unsafe extern "C" fn fact_bytes_limit(
@@ -1183,7 +1183,7 @@ unsafe extern "C" fn fact_bytes_limit(
     _count: usize,
 ) -> birnam_abi::Oop {
     let runtime = runtime();
-    unsafe { (api(runtime).mkSmallInt)(runtime.fact_bytes_limit as i64) }
+    unsafe { (birnam_abi::integer::make)(runtime.fact_bytes_limit as i64) }
 }
 
 unsafe extern "C" fn fact_record_bytes(
@@ -1191,8 +1191,8 @@ unsafe extern "C" fn fact_record_bytes(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
-    unsafe { (api(runtime).mkSmallInt)(size_of::<Fact>() as i64) }
+    let _runtime = runtime();
+    unsafe { (birnam_abi::integer::make)(size_of::<Fact>() as i64) }
 }
 
 unsafe extern "C" fn retention_policy_code(
@@ -1200,13 +1200,13 @@ unsafe extern "C" fn retention_policy_code(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     let code = match unsafe { state_mut(self_object) }.retention {
         RetentionPolicy::CurrentOnly => 0,
         RetentionPolicy::KeepSince(_) => 1,
         RetentionPolicy::KeepLast(_) => 2,
     };
-    unsafe { (api(runtime).mkSmallInt)(code) }
+    unsafe { (birnam_abi::integer::make)(code) }
 }
 
 unsafe extern "C" fn retention_policy_argument(
@@ -1214,12 +1214,12 @@ unsafe extern "C" fn retention_policy_argument(
     _args: *const birnam_abi::Oop,
     _count: usize,
 ) -> birnam_abi::Oop {
-    let runtime = runtime();
+    let _runtime = runtime();
     let argument = match unsafe { state_mut(self_object) }.retention {
         RetentionPolicy::CurrentOnly => 0,
         RetentionPolicy::KeepSince(value) | RetentionPolicy::KeepLast(value) => value,
     };
-    unsafe { (api(runtime).mkSmallInt)(argument as i64) }
+    unsafe { (birnam_abi::integer::make)(argument as i64) }
 }
 
 unsafe extern "C" fn retain_current_only(
@@ -1237,7 +1237,7 @@ unsafe extern "C" fn retain_since(
     _count: usize,
 ) -> birnam_abi::Oop {
     let runtime = runtime();
-    let candidate = unsafe { (api(runtime).smallIntValue)(*args) };
+    let candidate = unsafe { (birnam_abi::integer::value)(*args) };
     let state = unsafe { state_mut(self_object) };
     if candidate < 0
         || (candidate as u64) > state.tx
@@ -1255,7 +1255,7 @@ unsafe extern "C" fn retain_last(
     _count: usize,
 ) -> birnam_abi::Oop {
     let runtime = runtime();
-    let count = unsafe { (api(runtime).smallIntValue)(*args) };
+    let count = unsafe { (birnam_abi::integer::value)(*args) };
     if count < 0 {
         return history_not_retained_error(runtime);
     }
@@ -1341,7 +1341,7 @@ unsafe extern "C" fn value_of_as_of(
     let runtime = runtime();
     // SAFETY: this selector has exactly three arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 3) };
-    let basis = unsafe { (api(runtime).smallIntValue)(args[2]) } as u64;
+    let basis = unsafe { (birnam_abi::integer::value)(args[2]) } as u64;
     let state = unsafe { state_mut(self_object) };
     if !relation_history_available(
         state,
@@ -1782,7 +1782,7 @@ unsafe extern "C" fn live_triples_as_of_do(
     let runtime = runtime();
     // SAFETY: this selector has exactly two arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 2) };
-    let hi = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
+    let hi = unsafe { (birnam_abi::integer::value)(args[0]) } as u64;
     let state = unsafe { state_mut(self_object) };
     if hi < state.oldest_retained_basis {
         return history_not_retained_error(runtime);
@@ -1800,7 +1800,7 @@ unsafe extern "C" fn live_triples_since_do(
     let runtime = runtime();
     // SAFETY: this selector has exactly two arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 2) };
-    let lo = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
+    let lo = unsafe { (birnam_abi::integer::value)(args[0]) } as u64;
     let state = unsafe { state_mut(self_object) };
     if lo < state.oldest_retained_basis {
         return history_not_retained_error(runtime);
@@ -1818,8 +1818,8 @@ unsafe extern "C" fn live_triples_between_and_do(
     let runtime = runtime();
     // SAFETY: this selector has exactly three arguments.
     let args = unsafe { core::slice::from_raw_parts(args, 3) };
-    let lo = unsafe { (api(runtime).smallIntValue)(args[0]) } as u64;
-    let hi = unsafe { (api(runtime).smallIntValue)(args[1]) } as u64;
+    let lo = unsafe { (birnam_abi::integer::value)(args[0]) } as u64;
+    let hi = unsafe { (birnam_abi::integer::value)(args[1]) } as u64;
     let state = unsafe { state_mut(self_object) };
     if lo < state.oldest_retained_basis || hi < state.oldest_retained_basis {
         return history_not_retained_error(runtime);
@@ -2580,3 +2580,5 @@ mod tests {
         assert_eq!(reserved_compensation_fact_count(&state), 1);
     }
 }
+
+birnam_abi::integer_dependency!();

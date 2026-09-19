@@ -1,21 +1,20 @@
 # 81A — Current bootstrap and runtime layers
 
 > **Status:** Source-verified inventory begun 2026-09-17 at `f4d7c0773bfc`;
-> native loading updated for 81J on 2026-09-18.
+> native loading updated for 81L on 2026-09-18.
 > Companion to [81 — Toward a Birnam implementation](81-toward-a-birnam-implementation.md).
 > This describes the checked-out production paths, not a newly run bootstrap or
 > a verification of the currently installed executable. Historical Zig stage
 > descriptions are not evidence of the current implementation.
 
-**2026-09-18 update:** [81J](81j-private-behavior-extraction.md) extracts the
-private-behavior convenience into `libbirnam_object_model.dylib`, loaded directly
-after Integer and before Artifact. The native inventory is now 17 libraries.
-[81L](81l-production-integer-extraction.md) adds the Integer-method library directly
-after Id; its representation and construction remain in Id. IdApi
-v3 has 49 fields after [81K](81k-owner-and-parent-protocols.md) moves owner/parent
-access to ordinary messages. The inventory below includes this extraction. It
-remains a Rust implementation; the build-stage and implementation-language
-distinction is unchanged.
+**2026-09-18 update:** [81L](81l-production-integer-extraction.md) places Integer
+representation, construction and behavior in `libbirnam_integer.dylib`, directly
+after Id. [81J](81j-private-behavior-extraction.md)'s object-model library follows
+it, before Artifact. The native inventory contains 17 libraries. IdApi v4 has
+45 fields / 360 bytes after 81J, [81K](81k-owner-and-parent-protocols.md), and 81L.
+The remaining Machine and optimizer components acquire Integer explicitly.
+This is still a Rust implementation; build stage and implementation language
+remain distinct. Focused validation passes; release validation was explicitly waived.
 
 ## 1. Stage means build stage, not runtime layer
 
@@ -38,7 +37,7 @@ Retained source and source fallback are intended; their presence is not a defect
 [81C](81c-thin-id-runtime-layers.md) proposes splitting the current libid into
 thinner replaceable layers, starting with Id as the first semantic layer. The
 following inventory describes the remaining combined floor and the extracted
-private-behavior and Integer-method layers.
+private-behavior and Integer layers.
 
 Separately, either that executable's source-fallback startup or an installed
 startup builds a layered object environment. Later modules install or replace
@@ -112,7 +111,7 @@ The table's native module stems receive `.dylib` in the installed library tree.
 |---|---|---|---|
 | Before 0 | `bin/birnam` host | Rust | Command routing, resource discovery, startup, execution boundaries, project and image orchestration |
 | 0 | `libbirnam_id` | Rust, with native compiler/C support | Object/vtable bootstrap, dispatch, allocation, symbols, primitive values, raw import/export namespace, GC, Frames/Machines, checked control and native tiers |
-| 1 | `libbirnam_integer` | Rust | Integer arithmetic, comparison, conversion and iteration primitives; native numeric implementation declarations |
+| 1 | `libbirnam_integer` | Rust | Canonical Integer objects, representation, native primitives and methods; numeric implementation declarations |
 | 2 | `libbirnam_object_model` | Rust | Existing private-behavior selection/reuse and construction, through Id primitives and seed messages |
 | 3 | `libbirnam_id_artifact` | Rust | Pointer-free compiled-artifact inspection exposed to Birnam |
 | 4 | `libbirnam_store` | Rust | Fact/history/index substrate, db/Cell/Globals protocols and object-model mirror |
@@ -228,7 +227,7 @@ that mechanism. The important startup transitions are:
 | Native Error initialization | Floor Object DNU | Rust Error rung installs error-valued Object `doesNotUnderstand:` and Error's own DNU behavior |
 | `stdlib` loads | Native primitive protocols / absent derived methods | Birnam derived methods are added, including synchronous higher-order collection and Object error-control methods; primitive representations stay Rust |
 | `compiledUnit` loads | Rust Codegen candidate/generation operations | Birnam lifecycle/policy objects are added over them; Rust compiler and registry machinery remain |
-| `stacklessControl` loads | Rust Prelude Boolean branches, Block loops and Integer `to:do:` | Resumable Birnam definitions replace these method entries; Integer `timesRepeat:` also supersedes its stdlib definition |
+| `stacklessControl` loads | Rust Prelude Boolean branches and Block loops, plus Integer-module `to:do:` | Resumable Birnam definitions replace these method entries; Integer `timesRepeat:` also supersedes its stdlib definition |
 | `stacklessControl` loads | Rust Vector/Range/Map callback iteration; synchronous Birnam String iteration | Resumable Birnam `do:` / `inject:into:` and Map `keysAndValuesDo:` take over; storage, indexing and Map key/value projection remain native |
 | `stacklessControl` loads | Synchronous stdlib Collection `collect:`, `select:`, `reject:`, `count:`, `detect:`, `detect:ifNone:` | Resumable Birnam versions replace them so nested callbacks share selected control |
 | `stacklessControl` loads | Synchronous stdlib Object `on:do:` / `ensure:` | Resumable Birnam definitions replace them |

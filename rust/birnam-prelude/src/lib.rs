@@ -82,8 +82,8 @@ unsafe fn numeric(api: &IdApi, value: Oop) -> Option<Numeric> {
     if value.is_null() {
         return None;
     }
-    if unsafe { (api.isSmallInt)(value) } != 0 {
-        return Some(Numeric::Integer(unsafe { (api.smallIntValue)(value) }));
+    if unsafe { (birnam_abi::integer::is_integer)(value) } != 0 {
+        return Some(Numeric::Integer(unsafe { (birnam_abi::integer::value)(value) }));
     }
     if unsafe { (api.isFloat)(value) } != 0 {
         return Some(Numeric::Float(unsafe { (api.floatValue)(value) }));
@@ -142,7 +142,7 @@ unsafe extern "C" fn word_as_integer(self_object: Oop, _args: *const Oop, count:
     if value > i64::MAX as u64 {
         return unsafe { numeric_error(api, b"overflow\0", b"word out of Integer range") };
     }
-    unsafe { (api.mkSmallInt)(value as i64) }
+    unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 unsafe fn float_self(api: &IdApi, value: Oop) -> Option<f64> {
@@ -315,7 +315,7 @@ unsafe fn float_to_integer(api: &IdApi, value: f64) -> Oop {
     if value < i64::MIN as f64 || value >= 9_223_372_036_854_775_808.0 {
         return unsafe { numeric_error(api, b"overflow\0", b"float out of Integer range") };
     }
-    unsafe { (api.mkSmallInt)(value as i64) }
+    unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 unsafe extern "C" fn float_as_integer(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -857,7 +857,7 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
     let revision_is_error = unsafe { is_error(api, revision) };
     let mut declared_name = api.nilObj;
     if !revision_is_error && revision != api.nilObj {
-        let name = unsafe { send_args(api, revision, b"at:\0", &[(api.mkSmallInt)(1)]) };
+        let name = unsafe { send_args(api, revision, b"at:\0", &[(birnam_abi::integer::make)(1)]) };
         declared_name = name;
         let recorded = unsafe {
             send_args(
@@ -969,7 +969,7 @@ unsafe extern "C" fn system_gc(_self_object: Oop, _args: *const Oop, count: usiz
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)((api.gcCollect)() as i64) }
+    unsafe { (birnam_abi::integer::make)((api.gcCollect)() as i64) }
 }
 
 unsafe extern "C" fn system_live_objects(
@@ -981,7 +981,7 @@ unsafe extern "C" fn system_live_objects(
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)((api.gcLiveCount)() as i64) }
+    unsafe { (birnam_abi::integer::make)((api.gcLiveCount)() as i64) }
 }
 
 unsafe extern "C" fn system_auto_gc(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -1279,3 +1279,5 @@ mod tests {
         );
     }
 }
+
+birnam_abi::integer_dependency!();

@@ -1,4 +1,4 @@
-#include "idapi_v3.h"
+#include "idapi_v4.h"
 #include "object-model-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -70,6 +70,7 @@ int main(int argc, char **argv) {
         assert(module);
         ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(module, "module_init");
         assert(init);
+        fixture_attach_integer(api, module);
         init(i == 5 ? &module_api : api, NULL);
         if (i == 5) portable = module;
     }

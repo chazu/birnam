@@ -10,7 +10,8 @@ struct Saved {
     api: *mut IdApi,
     send: unsafe extern "C" fn(Oop, Oop, *const Oop, usize) -> Oop,
     intern: unsafe extern "C" fn(*const c_char) -> Oop,
-    integer: unsafe extern "C" fn(i64) -> Oop,
+    integer: unsafe extern "C" fn(*mut c_void, i64) -> Oop,
+    integer_api: *mut birnam_abi::integer::IntegerApiV1,
     alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
     import: unsafe extern "C" fn(*const c_char) -> Oop,
     vtable: unsafe extern "C" fn(Oop) -> Oop,
@@ -24,11 +25,13 @@ thread_local! {
 }
 pub(super) unsafe fn attach(pointer: *mut IdApi) {
     let api = unsafe { &*pointer };
+    let integer_api = with_active(|r| r.integer_live_pointer());
     SAVED.set(Some(Saved {
         api: pointer,
         send: api.send,
         intern: api.intern,
-        integer: api.mkSmallInt,
+        integer: unsafe { (*integer_api).make },
+        integer_api,
         alloc: api.alloc,
         import: api.import,
         vtable: api.vtableOf,
@@ -55,9 +58,9 @@ unsafe extern "C" fn intern(value: *const c_char) -> Oop {
     event(format!("intern:{}", unsafe { name(value) }));
     unsafe { (SAVED.get().unwrap().intern)(value) }
 }
-unsafe extern "C" fn integer(value: i64) -> Oop {
+unsafe extern "C" fn integer(context: *mut c_void, value: i64) -> Oop {
     event(format!("integer:{value}"));
-    unsafe { (SAVED.get().unwrap().integer)(value) }
+    unsafe { (SAVED.get().unwrap().integer)(context, value) }
 }
 unsafe extern "C" fn alloc(vtable: Oop, size: usize) -> Oop {
     event(format!("alloc:{size}"));
@@ -93,7 +96,7 @@ impl Drop for Restore {
             let api = &mut *self.0.api;
             api.send = self.0.send;
             api.intern = self.0.intern;
-            api.mkSmallInt = self.0.integer;
+            (*self.0.integer_api).make = self.0.integer;
             api.alloc = self.0.alloc;
             api.import = self.0.import;
             api.vtableOf = self.0.vtable;
@@ -124,7 +127,7 @@ pub(super) unsafe extern "C" fn check(probe: Oop, args: *const Oop, count: usize
                 0 => (),
                 1 => api.send = send,
                 2 => api.intern = intern,
-                3 => api.mkSmallInt = integer,
+                3 => (*saved.integer_api).make = integer,
                 4 => api.alloc = alloc,
                 5 => api.import = import,
                 6 => api.vtableOf = vtable,

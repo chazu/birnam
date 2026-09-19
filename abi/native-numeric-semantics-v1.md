@@ -1,5 +1,8 @@
 # Optional native numeric implementation declarations, v1
 
+Historical declaration for IdApi v1-v3. Current consumers use
+[v2](native-numeric-semantics-v2.md) with an explicit Integer dependency.
+
 This optional higher-module export supplies compiler facts about exact native
 implementations. It adds no IdApi field and does not alter the Method ABI,
 canonical descriptors or image encoding. Modules without it remain callable.

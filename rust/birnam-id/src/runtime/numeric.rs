@@ -44,7 +44,7 @@ impl Runtime {
             // Discovery enters a native declaration. No RuntimeState or
             // registry borrow survives that call. Native code owns its pure
             // declaration contract; the returned image pin is retained here.
-            summary = NumericSummary::discover(method, self.canonical().smallint_vt).map(Rc::new);
+            summary = NumericSummary::discover(method, self).map(Rc::new);
             if let Some(record) = self
                 .numeric
                 .borrow_mut()
@@ -78,6 +78,7 @@ impl Runtime {
         if !ENABLED.get() {
             return None;
         }
+        if !self.integer_context_current() { return None; }
         let &[argument] = arguments else {
             return None;
         };
@@ -85,19 +86,19 @@ impl Runtime {
         // ErrorVt import, if needed, still executes in the original method.
         let (left, right, error_argument) = {
             let state = unsafe { &*self.state.get() };
-            let canonical = state.canonical?;
+            let _canonical = state.canonical?;
             for value in [receiver, argument] {
-                if Vtables::checked_vtable_of(&state.heap, value) != canonical.smallint_vt
-                    || !state.heap.payload_size(value).is_some_and(|size| size >= 8)
+                if Vtables::checked_vtable_of(&state.heap, value) != self.integer_behavior()
+                    || !state.heap.payload_size(value).is_some_and(|size| size >= self.integer_storage().payload_size)
                 {
                     return None;
                 }
             }
             let error_symbol = state.symbols.existing(b"ErrorVt")?;
-            let error_argument = state.environment.import(error_symbol) == canonical.smallint_vt;
+            let error_argument = state.environment.import(error_symbol) == self.integer_behavior();
             (
-                state.values.integer_value(receiver),
-                state.values.integer_value(argument),
+                self.integer_value(receiver),
+                self.integer_value(argument),
                 error_argument,
             )
         };
@@ -108,7 +109,7 @@ impl Runtime {
             None
         };
         let summary = predicted_summary.or(fallback_summary.as_deref())?;
-        let operator = summary.operator(self.canonical().smallint_vt)?;
+        let operator = summary.operator(self)?;
         if error_argument {
             #[cfg(test)]
             HITS.set(HITS.get() + 1);

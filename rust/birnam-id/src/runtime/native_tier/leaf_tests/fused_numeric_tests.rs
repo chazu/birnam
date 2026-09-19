@@ -135,7 +135,7 @@ fn fused_numeric_counting_control_is_scoped_to_nonobserving_execution() {
             r.gc_set_precise(precise);
             let native = Fixture::load(r);
             r.add_method(
-                r.canonical().smallint_vt,
+                r.integer_behavior(),
                 r.intern(b"blend:").unwrap(),
                 native.method(1),
             );
@@ -282,7 +282,7 @@ pub(super) fn numeric_driver_preserves_allocations_boundaries_and_late_binding(u
                 r.install_execution_objects();
                 let native = Fixture::load(r);
                 let blend = r.intern(b"blend:").unwrap();
-                r.add_method(r.canonical().smallint_vt, blend, native.method(1));
+                r.add_method(r.integer_behavior(), blend, native.method(1));
                 let block = install(r, &bytes, 741503, None);
                 let _block = ScopedOopRootGuard::new(r, block.receiver);
                 let a = r.make_integer(11);
@@ -363,24 +363,24 @@ pub(super) fn numeric_driver_preserves_allocations_boundaries_and_late_binding(u
                         r.add_method(r.globals().vtable_vt, r.globals().lookup, lookup_observer);
                     }
                     Case::Operator => {
-                        r.add_method(r.canonical().smallint_vt, blend, native.method(2));
+                        r.add_method(r.integer_behavior(), blend, native.method(2));
                     }
                     Case::Error => {
-                        r.export(b"ErrorVt", r.canonical().smallint_vt).unwrap();
+                        r.export(b"ErrorVt", r.integer_behavior()).unwrap();
                     }
                     Case::Declaration => unsafe { native.declaration_toggle()(0) },
                     Case::OopLayout => r.set_layout(
-                        r.canonical().smallint_vt,
+                        r.integer_behavior(),
                         core::ptr::null(),
                         0,
                         crate::abi::SLOT_OOP,
                     ),
-                    Case::Trace => r.set_trace_hook(r.canonical().smallint_vt, inert_trace),
+                    Case::Trace => r.set_trace_hook(r.integer_behavior(), inert_trace),
                     Case::JournalFull => {
                         r.enter(|| r.gc_collect_from_native_range(0, 0));
                         let heap = unsafe { &mut (*r.state.get()).heap };
                         let snapshot = heap
-                            .prepare_virtual_bytes(r.canonical().smallint_vt, &1i64.to_ne_bytes())
+                            .prepare_virtual_bytes(r.integer_behavior(), &1i64.to_ne_bytes())
                             .unwrap();
                         for _ in 0..crate::heap::MAX_DEAD_ALLOCATIONS {
                             assert!(heap.record_virtual_clone(snapshot.clone()).is_some());
@@ -476,7 +476,7 @@ pub(super) fn numeric_budget_preserves_actual_collection_and_input_mutation(unbo
             r.install_execution_objects();
             let native = Fixture::load(r);
             r.add_method(
-                r.canonical().smallint_vt,
+                r.integer_behavior(),
                 r.intern(b"blend:").unwrap(),
                 native.method(1),
             );
@@ -574,7 +574,7 @@ pub(super) fn numeric_faults_leave_error_effects_at_their_original_calls(unboxed
             r.install_execution_objects();
             let native = Fixture::load(r);
             let blend = r.intern(b"blend:").unwrap();
-            r.add_method(r.canonical().smallint_vt, blend, native.method(operator));
+            r.add_method(r.integer_behavior(), blend, native.method(operator));
             r.add_method(
                 r.checked_vtable_of(r.canonical().nil),
                 blend,
@@ -653,7 +653,7 @@ fn fused_numeric_preparation_waits_for_hot_chain_starts() {
             r.install_execution_objects();
             let native = Fixture::load(r);
             r.add_method(
-                r.canonical().smallint_vt,
+                r.integer_behavior(),
                 r.intern(b"blend:").unwrap(),
                 native.method(1),
             );

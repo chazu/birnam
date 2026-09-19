@@ -34,7 +34,7 @@ pub(super) unsafe extern "C" fn allocation_bytes(_: Oop, _: *const Oop, count: u
     let Ok(value) = i64::try_from(BYTES.load(Ordering::Relaxed)) else {
         return api.nilObj;
     };
-    unsafe { (api.mkSmallInt)(value) }
+    unsafe { (birnam_abi::integer::make)(value) }
 }
 
 #[cfg(feature = "allocation-metrics")]
@@ -64,7 +64,7 @@ unsafe fn heap_total(count: usize, blocks: bool) -> Oop {
     let Ok(value) = i64::try_from(value) else {
         return api.nilObj;
     };
-    unsafe { (api.mkSmallInt)(value) }
+    unsafe { (birnam_abi::integer::make)(value) }
 }
 
 #[cfg(test)]

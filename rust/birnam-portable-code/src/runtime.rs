@@ -159,15 +159,15 @@ impl Runtime {
     }
 
     pub(crate) fn is_integer(&self, object: Oop) -> bool {
-        unsafe { (self.api().isSmallInt)(object) != 0 }
+        unsafe { (birnam_abi::integer::is_integer)(object) != 0 }
     }
 
     pub(crate) fn integer_value(&self, object: Oop) -> i64 {
-        unsafe { (self.api().smallIntValue)(object) }
+        unsafe { (birnam_abi::integer::value)(object) }
     }
 
     pub(crate) fn make_integer(&self, value: i64) -> Oop {
-        unsafe { (self.api().mkSmallInt)(value) }
+        unsafe { (birnam_abi::integer::make)(value) }
     }
 
     pub(crate) fn string_bytes(&self, object: Oop) -> Option<&'static [u8]> {

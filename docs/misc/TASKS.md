@@ -76,11 +76,13 @@ Block optimization declines when the message protocols are replaced.
 All 82 exhaustive-plan steps, 610 workspace tests and the separate relocated
 installation smoke pass on the final sources.
 
-[81L](../design/81l-production-integer-extraction.md) is in progress: the first
-stage moves Integer methods and native numeric declarations from Prelude into
-an independently loaded module. Representation and construction remain in Id;
-Integer is not yet a completed extraction. Validate and commit each extraction
-before proceeding to environment, remaining primitive values, reflection and GC.
+[81L](../design/81l-production-integer-extraction.md) implements the complete
+production Integer boundary: module-owned canonical objects, representation,
+primitives and methods; explicit native consumers; IdApi v4 (45 fields / 360
+bytes); pure recovery codec and opaque deferred payloads. Focused validation
+passes; the user explicitly waived release validation. Continue with environment,
+remaining primitive values, reflection and storage/collection, one committed
+extraction at a time.
 
 ## Selected sequence — 2026-09-06
 

@@ -84,6 +84,7 @@ dependencies = [
  "birnam-abi",
  "birnam-artifact",
  "birnam-codegen",
+ "birnam-integer",
  "birnam-native-compiler",
  "birnam-object-model",
  "sha2",

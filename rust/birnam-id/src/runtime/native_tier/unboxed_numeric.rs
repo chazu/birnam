@@ -121,7 +121,7 @@ pub(super) unsafe fn execute(
         {
             return None;
         }
-        let vt = r.canonical().smallint_vt;
+        let vt = r.integer_behavior();
         // The ordinary Integer vtable has no declared layout and therefore
         // uses conservative payload tracing. The admitted native constructor
         // supplies exact raw storage authority. A live value is realized
@@ -146,7 +146,7 @@ pub(super) unsafe fn execute(
     {
         let state = unsafe { &*r.state.get() };
         let bytes =
-            crate::heap::Heap::allocation_total_size(8)?.checked_mul(template.body_boxes())?;
+            crate::heap::Heap::allocation_total_size(r.integer_storage().payload_size)?.checked_mul(template.body_boxes())?;
         if !state.heap.admits_virtual_allocations(maps.result_count())
             || state
                 .metadata
@@ -177,11 +177,8 @@ pub(super) unsafe fn execute(
         for (index, send) in template.sends().iter().take(virtual_results).enumerate() {
             raw_values.push(ticket.fusion_result(index, send.pc as usize)?);
         }
-        Some(unsafe {
-            (*r.state.get())
-                .heap
-                .prepare_numeric_batch(r.canonical().smallint_vt, raw_values)
-        }?)
+        if !unsafe { (&*r.state.get()).heap.admits_virtual_allocations(raw_values.len()) } { return None; }
+        Some(r.prepare_integer_batch(&raw_values)?)
     };
     #[cfg(test)]
     let force_at = FORCE_AT.get();

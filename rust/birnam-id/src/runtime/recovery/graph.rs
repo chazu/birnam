@@ -25,6 +25,8 @@ impl Runtime {
         if inputs.len() != plan.input_count() {
             return Err(invalid());
         }
+        if plan.nodes().iter().any(|node| matches!(node, Node::Integer(_)))
+            && !self.integer_context_current() { return Err(invalid()); }
         let state = unsafe { &*self.state.get() };
         if inputs
             .iter()
@@ -89,11 +91,13 @@ impl Runtime {
                 let state = unsafe { &mut *self.state.get() };
                 let canonical = state.canonical.expect("installed canonical values");
                 match node {
-                    Node::Integer(value) => state.values.allocate_integer(
-                        &mut state.heap,
-                        canonical.smallint_vt,
-                        *value,
-                    ),
+                    Node::Integer(value) => {
+                        let storage = self.integer_storage();
+                        let object = state.heap.allocate(storage.payload_size, Permanence::Collectable);
+                        assert!(state.heap.set_vtable(object, self.integer_behavior()));
+                        unsafe { (storage.initialize)(object.cast(), *value) };
+                        object
+                    },
                     Node::FloatBits(bits) => state.values.allocate_float(
                         &mut state.heap,
                         canonical.float_vt,
@@ -251,7 +255,7 @@ impl<'a> Reader<'a> {
     }
 
     fn integer(&self, oop: Oop) -> Result<i64, ExecutionError> {
-        if !self.runtime.is_integer(oop) || !self.word_sized(oop) {
+        if !self.runtime.is_integer(oop) || !unsafe { (*self.runtime.state.get()).heap.payload_size(oop) }.is_some_and(|size| size >= self.runtime.integer_storage().payload_size) {
             return Err(invalid());
         }
         Ok(self.runtime.integer_value(oop))

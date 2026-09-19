@@ -36,7 +36,9 @@ nativeRequiresCount / nativeRequireAt:
 capabilitiesCount / capabilityAt:
 ```
 
-Those messages need only `libid` and `libbirnam_id_artifact`. After Collection
+Those messages need `libid`, `libbirnam_integer`, and `libbirnam_id_artifact`.
+The installed host mounts Integer before its native consumers; hand-built native
+embedders must attach the [Integer dependency](../../abi/integer-v1.md) explicitly. After Collection
 is active, `roots`, `requires`, `nativeRequires`, and `capabilities` return
 Vectors over the same data.
 

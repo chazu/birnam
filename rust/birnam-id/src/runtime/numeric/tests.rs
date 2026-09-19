@@ -61,7 +61,7 @@ impl Fixture {
                 read as *const c_void,
                 error as *const c_void,
                 r.canonical().nil,
-                r.canonical().smallint_vt,
+                r.integer_behavior(),
             )
         };
         fixture
@@ -166,23 +166,23 @@ fn native_numeric_declarations_pin_the_actual_image_and_reject_unknown_methods()
     let r = &bootstrap.runtime;
     let mut fixture = Fixture::load(r);
     let add = fixture.method(1);
-    let summary = NumericSummary::discover(add, r.canonical().smallint_vt).unwrap();
+    let summary = NumericSummary::discover(add, r).unwrap();
     assert_eq!(
-        summary.operator(r.canonical().smallint_vt),
+        summary.operator(r),
         Some(Operator::Add)
     );
     let unknown: Method = unsafe { core::mem::transmute(fixture.symbol(c"numeric_unknown")) };
-    assert!(NumericSummary::discover(unknown, r.canonical().smallint_vt).is_none());
+    assert!(NumericSummary::discover(unknown, r).is_none());
     assert!(
         NumericSummary::discover(
             crate::dispatch::vtable_lookup_method,
-            r.canonical().smallint_vt
+            r
         )
         .is_none()
     );
     let other = crate::dispatch::build_bootstrap();
     assert!(
-        NumericSummary::discover(add, other.runtime.canonical().smallint_vt).is_none(),
+        NumericSummary::discover(add, &other.runtime).is_none(),
         "declaration belongs to its initialized floor"
     );
     unsafe { dlclose(fixture.handle.take().unwrap().as_ptr()) };
@@ -253,7 +253,7 @@ fn guarded_numeric_calls_preserve_allocations_errors_redefinition_and_argument_i
             "fault enters original native implementation"
         );
     }
-    r.export(b"ErrorVt", r.canonical().smallint_vt).unwrap();
+    r.export(b"ErrorVt", r.integer_behavior()).unwrap();
     let count = r.gc_live_count();
     assert_eq!(call(fixture.method(1), input, input), input);
     assert_eq!(r.gc_live_count(), count);

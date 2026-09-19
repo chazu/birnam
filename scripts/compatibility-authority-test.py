@@ -36,6 +36,17 @@ class CompatibilityAuthorityTests(unittest.TestCase):
         ):
             self.assertFalse(unchanged_authority(IMAGE, mutated, self.baseline))
 
+    def test_integer_migration_preserves_operands_checks_and_inherited_recognition(self):
+        for before, after in (
+            (b'(birnam_abi::integer::make)(basis as i64)', b'(birnam_abi::integer::make)(oldest as i64)'),
+            (b'(birnam_abi::integer::value)(object)', b'(birnam_abi::integer::value)(vtable)'),
+            (b'(birnam_abi::integer::is_integer)(size)', b'(api.isSmallInt)(size)'),
+            (b'vtable_inherits_from(api, vtable, birnam_abi::integer::behavior())', b'vtable == birnam_abi::integer::behavior()'),
+            (b'birnam_abi::integer_dependency!();', b''),
+        ):
+            self.assertIn(before, self.current)
+            self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
+
     def test_exception_does_not_apply_to_other_contracts(self):
         self.assertFalse(unchanged_authority("rust/birnam-image/src/v8.rs", self.current, self.baseline))
 

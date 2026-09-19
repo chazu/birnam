@@ -74,3 +74,5 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mu
     runtime.install_portable_code_objects();
     ptr::null_mut()
 }
+
+birnam_abi::integer_dependency!();

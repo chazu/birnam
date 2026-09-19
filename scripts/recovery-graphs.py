@@ -19,8 +19,8 @@ AUTHORITIES = (
     "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-id/src/registration.rs",
     "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs",
 )
-CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v3.json",
-                 "abi/fixtures/idapi-v3/idapi_v3.h")
+CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v4.json",
+                 "abi/fixtures/idapi-v4/idapi_v4.h")
 
 
 def sha(path):
@@ -36,7 +36,7 @@ def sources():
               ('compatibility_authority.py', 'compatibility-authority-test.py', 'measurement_archive.py',
                'validation_support.py', 'validation_proof.py')]
     paths += [ROOT / 'scripts/fixtures' / name for name in
-              ('native-block-construction.c', 'closure-api-context.c', 'object-model-support.h')]
+              ('native-block-construction.c', 'closure-api-context.c', 'object-model-support.h', 'integer-support.h')]
     for folder in ('rust', 'src/id', 'modules', 'abi', 'vendor/libtcc-src'):
         paths.extend(p for p in (ROOT / folder).rglob('*') if p.is_file())
     return {str(p.relative_to(ROOT)): sha(p) for p in sorted(set(paths))}
@@ -461,12 +461,12 @@ def main():
                 raise RuntimeError("changed compatibility authority: " + name)
             receipt["authorities"][name] = sha(ROOT / name)
         run(["python3", "scripts/compatibility-authority-test.py"], "image-compatibility-authority")
-        receipt["image_authority_migration"] = "Design 81K: six exact owner/parent call substitutions; encoding unchanged"
-        # 81J/81K deliberately break IdApi. Verify the current independent v3
+        receipt["image_authority_migration"] = "Design 81K owner/parent and 81L Integer dependency call substitutions; encoding unchanged"
+        # 81J/81K/81L deliberately reduce IdApi. Verify the current independent v4
         # manifest instead of claiming that this table matches the 74T baseline.
-        run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v3")
+        run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v4")
         receipt["current_id_api"] = {
-            "schema_version": 3, "change": "Design 81K owner/parent protocols",
+            "schema_version": 4, "change": "Design 81L Integer dependency",
             "files_sha256": {name: sha(ROOT / name) for name in CURRENT_IDAPI},
         }
         for profile in ("debug", "release"):
@@ -483,7 +483,7 @@ def main():
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
                 fixture = work / (profile + "-block-construction")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v3",
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v4",
                      "scripts/fixtures/native-block-construction.c", "-o", fixture], profile + "-closure-native-fixture")
                 libraries = ROOT / ".cargo-target" / profile
                 run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
@@ -493,7 +493,7 @@ def main():
                     ("id", "prelude", "collection", "error", "portable_code")]
                     + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin", "without-prelude"], profile + "-closure-native-absent-family")
                 api_fixture = work / (profile + "-closure-api-context")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v3",
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v4",
                      "scripts/fixtures/closure-api-context.c", "-o", api_fixture], profile + "-closure-api-fixture")
                 run([api_fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
                     ("id", "tcc", "codegen_runtime")], profile + "-closure-api-context")

@@ -62,6 +62,7 @@ mod guarded_dispatch;
 mod guarded_lookup;
 mod native_tier;
 mod numeric;
+mod integer;
 mod recovery;
 #[cfg(feature = "ffi-test-hooks")]
 mod source_probe_roots;
@@ -100,7 +101,6 @@ impl DispatchGlobals {
 pub(crate) struct CanonicalObjects {
     pub(crate) symbol_list: Oop,
     pub(crate) environment: Oop,
-    pub(crate) smallint_vt: Oop,
     pub(crate) string_vt: Oop,
     pub(crate) float_vt: Oop,
     pub(crate) word_vt: Oop,
@@ -110,7 +110,6 @@ pub(crate) struct CanonicalObjects {
     pub(crate) true_object: Oop,
     pub(crate) false_object: Oop,
     pub(crate) object_prototype: Oop,
-    pub(crate) integer_prototype: Oop,
     pub(crate) float_prototype: Oop,
     pub(crate) word_prototype: Oop,
     pub(crate) string_prototype: Oop,
@@ -118,11 +117,10 @@ pub(crate) struct CanonicalObjects {
 }
 
 impl CanonicalObjects {
-    fn roots(self) -> [Oop; 17] {
+    fn roots(self) -> [Oop; 15] {
         [
             self.symbol_list,
             self.environment,
-            self.smallint_vt,
             self.string_vt,
             self.float_vt,
             self.word_vt,
@@ -132,7 +130,6 @@ impl CanonicalObjects {
             self.true_object,
             self.false_object,
             self.object_prototype,
-            self.integer_prototype,
             self.float_prototype,
             self.word_prototype,
             self.string_prototype,
@@ -235,6 +232,9 @@ pub(crate) struct Runtime {
     dispatch_cache: dispatch_cache::Cache,
     native_tier: core::cell::RefCell<native_tier::Registry>,
     numeric: core::cell::RefCell<numeric::Registry>,
+    integer: Cell<Option<integer::Binding>>,
+    #[cfg(test)]
+    test_integer: UnsafeCell<Option<integer::TestOwner>>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
     #[cfg(test)]
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
@@ -417,6 +417,9 @@ impl Runtime {
             dispatch_cache: dispatch_cache::Cache::default(),
             native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
             numeric: core::cell::RefCell::new(numeric::Registry::default()),
+            integer: Cell::new(None),
+            #[cfg(test)]
+            test_integer: UnsafeCell::new(None),
             recovery_requests: core::cell::RefCell::new(Vec::new()),
             #[cfg(test)]
             deopt_trial: core::cell::RefCell::new(None),
@@ -924,32 +927,6 @@ impl Runtime {
             .allocate_empty(&mut state.heap, vtable, permanence)
     }
 
-    pub(crate) fn allocate_integer(&self, vtable: Oop, value: i64) -> Oop {
-        self.assert_owner();
-        self.require_allocation_allowed();
-        self.maybe_collect_before_allocation();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        state
-            .values
-            .allocate_integer(&mut state.heap, vtable, value)
-    }
-
-    pub(crate) fn make_integer(&self, value: i64) -> Oop {
-        self.assert_owner();
-        self.require_allocation_allowed();
-        self.maybe_collect_before_allocation();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        let vtable = state
-            .canonical
-            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
-            .smallint_vt;
-        state
-            .values
-            .allocate_integer(&mut state.heap, vtable, value)
-    }
-
     pub(crate) fn allocate_float(&self, vtable: Oop, value: f64) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
@@ -1162,7 +1139,6 @@ impl Runtime {
         let canonical = self.canonical();
         for (name, value) in [
             (&b"Object"[..], canonical.object_prototype),
-            (&b"Integer"[..], canonical.integer_prototype),
             (&b"Float"[..], canonical.float_prototype),
             (&b"Word"[..], canonical.word_prototype),
             (&b"String"[..], canonical.string_prototype),
@@ -1172,7 +1148,6 @@ impl Runtime {
             (&b"Symbol"[..], canonical.symbol_prototype),
             (&b"SymbolVt"[..], globals.symbol_vt),
             (&b"ObjectVt"[..], globals.object_vt),
-            (&b"IntegerVt"[..], canonical.smallint_vt),
             (&b"FloatVt"[..], canonical.float_vt),
             (&b"WordVt"[..], canonical.word_vt),
             (&b"StringVt"[..], canonical.string_vt),
@@ -4728,6 +4703,10 @@ impl Runtime {
         let providers = unsafe {
             let state = &mut *state_pointer;
             mark_floor_roots(state, &mut marker);
+            #[cfg(test)]
+            if let Some(owner) = &*self.test_integer.get() {
+                for root in owner.instance.identities() { marker.mark_oop(&mut state.heap, root); }
+            }
             state.metadata.root_providers()
         };
 
@@ -4829,12 +4808,6 @@ impl Runtime {
         unsafe { (*self.state.get()).heap.permanence_of(object) }
     }
 
-    pub(crate) fn integer_value(&self, object: Oop) -> i64 {
-        self.assert_owner();
-        // SAFETY: caller supplies an Integer object.
-        unsafe { (*self.state.get()).values.integer_value(object) }
-    }
-
     pub(crate) fn float_value(&self, object: Oop) -> f64 {
         self.assert_owner();
         // SAFETY: caller supplies a Float object.
@@ -4845,10 +4818,6 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: caller supplies a Word object.
         unsafe { (*self.state.get()).values.word_value(object) }
-    }
-
-    pub(crate) fn is_integer(&self, object: Oop) -> bool {
-        self.has_canonical_vtable(object, |canonical| canonical.smallint_vt)
     }
 
     pub(crate) fn is_float(&self, object: Oop) -> bool {

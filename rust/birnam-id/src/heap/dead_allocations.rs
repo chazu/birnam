@@ -19,7 +19,7 @@ thread_local! {
 
 // The enum uses Vec's niche without increasing the snapshot header. Small
 // bytes live inside the untraced Rc allocation; larger payloads keep their Vec.
-const INLINE_PAYLOAD_BYTES: usize = core::mem::size_of::<i64>();
+const INLINE_PAYLOAD_BYTES: usize = core::mem::size_of::<usize>();
 enum Payload {
     Inline([u8; INLINE_PAYLOAD_BYTES]),
     Heap(Vec<u8>),

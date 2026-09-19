@@ -152,8 +152,8 @@ pub(super) unsafe extern "C" fn rust_codegen_materialization_count(
         .lock()
         .map(|entries| entries.iter().filter(|entry| entry.ready).count())
         .unwrap_or(0);
-    let api = unsafe { api(runtime()) };
-    unsafe { (api.mkSmallInt)(value as i64) }
+    let _api = unsafe { api(runtime()) };
+    unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 pub(super) unsafe extern "C" fn rust_codegen_evict_materializations(
@@ -197,8 +197,8 @@ pub(super) unsafe extern "C" fn rust_codegen_evict_materializations(
             let _ = unsafe { retire_runtime_generation_v1(api, generation) };
         }
     }
-    let api = unsafe { api(runtime()) };
-    unsafe { (api.mkSmallInt)(removed as i64) }
+    let _api = unsafe { api(runtime()) };
+    unsafe { (birnam_abi::integer::make)(removed as i64) }
 }
 
 pub(super) unsafe fn mark_roots(mark: MarkFn) {

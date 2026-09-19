@@ -1,15 +1,34 @@
-//! Production Integer methods, loaded independently above the Id floor.
-//! The next extraction stage moves representation and construction out of Id.
+//! Production Integer representation, primitive operations and methods above Id.
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicPtr, Ordering};
+pub mod storage;
+static INSTANCE: AtomicPtr<storage::Instance> = AtomicPtr::new(ptr::null_mut());
+
+unsafe extern "C" fn integer_roots(mark: birnam_abi::MarkFn) {
+    let instance = INSTANCE.load(Ordering::Acquire);
+    if !instance.is_null() {
+        unsafe { (*instance).trace(mark) };
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_integer_provider_v1() -> *mut birnam_abi::integer::IntegerApiV1 {
+    let instance = INSTANCE.load(Ordering::Acquire);
+    if instance.is_null() {
+        ptr::null_mut()
+    } else {
+        unsafe { (*instance).operations() }
+    }
+}
 
 /// Optional native implementation declaration, independent of selector names.
 /// See abi/native-numeric-semantics-v1.md. This pure query never enters Id.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_numeric_semantics_v1(
+pub unsafe extern "C" fn birnam_native_numeric_semantics_v2(
     method: *const c_void,
     integer_vtable: Oop,
     functions: *const usize,
@@ -23,15 +42,24 @@ pub unsafe extern "C" fn birnam_native_numeric_semantics_v1(
     let api = unsafe { &*(runtime.api as *const IdApi) };
     // A module initialized against another floor cannot attest this floor's
     // canonical operands or allocation/error behavior.
-    if api.smallint_vt != integer_vtable
-        || unsafe { core::slice::from_raw_parts(functions, 6) }
+    let ops = unsafe { birnam_abi::integer::operations() };
+    let instance = INSTANCE.load(Ordering::Acquire);
+    let identities = unsafe { (*instance).identities() };
+    if identities[0] != integer_vtable
+        || ops.behavior != identities[0]
+        || ops.prototype != identities[1]
+        || unsafe { core::slice::from_raw_parts(functions, 10) }
             != [
-                api.isSmallInt as usize,
-                api.smallIntValue as usize,
+                ops.is_exact as usize,
+                ops.read as usize,
                 api.isExported as usize,
                 api.import as usize,
                 api.vtableOf as usize,
-                api.mkSmallInt as usize,
+                ops.make as usize,
+                ops.context as usize,
+                ops.storage as usize,
+                ops.prototype as usize,
+                api.alloc as usize,
             ]
     {
         return 0;
@@ -101,12 +129,12 @@ unsafe fn send_args(api: &IdApi, receiver: Oop, selector: &[u8], args: &[Oop]) -
     unsafe { (api.send)(receiver, selector, arguments, args.len()) }
 }
 
-unsafe fn integer(api: &IdApi, value: Oop) -> Option<i64> {
-    if value.is_null() || unsafe { (api.isSmallInt)(value) } == 0 {
+unsafe fn integer(_api: &IdApi, value: Oop) -> Option<i64> {
+    if value.is_null() || unsafe { (birnam_abi::integer::is_integer)(value) } == 0 {
         return None;
     }
     // SAFETY: isSmallInt established the floor's integer representation.
-    Some(unsafe { (api.smallIntValue)(value) })
+    Some(unsafe { (birnam_abi::integer::value)(value) })
 }
 
 unsafe fn result(api: &IdApi, value: i128) -> Oop {
@@ -114,7 +142,7 @@ unsafe fn result(api: &IdApi, value: i128) -> Oop {
         return unsafe { numeric_error(api, b"overflow\0", b"integer overflow") };
     }
     // SAFETY: the range check makes the conversion exact.
-    unsafe { (api.mkSmallInt)(value as i64) }
+    unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 #[derive(Clone, Copy)]
@@ -127,8 +155,10 @@ unsafe fn numeric(api: &IdApi, value: Oop) -> Option<Numeric> {
     if value.is_null() {
         return None;
     }
-    if unsafe { (api.isSmallInt)(value) } != 0 {
-        return Some(Numeric::Integer(unsafe { (api.smallIntValue)(value) }));
+    if unsafe { (birnam_abi::integer::is_integer)(value) } != 0 {
+        return Some(Numeric::Integer(unsafe {
+            (birnam_abi::integer::value)(value)
+        }));
     }
     if unsafe { (api.isFloat)(value) } != 0 {
         return Some(Numeric::Float(unsafe { (api.floatValue)(value) }));
@@ -390,7 +420,7 @@ unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: us
     let block = values[1];
     let mut value = start;
     while value <= end {
-        let argument = unsafe { (api.mkSmallInt)(value) };
+        let argument = unsafe { (birnam_abi::integer::make)(value) };
         let result = unsafe { send_args(api, block, b"value:\0", &[argument]) };
         if unsafe { is_error(api, result) } {
             return result;
@@ -443,14 +473,28 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) ->
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
-    let runtime = RUNTIME.get_or_init(|| Runtime {
-        api: api_pointer as usize,
-    });
+    if let Some(runtime) = RUNTIME.get() {
+        assert_eq!(
+            runtime.api, api_pointer as usize,
+            "Integer mounted on another API"
+        );
+        return ptr::null_mut();
+    }
+    RUNTIME
+        .set(Runtime {
+            api: api_pointer as usize,
+        })
+        .ok()
+        .expect("Integer initialization serialized");
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api_pointer) });
+    INSTANCE.store(instance, Ordering::Release);
+    unsafe { (api.gcRegisterRootProvider)(integer_roots) };
+    unsafe { (*instance).populate() };
     assert_eq!(
-        runtime.api, api_pointer as usize,
-        "Integer mounted on another API"
+        unsafe { birnam_abi::integer::attach((*instance).operations()) },
+        1
     );
-    let integer_vt = api.smallint_vt;
+    let integer_vt = unsafe { birnam_abi::integer::behavior() };
     let methods: &[(&[u8], birnam_abi::Method)] = &[
         (b"+\0", integer_add),
         (b"-\0", integer_sub),
@@ -487,7 +531,6 @@ mod tests {
     use super::*;
     #[test]
     fn numeric_declarations_name_exact_implementations_and_reject_another_floor() {
-        use super::*;
         for (method, code) in [
             (integer_add as birnam_abi::Method, 1),
             (integer_sub, 2),
@@ -498,7 +541,7 @@ mod tests {
             assert_eq!(declared_numeric_operator(method as *const c_void), code);
             assert_eq!(
                 unsafe {
-                    birnam_native_numeric_semantics_v1(
+                    birnam_native_numeric_semantics_v2(
                         method as *const c_void,
                         ptr::null_mut(),
                         ptr::null(),

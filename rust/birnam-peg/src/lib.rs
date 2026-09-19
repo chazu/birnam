@@ -822,13 +822,13 @@ unsafe fn vector_children(vector: Oop) -> Vec<Oop> {
     let at_selector = unsafe { intern(api, b"at:\0") };
     let empty: [Oop; 0] = [];
     let size = unsafe { (api.send)(vector, size_selector, empty.as_ptr(), 0) };
-    let count = unsafe { (api.smallIntValue)(size) };
+    let count = unsafe { (birnam_abi::integer::value)(size) };
     if count < 0 {
         abort("Vector size was negative");
     }
     let mut children = Vec::with_capacity(count as usize);
     for index in 0..count as usize {
-        let argument = [unsafe { (api.mkSmallInt)(index as i64) }];
+        let argument = [unsafe { (birnam_abi::integer::make)(index as i64) }];
         children.push(unsafe { (api.send)(vector, at_selector, argument.as_ptr(), 1) });
     }
     children
@@ -916,7 +916,7 @@ unsafe fn byte_argument(api: &IdApi, object: Oop) -> u8 {
             .copied()
             .unwrap_or(0);
     }
-    unsafe { (api.smallIntValue)(object) as u8 }
+    unsafe { (birnam_abi::integer::value)(object) as u8 }
 }
 
 unsafe extern "C" fn peg_range_to(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
@@ -987,9 +987,9 @@ unsafe extern "C" fn pattern_from_to(self_object: Oop, pointer: *const Oop, coun
     if values.len() != 2 {
         abort("from:to: expects two arguments");
     }
-    let api = unsafe { api(runtime()) };
-    let lo = unsafe { (api.smallIntValue)(values[0]) } as u8;
-    let hi = unsafe { (api.smallIntValue)(values[1]) } as u8;
+    let _api = unsafe { api(runtime()) };
+    let lo = unsafe { (birnam_abi::integer::value)(values[0]) } as u8;
+    let hi = unsafe { (birnam_abi::integer::value)(values[1]) } as u8;
     unsafe { state_mut(self_object).ranges.push(Range { lo, hi }) };
     self_object
 }
@@ -1021,9 +1021,9 @@ unsafe extern "C" fn grammar_furthest_fail(
     if !unsafe { args(pointer, count) }.is_empty() {
         abort("furthestFail expects no arguments");
     }
-    let api = unsafe { api(runtime()) };
+    let _api = unsafe { api(runtime()) };
     let state = unsafe { &*(self_object.cast::<GrammarState>()) };
-    unsafe { (api.mkSmallInt)(state.furthest_fail as i64) }
+    unsafe { (birnam_abi::integer::make)(state.furthest_fail as i64) }
 }
 
 unsafe extern "C" fn grammar_parse_from(
@@ -1062,27 +1062,27 @@ unsafe extern "C" fn cst_start(self_object: Oop, pointer: *const Oop, count: usi
     if !unsafe { args(pointer, count) }.is_empty() {
         abort("start expects no arguments");
     }
-    let api = unsafe { api(runtime()) };
+    let _api = unsafe { api(runtime()) };
     let start = unsafe { cst_ref(self_object).start };
-    unsafe { (api.mkSmallInt)(start as i64) }
+    unsafe { (birnam_abi::integer::make)(start as i64) }
 }
 
 unsafe extern "C" fn cst_end(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
     if !unsafe { args(pointer, count) }.is_empty() {
         abort("end expects no arguments");
     }
-    let api = unsafe { api(runtime()) };
+    let _api = unsafe { api(runtime()) };
     let end = unsafe { cst_ref(self_object).end };
-    unsafe { (api.mkSmallInt)(end as i64) }
+    unsafe { (birnam_abi::integer::make)(end as i64) }
 }
 
 unsafe extern "C" fn cst_child_count(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
     if !unsafe { args(pointer, count) }.is_empty() {
         abort("childCount expects no arguments");
     }
-    let api = unsafe { api(runtime()) };
+    let _api = unsafe { api(runtime()) };
     let count = unsafe { cst_ref(self_object).children.len() };
-    unsafe { (api.mkSmallInt)(count as i64) }
+    unsafe { (birnam_abi::integer::make)(count as i64) }
 }
 
 unsafe extern "C" fn cst_child_at(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
@@ -1091,7 +1091,7 @@ unsafe extern "C" fn cst_child_at(self_object: Oop, pointer: *const Oop, count: 
         abort("childAt: expects one argument");
     }
     let api = unsafe { api(runtime()) };
-    let index = unsafe { (api.smallIntValue)(values[0]) };
+    let index = unsafe { (birnam_abi::integer::value)(values[0]) };
     if index < 0 {
         return api.nilObj;
     }
@@ -1293,3 +1293,5 @@ mod tests {
         assert_eq!(identity.to_bytes_with_nul(), RUST_PEG_IDENTITY);
     }
 }
+
+birnam_abi::integer_dependency!();

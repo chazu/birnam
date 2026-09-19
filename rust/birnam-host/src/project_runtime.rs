@@ -23,12 +23,12 @@ pub unsafe fn decode_project_source_metadata(
     }
     let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
     let size = unsafe { (api.send)(metadata, size_selector, std::ptr::null(), 0) };
-    if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } != 5 {
+    if unsafe { (birnam_abi::integer::is_integer)(size) } == 0 || unsafe { (birnam_abi::integer::value)(size) } != 5 {
         return Err(ProjectMetadataError::WrongSize);
     }
     let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
     let item = |index: i64| unsafe {
-        (api.send)(metadata, at_selector, [(api.mkSmallInt)(index)].as_ptr(), 1)
+        (api.send)(metadata, at_selector, [(birnam_abi::integer::make)(index)].as_ptr(), 1)
     };
     let tag = item(0);
     if tag == api.nilObj
@@ -69,18 +69,18 @@ pub unsafe fn decode_project_source_metadata(
         return Err(ProjectMetadataError::InvalidRequires);
     }
     let requires_size = unsafe { (api.send)(requires_value, size_selector, std::ptr::null(), 0) };
-    if unsafe { (api.isSmallInt)(requires_size) } == 0
-        || unsafe { (api.smallIntValue)(requires_size) } < 0
+    if unsafe { (birnam_abi::integer::is_integer)(requires_size) } == 0
+        || unsafe { (birnam_abi::integer::value)(requires_size) } < 0
     {
         return Err(ProjectMetadataError::InvalidRequires);
     }
-    let mut requires = Vec::with_capacity(unsafe { (api.smallIntValue)(requires_size) as usize });
-    for index in 0..unsafe { (api.smallIntValue)(requires_size) } {
+    let mut requires = Vec::with_capacity(unsafe { (birnam_abi::integer::value)(requires_size) as usize });
+    for index in 0..unsafe { (birnam_abi::integer::value)(requires_size) } {
         let value = unsafe {
             (api.send)(
                 requires_value,
                 at_selector,
-                [(api.mkSmallInt)(index)].as_ptr(),
+                [(birnam_abi::integer::make)(index)].as_ptr(),
                 1,
             )
         };
@@ -182,19 +182,19 @@ impl<'a> ProjectManifestDecoder<'a> {
         }
         let size_selector = unsafe { (self.api.intern)(c"size".as_ptr()) };
         let size = unsafe { (self.api.send)(value, size_selector, std::ptr::null(), 0) };
-        if unsafe { (self.api.isSmallInt)(size) } == 0
-            || unsafe { (self.api.smallIntValue)(size) } < 0
+        if unsafe { (birnam_abi::integer::is_integer)(size) } == 0
+            || unsafe { (birnam_abi::integer::value)(size) } < 0
         {
             return Err(ProjectManifestDecodeError::InvalidList(field));
         }
         let at_selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
-        let mut result = Vec::with_capacity(unsafe { (self.api.smallIntValue)(size) as usize });
-        for index in 0..unsafe { (self.api.smallIntValue)(size) } {
+        let mut result = Vec::with_capacity(unsafe { (birnam_abi::integer::value)(size) as usize });
+        for index in 0..unsafe { (birnam_abi::integer::value)(size) } {
             let item = unsafe {
                 (self.api.send)(
                     value,
                     at_selector,
-                    [(self.api.mkSmallInt)(index)].as_ptr(),
+                    [(birnam_abi::integer::make)(index)].as_ptr(),
                     1,
                 )
             };
@@ -239,10 +239,10 @@ impl<'a> ProjectManifestDecoder<'a> {
         let port_value = unsafe { self.at(value, "socket_port")? };
         let socket_port = if port_value == self.api.nilObj {
             4400
-        } else if unsafe { (self.api.isSmallInt)(port_value) } == 0 {
+        } else if unsafe { (birnam_abi::integer::is_integer)(port_value) } == 0 {
             return Err(ProjectManifestDecodeError::InvalidPort);
         } else {
-            let port = unsafe { (self.api.smallIntValue)(port_value) };
+            let port = unsafe { (birnam_abi::integer::value)(port_value) };
             if !(0..=65535).contains(&port) {
                 return Err(ProjectManifestDecodeError::InvalidPort);
             }
@@ -268,18 +268,18 @@ impl<'a> ProjectManifestDecoder<'a> {
         let size_selector = unsafe { (self.api.intern)(c"size".as_ptr()) };
         let at_selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
         let size = unsafe { (self.api.send)(value, size_selector, std::ptr::null(), 0) };
-        if unsafe { (self.api.isSmallInt)(size) } == 0
-            || unsafe { (self.api.smallIntValue)(size) } < 0
+        if unsafe { (birnam_abi::integer::is_integer)(size) } == 0
+            || unsafe { (birnam_abi::integer::value)(size) } < 0
         {
             return Err(ProjectManifestDecodeError::InvalidList("module"));
         }
-        let mut result = Vec::with_capacity(unsafe { (self.api.smallIntValue)(size) as usize });
-        for index in 0..unsafe { (self.api.smallIntValue)(size) } {
+        let mut result = Vec::with_capacity(unsafe { (birnam_abi::integer::value)(size) as usize });
+        for index in 0..unsafe { (birnam_abi::integer::value)(size) } {
             let item = unsafe {
                 (self.api.send)(
                     value,
                     at_selector,
-                    [(self.api.mkSmallInt)(index)].as_ptr(),
+                    [(birnam_abi::integer::make)(index)].as_ptr(),
                     1,
                 )
             };
@@ -314,18 +314,18 @@ impl<'a> ProjectManifestDecoder<'a> {
         let size_selector = unsafe { (self.api.intern)(c"size".as_ptr()) };
         let at_selector = unsafe { (self.api.intern)(c"at:".as_ptr()) };
         let size = unsafe { (self.api.send)(value, size_selector, std::ptr::null(), 0) };
-        if unsafe { (self.api.isSmallInt)(size) } == 0
-            || unsafe { (self.api.smallIntValue)(size) } < 0
+        if unsafe { (birnam_abi::integer::is_integer)(size) } == 0
+            || unsafe { (birnam_abi::integer::value)(size) } < 0
         {
             return Err(ProjectManifestDecodeError::InvalidList("wrapped"));
         }
-        let mut result = Vec::with_capacity(unsafe { (self.api.smallIntValue)(size) as usize });
-        for index in 0..unsafe { (self.api.smallIntValue)(size) } {
+        let mut result = Vec::with_capacity(unsafe { (birnam_abi::integer::value)(size) as usize });
+        for index in 0..unsafe { (birnam_abi::integer::value)(size) } {
             let item = unsafe {
                 (self.api.send)(
                     value,
                     at_selector,
-                    [(self.api.mkSmallInt)(index)].as_ptr(),
+                    [(birnam_abi::integer::make)(index)].as_ptr(),
                     1,
                 )
             };
@@ -351,20 +351,20 @@ impl<'a> ProjectManifestDecoder<'a> {
             }
             let command_count =
                 unsafe { (self.api.send)(build_value, size_selector, std::ptr::null(), 0) };
-            if unsafe { (self.api.isSmallInt)(command_count) } == 0
-                || unsafe { (self.api.smallIntValue)(command_count) } <= 0
+            if unsafe { (birnam_abi::integer::is_integer)(command_count) } == 0
+                || unsafe { (birnam_abi::integer::value)(command_count) } <= 0
             {
                 return Err(ProjectManifestDecodeError::EmptyValue("wrapped.build"));
             }
             let mut build =
-                Vec::with_capacity(unsafe { (self.api.smallIntValue)(command_count) as usize });
+                Vec::with_capacity(unsafe { (birnam_abi::integer::value)(command_count) as usize });
             let mut has_output = false;
-            for command_index in 0..unsafe { (self.api.smallIntValue)(command_count) } {
+            for command_index in 0..unsafe { (birnam_abi::integer::value)(command_count) } {
                 let command = unsafe {
                     (self.api.send)(
                         build_value,
                         at_selector,
-                        [(self.api.mkSmallInt)(command_index)].as_ptr(),
+                        [(birnam_abi::integer::make)(command_index)].as_ptr(),
                         1,
                     )
                 };
@@ -400,7 +400,7 @@ impl<'a> ProjectManifestDecoder<'a> {
                 (self.api.send)(
                     value,
                     at_selector,
-                    [(self.api.mkSmallInt)(index as i64)].as_ptr(),
+                    [(birnam_abi::integer::make)(index as i64)].as_ptr(),
                     1,
                 )
             };
@@ -613,16 +613,16 @@ pub unsafe fn decode_project_resolution(
     let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
     let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
     let size = unsafe { (api.send)(modules_value, size_selector, std::ptr::null(), 0) };
-    if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } < 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(size) } == 0 || unsafe { (birnam_abi::integer::value)(size) } < 0 {
         return Err(ProjectManifestDecodeError::InvalidList("modules"));
     }
-    let mut modules = Vec::with_capacity(unsafe { (api.smallIntValue)(size) as usize });
-    for index in 0..unsafe { (api.smallIntValue)(size) } {
+    let mut modules = Vec::with_capacity(unsafe { (birnam_abi::integer::value)(size) as usize });
+    for index in 0..unsafe { (birnam_abi::integer::value)(size) } {
         let item = unsafe {
             (api.send)(
                 modules_value,
                 at_selector,
-                [(api.mkSmallInt)(index)].as_ptr(),
+                [(birnam_abi::integer::make)(index)].as_ptr(),
                 1,
             )
         };
@@ -698,16 +698,16 @@ pub unsafe fn decode_project_artifact_plan(
     let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
     let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
     let size = unsafe { (api.send)(artifacts_value, size_selector, std::ptr::null(), 0) };
-    if unsafe { (api.isSmallInt)(size) } == 0 || unsafe { (api.smallIntValue)(size) } < 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(size) } == 0 || unsafe { (birnam_abi::integer::value)(size) } < 0 {
         return Err(ProjectManifestDecodeError::InvalidList("artifacts"));
     }
-    let mut artifacts = Vec::with_capacity(unsafe { (api.smallIntValue)(size) as usize });
-    for index in 0..unsafe { (api.smallIntValue)(size) } {
+    let mut artifacts = Vec::with_capacity(unsafe { (birnam_abi::integer::value)(size) as usize });
+    for index in 0..unsafe { (birnam_abi::integer::value)(size) } {
         let item = unsafe {
             (api.send)(
                 artifacts_value,
                 at_selector,
-                [(api.mkSmallInt)(index)].as_ptr(),
+                [(birnam_abi::integer::make)(index)].as_ptr(),
                 1,
             )
         };
@@ -1128,7 +1128,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
             self.put(
                 run,
                 "socketPort",
-                (self.api.mkSmallInt)(value.run.socket_port),
+                (birnam_abi::integer::make)(value.run.socket_port),
             )?
         };
         item = unsafe { self.put(item, "run", run)? };
@@ -1187,10 +1187,10 @@ impl HostRuntime {
             .ok_or(ProjectRunError::PublishedConfiguration)?;
         let port = unsafe { global_named(api, PROJECT_SOCKET_PORT_GLOBAL) }
             .ok_or(ProjectRunError::PublishedConfiguration)?;
-        if unsafe { (api.isSmallInt)(port) } == 0 {
+        if unsafe { (birnam_abi::integer::is_integer)(port) } == 0 {
             return Err(ProjectRunError::PublishedConfiguration);
         }
-        let socket_port = unsafe { (api.smallIntValue)(port) };
+        let socket_port = unsafe { (birnam_abi::integer::value)(port) };
         if !(0..=65535).contains(&socket_port) {
             return Err(ProjectRunError::PublishedConfiguration);
         }
@@ -1368,7 +1368,7 @@ impl HostRuntime {
         }
         let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
         let count = unsafe { (api.send)(suites, size_selector, std::ptr::null(), 0) };
-        if unsafe { (api.isSmallInt)(count) } == 0 || unsafe { (api.smallIntValue)(count) } == 0 {
+        if unsafe { (birnam_abi::integer::is_integer)(count) } == 0 || unsafe { (birnam_abi::integer::value)(count) } == 0 {
             return Err(ProjectRunError::TestSuiteMissing);
         }
         let run_selector = unsafe { (api.intern)(c"runAllSuitesWithRunner:".as_ptr()) };

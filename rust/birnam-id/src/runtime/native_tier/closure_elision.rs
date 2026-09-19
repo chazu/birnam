@@ -379,13 +379,14 @@ impl Runtime {
         materialization_owner: Oop,
         materialized: bool,
         codegen_api: &birnam_abi::IdApi,
+        integer: &birnam_abi::integer::IntegerApiV1,
     ) -> Option<Result<Oop, ExecutionError>> {
         #[cfg(feature = "ffi-test-hooks")]
         ATTEMPTS.set(ATTEMPTS.get() + 1);
         if !enabled()
             || !crate::public_api::closure_codegen_context_matches(
                 codegen_api,
-                self.canonical().nil,
+                self.canonical().nil, integer, &self.integer_operations(),
             )
             || !fused_numeric::controls(self, machine)
             || self.native_tier.borrow().closure_resume.is_some()
@@ -532,7 +533,7 @@ impl Runtime {
         let _read = self.enter_dispatch_read();
         let mut admitted = Vec::new();
         let mut budget = snapshot.total_size();
-        let integer_bytes = crate::heap::Heap::allocation_total_size(8)?;
+        let integer_bytes = crate::heap::Heap::allocation_total_size(self.integer_storage().payload_size)?;
         for call in region::calls(plan) {
             let Some(selected) = region::admit(
                 self,

@@ -659,17 +659,17 @@ mod runtime {
 
     unsafe fn vector_values(api: &IdApi, vector: Oop) -> Option<Vec<Oop>> {
         let size = unsafe { send0(api, vector, b"size\0") };
-        if unsafe { (api.isSmallInt)(size) } == 0 {
+        if unsafe { (birnam_abi::integer::is_integer)(size) } == 0 {
             return None;
         }
-        let size = usize::try_from(unsafe { (api.smallIntValue)(size) }).ok()?;
+        let size = usize::try_from(unsafe { (birnam_abi::integer::value)(size) }).ok()?;
         if size > 1_048_576 {
             return None;
         }
         (0..size)
             .map(|index| {
                 let index = i64::try_from(index).ok()?;
-                Some(unsafe { send1(api, vector, b"at:\0", (api.mkSmallInt)(index)) })
+                Some(unsafe { send1(api, vector, b"at:\0", (birnam_abi::integer::make)(index)) })
             })
             .collect()
     }
@@ -734,8 +734,8 @@ mod runtime {
             return None;
         }
         let vtable = unsafe { (api.vtableOf)(object) };
-        if unsafe { vtable_inherits_from(api, vtable, api.smallint_vt) } {
-            return Some(BoxedValue::Integer(unsafe { (api.smallIntValue)(object) }));
+        if unsafe { vtable_inherits_from(api, vtable, birnam_abi::integer::behavior()) } {
+            return Some(BoxedValue::Integer(unsafe { (birnam_abi::integer::value)(object) }));
         }
         if unsafe { vtable_inherits_from(api, vtable, api.float_vt) } {
             return Some(BoxedValue::Float(
@@ -1808,7 +1808,7 @@ mod runtime {
 
         for (index, object) in objects.iter().enumerate() {
             relocations[index] = match object.locator {
-                V8Value::BoxedInteger(value) => unsafe { (api.mkSmallInt)(value) },
+                V8Value::BoxedInteger(value) => unsafe { (birnam_abi::integer::make)(value) },
                 V8Value::BoxedFloat(bits) => unsafe { (api.mkFloat)(f64::from_bits(bits)) },
                 V8Value::BoxedWord(value) => unsafe { (api.mkWord)(value) },
                 V8Value::BoxedString(bytes) => unsafe {
@@ -1879,7 +1879,7 @@ mod runtime {
                 return None;
             };
             let capture_count = object.fields.len().checked_sub(1)?;
-            let index_oop = unsafe { (api.mkSmallInt)(i64::from(program_index)) };
+            let index_oop = unsafe { (birnam_abi::integer::make)(i64::from(program_index)) };
             let vtable = unsafe { send1(api, codegen, PORTABLE_IMAGE_BLOCK_VTABLE, index_oop) };
             if vtable.is_null() || vtable == api.nilObj {
                 return None;
@@ -1988,8 +1988,8 @@ mod runtime {
                     unsafe { materialize_v8_value(api, entity, relocations) }?,
                     unsafe { materialize_v8_value(api, attribute, relocations) }?,
                     unsafe { materialize_v8_value(api, value, relocations) }?,
-                    unsafe { (api.mkSmallInt)(tx as i64) },
-                    unsafe { (api.mkSmallInt)(i64::from(op)) },
+                    unsafe { (birnam_abi::integer::make)(tx as i64) },
+                    unsafe { (birnam_abi::integer::make)(i64::from(op)) },
                     if historied == 1 {
                         api.trueObj
                     } else {
@@ -2005,10 +2005,10 @@ mod runtime {
         Some(StagedV8Facts {
             store,
             facts,
-            basis: unsafe { (api.mkSmallInt)(basis as i64) },
-            oldest: unsafe { (api.mkSmallInt)(oldest as i64) },
-            policy: unsafe { (api.mkSmallInt)(i64::from(policy)) },
-            argument: unsafe { (api.mkSmallInt)(argument as i64) },
+            basis: unsafe { (birnam_abi::integer::make)(basis as i64) },
+            oldest: unsafe { (birnam_abi::integer::make)(oldest as i64) },
+            policy: unsafe { (birnam_abi::integer::make)(i64::from(policy)) },
+            argument: unsafe { (birnam_abi::integer::make)(argument as i64) },
         })
     }
 
@@ -2090,7 +2090,7 @@ mod runtime {
             {
                 return None;
             }
-            let index = unsafe { (api.mkSmallInt)(i64::try_from(index).ok()?) };
+            let index = unsafe { (birnam_abi::integer::make)(i64::try_from(index).ok()?) };
             let arguments = [index, implementation];
             if unsafe {
                 (api.send)(
@@ -2120,7 +2120,7 @@ mod runtime {
                 unsafe { materialize_binding_field(api, binding.implementation, relocations) }?;
             let provenance =
                 unsafe { materialize_binding_field(api, binding.provenance, relocations) }?;
-            let index_oop = unsafe { (api.mkSmallInt)(i64::try_from(index).ok()?) };
+            let index_oop = unsafe { (birnam_abi::integer::make)(i64::try_from(index).ok()?) };
             let arguments = [index_oop, target, implementation, provenance];
             if unsafe {
                 (api.send)(
@@ -2394,8 +2394,8 @@ mod runtime {
             };
         }
         let basis_object = unsafe { send0(api, store, b"basis\0") };
-        let basis = if unsafe { (api.isSmallInt)(basis_object) } != 0 {
-            unsafe { (api.smallIntValue)(basis_object) }.max(0) as u64
+        let basis = if unsafe { (birnam_abi::integer::is_integer)(basis_object) } != 0 {
+            unsafe { (birnam_abi::integer::value)(basis_object) }.max(0) as u64
         } else {
             0
         };
@@ -2404,11 +2404,11 @@ mod runtime {
         let argument_object = unsafe { send0(api, store, b"retentionPolicyArgument\0") };
         let metadata = if [oldest_object, policy_object, argument_object]
             .iter()
-            .all(|value| unsafe { (api.isSmallInt)(*value) } != 0)
+            .all(|value| unsafe { (birnam_abi::integer::is_integer)(*value) } != 0)
         {
-            let oldest = unsafe { (api.smallIntValue)(oldest_object) };
-            let policy = unsafe { (api.smallIntValue)(policy_object) };
-            let argument = unsafe { (api.smallIntValue)(argument_object) };
+            let oldest = unsafe { (birnam_abi::integer::value)(oldest_object) };
+            let policy = unsafe { (birnam_abi::integer::value)(policy_object) };
+            let argument = unsafe { (birnam_abi::integer::value)(argument_object) };
             let retention = match (policy, argument) {
                 (0, 0) => Some(retained_facts::RetentionPolicy::CurrentOnly),
                 (1, value) if value >= 0 => {
@@ -2845,7 +2845,7 @@ mod runtime {
         if count != 0 {
             return api.nilObj;
         }
-        unsafe { (api.mkSmallInt)(i64::from(report_value(field))) }
+        unsafe { (birnam_abi::integer::make)(i64::from(report_value(field))) }
     }
 
     unsafe extern "C" fn report_saved_facts(
@@ -2940,8 +2940,8 @@ mod runtime {
         let tx_object = arguments[3];
         let op_object = arguments[4];
         let historied_object = arguments[5];
-        if unsafe { (api.isSmallInt)(tx_object) } == 0
-            || unsafe { (api.isSmallInt)(op_object) } == 0
+        if unsafe { (birnam_abi::integer::is_integer)(tx_object) } == 0
+            || unsafe { (birnam_abi::integer::is_integer)(op_object) } == 0
             || (historied_object != api.trueObj && historied_object != api.falseObj)
         {
             if let Some(collection) = FACT_COLLECTION
@@ -2953,8 +2953,8 @@ mod runtime {
             }
             return api.nilObj;
         }
-        let tx = unsafe { (api.smallIntValue)(tx_object) };
-        let op = unsafe { (api.smallIntValue)(op_object) };
+        let tx = unsafe { (birnam_abi::integer::value)(tx_object) };
+        let op = unsafe { (birnam_abi::integer::value)(op_object) };
         if tx < 0 || !(0..=1).contains(&op) {
             if let Some(collection) = FACT_COLLECTION
                 .lock()
@@ -3179,3 +3179,5 @@ mod runtime {
         ptr::null_mut()
     }
 }
+
+birnam_abi::integer_dependency!();

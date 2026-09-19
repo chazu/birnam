@@ -298,7 +298,7 @@ fn counted_frame_indices_match_physical_gc_and_foreign_finalizer_observations() 
                         assert!(unsafe {
                             (*r.state.get())
                                 .heap
-                                .record_dead_frame_indices(r.canonical().smallint_vt, &indices)
+                                .record_dead_frame_indices(r.integer_behavior(), &indices)
                         });
                     } else {
                         for index in indices {
@@ -768,7 +768,7 @@ fn numeric_batches_are_untraced_and_settle_with_clone_entries_before_finalizers(
             if elide {
                 let heap = unsafe { &mut (*r.state.get()).heap };
                 let batch = heap
-                    .prepare_numeric_batch(r.canonical().smallint_vt, vec![raw, raw, -5, 999])
+                    .prepare_numeric_batch(r.integer_behavior(), vec![raw, raw, -5, 999])
                     .unwrap();
                 // Unexecuted final element must neither charge nor materialize.
                 for index in 0..3 {
@@ -897,7 +897,7 @@ fn floor_string_cleanup_process_case() {
                 if elide {
                     let heap = unsafe { &mut (*r.state.get()).heap };
                     let batch = heap
-                        .prepare_numeric_batch(r.canonical().smallint_vt, vec![raw, raw, -5])
+                        .prepare_numeric_batch(r.integer_behavior(), vec![raw, raw, -5])
                         .unwrap();
                     for index in 0..3 {
                         heap.record_numeric_result(batch.clone(), index).unwrap();
@@ -907,7 +907,7 @@ fn floor_string_cleanup_process_case() {
                         assert!(heap.record_dead_allocation(snapshot));
                     }
                     assert!(
-                        heap.record_dead_frame_indices(r.canonical().smallint_vt, &[0, 1, 1, 127])
+                        heap.record_dead_frame_indices(r.integer_behavior(), &[0, 1, 1, 127])
                     );
                 } else {
                     for value in [raw, raw, -5, 0, 1, 1, 127] {

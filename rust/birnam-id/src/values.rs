@@ -9,11 +9,6 @@ use crate::heap::{Heap, Permanence};
 use crate::raw::AddressMap;
 
 #[repr(C)]
-struct RawInteger {
-    value: i64,
-}
-
-#[repr(C)]
 struct RawFloat {
     value: f64,
 }
@@ -30,8 +25,6 @@ struct RawString {
 }
 
 const _: () = {
-    assert!(size_of::<RawInteger>() == 8);
-    assert!(align_of::<RawInteger>() == 8);
     assert!(size_of::<RawFloat>() == 8);
     assert!(align_of::<RawFloat>() == 8);
     assert!(size_of::<RawWord>() == 8);
@@ -61,18 +54,6 @@ impl Values {
         permanence: Permanence,
     ) -> Oop {
         allocate_payload(heap, vtable, 0, permanence)
-    }
-
-    pub(crate) fn allocate_integer(&mut self, heap: &mut Heap, vtable: Oop, value: i64) -> Oop {
-        let object = allocate_payload(
-            heap,
-            vtable,
-            size_of::<RawInteger>(),
-            Permanence::Collectable,
-        );
-        // SAFETY: object owns an aligned payload of RawInteger's exact size.
-        unsafe { object.cast::<RawInteger>().write(RawInteger { value }) };
-        object
     }
 
     pub(crate) fn allocate_float(&mut self, heap: &mut Heap, vtable: Oop, value: f64) -> Oop {
@@ -111,11 +92,6 @@ impl Values {
         object
     }
 
-    pub(crate) fn integer_value(&self, object: Oop) -> i64 {
-        // SAFETY: internal caller supplies an Integer object with this payload.
-        unsafe { integer_value_unchecked(object) }
-    }
-
     pub(crate) fn float_value(&self, object: Oop) -> f64 {
         // SAFETY: internal caller supplies a Float object with this payload.
         unsafe { float_value_unchecked(object) }
@@ -133,18 +109,6 @@ impl Values {
     pub(crate) fn release_string(&mut self, object: Oop) -> bool {
         self.string_bytes.remove(&object.addr()).is_some()
     }
-}
-
-/// Read an Integer payload without consulting runtime-owned state.
-///
-/// # Safety
-///
-/// `object` must be a live Integer object whose payload has `RawInteger`'s
-/// final ABI shape. The caller must preserve the floor's owner-thread and
-/// object-lifetime rules for the duration of the read.
-pub(crate) unsafe fn integer_value_unchecked(object: Oop) -> i64 {
-    // SAFETY: forwarded caller contract supplies a live, aligned RawInteger.
-    unsafe { object.cast::<RawInteger>().read().value }
 }
 
 /// Read a Float payload without consulting runtime-owned state.
@@ -203,19 +167,16 @@ mod tests {
     #[test]
     fn scalar_payloads_have_final_shapes_and_values() {
         let (mut heap, mut values, family) = value_harness();
-        let integer = values.allocate_integer(&mut heap, family, -42);
         let float = values.allocate_float(&mut heap, family, 3.25);
         let word = values.allocate_word(&mut heap, family, 0xfedc_ba98_7654_3210);
-        assert_eq!(values.integer_value(integer), -42);
         assert_eq!(values.float_value(float), 3.25);
         assert_eq!(values.word_value(word), 0xfedc_ba98_7654_3210);
         // SAFETY: the harness owns live objects of each exact payload type.
         unsafe {
-            assert_eq!(integer_value_unchecked(integer), -42);
             assert_eq!(float_value_unchecked(float), 3.25);
             assert_eq!(word_value_unchecked(word), 0xfedc_ba98_7654_3210);
         }
-        for object in [integer, float, word] {
+        for object in [float, word] {
             assert_eq!(heap.payload_size(object), Some(8));
             assert_eq!(heap.permanence_of(object), Some(Permanence::Collectable));
             assert_eq!(Vtables::checked_vtable_of(&heap, object), family);

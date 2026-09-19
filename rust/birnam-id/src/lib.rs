@@ -1,6 +1,6 @@
 //! Production Rust libid floor.
 //!
-//! The crate exports the current `IdApi` v2 implementation installed as
+//! The crate exports the current `IdApi` v4 implementation installed as
 //! `libbirnam_id.dylib`.
 
 #[cfg(not(any(test, panic = "abort")))]
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn birnam_id_warm_block_construction_v1(
 /// All arguments belong to the active generated PC and remain live throughout
 /// this call; the caller passes its actual Codegen API and resolved constructor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_id_try_closure_elision_v1(
+pub unsafe extern "C" fn birnam_id_try_closure_elision_v2(
     machine: abi::Oop,
     source_method: *const core::ffi::c_void,
     node_index: u32,
@@ -175,8 +175,9 @@ pub unsafe extern "C" fn birnam_id_try_closure_elision_v1(
     owner: abi::Oop,
     materialized: u32,
     codegen_api: *const birnam_abi::IdApi,
+    integer: *const birnam_abi::integer::IntegerApiV1,
 ) -> abi::Oop {
-    if codegen_api.is_null()
+    if codegen_api.is_null() || integer.is_null()
         || capture_count > 128
         || (capture_count != 0 && captures.is_null())
         || materialized > 1
@@ -201,6 +202,7 @@ pub unsafe extern "C" fn birnam_id_try_closure_elision_v1(
                 owner,
                 materialized != 0,
                 &*codegen_api,
+                &*integer,
             )
             .map(|result| result.unwrap_or(runtime.canonical().nil))
             .unwrap_or(core::ptr::null_mut())

@@ -76,7 +76,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         }
         let cold_ns = start.elapsed().as_nanos();
         let replaced = if shape == 1 {
-            let vt = r.canonical().smallint_vt;
+            let vt = r.integer_behavior();
             let add = r.intern(b"+").unwrap();
             let subtract = r.intern(b"-").unwrap();
             let (original, replacement) = unsafe {

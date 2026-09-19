@@ -1,11 +1,63 @@
-//! Shared raw storage, with a separate charged identity for each numeric result.
+//! Opaque payload batches, with a separate charge for every logical identity.
 use super::*;
 use std::rc::Rc;
 
 pub(crate) struct Batch {
-    vtable: usize,
-    values: Vec<i64>,
-    total_size: usize,
+    pub(super) vtable: usize,
+    pub(super) payload_size: usize,
+    stride: usize,
+    count: usize,
+    storage: Box<[usize]>,
+    pub(super) total_size: usize,
+}
+
+impl Batch {
+    pub(crate) fn zeroed(vtable: Oop, payload_size: usize, count: usize) -> Option<Self> {
+        if payload_size == 0
+            || payload_size > MAX_DEAD_PAYLOAD_BYTES
+            || count == 0
+            || count > MAX_DEAD_ALLOCATIONS
+        {
+            return None;
+        }
+        let word = size_of::<usize>();
+        let words = payload_size.checked_add(word - 1)? / word;
+        Some(Self {
+            vtable: vtable.addr(),
+            payload_size,
+            stride: words * word,
+            count,
+            storage: vec![0; words.checked_mul(count)?].into_boxed_slice(),
+            total_size: Heap::allocation_total_size(payload_size)?,
+        })
+    }
+    pub(crate) fn payload_mut(&mut self, index: usize) -> &mut [u8] {
+        assert!(index < self.count);
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                self.storage
+                    .as_mut_ptr()
+                    .cast::<u8>()
+                    .add(index * self.stride),
+                self.payload_size,
+            )
+        }
+    }
+    pub(super) fn payload(&self, index: usize) -> &[u8] {
+        assert!(index < self.count);
+        unsafe {
+            core::slice::from_raw_parts(
+                self.storage.as_ptr().cast::<u8>().add(index * self.stride),
+                self.payload_size,
+            )
+        }
+    }
+    pub(super) fn count(&self) -> usize {
+        self.count
+    }
+    pub(super) fn storage_bytes(&self) -> usize {
+        self.storage.len() * size_of::<usize>()
+    }
 }
 
 pub(crate) struct Entry {
@@ -15,21 +67,19 @@ pub(crate) struct Entry {
 }
 
 impl Heap {
-    /// The caller establishes native Integer storage authority and excludes
-    /// observation while results remain virtual. Values already live in an
-    /// untraced host allocation; no populated native-stack array is introduced.
+    /// Test recipe generation is deliberately separate from production Heap.
+    #[cfg(test)]
     pub(crate) fn prepare_numeric_batch(&self, vtable: Oop, values: Vec<i64>) -> Option<Rc<Batch>> {
-        if values.is_empty()
-            || values.capacity() > MAX_DEAD_ALLOCATIONS
+        if values.capacity() > MAX_DEAD_ALLOCATIONS
             || !self.admits_virtual_allocations(values.len())
         {
             return None;
         }
-        Some(Rc::new(Batch {
-            vtable: vtable.addr(),
-            values,
-            total_size: Self::allocation_total_size(core::mem::size_of::<i64>())?,
-        }))
+        let mut batch = Batch::zeroed(vtable, 8, values.len())?;
+        for (i, value) in values.iter().enumerate() {
+            batch.payload_mut(i).copy_from_slice(&value.to_ne_bytes());
+        }
+        Some(Rc::new(batch))
     }
 
     /// Preparation charges nothing. Each executed Call charges once here,
@@ -39,7 +89,7 @@ impl Heap {
         batch: Rc<Batch>,
         index: usize,
     ) -> Option<DeferredAllocation> {
-        if index >= batch.values.len() || !self.admits_virtual_allocations(1) {
+        if index >= batch.count || !self.admits_virtual_allocations(1) {
             return None;
         }
         let next = self.next_deferred_id.checked_add(1)?;
@@ -86,14 +136,7 @@ impl Heap {
     pub(super) fn materialize_numeric_entry(&mut self, entry: &Entry) -> Oop {
         // Borrow the original bytes directly; copying into a stack buffer could
         // make pointer-shaped Integer bits conservative roots on a later GC.
-        let value = &entry.batch.values[entry.index];
-        let bytes = unsafe {
-            core::slice::from_raw_parts(
-                core::ptr::from_ref(value).cast::<u8>(),
-                core::mem::size_of::<i64>(),
-            )
-        };
-        self.materialize_raw(entry.batch.vtable, bytes)
+        self.materialize_raw(entry.batch.vtable, entry.batch.payload(entry.index))
     }
 
     #[cfg(any(test, feature = "ffi-test-hooks"))]
@@ -107,7 +150,7 @@ impl Heap {
                 .map(|entry| {
                     core::mem::size_of::<Batch>()
                         + 2 * core::mem::size_of::<usize>()
-                        + entry.batch.values.capacity() * core::mem::size_of::<i64>()
+                        + entry.batch.storage_bytes()
                 })
                 .sum::<usize>()
     }
@@ -199,7 +242,7 @@ mod tests {
             heap.numeric_allocations.capacity() * core::mem::size_of::<Entry>()
                 + core::mem::size_of::<Batch>()
                 + 2 * core::mem::size_of::<usize>()
-                + batch.values.capacity() * 8
+                + batch.storage_bytes()
         );
         drop(batch);
         let a = heap.materialize_recorded_clone(old_b).unwrap();

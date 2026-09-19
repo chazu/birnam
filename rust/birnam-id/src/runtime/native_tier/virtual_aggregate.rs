@@ -424,7 +424,7 @@ unsafe fn execute_now(
     if matches!(boundary.exit, Exit::Return(_)) {
         boxes += boundary.integer_boxes;
     }
-    let budget = crate::heap::Heap::allocation_total_size(8)?
+    let budget = crate::heap::Heap::allocation_total_size(runtime.integer_storage().payload_size)?
         .checked_mul(boxes)?
         .checked_add(clone_bytes)?;
     // Preflight has only read private state and called pure declarations. This

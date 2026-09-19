@@ -354,6 +354,8 @@ exploration does not change current optimization defaults or validation gates.
 removing the four owner/parent fields and migrating ordinary consumers to
 default-vtable messages. IdApi v3 has 49 fields / 392 bytes.
 
-[81L](81l-production-integer-extraction.md) begins the production Integer
-extraction with a loaded method library. Representation/construction extraction
-and the corresponding native-consumer migration remain the next stage.
+[81L](81l-production-integer-extraction.md) extracts the production Integer
+family, primitive operations and methods. Its explicit native dependency reduces
+IdApi v4 to 45 fields / 360 bytes. The remaining Machine and optimizer components
+consume that dependency; the host and those runtime components are still Rust.
+Focused validation passes; release validation was explicitly waived.

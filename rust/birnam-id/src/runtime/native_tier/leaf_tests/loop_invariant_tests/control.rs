@@ -47,7 +47,7 @@ fn loop_reuse_capture_suspend_and_native_retirement_preserve_frames_and_identity
                             r.gc_set_precise(precise);
                             let fixture = Fixture::load(r);
                             r.add_method(
-                                r.canonical().smallint_vt,
+                                r.integer_behavior(),
                                 r.intern(b"blend:").unwrap(),
                                 fixture.method(1),
                             );

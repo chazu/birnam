@@ -119,9 +119,9 @@ impl CompiledChain {
             .take(self.template.inputs().len(), self.bindings.len());
         {
             let state = unsafe { &*runtime.state.get() };
-            let canonical = state.canonical?;
+            let _canonical = state.canonical?;
             let error = state.symbols.existing(b"ErrorVt")?;
-            if state.environment.import(error) == canonical.smallint_vt {
+            if state.environment.import(error) == runtime.integer_behavior() {
                 return None;
             }
             for (destination, input) in buffers.values.inputs.iter_mut().zip(self.template.inputs())
@@ -132,12 +132,12 @@ impl CompiledChain {
                         let value = initial.iter().find_map(|&(index, value)| {
                             (index == *slot as usize).then_some(value)
                         })?;
-                        if Vtables::checked_vtable_of(&state.heap, value) != canonical.smallint_vt
-                            || !state.heap.payload_size(value).is_some_and(|size| size >= 8)
+                        if Vtables::checked_vtable_of(&state.heap, value) != runtime.integer_behavior()
+                            || !state.heap.payload_size(value).is_some_and(|size| size >= runtime.integer_storage().payload_size)
                         {
                             return None;
                         }
-                        state.values.integer_value(value)
+                        runtime.integer_value(value)
                     }
                 };
             }
@@ -289,7 +289,7 @@ impl Ticket {
     pub(in crate::runtime) fn fusion_bindings_current(&self, runtime: &Runtime) -> bool {
         {
             let state = unsafe { &*runtime.state.get() };
-            let vt = runtime.canonical().smallint_vt;
+            let vt = runtime.integer_behavior();
             if Vtables::checked_vtable_of(&state.heap, vt) != state.globals.vtable_vt {
                 return false;
             }
@@ -307,7 +307,7 @@ impl Ticket {
         }
         // Pure native queries must not run under a RuntimeState borrow.
         self.chain.bindings.iter().all(|binding| {
-            binding.summary.operator(runtime.canonical().smallint_vt) == Some(binding.operator)
+            binding.summary.operator(runtime) == Some(binding.operator)
         })
     }
 
@@ -372,9 +372,9 @@ impl Runtime {
         // references into the heap across a native declaration/compiler call.
         {
             let state = unsafe { &*self.state.get() };
-            let canonical = state.canonical?;
+            let _canonical = state.canonical?;
             let error = state.symbols.existing(b"ErrorVt")?;
-            if state.environment.import(error) == canonical.smallint_vt {
+            if state.environment.import(error) == self.integer_behavior() {
                 return None;
             }
             let arena = state.execution.machine(owner, capability).ok()?.arena();
@@ -388,12 +388,12 @@ impl Runtime {
                     Input::Literal { value, .. } => *value,
                     Input::Frame(slot) => {
                         let oop = arena.read_oop(frame, *slot as usize).ok()?;
-                        if Vtables::checked_vtable_of(&state.heap, oop) != canonical.smallint_vt
-                            || !state.heap.payload_size(oop).is_some_and(|size| size >= 8)
+                        if Vtables::checked_vtable_of(&state.heap, oop) != self.integer_behavior()
+                            || !state.heap.payload_size(oop).is_some_and(|size| size >= self.integer_storage().payload_size)
                         {
                             return None;
                         }
-                        state.values.integer_value(oop)
+                        self.integer_value(oop)
                     }
                 };
             }
@@ -421,7 +421,7 @@ impl Runtime {
                 .iter()
                 .map(|send| {
                     let symbol = state.symbols.existing(&send.selector)?;
-                    let method = state.vtables.lookup(self.canonical().smallint_vt, symbol)?;
+                    let method = state.vtables.lookup(self.integer_behavior(), symbol)?;
                     if state.execution.has_resumable_thunk(method) {
                         return None;
                     }
@@ -440,7 +440,7 @@ impl Runtime {
                     .get(&(method as usize))?
                     .summary
                     .clone()?;
-                let operator = summary.operator(self.canonical().smallint_vt)?;
+                let operator = summary.operator(self)?;
                 Some(Binding {
                     method,
                     summary,

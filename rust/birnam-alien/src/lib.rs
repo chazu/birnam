@@ -359,3 +359,5 @@ mod tests {
         ));
     }
 }
+
+birnam_abi::integer_dependency!();

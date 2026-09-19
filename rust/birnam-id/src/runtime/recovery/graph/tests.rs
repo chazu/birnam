@@ -150,7 +150,7 @@ fn empty_aggregate_cannot_forge_a_raw_numeric_carrier() {
     assert!(
         r.enter(|| r.with_materialized_graph(
             &plan,
-            &[r.canonical().smallint_vt],
+            &[r.integer_behavior()],
             || Ok(()),
             |_| {
                 panic!("raw carrier is ineligible");

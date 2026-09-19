@@ -513,12 +513,12 @@ unsafe fn error_value(api: &IdApi, kind: &[u8]) -> Oop {
 
 unsafe fn note_syntax_error(api: &IdApi, lang: Oop, source_object: Oop) {
     let offset = unsafe { send0(api, lang, FURTHEST_FAIL_SELECTOR) };
-    if unsafe { (api.isSmallInt)(offset) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(offset) } == 0 {
         note_error(b"RustCodegen syntax error");
         return;
     }
     let source = unsafe { string_bytes(api, source_object) }.unwrap_or_default();
-    let raw_offset = unsafe { (api.smallIntValue)(offset) };
+    let raw_offset = unsafe { (birnam_abi::integer::value)(offset) };
     let clamped = raw_offset.clamp(0, source.len() as i64) as usize;
     let line_start = source[..clamped]
         .iter()
@@ -1349,6 +1349,7 @@ type ClosureAttempt = unsafe extern "C" fn(
     Oop,
     u32,
     *const IdApi,
+    *const birnam_abi::integer::IntegerApiV1,
 ) -> Oop;
 
 // Resolve this optional process-local hook while binding the generated unit.
@@ -1407,6 +1408,7 @@ pub unsafe extern "C" fn birnam_portable_block_or_inline_v1(
                 owner,
                 materialized,
                 api,
+                &birnam_abi::integer::operations(),
             )
         };
         if !result.is_null() {
@@ -1536,7 +1538,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
     if std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION").is_some_and(|v| v == "1") {
         if CLOSURE_ATTEMPT.get().is_none()
             && let Some(address) =
-                unsafe { floor_symbol(api, b"birnam_id_try_closure_elision_v1\0") }
+                unsafe { floor_symbol(api, b"birnam_id_try_closure_elision_v2\0") }
         {
             let _ = CLOSURE_ATTEMPT
                 .set(unsafe { core::mem::transmute::<usize, ClosureAttempt>(address) });
@@ -1994,11 +1996,11 @@ enum SelectionRequestError {
     Duplicate,
 }
 
-fn smallint_u32(api: &IdApi, value: Oop) -> Option<u32> {
-    if unsafe { (api.isSmallInt)(value) } == 0 {
+fn smallint_u32(_api: &IdApi, value: Oop) -> Option<u32> {
+    if unsafe { (birnam_abi::integer::is_integer)(value) } == 0 {
         return None;
     }
-    u32::try_from(unsafe { (api.smallIntValue)(value) }).ok()
+    u32::try_from(unsafe { (birnam_abi::integer::value)(value) }).ok()
 }
 
 unsafe fn parse_selection_requests(
@@ -2990,22 +2992,22 @@ unsafe fn cst_tree(api: &IdApi, node: Oop, depth: usize) -> Option<OwnedCst> {
     let start_object = unsafe { send0(api, node, START_SELECTOR) };
     let end_object = unsafe { send0(api, node, END_SELECTOR) };
     let count_object = unsafe { send0(api, node, CHILD_COUNT_SELECTOR) };
-    if unsafe { (api.isSmallInt)(start_object) == 0 }
-        || unsafe { (api.isSmallInt)(end_object) == 0 }
-        || unsafe { (api.isSmallInt)(count_object) == 0 }
+    if unsafe { (birnam_abi::integer::is_integer)(start_object) == 0 }
+        || unsafe { (birnam_abi::integer::is_integer)(end_object) == 0 }
+        || unsafe { (birnam_abi::integer::is_integer)(count_object) == 0 }
     {
         return None;
     }
-    let start = unsafe { (api.smallIntValue)(start_object) };
-    let end = unsafe { (api.smallIntValue)(end_object) };
-    let count = unsafe { (api.smallIntValue)(count_object) };
+    let start = unsafe { (birnam_abi::integer::value)(start_object) };
+    let end = unsafe { (birnam_abi::integer::value)(end_object) };
+    let count = unsafe { (birnam_abi::integer::value)(count_object) };
     if start < 0 || end < start || count < 0 {
         return None;
     }
     let count = usize::try_from(count).ok()?;
     let mut children = Vec::with_capacity(count);
     for index in 0..count {
-        let child_index = unsafe { (api.mkSmallInt)(index as i64) };
+        let child_index = unsafe { (birnam_abi::integer::make)(index as i64) };
         let child = unsafe { send(api, node, CHILD_AT_SELECTOR, &[child_index]) };
         children.push(unsafe { cst_tree(api, child, depth + 1) }?);
     }
@@ -3906,7 +3908,7 @@ unsafe fn make_vector(api: &IdApi, vector_proto: Oop, items: &[Oop]) -> Oop {
 }
 
 unsafe fn vector_item(api: &IdApi, vector: Oop, index: usize) -> Oop {
-    let index = unsafe { (api.mkSmallInt)(index as i64) };
+    let index = unsafe { (birnam_abi::integer::make)(index as i64) };
     unsafe { send(api, vector, GLOBAL_AT_SELECTOR, &[index]) }
 }
 
@@ -3915,10 +3917,10 @@ unsafe fn vector_length(api: &IdApi, vector: Oop, vector_vt: Oop) -> Option<usiz
         return None;
     }
     let size = unsafe { send0(api, vector, b"size\0") };
-    if unsafe { (api.isSmallInt)(size) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(size) } == 0 {
         return None;
     }
-    usize::try_from(unsafe { (api.smallIntValue)(size) }).ok()
+    usize::try_from(unsafe { (birnam_abi::integer::value)(size) }).ok()
 }
 
 fn is_digest(bytes: &[u8]) -> bool {
@@ -4959,10 +4961,10 @@ unsafe fn ordered_method_operation_sources(api: &IdApi) -> Vec<MethodOperationSo
     }
     let entity = unsafe { intern(api, METHOD_OPS_ENTITY_NAME) };
     let count = unsafe { send(api, store, b"attrCount:\0", &[entity]) };
-    if unsafe { (api.isSmallInt)(count) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(count) } == 0 {
         return Vec::new();
     }
-    let count = unsafe { (api.smallIntValue)(count) }.max(0) as usize;
+    let count = unsafe { (birnam_abi::integer::value)(count) }.max(0) as usize;
     let mut sources = Vec::new();
     for index in 0..count {
         let attribute = unsafe {
@@ -4970,7 +4972,7 @@ unsafe fn ordered_method_operation_sources(api: &IdApi) -> Vec<MethodOperationSo
                 api,
                 store,
                 b"attrAt:index:\0",
-                &[entity, (api.mkSmallInt)(index as i64)],
+                &[entity, (birnam_abi::integer::make)(index as i64)],
             )
         };
         let Some(name) = (unsafe { symbol_bytes(api, attribute) }) else {
@@ -5524,15 +5526,15 @@ unsafe extern "C" fn rust_codegen_replay_aliens(
     }
     let store = runtime.store as Oop;
     if store.is_null() || store == api.nilObj {
-        return unsafe { (api.mkSmallInt)(0) };
+        return unsafe { (birnam_abi::integer::make)(0) };
     }
     let entity = unsafe { intern(api, b"__aliens__\0") };
     let attr_count = unsafe { send(api, store, b"attrCount:\0", &[entity]) };
-    if unsafe { (api.isSmallInt)(attr_count) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(attr_count) } == 0 {
         note_error(b"RustCodegen alien replay journal is malformed");
         return api.nilObj;
     }
-    let count = unsafe { (api.smallIntValue)(attr_count) };
+    let count = unsafe { (birnam_abi::integer::value)(attr_count) };
     let mut records = Vec::new();
     for index in 0..count {
         let attr = unsafe {
@@ -5540,7 +5542,7 @@ unsafe extern "C" fn rust_codegen_replay_aliens(
                 api,
                 store,
                 b"attrAt:index:\0",
-                &[entity, (api.mkSmallInt)(index)],
+                &[entity, (birnam_abi::integer::make)(index)],
             )
         };
         let Some(name) = (unsafe { symbol_bytes(api, attr) }) else {
@@ -5583,7 +5585,7 @@ unsafe extern "C" fn rust_codegen_replay_aliens(
     // Individual alien failures are best-effort during image recovery. Do not
     // leak the last failed wrapper's diagnostic after returning a usable count.
     clear_error();
-    unsafe { (api.mkSmallInt)(replayed as i64) }
+    unsafe { (birnam_abi::integer::make)(replayed as i64) }
 }
 
 unsafe fn derive_named_global(api: &IdApi, self_object: Oop, name: Oop) -> bool {
@@ -5631,11 +5633,11 @@ unsafe extern "C" fn rust_codegen_derive_image_globals(
     let store = runtime.store as Oop;
     let sources = unsafe { intern(api, GLOBAL_SOURCES_ENTITY_NAME) };
     let attr_count = unsafe { send(api, store, b"attrCount:\0", &[sources]) };
-    if unsafe { (api.isSmallInt)(attr_count) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(attr_count) } == 0 {
         note_error(b"RustCodegen image global source journal is malformed");
         return api.nilObj;
     }
-    let count = unsafe { (api.smallIntValue)(attr_count) };
+    let count = unsafe { (birnam_abi::integer::value)(attr_count) };
     let mut names = Vec::new();
     for index in 0..count {
         let name = unsafe {
@@ -5643,7 +5645,7 @@ unsafe extern "C" fn rust_codegen_derive_image_globals(
                 api,
                 store,
                 b"attrAt:index:\0",
-                &[sources, (api.mkSmallInt)(index)],
+                &[sources, (birnam_abi::integer::make)(index)],
             )
         };
         if unsafe { symbol_bytes(api, name) }.is_some() {
@@ -5656,7 +5658,7 @@ unsafe extern "C" fn rust_codegen_derive_image_globals(
             derived += 1;
         }
     }
-    unsafe { (api.mkSmallInt)(derived as i64) }
+    unsafe { (birnam_abi::integer::make)(derived as i64) }
 }
 
 unsafe fn emit_source(
@@ -6531,7 +6533,7 @@ unsafe fn begin_portable_image_stage(
         unsafe { portable_native_symbol(api, unit, handle, b"__birnam_materialization_owner") }?;
     unsafe { (owner_address as *mut Oop).write(owner) };
     if carrier_kind == PortableImageCarrierKind::Rebuilt {
-        let identity = unsafe { (api.mkSmallInt)(generation as i64) };
+        let identity = unsafe { (birnam_abi::integer::make)(generation as i64) };
         if unsafe { send(api, unit, OWN_CODE_GENERATION_SELECTOR, &[identity]) } == api.nilObj {
             return None;
         }
@@ -6911,10 +6913,10 @@ unsafe extern "C" fn rust_codegen_portable_image_block_vtable(
         abort("RustCodegen portable image vtable expects one program index");
     }
     let api = unsafe { api(runtime()) };
-    if unsafe { (api.isSmallInt)(values[0]) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(values[0]) } == 0 {
         return api.nilObj;
     }
-    let raw = unsafe { (api.smallIntValue)(values[0]) };
+    let raw = unsafe { (birnam_abi::integer::value)(values[0]) };
     let Ok(program_index) = u32::try_from(raw) else {
         return api.nilObj;
     };
@@ -6958,10 +6960,10 @@ unsafe extern "C" fn rust_codegen_prepare_portable_image_binding(
         abort("RustCodegen portable image binding prepare expects index and implementation");
     }
     let api = unsafe { api(runtime()) };
-    if unsafe { (api.isSmallInt)(values[0]) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(values[0]) } == 0 {
         return api.nilObj;
     }
-    let Ok(index) = u32::try_from(unsafe { (api.smallIntValue)(values[0]) }) else {
+    let Ok(index) = u32::try_from(unsafe { (birnam_abi::integer::value)(values[0]) }) else {
         return api.nilObj;
     };
     let Ok(mut stage) = PORTABLE_IMAGE_STAGE.lock() else {
@@ -7094,10 +7096,10 @@ unsafe extern "C" fn rust_codegen_install_portable_image_binding(
         );
     }
     let api = unsafe { api(runtime()) };
-    if unsafe { (api.isSmallInt)(values[0]) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(values[0]) } == 0 {
         return api.nilObj;
     }
-    let Ok(index) = u32::try_from(unsafe { (api.smallIntValue)(values[0]) }) else {
+    let Ok(index) = u32::try_from(unsafe { (birnam_abi::integer::value)(values[0]) }) else {
         return api.nilObj;
     };
     let (selector_bytes, method, owner, generation, authority, generated_bytes) = {
@@ -7416,7 +7418,7 @@ unsafe fn compile_portable_named_materialization(
         unsafe { dispose_unit(api, unit) };
         return None;
     }
-    let identity = unsafe { (api.mkSmallInt)(generation as i64) };
+    let identity = unsafe { (birnam_abi::integer::make)(generation as i64) };
     if unsafe { send(api, unit, OWN_CODE_GENERATION_SELECTOR, &[identity]) } == api.nilObj {
         remove_staged_code_binding(unit);
         unsafe { dispose_unit(api, unit) };
@@ -7565,7 +7567,7 @@ unsafe fn compile_resumable_materialized_block(
         unsafe { dispose_unit(api, unit) };
         return None;
     }
-    let identity = unsafe { (api.mkSmallInt)(code_generation_identity as i64) };
+    let identity = unsafe { (birnam_abi::integer::make)(code_generation_identity as i64) };
     if unsafe { send(api, unit, OWN_CODE_GENERATION_SELECTOR, &[identity]) } == api.nilObj {
         remove_materialization(unit);
         unsafe { dispose_unit(api, unit) };
@@ -8916,7 +8918,7 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
             intern_bytes(api, ARTIFACT_ABI)
         }),
         (b"candidateAbi\0".as_slice(), unsafe {
-            (api.mkSmallInt)(i64::from(CANDIDATE_ABI))
+            (birnam_abi::integer::make)(i64::from(CANDIDATE_ABI))
         }),
         (b"requires\0".as_slice(), requires),
         (b"mapped\0".as_slice(), api.falseObj),
@@ -9203,7 +9205,7 @@ fn issue_code_generation_lease() -> Option<u64> {
         .filter(|lease| *lease != 0)
 }
 
-fn issue_prepared_token(api: &IdApi) -> Option<(usize, Oop)> {
+fn issue_prepared_token(_api: &IdApi) -> Option<(usize, Oop)> {
     let value = NEXT_PREPARED_TOKEN
         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
             current
@@ -9212,15 +9214,15 @@ fn issue_prepared_token(api: &IdApi) -> Option<(usize, Oop)> {
         })
         .ok()
         .filter(|value| *value != 0)?;
-    let token = unsafe { (api.mkSmallInt)(value as i64) };
+    let token = unsafe { (birnam_abi::integer::make)(value as i64) };
     Some((usize::try_from(value).ok()?, token))
 }
 
-unsafe fn prepared_token_value(api: &IdApi, token: Oop) -> Option<usize> {
-    if unsafe { (api.isSmallInt)(token) } == 0 {
+unsafe fn prepared_token_value(_api: &IdApi, token: Oop) -> Option<usize> {
+    if unsafe { (birnam_abi::integer::is_integer)(token) } == 0 {
         return None;
     }
-    usize::try_from(unsafe { (api.smallIntValue)(token) }).ok()
+    usize::try_from(unsafe { (birnam_abi::integer::value)(token) }).ok()
 }
 
 unsafe fn direct_method_present(api: &IdApi, target: Oop, selector: Oop) -> bool {
@@ -9947,9 +9949,9 @@ unsafe fn publication_plan_is_current(api: &IdApi, plan: PublicationPlanState) -
         let store = runtime().store as Oop;
         let basis = unsafe { send0(api, store, b"basis\0") };
         let planned_basis = plan.basis as Oop;
-        let basis_matches = unsafe { (api.isSmallInt)(basis) } != 0
-            && unsafe { (api.isSmallInt)(planned_basis) } != 0
-            && unsafe { (api.smallIntValue)(basis) == (api.smallIntValue)(planned_basis) };
+        let basis_matches = unsafe { (birnam_abi::integer::is_integer)(basis) } != 0
+            && unsafe { (birnam_abi::integer::is_integer)(planned_basis) } != 0
+            && unsafe { (birnam_abi::integer::value)(basis) == (birnam_abi::integer::value)(planned_basis) };
         return durable == plan.expected_generation as Oop && basis_matches;
     }
     let current = ACTIVE_GENERATION.load(Ordering::Acquire);
@@ -12161,7 +12163,7 @@ unsafe extern "C" fn rust_codegen_retained_generation_count(
         .map(|retained| retained.iter().filter(|entry| entry.handle != 0).count())
         .unwrap_or(0)
         .min(i64::MAX as usize) as i64;
-    unsafe { (api.mkSmallInt)(value) }
+    unsafe { (birnam_abi::integer::make)(value) }
 }
 
 unsafe extern "C" fn rust_codegen_retained_generation_bytes(
@@ -12183,7 +12185,7 @@ unsafe extern "C" fn rust_codegen_retained_generation_bytes(
         })
         .unwrap_or(0)
         .min(i64::MAX as usize) as i64;
-    unsafe { (api.mkSmallInt)(value) }
+    unsafe { (birnam_abi::integer::make)(value) }
 }
 
 unsafe fn floor_usize_diagnostic(api: &IdApi, symbol: &[u8]) -> Option<usize> {
@@ -12201,7 +12203,7 @@ unsafe extern "C" fn rust_codegen_live_vtable_count(
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (api.mkSmallInt)((api.vtableCount)().min(i64::MAX as usize) as i64) }
+    unsafe { (birnam_abi::integer::make)((api.vtableCount)().min(i64::MAX as usize) as i64) }
 }
 
 unsafe fn floor_diagnostic_method(count: usize, symbol: &[u8]) -> Oop {
@@ -12212,7 +12214,7 @@ unsafe fn floor_diagnostic_method(count: usize, symbol: &[u8]) -> Oop {
     let Some(value) = (unsafe { floor_usize_diagnostic(api, symbol) }) else {
         return api.nilObj;
     };
-    unsafe { (api.mkSmallInt)(value.min(i64::MAX as usize) as i64) }
+    unsafe { (birnam_abi::integer::make)(value.min(i64::MAX as usize) as i64) }
 }
 
 unsafe extern "C" fn rust_codegen_live_symbol_count(
@@ -14676,3 +14678,5 @@ fn floor_lookup_contract() {
 
 #[cfg(test)]
 mod state_contract;
+
+birnam_abi::integer_dependency!();

@@ -130,7 +130,7 @@ unsafe fn cache_total(count: usize, entries: bool) -> Oop {
         }
     };
     // Release the map borrow before result allocation can trigger collection.
-    i64::try_from(total).map_or(api.nilObj, |total| unsafe { (api.mkSmallInt)(total) })
+    i64::try_from(total).map_or(api.nilObj, |total| unsafe { (birnam_abi::integer::make)(total) })
 }
 
 #[cfg(feature = "resource-metrics")]
@@ -141,7 +141,7 @@ pub(super) unsafe extern "C" fn check_contract(_: Oop, _: *const Oop, count: usi
     let unit = unsafe { new_unit(api, runtime) };
     assert_ne!(unit, api.nilObj);
     let generation = (unit as usize as u64) | 1;
-    let ordinary = unsafe { (api.mkSmallInt)(73) };
+    let ordinary = unsafe { (birnam_abi::integer::make)(73) };
     assert_eq!(unsafe { bind(ordinary, ptr::null(), 0) }, api.nilObj);
     assert_eq!(unsafe { bind(unit, ptr::null(), 1) }, api.nilObj);
     assert_eq!(unsafe { bind(unit, ptr::null(), 0) }, unit);

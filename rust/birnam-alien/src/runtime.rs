@@ -131,16 +131,16 @@ unsafe fn store_entity(api: &IdApi, name: &[u8]) -> Option<(Oop, Oop)> {
 
 unsafe fn find_alien_source(api: &IdApi, store: Oop, entity: Oop, source: &[u8]) -> bool {
     let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [entity].as_ptr(), 1) };
-    if unsafe { (api.isSmallInt)(count) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(count) } == 0 {
         return false;
     }
-    let count = unsafe { (api.smallIntValue)(count) };
+    let count = unsafe { (birnam_abi::integer::value)(count) };
     for index in 0..count {
         let attr = unsafe {
             (api.send)(
                 store,
                 intern(api, b"attrAt:index:\0"),
-                [entity, (api.mkSmallInt)(index)].as_ptr(),
+                [entity, (birnam_abi::integer::make)(index)].as_ptr(),
                 2,
             )
         };
@@ -167,17 +167,17 @@ unsafe fn record_alien_source(api: &IdApi, source: &[u8]) {
         return;
     }
     let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [entity].as_ptr(), 1) };
-    if unsafe { (api.isSmallInt)(count) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(count) } == 0 {
         return;
     }
-    let count = unsafe { (api.smallIntValue)(count) };
+    let count = unsafe { (birnam_abi::integer::value)(count) };
     let mut next = 0i64;
     for index in 0..count {
         let attr = unsafe {
             (api.send)(
                 store,
                 intern(api, b"attrAt:index:\0"),
-                [entity, (api.mkSmallInt)(index)].as_ptr(),
+                [entity, (birnam_abi::integer::make)(index)].as_ptr(),
                 2,
             )
         };
@@ -218,16 +218,16 @@ unsafe fn global_name(api: &IdApi, target: Oop) -> Option<Vec<u8>> {
     }
     let (store, globals) = unsafe { store_entity(api, b"__globals__\0") }?;
     let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [globals].as_ptr(), 1) };
-    if unsafe { (api.isSmallInt)(count) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(count) } == 0 {
         return None;
     }
-    let count = unsafe { (api.smallIntValue)(count) };
+    let count = unsafe { (birnam_abi::integer::value)(count) };
     for index in 0..count {
         let attr = unsafe {
             (api.send)(
                 store,
                 intern(api, b"attrAt:index:\0"),
-                [globals, (api.mkSmallInt)(index)].as_ptr(),
+                [globals, (birnam_abi::integer::make)(index)].as_ptr(),
                 2,
             )
         };
@@ -382,12 +382,12 @@ unsafe fn resolve_buffer_address(api: &IdApi, receiver: Oop, offset: Oop) -> Res
             )
         });
     }
-    if unsafe { (api.isSmallInt)(offset) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(offset) } == 0 {
         return Err(unsafe {
             make_error(api, b"typeMismatch\0", b"the offset must be an Integer")
         });
     }
-    let signed = unsafe { (api.smallIntValue)(offset) } as u64;
+    let signed = unsafe { (birnam_abi::integer::value)(offset) } as u64;
     Ok(base.wrapping_add(signed as usize))
 }
 
@@ -399,7 +399,7 @@ unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usi
     let Some(value) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(value) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(value) } == 0 {
         return unsafe {
             make_error(
                 api,
@@ -408,7 +408,7 @@ unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usi
             )
         };
     }
-    let size = unsafe { (api.smallIntValue)(value) };
+    let size = unsafe { (birnam_abi::integer::value)(value) };
     if size <= 0 {
         return unsafe { make_error(api, b"badArgument\0", b"alloc: needs a positive byte count") };
     }
@@ -530,7 +530,7 @@ unsafe extern "C" fn alien_peek_int(receiver: Oop, args: *const Oop, count: usiz
     // SAFETY: raw buffer operations intentionally follow the caller's C-memory
     // contract; unaligned reads match the native `align(1)` implementation.
     let value = unsafe { ptr::read_unaligned(address as *const i64) };
-    unsafe { (api.mkSmallInt)(value) }
+    unsafe { (birnam_abi::integer::make)(value) }
 }
 
 unsafe extern "C" fn alien_peek_byte(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -546,7 +546,7 @@ unsafe extern "C" fn alien_peek_byte(receiver: Oop, args: *const Oop, count: usi
         Err(error) => return error,
     };
     let value = unsafe { ptr::read(address as *const u8) };
-    unsafe { (api.mkSmallInt)(i64::from(value)) }
+    unsafe { (birnam_abi::integer::make)(i64::from(value)) }
 }
 
 unsafe extern "C" fn alien_peek_pointer(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -604,7 +604,7 @@ unsafe extern "C" fn alien_poke_int(receiver: Oop, args: *const Oop, count: usiz
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
-    if arguments.len() != 2 || unsafe { (api.isSmallInt)(arguments[0]) } == 0 {
+    if arguments.len() != 2 || unsafe { (birnam_abi::integer::is_integer)(arguments[0]) } == 0 {
         return if arguments.len() == 2 {
             unsafe { make_error(api, b"typeMismatch\0", b"pokeInt: needs an Integer value") }
         } else {
@@ -615,7 +615,7 @@ unsafe extern "C" fn alien_poke_int(receiver: Oop, args: *const Oop, count: usiz
         Ok(address) => address,
         Err(error) => return error,
     };
-    let value = unsafe { (api.smallIntValue)(arguments[0]) };
+    let value = unsafe { (birnam_abi::integer::value)(arguments[0]) };
     unsafe { ptr::write_unaligned(address as *mut i64, value) };
     receiver
 }
@@ -625,7 +625,7 @@ unsafe extern "C" fn alien_poke_byte(receiver: Oop, args: *const Oop, count: usi
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
-    if arguments.len() != 2 || unsafe { (api.isSmallInt)(arguments[0]) } == 0 {
+    if arguments.len() != 2 || unsafe { (birnam_abi::integer::is_integer)(arguments[0]) } == 0 {
         return if arguments.len() == 2 {
             unsafe { make_error(api, b"typeMismatch\0", b"pokeByte: needs an Integer value") }
         } else {
@@ -636,7 +636,7 @@ unsafe extern "C" fn alien_poke_byte(receiver: Oop, args: *const Oop, count: usi
         Ok(address) => address,
         Err(error) => return error,
     };
-    let value = unsafe { (api.smallIntValue)(arguments[0]) } as u8;
+    let value = unsafe { (birnam_abi::integer::value)(arguments[0]) } as u8;
     unsafe { ptr::write(address as *mut u8, value) };
     receiver
 }

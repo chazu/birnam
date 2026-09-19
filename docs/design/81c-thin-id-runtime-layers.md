@@ -230,6 +230,8 @@ of the replaced Rust implementation from the installed execution path. Use
 existing semantic/ABI/lifetime checks and representative performance evidence;
 separate correctness from timing claims.
 
-[81L](81l-production-integer-extraction.md) begins the production Integer
-extraction with a loaded method library. Representation/construction extraction
-and the corresponding native-consumer migration remain the next stage.
+[81L](81l-production-integer-extraction.md) extracts the production Integer
+family, primitive operations and methods. Its explicit native dependency reduces
+IdApi v4 to 45 fields / 360 bytes. The remaining Machine and optimizer components
+consume that dependency; the host and those runtime components are still Rust.
+Focused validation passes; release validation was explicitly waived.

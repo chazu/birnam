@@ -414,7 +414,7 @@ unsafe extern "C" fn m_live_unit_count(_self_object: Oop, _args: *const Oop, cou
         return api.nilObj;
     }
     let value = LIVE_UNIT_STATES.load(Ordering::Acquire);
-    unsafe { (api.mkSmallInt)(value as i64) }
+    unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 unsafe fn fail_unit(api: &IdApi, object: Oop) -> Oop {
@@ -700,10 +700,10 @@ unsafe extern "C" fn m_own_code_generation(
     let Some(identity) = (unsafe { arg(args, count, 0) }) else {
         return api.nilObj;
     };
-    if unsafe { (api.isSmallInt)(identity) } == 0 {
+    if unsafe { (birnam_abi::integer::is_integer)(identity) } == 0 {
         return api.nilObj;
     }
-    let identity = unsafe { (api.smallIntValue)(identity) };
+    let identity = unsafe { (birnam_abi::integer::value)(identity) };
     if identity <= 0 {
         return api.nilObj;
     }
@@ -979,18 +979,18 @@ pub unsafe extern "C" fn rt_intern(name: *const c_char) -> Oop {
 
 #[unsafe(export_name = "birnam_mkSmallInt")]
 pub unsafe extern "C" fn rt_mk_small_int(value: i64) -> Oop {
-    let runtime = RUNTIME
+    let _runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).mkSmallInt)(value) }
+    unsafe { (birnam_abi::integer::make)(value) }
 }
 
 #[unsafe(export_name = "birnam_smallIntValue")]
 pub unsafe extern "C" fn rt_small_int_value(object: Oop) -> i64 {
-    let runtime = RUNTIME
+    let _runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).smallIntValue)(object) }
+    unsafe { (birnam_abi::integer::value)(object) }
 }
 
 #[unsafe(export_name = "birnam_mkFloat")]
@@ -1061,7 +1061,7 @@ pub unsafe extern "C" fn rt_uint_value(object: Oop) -> u64 {
     if unsafe { (api.isWord)(object) } != 0 {
         unsafe { (api.wordValue)(object) }
     } else {
-        unsafe { (api.smallIntValue)(object) as u64 }
+        unsafe { (birnam_abi::integer::value)(object) as u64 }
     }
 }
 
@@ -1521,3 +1521,5 @@ fn floor_lookup_contract_retirement() {
     static ADDRESS: OnceLock<usize> = OnceLock::new();
     floor_lookup_fixture::check(|api, name| floor_retirement(api, name, &ADDRESS).map(|f| f as usize), true);
 }
+
+birnam_abi::integer_dependency!();

@@ -1,72 +1,94 @@
 # 81L — Production Integer extraction
 
-> **Status:** In progress. Follows the owner/parent protocol checkpoint
-> `203238a8`. Integer is first; environment, other primitive values,
-> reflection and storage/collection follow in separate committed extractions.
+> **Status:** Complete; focused validation passed.
+> Follows owner/parent protocol checkpoint `203238a8` and method-library
+> checkpoint `a5b4b90b`. The complete boundary is a separate commit.
 
-## Scope and sequence
+## Ownership and scope
 
-The isolated 81G module establishes a boundary, but its raw operands and native
-error statuses are not the production language contract. Extract the existing
-production implementation, preserving its observable behavior.
+`libbirnam_integer.dylib` now owns the canonical Integer behavior and prototype,
+the signed-64-bit raw payload, direct native construction, unchecked reading,
+exact recognition, and thirteen arithmetic/comparison/conversion/iteration
+methods. It loads immediately after Id and before object-model and Artifact.
+Prelude no longer installs these methods. Integer depends only on `birnam-abi`.
+The current installation contains 17 native libraries and 28 authored modules.
 
-The first stage moves Integer's thirteen native methods and its optional numeric
-implementation declaration from Prelude to `libbirnam_integer.dylib`, loaded
-immediately after Id. The module depends only on `birnam-abi`. Prelude no longer
-installs or supplies those methods. Id's current representation, constructors and
-four Integer API fields remain in place at this intermediate checkpoint.
-**This stage alone does not complete the Integer extraction.**
+Id's bootstrap and Values no longer create or interpret Integers. Bare Id does
+not export `Integer` or `IntegerVt`. Their enumeration position consequently
+follows module mounting. The module's explicit root provider retains its two
+identities even when both names are rebound, and roots partial initialization
+before any allocating callback. Tests instantiate the same implementation with
+per-Runtime Id adapters; Integer is only a **dev-dependency** of `birnam-id`.
 
-The second stage must move representation, construction and primitive access
-above Id, migrate their native consumers and reduce IdApi. Audit bootstrap and
-pure representation consumers before selecting that boundary. In particular,
-Machine operands, recovery preparation, deferred allocations and native numeric
-guards currently consume Integer inside the still-combined runtime. Do not
-replace a callback-free read under a state borrow with an allocating send, and
-do not bypass replaceable construction in an optimization.
+IdApi v4 removes `smallint_vt`, `mkSmallInt`, `smallIntValue`, and `isSmallInt`:
+45 fields, 360 bytes. All native clients migrate to the explicit
+[Integer dependency](../../abi/integer-v1.md); there is no compatibility facade.
+The host injects named dependencies before `module_init`, whose opaque state
+contract remains unchanged. Generated code retains its existing TCC bridge names.
+The still-combined Machine, recovery and optimizer components explicitly consume
+Integer. They have not been extracted from the Rust runtime by this change.
 
-## Invariants and review
+## Interface alternatives and decision
 
-- Ordinary lookup selects the current Integer method. Moving code must not
-  seal arithmetic or cause Prelude initialization to overwrite its replacement.
-- Equal results retain fresh identities. Preserve operand evaluation, Error
-  propagation, mixed Float operations, overflow and division behavior, and the
-  existing comparison implementation; numerical behavior changes are separate.
-- Native numeric declarations move with their actual method image. Existing
-  image pinning and copied/wrapped API checks remain authoritative. No fallback
-  declaration remains in Prelude.
-- The existing native-module lifetime, collector, roots, finalizers and code
-  retirement contracts remain in force. No new ownership/unloading system is
-  a prerequisite for this extraction.
-- Stage zero, installed stage one, native fixtures and recovery builds must all
-  load the same required library. A source-file move without installed loading
-  is incomplete.
-- The first stage leaves IdApi v3, Method, Frame and image bytes unchanged.
-  Later changes to those boundaries need their own explicit migration and
-  independent fixtures.
+Three independent designs considered ordinary service messages, a native Integer
+capability, and caller-owned storage with a representation descriptor. Ordinary
+messages would make formerly callback-free reads reentrant under existing state
+borrows and introduce allocation-message effects into the native constructor.
+Those are semantic changes beyond this extraction. A descriptor alone also does
+not authorize an optimizer to omit constructor effects.
 
-The initial adversarial review identifies three likely false positives: testing
-only after Prelude has loaded; leaving the numeric declaration in the old image;
-and calling the method-only split a completed extraction of Integer from Id.
-The independent C fixture tests Integer before Prelude, uses an `__int128`
-arithmetic oracle, and verifies that later Prelude initialization preserves a
-replacement method. The copied-API fixture targets the actual Integer image.
+The selected boundary combines live native operations with an immutable pure
+storage codec. Ordinary consumers copy the current operations table before use.
+The codec only initializes/reads supplied payloads: it cannot allocate, collect,
+call Id, reenter or consult mutable module state. Recovery keeps its existing
+safepoint, re-admission/layout check, generic allocation, initialization and
+immediate rooting sequence. Deferred allocations hold aligned untraced opaque
+payload batches; Heap never interprets Integer or invokes the codec at settlement.
+The existing counted-index ledger owns its encoded batch, with the same bounded
+multiplicity accounting and retention/release points.
 
-## Acceptance
+## Preserved behavior and admission
 
-Run the workspace checks, installed native fixture, numeric and recovery
-matrices, full release plan and relocated installation smoke. Required module
-inventory is 17 native libraries plus the existing 28 authored modules. Source
-and artifact receipts belong under `.cargo-target/validation-81l/`.
+- Ordinary lookup still chooses the current arithmetic method; Prelude mounting
+  does not overwrite a replacement. Equal results remain distinct identities.
+- Preserve evaluation, Error propagation, mixed Float behavior, existing
+  comparison precision, overflow, zero division, and MIN remainder -1.
+- Native construction still allocates directly with a safepoint; it does not
+  send `allocate`. Exact recognition uses heap membership and canonical vtable
+  equality. The unchecked payload read remains valid after reassociation.
+  Image's inherited-behavior rule remains separate and unchanged.
+- Native numeric declaration v2 belongs to the actual Integer method image.
+  Current contexts, identities, operations, codec and allocator must match the
+  admitted contract before bypassing native calls. Wrappers withdraw admission;
+  restoring them restores eligibility. Closure admission passes its actual
+  Integer dependency through the private v2 hook too.
+- Existing module lifetime, roots, finalizers, code pinning and retirement rules
+  remain in force. No unloading or collector-policy change is introduced.
+- Method ABI, Frame descriptors and durable image bytes remain unchanged. The
+  independent image-authority comparison permits only exact counted dependency
+  substitutions; negative controls reject changed operands or recognition rules.
 
-The method-library checkpoint passed all 610 workspace tests (28 ignored), the
-independent 405-case C oracle, copied-API checks, the full installed native gate,
-and relocated installation smoke. The native gate passed in a serial rerun;
-its worker ready deadline had timed out under concurrent matrix load, including
-when reproduced with the previously accepted 81K release.
+The first checkpoint moved only methods/declarations. That checkpoint alone was
+not a completed Integer extraction. The complete boundary additionally migrates
+all production primitive consumers, storage authority, mounting and ABI evidence.
 
-Completed matrix receipts remain under `.cargo-target/validation-81l/`. The
-intermediate exhaustive run was superseded so the complete release gate can run
-against the final Integer boundary. This checkpoint does not claim full release
-acceptance or completion of the representation extraction. No performance claim
-is made.
+## Validation and next work
+
+The independent C fixture begins with bare Id, checks 405 signed-128-bit oracle
+cases, errors, mixed values, fresh identity, replacement before/after Prelude,
+reassociation, foreign-address rejection, and roots after namespace rebinding.
+A separate copied-API fixture checks every numeric context operand and a live
+constructor wrapper. The independent v4 C header and manifest check the reduced
+IdApi; the Integer header independently checks its two structures.
+
+Workspace tests (610 passed), focused Integer/ABI lint checks and the independent
+installed-module fixtures pass. Final changes are checked with focused numeric,
+recovery and deferred-allocation tests. The user explicitly waived release
+validation for this refactor on 2026-09-18; no release-validation gate remains.
+No performance claim or Birnam-authored replacement is made.
+
+After committing the completed Integer extraction, proceed separately through
+raw environment/export namespaces, remaining primitive values, default-vtable
+reflection, storage/representation contracts and collection. Executable ownership,
+Frames, Machine/control and optimization follow their prerequisites. Audit exact
+callers, boot order, identity and native lifetime at each boundary before coding.

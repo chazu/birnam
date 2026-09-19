@@ -140,6 +140,7 @@ pub(crate) struct Heap {
 }
 
 mod dead_allocations;
+pub(crate) use dead_allocations::numeric::Batch as PayloadBatch;
 #[cfg(any(test, feature = "ffi-test-hooks"))]
 pub(crate) use dead_allocations::MAX_DEAD_ALLOCATIONS;
 pub(crate) use dead_allocations::{DeadAllocation, DeferredAllocation, MAX_DEAD_PAYLOAD_BYTES};

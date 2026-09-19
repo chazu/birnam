@@ -246,8 +246,8 @@ pub(super) unsafe extern "C" fn rust_codegen_current_code_binding_count(
                 .count()
         })
         .unwrap_or(0);
-    let api = unsafe { api(runtime()) };
-    unsafe { (api.mkSmallInt)(value as i64) }
+    let _api = unsafe { api(runtime()) };
+    unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 pub(super) unsafe extern "C" fn rust_codegen_retiring_code_binding_count(
@@ -267,8 +267,8 @@ pub(super) unsafe extern "C" fn rust_codegen_retiring_code_binding_count(
                 .count()
         })
         .unwrap_or(0);
-    let api = unsafe { api(runtime()) };
-    unsafe { (api.mkSmallInt)(value as i64) }
+    let _api = unsafe { api(runtime()) };
+    unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 pub(super) unsafe extern "C" fn rust_codegen_code_binding_generated_bytes(
@@ -298,7 +298,7 @@ pub(super) unsafe extern "C" fn rust_codegen_code_binding_generated_bytes(
     let api = unsafe { api(runtime()) };
     i64::try_from(value)
         .ok()
-        .map(|value| unsafe { (api.mkSmallInt)(value) })
+        .map(|value| unsafe { (birnam_abi::integer::make)(value) })
         .unwrap_or(api.nilObj)
 }
 
@@ -312,7 +312,7 @@ pub(super) unsafe extern "C" fn rust_codegen_reap_code_bindings(
     }
     let api = unsafe { api(runtime()) };
     let removed = unsafe { reap_code_bindings(api) };
-    unsafe { (api.mkSmallInt)(removed as i64) }
+    unsafe { (birnam_abi::integer::make)(removed as i64) }
 }
 
 /// Return a point-in-time semantic snapshot of the current CodeBindings.

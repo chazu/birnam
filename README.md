@@ -706,7 +706,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
-- `rust/birnam-id/` — authoritative Rust `libid` floor behind the frozen `IdApi`.
+- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v4.
+- `rust/birnam-integer/` — independently loaded Integer representation and behavior;
+  [native dependency contract](abi/integer-v1.md).
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
   (`Config` for project manifests, `AppConfig` for application startup).
 - `modules/` — authored library, CLI, LSP, documentation, and test sources;

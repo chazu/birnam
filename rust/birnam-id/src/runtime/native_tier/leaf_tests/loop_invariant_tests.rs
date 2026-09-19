@@ -66,7 +66,7 @@ unsafe extern "C" fn next(_: Oop, args: *const Oop, count: usize) -> Oop {
                 }
                 Change::Operator | Change::OperatorRestore => {
                     r.add_method(
-                        r.canonical().smallint_vt,
+                        r.integer_behavior(),
                         r.intern(b"blend:").unwrap(),
                         SUBTRACT.get().unwrap(),
                     );
@@ -98,7 +98,7 @@ unsafe extern "C" fn next(_: Oop, args: *const Oop, count: usize) -> Oop {
                 Change::Declaration => unsafe { DECLARATION.get().unwrap()(1) },
                 Change::OperatorRestore => {
                     r.add_method(
-                        r.canonical().smallint_vt,
+                        r.integer_behavior(),
                         r.intern(b"blend:").unwrap(),
                         ADD.get().unwrap(),
                     );
@@ -224,7 +224,7 @@ pub(super) fn loop_invariant_numeric_work_preserves_inputs_methods_lookup_gc_and
                     r.install_execution_objects();
                     let fixture = Fixture::load(r);
                     r.add_method(
-                        r.canonical().smallint_vt,
+                        r.integer_behavior(),
                         r.intern(b"blend:").unwrap(),
                         fixture.method(1),
                     );
