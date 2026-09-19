@@ -707,6 +707,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
+- `rust/birnam-range/` — independently loaded Range methods; construction and Vector-backed operations remain in Collection.
 - `rust/birnam-string-builder/` — independently loaded StringBuilder buffer ownership and methods.
 - `rust/birnam-string/` — independently loaded String representation, byte owner and methods; splitting remains with Collection.
 - `rust/birnam-nil/` — independently loaded Object/nil methods; singleton identity remains in Id.
@@ -745,6 +746,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Float methods](docs/design/81q-production-float-methods.md) now load separately
   from Prelude; [Float representation](docs/design/81r-production-float-storage.md)
   also lives in that module through an explicit native dependency.
+- [Range methods](docs/design/81z-production-range-methods.md) use an explicit
+  construction dependency to retain registration order and publication behavior.
 - [StringBuilder](docs/design/81y-production-string-builder.md) owns its native
   buffer and seven existing selectors, loading after String and before Collection.
 - [String methods](docs/design/81w-production-string-methods.md) load before

@@ -15,7 +15,7 @@ fi
 
 test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
-test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 54
+test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 55
 
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 -Iscripts/fixtures \
   abi/fixtures/idapi-v7/client.c -o "$prefix_parent/idapi-client"
@@ -84,6 +84,8 @@ for mode in normal adopted present adopted-present; do
     "$prefix/lib/libbirnam_string.dylib" "$prefix/lib/libbirnam_string_builder.dylib" \
     "$prefix/lib/libbirnam_id_collection.dylib" "$mode"
 done
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 -Iscripts/fixtures scripts/fixtures/range-module.c -o "$prefix_parent/range-module"
+"$prefix_parent/range-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_collection.dylib"
 cc -Iabi/fixtures/idapi-v7 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
 "$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_integer.dylib"
 cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"
@@ -111,7 +113,7 @@ assert receipt["admission_contract"]["candidate_manifest_version"] == 4
 assert len(receipt["admission_contract"]["id_api_fingerprint"]) == 64
 assert receipt["publication"]["method"] == "atomic-sibling-rename"
 assert receipt["publication"]["durability"] == "fsync-staged-files-and-directories-before-and-after-rename"
-assert len(receipt["dynamic_libraries"]) == 26
+assert len(receipt["dynamic_libraries"]) == 27
 assert len(receipt["stage1_modules"]) == 28
 PY
 

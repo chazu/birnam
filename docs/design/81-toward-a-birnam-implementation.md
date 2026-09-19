@@ -409,3 +409,8 @@ schedule; retirement uses String's exact ownership proof. IdApi v7 has 34 fields
 cleanup and seven selectors from Collection into its own module. It loads after
 String, preserves the existing Vector publication guard and live allocation
 callbacks, and leaves IdApi/image encoding unchanged.
+
+[81Z](81z-production-range-methods.md) extracts six Range methods. Collection
+uses its construction dependency at the original registration point, preserving
+publication and reload semantics. Range storage and its two Vector-backed methods
+remain for later construction and storage checkpoints.

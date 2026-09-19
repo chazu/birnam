@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Extract six Range methods from Collection into `birnam-range` (Design 81Z).
+  An explicit construction dependency preserves registration order, publication
+  reentry, selected Id callbacks and repeated initialization. Vector-producing
+  methods and Range storage remain in Collection; IdApi/image formats stay unchanged.
+
 - Extract StringBuilder's native buffer, cleanup and seven selectors from
   Collection into `birnam-string-builder` (Design 81Y). Preserve growth, byte
   truncation, empty clone/new, live callbacks and Vector-guarded publication.

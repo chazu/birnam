@@ -1653,108 +1653,6 @@ unsafe fn range_bounds(object: Oop) -> (i64, i64) {
     unsafe { ((*payload).start, (*payload).end) }
 }
 
-unsafe extern "C" fn range_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let (start, end) = unsafe { range_bounds(self_object) };
-    if end < start {
-        return unsafe { (birnam_abi::integer::make)(0) };
-    }
-    let size = i128::from(end) - i128::from(start) + 1;
-    if size > i128::from(i64::MAX) {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::integer::make)(size as i64) }
-}
-
-unsafe extern "C" fn range_includes(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(value) } == 0 {
-        return api.falseObj;
-    }
-    let value = unsafe { (birnam_abi::integer::value)(value) };
-    let (start, end) = unsafe { range_bounds(self_object) };
-    if start <= end && value >= start && value <= end {
-        api.trueObj
-    } else {
-        api.falseObj
-    }
-}
-
-unsafe extern "C" fn range_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(index) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(index) } == 0 {
-        return api.nilObj;
-    }
-    let index = unsafe { (birnam_abi::integer::value)(index) };
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let value = i128::from(start) + i128::from(index);
-    if index < 0 || start > end || value > i128::from(end) || value > i128::from(i64::MAX) {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::integer::make)(value as i64) }
-}
-
-unsafe extern "C" fn range_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(block) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let selector = runtime().value1 as Oop;
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let mut value = i128::from(start);
-    let end = i128::from(end);
-    while value <= end {
-        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
-        let arguments = [item];
-        unsafe { (api.send)(block, selector, arguments.as_ptr(), 1) };
-        value += 1;
-    }
-    self_object
-}
-
-unsafe extern "C" fn range_inject(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 2 {
-        return api.nilObj;
-    }
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    let selector = runtime().value2 as Oop;
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let mut value = i128::from(start);
-    let end = i128::from(end);
-    let mut accumulator = arguments[0];
-    while value <= end {
-        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
-        let call_arguments = [accumulator, item];
-        accumulator = unsafe { (api.send)(arguments[1], selector, call_arguments.as_ptr(), 2) };
-        if accumulator.is_null() {
-            return api.nilObj;
-        }
-        value += 1;
-    }
-    accumulator
-}
-
 unsafe extern "C" fn range_reversed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
@@ -1769,37 +1667,6 @@ unsafe extern "C" fn range_reversed(self_object: Oop, _args: *const Oop, count: 
         value -= 1;
     }
     result
-}
-
-unsafe extern "C" fn range_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let selector = runtime().print_string as Oop;
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let mut output = Vec::from(&b"#["[..]);
-    let mut value = i128::from(start);
-    let end = i128::from(end);
-    while value <= end {
-        if value != i128::from(start) {
-            output.push(b' ');
-        }
-        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
-        let printed = unsafe { (api.send)(item, selector, ptr::null(), 0) };
-        if printed.is_null() {
-            return api.nilObj;
-        }
-        let mut length = 0;
-        let bytes = unsafe { (birnam_abi::string::bytes)(printed, &mut length) };
-        if bytes.is_null() {
-            return api.nilObj;
-        }
-        output.extend_from_slice(unsafe { core::slice::from_raw_parts(bytes, length) });
-        value += 1;
-    }
-    output.push(b']');
-    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
 }
 
 unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -2080,30 +1947,15 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             intern(api, b"clone\0"),
             vector_new,
         );
-        (api.method)(runtime.range_vt as Oop, intern(api, b"size\0"), range_size);
-        (api.method)(
+        birnam_abi::range_methods::install(
+            api_pointer,
             runtime.range_vt as Oop,
-            intern(api, b"includes:\0"),
-            range_includes,
-        );
-        (api.method)(runtime.range_vt as Oop, intern(api, b"do:\0"), range_do);
-        (api.method)(
-            runtime.range_vt as Oop,
-            intern(api, b"inject:into:\0"),
-            range_inject,
-        );
-        (api.method)(runtime.range_vt as Oop, intern(api, b"at:\0"), range_at);
-        (api.method)(
-            runtime.range_vt as Oop,
-            intern(api, b"reversed\0"),
+            runtime.value1 as Oop,
+            runtime.value2 as Oop,
+            runtime.print_string as Oop,
             range_reversed,
+            range_comma,
         );
-        (api.method)(
-            runtime.range_vt as Oop,
-            intern(api, b"printString\0"),
-            range_print_string,
-        );
-        (api.method)(runtime.range_vt as Oop, intern(api, b",\0"), range_comma);
         (api.method)(birnam_abi::integer::behavior(), intern(api, b"to:\0"), integer_to);
         (api.method)(runtime.map_vt as Oop, intern(api, b"new\0"), map_new);
         (api.method)(runtime.map_vt as Oop, intern(api, b"clone\0"), map_new);
@@ -2242,3 +2094,5 @@ birnam_abi::integer_dependency!();
 birnam_abi::float_dependency!();
 
 birnam_abi::string_dependency!();
+
+birnam_abi::range_methods_dependency!();

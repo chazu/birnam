@@ -11,6 +11,7 @@ pub mod integer;
 pub mod float;
 pub mod word;
 pub mod string;
+pub mod range_methods;
 pub mod native_allocation;
 pub mod storage;
 pub mod trace;
