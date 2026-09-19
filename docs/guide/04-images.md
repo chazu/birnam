@@ -22,6 +22,10 @@ and REPL forms. It binds the resulting code record to the generation digest and
 publishes only after all durable values have an encoding or recovery recipe. A
 rejected save preserves the prior image.
 
+Live `StringBuilder` buffers are not portable image values. Materialize them
+with `[builder asString]` before saving, and construct fresh builders inside
+`main` when the image needs mutable text assembly.
+
 Closures still cannot serialize as ordinary values. Keep shared blocks in methods
 that answer fresh blocks, or in top-level `let` globals whose source-backed recovery
 contract can rederive them.

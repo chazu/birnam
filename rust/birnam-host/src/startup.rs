@@ -1054,6 +1054,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_id_prelude",
     "libbirnam_nil",
     "libbirnam_string",
+    "libbirnam_string_builder",
     "libbirnam_id_collection",
     "libbirnam_id_error",
     "libbirnam_portable_code",

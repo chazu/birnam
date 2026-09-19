@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Extract StringBuilder's native buffer, cleanup and seven selectors from
+  Collection into `birnam-string-builder` (Design 81Y). Preserve growth, byte
+  truncation, empty clone/new, live callbacks and Vector-guarded publication.
+  Load it after String and before Collection; IdApi and image encoding stay unchanged.
+
 - Move String identity, representation, byte ownership, construction and cleanup
   into `birnam-string` (Design 81X). Migrate native consumers to an explicit
   dependency and remove three IdApi fields: v7 has 34 fields / 272 bytes.

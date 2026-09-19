@@ -83,7 +83,7 @@ api-context,discovery,prefix,prefix-native,image}.log`. No release validation ra
 ## Next boundary
 
 Audit StringBuilder's existing native buffer family in Collection next. Its
-allocation/finalization and Array-coupled export guard require explicit review.
+allocation/finalization and Vector-coupled export guard require explicit review.
 Preserve its current image limitations; extracting the implementation must not
 add serialization support or alter repeated initialization. Array and Range
 remain separate, larger collection-family candidates.

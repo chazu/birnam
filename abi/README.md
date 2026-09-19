@@ -87,3 +87,11 @@ current Method/IdApi interfaces and Integer/Float dependencies. Its
 native Array splitting stays in Collection.
 
 `idapi-v6.json` and `fixtures/idapi-v6` preserve the 81T checkpoint.
+
+The [StringBuilder module](../docs/design/81y-production-string-builder.md) owns
+its three-word native buffer and seven existing selectors, with explicit Integer
+and String dependencies. Its [export inventory](rust-string-builder-dylib-v1.json)
+adds no IdApi or image fields. Run `mise run string-builder` for the focused debug
+C oracle; `scripts/string-builder-image-smoke.sh PREFIX` checks installed startup
+and compiled images. Captured live buffers retain their existing nonportable RAW
+image handling; compiled entries can construct builders and capture their Strings.

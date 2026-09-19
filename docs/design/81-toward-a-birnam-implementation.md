@@ -404,3 +404,8 @@ byte buffers, primitive operations and cleanup into its loaded module. The floor
 supplies generic native construction with the existing collection/copy/finalizer
 schedule; retirement uses String's exact ownership proof. IdApi v7 has 34 fields /
 272 bytes. Array splitting and StringBuilder remain in Collection.
+
+[81Y](81y-production-string-builder.md) moves StringBuilder's native buffer,
+cleanup and seven selectors from Collection into its own module. It loads after
+String, preserves the existing Vector publication guard and live allocation
+callbacks, and leaves IdApi/image encoding unchanged.

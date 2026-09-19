@@ -219,6 +219,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-string-builder"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-tcc"
 version = "0.0.0"
 dependencies = [

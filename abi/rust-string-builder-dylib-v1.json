@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "scope": "StringBuilder native buffer ownership and existing methods through explicit Integer and String dependencies",
+  "install_name": "@rpath/libbirnam_string_builder.dylib",
+  "exported_symbols": [
+    "birnam_integer_dependency_v1",
+    "birnam_string_dependency_v1",
+    "birnam_symbol_borrow_v1",
+    "module_init"
+  ]
+}
