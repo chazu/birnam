@@ -426,3 +426,8 @@ into Namespace. [81AX](81ax-production-namespace-names.md) moves reverse-name
 lookup and its Image, Alien, Reflect and Portable Code consumers onto a live
 Namespace capability. IdApi v8 has 33 fields / 264 bytes. Import, export, presence
 and enumeration remain in Id for subsequent extractions.
+
+[81AY](81ay-production-namespace-enumeration.md) moves raw enumeration operations
+into Namespace-owned descriptors and migrates Reflect while retaining its live
+selected-floor discovery. The two Id operation exports are removed; import,
+export and presence are still later work.

@@ -15,11 +15,11 @@ pub unsafe fn prepare(floor: *mut c_void, floor_path: &Path) {
     .unwrap();
     let image = unsafe { dlopen(path.as_ptr(), 6) };
     assert!(!image.is_null());
-    let provider = unsafe { dlsym(image, c"birnam_namespace_provider_v2".as_ptr()) };
-    let dependency = unsafe { dlsym(floor, c"birnam_namespace_dependency_v2".as_ptr()) };
+    let provider = unsafe { dlsym(image, c"birnam_namespace_provider_v3".as_ptr()) };
+    let dependency = unsafe { dlsym(floor, c"birnam_namespace_dependency_v3".as_ptr()) };
     assert!(!provider.is_null() && !dependency.is_null());
-    let provider: birnam_abi::namespace::ProviderV2 = unsafe { std::mem::transmute(provider) };
-    let attach: birnam_abi::namespace::DependencyV2 = unsafe { std::mem::transmute(dependency) };
+    let provider: birnam_abi::namespace::ProviderV3 = unsafe { std::mem::transmute(provider) };
+    let attach: birnam_abi::namespace::DependencyV3 = unsafe { std::mem::transmute(dependency) };
     assert_eq!(unsafe { attach(provider()) }, 1);
     // The process-owned runtime retains this descriptor and code.
 }

@@ -182,5 +182,10 @@ independent contexts; Id consumes a borrowed binding view for roots. The
 encoding. Current native hosts must attach this prerequisite before id_init.
 
 `idapi-v7.json` and `fixtures/idapi-v7` preserve the 81X checkpoint. Current
-Namespace [storage v2](namespace-v2.md) creates the per-runtime names service;
+Namespace [storage v3](namespace-v3.md) creates the per-runtime names service;
 its four consumers attach the [names capability](namespace-names-v1.md) explicitly.
+
+[Namespace enumeration v1](namespace-enumeration-v1.md) replaces the private Id
+count/name-at functions with Namespace-owned descriptors published by the selected
+floor. Reflect retains live discovery and its original operation order. IdApi v8
+and image encoding remain unchanged.

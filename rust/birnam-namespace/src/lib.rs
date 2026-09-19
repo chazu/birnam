@@ -1,9 +1,10 @@
 //! Raw export bindings and their storage, independently owned per Runtime.
 #![allow(clippy::missing_safety_doc)]
 mod index;
+mod enumeration;
 mod names;
 mod state;
-use birnam_abi::namespace::{ApiV2, ViewV1};
+use birnam_abi::namespace::{ApiV3, ViewV1};
 use birnam_abi::{IdApi, Oop};
 use core::ffi::c_void;
 use state::Environment;
@@ -31,9 +32,9 @@ unsafe extern "C" fn name_at(context: *const c_void, index: usize) -> Oop {
 unsafe extern "C" fn bindings(context: *const c_void) -> ViewV1 {
     unsafe { &*context.cast::<Environment>() }.bindings()
 }
-static API: ApiV2 = ApiV2 {
-    version: 2,
-    byte_size: size_of::<ApiV2>(),
+static API: ApiV3 = ApiV3 {
+    version: 3,
+    byte_size: size_of::<ApiV3>(),
     create: Some(create),
     destroy: Some(destroy),
     bind: Some(bind),
@@ -44,10 +45,12 @@ static API: ApiV2 = ApiV2 {
     bindings: Some(bindings),
     create_names: Some(names::create),
     destroy_names: Some(names::destroy),
+    create_enumeration: Some(enumeration::create),
+    destroy_enumeration: Some(enumeration::destroy),
 };
 /// Preparation has no side effects and needs no Id or namespace instance.
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_namespace_provider_v2() -> *const ApiV2 {
+pub extern "C" fn birnam_namespace_provider_v3() -> *const ApiV3 {
     &API
 }
 /// Normal mounting must not recreate any already-constructed namespace.

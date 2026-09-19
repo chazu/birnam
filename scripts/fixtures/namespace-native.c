@@ -1,6 +1,6 @@
 #define _DARWIN_C_SOURCE
 #include "idapi_v8.h"
-#include "../../abi/fixtures/namespace-names-v1/namespace_names_v1.h"
+#include "namespace-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -63,8 +63,7 @@ void *module_init(IdApi *selected,void *state) {
     Dl_info info;assert(dladdr((void *)api->import_fn,&info) && info.dli_fname);
     void *floor=api->dlopen_fn(info.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(floor);
     NamespaceNamesProviderV1 provide=(NamespaceNamesProviderV1)api->dlsym_fn(floor,"birnam_namespace_names_provider_v1");assert(provide);names=provide();assert(names);
-    count_exports=(size_t(*)(void))api->dlsym_fn(floor,"birnam_id_export_count_v1");
-    name_at=(Oop(*)(size_t))api->dlsym_fn(floor,"birnam_id_export_name_at_v1");assert(count_exports && name_at);
+    fixture_namespace_floor=floor;count_exports=fixture_namespace_count;name_at=fixture_namespace_name_at;
     api->method(api->import_fn("SystemVt"),api->intern("namespaceExercise:"),exercise);
     api->method(api->import_fn("SystemVt"),api->intern("namespaceObserveNames"),observe_names);
     api->method(api->import_fn("SystemVt"),api->intern("namespaceRename:"),rename_names);

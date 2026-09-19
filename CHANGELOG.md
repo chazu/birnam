@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move count/name-at into Namespace (Design 81AY), replacing private Id function
+  exports with Namespace-owned descriptors. Reflect retains live selected-floor
+  discovery, callback order and enumeration snapshots. Namespace factory is v3;
+  IdApi v8 and image encoding remain unchanged.
+
 - Extract reverse export-name lookup into Namespace (Design 81AX), including
   Image, Alien, Reflect and Portable Code consumers. Preserve live callback and
   context selection, first-alias lookup and borrowed names. IdApi v8 has 33 fields

@@ -1007,6 +1007,10 @@ impl Runtime {
         Ok(exported)
     }
 
+    pub(crate) fn namespace_enumeration(&self) -> *const birnam_abi::namespace_enumeration::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.enumeration() }
+    }
     pub(crate) fn namespace_names(&self) -> *mut birnam_abi::namespace_names::ApiV1 {
         self.assert_owner();
         unsafe { (*self.state.get()).environment.names() }
@@ -4206,6 +4210,7 @@ impl Runtime {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn export_count(&self) -> usize {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied count.
@@ -6202,6 +6207,11 @@ mod tests {
             let alias = format!("independent-{index}");
             runtime.export(alias.as_bytes(), object).unwrap();
             runtime.enter(|| {
+                let enumeration = unsafe { &*runtime.namespace_enumeration() };
+                assert_eq!(unsafe { enumeration.count.count.unwrap()(enumeration.count.context) }, runtime.export_count());
+                for index in 0..=runtime.export_count() {
+                    assert_eq!(unsafe { enumeration.name_at.name_at.unwrap()(enumeration.name_at.context, index) }, runtime.export_name_at(index));
+                }
                 let names = unsafe { *runtime.namespace_names() };
                 for value in [object, core::ptr::null_mut()] {
                     assert_eq!(unsafe { names.name_of.unwrap()(names.context, value) }, runtime.exported_name(value));

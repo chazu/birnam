@@ -12596,25 +12596,26 @@ unsafe extern "C" fn rust_reflect_all_global_names(
     if count != 0 {
         return api.nilObj;
     }
-    let Some(count_address) = (unsafe { floor_symbol(api, b"birnam_id_export_count_v1\0") }) else {
+    let Some(count_address) = (unsafe { floor_symbol(api, b"birnam_namespace_count_v1\0") }) else {
         return api.nilObj;
     };
-    let Some(name_address) = (unsafe { floor_symbol(api, b"birnam_id_export_name_at_v1\0") })
-    else {
+    let Some(export_count) = (unsafe { birnam_abi::namespace_enumeration::resolve_count(count_address as *const _) }) else {
         return api.nilObj;
     };
-    let export_count: unsafe extern "C" fn() -> usize =
-        unsafe { core::mem::transmute(count_address) };
-    let export_name_at: unsafe extern "C" fn(usize) -> Oop =
-        unsafe { core::mem::transmute(name_address) };
+    let Some(name_address) = (unsafe { floor_symbol(api, b"birnam_namespace_name_at_v1\0") }) else {
+        return api.nilObj;
+    };
+    let Some(export_name_at) = (unsafe { birnam_abi::namespace_enumeration::resolve_name_at(name_address as *const _) }) else {
+        return api.nilObj;
+    };
     let vector = unsafe { (api.import)(b"Vector\0".as_ptr().cast()) };
     if vector.is_null() || vector == api.nilObj {
         return api.nilObj;
     }
     unsafe { (api.gcSetAuto)(0) };
-    let names = (0..unsafe { export_count() })
+    let names = (0..unsafe { export_count.count.unwrap()(export_count.context) })
         .filter_map(|index| {
-            let name = unsafe { export_name_at(index) };
+            let name = unsafe { export_name_at.name_at.unwrap()(export_name_at.context, index) };
             (!name.is_null()).then_some(name)
         })
         .collect::<Vec<_>>();

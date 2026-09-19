@@ -4,15 +4,17 @@
 #include "trace-support.h"
 #include <stdlib.h>
 
-static const NamespaceApiV2 *storage;
-static NamespaceApiV2 observed;
-static size_t creates, binds, finds, reverses, views;
+static const NamespaceApiV3 *storage;
+static NamespaceApiV3 observed;
+static size_t creates, binds, finds, reverses, views, counts, names_at;
 static void *floor_context;
 static void *create(void) { creates++; return floor_context=storage->create(); }
 static Oop bind(void *context,Oop name,Oop value) { assert(context==floor_context);binds++;return storage->bind(context,name,value); }
 static Oop find(const void *context,Oop name) { assert(context==floor_context);finds++;return storage->find(context,name); }
 static Oop reverse(const void *context,Oop value) { assert(context==floor_context);reverses++;return storage->reverse(context,value); }
 static NamespaceViewV1 bindings(const void *context) { assert(context==floor_context);views++;return storage->bindings(context); }
+static size_t selected_count(const void *context) { assert(context==floor_context);counts++;return storage->count(context); }
+static Oop selected_name_at(const void *context,size_t index) { assert(context==floor_context);names_at++;return storage->name_at(context,index); }
 static Oop forbidden_intern(const char *name) { (void)name;abort(); }
 static Oop forbidden_alloc(Oop type,size_t size) { (void)type;(void)size;abort(); }
 static void forbidden_method(Oop type,Oop selector,Method method) { (void)type;(void)selector;(void)method;abort(); }
@@ -58,7 +60,7 @@ int main(int argc,char **argv) {
     assert(argc==2 || argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_namespace_floor=floor;
-    NamespaceDependencyV2 attach=(NamespaceDependencyV2)dlsym(floor,"birnam_namespace_dependency_v2");
+    NamespaceDependencyV3 attach=(NamespaceDependencyV3)dlsym(floor,"birnam_namespace_dependency_v3");
     assert(argc==2 || attach);
     void *namespace_image=NULL,*extra=NULL;ModuleInitFn reload=NULL;
     if(attach) {
@@ -66,16 +68,16 @@ int main(int argc,char **argv) {
         snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-argv[1]),argv[1]);
         namespace_image=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(namespace_image);
         extra=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(extra);
-        NamespaceProviderV2 provide=(NamespaceProviderV2)dlsym(namespace_image,"birnam_namespace_provider_v2");assert(provide);
+        NamespaceProviderV3 provide=(NamespaceProviderV3)dlsym(namespace_image,"birnam_namespace_provider_v3");assert(provide);
         storage=provide();assert(storage && storage==provide());
-        assert(storage->version==2 && storage->byte_size==sizeof(*storage));
+        assert(storage->version==3 && storage->byte_size==sizeof(*storage));
         storage_oracle();
-        assert(!attach(NULL));NamespaceApiV2 bad=*storage;bad.version++;assert(!attach(&bad));
+        assert(!attach(NULL));NamespaceApiV3 bad=*storage;bad.version++;assert(!attach(&bad));
         bad=*storage;bad.byte_size--;assert(!attach(&bad));
 #define REJECT(field) bad=*storage;bad.field=NULL;assert(!attach(&bad))
-        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);
+        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);REJECT(create_enumeration);REJECT(destroy_enumeration);
 #undef REJECT
-        observed=*storage;observed.create=create;observed.bind=bind;observed.find=find;observed.reverse=reverse;observed.bindings=bindings;
+        observed=*storage;observed.create=create;observed.bind=bind;observed.find=find;observed.reverse=reverse;observed.bindings=bindings;observed.count=selected_count;observed.name_at=selected_name_at;
         assert(attach(&observed)==1 && attach(&observed)==1 && !attach(storage));
         reload=(ModuleInitFn)dlsym(namespace_image,"module_init");assert(reload);
     }
@@ -83,8 +85,8 @@ int main(int argc,char **argv) {
     IdApi *api=initialize();assert(api);api->gc_set_auto(0);
     if(attach)assert(creates==1 && binds>0 && floor_context);
     fixture_mount_trace(api,argv[1]);
-    size_t (*count)(void)=(size_t(*)(void))dlsym(floor,"birnam_id_export_count_v1");
-    Oop (*name_at)(size_t)=(Oop(*)(size_t))dlsym(floor,"birnam_id_export_name_at_v1");
+    size_t (*count)(void)=fixture_namespace_count;
+    Oop (*name_at)(size_t)=fixture_namespace_name_at;
     size_t (*symbol_count)(void)=(size_t(*)(void))dlsym(floor,"birnam_id_live_symbol_count_v1");
     int (*compaction)(int,size_t,size_t)=(int(*)(int,size_t,size_t))dlsym(floor,"birnam_id_symbol_compaction_configure_v1");
     assert(count && name_at && symbol_count && compaction && compaction(1,0,0)==1);
@@ -132,7 +134,7 @@ int main(int argc,char **argv) {
         size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL));assert(!reload(api,NULL));
         assert(count()==before && binds==was_binds && creates==1);
         assert(api->import_fn("namespace-second-alias")==retained);
-        assert(finds && reverses && views);
+        assert(finds && reverses && views && counts && names_at);
         // Descriptor/code remain mapped after relinquishing this extra open.
         assert(dlclose(extra)==0);assert(api->import_fn("namespace-second-alias")==retained);
     }

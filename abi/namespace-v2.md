@@ -1,5 +1,7 @@
 # Namespace storage v2
 
+> Historical contract; [v3](namespace-v3.md) adds enumeration ownership in 81AY.
+
 Design [81AX](../docs/design/81ax-production-namespace-names.md) extends the
 [historical v1 storage](namespace-v1.md) with names-service ownership. The host
 prepares `birnam_namespace_provider_v2` through Id's

@@ -786,10 +786,12 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [lazy factory and exact-recognition helpers](abi/error-value-v1.md), preserving
   callback order and pre-Error nil behavior. Run `mise run error-value`.
 - [Namespace state](docs/design/81aw-production-namespace-state.md) owns raw
-  Symbol/value bindings through an [opaque storage contract](abi/namespace-v2.md).
+  Symbol/value bindings through an [opaque storage contract](abi/namespace-v3.md).
   [Namespace names](docs/design/81ax-production-namespace-names.md) owns reverse
   export lookup through a [live capability](abi/namespace-names-v1.md); IdApi v8
   has 33 fields / 264 bytes. Run `mise run namespace-names`.
+  [Enumeration](docs/design/81ay-production-namespace-enumeration.md) moves
+  count/name-at behind Namespace descriptors while preserving Reflect discovery.
   The host prepares it before Id; Globals remains separate. Run `mise run namespace`.
 - [Source Loader](docs/design/81av-production-source-loader.md) owns load:
   through an [explicit installer](abi/source-loader-v1.md), leaving Prelude

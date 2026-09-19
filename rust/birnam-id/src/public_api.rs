@@ -397,6 +397,11 @@ pub(crate) fn initialize_once() -> *mut IdApi {
     let _ = Box::into_raw(bootstrap);
     let _ = Box::into_raw(api);
     NATIVE_ALLOCATION.store(Box::into_raw(Box::new(runtime().native_allocation())), Ordering::Release);
+    let enumeration = unsafe { &*runtime().namespace_enumeration() };
+    unsafe {
+        birnam_namespace_count_v1.publish(&enumeration.count);
+        birnam_namespace_name_at_v1.publish(&enumeration.name_at);
+    }
     PUBLIC_API.store(api_pointer, Ordering::Release);
     api_pointer
 }
@@ -423,14 +428,6 @@ pub(crate) fn live_symbol_name_bytes() -> usize {
 
 pub(crate) fn live_heap_bytes() -> usize {
     runtime().gc_live_bytes()
-}
-
-pub(crate) fn export_count() -> usize {
-    runtime().export_count()
-}
-
-pub(crate) fn export_name_at(index: usize) -> Oop {
-    runtime().export_name_at(index)
 }
 
 #[cfg(test)]
@@ -622,4 +619,24 @@ pub(crate) fn namespace_name_access() -> birnam_abi::namespace_names::FloorV1 {
 pub unsafe extern "C" fn birnam_namespace_names_provider_v1()
 -> *mut birnam_abi::namespace_names::ApiV1 {
     runtime().namespace_names()
+}
+
+
+use birnam_abi::namespace_enumeration::{CountV1, NameAtV1, PublicationV1};
+#[unsafe(no_mangle)]
+pub static birnam_namespace_count_v1: PublicationV1<CountV1> = PublicationV1::new();
+#[unsafe(no_mangle)]
+pub static birnam_namespace_name_at_v1: PublicationV1<NameAtV1> = PublicationV1::new();
+
+pub(crate) fn namespace_enumeration_access() -> birnam_abi::namespace_enumeration::FloorV1 {
+    unsafe extern "C" fn preflight(_: *mut c_void) {
+        #[cfg(not(test))]
+        runtime().namespace_name_preflight();
+        #[cfg(test)]
+        crate::runtime::with_active(|r| r.namespace_name_preflight());
+    }
+    birnam_abi::namespace_enumeration::FloorV1 {
+        version: 1, byte_size: size_of::<birnam_abi::namespace_enumeration::FloorV1>(),
+        context: core::ptr::null_mut(), preflight: Some(preflight),
+    }
 }

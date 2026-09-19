@@ -1,12 +1,13 @@
 //! Per-runtime ownership of the explicitly prepared Namespace storage.
 use crate::abi::Oop;
-use birnam_abi::namespace::ApiV2;
+use birnam_abi::namespace::ApiV3;
 use core::ffi::c_void;
 use core::ptr::NonNull;
 
 pub(crate) struct Environment {
-    api: ApiV2,
+    api: ApiV3,
     context: NonNull<c_void>,
+    enumeration: NonNull<birnam_abi::namespace_enumeration::ApiV1>,
     names: NonNull<birnam_abi::namespace_names::ApiV1>,
     canonical_names: birnam_abi::namespace_names::ApiV1,
 }
@@ -15,7 +16,7 @@ impl Environment {
         // Tests select the same implementation for each independent Runtime;
         // production only accepts the host's explicitly attached descriptor.
         #[cfg(test)]
-        let api = unsafe { *birnam_namespace::birnam_namespace_provider_v2() };
+        let api = unsafe { *birnam_namespace::birnam_namespace_provider_v3() };
         #[cfg(not(test))]
         let api = unsafe { birnam_abi::namespace::operations() };
         let context =
@@ -29,13 +30,18 @@ impl Environment {
         })
         .expect("Namespace names creation failed");
         let canonical_names = unsafe { *names.as_ptr() };
+        let enumeration = NonNull::new(unsafe {
+            api.create_enumeration.unwrap()(context.as_ptr(), api.count, api.name_at, &crate::public_api::namespace_enumeration_access())
+        }).expect("Namespace enumeration creation failed");
         Self {
             api,
             context,
             names,
             canonical_names,
+            enumeration,
         }
     }
+    pub(crate) fn enumeration(&self) -> *const birnam_abi::namespace_enumeration::ApiV1 { self.enumeration.as_ptr() }
     pub(crate) fn names(&self) -> *mut birnam_abi::namespace_names::ApiV1 {
         self.names.as_ptr()
     }
@@ -62,6 +68,7 @@ impl Environment {
             .flat_map(|entry| [entry.name, entry.value])
             .collect()
     }
+    #[cfg(test)]
     pub(crate) fn count(&self) -> usize {
         unsafe { self.api.count.unwrap()(self.context.as_ptr()) }
     }
@@ -71,6 +78,7 @@ impl Environment {
 }
 impl Drop for Environment {
     fn drop(&mut self) {
+        unsafe { self.api.destroy_enumeration.unwrap()(self.enumeration.as_ptr()) };
         unsafe { self.api.destroy_names.unwrap()(self.names.as_ptr()) };
         unsafe { self.api.destroy.unwrap()(self.context.as_ptr()) };
     }

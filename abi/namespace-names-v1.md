@@ -11,7 +11,7 @@ live on the owner thread. Each ordinary use snapshots the current operation and
 context together; replacement has the same borrowed-return obligations. No
 concurrent native mutation is permitted.
 
-The [storage factory](namespace-v2.md) creates this service with a 40-byte
+The [storage factory](namespace-v3.md) creates this service with a 40-byte
 immutable floor descriptor: version 1, extent, optional opaque context, required
 `preflight(context)` and `symbol_name(context, symbol)` primitives. A default call
 performs preflight, invokes the selected storage reverse operation, then borrows
