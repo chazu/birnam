@@ -196,6 +196,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-native-loader"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-nil"
 version = "0.0.0"
 dependencies = [

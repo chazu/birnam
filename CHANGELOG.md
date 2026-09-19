@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Extract System loadModule: into Native Loader (Design 81AU), preserving
+  direct loading, owned paths, live callbacks, original API/null state forwarding,
+  receiver results and errors. Run `mise run native-loader`.
 - Extract native Block whileTrue:/whileFalse: into Block Loop (Design 81AT),
   preserving fresh value sends, evaluation order, live Boolean/Error policy and
   later replacement by authored stackless control. Run `mise run block-loop`.

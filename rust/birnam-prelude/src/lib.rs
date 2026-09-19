@@ -1,13 +1,12 @@
-//! Prelude coordinates native defaults and owns System source/module loading.
+//! Prelude coordinates native defaults and owns System source loading.
 
 #![allow(clippy::missing_safety_doc)]
 
-use birnam_abi::{IdApi, ModuleInitFn, Oop, borrowed_oop_args};
+use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use birnam_abi::error_value::{is_error, numeric_error};
 use birnam_abi::text_view::{printable_string, string_bytes};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -171,37 +170,6 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
     result
 }
 
-unsafe extern "C" fn system_load_module(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    const RTLD_LAZY: i32 = 1;
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(path_object) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(path_bytes) = (unsafe { string_bytes(api, path_object) }) else {
-        return api.nilObj;
-    };
-    let Ok(path) = CString::new(path_bytes) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not load module dylib") };
-    };
-    let handle = unsafe { (api.dlopen)(path.as_ptr(), RTLD_LAZY) };
-    if handle.is_null() {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not load module dylib") };
-    }
-    let symbol = unsafe { (api.dlsym)(handle, c"module_init".as_ptr()) };
-    if symbol.is_null() {
-        return unsafe { numeric_error(api, b"notAModule\0", b"dylib has no module_init") };
-    }
-    // SAFETY: dlsym returned the module_init symbol from a live handle; all
-    // Birnam module initializers share this frozen C ABI and receive the
-    // process-owned IdApi with no state payload for this loader path.
-    let init: ModuleInitFn = unsafe { core::mem::transmute(symbol) };
-    unsafe { init(runtime().api as *mut IdApi, ptr::null_mut()) };
-    self_object
-}
-
 unsafe fn install_system_protocol(api: &IdApi) {
     let (system_vt, system_object) = if unsafe { (api.isExported)(c"System".as_ptr()) } != 0 {
         // SAFETY: an exported System family is process-owned and remains live
@@ -245,7 +213,9 @@ unsafe fn install_system_protocol(api: &IdApi) {
             api, runtime().api as *const IdApi, system_vt, get_env,
         );
         (api.method)(system_vt, load, system_load);
-        (api.method)(system_vt, load_module, system_load_module);
+        birnam_abi::native_loader::install(
+            api, runtime().api as *const IdApi, system_vt, load_module,
+        );
         birnam_abi::system_input::install(
             api, runtime().api as *const IdApi, system_vt, read_line,
         );
@@ -352,3 +322,5 @@ birnam_abi::environment_dependency!();
 birnam_abi::file_io_dependency!();
 
 birnam_abi::block_loop_dependency!();
+
+birnam_abi::native_loader_dependency!();

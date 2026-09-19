@@ -19,6 +19,7 @@ pub mod system_input;
 pub mod environment;
 pub mod file_io;
 pub mod block_loop;
+pub mod native_loader;
 pub mod text_view;
 pub mod error_value;
 pub mod range;

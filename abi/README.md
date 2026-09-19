@@ -163,3 +163,8 @@ through a 24-byte installer. Prelude retains Block identity/layout and authored
 stackless control still replaces the methods later. The
 [export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
 encoding.
+
+[Native Loader v1](native-loader-v1.md) owns System loadModule: through a 24-byte
+installer, preserving the existing direct path without host dependency admission.
+The [export inventory](rust-native-loader-dylib-v1.json) adds no IdApi fields,
+objects or image encoding.
