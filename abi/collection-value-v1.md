@@ -4,7 +4,7 @@ Design [81AD](../docs/design/81ad-production-collection-value.md) moves the priv
 comparison shared by Vector `indexOf:` and Map keys, plus Map's hash functions,
 into `birnam-collection-value`. This introduces no language selectors.
 
-The host loads the service after Integer/Float/String and before Collection,
+The host loads the service after Integer/Float/String and before Vector and Map,
 attaches those live dependencies, obtains `birnam_collection_value_provider_v1`
 and mounts it through `birnam_collection_value_dependency_v1`. The immutable
 descriptor and code remain pinned for the process. Initialization only enables

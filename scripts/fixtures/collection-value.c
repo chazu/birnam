@@ -80,7 +80,14 @@ static Oop collision(Oop key,uint32_t hash) {
     Map *map=api->alloc(api->import_fn("MapVt"),sizeof(Map)); *map=(Map){node,1}; return map;
 }
 static void validate(void *collection,int attached) {
-    CollectionValueDependencyV1 attach=(CollectionValueDependencyV1)api->dlsym_fn(collection,"birnam_collection_value_dependency_v1"); assert(attach);
+    CollectionValueDependencyV1 attach=(CollectionValueDependencyV1)api->dlsym_fn(collection,"birnam_collection_value_dependency_v1");
+    if(!attach) {
+        const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+        int n=snprintf(path,sizeof(path),"%.*s/libbirnam_map.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+        assert(n>0 && (size_t)n<sizeof(path)); void *map=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(map);
+        attach=(CollectionValueDependencyV1)api->dlsym_fn(map,"birnam_collection_value_dependency_v1");
+    }
+    assert(attach);
     CollectionValueApiV1 bad=*fixture_collection_value;
     assert(!attach(NULL)); bad.version++; assert(!attach(&bad)); bad=*fixture_collection_value;
     bad.byte_size--; assert(!attach(&bad)); bad=*fixture_collection_value;

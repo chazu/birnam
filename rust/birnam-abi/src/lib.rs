@@ -13,6 +13,7 @@ pub mod word;
 pub mod string;
 pub mod range;
 pub mod vector;
+pub mod map;
 pub mod collection_value;
 pub mod native_allocation;
 pub mod storage;

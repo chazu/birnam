@@ -2,7 +2,7 @@
 # Focused debug private collection value/hash policy and consumer oracle.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mise exec -- cargo build -p birnam-id -p birnam-trace -p birnam-collect -p birnam-integer -p birnam-float -p birnam-word -p birnam-object-model -p birnam-string -p birnam-range -p birnam-vector -p birnam-collection-value -p birnam-collection --locked --offline
+mise exec -- cargo build -p birnam-id -p birnam-trace -p birnam-collect -p birnam-integer -p birnam-float -p birnam-word -p birnam-object-model -p birnam-string -p birnam-range -p birnam-vector -p birnam-collection-value -p birnam-map -p birnam-collection --locked --offline
 value_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-collection-value.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT

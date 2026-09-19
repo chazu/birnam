@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Extract Map representation, canonical objects and native HAMT storage into
+  `birnam-map` (Design 81AF). Preserve construction/publication order, persistent
+  sharing, collision handling, callback timing and reentrant update behavior.
+  Existing Map methods and traversal helpers consume the native storage boundary.
+
 - Move Vector's thirteen method bindings and scoped sorting roots into
   `birnam-vector` (Design 81AE). Preserve stable sorting, live dispatch, GC roots,
   registration order, Range's native comma callback and Map's native iteration.

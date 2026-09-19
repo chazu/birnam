@@ -44,6 +44,10 @@ run = "python3 scripts/same-frame-deopt.py"
 description = "Check loaded collection value comparison and hashing in debug"
 run = "scripts/collection-value-test.sh"
 
+[tasks.map]
+description = "Focused debug native Map storage and HAMT checks"
+run = "scripts/map-test.sh"
+
 [tasks.vector]
 description = "Check loaded Vector storage and persistent trie boundaries in debug"
 run = "scripts/vector-test.sh"

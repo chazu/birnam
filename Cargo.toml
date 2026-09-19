@@ -10,6 +10,7 @@ members = [
     "rust/birnam-string-builder",
     "rust/birnam-range",
     "rust/birnam-vector",
+    "rust/birnam-map",
     "rust/birnam-codegen",
     "rust/birnam-codegen-runtime",
     "rust/birnam-collection",

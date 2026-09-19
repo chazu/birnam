@@ -112,3 +112,7 @@ uses the caller's selected IdApi and live Integer/Float/String callbacks. Its
 Map iteration uses its native bodies, and Range retains its native comma Method.
 The [Vector export inventory](rust-vector-dylib-v1.json) records its explicit
 Integer, String and collection-value dependencies.
+
+[Map storage](map-v1.md) owns canonical objects, payloads, HAMT nodes and native
+lookup/update. Collection's methods and traversal helpers use its explicit
+readers. The [Map export inventory](rust-map-dylib-v1.json) adds no IdApi fields.
