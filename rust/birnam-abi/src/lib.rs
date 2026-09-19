@@ -17,6 +17,7 @@ pub mod system_gc;
 pub mod system_output;
 pub mod system_input;
 pub mod environment;
+pub mod file_io;
 pub mod text_view;
 pub mod error_value;
 pub mod range;

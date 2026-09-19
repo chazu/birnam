@@ -8,7 +8,7 @@ use birnam_abi::text_view::{printable_string, string_bytes};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::CString;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -117,59 +117,6 @@ unsafe extern "C" fn block_while_false(self_object: Oop, args: *const Oop, count
 
 fn path_from_bytes(bytes: &[u8]) -> Option<&Path> {
     std::str::from_utf8(bytes).ok().map(Path::new)
-}
-
-unsafe extern "C" fn system_read_file(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    const MAX_FILE_BYTES: u64 = 1 << 30;
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(path_object) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(path_bytes) = (unsafe { string_bytes(api, path_object) }) else {
-        return api.nilObj;
-    };
-    let Some(path) = path_from_bytes(path_bytes) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read file") };
-    };
-    let Ok(file) = File::open(path) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read file") };
-    };
-    let mut bytes = Vec::new();
-    if file
-        .take(MAX_FILE_BYTES.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .is_err()
-        || bytes.len() > MAX_FILE_BYTES as usize
-    {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read file") };
-    }
-    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
-}
-
-unsafe extern "C" fn system_write_file(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 2 {
-        return api.nilObj;
-    }
-    let Some(values) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(path_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
-        return api.nilObj;
-    };
-    let Some(contents) = (unsafe { string_bytes(api, values[1]) }) else {
-        return api.nilObj;
-    };
-    let Some(path) = path_from_bytes(path_bytes) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not write file") };
-    };
-    if fs::write(path, contents).is_err() {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not write file") };
-    }
-    self_object
 }
 
 unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -338,8 +285,9 @@ unsafe fn install_system_protocol(api: &IdApi) {
         birnam_abi::system_output::install(
             api, runtime().api as *const IdApi, system_vt, print, println,
         );
-        (api.method)(system_vt, read_file, system_read_file);
-        (api.method)(system_vt, write_file, system_write_file);
+        birnam_abi::file_io::install(
+            api, runtime().api as *const IdApi, system_vt, read_file, write_file,
+        );
         birnam_abi::environment::install(
             api, runtime().api as *const IdApi, system_vt, get_env,
         );
@@ -446,3 +394,5 @@ birnam_abi::error_value_dependency!();
 birnam_abi::system_input_dependency!();
 
 birnam_abi::environment_dependency!();
+
+birnam_abi::file_io_dependency!();

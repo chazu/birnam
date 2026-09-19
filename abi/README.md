@@ -152,3 +152,8 @@ roots or representation changes.
 lookup. Prelude supplies its first execution table at the original registration
 slot. The [export inventory](rust-environment-dylib-v1.json) adds no IdApi fields,
 objects, roots or representation changes.
+
+[File IO v1](file-io-v1.md) owns System file reads and writes through a 24-byte
+installer at their original Prelude binding positions. The
+[export inventory](rust-file-io-dylib-v1.json) adds no IdApi fields, object
+representation or image encoding.

@@ -708,6 +708,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
 - `rust/birnam-error-value/` — shared lazy Error factory dispatch for Prelude/Integer/Float/Word and exact recognition for Prelude/Integer/Float.
+- `rust/birnam-file-io/` — System binary file reads and writes, installed by Prelude.
 - `rust/birnam-environment/` — System environment lookup, installed by Prelude with shared text/error policy.
 - `rust/birnam-system-input/` — System stdin method, installed by Prelude using String and Error Value.
 - `rust/birnam-system-output/` — System stdout methods, installed by Prelude using shared text views.
@@ -780,6 +781,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Error value policy](docs/design/81am-production-error-value.md) shares Prelude's
   [lazy factory and exact-recognition helpers](abi/error-value-v1.md), preserving
   callback order and pre-Error nil behavior. Run `mise run error-value`.
+- [File IO](docs/design/81as-production-file-io.md) owns readFile: and
+  writeFile:contents: through an [explicit installer](abi/file-io-v1.md),
+  preserving binary data, borrowed paths and errors. Run `mise run file-io`.
 - [Environment](docs/design/81ar-production-environment.md) owns getEnv: through an
   [explicit installer](abi/environment-v1.md), preserving live lookup, Unicode
   handling, missing values and callback order. Run `mise run environment`.

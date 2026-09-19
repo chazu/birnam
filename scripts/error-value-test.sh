@@ -2,7 +2,7 @@
 # Focused debug lazy Error value and Prelude-consumer oracle.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mise exec -- cargo build -p birnam-id -p birnam-string -p birnam-trace -p birnam-collect -p birnam-integer -p birnam-float -p birnam-word -p birnam-object-model -p birnam-printing -p birnam-system-gc -p birnam-text-view -p birnam-system-output -p birnam-system-input -p birnam-environment -p birnam-error-value -p birnam-prelude --locked --offline
+mise exec -- cargo build -p birnam-id -p birnam-string -p birnam-trace -p birnam-collect -p birnam-integer -p birnam-float -p birnam-word -p birnam-object-model -p birnam-printing -p birnam-system-gc -p birnam-text-view -p birnam-system-output -p birnam-system-input -p birnam-environment -p birnam-file-io -p birnam-error-value -p birnam-prelude --locked --offline
 error_value_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-error-value.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
