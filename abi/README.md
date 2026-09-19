@@ -69,3 +69,8 @@ Its [export inventory](rust-word-dylib-v1.json) adds no IdApi or image fields.
 `idapi-v5.json` and `fixtures/idapi-v5` preserve the 81R checkpoint.
 [Word representation](../docs/design/81t-production-word-storage.md) now belongs
 to the loaded Word module as well.
+
+The [Boolean method module](../docs/design/81u-production-boolean-methods.md)
+uses existing Method/module-init interfaces and object-model messages.
+Its [export inventory](rust-boolean-dylib-v1.json) adds no IdApi or image fields;
+canonical singleton representation remains in Id at this checkpoint.

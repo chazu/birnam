@@ -4,6 +4,7 @@ members = [
     "rust/birnam-alien",
     "rust/birnam-artifact",
     "rust/birnam-artifact-codec",
+    "rust/birnam-boolean",
     "rust/birnam-codegen",
     "rust/birnam-codegen-runtime",
     "rust/birnam-collection",

@@ -2,7 +2,7 @@
 //!
 //! This N7.1 slice owns the primitive protocol through the frozen IdApi
 //! boundary. It is deliberately a separate cdylib: the native prelude remains the
-//! oracle until the Word, Boolean, Block, and System parity gates
+//! oracle until the remaining Block and System parity gates
 //! pass.
 
 #![allow(clippy::missing_safety_doc)]
@@ -108,189 +108,6 @@ unsafe extern "C" fn symbol_print_string(self_object: Oop, _args: *const Oop, co
     rendered.push(b'#');
     rendered.extend_from_slice(name);
     unsafe { (api.mkString)(rendered.as_ptr(), rendered.len()) }
-}
-
-unsafe fn boolean_value(api: &IdApi, value: Oop) -> Option<bool> {
-    if value == api.trueObj {
-        Some(true)
-    } else if value == api.falseObj {
-        Some(false)
-    } else {
-        None
-    }
-}
-
-unsafe extern "C" fn boolean_true_if_true_if_false(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 2 {
-        return api.nilObj;
-    }
-    let Some(when_true) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    let _ = self_object;
-    unsafe { send0(api, when_true[0], b"value\0") }
-}
-
-unsafe extern "C" fn boolean_false_if_true_if_false(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 2 {
-        return api.nilObj;
-    }
-    let Some(when_true) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    let _ = self_object;
-    unsafe { send0(api, when_true[1], b"value\0") }
-}
-
-unsafe extern "C" fn boolean_true_if_true(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(branch) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let _ = self_object;
-    unsafe { send0(api, branch, b"value\0") }
-}
-
-unsafe extern "C" fn boolean_false_if_true(
-    _self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    api.nilObj
-}
-
-unsafe extern "C" fn boolean_true_if_false(
-    _self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    api.nilObj
-}
-
-unsafe extern "C" fn boolean_false_if_false(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(branch) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let _ = self_object;
-    unsafe { send0(api, branch, b"value\0") }
-}
-
-unsafe extern "C" fn boolean_and(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 || unsafe { boolean_value(api, self_object) }.is_none() {
-        return api.nilObj;
-    }
-    let Some(argument) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if self_object == api.trueObj {
-        argument
-    } else {
-        api.falseObj
-    }
-}
-
-unsafe extern "C" fn boolean_or(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 || unsafe { boolean_value(api, self_object) }.is_none() {
-        return api.nilObj;
-    }
-    let Some(argument) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if self_object == api.trueObj {
-        api.trueObj
-    } else {
-        argument
-    }
-}
-
-unsafe extern "C" fn boolean_and_block(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 || unsafe { boolean_value(api, self_object) }.is_none() {
-        return api.nilObj;
-    }
-    let Some(block) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if self_object == api.trueObj {
-        unsafe { send0(api, block, b"value\0") }
-    } else {
-        api.falseObj
-    }
-}
-
-unsafe extern "C" fn boolean_or_block(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 || unsafe { boolean_value(api, self_object) }.is_none() {
-        return api.nilObj;
-    }
-    let Some(block) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if self_object == api.trueObj {
-        api.trueObj
-    } else {
-        unsafe { send0(api, block, b"value\0") }
-    }
-}
-
-unsafe extern "C" fn boolean_not(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    match unsafe { boolean_value(api, self_object) } {
-        Some(true) => api.falseObj,
-        Some(false) => api.trueObj,
-        None => api.nilObj,
-    }
-}
-
-unsafe extern "C" fn boolean_print_string(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let text = match unsafe { boolean_value(api, self_object) } {
-        Some(true) => b"true".as_slice(),
-        Some(false) => b"false".as_slice(),
-        None => return api.nilObj,
-    };
-    unsafe { (api.mkString)(text.as_ptr(), text.len()) }
 }
 
 unsafe fn block_loop(
@@ -800,37 +617,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     let _ = RUNTIME.get_or_init(|| Runtime {
         api: api_pointer as usize,
     });
-    let boolean_vt = unsafe { (api.vtableOf)(api.trueObj) };
-    let false_vt = unsafe { birnam_abi::ensure_private_vtable(api, api.falseObj) };
-    if false_vt.is_null() || false_vt == boolean_vt {
-        abort("could not establish False's private Boolean behavior");
-    }
-    let boolean_methods: &[(&[u8], birnam_abi::Method)] = &[
-        (b"ifTrue:ifFalse:\0", boolean_true_if_true_if_false),
-        (b"ifTrue:\0", boolean_true_if_true),
-        (b"ifFalse:\0", boolean_true_if_false),
-        (b"&\0", boolean_and),
-        (b"|\0", boolean_or),
-        (b"and:\0", boolean_and_block),
-        (b"or:\0", boolean_or_block),
-        (b"not\0", boolean_not),
-        (b"printString\0", boolean_print_string),
-    ];
-    for (selector, method) in boolean_methods {
-        let symbol = unsafe { intern(api, selector) };
-        // SAFETY: both singleton booleans share this vtable for the process lifetime.
-        unsafe { (api.method)(boolean_vt, symbol, *method) };
-    }
-    let false_methods: &[(&[u8], birnam_abi::Method)] = &[
-        (b"ifTrue:ifFalse:\0", boolean_false_if_true_if_false),
-        (b"ifTrue:\0", boolean_false_if_true),
-        (b"ifFalse:\0", boolean_false_if_false),
-    ];
-    for (selector, method) in false_methods {
-        let symbol = unsafe { intern(api, selector) };
-        // SAFETY: False owns a process-lifetime private vtable delegating to Boolean.
-        unsafe { (api.method)(false_vt, symbol, *method) };
-    }
     let print_string = unsafe { intern(api, b"printString\0") };
     let as_string = unsafe { intern(api, b"asString\0") };
     let symbol_print_string = print_string;
@@ -847,7 +633,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     unsafe { install_system_protocol(api) };
 }
 
-/// Identifies this opt-in N7.1 Rust prelude numeric/Boolean slice.
+/// Identifies this Rust prelude Object, Symbol, Block and System slice.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_prelude_rust_identity() -> *const c_char {
     RUST_PRELUDE_IDENTITY.as_ptr().cast()

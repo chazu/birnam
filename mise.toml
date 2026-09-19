@@ -40,6 +40,10 @@ run = "cargo +nightly miri test --workspace --locked --offline"
 description = "Run the test-only Design 74F same-frame recovery experiment"
 run = "python3 scripts/same-frame-deopt.py"
 
+[tasks.boolean]
+description = "Check the loaded Boolean methods in debug"
+run = "scripts/boolean-test.sh"
+
 [tasks.word]
 description = "Check the loaded Word representation and methods in debug"
 run = "scripts/word-test.sh"

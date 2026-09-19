@@ -387,3 +387,7 @@ consumers onto an explicit dependency. [81S](81s-production-word-methods.md)
 and [81T](81t-production-word-storage.md) do the same in two checkpoints for
 Word. IdApi v6 now has 37 fields / 296 bytes. The installed modules and host
 remain Rust; these are extraction boundaries for the later Birnam rewrite.
+
+[81U](81u-production-boolean-methods.md) extracts Boolean's existing methods from
+Prelude. The singleton representation and shared IdApi fields remain in Id for
+a separate caller/startup audit; this checkpoint adds no native interface.

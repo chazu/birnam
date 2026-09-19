@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "scope": "Boolean methods through existing IdApi and object-model messages",
+  "install_name": "@rpath/libbirnam_boolean.dylib",
+  "exported_symbols": [
+    "birnam_symbol_borrow_v1",
+    "module_init"
+  ]
+}

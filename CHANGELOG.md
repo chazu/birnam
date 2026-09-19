@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Extract Boolean's existing methods and False's private-behavior setup from
+  Prelude into `birnam-boolean` (Design 81U), loaded immediately before Prelude.
+  Preserve branching, short-circuiting, inherited behavior and live replacement;
+  keep singleton representation in Id and retain current ABI/image formats.
 - Restore Float's pre-extraction repeated-initialization behavior: reinstall its
   seventeen methods while retaining canonical objects and namespace bindings.
   Later Prelude initialization continues to preserve live Float replacements.
