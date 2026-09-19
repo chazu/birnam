@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Extract System load: into Source Loader (Design 81AV), preserving source
+  reading, staging, evaluation, diagnostics and callback order. Move its four
+  semantic dependencies out of Prelude. Run `mise run source-loader`.
 - Extract System loadModule: into Native Loader (Design 81AU), preserving
   direct loading, owned paths, live callbacks, original API/null state forwarding,
   receiver results and errors. Run `mise run native-loader`.

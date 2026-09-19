@@ -168,3 +168,8 @@ encoding.
 installer, preserving the existing direct path without host dependency admission.
 The [export inventory](rust-native-loader-dylib-v1.json) adds no IdApi fields,
 objects or image encoding.
+
+[Source Loader v1](source-loader-v1.md) owns System load: through a 24-byte
+installer. Integer, String, Text View and Error Value attachments move with their
+last Prelude consumers. The [export inventory](rust-source-loader-dylib-v1.json)
+adds no IdApi fields, objects or image encoding.

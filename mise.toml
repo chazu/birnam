@@ -60,6 +60,10 @@ run = "scripts/word-error-value-test.sh"
 description = "Focused debug lazy Error value policy checks"
 run = "scripts/error-value-test.sh"
 
+[tasks.source-loader]
+description = "Focused debug source loading, staging and evaluation checks"
+run = "scripts/source-loader-test.sh"
+
 [tasks.native-loader]
 description = "Focused debug direct native-module loading checks"
 run = "scripts/native-loader-test.sh"

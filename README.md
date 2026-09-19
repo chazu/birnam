@@ -707,7 +707,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
-- `rust/birnam-error-value/` — shared lazy Error factory dispatch for Prelude/Integer/Float/Word and exact recognition for Prelude/Integer/Float.
+- `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for native System, Block and numeric methods.
+- `rust/birnam-source-loader/` — System source reading, staging, evaluation and diagnostics.
 - `rust/birnam-native-loader/` — System direct native-module loading, installed by Prelude.
 - `rust/birnam-block-loop/` — native Block while methods, installed by Prelude before authored stackless control.
 - `rust/birnam-file-io/` — System binary file reads and writes, installed by Prelude.
@@ -783,6 +784,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Error value policy](docs/design/81am-production-error-value.md) shares Prelude's
   [lazy factory and exact-recognition helpers](abi/error-value-v1.md), preserving
   callback order and pre-Error nil behavior. Run `mise run error-value`.
+- [Source Loader](docs/design/81av-production-source-loader.md) owns load:
+  through an [explicit installer](abi/source-loader-v1.md), leaving Prelude
+  responsible for identity, layout and installation. Run `mise run source-loader`.
 - [Native Loader](docs/design/81au-production-native-loader.md) owns loadModule:
   through an [explicit installer](abi/native-loader-v1.md), preserving direct
   loading and initialization callbacks. Run `mise run native-loader`.

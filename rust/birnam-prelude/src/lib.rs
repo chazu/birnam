@@ -1,15 +1,10 @@
-//! Prelude coordinates native defaults and owns System source loading.
+//! Prelude coordinates native defaults and owns System/Block identity and layout.
 
 #![allow(clippy::missing_safety_doc)]
 
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use birnam_abi::error_value::{is_error, numeric_error};
-use birnam_abi::text_view::{printable_string, string_bytes};
+use birnam_abi::{IdApi, Oop};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
 use std::sync::OnceLock;
 
 const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
@@ -32,142 +27,9 @@ fn runtime() -> &'static Runtime {
         .unwrap_or_else(|| abort("module_init was not called"))
 }
 
-unsafe fn api_ref() -> &'static IdApi {
-    let runtime = runtime();
-    // SAFETY: module_init records the process-owned IdApi address and the host
-    // retains the selected floor for the process lifetime.
-    unsafe { &*(runtime.api as *const IdApi) }
-}
-
 unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
     // SAFETY: all callers pass static NUL-terminated selector names.
     unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
-    // SAFETY: the host owns the argument buffer for the duration of the call.
-    unsafe { borrowed_oop_args(args, count)?.first().copied() }
-}
-
-unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
-    let selector = unsafe { intern(api, selector) };
-    // SAFETY: a zero-count send may carry a null argument pointer under IdApi.
-    unsafe { (api.send)(receiver, selector, ptr::null(), 0) }
-}
-
-unsafe fn send_args(api: &IdApi, receiver: Oop, selector: &[u8], args: &[Oop]) -> Oop {
-    let selector = unsafe { intern(api, selector) };
-    let arguments = if args.is_empty() {
-        ptr::null()
-    } else {
-        args.as_ptr()
-    };
-    // SAFETY: callers keep the synchronous stack-backed argument slice alive
-    // until this send returns; IdApi does not retain the pointer.
-    unsafe { (api.send)(receiver, selector, arguments, args.len()) }
-}
-
-fn path_from_bytes(bytes: &[u8]) -> Option<&Path> {
-    std::str::from_utf8(bytes).ok().map(Path::new)
-}
-
-unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    const MAX_SOURCE_BYTES: u64 = 1 << 30;
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(path_object) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(path_bytes) = (unsafe { string_bytes(api, path_object) }) else {
-        return api.nilObj;
-    };
-    let Some(path) = path_from_bytes(path_bytes) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read source file") };
-    };
-    let Ok(file) = File::open(path) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read source file") };
-    };
-    let mut source = Vec::new();
-    if file
-        .take(MAX_SOURCE_BYTES.saturating_add(1))
-        .read_to_end(&mut source)
-        .is_err()
-        || source.len() > MAX_SOURCE_BYTES as usize
-    {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read source file") };
-    }
-    if unsafe { (api.isExported)(c"Codegen".as_ptr()) } == 0 {
-        return unsafe { numeric_error(api, b"noCodegen\0", b"Codegen module is not loaded") };
-    }
-    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
-    if codegen.is_null() {
-        return unsafe { numeric_error(api, b"noCodegen\0", b"Codegen module is not loaded") };
-    }
-    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
-
-    // Preserve the module-source staging protocol used by the native prelude:
-    // inspect a declaration first, record it by declared identity, then run
-    // the source-file-aware persisting evaluator.
-    let revision = unsafe { send_args(api, codegen, b"sourceRevisionOf:\0", &[source_object]) };
-    let revision_is_error = unsafe { is_error(api, revision) };
-    let mut declared_name = api.nilObj;
-    if !revision_is_error && revision != api.nilObj {
-        let name = unsafe { send_args(api, revision, b"at:\0", &[(birnam_abi::integer::make)(1)]) };
-        declared_name = name;
-        let recorded = unsafe {
-            send_args(
-                api,
-                codegen,
-                b"recordModuleSource:named:\0",
-                &[source_object, name],
-            )
-        };
-        if unsafe { is_error(api, recorded) } {
-            return recorded;
-        }
-    }
-
-    let result = unsafe {
-        send_args(
-            api,
-            codegen,
-            b"evalPersisting:from:\0",
-            &[source_object, path_object],
-        )
-    };
-    if result == api.nilObj {
-        let last_error = unsafe { send0(api, codegen, b"lastError\0") };
-        if last_error != api.nilObj {
-            if let Some(bytes) = unsafe { string_bytes(api, last_error) } {
-                eprintln!(
-                    "birnam: load {} failed:\n{}",
-                    path.display(),
-                    String::from_utf8_lossy(bytes)
-                );
-            }
-            return unsafe {
-                numeric_error(api, b"syntaxError\0", b"source file failed to compile")
-            };
-        }
-        return result;
-    }
-    if unsafe { is_error(api, result) } {
-        if let Some(rendered) = unsafe { printable_string(api, result) } {
-            eprintln!(
-                "birnam: load {}: {}",
-                path.display(),
-                String::from_utf8_lossy(rendered)
-            );
-        }
-    } else if declared_name != api.nilObj && unsafe { (api.isExported)(c"Module".as_ptr()) } != 0 {
-        let module = unsafe { (api.import)(c"Module".as_ptr()) };
-        if !module.is_null() {
-            let _ = unsafe { send_args(api, module, b"markLoaded:\0", &[declared_name]) };
-        }
-    }
-    result
 }
 
 unsafe fn install_system_protocol(api: &IdApi) {
@@ -212,7 +74,9 @@ unsafe fn install_system_protocol(api: &IdApi) {
         birnam_abi::environment::install(
             api, runtime().api as *const IdApi, system_vt, get_env,
         );
-        (api.method)(system_vt, load, system_load);
+        birnam_abi::source_loader::install(
+            api, runtime().api as *const IdApi, system_vt, load,
+        );
         birnam_abi::native_loader::install(
             api, runtime().api as *const IdApi, system_vt, load_module,
         );
@@ -301,19 +165,11 @@ mod tests {
     }
 }
 
-birnam_abi::integer_dependency!();
-
-birnam_abi::string_dependency!();
-
 birnam_abi::printing_dependency!();
 
 birnam_abi::system_gc_dependency!();
 
-birnam_abi::text_view_dependency!();
-
 birnam_abi::system_output_dependency!();
-
-birnam_abi::error_value_dependency!();
 
 birnam_abi::system_input_dependency!();
 
@@ -324,3 +180,5 @@ birnam_abi::file_io_dependency!();
 birnam_abi::block_loop_dependency!();
 
 birnam_abi::native_loader_dependency!();
+
+birnam_abi::source_loader_dependency!();
