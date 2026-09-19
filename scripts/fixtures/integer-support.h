@@ -267,8 +267,7 @@ static inline void fixture_mount_integer(IdApi *api, const char *floor_path) {
     if (!image) fprintf(stderr, "%s\n", dlerror());
     assert(image);
     ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(image, "module_init"); assert(init);
-    fixture_attach_float(api, image);
-    fixture_attach_string(api, image);
+    fixture_attach_integer(api, image);
     init(api, NULL);
     IntegerProviderV1 provide = (IntegerProviderV1)api->dlsym_fn(image, "birnam_integer_provider_v1"); assert(provide);
     fixture_integer = provide(); assert(fixture_integer);

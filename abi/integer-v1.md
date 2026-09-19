@@ -2,10 +2,13 @@
 
 `libbirnam_integer.dylib` owns Integer's canonical behavior and prototype, signed
 64-bit payload, primitive construction/reading/recognition, and thirteen methods.
-It depends on IdApi v7. Id boots without Integer; its remaining Machine and
+It depends on IdApi v7, prepared Float/String capabilities and
+[Error Value](error-value-v1.md) for its existing lazy errors and exact recognition
+(Design [81AP](../docs/design/81ap-production-integer-error-value.md)). Id boots without Integer; its remaining Machine and
 optimizer components explicitly acquire Integer when the host composes the stack.
 
-The host initializes Integer immediately after Id, obtains its table through
+After the collector and String/Word/Float storage preparation, the host loads
+Error Value and initializes Integer. It obtains Integer's table through
 `birnam_integer_provider_v1()`, and passes it to each consumer's optional
 `birnam_integer_dependency_v1(IntegerApiV1 *) -> int` before `module_init`.
 The host also attaches itself and the still-combined Machine library. Success is
@@ -57,3 +60,10 @@ Float behavior, replacement, reassociation, namespace rebinding, and collection.
 
 Float must be prepared and its explicit dependency attached before Integer
 initialization; see the [Float mounting protocol](float-v1.md).
+
+The [eight-symbol export inventory](rust-integer-dylib-v1.json) includes the Error
+Value dependency. Numeric declarations, method identities, descriptor sizes and
+codecs are unchanged by this helper migration. Error Value receives Integer's
+original selected IdApi on every call; it retains no table itself. Run
+`mise run integer-error-value` and `scripts/integer-error-value-image-smoke.sh PREFIX`
+for focused debug native and compiled-image checks.

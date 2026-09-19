@@ -1,6 +1,7 @@
 //! Production Integer representation, primitive operations and methods above Id.
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use birnam_abi::error_value::{is_error, numeric_error};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::OnceLock;
@@ -433,39 +434,6 @@ unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: us
     self_object
 }
 
-unsafe fn is_error(api: &IdApi, value: Oop) -> bool {
-    if value.is_null() || unsafe { (api.isExported)(c"ErrorVt".as_ptr()) } == 0 {
-        return false;
-    }
-    let error_vt = unsafe { (api.import)(c"ErrorVt".as_ptr()) };
-    !error_vt.is_null() && unsafe { (api.vtableOf)(value) } == error_vt
-}
-
-unsafe fn make_error(api: &IdApi, kind: Oop, message: Oop) -> Oop {
-    // Error owns its representation and Object protocol in the standalone
-    // Error rung. Prelude faults are intentionally lazy: before that rung is
-    // loaded, the floor has no catchable Error value and answers nil, matching
-    // the native prelude's `Error` import behavior.
-    if unsafe { (api.isExported)(c"Error".as_ptr()) } == 0 {
-        return api.nilObj;
-    }
-    let factory = unsafe { (api.import)(c"Error".as_ptr()) };
-    if factory.is_null() {
-        return api.nilObj;
-    }
-    let selector = unsafe { intern(api, b"kind:message:\0") };
-    let args = [kind, message];
-    // SAFETY: the standalone Error factory owns this selector and the stack
-    // argument array remains live for the duration of the synchronous send.
-    unsafe { (api.send)(factory, selector, args.as_ptr(), args.len()) }
-}
-
-unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
-    let kind = unsafe { intern(api, kind) };
-    let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
-    unsafe { make_error(api, kind, message) }
-}
-
 /// The host retains the floor and this library for the process lifetime.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) -> *mut c_void {
@@ -558,3 +526,5 @@ mod tests {
 birnam_abi::float_dependency!();
 
 birnam_abi::string_dependency!();
+
+birnam_abi::error_value_dependency!();

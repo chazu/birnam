@@ -27,7 +27,7 @@ either identity is allocated. The provider returns null until the primitive tabl
 is complete. Attach the table to the host and combined runtime before ordinary
 publication can reenter a Word consumer. Word's `module_init` remains after Float,
 with Integer, String and Error Value attached; it sets the owner, exports `Word`/`WordVt` and installs the
-methods. Error Value loads before Float and Word activation; Word storage
+methods. Error Value loads before Integer, Float and Word activation; Word storage
 preparation remains unchanged and does not call error policy. Later native consumers declare `birnam_word_dependency_v1`.
 
 Repeated initialization keeps the canonical objects and namespace bindings but

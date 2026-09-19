@@ -1050,8 +1050,8 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_storage",
     "libbirnam_trace",
     "libbirnam_collect",
-    "libbirnam_integer",
     "libbirnam_error_value",
+    "libbirnam_integer",
     "libbirnam_float",
     "libbirnam_word",
     "libbirnam_object_model",
@@ -2550,7 +2550,7 @@ impl LoadedStack {
         let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
         let mut store_compensation_api = None;
         for name in SCRIPT_MODULES {
-            if *name == "libbirnam_integer" {
+            if *name == "libbirnam_error_value" {
                 self.prepare_string(&resources.lib_dir.join("libbirnam_string.dylib"))?;
                 self.prepare_word(&resources.lib_dir.join("libbirnam_word.dylib"))?;
                 self.prepare_float(&resources.lib_dir.join("libbirnam_float.dylib"))?;

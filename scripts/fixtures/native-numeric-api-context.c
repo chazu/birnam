@@ -13,7 +13,9 @@ int main(int argc, char **argv) {
     ModuleInitFn init = (ModuleInitFn)floor_api->dlsym_fn(integer, "module_init"); assert(init);
     fixture_prepare_float(floor_api, argv[1]);
     fixture_prepare_word(floor_api, argv[1]);
-    fixture_attach_float(floor_api, integer);
+    assert(strlen(argv[1])<sizeof(fixture_floor_path));
+    strcpy(fixture_floor_path,argv[1]);
+    fixture_attach_integer(floor_api, integer);
     init(&module_api, NULL);
     IntegerProviderV1 provide = (IntegerProviderV1)floor_api->dlsym_fn(integer, "birnam_integer_provider_v1"); assert(provide);
     fixture_integer = provide(); assert(fixture_integer);

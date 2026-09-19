@@ -22,7 +22,7 @@ static void mount(const char *path) {
         copied = *fixture_integer;
         assert(attach(&copied) == 0); /* no silent remount onto another table */
     }
-    fixture_attach_float(api, image);
+    fixture_attach_integer(api, image);
     init(api, NULL);
 }
 static Method lookup(Oop behavior, const char *name) {

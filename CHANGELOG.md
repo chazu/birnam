@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Use shared Error Value policy for Integer errors and iteration propagation
+  (Design 81AP), preserving preparation, numeric admission and live callbacks.
+
 - Use shared Error Value policy for Float recognition and construction
   (Design 81AO), preserving numeric behavior, preparation and live dispatch.
 

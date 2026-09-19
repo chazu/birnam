@@ -46,8 +46,8 @@ is permitted after callback publication. Test runtimes own separate instances
 with explicit local Id adapters instead of using image-global attachment slots.
 
 Preparation runs after the floor/tracer/coordinator and before Integer; Float
-activation retains its existing slot after Integer; Error Value now loads between
-them without changing storage preparation. As with Integer's extraction,
+activation retains its existing slot after Integer; Error Value loads before
+Integer, following the unchanged storage preparation. As with Integer's extraction,
 Float leaves the floor bootstrap enumeration and its names enter the namespace
 when the loaded module publishes them. Canonical names, identities, first-alias
 selection and binding replacement rules are unchanged; numeric enumeration
