@@ -953,6 +953,7 @@ pub enum ModuleError {
     },
     IntegerDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
+    CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
         path: PathBuf,
     },
@@ -1035,6 +1036,7 @@ fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleErro
 pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_storage",
     "libbirnam_trace",
+    "libbirnam_collect",
     "libbirnam_integer",
     "libbirnam_object_model",
     "libbirnam_id_artifact",
@@ -2146,6 +2148,22 @@ impl LoadedStack {
                 return Err(ModuleError::TraceDependencyRejected { path: path.to_path_buf() });
             }
         }
+        let provider = unsafe {
+            (self.api().dlsym)(handle.as_ptr(), c"birnam_collect_provider_v1".as_ptr())
+        };
+        if !provider.is_null() {
+            let provide: birnam_abi::collect::ProviderV1 = unsafe { std::mem::transmute(provider) };
+            let dependency = unsafe {
+                (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_collect_dependency_v1".as_ptr())
+            };
+            if dependency.is_null() {
+                return Err(ModuleError::CollectDependencyRejected { path: path.to_path_buf() });
+            }
+            let attach: birnam_abi::collect::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if unsafe { attach(provide()) } != 1 {
+                return Err(ModuleError::CollectDependencyRejected { path: path.to_path_buf() });
+            }
+        }
         self.modules.push(handle);
         Ok(handle)
     }
@@ -2176,6 +2194,14 @@ impl LoadedStack {
                 };
                 if provider.is_null() {
                     return Err(ModuleError::TraceDependencyRejected { path });
+                }
+            }
+            if *name == "libbirnam_collect" {
+                let provider = unsafe {
+                    (self.api().dlsym)(handle.as_ptr(), c"birnam_collect_provider_v1".as_ptr())
+                };
+                if provider.is_null() {
+                    return Err(ModuleError::CollectDependencyRejected { path });
                 }
             }
             if *name == "libbirnam_store" {

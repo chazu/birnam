@@ -52,6 +52,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-collect"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-collection"
 version = "0.0.0"
 dependencies = [
@@ -84,6 +91,7 @@ dependencies = [
  "birnam-abi",
  "birnam-artifact",
  "birnam-codegen",
+ "birnam-collect",
  "birnam-integer",
  "birnam-native-compiler",
  "birnam-object-model",

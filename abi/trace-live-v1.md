@@ -23,7 +23,7 @@ int birnam_trace_live_v1(const TraceLiveSourceV1 *source);
 ```
 
 Id exports `birnam_trace_dependency_v1(const TraceLiveApiV1 *) -> int`.
-The host calls it after initializing the tracer, before initializing Integer
+The host calls it after initializing the tracer, before mounting the collection coordinator and initializing Integer
 and the remaining native modules. The canonical tracer module must publish a
 provider; missing or rejected dependencies fail startup. Successful image
 handles remain pinned for process lifetime.
@@ -93,7 +93,9 @@ The production collector treats any traversal failure as a fatal invariant
 before metadata retirement, detachment or finalization.
 
 Id retains native stack capture, storage membership/marks, root and payload
-policy, weak-index retirement, deferred settlement, finalizers and reclamation.
+policy, metadata operations and backing storage. The separately loaded
+[collection coordinator](collect-v1.md) controls phase order, settlement,
+retirement, finalizer invocation and reclamation.
 The tracer owns all production traversal/worklist state. The separate diagnostic
 report's coverage gaps are never used as permission to collect.
 

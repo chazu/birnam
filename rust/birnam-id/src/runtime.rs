@@ -62,6 +62,7 @@ mod native_tier;
 mod numeric;
 mod integer;
 mod tracing;
+mod collect;
 mod recovery;
 #[cfg(feature = "ffi-test-hooks")]
 mod source_probe_roots;
@@ -234,6 +235,7 @@ pub(crate) struct Runtime {
     numeric: core::cell::RefCell<numeric::Registry>,
     integer: Cell<Option<integer::Binding>>,
     trace: Cell<Option<birnam_abi::trace_live::TraceLiveV1>>,
+    collect: Cell<Option<birnam_abi::collect::CollectV1>>,
     #[cfg(test)]
     test_integer: UnsafeCell<Option<integer::TestOwner>>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
@@ -424,6 +426,10 @@ impl Runtime {
             trace: Cell::new(None),
             #[cfg(test)]
             trace: Cell::new(Some(birnam_trace::live::birnam_trace_live_v1)),
+            #[cfg(not(test))]
+            collect: Cell::new(None),
+            #[cfg(test)]
+            collect: Cell::new(Some(birnam_collect::birnam_collect_v1)),
             #[cfg(test)]
             test_integer: UnsafeCell::new(None),
             recovery_requests: core::cell::RefCell::new(Vec::new()),
@@ -4588,110 +4594,6 @@ impl Runtime {
             self.gc_collect_from_native_range(root_start, stack_bottom)
         })
         .unwrap_or(0)
-    }
-
-    fn gc_collect_from_native_range(&self, root_start: usize, stack_bottom: usize) -> usize {
-        self.collection_phase.set(CollectionPhase::Marking);
-        let collection_guard = CollectionGuard {
-            phase: &self.collection_phase,
-        };
-        // The floor owns marks and sweep bookkeeping; the mounted tracer owns
-        // the complete worklist. A failed trace aborts before any retirement.
-        unsafe { (&mut *self.state.get()).heap.clear_marks() };
-        self.run_mark_phase((root_start, stack_bottom), &[]);
-        // Weak identity indexes must lose dead vtable records before the heap
-        // detaches their allocations. Each direct binding owns one resumable
-        // registration reference, so retiring an unreachable dictionary is a
-        // semantic binding removal even though no MOP callback is needed.
-        // SAFETY: mark callbacks returned and the owner thread has exclusive
-        // access to all runtime registries.
-        unsafe {
-            let state = &mut *self.state.get();
-            let dead_bindings = state.vtables.dead_collectable_bindings(&state.heap);
-            if state.heap.has_dead_allocations()
-                && (!dead_bindings.is_empty()
-                    || state.heap.dead_finalizers().any(|(object, finalizer)| {
-                        // Only this exact floor cleanup on its published runtime
-                        // and owned storage cannot observe the physical sweep.
-                        // It still runs normally below. Wrappers, replacement
-                        // finalizers and missing owners retain ordinary settlement.
-                        let string_cleanup =
-                            crate::public_api::string_cleanup_matches_runtime(self, finalizer)
-                                && state.values.string_bytes(object).is_some();
-                        !string_cleanup
-                            && !state.execution.inert_machine_finalizer(
-                                &state.heap,
-                                object,
-                                finalizer,
-                            )
-                    }))
-            {
-                // Realize already-charged, unreachable identities before weak
-                // retirement or a foreign finalizer can observe the sweep.
-                // No new logical allocation, mark callback or collection occurs.
-                state.heap.settle_dead_allocations();
-            }
-            for (_, methods) in &dead_bindings {
-                for method in methods {
-                    let removed = if block_registration_for_method(state, *method).is_some() {
-                        state
-                            .execution
-                            .note_collected_block_binding_removed(*method)
-                    } else {
-                        state.execution.note_direct_binding_removed(*method)
-                    };
-                    removed.unwrap_or_else(|_| {
-                        boundary::fatal_invariant(
-                            "dead vtable binding retirement accounting failed",
-                        )
-                    });
-                }
-            }
-            let dead_vtables = state.vtables.remove_dead_collectable(&state.heap);
-            state
-                .block_vtable_catalog
-                .retain(|entry| !dead_vtables.contains(&entry.vtable));
-            if state.symbol_compaction_enabled {
-                state.vtables.remove_dead_weak_bindings(&state.heap);
-                state.symbols.remove_dead_collectable(&state.heap);
-            }
-        }
-        // Snapshot before mutation, then detach each allocation so no registry
-        // or RuntimeState borrow overlaps its foreign finalizer.
-        // SAFETY: mark callbacks have returned and owner-thread serialization is
-        // restored for the copied address list.
-        let dead = unsafe { (*self.state.get()).heap.dead_collectable_addresses() };
-        self.collection_phase.set(CollectionPhase::Finalizing);
-        let mut reclaimed = 0;
-        for address in dead {
-            // SAFETY: no callback occurs while the short heap borrow is live.
-            let detached = unsafe {
-                (&mut *self.state.get())
-                    .heap
-                    .detach_dead_collectable(address)
-            }
-            .unwrap_or_else(|| boundary::fatal_invariant("dead GC block could not be detached"));
-            let object = detached.object();
-            if let Some(finalizer) = detached.finalizer() {
-                // The detached payload remains live, but no Rust state borrow
-                // crosses the call. Allocation is dynamically forbidden until
-                // the complete sweep has finished.
-                unsafe { finalizer(object) };
-            }
-            detached.reclaim();
-            reclaimed += 1;
-        }
-        // SAFETY: all finalizers returned and the owner thread again has sole
-        // access to the registry.
-        unsafe {
-            let heap = &mut (&mut *self.state.get()).heap;
-            reclaimed += heap.reclaim_dead_allocations();
-            heap.clear_marks();
-            heap.reset_allocation_bytes();
-        }
-        drop(collection_guard);
-        self.native_tier.borrow_mut().prune();
-        reclaimed
     }
 
     pub(crate) fn gc_live_count(&self) -> usize {

@@ -1,6 +1,7 @@
 #ifndef FIXTURE_TRACE_SUPPORT_H
 #define FIXTURE_TRACE_SUPPORT_H
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
+#include "collect-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -19,5 +20,6 @@ static inline void fixture_mount_trace(IdApi *api, const char *floor_path) {
     void *floor=api->dlopen_fn(floor_path,RTLD_NOW|RTLD_LOCAL); assert(floor);
     TraceLiveDependencyV1 attach=(TraceLiveDependencyV1)api->dlsym_fn(floor,"birnam_trace_dependency_v1"); assert(attach);
     assert(attach(provide())==1);
+    fixture_mount_collect(api,floor_path);
 }
 #endif

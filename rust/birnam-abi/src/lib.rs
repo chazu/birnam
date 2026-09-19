@@ -11,6 +11,7 @@ pub mod integer;
 pub mod storage;
 pub mod trace;
 pub mod trace_live;
+pub mod collect;
 pub mod private;
 
 pub const SLOT_RAW: u8 = 0;

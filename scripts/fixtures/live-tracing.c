@@ -1,5 +1,6 @@
 #include "../../abi/fixtures/idapi-v4/idapi_v4.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
+#include "collect-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <signal.h>
@@ -85,6 +86,7 @@ int main(int argc, char **argv) {
     uintptr_t stack_anchor=0;
     api->gc_set_stack_bottom((uintptr_t)&stack_anchor+sizeof(stack_anchor));
     attach=(TraceLiveDependencyV1)dlsym(floor,"birnam_trace_dependency_v1"); assert(attach);
+    fixture_mount_collect(api,argv[1]);
     must_abort_collection(); /* no in-Id fallback */
     void *image=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(image);
     ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL);

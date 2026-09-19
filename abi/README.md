@@ -47,3 +47,7 @@ against actual production dylibs.
 to that same loaded module. The host and custom native embedders mount its explicit
 capability before collection. Run `scripts/live-tracing-test.sh` for focused
 native GC and current IdApi checks.
+
+[Collection coordination v1](collect-v1.md) moves collection phase order,
+conditional settlement and the finalizer/reclamation loop into a loaded module.
+Its per-invocation source preserves storage and metadata ownership; IdApi stays v4.

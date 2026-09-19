@@ -1,7 +1,7 @@
 # 81A — Current bootstrap and runtime layers
 
 > **Status:** Source-verified inventory begun 2026-09-17 at `f4d7c0773bfc`;
-> native loading updated through 81O on 2026-09-18.
+> native loading updated through 81P on 2026-09-18.
 > Companion to [81 — Toward a Birnam implementation](81-toward-a-birnam-implementation.md).
 > This describes the checked-out production paths, not a newly run bootstrap or
 > a verification of the currently installed executable. Historical Zig stage
@@ -11,9 +11,9 @@
 representation, construction and behavior in `libbirnam_integer.dylib`.
 [81M](81m-production-storage-observation.md) adds the stateless storage-description
 validator immediately after Id. [81N](81n-production-storage-tracer.md)'s scoped
-graph tracer follows it, then Integer. [81J](81j-private-behavior-extraction.md)'s
+graph tracer follows it, then the 81P collection coordinator, then Integer. [81J](81j-private-behavior-extraction.md)'s
 object-model library follows Integer, before Artifact. The native inventory
-contains 19 libraries. IdApi v4 has
+contains 20 libraries. IdApi v4 has
 45 fields / 360 bytes after 81J, [81K](81k-owner-and-parent-protocols.md), and 81L.
 The remaining Machine and optimizer components acquire Integer explicitly.
 This is still a Rust implementation; build stage and implementation language
@@ -21,7 +21,9 @@ remain distinct. Focused validation passes; release validation was explicitly wa
 
 [81O](81o-production-live-gc-traversal.md) mounts the live traversal capability
 before Integer. The loaded tracer owns the automatic collector's worklist;
-source policy adapters, collection coordination and reclamation remain in Id.
+[81P](81p-production-collection-coordinator.md) moves collection coordination
+into `libbirnam_collect`. Source policy adapters, metadata owner operations and
+physical reclamation remain in Id.
 
 ## 1. Stage means build stage, not runtime layer
 
@@ -120,22 +122,23 @@ The table's native module stems receive `.dylib` in the installed library tree.
 | 0 | `libbirnam_id` | Rust, with native compiler/C support | Object/vtable bootstrap, dispatch, allocation, symbols, primitive values, raw import/export namespace, GC source adapters/retirement/reclamation, Frames/Machines, checked control and native tiers |
 | 1 | `libbirnam_storage` | Rust | Validates prepared payload descriptions over protected Id storage facts |
 | 2 | `libbirnam_trace` | Rust | Production GC worklist/traversal and scoped described-graph reachability |
-| 3 | `libbirnam_integer` | Rust | Canonical Integer objects, representation, native primitives and methods; numeric implementation declarations |
-| 4 | `libbirnam_object_model` | Rust | Existing private-behavior selection/reuse and construction, through Id primitives and seed messages |
-| 5 | `libbirnam_id_artifact` | Rust | Pointer-free compiled-artifact inspection exposed to Birnam |
-| 6 | `libbirnam_store` | Rust | Fact/history/index substrate, db/Cell/Globals protocols and object-model mirror |
-| 7 | `libbirnam_id_peg` | Rust | PEG matching, pattern objects and CST representation |
-| 8 | `libbirnam_id_lang` | Rust | Birnam grammar construction through PEG messages and Lang facade |
-| 9 | `libbirnam_id_tcc` | Rust + C libtcc | C compilation, native units and generated-code runtime shims |
-| 10 | `libbirnam_id_codegen` | Rust | Codegen/Reflect, lowering and emission, materialization, candidate/generation mechanisms |
-| 11 | `libbirnam_id_prelude` | Rust | Float/Word primitives, System operations, Block and Boolean control primitives |
-| 12 | `libbirnam_id_collection` | Rust | Collection representations and primitive String/Vector/Map/Range operations |
-| 13 | `libbirnam_id_error` | Rust | Error representation/factories and error-valued doesNotUnderstand behavior |
-| 14 | `libbirnam_portable_code` | Rust | Reified CodeObject/CodeProgram/CodeLexicalBinding/CodeStatement/CodeNode payloads and protocols |
-| 15 | `libbirnam_id_isolate` | Rust | Process workers, copied-value transport and bounded asynchronous request operations |
-| 16 | `libbirnam_id_relational` | Rust | Relational evaluator and Birnam adapters |
-| 17 | `libbirnam_id_alien` | Rust, emitting C wrappers | FFI, foreign addresses, library/wrapper management |
-| 18 | `libbirnam_id_image` | Rust | Image codec, heap/code recovery and System image methods |
+| 3 | `libbirnam_collect` | Rust | Collection phase order, conditional settlement, retirement ordering, finalization and reclamation driver |
+| 4 | `libbirnam_integer` | Rust | Canonical Integer objects, representation, native primitives and methods; numeric implementation declarations |
+| 5 | `libbirnam_object_model` | Rust | Existing private-behavior selection/reuse and construction, through Id primitives and seed messages |
+| 6 | `libbirnam_id_artifact` | Rust | Pointer-free compiled-artifact inspection exposed to Birnam |
+| 7 | `libbirnam_store` | Rust | Fact/history/index substrate, db/Cell/Globals protocols and object-model mirror |
+| 8 | `libbirnam_id_peg` | Rust | PEG matching, pattern objects and CST representation |
+| 9 | `libbirnam_id_lang` | Rust | Birnam grammar construction through PEG messages and Lang facade |
+| 10 | `libbirnam_id_tcc` | Rust + C libtcc | C compilation, native units and generated-code runtime shims |
+| 11 | `libbirnam_id_codegen` | Rust | Codegen/Reflect, lowering and emission, materialization, candidate/generation mechanisms |
+| 12 | `libbirnam_id_prelude` | Rust | Float/Word primitives, System operations, Block and Boolean control primitives |
+| 13 | `libbirnam_id_collection` | Rust | Collection representations and primitive String/Vector/Map/Range operations |
+| 14 | `libbirnam_id_error` | Rust | Error representation/factories and error-valued doesNotUnderstand behavior |
+| 15 | `libbirnam_portable_code` | Rust | Reified CodeObject/CodeProgram/CodeLexicalBinding/CodeStatement/CodeNode payloads and protocols |
+| 16 | `libbirnam_id_isolate` | Rust | Process workers, copied-value transport and bounded asynchronous request operations |
+| 17 | `libbirnam_id_relational` | Rust | Relational evaluator and Birnam adapters |
+| 18 | `libbirnam_id_alien` | Rust, emitting C wrappers | FFI, foreign addresses, library/wrapper management |
+| 19 | `libbirnam_id_image` | Rust | Image codec, heap/code recovery and System image methods |
 
 The host first uses the platform loader for the selected floor, calls `id_init`,
 and retains its `IdApi`. Floor initialization constructs the object system and

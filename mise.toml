@@ -40,6 +40,10 @@ run = "cargo +nightly miri test --workspace --locked --offline"
 description = "Run the test-only Design 74F same-frame recovery experiment"
 run = "python3 scripts/same-frame-deopt.py"
 
+[tasks.collection]
+description = "Check the loaded production collection coordinator in debug"
+run = "scripts/collection-test.sh"
+
 [tasks.id-seed-experiment]
 description = "Run Designs 81F/81G/81H/81I isolated Id, modules, tracing and reclamation proofs"
 run = "python3 scripts/id-seed-experiment.py"

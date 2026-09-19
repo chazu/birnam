@@ -109,3 +109,7 @@ retirement-before-address-reuse and native/code lifetime rules; the isolated 81I
 collector's simpler pinned-object policy is insufficient by itself. The live
 source adapters still reside with their current owners until those owners are
 split out. The 81M/81N observation API retains its explicit coverage gaps.
+
+[81P](81p-production-collection-coordinator.md) implements that coordination
+extraction and verifies the loaded driver in startup and compiled saved/baked
+images. Storage and metadata owner operations remain explicit floor adapters.

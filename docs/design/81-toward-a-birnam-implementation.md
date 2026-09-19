@@ -371,3 +371,8 @@ path still awaits its root/provider and collection migration.
 into the tracer using ordered live root/admission/edge callbacks. Every collection
 path uses it; native-root and payload policy adapters, retirement and physical
 reclamation remain in Id. Observation gaps are not used to authorize collection.
+
+[81P](81p-production-collection-coordinator.md) moves collection coordination into
+`birnam-collect`: phase transitions, settlement ordering, metadata retirement
+before detachment, live finalizer invocation and completion. Owner-specific
+metadata operations and physical allocation/reclamation remain in Id.

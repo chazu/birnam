@@ -33,6 +33,11 @@ workflow facade.
 
 ## Booting
 
+The native runtime loads its tracer and collection coordinator before restoring
+an image. Saved and baked images use the same collection path as ordinary
+startup; no collector state or callback addresses are added to the image format.
+
+
 ```text
 birnam /tmp/app.image
 birnam --rebuild /tmp/app.image

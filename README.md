@@ -734,6 +734,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
   its [native interface](abi/trace-v1.md) calculate reachability over those facts;
   [production GC traversal](docs/design/81o-production-live-gc-traversal.md) also
   uses the loaded tracer through a [live interface](abi/trace-live-v1.md).
+- [Production collection coordination](docs/design/81p-production-collection-coordinator.md)
+  moves phase order and finalization into `birnam-collect`, through its
+  [scoped native interface](abi/collect-v1.md).
   Retirement and reclamation remain in Id.
 - [Compiled units](docs/design/45-compiled-units.md) defines executable
   authority, image integrity, recovery, and the next live-reload boundary.

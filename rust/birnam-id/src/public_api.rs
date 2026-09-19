@@ -579,6 +579,16 @@ mod tests {
     }
 }
 
+/// Explicit dependency on the loaded collection coordinator.
+/// # Safety
+/// The readable table supplies code pinned for the runtime's entire lifetime.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_collect_dependency_v1(
+    api: *const birnam_abi::collect::ApiV1,
+) -> c_int {
+    c_int::from(unsafe { runtime().attach_collect(api) })
+}
+
 /// Explicit traversal dependency of the still-combined collector.
 /// # Safety
 /// The readable table supplies code pinned for the runtime's entire lifetime.

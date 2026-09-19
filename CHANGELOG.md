@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move production collection coordination into the loaded `birnam-collect`
+  module (Design 81P): phase order, conditional deferred settlement, retirement
+  before detachment, live finalizer invocation, reclamation and completion.
+  Id retains storage/metadata owner operations; IdApi and image bytes are unchanged.
+
 - Move actual GC traversal to the loaded tracer (Design 81O). Automatic, explicit
   and generation-retirement collections use its live worklist through ordered
   root, first-mark and outgoing-reference callbacks. Id's old `Marker` is removed;
