@@ -1,3 +1,5 @@
+#[path = "namespace.rs"]
+mod namespace;
 // Test mechanics only. Expected callback counts are supplied by each adapter.
 use birnam_abi::IdApi;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
@@ -17,6 +19,7 @@ pub fn check(mut lookup: impl FnMut(&IdApi, &'static CStr) -> Option<usize>, cac
             handle
         };
         let base = open("BIRNAM_LOOKUP_BASE", 6);
+        namespace::prepare(base, std::path::Path::new(&std::env::var("BIRNAM_LOOKUP_BASE").unwrap()));
         let init = dlsym(base, c"id_init".as_ptr());
         assert!(!init.is_null());
         let init: unsafe extern "C" fn() -> *mut IdApi = std::mem::transmute(init);

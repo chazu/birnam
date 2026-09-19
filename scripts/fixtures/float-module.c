@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <math.h>
@@ -68,7 +69,7 @@ static void expect_text(double value, const char *text) {
 int main(int argc, char **argv) {
     assert(argc==6);
     void *floor_handle=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor_handle);
-    api=((IdInitFn)dlsym(floor_handle,"id_init"))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor_handle,argv[1]),dlsym(floor_handle,"id_init")))(); assert(api); api->gc_set_auto(0);
     fixture_mount_trace(api,argv[1]);
     assert(!api->is_exported("Float") && !api->is_exported("FloatVt"));
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));

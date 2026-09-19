@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 static unsigned boxes;
 static Oop (*original_make)(void *, int64_t);
@@ -6,7 +7,7 @@ static Oop counted_box(void *context, int64_t value) { ++boxes; return original_
 int main(int argc, char **argv) {
     assert(argc == 3);
     void *floor = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL); assert(floor);
-    IdInitFn initialize = (IdInitFn)dlsym(floor, "id_init"); assert(initialize);
+    IdInitFn initialize = (IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")); assert(initialize);
     IdApi *floor_api = initialize();
     IdApi module_api = *floor_api;
     void *integer = floor_api->dlopen_fn(argv[2], RTLD_NOW | RTLD_LOCAL); assert(integer);

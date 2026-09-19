@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <inttypes.h>
@@ -85,7 +86,7 @@ static void end(unsigned expected_integers,unsigned expected_exacts) {
 int main(int argc,char **argv) {
     assert(argc==4);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)dlsym(floor,"id_init"))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
     fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1]);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.alloc=counted_alloc; selected.vtable_of=counted_vtable; selected.send=counted_send; mount(argv[3],&selected);

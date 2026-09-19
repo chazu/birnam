@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <inttypes.h>
@@ -88,7 +89,7 @@ static Oop forbidden(Oop self,const Oop *args,size_t count) { (void)self; (void)
 int main(int argc,char **argv) {
     setvbuf(stdout,NULL,_IONBF,0);
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)dlsym(floor,"id_init"))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
     fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1]);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.alloc=allocate; mount(argv[3],&selected); api->gc_register_root_provider(roots);

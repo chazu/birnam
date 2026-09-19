@@ -1,4 +1,5 @@
 #include "../../abi/fixtures/idapi-v7/idapi_v7.h"
+#include "namespace-support.h"
 #include "../../abi/fixtures/collect-v1/collect_v1.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include <assert.h>
@@ -154,7 +155,7 @@ static void must_abort(void) {
 int main(int argc, char **argv) {
     assert(argc==4);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)dlsym(floor,"id_init"))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     void *tracer=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(tracer);
     ((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL);

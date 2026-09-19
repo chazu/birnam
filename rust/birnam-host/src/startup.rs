@@ -892,6 +892,7 @@ pub enum FloorError {
     EmbeddedNul,
     OpenFailed,
     MissingIdInit,
+    Namespace { path: PathBuf, reason: &'static str },
     NullApi,
     MissingIdentity,
     IdentityMismatch {
@@ -924,6 +925,7 @@ impl fmt::Debug for FloorError {
             Self::EmbeddedNul => formatter.write_str("EmbeddedNul"),
             Self::OpenFailed => formatter.write_str("OpenFailed"),
             Self::MissingIdInit => formatter.write_str("MissingIdInit"),
+            Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
             Self::MissingIdentity => formatter.write_str("MissingIdentity"),
             Self::IdentityMismatch { expected, actual } => write!(
@@ -938,6 +940,7 @@ impl fmt::Debug for FloorError {
 /// for the lifetime of this value and deliberately never closed: the floor
 /// owns process-wide heap/GC state and may retain function pointers in modules.
 pub struct LoadedFloor {
+    _namespace: NonNull<std::ffi::c_void>,
     handle: NonNull<std::ffi::c_void>,
     api: NonNull<IdApi>,
     // Keep this type !Send/!Sync until host threading and the floor owner-thread
@@ -1053,6 +1056,7 @@ fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleErro
 /// The native module order is part of the host contract: Store precedes
 /// Codegen, and every later rung sees the same canonical floor/API table.
 pub const SCRIPT_MODULES: &[&str] = &[
+    "libbirnam_namespace",
     "libbirnam_storage",
     "libbirnam_trace",
     "libbirnam_collect",
@@ -2955,6 +2959,7 @@ pub fn load_floor(
             });
         }
     }
+    let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -2992,6 +2997,16 @@ pub fn load_floor(
             });
         }
     }
+    // Namespace supplies only an inert factory before Id exists. The floor
+    // constructs its own instance at the existing bootstrap point. Selection
+    // is explicit here; Id has no loader fallback or linked implementation.
+    let namespace = match unsafe { prepare_namespace(handle, &namespace_path) } {
+        Ok(namespace) => namespace,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
     // SAFETY: `init` is the frozen `IdInitFn` export and the dylib remains live.
     let init: IdInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
     let api = NonNull::new(unsafe { init() }).ok_or_else(|| {
@@ -2999,10 +3014,37 @@ pub fn load_floor(
         FloorError::NullApi
     })?;
     Ok(LoadedFloor {
+        _namespace: namespace,
         handle,
         api,
         _owner_thread: PhantomData,
     })
+}
+
+// Only host loader operations run here; no Id callbacks exist yet. On success
+// the descriptor has escaped into the floor and both libraries stay pinned.
+unsafe fn prepare_namespace(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::Namespace { path: path.to_path_buf(), reason };
+    let attach = unsafe { system_dlsym(floor.as_ptr(), c"birnam_namespace_dependency_v1".as_ptr()) };
+    if attach.is_null() { return Err(error("missing floor dependency")); }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider = unsafe { system_dlsym(image.as_ptr(), c"birnam_namespace_provider_v1".as_ptr()) };
+        if provider.is_null() { return Err(error("missing provider")); }
+        let provide: birnam_abi::namespace::ProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::namespace::valid(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::namespace::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
 }
 
 /// Load the selected Rust floor using optional identity and digest checks.

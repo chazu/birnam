@@ -1,4 +1,5 @@
 #include "../../abi/fixtures/idapi-v7/idapi_v7.h"
+#include "namespace-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include "collect-support.h"
 #include <assert.h>
@@ -81,7 +82,7 @@ static void must_abort_collection(void) {
 int main(int argc, char **argv) {
     assert(argc==3);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init"); assert(initialize);
+    IdInitFn initialize=(IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")); assert(initialize);
     api=initialize(); assert(api); api->gc_set_auto(0);
     uintptr_t stack_anchor=0;
     api->gc_set_stack_bottom((uintptr_t)&stack_anchor+sizeof(stack_anchor));

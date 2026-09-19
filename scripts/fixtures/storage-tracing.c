@@ -1,4 +1,5 @@
 #include "../../abi/fixtures/trace-v1/trace_v1.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -164,7 +165,7 @@ static int inspect(void *context, const StorageViewV1 *view) {
 int main(int argc, char **argv) {
     assert(argc==5);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); if(!floor) { fputs(dlerror(),stderr); abort(); }
-    api=((IdInitFn)dlsym(floor,"id_init"))(); assert(api);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api);
     api->gc_set_auto(0);
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1"); assert(observe);
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);

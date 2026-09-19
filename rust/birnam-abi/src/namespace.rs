@@ -1,0 +1,103 @@
+//! Opaque per-runtime raw namespace storage (81AW), independent of Id objects.
+use crate::Oop;
+use core::ffi::{c_int, c_void};
+use core::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct BindingV1 {
+    pub name: Oop,
+    pub value: Oop,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ViewV1 {
+    pub bindings: *const BindingV1,
+    pub count: usize,
+}
+/// Immutable descriptor and code stay pinned until all contexts are destroyed.
+/// Every operation is owner-serialized, with no Id calls, GC, callbacks or
+/// reentry. create/bind may allocate native storage; reads do not mutate.
+/// Oops are opaque identities, never dereferenced. View data is borrowed until
+/// the next bind/destroy and must not escape its synchronous use by the caller.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ApiV1 {
+    pub version: u32,
+    pub byte_size: usize,
+    pub create: Option<unsafe extern "C" fn() -> *mut c_void>,
+    pub destroy: Option<unsafe extern "C" fn(*mut c_void)>,
+    pub bind: Option<unsafe extern "C" fn(*mut c_void, Oop, Oop) -> Oop>,
+    pub find: Option<unsafe extern "C" fn(*const c_void, Oop) -> Oop>,
+    pub reverse: Option<unsafe extern "C" fn(*const c_void, Oop) -> Oop>,
+    pub count: Option<unsafe extern "C" fn(*const c_void) -> usize>,
+    pub name_at: Option<unsafe extern "C" fn(*const c_void, usize) -> Oop>,
+    pub bindings: Option<unsafe extern "C" fn(*const c_void) -> ViewV1>,
+}
+const _: () = {
+    assert!(size_of::<ApiV1>() == 80);
+    assert!(core::mem::offset_of!(ApiV1, create) == 16);
+    assert!(core::mem::offset_of!(ApiV1, bindings) == 72);
+    assert!(size_of::<BindingV1>() == 16);
+    assert!(size_of::<ViewV1>() == 16);
+};
+pub type ProviderV1 = unsafe extern "C" fn() -> *const ApiV1;
+pub type DependencyV1 = unsafe extern "C" fn(*const ApiV1) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV1> = AtomicPtr::new(ptr::null_mut());
+/// # Safety
+/// Readable aligned descriptor; valid immutable operations/code stay pinned.
+pub unsafe fn valid(pointer: *const ApiV1) -> bool {
+    if pointer.is_null() {
+        return false;
+    }
+    let a = unsafe { *pointer };
+    a.version == 1
+        && a.byte_size == size_of::<ApiV1>()
+        && a.create.is_some()
+        && a.destroy.is_some()
+        && a.bind.is_some()
+        && a.find.is_some()
+        && a.reverse.is_some()
+        && a.count.is_some()
+        && a.name_at.is_some()
+        && a.bindings.is_some()
+}
+/// # Safety
+/// Owner-thread admission before constructing any namespace. Descriptor and code
+/// are immutable and process-pinned. Different descriptors cannot retarget it.
+pub unsafe fn attach(pointer: *const ApiV1) -> c_int {
+    if !unsafe { valid(pointer) } {
+        return 0;
+    }
+    match DEPENDENCY.compare_exchange(
+        ptr::null_mut(),
+        pointer.cast_mut(),
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    ) {
+        Ok(_) => 1,
+        Err(existing) => c_int::from(ptr::eq(existing, pointer)),
+    }
+}
+/// # Safety
+/// Use only after the declared dependency is prepared by the host.
+pub unsafe fn operations() -> ApiV1 {
+    let pointer = DEPENDENCY.load(Ordering::Acquire);
+    assert!(
+        !pointer.is_null(),
+        "native Namespace dependency was not mounted"
+    );
+    unsafe { *pointer }
+}
+#[macro_export]
+macro_rules! namespace_dependency {
+    () => {
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn birnam_namespace_dependency_v1(
+            api: *const $crate::namespace::ApiV1,
+        ) -> core::ffi::c_int {
+            unsafe { $crate::namespace::attach(api) }
+        }
+    };
+}

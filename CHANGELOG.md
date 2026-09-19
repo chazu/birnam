@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Move raw export namespace storage out of Id into the loaded Namespace module
+  (Design 81AW), preserving binding order, aliases, nulls, enumeration and roots.
+  Native hosts now prepare its factory before Id initialization. Run `mise run namespace`.
+
 - Extract System load: into Source Loader (Design 81AV), preserving source
   reading, staging, evaluation, diagnostics and callback order. Move its four
   semantic dependencies out of Prelude. Run `mise run source-loader`.

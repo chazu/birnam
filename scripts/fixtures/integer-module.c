@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -41,7 +42,7 @@ int main(int argc, char **argv) {
     assert(argc == 6);
     void *floor = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     assert(floor);
-    IdInitFn initialize = (IdInitFn)dlsym(floor, "id_init");
+    IdInitFn initialize = (IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init"));
     assert(initialize);
     api = initialize();
     api->gc_set_auto(0);

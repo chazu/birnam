@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "../../../scripts/fixtures/namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
 
@@ -67,6 +68,7 @@ int main(int argc, char **argv) {
 
     void *floor = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (floor == NULL) fail(dlerror());
+    fixture_prepare_namespace(floor, argv[1]);
     void *raw_init = required_symbol(floor, "id_init");
     IdInitFn id_init = NULL;
     memcpy(&id_init, &raw_init, sizeof(id_init));

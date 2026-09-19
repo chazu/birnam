@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "namespace-support.h"
 #include "object-model-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -51,7 +52,7 @@ int main(int argc, char **argv) {
     assert(argc == 7 || (argc == 8 && strcmp(argv[7], "without-prelude") == 0));
     void *floor = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     assert(floor);
-    IdInitFn initialize = (IdInitFn)dlsym(floor, "id_init");
+    IdInitFn initialize = (IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init"));
     assert(initialize);
     api = initialize();
     fixture_mount_object_model(api, argv[1]);

@@ -1,4 +1,7 @@
 //! Actual native adapters, with a handwritten synchronous Store and real floor.
+#[path = "../../birnam-abi/tests/support/namespace.rs"]
+mod namespace;
+
 use super::*;
 use std::ffi::CString;
 
@@ -72,6 +75,7 @@ fn exported_output_contract() {
         let path = CString::new(std::env::var("BIRNAM_RELATIONAL_FLOOR").unwrap()).unwrap();
         let floor = dlopen(path.as_ptr(), 6);
         assert!(!floor.is_null());
+        namespace::prepare(floor, std::path::Path::new(path.to_str().unwrap()));
         let address = dlsym(floor, c"id_init".as_ptr());
         assert!(!address.is_null());
         let init: unsafe extern "C" fn() -> *mut IdApi = std::mem::transmute(address);

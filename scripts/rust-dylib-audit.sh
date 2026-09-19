@@ -14,7 +14,7 @@ PYEXPORTS
 
 audit_profile() {
   local profile=$1
-  local cargo_args=(build --manifest-path "$repo/Cargo.toml" -p birnam-id --locked --offline)
+  local cargo_args=(build --manifest-path "$repo/Cargo.toml" -p birnam-namespace -p birnam-id --locked --offline)
   if [[ $profile == release ]]; then cargo_args+=(--release); fi
   CARGO_TARGET_DIR="$target_dir" cargo "${cargo_args[@]}"
 

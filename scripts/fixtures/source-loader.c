@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <unistd.h>
@@ -175,7 +176,7 @@ int main(int argc,char **argv) {
     assert(argc==5);setvbuf(stdout,NULL,_IONBF,0);reentry_mode=!strcmp(argv[4],"first-load-intern-reentry")?1:(!strcmp(argv[4],"first-print-binding-reentry")?2:0);
     assert(mkdtemp(directory));snprintf(first_path,sizeof(first_path),"%s/a-src",directory);snprintf(second_path,sizeof(second_path),"%s/b-src",directory);path_length=strlen(first_path);strcpy(path_buffer,first_path);assert(strlen(second_path)==path_length);
     write_source((const uint8_t *)"source",6);
-    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);api->gc_set_auto(0);
+    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
     fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1]);uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0);api->gc_register_root_provider(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;original_integer_make=fixture_integer->make;integer_context=fixture_integer->context;
     fixture_string->make=make;fixture_string->bytes=bytes;fixture_integer->make=make_integer;

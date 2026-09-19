@@ -173,3 +173,9 @@ objects or image encoding.
 installer. Integer, String, Text View and Error Value attachments move with their
 last Prelude consumers. The [export inventory](rust-source-loader-dylib-v1.json)
 adds no IdApi fields, objects or image encoding.
+
+[Namespace v1](namespace-v1.md) supplies an 80-byte immutable storage factory,
+prepared explicitly before Id initialization. It owns ordered bindings and
+independent contexts; Id consumes a borrowed binding view for roots. The
+[export inventory](rust-namespace-dylib-v1.json) adds no IdApi fields or image
+encoding. Current native hosts must attach this prerequisite before id_init.

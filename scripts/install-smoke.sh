@@ -48,14 +48,14 @@ CARGO_HOME="$tmp/cargo-home" cargo metadata \
   --format-version=1 \
   --manifest-path "$tmp/birnam/share/birnam/src/Cargo.toml" >"$tmp/cargo-metadata.json"
 test "$(jq -r '.workspace_root' "$tmp/cargo-metadata.json")" = "$tmp/birnam/share/birnam/src"
-test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-alien birnam-artifact birnam-artifact-codec birnam-block-loop birnam-boolean birnam-codegen birnam-codegen-runtime birnam-collect birnam-collection birnam-collection-value birnam-environment birnam-error birnam-error-value birnam-file-io birnam-float birnam-host birnam-id birnam-image birnam-integer birnam-isolate birnam-lang birnam-map birnam-native-compiler birnam-native-loader birnam-nil birnam-object-model birnam-peg birnam-portable-code birnam-prelude birnam-printing birnam-range birnam-relational birnam-source-loader birnam-storage birnam-store birnam-string birnam-string-builder birnam-string-collection birnam-system-gc birnam-system-input birnam-system-output birnam-tcc birnam-text-view birnam-trace birnam-vector birnam-word"
+test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-alien birnam-artifact birnam-artifact-codec birnam-block-loop birnam-boolean birnam-codegen birnam-codegen-runtime birnam-collect birnam-collection birnam-collection-value birnam-environment birnam-error birnam-error-value birnam-file-io birnam-float birnam-host birnam-id birnam-image birnam-integer birnam-isolate birnam-lang birnam-map birnam-namespace birnam-native-compiler birnam-native-loader birnam-nil birnam-object-model birnam-peg birnam-portable-code birnam-prelude birnam-printing birnam-range birnam-relational birnam-source-loader birnam-storage birnam-store birnam-string birnam-string-builder birnam-string-collection birnam-system-gc birnam-system-input birnam-system-output birnam-tcc birnam-text-view birnam-trace birnam-vector birnam-word"
 
 find docs/guide -type f -name '*.md' -print | sed 's#^docs/guide/##' | sort >"$tmp/expected-guide"
 find "$tmp/birnam/share/birnam/docs/guide" -type f -name '*.md' -print | sed "s#^$tmp/birnam/share/birnam/docs/guide/##" | sort >"$tmp/installed-guide"
 diff -u "$tmp/expected-guide" "$tmp/installed-guide"
 
 required_dylibs=(
-  libbirnam_id.dylib libbirnam_store.dylib libbirnam_id_artifact.dylib
+  libbirnam_id.dylib libbirnam_namespace.dylib libbirnam_store.dylib libbirnam_id_artifact.dylib
   libbirnam_id_peg.dylib libbirnam_id_lang.dylib libbirnam_id_tcc.dylib
   libbirnam_id_codegen.dylib libbirnam_boolean.dylib libbirnam_printing.dylib libbirnam_system_gc.dylib libbirnam_text_view.dylib libbirnam_system_output.dylib libbirnam_system_input.dylib libbirnam_environment.dylib libbirnam_file_io.dylib libbirnam_block_loop.dylib libbirnam_native_loader.dylib libbirnam_source_loader.dylib libbirnam_error_value.dylib libbirnam_id_prelude.dylib
   libbirnam_storage.dylib libbirnam_trace.dylib libbirnam_collect.dylib libbirnam_integer.dylib libbirnam_float.dylib libbirnam_word.dylib libbirnam_object_model.dylib libbirnam_nil.dylib libbirnam_string.dylib libbirnam_string_builder.dylib libbirnam_range.dylib libbirnam_vector.dylib libbirnam_collection_value.dylib libbirnam_map.dylib libbirnam_string_collection.dylib libbirnam_id_collection.dylib libbirnam_id_error.dylib

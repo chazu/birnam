@@ -143,6 +143,7 @@ dependencies = [
  "birnam-collect",
  "birnam-float",
  "birnam-integer",
+ "birnam-namespace",
  "birnam-native-compiler",
  "birnam-object-model",
  "birnam-string",
@@ -183,6 +184,13 @@ dependencies = [
 
 [[package]]
 name = "birnam-map"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
+name = "birnam-namespace"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",

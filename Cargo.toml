@@ -22,6 +22,7 @@ members = [
     "rust/birnam-float",
     "rust/birnam-word",
     "rust/birnam-id",
+    "rust/birnam-namespace",
     "rust/birnam-integer",
     "rust/birnam-object-model",
     "rust/birnam-image",

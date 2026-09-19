@@ -1,4 +1,5 @@
 #include "../../abi/fixtures/storage-v1/storage_v1.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -150,7 +151,7 @@ static Oop nested_method(Oop self, const Oop *args, size_t count) {
 int main(int argc, char **argv) {
     assert(argc==4);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); if(!floor) { fputs(dlerror(),stderr); abort(); }
-    IdInitFn init=(IdInitFn)dlsym(floor,"id_init"); assert(init); api=init();
+    IdInitFn init=(IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")); assert(init); api=init();
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1"); assert(observe);
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);
     describe=(StorageDescribeV1)api->dlsym_fn(storage,"birnam_storage_describe_v1"); assert(describe);

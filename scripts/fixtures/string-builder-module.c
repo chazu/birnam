@@ -1,4 +1,5 @@
 #include "idapi_v7.h"
+#include "namespace-support.h"
 #include "integer-support.h"
 #include "collect-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
@@ -126,7 +127,7 @@ int main(int argc,char **argv) {
     assert(argc==7 || argc==8); baseline=argc==8;
     int adopted=strstr(argv[6],"adopted")!=NULL, present=strstr(argv[6],"present")!=NULL;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)dlsym(floor,"id_init"))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
     mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1]); mount(argv[2],api); mount(argv[3],api);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     if(present) seed_collections();
