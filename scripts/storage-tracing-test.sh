@@ -2,7 +2,7 @@
 # Focused debug check of the tracer over actual production storage; no install.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mise exec -- cargo build -p birnam-id -p birnam-string -p birnam-storage -p birnam-integer -p birnam-float -p birnam-word -p birnam-trace --locked --offline
+mise exec -- cargo build -p birnam-id -p birnam-string -p birnam-storage -p birnam-integer -p birnam-float -p birnam-word -p birnam-error-value -p birnam-trace --locked --offline
 trace_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-storage-tracing.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT

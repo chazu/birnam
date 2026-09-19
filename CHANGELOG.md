@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Use shared Error Value policy for Word asInteger overflow (Design 81AN),
+  preserving storage preparation, live callbacks and lazy Error dispatch.
+
 - Move Prelude's shared Error construction/recognition helpers into
   `birnam-error-value` (Design 81AM). Preserve eager kind/message construction,
   lazy Error exports, factory/behavior snapshots and fresh dispatch.

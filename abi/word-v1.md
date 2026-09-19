@@ -2,7 +2,8 @@
 
 `birnam-word` owns Word's canonical behavior, zero prototype, eight-byte unsigned
 payload and three existing methods. It depends on IdApi v7 and explicitly acquires
-Integer for conversion. Id initializes without Word; its still-combined Machine
+Integer for conversion, String for printing and [Error Value](error-value-v1.md)
+for the existing lazy overflow error (Design [81AN](../docs/design/81an-production-word-error-value.md)). Id initializes without Word; its still-combined Machine
 layer receives Word through `birnam_word_dependency_v1`.
 
 `WordApiV1` is a 72-byte C table: version, byte size, stable native context,
@@ -25,8 +26,9 @@ Float preparation and Integer initialization. Partial roots are registered befor
 either identity is allocated. The provider returns null until the primitive table
 is complete. Attach the table to the host and combined runtime before ordinary
 publication can reenter a Word consumer. Word's `module_init` remains after Float,
-with Integer attached; it sets the owner, exports `Word`/`WordVt` and installs the
-methods. Later native consumers declare `birnam_word_dependency_v1`.
+with Integer, String and Error Value attached; it sets the owner, exports `Word`/`WordVt` and installs the
+methods. Error Value loads immediately before this activation; Word storage
+preparation remains unchanged and does not call error policy. Later native consumers declare `birnam_word_dependency_v1`.
 
 Repeated initialization keeps the canonical objects and namespace bindings but
 reinstalls the three methods, matching the method-only module. Repeated attachment
@@ -43,3 +45,5 @@ family and is unchanged. All native modules require rebuilding for IdApi v7's
 Method, Frame and image formats remain unchanged.
 
 Run `mise run word` and `scripts/word-image-smoke.sh PREFIX` against a debug prefix.
+For the shared overflow policy, use `mise run word-error-value` and
+`scripts/word-error-value-image-smoke.sh PREFIX`.

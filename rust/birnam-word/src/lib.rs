@@ -2,6 +2,7 @@
 //! Owns canonical objects and representation through an explicit dependency (81T).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
+use birnam_abi::error_value::numeric_error;
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
@@ -74,31 +75,6 @@ unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
 unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
     // SAFETY: the host owns the argument buffer for the duration of the call.
     unsafe { borrowed_oop_args(args, count)?.first().copied() }
-}
-
-unsafe fn make_error(api: &IdApi, kind: Oop, message: Oop) -> Oop {
-    // Error owns its representation and Object protocol in the standalone
-    // Error rung. Prelude faults are intentionally lazy: before that rung is
-    // loaded, the floor has no catchable Error value and answers nil, matching
-    // the native prelude's `Error` import behavior.
-    if unsafe { (api.isExported)(c"Error".as_ptr()) } == 0 {
-        return api.nilObj;
-    }
-    let factory = unsafe { (api.import)(c"Error".as_ptr()) };
-    if factory.is_null() {
-        return api.nilObj;
-    }
-    let selector = unsafe { intern(api, b"kind:message:\0") };
-    let args = [kind, message];
-    // SAFETY: the standalone Error factory owns this selector and the stack
-    // argument array remains live for the duration of the synchronous send.
-    unsafe { (api.send)(factory, selector, args.as_ptr(), args.len()) }
-}
-
-unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
-    let kind = unsafe { intern(api, kind) };
-    let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
-    unsafe { make_error(api, kind, message) }
 }
 
 unsafe fn word_value(_api: &IdApi, value: Oop) -> Option<u64> {
@@ -194,3 +170,5 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
 birnam_abi::integer_dependency!();
 
 birnam_abi::string_dependency!();
+
+birnam_abi::error_value_dependency!();

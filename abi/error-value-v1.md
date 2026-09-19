@@ -2,10 +2,12 @@
 
 Design [81AM](../docs/design/81am-production-error-value.md) moves Prelude's
 lazy Error construction and exact-recognition helpers into `birnam-error-value`.
-All existing Prelude consumers use the dependency. Error representation/public
-methods and the earlier Integer/Float/Word helper copies stay separate.
+All existing Prelude consumers and Word's asInteger overflow path use the
+dependency. Error representation/public methods and the earlier Integer/Float
+helper copies stay separate.
 
-Load the provider immediately before Prelude, attaching prepared String v1 first.
+Load the provider immediately before Word activation, attaching prepared String
+v1 first. Word storage preparation remains before Integer initialization.
 Initialization enables the provider without creating objects, methods, roots or
 layouts. Attach the immutable, process-pinned descriptor through
 `birnam_error_value_dependency_v1`. Its arm64 layout is 32 bytes: version 1 at 0,
