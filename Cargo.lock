@@ -211,6 +211,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-word"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"

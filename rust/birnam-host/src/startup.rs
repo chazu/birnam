@@ -1040,6 +1040,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_collect",
     "libbirnam_integer",
     "libbirnam_float",
+    "libbirnam_word",
     "libbirnam_object_model",
     "libbirnam_id_artifact",
     "libbirnam_store",

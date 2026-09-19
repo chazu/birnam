@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Extract Word's existing printing, equality and Integer conversion methods
+  from Prelude into `birnam-word` (Design 81S). Load it after Float and preserve
+  current numeric/error behavior and live method replacements. Word storage
+  remains in Id; IdApi v5 and image formats stay unchanged.
 - Move Float's canonical objects, payload and primitive operations into
   `birnam-float` (Design 81R), with explicit dependencies for all consumers.
   Prepare Float before Integer to preserve mixed numeric initialization. IdApi

@@ -60,3 +60,7 @@ Its [export inventory](rust-float-dylib-v1.json) adds no IdApi or image fields.
 `idapi-v4.json` and `fixtures/idapi-v4` preserve the 81L checkpoint.
 [Float representation](../docs/design/81r-production-float-storage.md) now moves
 the canonical objects and primitive operations into the Float module as well.
+
+The [Word method module](../docs/design/81s-production-word-methods.md) uses
+existing Method/module-init contracts and the explicit Integer dependency.
+Its [export inventory](rust-word-dylib-v1.json) adds no IdApi or image fields.

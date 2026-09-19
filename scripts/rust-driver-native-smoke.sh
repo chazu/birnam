@@ -15,7 +15,7 @@ fi
 
 test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
-test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 49
+test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 50
 
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v5 -Iscripts/fixtures \
   abi/fixtures/idapi-v5/client.c -o "$prefix_parent/idapi-client"
@@ -65,6 +65,9 @@ cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v5 scripts/fixtures/integ
   "$prefix/lib/libbirnam_id_error.dylib" "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_prelude.dylib"
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v5 -Iscripts/fixtures scripts/fixtures/float-module.c -o "$prefix_parent/float-module"
 "$prefix_parent/float-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_float.dylib" \
+  "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_error.dylib"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v5 -Iscripts/fixtures scripts/fixtures/word-module.c -o "$prefix_parent/word-module"
+"$prefix_parent/word-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_word.dylib" \
   "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_error.dylib"
 cc -Iabi/fixtures/idapi-v5 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
 "$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_integer.dylib"
