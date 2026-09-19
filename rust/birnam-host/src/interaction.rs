@@ -90,7 +90,7 @@ impl HostRuntime {
         let Some(cli) = (unsafe { global_named(api, "Cli") }) else {
             return Err(CliError::MissingCli);
         };
-        let values = unsafe { native_os_string_vector(api, args) }?;
+        let values = unsafe { native_os_string_vector(api, self.stack.presence(), args) }?;
         let rust_workspace = path_bytes(&self.resources.rust_workspace_dir);
         let guides = path_bytes(&self.resources.guide_dir);
         let selector = unsafe { (api.intern)(c"run:rustWorkspace:guides:".as_ptr()) };
@@ -149,7 +149,7 @@ impl HostRuntime {
         let initialize_selector = unsafe { (api.intern)(c"initializeCurrent".as_ptr()) };
         let generation =
             unsafe { (api.send)(generations, initialize_selector, std::ptr::null(), 0) };
-        if send_is_error(api, generation) {
+        if send_is_error(api, self.stack.presence(), generation) {
             return Err(ImageEntryError::GenerationRejected);
         }
         let phases =
@@ -159,7 +159,7 @@ impl HostRuntime {
         }
         let value_selector = unsafe { (api.intern)(c"value".as_ptr()) };
         let result = unsafe { (api.send)(main, value_selector, std::ptr::null(), 0) };
-        if result.is_null() || send_is_error(api, result) {
+        if result.is_null() || send_is_error(api, self.stack.presence(), result) {
             return Err(ImageEntryError::EvaluationRejected);
         }
         Ok(true)
@@ -206,7 +206,7 @@ impl HostRuntime {
             return Err(ReplError::MissingRepl);
         };
         let initialized = unsafe { (api.send)(repl, init_selector, std::ptr::null(), 0) };
-        if send_is_error(api, initialized) {
+        if send_is_error(api, self.stack.presence(), initialized) {
             return Err(ReplError::InitializationRejected);
         }
         let Some(generations) = (unsafe { global_named(api, "DispatchGeneration") }) else {
@@ -215,7 +215,7 @@ impl HostRuntime {
         let initialize_selector = unsafe { (api.intern)(c"initializeCurrent".as_ptr()) };
         let generation =
             unsafe { (api.send)(generations, initialize_selector, std::ptr::null(), 0) };
-        if send_is_error(api, generation) {
+        if send_is_error(api, self.stack.presence(), generation) {
             return Err(ReplError::GenerationRejected);
         }
         let phases = resolve_phase_hooks(&self.stack, &self.resources).map_err(ReplError::Phase)?;
@@ -224,7 +224,7 @@ impl HostRuntime {
         }
         let ready_selector = unsafe { (api.intern)(c"consoleHostReady".as_ptr()) };
         let ready = unsafe { (api.send)(repl, ready_selector, std::ptr::null(), 0) };
-        if send_is_error(api, ready) {
+        if send_is_error(api, self.stack.presence(), ready) {
             return Err(ReplError::ReadyRejected);
         }
         Ok(ReplSession {
@@ -378,7 +378,7 @@ impl HostRuntime {
                 2,
             )
         };
-        if send_is_error(api, result) {
+        if send_is_error(api, self.stack.presence(), result) {
             return Err(SocketReplError::ServeRejected);
         }
         Ok(())
@@ -431,7 +431,7 @@ impl HostRuntime {
         };
         let current_selector = unsafe { (api.intern)(c"current".as_ptr()) };
         let current = unsafe { (api.send)(generations, current_selector, std::ptr::null(), 0) };
-        if current == api.nilObj || send_is_error(api, current) {
+        if current == api.nilObj || send_is_error(api, self.stack.presence(), current) {
             return Err(WorkerStartupError::InvalidDispatchGeneration);
         }
         let codegen =

@@ -11,7 +11,7 @@ else
   printf 'word error value image smoke root: %s\n' "$scratch"
 fi
 export BIRNAM_WORD_ERROR_DYLIB="$prefix/lib/libbirnam_word.dylib"
-cc -dynamiclib -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v8 -Iabi/fixtures/word-v1 scripts/fixtures/word-error-values.c -o "$scratch/values.dylib"
+cc -dynamiclib -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v9 -Iabi/fixtures/word-v1 scripts/fixtures/word-error-values.c -o "$scratch/values.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/values.dylib"];
 [System println: [OverflowWord printString]];

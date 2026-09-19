@@ -12,6 +12,7 @@ const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    presence: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -32,8 +33,8 @@ unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
     unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn install_system_protocol(api: &IdApi) {
-    let (system_vt, system_object) = if unsafe { (api.isExported)(c"System".as_ptr()) } != 0 {
+unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+    let (system_vt, system_object) = if unsafe { birnam_abi::namespace_presence::contains(presence, c"System".as_ptr()) } != 0 {
         // SAFETY: an exported System family is process-owned and remains live
         // across reloads; extend its vtable instead of minting a duplicate.
         unsafe {
@@ -69,19 +70,19 @@ unsafe fn install_system_protocol(api: &IdApi) {
             api, runtime().api as *const IdApi, system_vt, print, println,
         );
         birnam_abi::file_io::install(
-            api, runtime().api as *const IdApi, system_vt, read_file, write_file,
+            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, system_vt, read_file, write_file,
         );
         birnam_abi::environment::install(
-            api, runtime().api as *const IdApi, system_vt, get_env,
+            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, system_vt, get_env,
         );
         birnam_abi::source_loader::install(
-            api, runtime().api as *const IdApi, system_vt, load,
+            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, system_vt, load,
         );
         birnam_abi::native_loader::install(
-            api, runtime().api as *const IdApi, system_vt, load_module,
+            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, system_vt, load_module,
         );
         birnam_abi::system_input::install(
-            api, runtime().api as *const IdApi, system_vt, read_line,
+            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, system_vt, read_line,
         );
         birnam_abi::system_gc::install(
             api, runtime().api as *const IdApi, system_vt,
@@ -91,8 +92,8 @@ unsafe fn install_system_protocol(api: &IdApi) {
     let _ = system_object;
 }
 
-unsafe fn install_block_protocol(api: &IdApi) {
-    let (block_vt, block_proto) = if unsafe { (api.isExported)(c"Block".as_ptr()) } != 0 {
+unsafe fn install_block_protocol(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+    let (block_vt, block_proto) = if unsafe { birnam_abi::namespace_presence::contains(presence, c"Block".as_ptr()) } != 0 {
         let block_vt = unsafe { (api.import)(c"BlockVt".as_ptr()) };
         let block_proto = unsafe { (api.import)(c"Block".as_ptr()) };
         (block_vt, block_proto)
@@ -113,22 +114,23 @@ unsafe fn install_block_protocol(api: &IdApi) {
     // SAFETY: the Block vtable is process-owned and remains live with the image.
     unsafe {
         birnam_abi::block_loop::install(
-            api, runtime().api as *const IdApi, block_vt, while_true, while_false,
+            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, block_vt, while_true, while_false,
         );
     }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
     let _ = RUNTIME.get_or_init(|| Runtime {
         api: api_pointer as usize,
+        presence: presence as usize,
     });
     unsafe { birnam_abi::printing::install(api_pointer, runtime().api as *const IdApi) };
-    unsafe { install_block_protocol(api) };
-    unsafe { install_system_protocol(api) };
+    unsafe { install_block_protocol(api, presence) };
+    unsafe { install_system_protocol(api, presence) };
 }
 
 /// Identifies the original Rust Prelude rung; identity remains stable.
@@ -145,10 +147,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust prelude against the selected floor's IdApi.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     // SAFETY: bring_up enforces the null boundary and only retains the
     // process-owned IdApi address.
-    unsafe { bring_up(api) };
+    unsafe { bring_up(api, presence) };
     ptr::null_mut()
 }
 

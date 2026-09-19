@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -6,6 +6,9 @@
 /* Independent C representation and constructor/allocation trace oracle. */
 typedef struct { Oop root; size_t count; } Payload;
 _Static_assert(sizeof(Payload)==16 && offsetof(Payload,count)==8,"Map payload");
+static FixturePresenceSlot selected_presence_slot;
+static NamespacePresenceV1 selected_presence=FIXTURE_PRESENCE(selected_presence_slot);
+
 static IdApi *api, selected;
 static Oop node_type, behavior, prototype, candidate, identities[256];
 static size_t identity_count, marks, partial_checks, allocation_count;
@@ -55,12 +58,12 @@ static Oop import(const char *name) {
     if(capture) printf("import result=%d\n",id(result));
     return result;
 }
-static int exported(const char *name) { int result=api->is_exported(name); if(capture) printf("isExported %s=%d\n",name,result); return result; }
+static int exported(const char *name) { int result=fixture_namespace_contains(name); if(capture) printf("isExported %s=%d\n",name,result); return result; }
 static Oop intern(const char *name) { if(phase==0 && candidate) { prototype=candidate; candidate=NULL; partial(3); } if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V8_SLOT_RAW && kinds[1]==IDAPI_V8_SLOT_RAW && rest==IDAPI_V8_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V8_SLOT_OOP,IDAPI_V8_SLOT_RAW}; assert(count==2 && rest==IDAPI_V8_SLOT_RAW && !memcmp(kinds,expected,2)); }
+    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V9_SLOT_RAW && kinds[1]==IDAPI_V9_SLOT_RAW && rest==IDAPI_V9_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V9_SLOT_OOP,IDAPI_V9_SLOT_RAW}; assert(count==2 && rest==IDAPI_V9_SLOT_RAW && !memcmp(kinds,expected,2)); }
     api->set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
@@ -124,7 +127,7 @@ static void validate(void *image,int attached) {
     if(attached) { bad=*fixture_map; assert(!attach(&bad) && attach(fixture_map)==1); }
     }
 }
-static void mount(const char *path,IdApi *table) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     if(strstr(path,"collection")) {
         modern=api->dlsym_fn(image,"birnam_map_dependency_v1")!=NULL || api->dlsym_fn(image,"birnam_map_dependency_v2")!=NULL;
@@ -132,7 +135,7 @@ static void mount(const char *path,IdApi *table) {
     }
     fixture_attach_integer(api,image);
     if(strstr(path,"collection")) validate(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence);
 }
 static void seed(int map_only) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"}; Oop types[6];
@@ -151,12 +154,12 @@ int main(int argc,char **argv) {
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
     fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1]);
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence());
     if(adopting || !strcmp(argv[4],"map-only-exports")) seed(!adopting);
-    selected=*api; selected.proto=proto; selected.alloc=allocate; selected.import_fn=import; selected.is_exported=exported;
+    selected=*api; selected.proto=proto; selected.alloc=allocate; selected.import_fn=import; selected_presence_slot=exported;
     selected.intern=intern; selected.set_layout=layout; selected.method=method; selected.send=send; selected.export_obj=publish;
     selected.gc_register_root_provider=roots; selected.set_finalizer=finalize;
-    capture=1; mount(argv[3],&selected); capture=0; phase=1;
+    capture=1; mount(argv[3],&selected,&selected_presence); capture=0; phase=1;
     if(!prototype) prototype=candidate;
     assert(prototype && !finalizers); partial(3); if(modern) assert(partial_checks>=3); if(fixture_map) assert(fixture_map->behavior()==behavior);
     if(!rebound) assert(!((Payload *)prototype)->root && !((Payload *)prototype)->count); else assert(prototype==api->nil_obj);
@@ -164,13 +167,13 @@ int main(int argc,char **argv) {
     assert(allocation_count==1 && api->vtable_of(map)==behavior && !((Payload *)map)->root && !((Payload *)map)->count);
     if(fixture_map) assert(!fixture_map->count(map) && !fixture_map->root(map));
     api->export_obj("MapVt",api->nil_obj); api->export_obj("Map",api->nil_obj); api->export_obj("MapNode",api->nil_obj);
-    IdApi other=selected; other.alloc=forbidden_allocator; capture=1; mount(argv[3],&other); capture=0;
+    IdApi other=selected; other.alloc=forbidden_allocator; capture=1; mount(argv[3],&other,&selected_presence); capture=0;
     assert(api->import_fn("Map")==api->nil_obj);
     selected.alloc=second_allocator; live_allocations=0; map=empty(); assert(live_allocations==1 && api->vtable_of(map)==behavior);
     /* Forget temporary trace identities before precise GC can recycle their addresses. */
     identity_count=0;
     selected.alloc=allocate; api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0); partial(3);
-    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected); capture=0;
+    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence); capture=0;
     assert(api->import_fn("MapVt")==behavior && api->import_fn("Map")==prototype && api->import_fn("MapNode")==node_type && !finalizers);
     printf("map-storage: construction, adoption, allocation, partial roots, live allocator and reload passed mode=%s\n",argv[4]);
 }

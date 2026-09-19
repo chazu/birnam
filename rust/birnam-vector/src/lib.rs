@@ -739,7 +739,7 @@ static API: ApiV2 = ApiV2 {
     inject: Some(vector_inject),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     if api.is_null() {
         abort("module_init received a null IdApi");
     }

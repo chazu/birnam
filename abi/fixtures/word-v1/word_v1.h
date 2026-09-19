@@ -22,6 +22,7 @@ typedef struct {
 typedef int (*WordDependencyV1)(WordApiV1 *);
 typedef WordApiV1 *(*WordProviderV1)(void);
 typedef WordApiV1 *(*WordPrepareV1)(IdApi *);
+typedef WordApiV1 *(*WordPrepareV2)(IdApi *,const NamespacePresenceV1 *);
 _Static_assert(sizeof(WordStorageV1) == 48, "Word storage extent");
 _Static_assert(sizeof(WordApiV1) == 72, "Word operations extent");
 _Static_assert(offsetof(WordApiV1, make) == 40, "Word constructor offset");

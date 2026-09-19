@@ -709,7 +709,7 @@ unsafe extern "C" fn lang_furthest_fail(
     unsafe { send0(api, grammar, b"furthestFail\0") }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -719,7 +719,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         if peg.is_null() {
             abort("Lang requires the Peg facade");
         }
-        let reloading = unsafe { (api.isExported)(LANG_NAME.as_ptr().cast::<c_char>()) != 0 };
+        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, LANG_NAME.as_ptr().cast::<c_char>()) != 0 };
         let (lang_vt, lang) = if reloading {
             let lang_vt = unsafe { (api.import)(LANG_VT_NAME.as_ptr().cast::<c_char>()) };
             let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast::<c_char>()) };
@@ -751,7 +751,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         (api.method)(lang_vt, intern(api, b"grammar\0"), lang_grammar);
         (api.method)(lang_vt, intern(api, b"furthestFail\0"), lang_furthest_fail);
         let _ = (api.exportObj)(GRAMMAR_NAME.as_ptr().cast(), grammar);
-        if (api.isExported)(LANG_NAME.as_ptr().cast()) == 0 {
+        if birnam_abi::namespace_presence::contains(presence, LANG_NAME.as_ptr().cast()) == 0 {
             let _ = (api.exportObj)(LANG_VT_NAME.as_ptr().cast(), lang_vt);
             let _ = (api.exportObj)(LANG_NAME.as_ptr().cast(), as_oop(runtime.lang));
         }
@@ -775,8 +775,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` is the live host IdApi table or null for the documented fatal boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
-    unsafe { bring_up(api) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence) };
     ptr::null_mut()
 }
 

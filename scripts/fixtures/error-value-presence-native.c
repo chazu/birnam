@@ -1,6 +1,6 @@
 /* Independent v2 presence-handoff oracle, usable in all execution forms. */
 #define _DARWIN_C_SOURCE
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "../../abi/fixtures/error-value-v2/error_value_v2.h"
 #include "../../abi/fixtures/string-v1/string_v1.h"
 #include <assert.h>
@@ -21,7 +21,6 @@ static NamespacePresenceV1 *active_presence;
 static struct Choice { char event; int result; } left, right;
 static void event(char value) { assert(used+1<sizeof(events));events[used++]=value;events[used]=0; }
 static void expect(const char *expected) { assert(!strcmp(events,expected));used=0;events[0]=0; }
-static int forbidden_presence(const char *name) { (void)name;assert(!"provider read IdApi.isExported");return 0; }
 static int contains(void *context,const char *name) {
     struct Choice *choice=context;assert(!strcmp(name,"Error") || !strcmp(name,"ErrorVt"));
     event(choice->event);return choice->result;
@@ -59,7 +58,7 @@ static Oop construct(const NamespacePresenceV1 *presence) {
 }
 static Oop exercise(Oop self,const Oop *args,size_t count) {
     (void)self;(void)args;assert(count==0);
-    watched=*floor_api;watched.is_exported=forbidden_presence;watched.intern=intern;
+    watched=*floor_api;watched.intern=intern;
     watched.import_fn=imported;watched.vtable_of=vtable;watched.send=send;
     StringApiV1 original=*strings;strings->context=&mode;strings->make=make;
     left=(struct Choice){'A',1};right=(struct Choice){'B',0};
@@ -89,7 +88,8 @@ static void *open_sibling(const char *floor_path,const char *name) {
     int length=snprintf(path,sizeof(path),"%.*s/%s",(int)(slash-floor_path),floor_path,name);
     assert(length>0 && (size_t)length<sizeof(path));void *image=floor_api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);return image;
 }
-void *module_init(IdApi *api,void *state) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+    (void)presence;
     assert(api && !state);if(floor_api)assert(floor_api==api);else floor_api=api;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
     void *image=open_sibling(info.dli_fname,"libbirnam_error_value.dylib");

@@ -1,6 +1,6 @@
 //! Lazy Error factory dispatch and exact recognition (81AM).
 use crate::{IdApi, Oop};
-use crate::namespace_presence::{self, ApiV1 as PresenceV1};
+use crate::namespace_presence::ApiV1 as PresenceV1;
 use core::ffi::c_int;
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -59,20 +59,18 @@ fn operations() -> ApiV2 {
 /// # Safety
 /// Owner-thread call using the live selected table and a valid candidate Oop.
 /// Export/import/vtable callbacks may reenter and collect as before.
-pub unsafe fn is_error(api: &IdApi, value: Oop) -> bool {
-    let presence = unsafe { namespace_presence::borrow_slot(&raw const api.isExported) };
-    unsafe { operations().is_error.unwrap()(api, &presence, value) != 0 }
+pub unsafe fn is_error(api: &IdApi, presence: *const PresenceV1, value: Oop) -> bool {
+    unsafe { operations().is_error.unwrap()(api, presence, value) != 0 }
 }
 /// # Safety
 /// The kind slice is NUL-terminated, as required by IdApi intern. Both borrowed
 /// extents remain valid and unchanged through callbacks, which may reenter and
 /// collect. No roots or owned byte buffers are added by this adapter.
-pub unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
-    let presence = unsafe { namespace_presence::borrow_slot(&raw const api.isExported) };
+pub unsafe fn numeric_error(api: &IdApi, presence: *const PresenceV1, kind: &[u8], message: &[u8]) -> Oop {
     unsafe {
         operations().from_bytes.unwrap()(
             api,
-            &presence,
+            presence,
             kind.as_ptr(),
             kind.len(),
             message.as_ptr(),

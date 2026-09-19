@@ -80,10 +80,6 @@ unsafe extern "C" fn api_export_object(name: *const c_char, object: Oop) -> Oop 
         .unwrap_or_else(|_| boundary::fatal_invariant("IdApi.exportObj name contains embedded NUL"))
 }
 
-unsafe extern "C" fn api_is_exported(name: *const c_char) -> c_int {
-    i32::from(!unsafe { api_import(name) }.is_null())
-}
-
 unsafe extern "C" fn api_proto(parent: Oop) -> Oop {
     boundary::require_invariant(!parent.is_null(), "IdApi.proto parent is null");
     runtime().create_vtable(parent)
@@ -276,7 +272,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         alloc: canonical_numeric_functions().alloc,
         import: canonical_numeric_functions().import,
         exportObj: api_export_object,
-        isExported: canonical_numeric_functions().is_exported,
         send: api_send,
         nilObj: canonical.nil,
         trueObj: canonical.true_object,
@@ -306,7 +301,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
 /// in another codegen unit can select a different compiled copy in release.
 struct NumericFunctions {
     alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
-    is_exported: unsafe extern "C" fn(*const c_char) -> c_int,
     import: unsafe extern "C" fn(*const c_char) -> Oop,
     vtable_of: unsafe extern "C" fn(Oop) -> Oop,
 }
@@ -315,7 +309,6 @@ fn canonical_numeric_functions() -> &'static NumericFunctions {
     static FUNCTIONS: std::sync::OnceLock<NumericFunctions> = std::sync::OnceLock::new();
     FUNCTIONS.get_or_init(|| NumericFunctions {
         alloc: api_alloc,
-        is_exported: api_is_exported,
         import: api_import,
         vtable_of: api_vtable_of,
     })
@@ -323,13 +316,14 @@ fn canonical_numeric_functions() -> &'static NumericFunctions {
 
 /// Process-local comparison operands for an optional native declaration. This
 /// does not publish another IdApi entry or call any of these functions.
-pub(crate) fn numeric_functions(runtime: &Runtime) -> [usize; 10] {
+pub(crate) fn numeric_functions(runtime: &Runtime) -> [usize; 11] {
     let functions = canonical_numeric_functions();
     let ops = runtime.integer_operations();
-    [ops.is_exact as usize, ops.read as usize, functions.is_exported as usize,
+    let presence = runtime.canonical_namespace_presence();
+    [ops.is_exact as usize, ops.read as usize, presence.contains.unwrap() as usize,
      functions.import as usize, functions.vtable_of as usize, ops.make as usize,
      ops.context as usize, ops.storage as usize, ops.prototype as usize,
-     canonical_numeric_functions().alloc as usize]
+     canonical_numeric_functions().alloc as usize, presence.context as usize]
 }
 
 /// Current floor operands for the optional warm Block constructor declaration.
@@ -639,4 +633,22 @@ pub(crate) fn namespace_enumeration_access() -> birnam_abi::namespace_enumeratio
         version: 1, byte_size: size_of::<birnam_abi::namespace_enumeration::FloorV1>(),
         context: core::ptr::null_mut(), preflight: Some(preflight),
     }
+}
+
+pub(crate) fn namespace_presence_access() -> birnam_abi::namespace_presence::FloorV1 {
+    unsafe extern "C" fn intern(_: *mut c_void, bytes: *const u8, length: usize) -> Oop {
+        let bytes = unsafe { birnam_abi::borrowed_slice(bytes, length) }.expect("invalid Namespace interner bytes");
+        #[cfg(not(test))]
+        let value = runtime().intern(bytes);
+        #[cfg(test)]
+        let value = crate::runtime::with_active(|runtime| runtime.intern(bytes));
+        value.unwrap_or(core::ptr::null_mut())
+    }
+    birnam_abi::namespace_presence::FloorV1 { version: 1,
+        byte_size: size_of::<birnam_abi::namespace_presence::FloorV1>(),
+        context: core::ptr::null_mut(), intern: Some(intern), }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_namespace_presence_provider_v1() -> *mut birnam_abi::namespace_presence::ApiV1 {
+    runtime().namespace_presence()
 }

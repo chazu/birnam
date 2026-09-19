@@ -3,31 +3,31 @@ use crate::{IdApi, Oop};
 use core::ffi::c_int;
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
-pub type InstallV1 = unsafe extern "C" fn(*const IdApi, *const IdApi, Oop, Oop);
+pub type InstallV2 = unsafe extern "C" fn(*const IdApi, *const IdApi, *const crate::namespace_presence::ApiV1, Oop, Oop);
 /// Immutable, process-pinned descriptor. Installation runs on the owner thread
 /// at Prelude's existing point; the execution table is its original selection.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV1 {
+pub struct ApiV2 {
     pub version: u32,
     pub byte_size: usize,
-    pub install: Option<InstallV1>,
+    pub install: Option<InstallV2>,
 }
 const _: () = {
-    assert!(size_of::<ApiV1>() == 24);
-    assert!(core::mem::offset_of!(ApiV1, install) == 16);
+    assert!(size_of::<ApiV2>() == 24);
+    assert!(core::mem::offset_of!(ApiV2, install) == 16);
 };
-pub type ProviderV1 = unsafe extern "C" fn() -> *const ApiV1;
-pub type DependencyV1 = unsafe extern "C" fn(*const ApiV1) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV1> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV2 = unsafe extern "C" fn() -> *const ApiV2;
+pub type DependencyV2 = unsafe extern "C" fn(*const ApiV2) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV2> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Owner-thread admission; immutable descriptor and code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV1) -> c_int {
+pub unsafe fn attach(api: *const ApiV2) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 1 || value.byte_size != size_of::<ApiV1>() || value.install.is_none() {
+    if value.version != 2 || value.byte_size != size_of::<ApiV2>() || value.install.is_none() {
         return 0;
     }
     match DEPENDENCY.compare_exchange(
@@ -47,6 +47,7 @@ pub unsafe fn attach(api: *const ApiV1) -> c_int {
 pub unsafe fn install(
     registration: *const IdApi,
     execution: *const IdApi,
+    presence: *const crate::namespace_presence::ApiV1,
     system_vt: Oop,
     get_env: Oop,
 ) {
@@ -55,14 +56,14 @@ pub unsafe fn install(
         !pointer.is_null(),
         "native environment dependency was not mounted"
     );
-    unsafe { (*pointer).install.unwrap()(registration, execution, system_vt, get_env) };
+    unsafe { (*pointer).install.unwrap()(registration, execution, presence, system_vt, get_env) };
 }
 #[macro_export]
 macro_rules! environment_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_environment_dependency_v1(
-            api: *const $crate::environment::ApiV1,
+        pub unsafe extern "C" fn birnam_environment_dependency_v2(
+            api: *const $crate::environment::ApiV2,
         ) -> core::ffi::c_int {
             unsafe { $crate::environment::attach(api) }
         }

@@ -765,8 +765,8 @@ unsafe fn active_project_bridge_runtime() -> Option<&'static HostRuntime> {
     }
 }
 
-unsafe fn project_bridge_failure(api: &IdApi, kind: &str, message: &str) -> birnam_abi::Oop {
-    let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api) }) else {
+unsafe fn project_bridge_failure(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, kind: &str, message: &str) -> birnam_abi::Oop {
+    let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api, presence) }) else {
         return api.nilObj;
     };
     let Ok(mut result) = (unsafe { builder.new_map() }) else {
@@ -803,6 +803,7 @@ unsafe extern "C" fn project_path_for_uri_native(
         return std::ptr::null_mut();
     };
     let api = runtime.stack.api();
+    let presence = runtime.stack.presence();
     if count != 1 || args.is_null() {
         return api.nilObj;
     }
@@ -812,7 +813,7 @@ unsafe extern "C" fn project_path_for_uri_native(
     };
     let Ok(path) = project_path_from_uri(&uri) else {
         return unsafe {
-            project_bridge_failure(api, "projectUriInvalid", "could not decode workspace URI")
+            project_bridge_failure(api, presence, "projectUriInvalid", "could not decode workspace URI")
         };
     };
     let bytes = path_bytes(&path);
@@ -828,6 +829,7 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
         return std::ptr::null_mut();
     };
     let api = runtime.stack.api();
+    let presence = runtime.stack.presence();
     if count != 1 || args.is_null() {
         return api.nilObj;
     }
@@ -837,7 +839,7 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
     };
     let Ok(path) = project_path_from_uri(&uri) else {
         return unsafe {
-            project_bridge_failure(api, "projectUriInvalid", "could not decode workspace URI")
+            project_bridge_failure(api, presence, "projectUriInvalid", "could not decode workspace URI")
         };
     };
     let start = if std::fs::metadata(&path)
@@ -852,14 +854,14 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
         Ok(snapshot) => snapshot,
         Err(error) => {
             let message = format!("{error:?}");
-            return unsafe { project_bridge_failure(api, "projectResolutionFailed", &message) };
+            return unsafe { project_bridge_failure(api, presence, "projectResolutionFailed", &message) };
         }
     };
     let snapshot = match unsafe { runtime.materialize_project_snapshot(&snapshot) } {
         Ok(snapshot) => snapshot,
         Err(error) => {
             let message = format!("{error:?}");
-            return unsafe { project_bridge_failure(api, "projectSnapshotFailed", &message) };
+            return unsafe { project_bridge_failure(api, presence, "projectSnapshotFailed", &message) };
         }
     };
     match unsafe { runtime.resolve_project_snapshot(snapshot) } {
@@ -867,7 +869,7 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
             // ProjectPolicy returns the resolution payload itself. The shared
             // LSP bridge contract adds an explicit success bit so Birnam can
             // distinguish a valid snapshot from its typed failure maps.
-            let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api) }) else {
+            let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api, presence) }) else {
                 return api.nilObj;
             };
             match unsafe { builder.put(resolution, "ok", api.trueObj) } {
@@ -876,23 +878,24 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
             }
         }
         Err(ProjectPolicyError::ResolutionDiagnostic { kind, message }) => unsafe {
-            project_bridge_failure(api, &kind, &message)
+            project_bridge_failure(api, presence, &kind, &message)
         },
         Err(error) => {
             let message = format!("{error:?}");
-            unsafe { project_bridge_failure(api, "projectResolutionFailed", &message) }
+            unsafe { project_bridge_failure(api, presence, "projectResolutionFailed", &message) }
         }
     }
 }
 
 struct ProjectSnapshotBuilder<'a> {
     api: &'a IdApi,
+    presence: *const birnam_abi::namespace_presence::ApiV1,
     vector_class: birnam_abi::Oop,
     map_class: birnam_abi::Oop,
 }
 
 impl<'a> ProjectSnapshotBuilder<'a> {
-    unsafe fn new(api: &'a IdApi) -> Result<Self, ProjectSnapshotError> {
+    unsafe fn new(api: &'a IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) -> Result<Self, ProjectSnapshotError> {
         let vector_class = unsafe { (api.import)(c"Vector".as_ptr()) };
         let map_class = unsafe { (api.import)(c"Map".as_ptr()) };
         if vector_class == api.nilObj {
@@ -903,6 +906,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         }
         Ok(Self {
             api,
+            presence,
             vector_class,
             map_class,
         })
@@ -911,7 +915,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
     unsafe fn new_vector(&self) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
         let selector = unsafe { (self.api.intern)(c"new".as_ptr()) };
         let value = unsafe { (self.api.send)(self.vector_class, selector, std::ptr::null(), 0) };
-        if value == self.api.nilObj || send_is_error(self.api, value) {
+        if value == self.api.nilObj || send_is_error(self.api, self.presence, value) {
             Err(ProjectSnapshotError::AllocationRejected)
         } else {
             Ok(value)
@@ -921,7 +925,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
     unsafe fn new_map(&self) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
         let selector = unsafe { (self.api.intern)(c"new".as_ptr()) };
         let value = unsafe { (self.api.send)(self.map_class, selector, std::ptr::null(), 0) };
-        if value == self.api.nilObj || send_is_error(self.api, value) {
+        if value == self.api.nilObj || send_is_error(self.api, self.presence, value) {
             Err(ProjectSnapshotError::AllocationRejected)
         } else {
             Ok(value)
@@ -935,7 +939,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
     ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
         let selector = unsafe { (self.api.intern)(c"add:".as_ptr()) };
         let updated = unsafe { (self.api.send)(vector, selector, [value].as_ptr(), 1) };
-        if updated == self.api.nilObj || send_is_error(self.api, updated) {
+        if updated == self.api.nilObj || send_is_error(self.api, self.presence, updated) {
             Err(ProjectSnapshotError::AllocationRejected)
         } else {
             Ok(updated)
@@ -951,7 +955,7 @@ impl<'a> ProjectSnapshotBuilder<'a> {
         let key = unsafe { (birnam_abi::string::make)(key.as_bytes().as_ptr(), key.len()) };
         let selector = unsafe { (self.api.intern)(c"at:put:".as_ptr()) };
         let updated = unsafe { (self.api.send)(map, selector, [key, value].as_ptr(), 2) };
-        if updated == self.api.nilObj || send_is_error(self.api, updated) {
+        if updated == self.api.nilObj || send_is_error(self.api, self.presence, updated) {
             Err(ProjectSnapshotError::AllocationRejected)
         } else {
             Ok(updated)
@@ -1285,12 +1289,12 @@ impl HostRuntime {
         let api = self.stack.api();
         let globals =
             unsafe { global_named(api, "Globals") }.ok_or(ProjectRunError::ArgumentsRejected)?;
-        let values = unsafe { native_os_string_vector(api, &options.arguments) }
+        let values = unsafe { native_os_string_vector(api, self.stack.presence(), &options.arguments) }
             .map_err(|_| ProjectRunError::ArgumentsRejected)?;
         let key = unsafe { (api.intern)(c"ProjectArgs".as_ptr()) };
         let put = unsafe { (api.intern)(c"at:put:".as_ptr()) };
         let result = unsafe { (api.send)(globals, put, [key, values].as_ptr(), 2) };
-        if result == api.nilObj || send_is_error(api, result) {
+        if result == api.nilObj || send_is_error(api, self.stack.presence(), result) {
             return Err(ProjectRunError::ArgumentsRejected);
         }
         let application = plan
@@ -1363,7 +1367,7 @@ impl HostRuntime {
             .ok_or(ProjectRunError::TestHarnessUnavailable)?;
         let suites_selector = unsafe { (api.intern)(c"suites".as_ptr()) };
         let suites = unsafe { (api.send)(test, suites_selector, std::ptr::null(), 0) };
-        if suites == api.nilObj || send_is_error(api, suites) {
+        if suites == api.nilObj || send_is_error(api, self.stack.presence(), suites) {
             return Err(ProjectRunError::TestHarnessUnavailable);
         }
         let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
@@ -1373,7 +1377,7 @@ impl HostRuntime {
         }
         let run_selector = unsafe { (api.intern)(c"runAllSuitesWithRunner:".as_ptr()) };
         let result = unsafe { (api.send)(test, run_selector, [runner].as_ptr(), 1) };
-        if result == api.nilObj || send_is_error(api, result) {
+        if result == api.nilObj || send_is_error(api, self.stack.presence(), result) {
             return Err(ProjectRunError::TestFailed);
         }
         let passed_selector = unsafe { (api.intern)(c"allPassed".as_ptr()) };
@@ -1400,6 +1404,7 @@ impl HostRuntime {
         unsafe {
             load_self_hosted(
                 self.stack.api(),
+                self.stack.presence(),
                 self.codegen,
                 &self.resources,
                 &PROJECT_POLICY_MODULE,
@@ -1427,7 +1432,7 @@ impl HostRuntime {
         snapshot: birnam_abi::Oop,
     ) -> Result<birnam_abi::Oop, ProjectPolicyError> {
         let api = self.stack.api();
-        if snapshot == api.nilObj || send_is_error(api, snapshot) {
+        if snapshot == api.nilObj || send_is_error(api, self.stack.presence(), snapshot) {
             return Err(ProjectPolicyError::InvalidSnapshot);
         }
         unsafe { self.load_project_policy()? };
@@ -1436,8 +1441,8 @@ impl HostRuntime {
         };
         let selector = unsafe { (api.intern)(c"resolveSnapshot:".as_ptr()) };
         let result = unsafe { (api.send)(policy, selector, [snapshot].as_ptr(), 1) };
-        if result == api.nilObj || send_is_error(api, result) {
-            if let Some((kind, message)) = unsafe { error_diagnostic(api, result) } {
+        if result == api.nilObj || send_is_error(api, self.stack.presence(), result) {
+            if let Some((kind, message)) = unsafe { error_diagnostic(api, self.stack.presence(), result) } {
                 return Err(ProjectPolicyError::ResolutionDiagnostic { kind, message });
             }
             return Err(ProjectPolicyError::ResolutionRejected);
@@ -1457,7 +1462,7 @@ impl HostRuntime {
         &self,
         snapshot: &ProjectSnapshot,
     ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
-        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api())? };
+        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api(), self.stack.presence())? };
         unsafe { builder.snapshot(snapshot) }
     }
 
@@ -1483,7 +1488,7 @@ impl HostRuntime {
         let source = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"parse:".as_ptr()) };
         let result = unsafe { (api.send)(toml, selector, [source].as_ptr(), 1) };
-        if result == api.nilObj || send_is_error(api, result) {
+        if result == api.nilObj || send_is_error(api, self.stack.presence(), result) {
             return Err(ProjectManifestError::ParseRejected);
         }
         Ok(result)
@@ -1823,7 +1828,7 @@ impl HostRuntime {
                     3,
                 )
             };
-            if result == api.nilObj || send_is_error(api, result) {
+            if result == api.nilObj || send_is_error(api, self.stack.presence(), result) {
                 let detail_value =
                     unsafe { (api.send)(self.codegen, last_error_selector, std::ptr::null(), 0) };
                 let detail = if detail_value != api.nilObj
@@ -1893,7 +1898,7 @@ impl HostRuntime {
                 3,
             )
         };
-        if result == api.nilObj || send_is_error(api, result) {
+        if result == api.nilObj || send_is_error(api, self.stack.presence(), result) {
             let last_error_selector = unsafe { (api.intern)(c"lastError".as_ptr()) };
             let detail_value =
                 unsafe { (api.send)(self.codegen, last_error_selector, std::ptr::null(), 0) };
@@ -1944,7 +1949,7 @@ impl HostRuntime {
         let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
         let metadata = unsafe { (api.send)(codegen, selector, [source_value].as_ptr(), 1) };
-        if metadata == api.nilObj || send_is_error(api, metadata) {
+        if metadata == api.nilObj || send_is_error(api, self.stack.presence(), metadata) {
             return Err(ProjectSourceIndexError::MetadataRejected);
         }
         let metadata = unsafe { decode_project_source_metadata(api, metadata) }
@@ -2175,7 +2180,7 @@ impl HostRuntime {
         &self,
         request: &ProjectArtifactPlanRequest<'_>,
     ) -> Result<ProjectArtifactPlan, ProjectArtifactPlanError> {
-        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api()) }
+        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api(), self.stack.presence()) }
             .map_err(ProjectArtifactPlanError::Snapshot)?;
         let snapshot = unsafe { builder.artifact_plan_input(request) }
             .map_err(ProjectArtifactPlanError::Snapshot)?;
@@ -2188,7 +2193,7 @@ impl HostRuntime {
         };
         let selector = unsafe { (api.intern)(c"artifactPlan:".as_ptr()) };
         let plan = unsafe { (api.send)(policy, selector, [snapshot].as_ptr(), 1) };
-        if plan == api.nilObj || send_is_error(api, plan) {
+        if plan == api.nilObj || send_is_error(api, self.stack.presence(), plan) {
             return Err(ProjectArtifactPlanError::Policy(
                 ProjectPolicyError::ResolutionRejected,
             ));
@@ -2679,7 +2684,7 @@ impl HostRuntime {
         if metadata == api.nilObj {
             return Ok(ProjectSourceIndexOutcome::Ignored);
         }
-        if send_is_error(api, metadata) {
+        if send_is_error(api, self.stack.presence(), metadata) {
             return Err(ProjectSourceIndexError::MetadataRejected);
         }
         Ok(ProjectSourceIndexOutcome::Metadata(metadata))
@@ -2718,7 +2723,7 @@ impl HostRuntime {
         if metadata == api.nilObj {
             return Ok(None);
         }
-        if send_is_error(api, metadata) {
+        if send_is_error(api, self.stack.presence(), metadata) {
             return Err(ProjectSourceIndexError::MetadataRejected);
         }
         let metadata = unsafe { decode_project_source_metadata(api, metadata) }
@@ -2759,7 +2764,7 @@ impl HostRuntime {
         if metadata == api.nilObj {
             return Ok(None);
         }
-        if send_is_error(api, metadata) {
+        if send_is_error(api, self.stack.presence(), metadata) {
             return Err(ProjectSourceIndexError::MetadataRejected);
         }
         let metadata = unsafe { decode_project_source_metadata(api, metadata) }
@@ -2806,21 +2811,21 @@ impl HostRuntime {
         let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
         let mut source_paths =
             unsafe { (api.send)(vector_class, new_selector, std::ptr::null(), 0) };
-        if source_paths == api.nilObj || send_is_error(api, source_paths) {
+        if source_paths == api.nilObj || send_is_error(api, self.stack.presence(), source_paths) {
             return Err(ProjectCompositionError::AllocationRejected);
         }
         for path in paths {
             let bytes = path_bytes(path);
             let value = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
             let updated = unsafe { (api.send)(source_paths, add_selector, [value].as_ptr(), 1) };
-            if updated == api.nilObj || send_is_error(api, updated) {
+            if updated == api.nilObj || send_is_error(api, self.stack.presence(), updated) {
                 return Err(ProjectCompositionError::AllocationRejected);
             }
             source_paths = updated;
         }
         let selector = unsafe { (api.intern)(c"composeSources:".as_ptr()) };
         let result = unsafe { (api.send)(module, selector, [source_paths].as_ptr(), 1) };
-        if send_is_error(api, result) {
+        if send_is_error(api, self.stack.presence(), result) {
             return Err(ProjectCompositionError::Rejected);
         }
         if result == api.nilObj || unsafe { (api.vtableOf)(result) } != unsafe { birnam_abi::string::behavior() } {
@@ -2869,7 +2874,7 @@ impl HostRuntime {
             };
             let selector = unsafe { (api.intern)(c"clone".as_ptr()) };
             let project = unsafe { (api.send)(object, selector, std::ptr::null(), 0) };
-            if project == api.nilObj || send_is_error(api, project) {
+            if project == api.nilObj || send_is_error(api, self.stack.presence(), project) {
                 return Err(ProjectBridgeError::CloneRejected);
             }
             project
@@ -2895,7 +2900,7 @@ impl HostRuntime {
         let put_selector = unsafe { (api.intern)(c"at:put:".as_ptr()) };
         let name = unsafe { (api.intern)(c"Project".as_ptr()) };
         let result = unsafe { (api.send)(globals, put_selector, [name, project].as_ptr(), 2) };
-        if send_is_error(api, result) {
+        if send_is_error(api, self.stack.presence(), result) {
             return Err(ProjectBridgeError::GlobalRejected);
         }
         if PROJECT_BRIDGE_RUNTIME

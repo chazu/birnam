@@ -1021,6 +1021,14 @@ impl Runtime {
         self.assert_owner();
         unsafe { (*self.state.get()).environment.enumeration() }
     }
+    pub(crate) fn namespace_presence(&self) -> *mut birnam_abi::namespace_presence::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.presence() }
+    }
+    pub(crate) fn canonical_namespace_presence(&self) -> birnam_abi::namespace_presence::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.canonical_presence() }
+    }
     pub(crate) fn namespace_names(&self) -> *mut birnam_abi::namespace_names::ApiV1 {
         self.assert_owner();
         unsafe { (*self.state.get()).environment.names() }

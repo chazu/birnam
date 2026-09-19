@@ -1,14 +1,16 @@
 //! Per-runtime ownership of the explicitly prepared Namespace storage.
 use crate::abi::Oop;
-use birnam_abi::namespace::ApiV4;
+use birnam_abi::namespace::ApiV5;
 use core::ffi::c_void;
 use core::ptr::NonNull;
 
 pub(crate) struct Environment {
-    api: ApiV4,
+    api: ApiV5,
     context: NonNull<c_void>,
     enumeration: NonNull<birnam_abi::namespace_enumeration::ApiV1>,
     names: NonNull<birnam_abi::namespace_names::ApiV1>,
+    presence: NonNull<birnam_abi::namespace_presence::ApiV1>,
+    canonical_presence: birnam_abi::namespace_presence::ApiV1,
     canonical_names: birnam_abi::namespace_names::ApiV1,
 }
 impl Environment {
@@ -16,7 +18,7 @@ impl Environment {
         // Tests select the same implementation for each independent Runtime;
         // production only accepts the host's explicitly attached descriptor.
         #[cfg(test)]
-        let api = unsafe { *birnam_namespace::birnam_namespace_provider_v4() };
+        let api = unsafe { *birnam_namespace::birnam_namespace_provider_v5() };
         #[cfg(not(test))]
         let api = unsafe { birnam_abi::namespace::operations() };
         let context =
@@ -33,7 +35,10 @@ impl Environment {
         let enumeration = NonNull::new(unsafe {
             api.create_enumeration.unwrap()(context.as_ptr(), api.count, api.name_at, &crate::public_api::namespace_enumeration_access())
         }).expect("Namespace enumeration creation failed");
+        let presence = NonNull::new(unsafe { api.create_presence.unwrap()(context.as_ptr(), api.find, api.lookup, &crate::public_api::namespace_presence_access()) }).expect("Namespace presence creation failed");
+        let canonical_presence = unsafe { *presence.as_ptr() };
         Self {
+            presence, canonical_presence,
             api,
             context,
             names,
@@ -41,6 +46,8 @@ impl Environment {
             enumeration,
         }
     }
+    pub(crate) fn presence(&self) -> *mut birnam_abi::namespace_presence::ApiV1 { self.presence.as_ptr() }
+    pub(crate) fn canonical_presence(&self) -> birnam_abi::namespace_presence::ApiV1 { self.canonical_presence }
     pub(crate) fn enumeration(&self) -> *const birnam_abi::namespace_enumeration::ApiV1 { self.enumeration.as_ptr() }
     pub(crate) fn names(&self) -> *mut birnam_abi::namespace_names::ApiV1 {
         self.names.as_ptr()
@@ -82,6 +89,7 @@ impl Environment {
 }
 impl Drop for Environment {
     fn drop(&mut self) {
+        unsafe { self.api.destroy_presence.unwrap()(self.presence.as_ptr()) };
         unsafe { self.api.destroy_enumeration.unwrap()(self.enumeration.as_ptr()) };
         unsafe { self.api.destroy_names.unwrap()(self.names.as_ptr()) };
         unsafe { self.api.destroy.unwrap()(self.context.as_ptr()) };

@@ -130,5 +130,5 @@ macro_rules! float_dependency {
     };
 }
 
-pub type FloatPrepareV1 = unsafe extern "C" fn(*mut crate::IdApi) -> *mut FloatApiV1;
+pub type FloatPrepareV2 = unsafe extern "C" fn(*mut crate::IdApi, *const crate::namespace_presence::ApiV1) -> *mut FloatApiV1;
 pub type FloatProviderV1 = unsafe extern "C" fn() -> *mut FloatApiV1;

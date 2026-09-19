@@ -1,7 +1,7 @@
 //! System's existing source loader, installed by Prelude (81AV).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::error_value::{is_error, numeric_error};
-use birnam_abi::source_loader::ApiV1;
+use birnam_abi::source_loader::ApiV2;
 use birnam_abi::text_view::{printable_string, string_bytes};
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
@@ -15,13 +15,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static READY: AtomicBool = AtomicBool::new(false);
 // Prelude supplies its original selection, even when registration reenters
 // with another table before the first source loader installation. The host pins it.
-static EXECUTION_API: OnceLock<usize> = OnceLock::new();
+static EXECUTION_API: OnceLock<(usize, usize)> = OnceLock::new();
 
 unsafe fn api_ref() -> &'static IdApi {
     let pointer = *EXECUTION_API
         .get()
         .expect("Source Loader methods were not installed");
-    unsafe { &*(pointer as *const IdApi) }
+    unsafe { &*(pointer.0 as *const IdApi) }
 }
 unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
     // SAFETY: all callers pass static NUL-terminated selector names.
@@ -68,10 +68,10 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
         return api.nilObj;
     };
     let Some(path) = path_from_bytes(path_bytes) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read source file") };
+        return unsafe { numeric_error(api, execution_presence(), b"ioError\0", b"could not read source file") };
     };
     let Ok(file) = File::open(path) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read source file") };
+        return unsafe { numeric_error(api, execution_presence(), b"ioError\0", b"could not read source file") };
     };
     let mut source = Vec::new();
     if file
@@ -80,14 +80,14 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
         .is_err()
         || source.len() > MAX_SOURCE_BYTES as usize
     {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read source file") };
+        return unsafe { numeric_error(api, execution_presence(), b"ioError\0", b"could not read source file") };
     }
-    if unsafe { (api.isExported)(c"Codegen".as_ptr()) } == 0 {
-        return unsafe { numeric_error(api, b"noCodegen\0", b"Codegen module is not loaded") };
+    if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), c"Codegen".as_ptr()) } == 0 {
+        return unsafe { numeric_error(api, execution_presence(), b"noCodegen\0", b"Codegen module is not loaded") };
     }
     let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
     if codegen.is_null() {
-        return unsafe { numeric_error(api, b"noCodegen\0", b"Codegen module is not loaded") };
+        return unsafe { numeric_error(api, execution_presence(), b"noCodegen\0", b"Codegen module is not loaded") };
     }
     let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
 
@@ -95,7 +95,7 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
     // inspect a declaration first, record it by declared identity, then run
     // the source-file-aware persisting evaluator.
     let revision = unsafe { send_args(api, codegen, b"sourceRevisionOf:\0", &[source_object]) };
-    let revision_is_error = unsafe { is_error(api, revision) };
+    let revision_is_error = unsafe { is_error(api, execution_presence(), revision) };
     let mut declared_name = api.nilObj;
     if !revision_is_error && revision != api.nilObj {
         let name = unsafe { send_args(api, revision, b"at:\0", &[(birnam_abi::integer::make)(1)]) };
@@ -108,7 +108,7 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
                 &[source_object, name],
             )
         };
-        if unsafe { is_error(api, recorded) } {
+        if unsafe { is_error(api, execution_presence(), recorded) } {
             return recorded;
         }
     }
@@ -132,12 +132,12 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
                 );
             }
             return unsafe {
-                numeric_error(api, b"syntaxError\0", b"source file failed to compile")
+                numeric_error(api, execution_presence(), b"syntaxError\0", b"source file failed to compile")
             };
         }
         return result;
     }
-    if unsafe { is_error(api, result) } {
+    if unsafe { is_error(api, execution_presence(), result) } {
         if let Some(rendered) = unsafe { printable_string(api, result) } {
             eprintln!(
                 "birnam: load {}: {}",
@@ -145,7 +145,7 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
                 String::from_utf8_lossy(rendered)
             );
         }
-    } else if declared_name != api.nilObj && unsafe { (api.isExported)(c"Module".as_ptr()) } != 0 {
+    } else if declared_name != api.nilObj && unsafe { birnam_abi::namespace_presence::contains(execution_presence(), c"Module".as_ptr()) } != 0 {
         let module = unsafe { (api.import)(c"Module".as_ptr()) };
         if !module.is_null() {
             let _ = unsafe { send_args(api, module, b"markLoaded:\0", &[declared_name]) };
@@ -157,6 +157,7 @@ unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usi
 unsafe extern "C" fn install(
     registration: *const IdApi,
     execution: *const IdApi,
+    presence: *const birnam_abi::namespace_presence::ApiV1,
     system_vt: Oop,
     load: Oop,
 ) {
@@ -164,25 +165,25 @@ unsafe extern "C" fn install(
         READY.load(Ordering::Acquire) && !registration.is_null() && !execution.is_null(),
         "invalid Source Loader installation"
     );
-    EXECUTION_API.get_or_init(|| execution as usize);
+    EXECUTION_API.get_or_init(|| (execution as usize, presence as usize));
     let api = unsafe { &*registration };
     unsafe {
         (api.method)(system_vt, load, system_load);
     }
 }
-static API: ApiV1 = ApiV1 {
-    version: 1,
-    byte_size: size_of::<ApiV1>(),
+static API: ApiV2 = ApiV2 {
+    version: 2,
+    byte_size: size_of::<ApiV2>(),
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "Source Loader received a null IdApi");
     READY.store(true, Ordering::Release);
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_source_loader_provider_v1() -> *const ApiV1 {
+pub extern "C" fn birnam_source_loader_provider_v2() -> *const ApiV2 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {
@@ -197,3 +198,5 @@ birnam_abi::string_dependency!();
 birnam_abi::error_value_dependency!();
 birnam_abi::text_view_dependency!();
 birnam_abi::integer_dependency!();
+
+fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { EXECUTION_API.get().expect("methods not installed").1 as *const birnam_abi::namespace_presence::ApiV1 }

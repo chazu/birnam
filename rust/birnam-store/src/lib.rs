@@ -2154,13 +2154,13 @@ unsafe fn register_globals_methods(runtime: &Runtime) {
     unsafe { (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
-        let reloading = unsafe { (api.isExported)(STORE_NAME.as_ptr().cast()) != 0 };
+        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, STORE_NAME.as_ptr().cast()) != 0 };
         let (store_vt, store, cell_vt, globals_vt, globals) = if reloading {
             (
                 unsafe { import(api, STORE_VT_NAME) },
@@ -2238,7 +2238,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     if state.facts.is_empty() {
         unsafe { seed(&runtime, store) };
     }
-    if unsafe { (api.isExported)(STORE_NAME.as_ptr().cast()) == 0 } {
+    if unsafe { birnam_abi::namespace_presence::contains(presence, STORE_NAME.as_ptr().cast()) == 0 } {
         unsafe {
             let _ = (api.exportObj)(STORE_VT_NAME.as_ptr().cast(), as_oop(runtime.store_vt));
             let _ = (api.exportObj)(STORE_NAME.as_ptr().cast(), store);
@@ -2269,10 +2269,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// null to request the documented fatal boundary. `_state` is an opaque host
 /// token and is not retained by this rung.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     // SAFETY: forwarded host contract; bring_up performs the null check and
     // retains only the process-owned table address.
-    unsafe { bring_up(api) };
+    unsafe { bring_up(api, presence) };
     ptr::null_mut()
 }
 

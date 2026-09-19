@@ -3033,20 +3033,20 @@ mod runtime {
         api.nilObj
     }
 
-    unsafe fn bring_up(api: *mut IdApi) {
+    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
         if api.is_null() {
             abort("module_init received a null IdApi");
         }
         let api_ref = unsafe { &*api };
         let report_vt =
-            if unsafe { (api_ref.isExported)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) } != 0 {
+            if unsafe { birnam_abi::namespace_presence::contains(presence, IMAGE_REPORT_VT_NAME.as_ptr().cast()) } != 0 {
                 unsafe { (api_ref.import)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) }
             } else {
                 let vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
                 unsafe { (api_ref.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
                 vt
             };
-        let report_obj = if unsafe { (api_ref.isExported)(IMAGE_REPORT_NAME.as_ptr().cast()) } != 0
+        let report_obj = if unsafe { birnam_abi::namespace_presence::contains(presence, IMAGE_REPORT_NAME.as_ptr().cast()) } != 0
         {
             unsafe { (api_ref.import)(IMAGE_REPORT_NAME.as_ptr().cast()) }
         } else {
@@ -3171,10 +3171,10 @@ mod runtime {
 
     /// Initialize the Rust Image shell against the process floor.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mut c_void {
+    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
         let _ = state;
         if RUNTIME.get().is_none() {
-            unsafe { bring_up(api) };
+            unsafe { bring_up(api, presence) };
         }
         ptr::null_mut()
     }

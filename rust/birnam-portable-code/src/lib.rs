@@ -59,14 +59,13 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     let _ = state;
     if api.is_null() {
         abort("module_init received a null IdApi");
     }
-    let api_ref = unsafe { &*api };
     for dependency in [c"Vector", c"VectorVt", c"Error", c"ErrorVt"] {
-        if unsafe { (api_ref.isExported)(dependency.as_ptr()) } == 0 {
+        if unsafe { birnam_abi::namespace_presence::contains(presence, dependency.as_ptr()) } == 0 {
             abort("Collection and Error must load before Portable Code");
         }
     }

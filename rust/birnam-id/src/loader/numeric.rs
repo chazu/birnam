@@ -75,7 +75,7 @@ impl NumericSummary {
     ) -> Option<Self> {
         let address = method as *const c_void;
         let (image, declaration) =
-            resident_declaration(method, c"birnam_native_numeric_semantics_v2")?;
+            resident_declaration(method, c"birnam_native_numeric_semantics_v3")?;
         // A native image exporting this optional symbol promises the versioned
         // pure query contract, just as it promises its Method/TraceHook ABI.
         let query: unsafe extern "C" fn(*const c_void, crate::abi::Oop, *const usize) -> u32 =

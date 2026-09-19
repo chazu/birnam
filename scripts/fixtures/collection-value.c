@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -105,11 +105,11 @@ static void mount(const char *path,IdApi *table) {
         void *value=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(value); fixture_attach_integer(api,value);
         CollectionValueProviderV1 provide=(CollectionValueProviderV1)api->dlsym_fn(value,"birnam_collection_value_provider_v1"); assert(provide && !provide());
         ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(value,"module_init"); assert(init); unsigned before=roots_registered;
-        init(table,NULL); assert(roots_registered==before); fixture_collection_value=provide(); assert(fixture_collection_value); validate(image,0);
+        init(table,NULL,fixture_namespace_presence()); assert(roots_registered==before); fixture_collection_value=provide(); assert(fixture_collection_value); validate(image,0);
     }
     fixture_attach_integer(api,image);
     if(strstr(path,"collection") && fixture_collection_value) validate(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence());
 }
 static void begin(const char *name) { capture=1; sends=0; printf("case %s\n",name); }
 static void end(void) { capture=0; assert(!sends); checks++; }

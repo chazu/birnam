@@ -253,14 +253,14 @@ unsafe extern "C" fn string_builder_as_string(
 
 /// Initialize this native family using its existing adoption/publication rules.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
     ROOTS_REGISTERED.call_once(|| unsafe { (api.gcRegisterRootProvider)(mark_roots) });
     let runtime = *RUNTIME.get_or_init(|| {
-        let adopting = unsafe { (api.isExported)(STRING_BUILDER_NAME.as_ptr().cast()) } != 0;
+        let adopting = unsafe { birnam_abi::namespace_presence::contains(presence, STRING_BUILDER_NAME.as_ptr().cast()) } != 0;
         let behavior = if adopting {
             unsafe { import(api, STRING_BUILDER_VT_NAME) }
         } else {
@@ -337,7 +337,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) ->
         );
     }
     // Preserve Collection's existing cross-family publication guard exactly.
-    if unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) == 0 } {
+    if unsafe { birnam_abi::namespace_presence::contains(presence, VECTOR_NAME.as_ptr().cast()) == 0 } {
         unsafe {
             birnam_abi::set_vtable_owner(
                 api,

@@ -127,5 +127,5 @@ macro_rules! word_dependency {
     };
 }
 
-pub type WordPrepareV1 = unsafe extern "C" fn(*mut crate::IdApi) -> *mut WordApiV1;
+pub type WordPrepareV2 = unsafe extern "C" fn(*mut crate::IdApi, *const crate::namespace_presence::ApiV1) -> *mut WordApiV1;
 pub type WordProviderV1 = unsafe extern "C" fn() -> *mut WordApiV1;

@@ -106,7 +106,7 @@ static API: ApiV1 = ApiV1 {
     key_hash: Some(hash),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "Collection value received a null IdApi");
     READY.store(true, Ordering::Release);
     ptr::null_mut()

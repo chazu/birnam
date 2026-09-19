@@ -26,6 +26,10 @@ pub type LookupV1 = unsafe extern "C" fn(
     *const c_void, FindV1, *mut c_void, InternV1, *const u8, usize, *mut Oop,
 ) -> c_int;
 
+pub type CreatePresenceV1 = unsafe extern "C" fn(
+    *const c_void, Option<FindV1>, Option<LookupV1>, *const crate::namespace_presence::FloorV1,
+) -> *mut crate::namespace_presence::ApiV1;
+
 pub type CreateEnumerationV1 = unsafe extern "C" fn(
     *const c_void,
     Option<unsafe extern "C" fn(*const c_void) -> usize>,
@@ -42,7 +46,7 @@ pub type CreateEnumerationV1 = unsafe extern "C" fn(
 /// the next bind/destroy and must not escape its synchronous use by the caller.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV4 {
+pub struct ApiV5 {
     pub version: u32,
     pub byte_size: usize,
     pub create: Option<unsafe extern "C" fn() -> *mut c_void>,
@@ -65,27 +69,31 @@ pub struct ApiV4 {
     pub create_enumeration: Option<CreateEnumerationV1>,
     pub destroy_enumeration: Option<unsafe extern "C" fn(*mut crate::namespace_enumeration::ApiV1)>,
     pub lookup: Option<LookupV1>,
+    pub create_presence: Option<CreatePresenceV1>,
+    pub destroy_presence: Option<unsafe extern "C" fn(*mut crate::namespace_presence::ApiV1)>,
 }
 const _: () = {
-    assert!(size_of::<ApiV4>() == 120);
-    assert!(core::mem::offset_of!(ApiV4, create) == 16);
-    assert!(core::mem::offset_of!(ApiV4, bindings) == 72);
-    assert!(core::mem::offset_of!(ApiV4, lookup) == 112);
+    assert!(size_of::<ApiV5>() == 136);
+    assert!(core::mem::offset_of!(ApiV5, create_presence) == 120);
+    assert!(core::mem::offset_of!(ApiV5, destroy_presence) == 128);
+    assert!(core::mem::offset_of!(ApiV5, create) == 16);
+    assert!(core::mem::offset_of!(ApiV5, bindings) == 72);
+    assert!(core::mem::offset_of!(ApiV5, lookup) == 112);
     assert!(size_of::<BindingV1>() == 16);
     assert!(size_of::<ViewV1>() == 16);
 };
-pub type ProviderV4 = unsafe extern "C" fn() -> *const ApiV4;
-pub type DependencyV4 = unsafe extern "C" fn(*const ApiV4) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV4> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV5 = unsafe extern "C" fn() -> *const ApiV5;
+pub type DependencyV5 = unsafe extern "C" fn(*const ApiV5) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV5> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Readable aligned descriptor; valid immutable operations/code stay pinned.
-pub unsafe fn valid(pointer: *const ApiV4) -> bool {
+pub unsafe fn valid(pointer: *const ApiV5) -> bool {
     if pointer.is_null() {
         return false;
     }
     let a = unsafe { *pointer };
-    a.version == 4
-        && a.byte_size == size_of::<ApiV4>()
+    a.version == 5
+        && a.byte_size == size_of::<ApiV5>()
         && a.create.is_some()
         && a.destroy.is_some()
         && a.bind.is_some()
@@ -99,11 +107,13 @@ pub unsafe fn valid(pointer: *const ApiV4) -> bool {
         && a.create_enumeration.is_some()
         && a.destroy_enumeration.is_some()
         && a.lookup.is_some()
+        && a.create_presence.is_some()
+        && a.destroy_presence.is_some()
 }
 /// # Safety
 /// Owner-thread admission before constructing any namespace. Descriptor and code
 /// are immutable and process-pinned. Different descriptors cannot retarget it.
-pub unsafe fn attach(pointer: *const ApiV4) -> c_int {
+pub unsafe fn attach(pointer: *const ApiV5) -> c_int {
     if !unsafe { valid(pointer) } {
         return 0;
     }
@@ -119,7 +129,7 @@ pub unsafe fn attach(pointer: *const ApiV4) -> c_int {
 }
 /// # Safety
 /// Use only after the declared dependency is prepared by the host.
-pub unsafe fn operations() -> ApiV4 {
+pub unsafe fn operations() -> ApiV5 {
     let pointer = DEPENDENCY.load(Ordering::Acquire);
     assert!(
         !pointer.is_null(),
@@ -131,8 +141,8 @@ pub unsafe fn operations() -> ApiV4 {
 macro_rules! namespace_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_namespace_dependency_v4(
-            api: *const $crate::namespace::ApiV4,
+        pub unsafe extern "C" fn birnam_namespace_dependency_v5(
+            api: *const $crate::namespace::ApiV5,
         ) -> core::ffi::c_int {
             unsafe { $crate::namespace::attach(api) }
         }

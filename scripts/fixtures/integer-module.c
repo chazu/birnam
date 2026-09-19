@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
@@ -24,7 +24,7 @@ static void mount(const char *path) {
         assert(attach(&copied) == 0); /* no silent remount onto another table */
     }
     fixture_attach_integer(api, image);
-    init(api, NULL);
+    init(api,NULL,fixture_namespace_presence());
 }
 static Method lookup(Oop behavior, const char *name) {
     Oop selector = api->intern(name);

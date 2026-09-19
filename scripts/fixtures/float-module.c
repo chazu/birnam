@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -36,7 +36,7 @@ static void *mount(const char *path, IdApi *selected) {
     if(!image) fprintf(stderr,"%s\n",dlerror());
     assert(image); fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    init(selected,NULL); return image;
+    init(selected,NULL,fixture_namespace_presence()); return image;
 }
 static Oop send(Oop object, const char *name, Oop argument) {
     return api->send(object,api->intern(name),&argument,1);
@@ -71,10 +71,10 @@ int main(int argc, char **argv) {
     void *floor_handle=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor_handle);
     api=((IdInitFn)(fixture_prepare_namespace(floor_handle,argv[1]),dlsym(floor_handle,"id_init")))(); assert(api); api->gc_set_auto(0);
     fixture_mount_trace(api,argv[1]);
-    assert(!api->is_exported("Float") && !api->is_exported("FloatVt"));
+    assert(!fixture_namespace_contains("Float") && !fixture_namespace_contains("FloatVt"));
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     float_api=*api; float_api.alloc=collecting_alloc;
-    fixture_prepare_float(&float_api,argv[1]);
+    fixture_prepare_float(&float_api,argv[1], fixture_namespace_presence());
     assert(preparation_collections==1);
     float_api.alloc=api->alloc;
     fixture_mount_integer(api,argv[1]);
@@ -83,8 +83,8 @@ int main(int argc, char **argv) {
     mount(argv[2],&float_api); /* Float methods work before Prelude, Error or Codegen. */
     assert(publication_reentries==1); float_api.send=api->send;
     FloatProviderV1 provide=(FloatProviderV1)api->dlsym_fn(fixture_float_image,"birnam_float_provider_v1");
-    FloatPrepareV1 prepare=(FloatPrepareV1)api->dlsym_fn(fixture_float_image,"birnam_float_prepare_v1");
-    assert(provide && prepare && provide()==fixture_float && prepare(&float_api)==fixture_float);
+    FloatPrepareV2 prepare=(FloatPrepareV2)api->dlsym_fn(fixture_float_image,"birnam_float_prepare_v2");
+    assert(provide && prepare && provide()==fixture_float && prepare(&float_api,fixture_namespace_presence())==fixture_float);
     FloatDependencyV1 attach=(FloatDependencyV1)api->dlsym_fn(floor_handle,"birnam_float_dependency_v1");
     assert(attach && !attach(NULL) && attach(fixture_float)==1);
     FloatApiV1 copy=*fixture_float; copy.version=999; assert(!attach(&copy));
@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
     for(size_t i=0;i<sizeof(payloads)/sizeof(*payloads);i++) {
         double value; memcpy(&value,&payloads[i],8);
         Oop boxed=fixture_float_make(value);
-        assert(api->object_payload_size(boxed)==8 && api->slot_kind(fixture_float->behavior,0)==IDAPI_V8_SLOT_RAW);
+        assert(api->object_payload_size(boxed)==8 && api->slot_kind(fixture_float->behavior,0)==IDAPI_V9_SLOT_RAW);
         assert(!memcmp(boxed,&payloads[i],8));
         double read=fixture_float_value(boxed); assert(!memcmp(&read,&payloads[i],8));
         uint8_t raw[10]; memset(raw,0xab,sizeof(raw));

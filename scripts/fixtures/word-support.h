@@ -26,7 +26,7 @@ static inline void fixture_attach_word(IdApi *api, void *image) {
     WordDependencyV1 attach = (WordDependencyV1)api->dlsym_fn(image, "birnam_word_dependency_v1");
     if (attach) { assert(fixture_word); assert(attach(fixture_word) == 1); }
 }
-static inline void fixture_prepare_word(IdApi *api, const char *floor_path) {
+static inline void fixture_prepare_word(IdApi *api, const char *floor_path, const NamespacePresenceV1 *presence) {
     fixture_prepare_string(api, floor_path);
     if (fixture_word) return;
     const char *slash = strrchr(floor_path, '/'); assert(slash);
@@ -36,8 +36,8 @@ static inline void fixture_prepare_word(IdApi *api, const char *floor_path) {
     fixture_word_image = api->dlopen_fn(path, RTLD_NOW | RTLD_LOCAL);
     if (!fixture_word_image) fprintf(stderr, "%s\n", dlerror());
     assert(fixture_word_image);
-    WordPrepareV1 prepare = (WordPrepareV1)api->dlsym_fn(fixture_word_image, "birnam_word_prepare_v1"); assert(prepare);
-    fixture_word = prepare(api); assert(fixture_word);
+    WordPrepareV2 prepare = (WordPrepareV2)api->dlsym_fn(fixture_word_image, "birnam_word_prepare_v2"); assert(prepare);
+    fixture_word = prepare(api,presence); assert(fixture_word);
     assert(fixture_word->version == 1 && fixture_word->byte_size == sizeof(WordApiV1));
     void *floor = api->dlopen_fn(floor_path, RTLD_NOW | RTLD_LOCAL); assert(floor);
     fixture_attach_word(api, floor);

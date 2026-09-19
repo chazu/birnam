@@ -1,12 +1,13 @@
 /* Image smoke guard: called only after explicitly reloading Prelude. */
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 #ifndef EXPECT_BLOCK_LOOP_LIBRARY
 #define EXPECT_BLOCK_LOOP_LIBRARY "libbirnam_block_loop.dylib"
 #endif
-void *module_init(IdApi *api,void *state) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+    (void)presence;
     (void)state;assert(api);Oop type=api->import_fn("BlockVt");assert(type);
     const char *names[]={"whileTrue:","whileFalse:"};
     for(size_t i=0;i<2;i++) {

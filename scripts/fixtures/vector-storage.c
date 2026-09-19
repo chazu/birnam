@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -6,6 +6,9 @@
 /* Independent C representation and constructor/allocation trace oracle. */
 typedef struct { size_t count,shift; Oop root,tail; size_t tail_len; } Payload;
 _Static_assert(sizeof(Payload)==40 && offsetof(Payload,root)==16 && offsetof(Payload,tail)==24,"Vector payload");
+static FixturePresenceSlot selected_presence_slot;
+static NamespacePresenceV1 selected_presence=FIXTURE_PRESENCE(selected_presence_slot);
+
 static IdApi *api, selected;
 static Oop node_type, behavior, prototype, candidate, identities[256];
 static size_t identity_count, marks, partial_checks, allocation_count, allocation_sizes[16];
@@ -57,12 +60,12 @@ static Oop import(const char *name) {
     if(capture) printf("import result=%d\n",id(result));
     return result;
 }
-static int exported(const char *name) { int result=api->is_exported(name); if(capture) printf("isExported %s=%d\n",name,result); return result; }
+static int exported(const char *name) { int result=fixture_namespace_contains(name); if(capture) printf("isExported %s=%d\n",name,result); return result; }
 static Oop intern(const char *name) { if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==0 && rest==IDAPI_V8_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V8_SLOT_RAW,IDAPI_V8_SLOT_RAW,IDAPI_V8_SLOT_OOP,IDAPI_V8_SLOT_OOP,IDAPI_V8_SLOT_RAW}; assert(count==5 && rest==IDAPI_V8_SLOT_RAW && !memcmp(kinds,expected,5)); }
+    if(type==node_type) assert(count==0 && rest==IDAPI_V9_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V9_SLOT_RAW,IDAPI_V9_SLOT_RAW,IDAPI_V9_SLOT_OOP,IDAPI_V9_SLOT_OOP,IDAPI_V9_SLOT_RAW}; assert(count==5 && rest==IDAPI_V9_SLOT_RAW && !memcmp(kinds,expected,5)); }
     api->set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
@@ -127,7 +130,7 @@ static void validate_dependency(void *image, int attached) {
     if(attached) { bad=*fixture_vector_v1; assert(attach(&bad)==0 && attach(fixture_vector_v1)==1); }
     }
 }
-static void mount(const char *path,IdApi *table) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     if(modern && strstr(path,"collection") && !collection) {
         fixture_prepare_vector(api);
@@ -138,7 +141,7 @@ static void mount(const char *path,IdApi *table) {
     if(modern && strstr(path,"collection")) {
         validate_dependency(image,1);
     }
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence);
     if(strstr(path,"collection")) collection=image;
 }
 static void seed(void) {
@@ -178,14 +181,14 @@ int main(int argc,char **argv) {
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api);
     api->gc_set_auto(0); fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1]);
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence());
     if(adopting || ignored) seed();
     if(ignored) { api->export_obj("Vector",NULL); node_type=behavior=prototype=NULL; }
     Oop old_node=node_type,old_behavior=behavior,old_prototype=prototype;
-    selected=*api; selected.proto=proto; selected.import_fn=import; selected.is_exported=adoption_exported;
+    selected=*api; selected.proto=proto; selected.import_fn=import; selected_presence_slot=adoption_exported;
     selected.intern=intern; selected.alloc=allocate; selected.method=method; selected.send=send;
     selected.export_obj=publish; selected.set_layout=layout; selected.set_finalizer=finalize; selected.gc_register_root_provider=roots;
-    capture=1; mount(argv[3],&selected); capture=0; phase=1;
+    capture=1; mount(argv[3],&selected,&selected_presence); capture=0; phase=1;
     if(candidate) { prototype=candidate; candidate=NULL; }
     if(adopting) assert(node_type==old_node && behavior==old_behavior && (!old_prototype || prototype==old_prototype));
     else assert(api->import_fn("Vector")==prototype && vtable_parent(api,behavior)==api->import_fn("CollectionVt"));
@@ -237,7 +240,7 @@ int main(int argc,char **argv) {
     for(size_t i=0;i<5;i++) api->method(behavior,api->intern(names[i]),previous[i]);
     api->export_obj("VectorVt",api->nil_obj); api->export_obj("Vector",api->nil_obj); api->export_obj("VectorNode",api->nil_obj);
     IdApi other=selected; other.alloc=forbidden_allocator;
-    capture=1; mount(argv[3],&other); capture=0;
+    capture=1; mount(argv[3],&other,&selected_presence); capture=0;
     assert(api->import_fn("Vector")==api->nil_obj);
     selected.alloc=second_allocator; live_allocations=0;
     Oop fresh=empty(); assert(live_allocations==3 && api->vtable_of(fresh)==behavior);
@@ -246,7 +249,7 @@ int main(int argc,char **argv) {
     api->gc_set_precise(1); api->gc_collect(); partial(3);
     vector=api->import_fn("VectorStorageRoot"); assert(vector==api->import_fn("VectorStorageAlias")); verify(vector,32801);
     for(size_t j=0;j<4;j++) verify(versions[j],retained[j]);
-    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected); capture=0;
+    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence); capture=0;
     assert(api->import_fn("VectorVt")==behavior && api->import_fn("Vector")==prototype && api->import_fn("VectorNode")==node_type && !finalizers);
     printf("vector-storage: construction, persistence through 32801, native consumers, allocation order, roots, live callbacks and reload passed mode=%s\n",argv[4]);
 }

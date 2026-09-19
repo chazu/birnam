@@ -44,6 +44,7 @@ struct Roots {
 /// adapter. The opaque context does not contain a Runtime/Heap pointer.
 pub struct Instance {
     api: *mut IdApi,
+    presence: *const birnam_abi::namespace_presence::ApiV1,
     roots: UnsafeCell<Roots>,
     operations: UnsafeCell<FloatApiV1>,
 }
@@ -52,10 +53,11 @@ impl Instance {
     /// Allocate native state before registering its partially initialized roots.
     /// # Safety
     /// The API lives until this instance and all installed consumers are gone.
-    pub unsafe fn empty(api: *mut IdApi) -> Box<Self> {
+    pub unsafe fn empty(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) -> Box<Self> {
         assert!(!api.is_null());
         let result = Box::new(Self {
             api,
+            presence,
             roots: UnsafeCell::new(Roots::default()),
             operations: UnsafeCell::new(FloatApiV1 {
                 version: 1,
@@ -123,6 +125,7 @@ impl Instance {
     pub fn operations(&self) -> *mut FloatApiV1 {
         self.operations.get()
     }
+    pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.presence }
     pub fn api(&self) -> *mut IdApi {
         self.api
     }

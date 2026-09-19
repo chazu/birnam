@@ -39,7 +39,7 @@ static Oop evaluate(unsigned op, Oop receiver, const Oop *args, size_t count) {
 #define OP(N) Oop numeric_##N(Oop r,const Oop *a,size_t n){return evaluate(N,r,a,n);}
 OP(1) OP(2) OP(3) OP(4) OP(5)
 Oop numeric_unknown(Oop r,const Oop *a,size_t n){return evaluate(2,r,a,n);}
-unsigned int birnam_native_numeric_semantics_v2(const void *method, Oop requested_vtable, const uintptr_t *functions) {
+unsigned int birnam_native_numeric_semantics_v3(const void *method, Oop requested_vtable, const uintptr_t *functions) {
     if (!functions || !declarations_enabled) return 0;
     if (requested_vtable != integer_vtable) return 0;
     Method methods[] = { numeric_1, numeric_2, numeric_3, numeric_4, numeric_5 };

@@ -1,12 +1,13 @@
 /* Seed otherwise unconstructible nonzero Words through the public native API.
    Save unexported clones so the image encodes values, not external export names.
    The fixture library can then be removed before image boot. */
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "word_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdlib.h>
-void *module_init(IdApi *api,void *state) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+    (void)presence;
     assert(api && !state);
     const char *path=getenv("BIRNAM_WORD_ERROR_DYLIB");assert(path);
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);

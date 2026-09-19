@@ -22,6 +22,7 @@ typedef struct {
 typedef int (*FloatDependencyV1)(FloatApiV1 *);
 typedef FloatApiV1 *(*FloatProviderV1)(void);
 typedef FloatApiV1 *(*FloatPrepareV1)(IdApi *);
+typedef FloatApiV1 *(*FloatPrepareV2)(IdApi *,const NamespacePresenceV1 *);
 _Static_assert(sizeof(FloatStorageV1) == 48, "Float storage extent");
 _Static_assert(sizeof(FloatApiV1) == 72, "Float operations extent");
 _Static_assert(offsetof(FloatApiV1, make) == 40, "Float constructor offset");

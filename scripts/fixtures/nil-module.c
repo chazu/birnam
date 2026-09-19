@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -11,7 +11,7 @@ static void mount(const char *path, IdApi *selected) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    init(selected,NULL);
+    init(selected,NULL,fixture_namespace_presence());
 }
 static Oop send0(Oop receiver, const char *name) {
     return api->send(receiver,api->intern(name),NULL,0);

@@ -1,6 +1,6 @@
 //! Block's existing native while methods, installed by Prelude (81AT).
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::block_loop::ApiV1;
+use birnam_abi::block_loop::ApiV2;
 use birnam_abi::error_value::{is_error, numeric_error};
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
@@ -11,13 +11,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static READY: AtomicBool = AtomicBool::new(false);
 // Prelude supplies its original selection, even when registration reenters
 // with another table before the first block loop installation. The host pins it.
-static EXECUTION_API: OnceLock<usize> = OnceLock::new();
+static EXECUTION_API: OnceLock<(usize, usize)> = OnceLock::new();
 
 unsafe fn api_ref() -> &'static IdApi {
     let pointer = *EXECUTION_API
         .get()
         .expect("Block Loop methods were not installed");
-    unsafe { &*(pointer as *const IdApi) }
+    unsafe { &*(pointer.0 as *const IdApi) }
 }
 unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
     // SAFETY: all callers pass static NUL-terminated selector names.
@@ -50,15 +50,14 @@ unsafe fn block_loop(
     };
     loop {
         let condition = unsafe { send0(api, self_object, b"value\0") };
-        if unsafe { is_error(api, condition) } {
+        if unsafe { is_error(api, execution_presence(), condition) } {
             return condition;
         }
         let is_true = condition == api.trueObj;
         let is_false = condition == api.falseObj;
         if !is_true && !is_false {
             return unsafe {
-                numeric_error(
-                    api,
+                numeric_error(api, execution_presence(),
                     b"mustBeBoolean\0",
                     b"while loop condition must answer true or false",
                 )
@@ -68,7 +67,7 @@ unsafe fn block_loop(
             return api.nilObj;
         }
         let result = unsafe { send0(api, body, b"value\0") };
-        if unsafe { is_error(api, result) } {
+        if unsafe { is_error(api, execution_presence(), result) } {
             return result;
         }
     }
@@ -85,6 +84,7 @@ unsafe extern "C" fn block_while_false(self_object: Oop, args: *const Oop, count
 unsafe extern "C" fn install(
     registration: *const IdApi,
     execution: *const IdApi,
+    presence: *const birnam_abi::namespace_presence::ApiV1,
     block_vt: Oop,
     while_true: Oop,
     while_false: Oop,
@@ -93,26 +93,26 @@ unsafe extern "C" fn install(
         READY.load(Ordering::Acquire) && !registration.is_null() && !execution.is_null(),
         "invalid Block Loop installation"
     );
-    EXECUTION_API.get_or_init(|| execution as usize);
+    EXECUTION_API.get_or_init(|| (execution as usize, presence as usize));
     let api = unsafe { &*registration };
     unsafe {
         (api.method)(block_vt, while_true, block_while_true);
         (api.method)(block_vt, while_false, block_while_false);
     }
 }
-static API: ApiV1 = ApiV1 {
-    version: 1,
-    byte_size: size_of::<ApiV1>(),
+static API: ApiV2 = ApiV2 {
+    version: 2,
+    byte_size: size_of::<ApiV2>(),
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "Block Loop received a null IdApi");
     READY.store(true, Ordering::Release);
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_block_loop_provider_v1() -> *const ApiV1 {
+pub extern "C" fn birnam_block_loop_provider_v2() -> *const ApiV2 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {
@@ -124,3 +124,5 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
 birnam_abi::error_value_dependency!();
+
+fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { EXECUTION_API.get().expect("methods not installed").1 as *const birnam_abi::namespace_presence::ApiV1 }

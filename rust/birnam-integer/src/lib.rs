@@ -29,7 +29,7 @@ pub extern "C" fn birnam_integer_provider_v1() -> *mut birnam_abi::integer::Inte
 /// Optional native implementation declaration, independent of selector names.
 /// See abi/native-numeric-semantics-v1.md. This pure query never enters Id.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_numeric_semantics_v2(
+pub unsafe extern "C" fn birnam_native_numeric_semantics_v3(
     method: *const c_void,
     integer_vtable: Oop,
     functions: *const usize,
@@ -44,16 +44,17 @@ pub unsafe extern "C" fn birnam_native_numeric_semantics_v2(
     // A module initialized against another floor cannot attest this floor's
     // canonical operands or allocation/error behavior.
     let ops = unsafe { birnam_abi::integer::operations() };
+    let presence = unsafe { *(runtime.presence as *const birnam_abi::namespace_presence::ApiV1) };
     let instance = INSTANCE.load(Ordering::Acquire);
     let identities = unsafe { (*instance).identities() };
     if identities[0] != integer_vtable
         || ops.behavior != identities[0]
         || ops.prototype != identities[1]
-        || unsafe { core::slice::from_raw_parts(functions, 10) }
+        || unsafe { core::slice::from_raw_parts(functions, 11) }
             != [
                 ops.is_exact as usize,
                 ops.read as usize,
-                api.isExported as usize,
+                presence.contains.unwrap() as usize,
                 api.import as usize,
                 api.vtableOf as usize,
                 ops.make as usize,
@@ -61,6 +62,7 @@ pub unsafe extern "C" fn birnam_native_numeric_semantics_v2(
                 ops.storage as usize,
                 ops.prototype as usize,
                 api.alloc as usize,
+                presence.context as usize,
             ]
     {
         return 0;
@@ -86,6 +88,7 @@ fn declared_numeric_operator(method: *const c_void) -> u32 {
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    presence: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -140,7 +143,7 @@ unsafe fn integer(_api: &IdApi, value: Oop) -> Option<i64> {
 
 unsafe fn result(api: &IdApi, value: i128) -> Oop {
     if value < i64::MIN as i128 || value > i64::MAX as i128 {
-        return unsafe { numeric_error(api, b"overflow\0", b"integer overflow") };
+        return unsafe { numeric_error(api, execution_presence(), b"overflow\0", b"integer overflow") };
     }
     // SAFETY: the range check makes the conversion exact.
     unsafe { (birnam_abi::integer::make)(value as i64) }
@@ -184,12 +187,12 @@ unsafe fn numeric_binary(
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { is_error(api, right_object) } {
+    if unsafe { is_error(api, execution_presence(), right_object) } {
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
         return unsafe {
-            numeric_error(api, b"typeMismatch\0", b"Integer arithmetic needs a number")
+            numeric_error(api, execution_presence(), b"typeMismatch\0", b"Integer arithmetic needs a number")
         };
     };
     match (left, right) {
@@ -255,12 +258,12 @@ unsafe extern "C" fn integer_div(self_object: Oop, args: *const Oop, count: usiz
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { is_error(api, right_object) } {
+    if unsafe { is_error(api, execution_presence(), right_object) } {
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
         return unsafe {
-            numeric_error(api, b"typeMismatch\0", b"Integer arithmetic needs a number")
+            numeric_error(api, execution_presence(), b"typeMismatch\0", b"Integer arithmetic needs a number")
         };
     };
     let zero_divide = match right {
@@ -268,7 +271,7 @@ unsafe extern "C" fn integer_div(self_object: Oop, args: *const Oop, count: usiz
         Numeric::Float(value) => value == 0.0,
     };
     if zero_divide {
-        return unsafe { numeric_error(api, b"zeroDivide\0", b"division by zero") };
+        return unsafe { numeric_error(api, execution_presence(), b"zeroDivide\0", b"division by zero") };
     }
     match (left, right) {
         (Numeric::Integer(left), Numeric::Integer(right)) => unsafe {
@@ -295,14 +298,14 @@ unsafe extern "C" fn integer_mod(self_object: Oop, args: *const Oop, count: usiz
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { is_error(api, right_object) } {
+    if unsafe { is_error(api, execution_presence(), right_object) } {
         return right_object;
     }
     let Some(right) = (unsafe { integer(api, right_object) }) else {
-        return unsafe { numeric_error(api, b"typeMismatch\0", b"mod: needs an Integer") };
+        return unsafe { numeric_error(api, execution_presence(), b"typeMismatch\0", b"mod: needs an Integer") };
     };
     if right == 0 {
-        return unsafe { numeric_error(api, b"zeroDivide\0", b"division by zero") };
+        return unsafe { numeric_error(api, execution_presence(), b"zeroDivide\0", b"division by zero") };
     }
     unsafe { result(api, (left as i128) % (right as i128)) }
 }
@@ -323,11 +326,11 @@ unsafe fn compare(
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { is_error(api, right_object) } {
+    if unsafe { is_error(api, execution_presence(), right_object) } {
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return unsafe { numeric_error(api, b"typeMismatch\0", b"comparison needs a number") };
+        return unsafe { numeric_error(api, execution_presence(), b"typeMismatch\0", b"comparison needs a number") };
     };
     let matches = match (left, right) {
         (Numeric::Integer(left), Numeric::Integer(right)) => predicate(left as f64, right as f64),
@@ -423,7 +426,7 @@ unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: us
     while value <= end {
         let argument = unsafe { (birnam_abi::integer::make)(value) };
         let result = unsafe { send_args(api, block, b"value:\0", &[argument]) };
-        if unsafe { is_error(api, result) } {
+        if unsafe { is_error(api, execution_presence(), result) } {
             return result;
         }
         if value == i64::MAX {
@@ -436,7 +439,7 @@ unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: us
 
 /// The host retains the floor and this library for the process lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -451,6 +454,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) ->
     RUNTIME
         .set(Runtime {
             api: api_pointer as usize,
+            presence: presence as usize,
         })
         .ok()
         .expect("Integer initialization serialized");
@@ -509,7 +513,7 @@ mod tests {
             assert_eq!(declared_numeric_operator(method as *const c_void), code);
             assert_eq!(
                 unsafe {
-                    birnam_native_numeric_semantics_v2(
+                    birnam_native_numeric_semantics_v3(
                         method as *const c_void,
                         ptr::null_mut(),
                         ptr::null(),
@@ -528,3 +532,5 @@ birnam_abi::float_dependency!();
 birnam_abi::string_dependency!();
 
 birnam_abi::error_value_dependency!();
+
+fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { runtime().presence as *const birnam_abi::namespace_presence::ApiV1 }

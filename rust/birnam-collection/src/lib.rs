@@ -53,13 +53,13 @@ unsafe fn import(api: &IdApi, name: &[u8]) -> Oop {
     unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
-        let reloading = unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) != 0 };
+        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, VECTOR_NAME.as_ptr().cast()) != 0 };
         let collection_vt = if reloading {
             unsafe { import(api, COLLECTION_VT_NAME) }
         } else {
@@ -114,7 +114,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             runtime.print_string as Oop,
         );
     }
-    if unsafe { (api.isExported)(VECTOR_NAME.as_ptr().cast()) == 0 } {
+    if unsafe { birnam_abi::namespace_presence::contains(presence, VECTOR_NAME.as_ptr().cast()) == 0 } {
         unsafe {
             birnam_abi::vector::set_owner(api_pointer);
             let _ = (api.exportObj)(
@@ -146,9 +146,9 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust Collection vector protocol against the process floor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     let _ = state;
-    unsafe { bring_up(api) };
+    unsafe { bring_up(api, presence) };
     ptr::null_mut()
 }
 

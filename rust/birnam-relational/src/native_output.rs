@@ -98,20 +98,21 @@ fn exported_output_contract() {
                 std::mem::transmute::<*mut c_void, $ty>(address)
             }};
         }
+        let presence = entry!(floor, c"birnam_namespace_presence_provider_v1", birnam_abi::namespace_presence::ProviderV1)();
         let api_pointer = api as *const _ as *mut IdApi;
         let float_image = load("libbirnam_float.dylib");
-        let floats = entry!(float_image, c"birnam_float_prepare_v1", birnam_abi::float::FloatPrepareV1)(api_pointer);
+        let floats = entry!(float_image, c"birnam_float_prepare_v2", birnam_abi::float::FloatPrepareV2)(api_pointer, presence);
         assert_eq!(birnam_abi::float::attach(floats), 1);
         assert_eq!(entry!(floor, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
         let integer_image = load("libbirnam_integer.dylib");
         assert_eq!(entry!(integer_image, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
-        entry!(integer_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut());
+        entry!(integer_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence);
         let integers = entry!(integer_image, c"birnam_integer_provider_v1", unsafe extern "C" fn() -> *mut birnam_abi::integer::IntegerApiV1)();
         assert_eq!(birnam_abi::integer::attach(integers), 1);
         assert_eq!(entry!(floor, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
         assert_eq!(entry!(float_image, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
-        entry!(float_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut());
-        module_init(api as *const _ as *mut _, ptr::null_mut());
+        entry!(float_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence);
+        module_init(api as *const _ as *mut _, ptr::null_mut(), presence);
         let integer = |n| (birnam_abi::integer::make)(n);
         let null = ptr::null_mut();
         let attribute = integer(7);

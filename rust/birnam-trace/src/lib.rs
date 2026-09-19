@@ -161,7 +161,7 @@ pub unsafe extern "C" fn birnam_trace_described_v1(
 /// # Safety
 /// The loader obeys the usual native module lifetime contract.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(_: *mut IdApi, _: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(_: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     core::ptr::null_mut()
 }
 

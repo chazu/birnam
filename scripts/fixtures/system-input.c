@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -8,6 +8,12 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
+
+static FixturePresenceSlot selected_presence_slot;
+static NamespacePresenceV1 selected_presence=FIXTURE_PRESENCE(selected_presence_slot);
+
+static FixturePresenceSlot other_presence_slot;
+static NamespacePresenceV1 other_presence=FIXTURE_PRESENCE(other_presence_slot);
 
 static IdApi *api,selected,other;
 static ModuleInitFn prelude_init;
@@ -28,7 +34,7 @@ static void roots(MarkFn mark) {
 }
 static void registered(RootProvider provider) { registrations++;api->gc_register_root_provider(provider); }
 static Oop allocate(Oop type,size_t size) { allocations++;if(capture) printf("alloc %zu\n",size);return api->alloc(type,size); }
-static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL); }
+static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence); }
 static Oop intern(const char *name) {
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(reentry_mode==1 && !strcmp(name,"readLine")) reenter();
@@ -37,7 +43,7 @@ static Oop intern(const char *name) {
     return api->intern(name);
 }
 static int exported(const char *name) {
-    if(strcmp(name,"Error")) return api->is_exported(name);
+    if(strcmp(name,"Error")) return fixture_namespace_contains(name);
     exports++;if(capture) puts("exported Error");if(collect) api->gc_collect();return present;
 }
 static Oop imported(const char *name) {
@@ -46,7 +52,7 @@ static Oop imported(const char *name) {
 }
 static Oop send(Oop self,Oop selector,const Oop *args,size_t count) { sends++;if(capture) printf("send %s %zu\n",api->symbol_name(selector),count);if(collect) api->gc_collect();return api->send(self,selector,args,count); }
 static Oop forbidden_intern(const char *name) { (void)name;assert(!"registration table became execution table");return NULL; }
-static int forbidden_exported(const char *name) { if(strcmp(name,"Error")) return api->is_exported(name);assert(!"registration table became execution table");return 0; }
+static int forbidden_exported(const char *name) { if(strcmp(name,"Error")) return fixture_namespace_contains(name);assert(!"registration table became execution table");return 0; }
 static Oop forbidden_send(Oop self,Oop selector,const Oop *args,size_t count) { (void)self;(void)selector;(void)args;(void)count;assert(!"registration table became execution table");return NULL; }
 static void expect_bytes(Oop value,const uint8_t *wanted,size_t length) {
     assert(value);size_t actual=0;const uint8_t *bytes=original_bytes(string_context,value,&actual);
@@ -90,21 +96,21 @@ static void method(Oop type,Oop selector,Method implementation) {
 static void begin(const char *name) { printf("case %s\n",name);capture=1;interns=makes=exports=imports=sends=calls=0; }
 static void end(void) { capture=0;printf("done intern=%zu make=%zu export=%zu import=%zu send=%zu calls=%zu\n",interns,makes,exports,imports,sends,calls); }
 static void validate(void *image,int attached) {
-    SystemInputDependencyV1 attach=(SystemInputDependencyV1)api->dlsym_fn(image,"birnam_system_input_dependency_v1");if(!attach) return;
-    SystemInputApiV1 bad=*fixture_system_input;
+    SystemInputDependencyV2 attach=(SystemInputDependencyV2)api->dlsym_fn(image,"birnam_system_input_dependency_v2");if(!attach) return;
+    SystemInputApiV2 bad=*fixture_system_input;
     assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_system_input;
     bad.byte_size--;assert(!attach(&bad));bad=*fixture_system_input;bad.install=NULL;assert(!attach(&bad));
     if(attached) { bad=*fixture_system_input;assert(!attach(&bad) && attach(fixture_system_input)==1); }
 }
-static void mount(const char *path,IdApi *table,int prelude) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    if(prelude && api->dlsym_fn(image,"birnam_system_input_dependency_v1") && !fixture_system_input) {
+    if(prelude && api->dlsym_fn(image,"birnam_system_input_dependency_v2") && !fixture_system_input) {
         IdApi watched=*api;watched.alloc=allocate;watched.method=method;watched.gc_register_root_provider=registered;
         size_t before=allocations;fixture_prepare_system_input(&watched);
-        assert(!bindings && !registrations && allocations==before && !api->is_exported("System"));validate(image,0);
+        assert(!bindings && !registrations && allocations==before && !fixture_namespace_contains("System"));validate(image,0);
     }
     fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
-    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL);
+    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence);
 }
 static Oop construct(Oop self,const Oop *args,size_t count) {
     assert(args && count==2 && args[0]==api->intern("ioError"));calls++;seen_factory=self;kind_arg=args[0];message_arg=args[1];
@@ -137,13 +143,13 @@ int main(int argc,char **argv) {
     assert(argc==5);setvbuf(stdout,NULL,_IONBF,0);
     reentry_mode=!strcmp(argv[4],"first-readline-intern-reentry")?1:(!strcmp(argv[4],"first-print-binding-reentry")?2:0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1]);uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0);api->gc_register_root_provider(roots);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1]);uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),0);api->gc_register_root_provider(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;fixture_string->make=make;
-    selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected.is_exported=exported;selected.import_fn=imported;selected.send=send;
-    other=selected;other.nil_obj=api->true_obj;other.is_exported=forbidden_exported;other.send=forbidden_send;
+    selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected_presence_slot=exported;selected.import_fn=imported;selected.send=send;
+    other=selected;other.nil_obj=api->true_obj;other_presence_slot=forbidden_exported;other.send=forbidden_send;
     /* Registration still interns selectors, so only failure dispatch must use
        the original table. A later direct provider install can forbid intern too. */
-    begin("initial registration");mount(argv[3],&selected,1);end();assert(bindings==(reentered?2u:1u) && !registrations);
+    begin("initial registration");mount(argv[3],&selected,&selected_presence,1);end();assert(bindings==(reentered?2u:1u) && !registrations);
     system_type=api->import_fn("SystemVt");system_object=api->import_fn("System");alias=api->alloc(api->object_vt,0);
     input_method=lookup(system_type,api->intern("readLine"));Dl_info owner;assert(input_method && dladdr((const void *)input_method,&owner));
     assert(strstr(owner.dli_fname,fixture_system_input?"/libbirnam_system_input.dylib":"_prelude.dylib"));
@@ -171,12 +177,12 @@ int main(int argc,char **argv) {
     begin("fresh factory replacement and custom lookup");assert(read_error()==answer);api->method(type,api->intern("kind:message:"),construct_second);assert(read_error()==second);
     Oop meta=api->proto(api->vtable_vt);api->method(meta,api->intern("lookup"),custom_lookup);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){type,meta},2);assert(read_error()==answer && read_error()==second && lookups==2);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){type,api->vtable_vt},2);api->method(type,api->intern("kind:message:"),construct);end();
     api->method(system_type,api->intern("readLine"),replacement);begin("copied method survives public replacement");line_case(input_method,NULL,(const uint8_t *)"copy\n",5,(const uint8_t *)"copy",4);end();
-    begin("reload retains original execution table");prelude_init(&other,NULL);end();assert(lookup(system_type,api->intern("readLine"))==input_method);
-    if(fixture_system_input) { IdApi registration=other;registration.intern=forbidden_intern;fixture_system_input->install(&registration,&other,system_type,api->intern("readLine")); }
+    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence);end();assert(lookup(system_type,api->intern("readLine"))==input_method);
+    if(fixture_system_input) { IdApi registration=other;registration.intern=forbidden_intern;fixture_system_input->install(&registration,&other,&other_presence,system_type,api->intern("readLine")); }
     begin("retained execution after reload");assert(read_error()==answer);end();
     selectors[0]=api->intern("input-test-0");selectors[1]=api->intern("input-test-1");alternate=api->proto(api->object_vt);expected_target=system_type;map_selectors=change_snapshot=1;map_generation=0;
-    begin("earlier registration keeps behavior and selector snapshot");prelude_init(&selected,NULL);end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==input_method);
-    expected_target=alternate;begin("next installation adopts current behavior and selector");prelude_init(&other,NULL);end();assert(seen_selector==selectors[1] && seen_target==alternate);
+    begin("earlier registration keeps behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence);end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==input_method);
+    expected_target=alternate;begin("next installation adopts current behavior and selector");prelude_init(&other,NULL,&other_presence);end();assert(seen_selector==selectors[1] && seen_target==alternate);
     api->export_obj("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);line_case(input_method,alias,(const uint8_t *)"gc\n",3,(const uint8_t *)"gc",2);assert(read_error()==answer);
     fixture_string->make=original_make;fixture_string->context=string_context;

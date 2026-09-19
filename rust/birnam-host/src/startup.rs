@@ -465,12 +465,12 @@ pub unsafe fn activate_preflighted_artifact(
     let path_value = unsafe { (birnam_abi::string::make)(path_bytes.as_ptr(), path_bytes.len()) };
     let selector = unsafe { (api.intern)(c"load:".as_ptr()) };
     let result = unsafe { (api.send)(runtime.codegen, selector, [path_value].as_ptr(), 1) };
-    if result == api.nilObj || send_is_error(api, result) {
+    if result == api.nilObj || send_is_error(api, runtime.stack.presence(), result) {
         return Err(ArtifactActivationError::ActivationRejected);
     }
     let mark_loaded = unsafe { (api.intern)(c"markLoaded:".as_ptr()) };
     let marked = unsafe { (api.send)(module_manager, mark_loaded, [identity].as_ptr(), 1) };
-    if marked == api.nilObj || send_is_error(api, marked) {
+    if marked == api.nilObj || send_is_error(api, runtime.stack.presence(), marked) {
         return Err(ArtifactActivationError::ActivationRejected);
     }
     Ok(())
@@ -590,7 +590,7 @@ pub unsafe fn compile_module(
             let source = unsafe { (birnam_abi::string::make)(module.source.as_ptr(), module.source.len()) };
             let recorded =
                 unsafe { (api.send)(codegen, record_selector, [source, name].as_ptr(), 2) };
-            if recorded == api.nilObj || send_is_error(api, recorded) {
+            if recorded == api.nilObj || send_is_error(api, runtime.stack.presence(), recorded) {
                 return Err(CompileModuleError::CompilationRejected(
                     "initial generation source registration failed".to_owned(),
                 ));
@@ -617,7 +617,7 @@ pub unsafe fn compile_module(
             )
         }
     };
-    if result == api.nilObj || send_is_error(api, result) {
+    if result == api.nilObj || send_is_error(api, runtime.stack.presence(), result) {
         let selector = unsafe { (api.intern)(c"lastError".as_ptr()) };
         let diagnostic = unsafe { (api.send)(codegen, selector, std::ptr::null(), 0) };
         let diagnostic =
@@ -687,7 +687,7 @@ pub unsafe fn load_image(
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
-    unsafe { finish_image_load(api, system, status) }
+    unsafe { finish_image_load(api, runtime.stack.presence(), system, status) }
 }
 
 /// Load complete image bytes through the ordinary Birnam `System` send surface.
@@ -716,11 +716,11 @@ pub unsafe fn load_image_bytes(
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImageBytes:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [image_value, rebuild_value].as_ptr(), 2) };
-    unsafe { finish_image_load(api, system, status) }
+    unsafe { finish_image_load(api, runtime.stack.presence(), system, status) }
 }
 
 unsafe fn finish_image_load(
-    api: &IdApi,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
     system: birnam_abi::Oop,
     status: birnam_abi::Oop,
 ) -> Result<ImageLoadOutcome, ImageError> {
@@ -737,7 +737,7 @@ unsafe fn finish_image_load(
         if codegen != api.nilObj {
             let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
             let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
-            if begun == api.nilObj || send_is_error(api, begun) {
+            if begun == api.nilObj || send_is_error(api, presence, begun) {
                 return Err(ImageError::LoadRejected);
             }
             // The v8 loader already admitted and published the exact portable
@@ -745,7 +745,7 @@ unsafe fn finish_image_load(
             // methods without introducing a new source generation.
             let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
             let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
-            if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, rebuilt) {
+            if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, presence, rebuilt) {
                 return Err(ImageError::LoadRejected);
             }
             let config_surface_missing = unsafe { global_named(api, "Config") }
@@ -761,7 +761,7 @@ unsafe fn finish_image_load(
             unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
             let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
             unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
-            if !unsafe { reconcile_image_composition(api, system) } {
+            if !unsafe { reconcile_image_composition(api, presence, system) } {
                 return Err(ImageError::LoadRejected);
             }
             let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
@@ -803,7 +803,7 @@ unsafe fn finish_image_load(
         // load transaction.
         let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
         let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
-        if begun == api.nilObj || send_is_error(api, begun) {
+        if begun == api.nilObj || send_is_error(api, presence, begun) {
             return Err(ImageError::LoadRejected);
         }
         // The v8 loader has already rebuilt the exact stored PortablePrograms
@@ -811,7 +811,7 @@ unsafe fn finish_image_load(
         // self-hosted sources without bootstrapping a new durable generation.
         let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
         let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
-        if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, rebuilt) {
+        if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, presence, rebuilt) {
             return Err(ImageError::LoadRejected);
         }
         let config_surface_missing = unsafe { global_named(api, "Config") }
@@ -831,7 +831,7 @@ unsafe fn finish_image_load(
         // before the REPL evaluates its first expression.
         let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
         unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
-        if !unsafe { reconcile_image_composition(api, system) } {
+        if !unsafe { reconcile_image_composition(api, presence, system) } {
             return Err(ImageError::LoadRejected);
         }
         let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
@@ -865,7 +865,7 @@ unsafe fn finish_image_load(
 /// portable facts are both live, but before the recovery transaction exposes a
 /// user entry point. Data-only images have no composition identity and need no
 /// lifecycle reconciliation.
-unsafe fn reconcile_image_composition(api: &IdApi, system: birnam_abi::Oop) -> bool {
+unsafe fn reconcile_image_composition(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, system: birnam_abi::Oop) -> bool {
     let identity_selector = unsafe { (api.intern)(c"imageCompositionIdentity".as_ptr()) };
     let identity = unsafe { (api.send)(system, identity_selector, std::ptr::null(), 0) };
     if identity.is_null() || identity == api.nilObj {
@@ -876,7 +876,7 @@ unsafe fn reconcile_image_composition(api: &IdApi, system: birnam_abi::Oop) -> b
     };
     let reconcile = unsafe { (api.intern)(c"reconcileImageComposition:".as_ptr()) };
     let result = unsafe { (api.send)(compiled_unit, reconcile, [identity].as_ptr(), 1) };
-    !result.is_null() && result != api.nilObj && !send_is_error(api, result)
+    !result.is_null() && result != api.nilObj && !send_is_error(api, presence, result)
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -942,6 +942,7 @@ impl fmt::Debug for FloorError {
 pub struct LoadedFloor {
     _namespace: NonNull<std::ffi::c_void>,
     namespace_names: NonNull<birnam_abi::namespace_names::ApiV1>,
+    namespace_presence: NonNull<birnam_abi::namespace_presence::ApiV1>,
     handle: NonNull<std::ffi::c_void>,
     api: NonNull<IdApi>,
     // Keep this type !Send/!Sync until host threading and the floor owner-thread
@@ -1414,7 +1415,7 @@ impl HostRuntime {
         let selector = unsafe { (api.intern)(c"load:".as_ptr()) };
         let name = unsafe { (api.intern)(name.as_ptr()) };
         let result = unsafe { (api.send)(module_manager, selector, [name].as_ptr(), 1) };
-        if result == api.nilObj || send_is_error(api, result) {
+        if result == api.nilObj || send_is_error(api, self.stack.presence(), result) {
             return Err(RuntimeModuleError::LoadRejected { path });
         }
         Ok(())
@@ -1442,7 +1443,7 @@ impl HostRuntime {
             unsafe { (birnam_abi::string::make)(path.as_bytes().as_ptr(), path.as_bytes().len()) };
         let api = self.stack.api();
         let result = unsafe { (api.send)(self.codegen, selector, [value].as_ptr(), 1) };
-        if result == self.stack.api().nilObj || send_is_error(self.stack.api(), result) {
+        if result == self.stack.api().nilObj || send_is_error(self.stack.api(), self.stack.presence(), result) {
             return Err(RuntimeModuleError::LoadRejected {
                 path: PathBuf::from(path.to_string_lossy().trim_end_matches('\0')),
             });
@@ -1638,16 +1639,16 @@ pub fn self_hosted_boot_order() -> Result<Vec<&'static str>, BootstrapOrderError
     Ok(order)
 }
 
-pub(super) fn send_is_error(api: &IdApi, value: birnam_abi::Oop) -> bool {
-    if unsafe { (api.isExported)(c"Error".as_ptr()) } == 0 {
+pub(super) fn send_is_error(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, value: birnam_abi::Oop) -> bool {
+    if unsafe { birnam_abi::namespace_presence::contains(presence, c"Error".as_ptr()) } == 0 {
         return false;
     }
     let is_error = unsafe { (api.intern)(c"isError".as_ptr()) };
     unsafe { (api.send)(value, is_error, std::ptr::null(), 0) == api.trueObj }
 }
 
-pub(super) unsafe fn error_diagnostic(api: &IdApi, value: birnam_abi::Oop) -> Option<(String, String)> {
-    if value == api.nilObj || !send_is_error(api, value) {
+pub(super) unsafe fn error_diagnostic(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, value: birnam_abi::Oop) -> Option<(String, String)> {
+    if value == api.nilObj || !send_is_error(api, presence, value) {
         return None;
     }
     let kind_selector = unsafe { (api.intern)(c"kind".as_ptr()) };
@@ -1666,7 +1667,7 @@ pub(super) unsafe fn error_diagnostic(api: &IdApi, value: birnam_abi::Oop) -> Op
 }
 
 pub(super) unsafe fn native_os_string_vector(
-    api: &IdApi,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
     args: &[OsString],
 ) -> Result<birnam_abi::Oop, CliError> {
     let vector_class = unsafe { (api.import)(c"Vector".as_ptr()) };
@@ -1676,7 +1677,7 @@ pub(super) unsafe fn native_os_string_vector(
     let new_selector = unsafe { (api.intern)(c"new".as_ptr()) };
     let add_selector = unsafe { (api.intern)(c"add:".as_ptr()) };
     let mut vector = unsafe { (api.send)(vector_class, new_selector, std::ptr::null(), 0) };
-    if vector == api.nilObj || send_is_error(api, vector) {
+    if vector == api.nilObj || send_is_error(api, presence, vector) {
         return Err(CliError::ArgumentVectorRejected);
     }
     for (index, argument) in args.iter().enumerate() {
@@ -1685,7 +1686,7 @@ pub(super) unsafe fn native_os_string_vector(
         };
         let value = unsafe { (birnam_abi::string::make)(argument.as_bytes().as_ptr(), argument.len()) };
         let updated = unsafe { (api.send)(vector, add_selector, [value].as_ptr(), 1) };
-        if updated == api.nilObj || send_is_error(api, updated) {
+        if updated == api.nilObj || send_is_error(api, presence, updated) {
             return Err(CliError::ArgumentVectorRejected);
         }
         vector = updated;
@@ -1704,7 +1705,7 @@ pub(super) unsafe fn native_os_string_vector(
 /// be a live Codegen object from that table, and both must remain valid for
 /// the duration of the synchronous sends.
 pub unsafe fn record_and_eval_source(
-    api: &IdApi,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
     codegen: birnam_abi::Oop,
     module: &SelfHostedModule,
 ) -> Result<birnam_abi::Oop, BootstrapSourceError> {
@@ -1714,12 +1715,12 @@ pub unsafe fn record_and_eval_source(
     let record_selector = unsafe { (api.intern)(c"recordModuleSource:named:".as_ptr()) };
     let recorded =
         unsafe { (api.send)(codegen, record_selector, [source, name_symbol].as_ptr(), 2) };
-    if send_is_error(api, recorded) {
+    if send_is_error(api, presence, recorded) {
         return Err(BootstrapSourceError::RecordRejected);
     }
     let eval_selector = unsafe { (api.intern)(c"eval:".as_ptr()) };
     let evaluated = unsafe { (api.send)(codegen, eval_selector, [source].as_ptr(), 1) };
-    if send_is_error(api, evaluated) {
+    if send_is_error(api, presence, evaluated) {
         return Err(BootstrapSourceError::EvaluationRejected);
     }
     Ok(evaluated)
@@ -1736,7 +1737,7 @@ pub unsafe fn record_and_eval_source(
 /// `api` and `codegen` must satisfy the safety contract of
 /// [`record_and_eval_source`] and remain live for every synchronous send.
 pub unsafe fn load_self_hosted(
-    api: &IdApi,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
     codegen: birnam_abi::Oop,
     resources: &Resources,
     module: &SelfHostedModule,
@@ -1756,7 +1757,7 @@ pub unsafe fn load_self_hosted(
             };
             let loaded =
                 unsafe { (api.send)(codegen, load_selector, [candidate_string].as_ptr(), 1) };
-            if loaded != api.nilObj && !send_is_error(api, loaded) {
+            if loaded != api.nilObj && !send_is_error(api, presence, loaded) {
                 return Ok(SelfHostedLoadOutcome::Precompiled);
             }
         }
@@ -1789,18 +1790,18 @@ pub unsafe fn load_self_hosted(
                 3,
             )
         };
-        if compiled == api.nilObj || send_is_error(api, compiled) {
+        if compiled == api.nilObj || send_is_error(api, presence, compiled) {
             return Err(BootstrapSourceError::EvaluationRejected);
         }
         let load_selector = unsafe { (api.intern)(c"loadInitialModule:".as_ptr()) };
         let loaded = unsafe { (api.send)(codegen, load_selector, [output_value].as_ptr(), 1) };
-        if loaded == api.nilObj || send_is_error(api, loaded) {
+        if loaded == api.nilObj || send_is_error(api, presence, loaded) {
             return Err(BootstrapSourceError::EvaluationRejected);
         }
         return Ok(SelfHostedLoadOutcome::Source);
     }
     // SAFETY: forwarded to the documented source-recovery boundary.
-    unsafe { record_and_eval_source(api, codegen, module)? };
+    unsafe { record_and_eval_source(api, presence, codegen, module)? };
     Ok(SelfHostedLoadOutcome::Source)
 }
 
@@ -1937,14 +1938,14 @@ unsafe fn requested_names(api: &IdApi, vector: birnam_abi::Oop) -> Option<birnam
 }
 
 unsafe fn order_from_manager(
-    api: &IdApi,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
     module_manager: birnam_abi::Oop,
     vector: birnam_abi::Oop,
 ) -> Option<Vec<&'static SelfHostedModule>> {
     let names = unsafe { requested_names(api, vector) }?;
     let order_selector = unsafe { (api.intern)(c"loadOrder:".as_ptr()) };
     let order = unsafe { (api.send)(module_manager, order_selector, [names].as_ptr(), 1) };
-    if order == api.nilObj || send_is_error(api, order) {
+    if order == api.nilObj || send_is_error(api, presence, order) {
         return None;
     }
     let size_selector = unsafe { (api.intern)(c"size".as_ptr()) };
@@ -1990,7 +1991,7 @@ unsafe fn order_from_manager(
 /// `api` and `codegen` must be the live selected-floor API and Codegen object,
 /// and remain valid for the synchronous sends performed during bootstrap.
 pub unsafe fn bootstrap_self_hosted(
-    api: &IdApi,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
     codegen: birnam_abi::Oop,
     resources: &Resources,
     force_source: bool,
@@ -2001,7 +2002,7 @@ pub unsafe fn bootstrap_self_hosted(
     }
     let mut loaded = Vec::with_capacity(SELF_HOSTED_MODULES.len() + 1);
     let manager_outcome =
-        unsafe { load_self_hosted(api, codegen, resources, &MODULE_MANAGER, force_source) }
+        unsafe { load_self_hosted(api, presence, codegen, resources, &MODULE_MANAGER, force_source) }
             .map_err(BootstrapRuntimeError::Source)?;
     loaded.push(LoadedSelfHostedModule {
         name: MODULE_MANAGER.name,
@@ -2035,7 +2036,7 @@ pub unsafe fn bootstrap_self_hosted(
     let mut order = module_manager
         .zip((vector != api.nilObj).then_some(vector))
         .and_then(|(module_manager, vector)| unsafe {
-            order_from_manager(api, module_manager, vector)
+            order_from_manager(api, presence, module_manager, vector)
         })
         .unwrap_or_else(|| SELF_HOSTED_MODULES.iter().collect());
     // G0-selected artifacts are authority-bound to the complete initial source
@@ -2044,7 +2045,7 @@ pub unsafe fn bootstrap_self_hosted(
     order.sort_by_key(|module| module.aot == ModuleAotPolicy::InitialGenerationResumable);
 
     for module in order {
-        let outcome = unsafe { load_self_hosted(api, codegen, resources, module, force_source) }
+        let outcome = unsafe { load_self_hosted(api, presence, codegen, resources, module, force_source) }
             .map_err(BootstrapRuntimeError::Source)?;
         if let Some(module_manager) = module_manager {
             unsafe { mark_module_loaded(api, module_manager, module.name) };
@@ -2078,12 +2079,12 @@ pub struct LoadedStack {
     text_view: *const birnam_abi::text_view::ApiV1,
     error_value: *const birnam_abi::error_value::ApiV2,
     system_output: *const birnam_abi::system_output::ApiV1,
-    system_input: *const birnam_abi::system_input::ApiV1,
-    environment: *const birnam_abi::environment::ApiV1,
-    file_io: *const birnam_abi::file_io::ApiV1,
-    block_loop: *const birnam_abi::block_loop::ApiV1,
-    native_loader: *const birnam_abi::native_loader::ApiV1,
-    source_loader: *const birnam_abi::source_loader::ApiV1,
+    system_input: *const birnam_abi::system_input::ApiV2,
+    environment: *const birnam_abi::environment::ApiV2,
+    file_io: *const birnam_abi::file_io::ApiV2,
+    block_loop: *const birnam_abi::block_loop::ApiV2,
+    native_loader: *const birnam_abi::native_loader::ApiV2,
+    source_loader: *const birnam_abi::source_loader::ApiV2,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2091,6 +2092,8 @@ pub struct LoadedStack {
 }
 
 impl LoadedStack {
+    pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.floor.presence() }
+
     pub fn new(floor: LoadedFloor) -> Self {
         let control = unsafe {
             (floor.api().dlsym)(
@@ -2184,10 +2187,10 @@ impl LoadedStack {
         let handle = NonNull::new(handle).ok_or_else(|| ModuleError::OpenFailed { path: path.to_path_buf() })?;
         self.prepared_float = Some((path.to_path_buf(), handle));
         self.configure_symbol_borrow(path, handle)?;
-        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_float_prepare_v1".as_ptr()) };
+        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_float_prepare_v2".as_ptr()) };
         if prepare.is_null() { return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() }); }
-        let prepare: birnam_abi::float::FloatPrepareV1 = unsafe { std::mem::transmute(prepare) };
-        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi) };
+        let prepare: birnam_abi::float::FloatPrepareV2 = unsafe { std::mem::transmute(prepare) };
+        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi, self.presence()) };
         self.attach_float(path, ops)
     }
 
@@ -2200,10 +2203,10 @@ impl LoadedStack {
         let handle = NonNull::new(handle).ok_or_else(|| ModuleError::OpenFailed { path: path.to_path_buf() })?;
         self.prepared_word = Some((path.to_path_buf(), handle));
         self.configure_symbol_borrow(path, handle)?;
-        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v1".as_ptr()) };
+        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v2".as_ptr()) };
         if prepare.is_null() { return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() }); }
-        let prepare: birnam_abi::word::WordPrepareV1 = unsafe { std::mem::transmute(prepare) };
-        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi) };
+        let prepare: birnam_abi::word::WordPrepareV2 = unsafe { std::mem::transmute(prepare) };
+        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi, self.presence()) };
         self.attach_word(path, ops)
     }
 
@@ -2370,44 +2373,44 @@ impl LoadedStack {
                 return Err(ModuleError::SystemOutputDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_input_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_input_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::system_input::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::system_input::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.system_input.is_null() || unsafe { attach(self.system_input) } != 1 {
                 return Err(ModuleError::SystemInputDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_environment_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_environment_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::environment::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::environment::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.environment.is_null() || unsafe { attach(self.environment) } != 1 {
                 return Err(ModuleError::EnvironmentDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_file_io_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_file_io_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::file_io::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::file_io::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.file_io.is_null() || unsafe { attach(self.file_io) } != 1 {
                 return Err(ModuleError::FileIoDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_block_loop_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_block_loop_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::block_loop::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::block_loop::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.block_loop.is_null() || unsafe { attach(self.block_loop) } != 1 {
                 return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::native_loader::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::native_loader::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.native_loader.is_null() || unsafe { attach(self.native_loader) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_source_loader_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_source_loader_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::source_loader::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::source_loader::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.source_loader.is_null() || unsafe { attach(self.source_loader) } != 1 {
                 return Err(ModuleError::SourceLoaderDependencyRejected { path: path.to_path_buf() });
             }
@@ -2440,7 +2443,7 @@ impl LoadedStack {
                 return Err(ModuleError::MapDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v1".as_ptr()) };
+        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v2".as_ptr()) };
         let word_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_provider_v1".as_ptr()) };
         let canonical_word = path.file_name().and_then(|name| name.to_str()) == Some("libbirnam_word.dylib");
         if prepare.is_null() != word_provider.is_null() || (canonical_word && prepare.is_null()) {
@@ -2449,8 +2452,8 @@ impl LoadedStack {
         if !prepare.is_null() {
             // This opened library remains pinned even if startup fails after
             // it publishes roots. Attach primitives before publication reentry.
-            let prepare: birnam_abi::word::WordPrepareV1 = unsafe { std::mem::transmute(prepare) };
-            let operations = unsafe { prepare(self.api() as *const IdApi as *mut IdApi) };
+            let prepare: birnam_abi::word::WordPrepareV2 = unsafe { std::mem::transmute(prepare) };
+            let operations = unsafe { prepare(self.api() as *const IdApi as *mut IdApi, self.presence()) };
             self.attach_word(path, operations)?;
         }
         let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_dependency_v1".as_ptr()) };
@@ -2467,6 +2470,7 @@ impl LoadedStack {
             init(
                 self.floor.api() as *const IdApi as *mut IdApi,
                 std::ptr::null_mut(),
+                self.floor.presence(),
             )
         };
         let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v2".as_ptr()) };
@@ -2523,54 +2527,54 @@ impl LoadedStack {
             }
             self.system_output = provided;
         }
-        let system_input_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_input_provider_v1".as_ptr()) };
+        let system_input_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_input_provider_v2".as_ptr()) };
         if !system_input_provider.is_null() {
-            let provide: birnam_abi::system_input::ProviderV1 = unsafe { std::mem::transmute(system_input_provider) };
+            let provide: birnam_abi::system_input::ProviderV2 = unsafe { std::mem::transmute(system_input_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::system_input::attach(provided) } != 1 {
                 return Err(ModuleError::SystemInputDependencyRejected { path: path.to_path_buf() });
             }
             self.system_input = provided;
         }
-        let environment_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_environment_provider_v1".as_ptr()) };
+        let environment_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_environment_provider_v2".as_ptr()) };
         if !environment_provider.is_null() {
-            let provide: birnam_abi::environment::ProviderV1 = unsafe { std::mem::transmute(environment_provider) };
+            let provide: birnam_abi::environment::ProviderV2 = unsafe { std::mem::transmute(environment_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::environment::attach(provided) } != 1 {
                 return Err(ModuleError::EnvironmentDependencyRejected { path: path.to_path_buf() });
             }
             self.environment = provided;
         }
-        let file_io_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_file_io_provider_v1".as_ptr()) };
+        let file_io_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_file_io_provider_v2".as_ptr()) };
         if !file_io_provider.is_null() {
-            let provide: birnam_abi::file_io::ProviderV1 = unsafe { std::mem::transmute(file_io_provider) };
+            let provide: birnam_abi::file_io::ProviderV2 = unsafe { std::mem::transmute(file_io_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::file_io::attach(provided) } != 1 {
                 return Err(ModuleError::FileIoDependencyRejected { path: path.to_path_buf() });
             }
             self.file_io = provided;
         }
-        let block_loop_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_block_loop_provider_v1".as_ptr()) };
+        let block_loop_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_block_loop_provider_v2".as_ptr()) };
         if !block_loop_provider.is_null() {
-            let provide: birnam_abi::block_loop::ProviderV1 = unsafe { std::mem::transmute(block_loop_provider) };
+            let provide: birnam_abi::block_loop::ProviderV2 = unsafe { std::mem::transmute(block_loop_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::block_loop::attach(provided) } != 1 {
                 return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
             }
             self.block_loop = provided;
         }
-        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v1".as_ptr()) };
+        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v2".as_ptr()) };
         if !native_loader_provider.is_null() {
-            let provide: birnam_abi::native_loader::ProviderV1 = unsafe { std::mem::transmute(native_loader_provider) };
+            let provide: birnam_abi::native_loader::ProviderV2 = unsafe { std::mem::transmute(native_loader_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::native_loader::attach(provided) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
             }
             self.native_loader = provided;
         }
-        let source_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_source_loader_provider_v1".as_ptr()) };
+        let source_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_source_loader_provider_v2".as_ptr()) };
         if !source_loader_provider.is_null() {
-            let provide: birnam_abi::source_loader::ProviderV1 = unsafe { std::mem::transmute(source_loader_provider) };
+            let provide: birnam_abi::source_loader::ProviderV2 = unsafe { std::mem::transmute(source_loader_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::source_loader::attach(provided) } != 1 {
                 return Err(ModuleError::SourceLoaderDependencyRejected { path: path.to_path_buf() });
@@ -2910,8 +2914,7 @@ pub unsafe fn start(
         return Err(RuntimeStartError::MissingCodegen);
     }
     let self_hosted = unsafe {
-        bootstrap_self_hosted(
-            api,
+        bootstrap_self_hosted(api, stack.presence(),
             codegen,
             &resources,
             policy.force_source,
@@ -2944,6 +2947,8 @@ pub unsafe fn start_from_environment() -> Result<HostRuntime, RuntimeStartError>
 const RTLD_LAZY: i32 = 1;
 
 impl LoadedFloor {
+    pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.namespace_presence.as_ptr() }
+
     pub fn api(&self) -> &IdApi {
         // SAFETY: `id_init` returned a process-owned, non-null table and the
         // successful loader retains its dylib handle for this value's lifetime.
@@ -3051,7 +3056,19 @@ pub fn load_floor(
             reason: "invalid names capability",
         });
     }
+    let presence_provider = unsafe {
+        system_dlsym(handle.as_ptr(), c"birnam_namespace_presence_provider_v1".as_ptr())
+    };
+    if presence_provider.is_null() {
+        return Err(FloorError::Namespace { path: namespace_path, reason: "missing presence capability" });
+    }
+    let provide: birnam_abi::namespace_presence::ProviderV1 = unsafe { std::mem::transmute(presence_provider) };
+    let presence = unsafe { provide() };
+    if !unsafe { birnam_abi::namespace_presence::valid(presence) } {
+        return Err(FloorError::Namespace { path: namespace_path, reason: "invalid presence capability" });
+    }
     Ok(LoadedFloor {
+        namespace_presence: NonNull::new(presence).unwrap(),
         namespace_names: NonNull::new(names).unwrap(),
         _namespace: namespace,
         handle,
@@ -3071,7 +3088,7 @@ unsafe fn prepare_namespace(
         reason,
     };
     let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_namespace_dependency_v4".as_ptr()) };
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_namespace_dependency_v5".as_ptr()) };
     if attach.is_null() {
         return Err(error("missing floor dependency"));
     }
@@ -3080,14 +3097,14 @@ unsafe fn prepare_namespace(
         .ok_or_else(|| error("open failed"))?;
     let result = (|| {
         let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_namespace_provider_v4".as_ptr()) };
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_namespace_provider_v5".as_ptr()) };
         if provider.is_null() {
             return Err(error("missing provider"));
         }
-        let provide: birnam_abi::namespace::ProviderV4 = unsafe { std::mem::transmute(provider) };
+        let provide: birnam_abi::namespace::ProviderV5 = unsafe { std::mem::transmute(provider) };
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::namespace::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::namespace::DependencyV4 = unsafe { std::mem::transmute(attach) };
+        let attach: birnam_abi::namespace::DependencyV5 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

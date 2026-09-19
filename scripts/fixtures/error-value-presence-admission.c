@@ -1,5 +1,5 @@
 /* Check every real consumer before dependency attachment or initialization. */
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/error-value-v2/error_value_v2.h"
 int main(int argc,char **argv) {
@@ -11,7 +11,7 @@ int main(int argc,char **argv) {
     void *provider=dlopen(argv[2],RTLD_NOW|RTLD_LOCAL);assert(provider);
     ErrorValueProviderV2 provide=(ErrorValueProviderV2)dlsym(provider,"birnam_error_value_provider_v2");
     ModuleInitFn init=(ModuleInitFn)dlsym(provider,"module_init");assert(provide && init && !provide());
-    init(api,NULL);const ErrorValueApiV2 *operations=provide();assert(operations && operations==provide());
+    init(api,NULL,fixture_namespace_presence());const ErrorValueApiV2 *operations=provide();assert(operations && operations==provide());
     assert(operations->version==2 && operations->byte_size==sizeof(*operations));
     assert(!dlsym(provider,"birnam_error_value_provider_v1"));
     for(int i=3;i<argc;i++) {

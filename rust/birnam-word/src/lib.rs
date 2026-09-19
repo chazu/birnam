@@ -36,8 +36,9 @@ pub unsafe extern "C" fn birnam_word_provider_v1() -> *mut birnam_abi::word::Wor
     unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_word_prepare_v1(
+pub unsafe extern "C" fn birnam_word_prepare_v2(
     api: *mut IdApi,
+    presence: *const birnam_abi::namespace_presence::ApiV1,
 ) -> *mut birnam_abi::word::WordApiV1 {
     if api.is_null() {
         abort("preparation received a null IdApi");
@@ -53,7 +54,7 @@ pub unsafe extern "C" fn birnam_word_prepare_v1(
         return unsafe { birnam_word_provider_v1() };
     }
     PHASE.store(1, Ordering::Release);
-    let instance = Box::into_raw(unsafe { storage::Instance::empty(api) });
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api, presence) });
     INSTANCE.store(instance, Ordering::Release);
     unsafe {
         ((*api).gcRegisterRootProvider)(word_roots);
@@ -126,15 +127,15 @@ unsafe extern "C" fn word_as_integer(self_object: Oop, _args: *const Oop, count:
         return api.nilObj;
     };
     if value > i64::MAX as u64 {
-        return unsafe { numeric_error(api, b"overflow\0", b"word out of Integer range") };
+        return unsafe { numeric_error(api, execution_presence(), b"overflow\0", b"word out of Integer range") };
     }
     unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
 /// Install the existing Word protocol on this module's canonical behavior.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) -> *mut c_void {
-    let operations = unsafe { birnam_word_prepare_v1(api_pointer) };
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+    let operations = unsafe { birnam_word_prepare_v2(api_pointer, presence) };
     let previous = PHASE.swap(3, Ordering::AcqRel);
     if previous != 2 && previous != 4 {
         abort("recursive Word activation");
@@ -172,3 +173,5 @@ birnam_abi::integer_dependency!();
 birnam_abi::string_dependency!();
 
 birnam_abi::error_value_dependency!();
+
+fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { unsafe { (*INSTANCE.load(Ordering::Acquire)).presence() } }

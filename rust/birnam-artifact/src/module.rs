@@ -38,6 +38,7 @@ struct DescriptorObject {
 
 struct Runtime {
     api: usize,
+    presence: usize,
     artifact_vt: usize,
     artifact_obj: usize,
     descriptor_vt: usize,
@@ -683,14 +684,14 @@ fn register_methods(state: &Runtime) {
     }
 }
 
-pub unsafe fn bring_up(api_pointer: *mut abi::IdApi) {
+pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let state = RUNTIME.get_or_init(|| {
         // SAFETY: module_init's caller supplies the live floor table.
         let api = unsafe { &*api_pointer };
-        let reloading = unsafe { (api.isExported)(ARTIFACT_NAME.as_ptr().cast()) != 0 };
+        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ARTIFACT_NAME.as_ptr().cast()) != 0 };
         let (artifact_vt, artifact_obj, descriptor_vt) = if reloading {
             (
                 unsafe { import(api, ARTIFACT_VT_NAME) },
@@ -705,6 +706,7 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi) {
         };
         Runtime {
             api: api_pointer as usize,
+            presence: presence as usize,
             artifact_vt: oop_address(artifact_vt),
             artifact_obj: oop_address(artifact_obj),
             descriptor_vt: oop_address(descriptor_vt),
@@ -718,7 +720,7 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi) {
     if LAST_FAILURE.load(Ordering::Acquire) == 0 {
         LAST_FAILURE.store(oop_address(api.nilObj), Ordering::Release);
     }
-    if !(unsafe { (api.isExported)(ARTIFACT_NAME.as_ptr().cast()) != 0 }) {
+    if !(unsafe { birnam_abi::namespace_presence::contains(execution_presence(), ARTIFACT_NAME.as_ptr().cast()) != 0 }) {
         // SAFETY: exportObj publishes the three singleton objects exactly as
         // the native inspector does on its first load.
         unsafe {
@@ -741,10 +743,11 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(
     api_pointer: *mut abi::IdApi,
-    _state: *mut c_void,
-) -> *mut c_void {
+    _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     // SAFETY: the host owns the IdApi pointer and calls this entrypoint before
     // dispatching any artifact protocol method.
-    unsafe { bring_up(api_pointer) };
+    unsafe { bring_up(api_pointer, presence) };
     core::ptr::null_mut()
 }
+
+fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }

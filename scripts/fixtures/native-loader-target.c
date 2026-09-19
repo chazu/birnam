@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -16,10 +16,11 @@ static Oop count_loads(Oop self,const Oop *args,size_t count) {
     return first_api->intern(value);
 }
 /* The direct System loader must not perform host dependency admission. */
-int birnam_native_loader_dependency_v1(const void *provider) {
+int birnam_native_loader_dependency_v2(const void *provider) {
     (void)provider;assert(!"direct loader attached dependencies");return 0;
 }
-void *module_init(IdApi *api,void *state) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+    (void)presence;
     assert(api && !state);if(first_api) assert(api==first_api);else first_api=api;
     Oop type=api->import_fn("SystemVt"),selector=api->intern("loadModule:");
     Method method=(Method)api->send(type,api->intern("lookup"),&selector,1);Dl_info owner;

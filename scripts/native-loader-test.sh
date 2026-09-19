@@ -6,7 +6,7 @@ mise exec -- cargo build -p birnam-namespace -p birnam-id -p birnam-string -p bi
 native_loader_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-native-loader.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v8 -Iscripts/fixtures scripts/fixtures/native-loader.c -o "$scratch/native-loader"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v9 -Iscripts/fixtures scripts/fixtures/native-loader.c -o "$scratch/native-loader"
 for mode in normal first-loadmodule-intern-reentry first-print-binding-reentry; do
   "$scratch/native-loader" "$native_loader_target/debug/libbirnam_id.dylib" "$native_loader_target/debug/libbirnam_object_model.dylib" "$native_loader_target/debug/libbirnam_prelude.dylib" "$mode" >"$scratch/$mode.log"
   tail -1 "$scratch/$mode.log"

@@ -1201,13 +1201,13 @@ unsafe fn register_methods(runtime: &Runtime) {
     }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
-        let reloading = unsafe { (api.isExported)(PEG_NAME.as_ptr().cast()) != 0 };
+        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, PEG_NAME.as_ptr().cast()) != 0 };
         let (pattern_vt, peg_vt, peg, grammar_vt, cst_vt) = if reloading {
             (
                 unsafe { import(api, PATTERN_VT_NAME) },
@@ -1240,10 +1240,10 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         }
     });
     unsafe { register_methods(&runtime) };
-    if unsafe { (api.isExported)(PEG_NAME.as_ptr().cast()) == 0 } {
+    if unsafe { birnam_abi::namespace_presence::contains(presence, PEG_NAME.as_ptr().cast()) == 0 } {
         unsafe { (api.gcRegisterRootProvider)(cst_scratch_roots) };
     }
-    if unsafe { (api.isExported)(PEG_NAME.as_ptr().cast()) == 0 } {
+    if unsafe { birnam_abi::namespace_presence::contains(presence, PEG_NAME.as_ptr().cast()) == 0 } {
         unsafe {
             let _ = (api.exportObj)(PATTERN_VT_NAME.as_ptr().cast(), as_oop(runtime.pattern_vt));
             let _ = (api.exportObj)(PEG_VT_NAME.as_ptr().cast(), as_oop(runtime.peg_vt));
@@ -1272,8 +1272,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` is the live host IdApi table or null for the documented fatal boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
-    unsafe { bring_up(api) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence) };
     ptr::null_mut()
 }
 

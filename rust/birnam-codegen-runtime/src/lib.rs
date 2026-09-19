@@ -232,6 +232,7 @@ const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    presence: usize,
     rust_codegen_vt: usize,
     rust_codegen: usize,
     adapter_codegen_vt: usize,
@@ -706,7 +707,7 @@ pub unsafe extern "C" fn birnam_global(name: *const c_char) -> Oop {
     if value != api.nilObj && !value.is_null() {
         return value;
     }
-    if unsafe { (api.isExported)(name.cast()) } != 0 {
+    if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), name.cast()) } != 0 {
         unsafe { (api.import)(name.cast()) }
     } else {
         api.nilObj
@@ -1666,7 +1667,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
 }
 
 unsafe fn borrowed_address(api: &IdApi, address: usize) -> Option<Oop> {
-    unsafe { foreign_address::allocate(api, address, KIND_BORROWED) }
+    unsafe { foreign_address::allocate(api, execution_presence(), address, KIND_BORROWED) }
 }
 
 unsafe fn foreign_address_value(api: &IdApi, object: Oop) -> Option<usize> {
@@ -2949,7 +2950,7 @@ unsafe fn global_by_name(api: &IdApi, runtime: &Runtime, name: &[u8]) -> Oop {
     let mut terminated = Vec::with_capacity(name.len() + 1);
     terminated.extend_from_slice(name);
     terminated.push(0);
-    if unsafe { (api.isExported)(terminated.as_ptr().cast()) } != 0 {
+    if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), terminated.as_ptr().cast()) } != 0 {
         unsafe { (api.import)(terminated.as_ptr().cast()) }
     } else {
         api.nilObj
@@ -8484,7 +8485,7 @@ unsafe fn rust_codegen_compile_candidate_impl(
         .unwrap_or_default();
     let selection_digest = sha256_hex(&selection);
     let manifest = candidate_manifest(&metadata, &source_digest, &selection_digest);
-    let rust_owned_shims = unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) } == 0;
+    let rust_owned_shims = unsafe { birnam_abi::namespace_presence::contains(execution_presence(), CODEGEN_NAME.as_ptr().cast()) } == 0;
     let candidate_generated = candidate_generated(
         &generated.bytes,
         &manifest,
@@ -9283,7 +9284,7 @@ unsafe extern "C" fn rust_codegen_enter_running(
     clear_error();
     // A host calls enterRunning only after selecting the complete stack. In a
     // Rust-only stack this is the first safe point to claim Store callbacks.
-    let legacy_codegen_present = unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) != 0 };
+    let legacy_codegen_present = unsafe { birnam_abi::namespace_presence::contains(execution_presence(), CODEGEN_NAME.as_ptr().cast()) != 0 };
     unsafe { ensure_store_callbacks(api, runtime) };
     if !legacy_codegen_present && !STORE_CALLBACKS_REGISTERED.load(Ordering::Acquire) {
         note_error(b"RustCodegen cannot enter running without Store callbacks");
@@ -9463,7 +9464,7 @@ unsafe fn ensure_store_callbacks(api: &IdApi, runtime: &Runtime) {
         return;
     }
     // The canonical Codegen provider owns Store callback registration.
-    if unsafe { (api.isExported)(CODEGEN_NAME.as_ptr().cast()) } != 0 {
+    if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), CODEGEN_NAME.as_ptr().cast()) } != 0 {
         return;
     }
     let observer = unsafe {
@@ -12646,7 +12647,7 @@ unsafe extern "C" fn rust_reflect_export_vtable(
         note_error(b"RustReflect exportVtableOf:as: target has no stable vtable");
         return api.nilObj;
     }
-    if unsafe { (api.isExported)(name.as_ptr()) } != 0 {
+    if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), name.as_ptr()) } != 0 {
         return if unsafe { (api.import)(name.as_ptr()) } == vt {
             values[0]
         } else {
@@ -12678,7 +12679,7 @@ unsafe extern "C" fn rust_reflect_export_object(
     };
     let name =
         CString::new(name).unwrap_or_else(|_| abort("Symbol name unexpectedly contained NUL"));
-    if unsafe { (api.isExported)(name.as_ptr()) } != 0 {
+    if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), name.as_ptr()) } != 0 {
         return if unsafe { (api.import)(name.as_ptr()) } == values[0] {
             values[0]
         } else {
@@ -12959,13 +12960,13 @@ unsafe extern "C" fn rust_reflect_collect_fact(
     unsafe { api(runtime()) }.nilObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let host_api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
-        let reloading = unsafe { (host_api.isExported)(RUST_CODEGEN_NAME.as_ptr().cast()) != 0 };
+        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, RUST_CODEGEN_NAME.as_ptr().cast()) != 0 };
         let (rust_codegen_vt, rust_codegen) = if reloading {
             (
                 unsafe { (host_api.import)(RUST_CODEGEN_VT_NAME.as_ptr().cast()) },
@@ -12980,7 +12981,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             abort("RustCodegen exports were incomplete");
         }
         let adapter_reloading =
-            unsafe { (host_api.isExported)(ADAPTER_CODEGEN_NAME.as_ptr().cast()) != 0 };
+            unsafe { birnam_abi::namespace_presence::contains(presence, ADAPTER_CODEGEN_NAME.as_ptr().cast()) != 0 };
         let (adapter_codegen_vt, adapter_codegen) = if adapter_reloading {
             (
                 unsafe { (host_api.import)(ADAPTER_CODEGEN_VT_NAME.as_ptr().cast()) },
@@ -13007,7 +13008,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             unsafe { (host_api.proto)(host_api.object_vt) }
         };
         let receipt_reloading =
-            unsafe { (host_api.isExported)(DISCARD_RECEIPT_NAME.as_ptr().cast()) != 0 };
+            unsafe { birnam_abi::namespace_presence::contains(presence, DISCARD_RECEIPT_NAME.as_ptr().cast()) != 0 };
         let (discard_receipt_vt, discard_receipt) = if receipt_reloading {
             (
                 unsafe { (host_api.import)(DISCARD_RECEIPT_VT_NAME.as_ptr().cast()) },
@@ -13019,7 +13020,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             (vt, object)
         };
         let portable_mapped_unit_vt = if unsafe {
-            (host_api.isExported)(PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) != 0
+            birnam_abi::namespace_presence::contains(presence, PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) != 0
         } {
             unsafe { (host_api.import)(PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) }
         } else {
@@ -13049,6 +13050,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
         let store = unsafe { (host_api.import)(STORE_NAME.as_ptr().cast()) };
         Runtime {
             api: api_pointer as usize,
+            presence: presence as usize,
             rust_codegen_vt: rust_codegen_vt as usize,
             rust_codegen: rust_codegen as usize,
             adapter_codegen_vt: adapter_codegen_vt as usize,
@@ -13726,7 +13728,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
             ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast(),
             runtime.adapter_collector_vt as Oop,
         );
-        if (api.isExported)(DISCARD_RECEIPT_NAME.as_ptr().cast()) == 0 {
+        if birnam_abi::namespace_presence::contains(execution_presence(), DISCARD_RECEIPT_NAME.as_ptr().cast()) == 0 {
             let _ = (api.exportObj)(
                 DISCARD_RECEIPT_VT_NAME.as_ptr().cast(),
                 runtime.discard_receipt_vt as Oop,
@@ -13747,7 +13749,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                     runtime.adapter_collector_vt as Oop,
                 ),
             ] {
-                if (api.isExported)(name.as_ptr().cast()) != 0 {
+                if birnam_abi::namespace_presence::contains(execution_presence(), name.as_ptr().cast()) != 0 {
                     if (api.import)(name.as_ptr().cast()) != value {
                         abort("RustCodegen canonical export conflicts with an existing authority");
                     }
@@ -13756,7 +13758,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
                 }
             }
         }
-        if (api.isExported)(RUST_CODEGEN_NAME.as_ptr().cast()) == 0 {
+        if birnam_abi::namespace_presence::contains(execution_presence(), RUST_CODEGEN_NAME.as_ptr().cast()) == 0 {
             let _ = (api.exportObj)(
                 RUST_CODEGEN_VT_NAME.as_ptr().cast(),
                 runtime.rust_codegen_vt as Oop,
@@ -13785,8 +13787,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *mut c_void {
-    unsafe { bring_up(api) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence) };
     ptr::null_mut()
 }
 
@@ -14685,3 +14687,5 @@ birnam_abi::integer_dependency!();
 birnam_abi::string_dependency!();
 
 birnam_abi::namespace_names_dependency!();
+
+fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }

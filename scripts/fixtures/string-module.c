@@ -1,4 +1,4 @@
-#include "idapi_v8.h"
+#include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -49,7 +49,7 @@ static Oop forwarded(Oop receiver, Oop selector, const Oop *args, size_t count) 
 static void mount(const char *path, IdApi *selected) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence());
 }
 static Oop raw(const uint8_t *bytes, size_t length) { return fixture_string_make(bytes,length); }
 static Oop text(const char *value) { return raw((const uint8_t *)value,strlen(value)); }
@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
     assert(storage->cleanup_owner(storage->cleanup)==fixture_string->context && !storage->cleanup_owner(inert_cleanup));
     size_t absent_length=123; assert(!storage->borrow(fixture_string->context,api->true_obj,&absent_length));
     assert(!storage->release(fixture_string->context,api->true_obj));
-    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V8_SLOT_RAW);
+    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V9_SLOT_RAW);
     Oop owner=text("owned"); size_t owned_length=0; const uint8_t *owned=fixture_string_bytes(owner,&owned_length);
     assert(api->object_payload_size(owner)==16 && owned_length==5);
     uintptr_t *words=(uintptr_t *)owner; assert(words[0]==(uintptr_t)owned && words[1]==5);
@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
     /* Restore cleanup after proving clone did not rely on raw payload words. */
     api->set_finalizer(owner,storage->cleanup);
     print_selector=api->intern("printString"); provider(record_mark); assert(marked_selector==1);
-    if(!baseline) assert(!api->is_exported("Array") && !lookup("split:"));
+    if(!baseline) assert(!fixture_namespace_contains("Array") && !lookup("split:"));
     static const uint8_t binary[]={0,'a',0xff}, utf8[]={0xc3,0xa9,0xff};
     struct Bytes { const uint8_t *p; size_t n; } samples[]={
         {(const uint8_t *)"",0},{(const uint8_t *)"a",1},{binary,sizeof(binary)},

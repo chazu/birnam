@@ -1950,14 +1950,14 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// initialization. The returned module state is null and no caller memory is
 /// retained beyond the process-owned API table.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
     if api.is_null() {
         return ptr::null_mut();
     }
     // SAFETY: the caller owns a live process IdApi table for module_init.
     let api_ref = unsafe { &*api };
     let runtime = RUNTIME.get_or_init(|| {
-        let reloading = unsafe { (api_ref.isExported)(c"Isolate".as_ptr()) } != 0;
+        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, c"Isolate".as_ptr()) } != 0;
         let (isolate_vt, isolate_obj, handle_vt, failure_vt) = if reloading {
             (
                 unsafe { (api_ref.import)(c"IsolateVt".as_ptr()) },
@@ -2083,7 +2083,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
             (api_ref.intern)(c"requestId".as_ptr()),
             failure_request_id,
         );
-        if (api_ref.isExported)(c"Isolate".as_ptr()) == 0 {
+        if birnam_abi::namespace_presence::contains(presence, c"Isolate".as_ptr()) == 0 {
             let _ = (api_ref.exportObj)(c"IsolateVt".as_ptr(), isolate_vt);
             let _ = (api_ref.exportObj)(c"Isolate".as_ptr(), runtime.isolate_obj as Oop);
             let _ = (api_ref.exportObj)(c"IsolateHandleVt".as_ptr(), handle_vt);
