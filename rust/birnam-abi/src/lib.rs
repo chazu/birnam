@@ -12,6 +12,7 @@ pub mod float;
 pub mod word;
 pub mod string;
 pub mod range;
+pub mod vector;
 pub mod native_allocation;
 pub mod storage;
 pub mod trace;

@@ -15,7 +15,7 @@ fi
 
 test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
-test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 55
+test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 56
 
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 -Iscripts/fixtures \
   abi/fixtures/idapi-v7/client.c -o "$prefix_parent/idapi-client"

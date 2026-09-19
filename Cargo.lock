@@ -248,6 +248,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-vector"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-word"
 version = "0.0.0"
 dependencies = [

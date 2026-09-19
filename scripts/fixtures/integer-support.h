@@ -6,6 +6,7 @@
 #include "string-support.h"
 #include "../../abi/fixtures/range-methods-v1/range_methods_v1.h"
 #include "../../abi/fixtures/range-v1/range_v1.h"
+#include "../../abi/fixtures/vector-v1/vector_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -15,6 +16,7 @@ static IntegerApiV1 *fixture_integer;
 static char fixture_floor_path[PATH_MAX];
 static const RangeMethodsApiV1 *fixture_range_methods; /* Historical 81Z oracle only. */
 static const RangeApiV1 *fixture_range;
+static const VectorApiV1 *fixture_vector;
 static inline Oop fixture_integer_make(int64_t value) {
     assert(fixture_integer);
     return fixture_integer->make(fixture_integer->context, value);
@@ -33,6 +35,21 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
     fixture_attach_word(api, image);
     IntegerDependencyV1 attach = (IntegerDependencyV1)api->dlsym_fn(image, "birnam_integer_dependency_v1");
     if (attach) { assert(fixture_integer); assert(attach(fixture_integer) == 1); }
+    VectorDependencyV1 vector_attach=(VectorDependencyV1)api->dlsym_fn(image,"birnam_vector_dependency_v1");
+    if (vector_attach) {
+        if (!fixture_vector) {
+            const char *slash=strrchr(fixture_floor_path,'/'); assert(slash);
+            char path[PATH_MAX];
+            int n=snprintf(path,sizeof(path),"%.*s/libbirnam_vector.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+            assert(n>0 && (size_t)n<sizeof(path));
+            void *vector=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(vector);
+            ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(vector,"module_init"); assert(init);
+            VectorProviderV1 provide=(VectorProviderV1)api->dlsym_fn(vector,"birnam_vector_provider_v1"); assert(provide);
+            assert(provide()==NULL); init(api,NULL);
+            fixture_vector=provide(); assert(fixture_vector);
+        }
+        assert(vector_attach(fixture_vector)==1);
+    }
     RangeDependencyV1 range_attach=(RangeDependencyV1)api->dlsym_fn(image,"birnam_range_dependency_v1");
     /* Previous build support is confined to the independent baseline oracle. */
     RangeMethodsDependencyV1 previous_attach=(RangeMethodsDependencyV1)api->dlsym_fn(image,"birnam_range_methods_dependency_v1");

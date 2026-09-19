@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Extract Vector storage, canonical objects and native trie helpers from
+  Collection into `birnam-vector` (Design 81AB). Preserve allocation order,
+  persistent sharing, layouts, adoption and reload behavior. Existing Vector
+  methods and String/Map/Range consumers use the explicit native dependency.
+
 - Move Range representation, canonical objects, layout, constructor and Integer
   `to:` into `birnam-range` (Design 81AA). Preserve creation/publication order,
   adoption, ordinary alloc callbacks and reload behavior through explicit

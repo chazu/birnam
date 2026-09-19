@@ -1,0 +1,378 @@
+//! Vector representation, canonical identities and native storage operations.
+#![allow(clippy::missing_safety_doc)]
+mod kernel;
+use birnam_abi::vector::{ApiV1, BehaviorsV1};
+use birnam_abi::{IdApi, MarkFn, Oop};
+use core::ffi::c_void;
+use core::ptr;
+pub use kernel::PersistentVector;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Once, OnceLock};
+const BITS: usize = 5;
+const WIDTH: usize = 1 << BITS;
+const MASK: usize = WIDTH - 1;
+const VECTOR_NAME: &[u8] = b"Vector\0";
+const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
+const VECTOR_NODE_NAME: &[u8] = b"VectorNode\0";
+#[repr(C)]
+struct VecPayload {
+    count: usize,
+    shift: usize,
+    root: Oop,
+    tail: Oop,
+    tail_len: usize,
+}
+
+static VECTOR_LAYOUT: [u8; 5] = [
+    birnam_abi::SLOT_RAW,
+    birnam_abi::SLOT_RAW,
+    birnam_abi::SLOT_OOP,
+    birnam_abi::SLOT_OOP,
+    birnam_abi::SLOT_RAW,
+];
+
+const _: () = {
+    assert!(size_of::<VecPayload>() == 40);
+    assert!(align_of::<VecPayload>() == 8);
+    assert!(core::mem::offset_of!(VecPayload, root) == 16);
+    assert!(core::mem::offset_of!(VecPayload, tail) == 24);
+    assert!(core::mem::offset_of!(VecPayload, tail_len) == 32);
+};
+struct Family {
+    api: usize,
+    node_vt: usize,
+    vector_vt: usize,
+}
+static FAMILY: OnceLock<Family> = OnceLock::new();
+static ROOTS_REGISTERED: Once = Once::new();
+static IDENTITY_ROOTS: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
+static READY: AtomicBool = AtomicBool::new(false);
+fn abort(message: &str) -> ! {
+    eprintln!("birnam Vector: {message}");
+    std::process::abort();
+}
+fn family() -> &'static Family {
+    FAMILY
+        .get()
+        .unwrap_or_else(|| abort("Vector family was not prepared"))
+}
+unsafe extern "C" fn mark_roots(mark: MarkFn) {
+    for root in &IDENTITY_ROOTS {
+        let object = root.load(Ordering::Acquire) as Oop;
+        if !object.is_null() {
+            unsafe { mark(object) };
+        }
+    }
+}
+unsafe extern "C" fn prepare(api_pointer: *mut IdApi, parent: Oop, adopting: i32) -> BehaviorsV1 {
+    if !READY.load(Ordering::Acquire) || api_pointer.is_null() {
+        abort("invalid Vector preparation");
+    }
+    let api = unsafe { &*api_pointer };
+    ROOTS_REGISTERED.call_once(|| unsafe { (api.gcRegisterRootProvider)(mark_roots) });
+    let state = FAMILY.get_or_init(|| {
+        let node = if adopting != 0 {
+            unsafe { (api.import)(VECTOR_NODE_NAME.as_ptr().cast()) }
+        } else {
+            unsafe { (api.proto)(api.object_vt) }
+        };
+        IDENTITY_ROOTS[0].store(node as usize, Ordering::Release);
+        let vector = if adopting != 0 {
+            unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) }
+        } else {
+            unsafe { (api.proto)(parent) }
+        };
+        IDENTITY_ROOTS[1].store(vector as usize, Ordering::Release);
+        let prototype = if adopting != 0 {
+            unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) }
+        } else {
+            ptr::null_mut()
+        };
+        IDENTITY_ROOTS[2].store(prototype as usize, Ordering::Release);
+        Family {
+            api: api_pointer as usize,
+            node_vt: node as usize,
+            vector_vt: vector as usize,
+        }
+    });
+    BehaviorsV1 {
+        node: state.node_vt as Oop,
+        vector: state.vector_vt as Oop,
+    }
+}
+unsafe extern "C" fn finish_prototype(api_pointer: *mut IdApi) {
+    if IDENTITY_ROOTS[2].load(Ordering::Acquire) == 0 {
+        let prototype = unsafe { empty_vector(&*api_pointer, family()) };
+        IDENTITY_ROOTS[2].store(prototype as usize, Ordering::Release);
+    }
+}
+unsafe extern "C" fn set_layout(api_pointer: *mut IdApi) {
+    let api = unsafe { &*api_pointer };
+    unsafe {
+        (api.setLayout)(
+            family().node_vt as Oop,
+            ptr::null(),
+            0,
+            birnam_abi::SLOT_OOP,
+        );
+        (api.setLayout)(
+            family().vector_vt as Oop,
+            VECTOR_LAYOUT.as_ptr(),
+            VECTOR_LAYOUT.len(),
+            birnam_abi::SLOT_RAW,
+        );
+    }
+}
+unsafe extern "C" fn set_owner(api_pointer: *mut IdApi) {
+    unsafe {
+        birnam_abi::set_vtable_owner(
+            &*api_pointer,
+            family().vector_vt as Oop,
+            IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop,
+        )
+    };
+}
+unsafe extern "C" fn publish(api_pointer: *mut IdApi) {
+    let api = unsafe { &*api_pointer };
+    unsafe {
+        (api.exportObj)(VECTOR_VT_NAME.as_ptr().cast(), family().vector_vt as Oop);
+        (api.exportObj)(
+            VECTOR_NAME.as_ptr().cast(),
+            IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop,
+        );
+        (api.exportObj)(VECTOR_NODE_NAME.as_ptr().cast(), family().node_vt as Oop);
+    }
+}
+unsafe fn vec_payload(object: Oop) -> *mut VecPayload {
+    if object.is_null() {
+        abort("Vector method received a null receiver");
+    }
+    // SAFETY: Vector instances are allocated with the exact VecPayload layout.
+    object.cast::<VecPayload>()
+}
+
+unsafe fn node_slots(object: Oop) -> *mut [Oop; WIDTH] {
+    if object.is_null() {
+        abort("Vector node was null");
+    }
+    // SAFETY: VectorNode payloads are allocated as WIDTH consecutive OOP slots.
+    object.cast::<[Oop; WIDTH]>()
+}
+
+unsafe fn new_node(api: &IdApi, node_vt: Oop) -> Oop {
+    // SAFETY: the vtable has an all-OOP layout and the requested payload is
+    // exactly one vector trie node.
+    let node = unsafe { (api.alloc)(node_vt, size_of::<[Oop; WIDTH]>()) };
+    if node.is_null() {
+        abort("VectorNode allocation failed");
+    }
+    node
+}
+
+unsafe fn copy_node(api: &IdApi, node_vt: Oop, source: Oop) -> Oop {
+    let destination = unsafe { new_node(api, node_vt) };
+    // SAFETY: both payloads have the exact WIDTH-slot node extent.
+    unsafe { (*node_slots(destination)).copy_from_slice(&*node_slots(source)) };
+    destination
+}
+
+unsafe fn oop_new_path(api: &IdApi, node_vt: Oop, level: usize, node: Oop) -> Oop {
+    if level == 0 {
+        return node;
+    }
+    let result = unsafe { new_node(api, node_vt) };
+    unsafe { (*node_slots(result))[0] = oop_new_path(api, node_vt, level - BITS, node) };
+    result
+}
+
+unsafe fn oop_push_tail(
+    api: &IdApi,
+    node_vt: Oop,
+    old_count: usize,
+    level: usize,
+    parent: Oop,
+    tail: Oop,
+) -> Oop {
+    let subindex = ((old_count - 1) >> level) & MASK;
+    let result = unsafe { copy_node(api, node_vt, parent) };
+    let child = if level == BITS {
+        tail
+    } else {
+        let existing = unsafe { (*node_slots(parent))[subindex] };
+        if existing.is_null() {
+            unsafe { oop_new_path(api, node_vt, level - BITS, tail) }
+        } else {
+            unsafe { oop_push_tail(api, node_vt, old_count, level - BITS, existing, tail) }
+        }
+    };
+    unsafe { (*node_slots(result))[subindex] = child };
+    result
+}
+
+unsafe fn empty_vector(api: &IdApi, runtime: &Family) -> Oop {
+    let root = unsafe { new_node(api, runtime.node_vt as Oop) };
+    let tail = unsafe { new_node(api, runtime.node_vt as Oop) };
+    // SAFETY: the vtable's layout matches VecPayload exactly.
+    let vector = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
+    if vector.is_null() {
+        abort("Vector allocation failed");
+    }
+    unsafe {
+        *vec_payload(vector) = VecPayload {
+            count: 0,
+            shift: BITS,
+            root,
+            tail,
+            tail_len: 0,
+        };
+    }
+    vector
+}
+
+unsafe fn oop_array_for(vector: *const VecPayload, index: usize) -> Oop {
+    if index >= unsafe { (*vector).count } {
+        return ptr::null_mut();
+    }
+    if index >= unsafe { (*vector).count - (*vector).tail_len } {
+        return unsafe { (*vector).tail };
+    }
+    let mut node = unsafe { (*vector).root };
+    let mut level = unsafe { (*vector).shift };
+    while level > 0 {
+        let child = unsafe { (*node_slots(node))[(index >> level) & MASK] };
+        if child.is_null() {
+            return ptr::null_mut();
+        }
+        node = child;
+        level -= BITS;
+    }
+    node
+}
+
+unsafe fn vector_at(vector: *const VecPayload, index: usize) -> Oop {
+    let leaf = unsafe { oop_array_for(vector, index) };
+    if leaf.is_null() {
+        return ptr::null_mut();
+    }
+    unsafe { (*node_slots(leaf))[index & MASK] }
+}
+
+unsafe fn vector_push(api: &IdApi, runtime: &Family, vector: Oop, value: Oop) -> Oop {
+    let source = unsafe { vec_payload(vector) };
+    let source_count = unsafe { (*source).count };
+    let source_shift = unsafe { (*source).shift };
+    let source_root = unsafe { (*source).root };
+    let source_tail = unsafe { (*source).tail };
+    let source_tail_len = unsafe { (*source).tail_len };
+    let mut tail = unsafe { copy_node(api, runtime.node_vt as Oop, source_tail) };
+    if source_tail_len < WIDTH {
+        unsafe { (*node_slots(tail))[source_tail_len] = value };
+        let result = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
+        if result.is_null() {
+            abort("Vector allocation failed");
+        }
+        unsafe {
+            *vec_payload(result) = VecPayload {
+                count: source_count + 1,
+                shift: source_shift,
+                root: source_root,
+                tail,
+                tail_len: source_tail_len + 1,
+            };
+        }
+        return result;
+    }
+
+    let tail_node = source_tail;
+    let root;
+    let mut shift = source_shift;
+    if (source_count >> BITS) > (1usize << source_shift) {
+        root = unsafe { new_node(api, runtime.node_vt as Oop) };
+        unsafe {
+            (*node_slots(root))[0] = source_root;
+            (*node_slots(root))[1] =
+                oop_new_path(api, runtime.node_vt as Oop, source_shift, tail_node);
+        }
+        shift += BITS;
+    } else {
+        root = unsafe {
+            oop_push_tail(
+                api,
+                runtime.node_vt as Oop,
+                source_count,
+                source_shift,
+                source_root,
+                tail_node,
+            )
+        };
+    }
+
+    tail = unsafe { new_node(api, runtime.node_vt as Oop) };
+    unsafe { (*node_slots(tail))[0] = value };
+    let result = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
+    if result.is_null() {
+        abort("Vector allocation failed");
+    }
+    unsafe {
+        *vec_payload(result) = VecPayload {
+            count: source_count + 1,
+            shift,
+            root,
+            tail,
+            tail_len: 1,
+        };
+    }
+    result
+}
+
+unsafe extern "C" fn empty() -> Oop {
+    let state = family();
+    unsafe { empty_vector(&*(state.api as *const IdApi), state) }
+}
+unsafe extern "C" fn push(vector: Oop, value: Oop) -> Oop {
+    let state = family();
+    unsafe { vector_push(&*(state.api as *const IdApi), state, vector, value) }
+}
+unsafe extern "C" fn count(vector: Oop) -> usize {
+    unsafe { (*vec_payload(vector)).count }
+}
+unsafe extern "C" fn at(vector: Oop, index: usize) -> Oop {
+    unsafe { vector_at(vec_payload(vector), index) }
+}
+unsafe extern "C" fn behavior() -> Oop {
+    family().vector_vt as Oop
+}
+static API: ApiV1 = ApiV1 {
+    version: 1,
+    byte_size: size_of::<ApiV1>(),
+    prepare: Some(prepare),
+    finish_prototype: Some(finish_prototype),
+    set_layout: Some(set_layout),
+    set_owner: Some(set_owner),
+    publish: Some(publish),
+    empty: Some(empty),
+    push: Some(push),
+    count: Some(count),
+    at: Some(at),
+    behavior: Some(behavior),
+};
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
+    if api.is_null() {
+        abort("module_init received a null IdApi");
+    }
+    READY.store(true, Ordering::Release);
+    ptr::null_mut()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_vector_provider_v1() -> *const ApiV1 {
+    if READY.load(Ordering::Acquire) {
+        &API
+    } else {
+        ptr::null()
+    }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
+    1
+}
