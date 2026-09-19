@@ -394,3 +394,7 @@ a separate caller/startup audit; this checkpoint adds no native interface.
 
 [81V](81v-production-nil-methods.md) moves the five existing Object/nil methods
 out of Collection. Nil's identity and roots still await their separate audit.
+
+[81W](81w-production-string-methods.md) extracts fourteen String methods with
+explicit numeric dependencies and selector roots. Array splitting stays with
+Collection, and String's byte ownership/cleanup remains in Id for later review.

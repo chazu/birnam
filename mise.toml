@@ -40,6 +40,10 @@ run = "cargo +nightly miri test --workspace --locked --offline"
 description = "Run the test-only Design 74F same-frame recovery experiment"
 run = "python3 scripts/same-frame-deopt.py"
 
+[tasks.string]
+description = "Check the loaded String methods in debug"
+run = "scripts/string-test.sh"
+
 [tasks.nil]
 description = "Check the loaded nil methods in debug"
 run = "scripts/nil-test.sh"

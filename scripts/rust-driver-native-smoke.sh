@@ -75,6 +75,9 @@ cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v6 -Iscripts/fixtures scr
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v6 -Iscripts/fixtures scripts/fixtures/nil-module.c -o "$prefix_parent/nil-module"
 "$prefix_parent/nil-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" \
   "$prefix/lib/libbirnam_nil.dylib" "$prefix/lib/libbirnam_id_collection.dylib"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v6 -Iscripts/fixtures scripts/fixtures/string-module.c -o "$prefix_parent/string-module"
+"$prefix_parent/string-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" \
+  "$prefix/lib/libbirnam_string.dylib" "$prefix/lib/libbirnam_id_collection.dylib"
 cc -Iabi/fixtures/idapi-v6 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
 "$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_integer.dylib"
 cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v6 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"

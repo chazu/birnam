@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Extract fourteen String methods from Collection into `birnam-string`
+  (Design 81W), with explicit numeric dependencies and its own printing-selector
+  root. Preserve current byte/text/conversion behavior, live callbacks and
+  method replacement. Splitting stays with Array storage; Id retains String
+  representation and owned-byte cleanup. ABI/image formats remain unchanged.
 - Extract Object/nil's five existing predicate and printing methods from
   Collection into `birnam-nil` (Design 81V), loaded immediately before Collection.
   Keep nil's identity and roots in Id, preserving inherited behavior, live

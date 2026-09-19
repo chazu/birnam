@@ -78,3 +78,8 @@ canonical singleton representation remains in Id at this checkpoint.
 The [nil method module](../docs/design/81v-production-nil-methods.md) similarly
 moves existing Object/nil methods from Collection, using current interfaces.
 Its [export inventory](rust-nil-dylib-v1.json) adds no IdApi or image fields.
+
+The [String method module](../docs/design/81w-production-string-methods.md) uses
+current Method/IdApi interfaces and Integer/Float dependencies. Its
+[export inventory](rust-string-dylib-v1.json) adds no IdApi or image fields.
+String representation stays in Id; native Array splitting stays in Collection.
