@@ -353,3 +353,7 @@ exploration does not change current optimization defaults or validation gates.
 [81K](81k-owner-and-parent-protocols.md) continues the production refactor by
 removing the four owner/parent fields and migrating ordinary consumers to
 default-vtable messages. IdApi v3 has 49 fields / 392 bytes.
+
+[81L](81l-production-integer-extraction.md) begins the production Integer
+extraction with a loaded method library. Representation/construction extraction
+and the corresponding native-consumer migration remain the next stage.

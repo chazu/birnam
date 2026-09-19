@@ -17,4 +17,13 @@ static void fixture_mount_object_model(IdApi *api, const char *floor_path) {
     ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(module, "module_init");
     assert(init);
     init(api, NULL);
+    length = snprintf(path, sizeof(path), "%.*s/libbirnam_integer.dylib",
+                      (int)(slash - floor_path), floor_path);
+    assert(length > 0 && (size_t)length < sizeof(path));
+    module = api->dlopen_fn(path, RTLD_NOW | RTLD_LOCAL);
+    if (!module) fprintf(stderr, "%s\n", dlerror());
+    assert(module);
+    init = (ModuleInitFn)api->dlsym_fn(module, "module_init");
+    assert(init);
+    init(api, NULL);
 }

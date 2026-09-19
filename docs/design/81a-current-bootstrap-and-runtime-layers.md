@@ -9,7 +9,9 @@
 
 **2026-09-18 update:** [81J](81j-private-behavior-extraction.md) extracts the
 private-behavior convenience into `libbirnam_object_model.dylib`, loaded directly
-after Id and before Artifact. The native inventory is now 16 libraries, and IdApi
+after Integer and before Artifact. The native inventory is now 17 libraries.
+[81L](81l-production-integer-extraction.md) adds the Integer-method library directly
+after Id; its representation and construction remain in Id. IdApi
 v3 has 49 fields after [81K](81k-owner-and-parent-protocols.md) moves owner/parent
 access to ordinary messages. The inventory below includes this extraction. It
 remains a Rust implementation; the build-stage and implementation-language
@@ -36,7 +38,7 @@ Retained source and source fallback are intended; their presence is not a defect
 [81C](81c-thin-id-runtime-layers.md) proposes splitting the current libid into
 thinner replaceable layers, starting with Id as the first semantic layer. The
 following inventory describes the remaining combined floor and the extracted
-private-behavior layer.
+private-behavior and Integer-method layers.
 
 Separately, either that executable's source-fallback startup or an installed
 startup builds a layered object environment. Later modules install or replace
@@ -66,8 +68,8 @@ entered through [`scripts/rust-install.sh`](../../scripts/rust-install.sh).
    A cold install uses fresh target directories; `--build-cache` explicitly
    permits development reuse. Both Cargo invocations use `--offline --locked`,
    so the declared toolchains and dependency sources must already be available.
-2. The driver builds the Cargo workspace, then copies `birnam` and 16 canonical
-   native dylibs into a staging prefix. Those are the floor plus the 15 rungs in
+2. The driver builds the Cargo workspace, then copies `birnam` and 17 canonical
+   native dylibs into a staging prefix. Those are the floor plus the 16 rungs in
    section 3. Optional existing linenoise/termbox2 dylibs are copied too.
 3. For each of the 28 `STAGE1_MODULES`, the driver launches a fresh staged
    `birnam --compile-module SOURCE OUTPUT` process. It clears the environment
@@ -110,21 +112,22 @@ The table's native module stems receive `.dylib` in the installed library tree.
 |---|---|---|---|
 | Before 0 | `bin/birnam` host | Rust | Command routing, resource discovery, startup, execution boundaries, project and image orchestration |
 | 0 | `libbirnam_id` | Rust, with native compiler/C support | Object/vtable bootstrap, dispatch, allocation, symbols, primitive values, raw import/export namespace, GC, Frames/Machines, checked control and native tiers |
-| 1 | `libbirnam_object_model` | Rust | Existing private-behavior selection/reuse and construction, through Id primitives and seed messages |
-| 2 | `libbirnam_id_artifact` | Rust | Pointer-free compiled-artifact inspection exposed to Birnam |
-| 3 | `libbirnam_store` | Rust | Fact/history/index substrate, db/Cell/Globals protocols and object-model mirror |
-| 4 | `libbirnam_id_peg` | Rust | PEG matching, pattern objects and CST representation |
-| 5 | `libbirnam_id_lang` | Rust | Birnam grammar construction through PEG messages and Lang facade |
-| 6 | `libbirnam_id_tcc` | Rust + C libtcc | C compilation, native units and generated-code runtime shims |
-| 7 | `libbirnam_id_codegen` | Rust | Codegen/Reflect, lowering and emission, materialization, candidate/generation mechanisms |
-| 8 | `libbirnam_id_prelude` | Rust | Arithmetic, System operations, Block and Boolean control primitives |
-| 9 | `libbirnam_id_collection` | Rust | Collection representations and primitive String/Vector/Map/Range operations |
-| 10 | `libbirnam_id_error` | Rust | Error representation/factories and error-valued doesNotUnderstand behavior |
-| 11 | `libbirnam_portable_code` | Rust | Reified CodeObject/CodeProgram/CodeLexicalBinding/CodeStatement/CodeNode payloads and protocols |
-| 12 | `libbirnam_id_isolate` | Rust | Process workers, copied-value transport and bounded asynchronous request operations |
-| 13 | `libbirnam_id_relational` | Rust | Relational evaluator and Birnam adapters |
-| 14 | `libbirnam_id_alien` | Rust, emitting C wrappers | FFI, foreign addresses, library/wrapper management |
-| 15 | `libbirnam_id_image` | Rust | Image codec, heap/code recovery and System image methods |
+| 1 | `libbirnam_integer` | Rust | Integer arithmetic, comparison, conversion and iteration primitives; native numeric implementation declarations |
+| 2 | `libbirnam_object_model` | Rust | Existing private-behavior selection/reuse and construction, through Id primitives and seed messages |
+| 3 | `libbirnam_id_artifact` | Rust | Pointer-free compiled-artifact inspection exposed to Birnam |
+| 4 | `libbirnam_store` | Rust | Fact/history/index substrate, db/Cell/Globals protocols and object-model mirror |
+| 5 | `libbirnam_id_peg` | Rust | PEG matching, pattern objects and CST representation |
+| 6 | `libbirnam_id_lang` | Rust | Birnam grammar construction through PEG messages and Lang facade |
+| 7 | `libbirnam_id_tcc` | Rust + C libtcc | C compilation, native units and generated-code runtime shims |
+| 8 | `libbirnam_id_codegen` | Rust | Codegen/Reflect, lowering and emission, materialization, candidate/generation mechanisms |
+| 9 | `libbirnam_id_prelude` | Rust | Float/Word primitives, System operations, Block and Boolean control primitives |
+| 10 | `libbirnam_id_collection` | Rust | Collection representations and primitive String/Vector/Map/Range operations |
+| 11 | `libbirnam_id_error` | Rust | Error representation/factories and error-valued doesNotUnderstand behavior |
+| 12 | `libbirnam_portable_code` | Rust | Reified CodeObject/CodeProgram/CodeLexicalBinding/CodeStatement/CodeNode payloads and protocols |
+| 13 | `libbirnam_id_isolate` | Rust | Process workers, copied-value transport and bounded asynchronous request operations |
+| 14 | `libbirnam_id_relational` | Rust | Relational evaluator and Birnam adapters |
+| 15 | `libbirnam_id_alien` | Rust, emitting C wrappers | FFI, foreign addresses, library/wrapper management |
+| 16 | `libbirnam_id_image` | Rust | Image codec, heap/code recovery and System image methods |
 
 The host first uses the platform loader for the selected floor, calls `id_init`,
 and retains its `IdApi`. Floor initialization constructs the object system and

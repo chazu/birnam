@@ -1031,6 +1031,7 @@ fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleErro
 /// The native module order is part of the host contract: Store precedes
 /// Codegen, and every later rung sees the same canonical floor/API table.
 pub const SCRIPT_MODULES: &[&str] = &[
+    "libbirnam_integer",
     "libbirnam_object_model",
     "libbirnam_id_artifact",
     "libbirnam_store",

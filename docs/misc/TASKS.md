@@ -76,6 +76,12 @@ Block optimization declines when the message protocols are replaced.
 All 82 exhaustive-plan steps, 610 workspace tests and the separate relocated
 installation smoke pass on the final sources.
 
+[81L](../design/81l-production-integer-extraction.md) is in progress: the first
+stage moves Integer methods and native numeric declarations from Prelude into
+an independently loaded module. Representation and construction remain in Id;
+Integer is not yet a completed extraction. Validate and commit each extraction
+before proceeding to environment, remaining primitive values, reflection and GC.
+
 ## Selected sequence — 2026-09-06
 
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),

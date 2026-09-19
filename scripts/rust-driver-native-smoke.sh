@@ -15,7 +15,7 @@ fi
 
 test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
-test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 44
+test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 45
 
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v3 -Iscripts/fixtures \
   abi/fixtures/idapi-v3/client.c -o "$prefix_parent/idapi-client"
@@ -60,8 +60,11 @@ cat "$prefix_parent/native-regions.out"
 "$prefix/bin/birnam" scripts/fixtures/numeric-specialization.birnam >"$prefix_parent/numeric-specialization.out"
 grep -Fxq "numeric-specialization: arithmetic, mixed values, errors, identity and retirement passed" "$prefix_parent/numeric-specialization.out"
 cat "$prefix_parent/numeric-specialization.out"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v3 scripts/fixtures/integer-module.c -o "$prefix_parent/integer-module"
+"$prefix_parent/integer-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_integer.dylib" \
+  "$prefix/lib/libbirnam_id_error.dylib" "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_prelude.dylib"
 cc -Iabi/fixtures/idapi-v3 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
-"$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_id_prelude.dylib"
+"$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_integer.dylib"
 cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v3 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"
 "$prefix_parent/block-construction" "$prefix/lib/libbirnam_id.dylib" \
   "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_collection.dylib" \
@@ -87,7 +90,7 @@ assert receipt["admission_contract"]["candidate_manifest_version"] == 4
 assert len(receipt["admission_contract"]["id_api_fingerprint"]) == 64
 assert receipt["publication"]["method"] == "atomic-sibling-rename"
 assert receipt["publication"]["durability"] == "fsync-staged-files-and-directories-before-and-after-rename"
-assert len(receipt["dynamic_libraries"]) == 16
+assert len(receipt["dynamic_libraries"]) == 17
 assert len(receipt["stage1_modules"]) == 28
 PY
 

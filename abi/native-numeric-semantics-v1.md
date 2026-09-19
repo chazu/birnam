@@ -35,7 +35,7 @@ before allocating its result. Intermediate mathematical arithmetic uses signed
 overflow are outside the successful subset. In particular MIN/-1 overflows,
 while MIN remainder -1 equals zero. No algebraic reassociation is implied.
 
-An implementation conforming to these codes follows the Prelude ErrorVt rule:
+An implementation conforming to these codes follows the existing ErrorVt rule:
 if the currently exported `ErrorVt` equals the argument's vtable, return the
 original argument without allocation. Otherwise the successful subset performs
 exactly one ordinary Integer allocation with the computed value, including the
@@ -58,5 +58,5 @@ Compiler plans remain ordinary data derived from these facts; the declaration
 does not prescribe which selectors have numeric meaning, which methods remain
 bound, which receiver shapes apply, or where optimization is profitable. Every
 execution uses current dispatch and guards actual representation and mutable
-environment state. Native arithmetic is still supplied by Prelude; it is not
+environment state. Native arithmetic is supplied by the loaded Integer module; it is not
 installed as an immutable language rule in the floor.

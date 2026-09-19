@@ -478,7 +478,7 @@ def main():
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["cargo", "build", "--locked", "--offline",
-                     "-p", "birnam-id", "-p", "birnam-object-model", "-p", "birnam-prelude", "-p", "birnam-collection",
+                     "-p", "birnam-id", "-p", "birnam-object-model", "-p", "birnam-integer", "-p", "birnam-prelude", "-p", "birnam-collection",
                      "-p", "birnam-error", "-p", "birnam-portable-code",
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
@@ -498,7 +498,7 @@ def main():
                 run([api_fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
                     ("id", "tcc", "codegen_runtime")], profile + "-closure-api-context")
             output = run(["cargo", "test", "--locked", "--offline",
-                          "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
+                          "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-integer", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
                          + (["--release"] if profile == "release" else []), profile + "-build")
             binaries = {}
             for line in output.splitlines():
@@ -523,7 +523,7 @@ def main():
                     ("birnam_codegen", "numeric-plan", "numeric_chain::"),
                     ("birnam_id", "numeric-kernels", "runtime::numeric::tests"),
                     ("birnam_id", "numeric-driver", "runtime::native_tier::leaf_tests::numeric_tests"),
-                    ("birnam_prelude", "numeric-declarations", "numeric_declarations_name_exact_implementations"),
+                    ("birnam_integer", "numeric-declarations", "numeric_declarations_name_exact_implementations"),
                 ]
             if args.unboxed:
                 checks.append(("birnam_id", "unboxed-numeric", "runtime::native_tier::leaf_tests::unboxed_numeric_tests"))

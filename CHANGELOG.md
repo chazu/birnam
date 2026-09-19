@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+### Changed
+
+- Integer's native arithmetic, comparison, conversion and iteration methods now
+  load from `libbirnam_integer.dylib` before the other upper native modules.
+  Prelude no longer installs those methods. This first production extraction
+  preserves numeric behavior and native optimization declarations; Integer
+  representation and construction still reside in Id pending the next stage.
+
 ### Added
 
 - Structured tasks with automatic timeslicing, owned child tasks, joining,

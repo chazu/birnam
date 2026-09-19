@@ -1,5 +1,4 @@
 #include "idapi_v3.h"
-#include "object-model-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -15,15 +14,14 @@ int main(int argc, char **argv) {
     IdInitFn initialize = (IdInitFn)dlsym(floor, "id_init");
     assert(initialize);
     floor_api = initialize();
-    fixture_mount_object_model(floor_api, argv[1]);
     IdApi module_api = *floor_api;
-    void *prelude = floor_api->dlopen_fn(argv[2], RTLD_NOW | RTLD_LOCAL);
-    assert(prelude);
-    ModuleInitFn module_init = (ModuleInitFn)floor_api->dlsym_fn(prelude, "module_init");
+    void *integer = floor_api->dlopen_fn(argv[2], RTLD_NOW | RTLD_LOCAL);
+    assert(integer);
+    ModuleInitFn module_init = (ModuleInitFn)floor_api->dlsym_fn(integer, "module_init");
     assert(module_init);
     module_init(&module_api, NULL);
     typedef unsigned (*Query)(const void *, Oop, const uintptr_t *);
-    Query query = (Query)floor_api->dlsym_fn(prelude, "birnam_native_numeric_semantics_v1");
+    Query query = (Query)floor_api->dlsym_fn(integer, "birnam_native_numeric_semantics_v1");
     assert(query);
     Oop selector = floor_api->intern("+");
     Method add = (Method)floor_api->send(floor_api->smallint_vt, floor_api->intern("lookup"), &selector, 1);

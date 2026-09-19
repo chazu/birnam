@@ -229,3 +229,7 @@ layer, ownership and mutation behavior across the boundary, and eventual removal
 of the replaced Rust implementation from the installed execution path. Use
 existing semantic/ABI/lifetime checks and representative performance evidence;
 separate correctness from timing claims.
+
+[81L](81l-production-integer-extraction.md) begins the production Integer
+extraction with a loaded method library. Representation/construction extraction
+and the corresponding native-consumer migration remain the next stage.
