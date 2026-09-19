@@ -8,7 +8,7 @@ use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::CString;
 use std::fs::{self, File};
-use std::io::{self, BufRead, Read, Write};
+use std::io::{self, BufRead, Read};
 use std::path::Path;
 use std::sync::OnceLock;
 use std::{env, str};
@@ -146,19 +146,6 @@ unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
     let kind = unsafe { intern(api, kind) };
     let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
     unsafe { make_error(api, kind, message) }
-}
-
-fn write_system_output(bytes: &[u8], newline: bool) {
-    let mut stdout = io::stdout().lock();
-    let _ = write_system_output_to(&mut stdout, bytes, newline);
-}
-
-fn write_system_output_to<W: Write>(writer: &mut W, bytes: &[u8], newline: bool) -> io::Result<()> {
-    writer.write_all(bytes)?;
-    if newline {
-        writer.write_all(b"\n")?;
-    }
-    writer.flush()
 }
 
 fn path_from_bytes(bytes: &[u8]) -> Option<&Path> {
@@ -391,29 +378,6 @@ unsafe extern "C" fn system_read_line(_self_object: Oop, _args: *const Oop, coun
     }
 }
 
-unsafe fn system_output(self_object: Oop, args: *const Oop, count: usize, newline: bool) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(bytes) = (unsafe { printable_string(api, value) }) else {
-        return api.nilObj;
-    };
-    write_system_output(bytes, newline);
-    self_object
-}
-
-unsafe extern "C" fn system_print(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { system_output(self_object, args, count, false) }
-}
-
-unsafe extern "C" fn system_println(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { system_output(self_object, args, count, true) }
-}
-
 unsafe fn install_system_protocol(api: &IdApi) {
     let (system_vt, system_object) = if unsafe { (api.isExported)(c"System".as_ptr()) } != 0 {
         // SAFETY: an exported System family is process-owned and remains live
@@ -447,8 +411,9 @@ unsafe fn install_system_protocol(api: &IdApi) {
     // SAFETY: the System vtable and callback addresses are process-lifetime
     // values. The singleton is retained by the exported family.
     unsafe {
-        (api.method)(system_vt, print, system_print);
-        (api.method)(system_vt, println, system_println);
+        birnam_abi::system_output::install(
+            api, runtime().api as *const IdApi, system_vt, print, println,
+        );
         (api.method)(system_vt, read_file, system_read_file);
         (api.method)(system_vt, write_file, system_write_file);
         (api.method)(system_vt, get_env, system_get_env);
@@ -525,48 +490,14 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void) -> *m
 
 #[cfg(test)]
 mod tests {
-    use super::{RUST_PRELUDE_IDENTITY, birnam_prelude_rust_identity, write_system_output_to};
+    use super::{RUST_PRELUDE_IDENTITY, birnam_prelude_rust_identity};
     use std::ffi::CStr;
-    use std::io::{self, Write};
-
-    struct FlushProbe {
-        bytes: Vec<u8>,
-        flushed: bool,
-    }
-
-    impl Write for FlushProbe {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.bytes.extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            self.flushed = true;
-            Ok(())
-        }
-    }
 
     #[test]
     fn identity_is_a_terminated_static_string() {
         // SAFETY: the export points to immutable process-lifetime storage.
         let identity = unsafe { CStr::from_ptr(birnam_prelude_rust_identity()) };
         assert_eq!(identity.to_bytes_with_nul(), RUST_PRELUDE_IDENTITY);
-    }
-
-    #[test]
-    fn system_output_flushes_a_newline_free_prompt() {
-        let mut output = FlushProbe {
-            bytes: Vec::new(),
-            flushed: false,
-        };
-
-        write_system_output_to(&mut output, b"birnam> ", false).expect("prompt write");
-
-        assert_eq!(output.bytes, b"birnam> ");
-        assert!(
-            output.flushed,
-            "a prompt must be visible before stdin blocks"
-        );
     }
 }
 
@@ -579,3 +510,5 @@ birnam_abi::printing_dependency!();
 birnam_abi::system_gc_dependency!();
 
 birnam_abi::text_view_dependency!();
+
+birnam_abi::system_output_dependency!();

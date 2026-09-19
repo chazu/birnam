@@ -14,6 +14,7 @@ pub mod string;
 pub mod string_collection;
 pub mod printing;
 pub mod system_gc;
+pub mod system_output;
 pub mod text_view;
 pub mod range;
 pub mod vector;

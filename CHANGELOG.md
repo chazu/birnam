@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Move System print:/println: and their stdout writer into `birnam-system-output`
+  (Design 81AL). Preserve registration snapshots, original execution callbacks,
+  borrowed byte conversion, newline/flush order and ignored IO errors.
+
 - Move Prelude's shared exact-String and printable-byte helpers into
   `birnam-text-view` (Design 81AK). Preserve borrowed pointers, callback timing,
   fresh printing lookup and path aliasing across later callbacks in all consumers.

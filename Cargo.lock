@@ -268,6 +268,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-system-output"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-tcc"
 version = "0.0.0"
 dependencies = [

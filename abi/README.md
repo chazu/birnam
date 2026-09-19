@@ -133,3 +133,8 @@ adds no IdApi fields, collector state, objects or roots.
 [Text views v1](text-view-v1.md) supplies shared exact-String and printable byte
 borrowing to Prelude consumers. The [export inventory](rust-text-view-dylib-v1.json)
 adds no IdApi fields, objects, roots or owned buffers.
+
+[System output v1](system-output-v1.md) owns print:/println: and stdout writing.
+Prelude supplies selected behavior/selectors and its original execution table at
+the first two registration slots. The [export inventory](rust-system-output-dylib-v1.json)
+adds no IdApi fields, objects, roots or owned byte buffers.

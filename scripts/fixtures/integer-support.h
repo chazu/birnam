@@ -12,6 +12,7 @@
 #include "../../abi/fixtures/string-collection-v1/string_collection_v1.h"
 #include "../../abi/fixtures/printing-v1/printing_v1.h"
 #include "../../abi/fixtures/system-gc-v1/system_gc_v1.h"
+#include "../../abi/fixtures/system-output-v1/system_output_v1.h"
 #include "../../abi/fixtures/text-view-v1/text_view_v1.h"
 #include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
 #include <assert.h>
@@ -59,6 +60,8 @@ static const MapApiV2 *fixture_map_v2;
 static inline void fixture_prepare_map(IdApi *api);
 static const TextViewApiV1 *fixture_text_view;
 static inline void fixture_prepare_text_view(IdApi *api);
+static const SystemOutputApiV1 *fixture_system_output;
+static inline void fixture_prepare_system_output(IdApi *api);
 static const SystemGcApiV1 *fixture_system_gc;
 static inline void fixture_prepare_system_gc(IdApi *api);
 static const PrintingApiV1 *fixture_printing;
@@ -140,6 +143,8 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
     }
     TextViewDependencyV1 text_attach=(TextViewDependencyV1)api->dlsym_fn(image,"birnam_text_view_dependency_v1");
     if(text_attach) { fixture_prepare_text_view(api); assert(text_attach(fixture_text_view)==1); }
+    SystemOutputDependencyV1 output_attach=(SystemOutputDependencyV1)api->dlsym_fn(image,"birnam_system_output_dependency_v1");
+    if(output_attach) { fixture_prepare_system_output(api); assert(output_attach(fixture_system_output)==1); }
     SystemGcDependencyV1 gc_attach=(SystemGcDependencyV1)api->dlsym_fn(image,"birnam_system_gc_dependency_v1");
     if(gc_attach) { fixture_prepare_system_gc(api); assert(gc_attach(fixture_system_gc)==1); }
     PrintingDependencyV1 printing_attach=(PrintingDependencyV1)api->dlsym_fn(image,"birnam_printing_dependency_v1");
@@ -191,6 +196,16 @@ static inline void fixture_prepare_text_view(IdApi *api) {
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     TextViewProviderV1 provide=(TextViewProviderV1)api->dlsym_fn(image,"birnam_text_view_provider_v1"); assert(provide && !provide());
     init(api,NULL); fixture_text_view=provide(); assert(fixture_text_view);
+}
+static inline void fixture_prepare_system_output(IdApi *api) {
+    if(fixture_system_output) return;
+    const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_system_output.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+    assert(n>0 && (size_t)n<sizeof(path));
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
+    SystemOutputProviderV1 provide=(SystemOutputProviderV1)api->dlsym_fn(image,"birnam_system_output_provider_v1"); assert(provide && !provide());
+    init(api,NULL); fixture_system_output=provide(); assert(fixture_system_output);
 }
 static inline void fixture_prepare_system_gc(IdApi *api) {
     if(fixture_system_gc) return;

@@ -44,6 +44,10 @@ run = "python3 scripts/same-frame-deopt.py"
 description = "Check loaded collection value comparison and hashing in debug"
 run = "scripts/collection-value-test.sh"
 
+[tasks.system-output]
+description = "Focused debug System stdout and installation checks"
+run = "scripts/system-output-test.sh"
+
 [tasks.text-view]
 description = "Focused debug borrowed text view checks"
 run = "scripts/text-view-test.sh"
