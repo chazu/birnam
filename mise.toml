@@ -60,6 +60,10 @@ run = "scripts/word-error-value-test.sh"
 description = "Focused debug lazy Error value policy checks"
 run = "scripts/error-value-test.sh"
 
+[tasks.environment]
+description = "Focused debug System environment lookup checks"
+run = "scripts/environment-test.sh"
+
 [tasks.system-input]
 description = "Focused debug System readLine and buffering checks"
 run = "scripts/system-input-test.sh"

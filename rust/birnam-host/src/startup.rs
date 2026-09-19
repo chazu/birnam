@@ -966,6 +966,7 @@ pub enum ModuleError {
     ErrorValueDependencyRejected { path: PathBuf },
     SystemOutputDependencyRejected { path: PathBuf },
     SystemInputDependencyRejected { path: PathBuf },
+    EnvironmentDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
@@ -1068,6 +1069,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_text_view",
     "libbirnam_system_output",
     "libbirnam_system_input",
+    "libbirnam_environment",
     "libbirnam_id_prelude",
     "libbirnam_nil",
     "libbirnam_string",
@@ -2063,6 +2065,7 @@ pub struct LoadedStack {
     error_value: *const birnam_abi::error_value::ApiV1,
     system_output: *const birnam_abi::system_output::ApiV1,
     system_input: *const birnam_abi::system_input::ApiV1,
+    environment: *const birnam_abi::environment::ApiV1,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2100,6 +2103,7 @@ impl LoadedStack {
             error_value: std::ptr::null(),
             system_output: std::ptr::null(),
             system_input: std::ptr::null(),
+            environment: std::ptr::null(),
             collection_value: std::ptr::null(),
             prepared_float: None,
             prepared_word: None,
@@ -2336,6 +2340,13 @@ impl LoadedStack {
                 return Err(ModuleError::SystemInputDependencyRejected { path: path.to_path_buf() });
             }
         }
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_environment_dependency_v1".as_ptr()) };
+        if !dependency.is_null() {
+            let attach: birnam_abi::environment::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if self.environment.is_null() || unsafe { attach(self.environment) } != 1 {
+                return Err(ModuleError::EnvironmentDependencyRejected { path: path.to_path_buf() });
+            }
+        }
         let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_dependency_v1".as_ptr()) };
         if !dependency.is_null() {
             let attach: birnam_abi::system_gc::DependencyV1 = unsafe { std::mem::transmute(dependency) };
@@ -2455,6 +2466,15 @@ impl LoadedStack {
                 return Err(ModuleError::SystemInputDependencyRejected { path: path.to_path_buf() });
             }
             self.system_input = provided;
+        }
+        let environment_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_environment_provider_v1".as_ptr()) };
+        if !environment_provider.is_null() {
+            let provide: birnam_abi::environment::ProviderV1 = unsafe { std::mem::transmute(environment_provider) };
+            let provided = unsafe { provide() };
+            if unsafe { birnam_abi::environment::attach(provided) } != 1 {
+                return Err(ModuleError::EnvironmentDependencyRejected { path: path.to_path_buf() });
+            }
+            self.environment = provided;
         }
         let system_gc_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_provider_v1".as_ptr()) };
         if !system_gc_provider.is_null() {

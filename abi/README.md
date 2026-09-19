@@ -147,3 +147,8 @@ adds no IdApi fields, objects, roots or retained runtime selection.
 supplies its original execution table at the existing registration slot. The
 [export inventory](rust-system-input-dylib-v1.json) adds no IdApi fields, objects,
 roots or representation changes.
+
+[Environment v1](environment-v1.md) owns System getEnv: and live environment
+lookup. Prelude supplies its first execution table at the original registration
+slot. The [export inventory](rust-environment-dylib-v1.json) adds no IdApi fields,
+objects, roots or representation changes.

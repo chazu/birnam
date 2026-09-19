@@ -14,6 +14,7 @@
 #include "../../abi/fixtures/system-gc-v1/system_gc_v1.h"
 #include "../../abi/fixtures/system-output-v1/system_output_v1.h"
 #include "../../abi/fixtures/system-input-v1/system_input_v1.h"
+#include "../../abi/fixtures/environment-v1/environment_v1.h"
 #include "../../abi/fixtures/text-view-v1/text_view_v1.h"
 #include "../../abi/fixtures/error-value-v1/error_value_v1.h"
 #include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
@@ -64,6 +65,8 @@ static const ErrorValueApiV1 *fixture_error_value;
 static inline void fixture_prepare_error_value(IdApi *api);
 static const TextViewApiV1 *fixture_text_view;
 static inline void fixture_prepare_text_view(IdApi *api);
+static const EnvironmentApiV1 *fixture_environment;
+static inline void fixture_prepare_environment(IdApi *api);
 static const SystemInputApiV1 *fixture_system_input;
 static inline void fixture_prepare_system_input(IdApi *api);
 static const SystemOutputApiV1 *fixture_system_output;
@@ -155,6 +158,8 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
     if(output_attach) { fixture_prepare_system_output(api); assert(output_attach(fixture_system_output)==1); }
     SystemInputDependencyV1 input_attach=(SystemInputDependencyV1)api->dlsym_fn(image,"birnam_system_input_dependency_v1");
     if(input_attach) { fixture_prepare_system_input(api); assert(input_attach(fixture_system_input)==1); }
+    EnvironmentDependencyV1 environment_attach=(EnvironmentDependencyV1)api->dlsym_fn(image,"birnam_environment_dependency_v1");
+    if(environment_attach) { fixture_prepare_environment(api); assert(environment_attach(fixture_environment)==1); }
     SystemGcDependencyV1 gc_attach=(SystemGcDependencyV1)api->dlsym_fn(image,"birnam_system_gc_dependency_v1");
     if(gc_attach) { fixture_prepare_system_gc(api); assert(gc_attach(fixture_system_gc)==1); }
     PrintingDependencyV1 printing_attach=(PrintingDependencyV1)api->dlsym_fn(image,"birnam_printing_dependency_v1");
@@ -236,6 +241,16 @@ static inline void fixture_prepare_system_input(IdApi *api) {
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     SystemInputProviderV1 provide=(SystemInputProviderV1)api->dlsym_fn(image,"birnam_system_input_provider_v1"); assert(provide && !provide());
     init(api,NULL); fixture_system_input=provide(); assert(fixture_system_input);
+}
+static inline void fixture_prepare_environment(IdApi *api) {
+    if(fixture_environment) return;
+    const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_environment.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+    assert(n>0 && (size_t)n<sizeof(path));
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
+    EnvironmentProviderV1 provide=(EnvironmentProviderV1)api->dlsym_fn(image,"birnam_environment_provider_v1"); assert(provide && !provide());
+    init(api,NULL); fixture_environment=provide(); assert(fixture_environment);
 }
 static inline void fixture_prepare_system_gc(IdApi *api) {
     if(fixture_system_gc) return;

@@ -80,6 +80,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-environment"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-error"
 version = "0.0.0"
 dependencies = [

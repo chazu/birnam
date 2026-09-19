@@ -12,7 +12,6 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
 use std::sync::OnceLock;
-use std::{env, str};
 
 const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
 
@@ -171,29 +170,6 @@ unsafe extern "C" fn system_write_file(self_object: Oop, args: *const Oop, count
         return unsafe { numeric_error(api, b"ioError\0", b"could not write file") };
     }
     self_object
-}
-
-unsafe extern "C" fn system_get_env(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(name_object) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(name_bytes) = (unsafe { string_bytes(api, name_object) }) else {
-        return api.nilObj;
-    };
-    let Ok(name) = str::from_utf8(name_bytes) else {
-        return unsafe { numeric_error(api, b"ioError\0", b"could not read environment") };
-    };
-    match env::var(name) {
-        Ok(value) => unsafe { (birnam_abi::string::make)(value.as_ptr(), value.len()) },
-        Err(env::VarError::NotPresent) => api.nilObj,
-        Err(env::VarError::NotUnicode(_)) => unsafe {
-            numeric_error(api, b"ioError\0", b"could not read environment")
-        },
-    }
 }
 
 unsafe extern "C" fn system_load(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -364,7 +340,9 @@ unsafe fn install_system_protocol(api: &IdApi) {
         );
         (api.method)(system_vt, read_file, system_read_file);
         (api.method)(system_vt, write_file, system_write_file);
-        (api.method)(system_vt, get_env, system_get_env);
+        birnam_abi::environment::install(
+            api, runtime().api as *const IdApi, system_vt, get_env,
+        );
         (api.method)(system_vt, load, system_load);
         (api.method)(system_vt, load_module, system_load_module);
         birnam_abi::system_input::install(
@@ -466,3 +444,5 @@ birnam_abi::system_output_dependency!();
 birnam_abi::error_value_dependency!();
 
 birnam_abi::system_input_dependency!();
+
+birnam_abi::environment_dependency!();

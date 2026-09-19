@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Extract System getEnv: into Environment (Design 81AR), preserving live lookup,
+  Unicode handling, missing values, lazy errors and callback order.
+
 - Extract System readLine into System Input (Design 81AQ), preserving binary
   reads, buffering, EOF, lazy errors, callback locking and installation order.
 
