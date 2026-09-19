@@ -7,7 +7,7 @@
     "birnam_range_provider_v2",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
-    "birnam_vector_dependency_v1",
+    "birnam_vector_dependency_v2",
     "module_init"
   ]
 }

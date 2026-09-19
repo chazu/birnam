@@ -1,5 +1,5 @@
-//! Immutable Vector storage and ordered construction dependency (81AB).
-use crate::{IdApi, Oop};
+//! Immutable Vector storage, ordered construction and method installation (81AE).
+use crate::{IdApi, Method, Oop};
 use core::ffi::c_int;
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -13,15 +13,15 @@ pub type PrepareV1 = unsafe extern "C" fn(*mut IdApi, Oop, c_int) -> BehaviorsV1
 pub type StageV1 = unsafe extern "C" fn(*mut IdApi);
 pub type EmptyV1 = unsafe extern "C" fn() -> Oop;
 pub type PushV1 = unsafe extern "C" fn(Oop, Oop) -> Oop;
-pub type CountV1 = unsafe extern "C" fn(Oop) -> usize;
-pub type AtV1 = unsafe extern "C" fn(Oop, usize) -> Oop;
+pub type InstallV2 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop) -> Method;
 /// Owner-thread construction stages preserve Collection's callback order.
 /// Descriptor/code are immutable and process-pinned. Empty/push use the first
-/// selected table's live allocator. Count/at/behavior never call Id, allocate,
-/// collect or reenter; count/at require an initialized Vector payload.
+/// selected table's live allocator. Behavior never calls Id. Installation uses
+/// the supplied table and retains the first selectors; Range retains the returned
+/// native comma callback. Native iteration requires prior method installation.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV1 {
+pub struct ApiV2 {
     pub version: u32,
     pub byte_size: usize,
     pub prepare: Option<PrepareV1>,
@@ -31,27 +31,30 @@ pub struct ApiV1 {
     pub publish: Option<StageV1>,
     pub empty: Option<EmptyV1>,
     pub push: Option<PushV1>,
-    pub count: Option<CountV1>,
-    pub at: Option<AtV1>,
     pub behavior: Option<EmptyV1>,
+    pub install: Option<InstallV2>,
+    pub for_each: Option<Method>,
+    pub inject: Option<Method>,
 }
 const _: () = {
-    assert!(size_of::<ApiV1>() == 96);
-    assert!(core::mem::offset_of!(ApiV1, behavior) == 88);
+    assert!(size_of::<ApiV2>() == 104);
+    assert!(core::mem::offset_of!(ApiV2, behavior) == 72);
+    assert!(core::mem::offset_of!(ApiV2, install) == 80);
+    assert!(core::mem::offset_of!(ApiV2, inject) == 96);
     assert!(size_of::<BehaviorsV1>() == 16);
 };
-pub type ProviderV1 = unsafe extern "C" fn() -> *const ApiV1;
-pub type DependencyV1 = unsafe extern "C" fn(*const ApiV1) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV1> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV2 = unsafe extern "C" fn() -> *const ApiV2;
+pub type DependencyV2 = unsafe extern "C" fn(*const ApiV2) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV2> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Mount on the owner thread; the immutable descriptor/code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV1) -> c_int {
+pub unsafe fn attach(api: *const ApiV2) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 1
-        || value.byte_size != size_of::<ApiV1>()
+    if value.version != 2
+        || value.byte_size != size_of::<ApiV2>()
         || value.prepare.is_none()
         || value.finish_prototype.is_none()
         || value.set_layout.is_none()
@@ -59,9 +62,10 @@ pub unsafe fn attach(api: *const ApiV1) -> c_int {
         || value.publish.is_none()
         || value.empty.is_none()
         || value.push.is_none()
-        || value.count.is_none()
-        || value.at.is_none()
         || value.behavior.is_none()
+        || value.install.is_none()
+        || value.for_each.is_none()
+        || value.inject.is_none()
     {
         return 0;
     }
@@ -75,7 +79,7 @@ pub unsafe fn attach(api: *const ApiV1) -> c_int {
         Err(existing) => c_int::from(ptr::eq(existing, api)),
     }
 }
-fn operations() -> ApiV1 {
+fn operations() -> ApiV2 {
     let api = DEPENDENCY.load(Ordering::Acquire);
     assert!(!api.is_null(), "native Vector dependency was not mounted");
     unsafe { *api }
@@ -117,14 +121,21 @@ pub unsafe fn push(vector: Oop, value: Oop) -> Oop {
     unsafe { operations().push.unwrap()(vector, value) }
 }
 /// # Safety
-/// Vector has its initialized payload, including inherited receivers.
-pub unsafe fn count(vector: Oop) -> usize {
-    unsafe { operations().count.unwrap()(vector) }
+/// At the original Vector registration point; selectors remain process-owned.
+/// Returns the native comma Method supplied directly to Range installation.
+pub unsafe fn install(api: *mut IdApi, value1: Oop, value2: Oop, print_string: Oop) -> Method {
+    unsafe { operations().install.unwrap()(api, value1, value2, print_string) }
 }
 /// # Safety
-/// Vector has its initialized payload; out-of-bounds access returns null.
-pub unsafe fn at(vector: Oop, index: usize) -> Oop {
-    unsafe { operations().at.unwrap()(vector, index) }
+/// Initialized Vector receiver and a borrowed synchronous argument carrier.
+/// Map iteration calls the native body, preserving its private dispatch.
+pub unsafe fn for_each(vector: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { operations().for_each.unwrap()(vector, args, count) }
+}
+/// # Safety
+/// Initialized Vector receiver and a borrowed synchronous argument carrier.
+pub unsafe fn inject(vector: Oop, args: *const Oop, count: usize) -> Oop {
+    unsafe { operations().inject.unwrap()(vector, args, count) }
 }
 /// # Safety
 /// Call after prepare; the canonical behavior remains process-owned.
@@ -135,8 +146,8 @@ pub unsafe fn behavior() -> Oop {
 macro_rules! vector_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_vector_dependency_v1(
-            api: *const $crate::vector::ApiV1,
+        pub unsafe extern "C" fn birnam_vector_dependency_v2(
+            api: *const $crate::vector::ApiV2,
         ) -> core::ffi::c_int {
             unsafe { $crate::vector::attach(api) }
         }

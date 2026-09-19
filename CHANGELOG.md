@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move Vector's thirteen method bindings and scoped sorting roots into
+  `birnam-vector` (Design 81AE). Preserve stable sorting, live dispatch, GC roots,
+  registration order, Range's native comma callback and Map's native iteration.
+  Vector v2 removes external count/at readers and exposes method installation
+  plus the iteration bodies used directly by Map.
 - Extract shared Vector/Map comparison and key hashing into
   `birnam-collection-value` (Design 81AD). Preserve identity shortcuts, numeric
   and byte semantics, hash bits and live callbacks; add no public selectors.

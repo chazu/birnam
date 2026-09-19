@@ -7,7 +7,7 @@
 #include "../../abi/fixtures/range-methods-v1/range_methods_v1.h"
 #include "../../abi/fixtures/range-v1/range_v1.h"
 #include "../../abi/fixtures/range-v2/range_v2.h"
-#include "../../abi/fixtures/vector-v1/vector_v1.h"
+#include "../../abi/fixtures/vector-v2/vector_v2.h"
 #include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -19,7 +19,35 @@ static char fixture_floor_path[PATH_MAX];
 static const RangeMethodsApiV1 *fixture_range_methods; /* Historical 81Z oracle only. */
 static const RangeApiV1 *fixture_range; /* Historical 81AA/AB oracle only. */
 static const RangeApiV2 *fixture_range_v2;
-static const VectorApiV1 *fixture_vector;
+static const VectorApiV1 *fixture_vector_v1; /* Historical storage oracle only. */
+static const VectorApiV2 *fixture_vector_v2;
+/* Test-only normalized view; production no longer exposes count/at. */
+typedef struct {
+    Oop (*empty)(void);
+    Oop (*push)(Oop,Oop);
+    size_t (*count)(Oop);
+    Oop (*at)(Oop,size_t);
+    Oop (*behavior)(void);
+} FixtureVectorOps;
+static FixtureVectorOps fixture_vector_ops;
+static const FixtureVectorOps *fixture_vector;
+typedef struct { size_t count,shift; Oop root,tail; size_t tail_len; } FixtureVectorPayload;
+_Static_assert(sizeof(FixtureVectorPayload)==40, "test Vector payload");
+static inline size_t fixture_vector_count(Oop object) { return ((FixtureVectorPayload *)object)->count; }
+static inline Oop fixture_vector_at(Oop object,size_t index) {
+    FixtureVectorPayload *v=object;
+    if(index>=v->count) return NULL;
+    Oop node=v->tail;
+    if(index<v->count-v->tail_len) {
+        node=v->root;
+        for(size_t level=v->shift;level;level-=5) {
+            node=((Oop *)node)[(index>>level)&31];
+            if(!node) return NULL;
+        }
+    }
+    return ((Oop *)node)[index&31];
+}
+static inline void fixture_prepare_vector(IdApi *api);
 static const CollectionValueApiV1 *fixture_collection_value;
 static inline Oop fixture_integer_make(int64_t value) {
     assert(fixture_integer);
@@ -52,20 +80,12 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
         }
         assert(value_attach(fixture_collection_value)==1);
     }
+    VectorDependencyV2 vector_v2_attach=(VectorDependencyV2)api->dlsym_fn(image,"birnam_vector_dependency_v2");
     VectorDependencyV1 vector_attach=(VectorDependencyV1)api->dlsym_fn(image,"birnam_vector_dependency_v1");
-    if (vector_attach) {
-        if (!fixture_vector) {
-            const char *slash=strrchr(fixture_floor_path,'/'); assert(slash);
-            char path[PATH_MAX];
-            int n=snprintf(path,sizeof(path),"%.*s/libbirnam_vector.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
-            assert(n>0 && (size_t)n<sizeof(path));
-            void *vector=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(vector);
-            ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(vector,"module_init"); assert(init);
-            VectorProviderV1 provide=(VectorProviderV1)api->dlsym_fn(vector,"birnam_vector_provider_v1"); assert(provide);
-            assert(provide()==NULL); init(api,NULL);
-            fixture_vector=provide(); assert(fixture_vector);
-        }
-        assert(vector_attach(fixture_vector)==1);
+    if (vector_v2_attach || vector_attach) {
+        fixture_prepare_vector(api);
+        if(vector_v2_attach) assert(vector_v2_attach(fixture_vector_v2)==1);
+        else assert(vector_attach(fixture_vector_v1)==1);
     }
     RangeDependencyV2 range_v2_attach=(RangeDependencyV2)api->dlsym_fn(image,"birnam_range_dependency_v2");
     RangeDependencyV1 range_attach=(RangeDependencyV1)api->dlsym_fn(image,"birnam_range_dependency_v1");
@@ -95,6 +115,25 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
         else if (range_attach) assert(range_attach(fixture_range)==1);
         else assert(previous_attach(fixture_range_methods)==1);
     }
+}
+static inline void fixture_prepare_vector(IdApi *api) {
+    if(fixture_vector) return;
+    const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_vector.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+    assert(n>0 && (size_t)n<sizeof(path));
+    void *vector=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(vector);
+    fixture_attach_integer(api,vector);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(vector,"module_init"); assert(init);
+    VectorProviderV2 current=(VectorProviderV2)api->dlsym_fn(vector,"birnam_vector_provider_v2");
+    if(current) {
+        assert(!current()); init(api,NULL); fixture_vector_v2=current(); assert(fixture_vector_v2);
+        fixture_vector_ops=(FixtureVectorOps){fixture_vector_v2->empty,fixture_vector_v2->push,fixture_vector_count,fixture_vector_at,fixture_vector_v2->behavior};
+    } else {
+        VectorProviderV1 previous=(VectorProviderV1)api->dlsym_fn(vector,"birnam_vector_provider_v1"); assert(previous && !previous());
+        init(api,NULL); fixture_vector_v1=previous(); assert(fixture_vector_v1);
+        fixture_vector_ops=(FixtureVectorOps){fixture_vector_v1->empty,fixture_vector_v1->push,fixture_vector_v1->count,fixture_vector_v1->at,fixture_vector_v1->behavior};
+    }
+    fixture_vector=&fixture_vector_ops;
 }
 static inline void fixture_mount_integer(IdApi *api, const char *floor_path) {
     assert(strlen(floor_path)<sizeof(fixture_floor_path));

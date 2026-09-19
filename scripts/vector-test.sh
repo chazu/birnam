@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Focused debug native Vector storage and persistent trie checks.
+# Focused debug native Vector storage, methods and scoped sorting roots.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mise exec -- cargo build -p birnam-id -p birnam-trace -p birnam-collect -p birnam-integer -p birnam-float -p birnam-word -p birnam-object-model -p birnam-string -p birnam-range -p birnam-vector -p birnam-collection-value -p birnam-collection --locked --offline
@@ -11,3 +11,6 @@ for mode in normal adopted missing-prototype rebound-prototype vector-only-expor
   "$scratch/storage" "$vector_target/debug/libbirnam_id.dylib" "$vector_target/debug/libbirnam_object_model.dylib" "$vector_target/debug/libbirnam_collection.dylib" "$mode" >"$scratch/$mode.log"
   tail -1 "$scratch/$mode.log"
 done
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 -Iscripts/fixtures scripts/fixtures/vector-methods.c -o "$scratch/methods"
+"$scratch/methods" "$vector_target/debug/libbirnam_id.dylib" "$vector_target/debug/libbirnam_object_model.dylib" "$vector_target/debug/libbirnam_collection.dylib" >"$scratch/methods.log"
+tail -1 "$scratch/methods.log"

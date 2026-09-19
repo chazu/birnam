@@ -100,10 +100,15 @@ The [Range module](../docs/design/81ac-production-range-vector-methods.md) owns
 its representation, construction and all eight Range methods plus Integer `to:`.
 Its [current construction dependency](range-v2.md) preserves installation order
 and a direct native Vector comma callback. Vector storage is mounted separately
-through [Vector v1](vector-v1.md). The [export inventory](rust-range-dylib-v1.json)
+through [Vector v2](vector-v2.md). The [export inventory](rust-range-dylib-v1.json)
 adds no IdApi or image fields. Earlier Range interfaces remain historical evidence.
 
 [Collection value policy](collection-value-v1.md) supplies Vector comparison and
 Map key hashing through one immutable native dependency. It owns no objects and
 uses the caller's selected IdApi and live Integer/Float/String callbacks. Its
 [export inventory](rust-collection-value-dylib-v1.json) adds no IdApi fields.
+
+[Vector v2](vector-v2.md) also owns all native Vector methods and sorting roots.
+Map iteration uses its native bodies, and Range retains its native comma Method.
+The [Vector export inventory](rust-vector-dylib-v1.json) records its explicit
+Integer, String and collection-value dependencies.

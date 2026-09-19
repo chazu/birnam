@@ -45,7 +45,7 @@ let main := [|
   [System println: [[[[1 to: 3] , prefix] size] printString]];
   [System println: [[[[[Map new] at: 7 put: 9] keys] at: 0] printString]];
   [System println: [[["a,b" split: ","] size] printString]];
-  [System println: [[[prefix sortBy: [:each | [0 - each]]] at: 0] printString]];
+  [System println: [[[prefix sortBy: [:each | [System gc]; [0 - each]]] at: 0] printString]];
   [System println: [[[prefix do: [:each | [System gc]]] == prefix] printString]];
   [Reflect defineMethod: #size on: VectorVt as: [:self | 99]];
   [System gc];

@@ -1,5 +1,8 @@
 # Vector storage and construction v1
 
+Historical 81AB boundary, superseded in production by [Vector v2](vector-v2.md).
+The frozen C mirror remains available for independent baseline tests.
+
 Design [81AB](../docs/design/81ab-production-vector-storage.md) moves Vector's
 canonical objects, 32-way trie, five-word payload and native storage operations
 into `birnam-vector`. Collection retains the language methods and sorting roots,

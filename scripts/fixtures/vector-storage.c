@@ -21,7 +21,10 @@ static int id(Oop value) {
 static Oop send0(Oop receiver,const char *name) { return api->send(receiver,api->intern(name),NULL,0); }
 static Oop send1(Oop receiver,const char *name,Oop arg) { return api->send(receiver,api->intern(name),&arg,1); }
 static Method lookup(Oop type,const char *name) { return (Method)send1(type,"lookup",api->intern(name)); }
-static void mark(Oop value) { assert(value==node_type || value==behavior || value==prototype); marks++; }
+static void mark(Oop value) {
+    if(value==node_type || value==behavior || value==prototype) marks++;
+    else assert(fixture_vector_v2 && (value==api->intern("value:") || value==api->intern("value:value:") || value==api->intern("printString")));
+}
 static void partial(size_t expected) {
     if(!modern) return;
     assert(owner_roots); marks=0; owner_roots(mark); assert(marks==expected); partial_checks++;
@@ -105,31 +108,34 @@ static Oop publish(const char *name,Oop value) {
     return api->export_obj(name,value);
 }
 static void validate_dependency(void *image, int attached) {
+    if(fixture_vector_v2) {
+    VectorDependencyV2 attach=(VectorDependencyV2)api->dlsym_fn(image,"birnam_vector_dependency_v2"); assert(attach && attach(NULL)==0);
+    VectorApiV2 bad=*fixture_vector_v2; bad.version++; assert(attach(&bad)==0); bad=*fixture_vector_v2; bad.byte_size--; assert(attach(&bad)==0);
+#define MISSING(field) bad=*fixture_vector_v2; bad.field=NULL; assert(attach(&bad)==0)
+    MISSING(prepare); MISSING(finish_prototype); MISSING(set_layout); MISSING(set_owner); MISSING(publish);
+    MISSING(empty); MISSING(push); MISSING(behavior); MISSING(install); MISSING(for_each); MISSING(inject);
+#undef MISSING
+    if(attached) { bad=*fixture_vector_v2; assert(attach(&bad)==0 && attach(fixture_vector_v2)==1); }
+    } else {
     VectorDependencyV1 attach=(VectorDependencyV1)api->dlsym_fn(image,"birnam_vector_dependency_v1"); assert(attach && attach(NULL)==0);
-    VectorApiV1 bad=*fixture_vector; bad.version++; assert(attach(&bad)==0); bad=*fixture_vector; bad.byte_size--; assert(attach(&bad)==0);
-#define MISSING(field) bad=*fixture_vector; bad.field=NULL; assert(attach(&bad)==0)
+    VectorApiV1 bad=*fixture_vector_v1; bad.version++; assert(attach(&bad)==0); bad=*fixture_vector_v1; bad.byte_size--; assert(attach(&bad)==0);
+#define MISSING(field) bad=*fixture_vector_v1; bad.field=NULL; assert(attach(&bad)==0)
     MISSING(prepare); MISSING(finish_prototype); MISSING(set_layout); MISSING(set_owner); MISSING(publish);
     MISSING(empty); MISSING(push); MISSING(count); MISSING(at); MISSING(behavior);
 #undef MISSING
-    if(attached) { bad=*fixture_vector; assert(attach(&bad)==0); }
+    if(attached) { bad=*fixture_vector_v1; assert(attach(&bad)==0 && attach(fixture_vector_v1)==1); }
+    }
 }
 static void mount(const char *path,IdApi *table) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     if(modern && strstr(path,"collection") && !collection) {
-        const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char library[PATH_MAX];
-        int n=snprintf(library,sizeof(library),"%.*s/libbirnam_vector.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
-        assert(n>0 && (size_t)n<sizeof(library));
-        void *vector=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(vector);
-        VectorProviderV1 provide=(VectorProviderV1)api->dlsym_fn(vector,"birnam_vector_provider_v1"); assert(provide && !provide());
-        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(vector,"module_init"); assert(init); init(api,NULL);
-        fixture_vector=provide(); assert(fixture_vector);
+        fixture_prepare_vector(api);
         /* Reject malformed descriptors before the dependency has been selected. */
         validate_dependency(image,0);
     }
     fixture_attach_integer(api,image);
     if(modern && strstr(path,"collection")) {
-        VectorDependencyV1 attach=(VectorDependencyV1)api->dlsym_fn(image,"birnam_vector_dependency_v1");
-        assert(attach(fixture_vector)==1); validate_dependency(image,1);
+        validate_dependency(image,1);
     }
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL);
     if(strstr(path,"collection")) collection=image;
