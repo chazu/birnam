@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Extract System readLine into System Input (Design 81AQ), preserving binary
+  reads, buffering, EOF, lazy errors, callback locking and installation order.
+
 - Use shared Error Value policy for Integer errors and iteration propagation
   (Design 81AP), preserving preparation, numeric admission and live callbacks.
 

@@ -9,7 +9,7 @@ use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::CString;
 use std::fs::{self, File};
-use std::io::{self, BufRead, Read};
+use std::io::Read;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::{env, str};
@@ -326,26 +326,6 @@ unsafe extern "C" fn system_load_module(self_object: Oop, args: *const Oop, coun
     self_object
 }
 
-unsafe extern "C" fn system_read_line(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let stdin = io::stdin();
-    let mut stdin = stdin.lock();
-    let mut line = Vec::new();
-    match stdin.read_until(b'\n', &mut line) {
-        Ok(0) => api.nilObj,
-        Ok(_) => {
-            if line.last() == Some(&b'\n') {
-                line.pop();
-            }
-            unsafe { (birnam_abi::string::make)(line.as_ptr(), line.len()) }
-        }
-        Err(_) => unsafe { numeric_error(api, b"ioError\0", b"stdin read failed") },
-    }
-}
-
 unsafe fn install_system_protocol(api: &IdApi) {
     let (system_vt, system_object) = if unsafe { (api.isExported)(c"System".as_ptr()) } != 0 {
         // SAFETY: an exported System family is process-owned and remains live
@@ -387,7 +367,9 @@ unsafe fn install_system_protocol(api: &IdApi) {
         (api.method)(system_vt, get_env, system_get_env);
         (api.method)(system_vt, load, system_load);
         (api.method)(system_vt, load_module, system_load_module);
-        (api.method)(system_vt, read_line, system_read_line);
+        birnam_abi::system_input::install(
+            api, runtime().api as *const IdApi, system_vt, read_line,
+        );
         birnam_abi::system_gc::install(
             api, runtime().api as *const IdApi, system_vt,
             gc, live_objects, auto_gc, precise_gc,
@@ -482,3 +464,5 @@ birnam_abi::text_view_dependency!();
 birnam_abi::system_output_dependency!();
 
 birnam_abi::error_value_dependency!();
+
+birnam_abi::system_input_dependency!();

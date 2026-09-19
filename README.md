@@ -708,6 +708,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
 - `rust/birnam-error-value/` — shared lazy Error factory dispatch for Prelude/Integer/Float/Word and exact recognition for Prelude/Integer/Float.
+- `rust/birnam-system-input/` — System stdin method, installed by Prelude using String and Error Value.
 - `rust/birnam-system-output/` — System stdout methods, installed by Prelude using shared text views.
 - `rust/birnam-text-view/` — shared borrowed String/printable byte views for Prelude consumers.
 - `rust/birnam-system-gc/` — System collector queries and policy controls, installed by Prelude.
@@ -778,6 +779,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Error value policy](docs/design/81am-production-error-value.md) shares Prelude's
   [lazy factory and exact-recognition helpers](abi/error-value-v1.md), preserving
   callback order and pre-Error nil behavior. Run `mise run error-value`.
+- [System input](docs/design/81aq-production-system-input.md) owns readLine through an
+  [explicit installer](abi/system-input-v1.md), preserving binary bytes, buffering,
+  EOF, errors and callback locking. Run `mise run system-input`.
 - [System output](docs/design/81al-production-system-output.md) owns print:/println:
   through an [explicit installer](abi/system-output-v1.md), preserving byte output,
   flush behavior and original execution callbacks. Run `mise run system-output`.

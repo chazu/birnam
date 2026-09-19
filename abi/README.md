@@ -142,3 +142,8 @@ adds no IdApi fields, objects, roots or owned byte buffers.
 [Error value v1](error-value-v1.md) supplies Prelude, Integer and Float lazy Error factory
 dispatch and exact recognition, plus Word's overflow errors. The [export inventory](rust-error-value-dylib-v1.json)
 adds no IdApi fields, objects, roots or retained runtime selection.
+
+[System input v1](system-input-v1.md) owns readLine and stdin buffering. Prelude
+supplies its original execution table at the existing registration slot. The
+[export inventory](rust-system-input-dylib-v1.json) adds no IdApi fields, objects,
+roots or representation changes.
