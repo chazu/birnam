@@ -112,7 +112,6 @@ impl Runtime {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::dispatch::build_bootstrap;
 
     #[test]

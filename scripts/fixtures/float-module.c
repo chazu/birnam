@@ -166,7 +166,13 @@ int main(int argc, char **argv) {
     fixture_float->make=original_box;
     api->method(fixture_float->behavior,api->intern("+"),identity);
     assert(send(two,"+",half)==half);
-    mount(argv[2],&float_api); assert(lookup("+")==identity);
+    Oop prototype=fixture_float->prototype, behavior=fixture_float->behavior;
+    api->export_obj("Float",api->nil_obj);
+    mount(argv[2],&float_api); /* Reinitialization reinstalls methods, as before extraction. */
+    assert(lookup("+")==add && fixture_float->prototype==prototype && fixture_float->behavior==behavior);
+    expect_float(send(two,"+",half),2.5);
+    assert(api->import_fn("Float")==api->nil_obj); api->export_obj("Float",prototype);
+    api->method(behavior,api->intern("+"),identity);
     mount(argv[4],api); /* Later Prelude must preserve the currently selected Float method. */
     assert(lookup("+")==identity && send(two,"+",half)==half);
     api->method(fixture_float->behavior,api->intern("+"),add);
@@ -174,5 +180,5 @@ int main(int argc, char **argv) {
     Oop volatile kept=fixture_float_make(-0.0);
     api->gc_set_precise(1); (void)api->gc_collect(); expect_float(kept,-0.0);
     expect_float(send(kept,"+",fixture_float_make(2.5)),2.5);
-    printf("float-module: %u IEEE arithmetic cases, ordering, conversions, errors, bits, preparation GC, publication reentry, live constructor and method replacement, GC passed\n",checked);
+    printf("float-module: %u IEEE arithmetic cases, ordering, conversions, errors, bits, preparation GC, publication reentry, live constructor, reinitialization and method replacement, GC passed\n",checked);
 }

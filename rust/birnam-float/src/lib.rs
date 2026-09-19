@@ -392,16 +392,18 @@ unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) -> *mut c_void {
     let operations = unsafe { birnam_float_prepare_v1(api_pointer) };
-    if PHASE.load(Ordering::Acquire) == 4 {
-        return ptr::null_mut();
-    }
-    if PHASE.swap(3, Ordering::AcqRel) != 2 {
+    let previous = PHASE.swap(3, Ordering::AcqRel);
+    if previous != 2 && previous != 4 {
         abort("recursive Float activation");
     }
     // Verify the peer before the first replaceable publication callback.
     let _ = unsafe { birnam_abi::integer::operations() };
     let api = unsafe { &*api_pointer };
-    unsafe { (*INSTANCE.load(Ordering::Acquire)).publish() };
+    if previous == 2 {
+        unsafe { (*INSTANCE.load(Ordering::Acquire)).publish() };
+    }
+    // Preserve method-only initialization: repeated calls reinstall methods
+    // without recreating canonical objects or overwriting namespace bindings.
     let behavior = unsafe { (*operations).behavior };
     let float_methods: &[(&[u8], birnam_abi::Method)] = &[
         (b"+\0", float_add),

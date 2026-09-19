@@ -33,7 +33,8 @@ owner association, exports `Float`/`FloatVt`, and installs the seventeen methods
 Other modules declare `birnam_float_dependency_v1` when they consume Float.
 
 Both numeric tables are usable when Float's owner/export callbacks reenter.
-Completed repeated initialization preserves live method replacements. A different
+Repeated initialization retains canonical identities and namespace bindings,
+but reinstalls the seventeen methods as the method-only module did. A different
 Id table, recursive initialization, invalid dependency or different mounted
 family is rejected. Successful attachment of the same pointer is idempotent.
 Library handles and native instances remain live for every published root,

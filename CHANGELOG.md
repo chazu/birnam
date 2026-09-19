@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Restore Float's pre-extraction repeated-initialization behavior: reinstall its
+  seventeen methods while retaining canonical objects and namespace bindings.
+  Later Prelude initialization continues to preserve live Float replacements.
 - Move Word's canonical objects, payload and primitive operations into
   `birnam-word` (Design 81T), with explicit dependencies for Machine, TCC and
   Image. IdApi v6 removes four fields to 37 fields / 296 bytes; native modules

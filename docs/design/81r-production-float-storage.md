@@ -21,7 +21,9 @@ sending owner/publication messages. Attach it to the host and combined runtime,
 then initialize Integer with Float attached. At Float's existing module slot,
 attach Integer and run ordinary `module_init` to publish Float and install its
 seventeen methods. Libraries remain pinned from their first callback publication.
-Repeated completed initialization preserves replaced methods.
+Repeated completed initialization retains canonical identities and namespace
+bindings, but reinstalls methods as the method-only module did. A follow-up
+corrects the initial 81R early return that accidentally preserved replacements.
 
 Ordinary consumers copy live operations before calling them. Machine's internal
 reads and graph materialization use the immutable pure payload codec: no Id
@@ -83,3 +85,21 @@ in Prelude, then review the four IdApi fields and raw storage consumers before
 moving representation. Pointer-valued operations and Alien/ForeignAddress use
 need their own caller/lifetime audit; do not infer that every raw address should
 become a Word or merge the two families.
+
+## Reinitialization correction
+
+Review during 81T found that 81R's completed-initialization early return changed
+81Q's behavior: 81Q reinstalled all seventeen methods on every `module_init`.
+The correction retains the prepared instance, root registration and published
+namespace bindings, while reinstalling the methods on each completed activation.
+The C fixture now proves that a replacement `+` is restored on reinitialization,
+canonical identities and namespace rebinding survive, and a later Prelude does
+preserve a newly replaced `+`.
+
+That regression assertion fails against the pre-correction debug prefix and
+passes after the correction, together with all 676 arithmetic cases. Float
+Clippy and the per-runtime Float unit test pass. A fresh debug prefix, with
+unchanged source hashes during installation, passes the native fixture and all
+four startup/compiled-module/saved-native-image/baked-image paths. Local logs are
+`.cargo-target/81r-reinit-{before,native,unit,clippy,prefix,prefix-native,image}.log`.
+No release validation was run.
