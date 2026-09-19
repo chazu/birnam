@@ -3560,6 +3560,10 @@ impl ExecutionState {
         found
     }
 
+    pub(crate) fn dispatch_read_depth(&self) -> usize {
+        self.dispatch_read_depth
+    }
+
     pub(crate) fn has_dispatch_readers(&self) -> bool {
         self.dispatch_read_depth != 0
     }

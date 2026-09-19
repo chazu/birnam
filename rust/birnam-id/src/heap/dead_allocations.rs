@@ -291,7 +291,7 @@ impl Heap {
 
     pub(crate) fn dead_finalizers(&self) -> impl Iterator<Item = (Oop, Finalizer)> + '_ {
         self.blocks.iter().filter_map(|(address, block)| {
-            if block.permanence == Permanence::Collectable && !block.marked {
+            if block.permanence() == Permanence::Collectable && !block.marked() {
                 block
                     .finalizer
                     .map(|finalizer| (core::ptr::with_exposed_provenance_mut(*address), finalizer))

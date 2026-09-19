@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Extract the production storage-observation boundary (Design 81M): protected
+  ordinary `withStorageView:` dispatch, runtime/allocation identities, requested
+  and padded extents, shared core-root facts and explicit coverage gaps. A new
+  `birnam-storage` native library validates owner-supplied descriptions without
+  marking, settling deferred allocations or changing collection policy.
+
 - Integer now owns its canonical objects, payload, construction, access and native
   methods in `libbirnam_integer.dylib`, loaded directly above Id. Native consumers
   acquire its explicit dependency; Prelude no longer installs Integer methods.

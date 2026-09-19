@@ -330,3 +330,13 @@ mod tests {
         assert_eq!(floor_identity.to_bytes_with_nul(), RUST_FLOOR_IDENTITY);
     }
 }
+
+/// Enter a quiescent, read-only observation through current ordinary lookup.
+/// # Safety
+/// Request and callback code/data obey abi/storage-v1.md for this entire call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_id_observe_storage_v1(
+    request: *const abi::storage::RequestV1,
+) -> abi::storage::Status {
+    unsafe { public_api::observe_storage(request) }
+}

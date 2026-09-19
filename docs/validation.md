@@ -49,3 +49,10 @@ Optimization implementation and default decisions are recorded in
 [74AK](design/74ak-bounded-qualification-and-defaults.md). The validation cleanup
 changes no language semantics or optimization defaults. Old experimental tools
 remain explicitly opt-in; their continued existence is not an acceptance gate.
+
+The production storage-observation boundary has a focused debug check:
+`mise run storage-observation`. It builds only Id, Integer and the stateless
+storage-description library, then runs the independent C fixture. Rust checks
+are `cargo test -p birnam-id runtime::storage` and `cargo test -p birnam-storage`.
+These checks require neither an installation nor release validation. The
+[storage ABI](../abi/storage-v1.md) documents coverage and lifetime limits.

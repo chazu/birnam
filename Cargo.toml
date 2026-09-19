@@ -21,6 +21,7 @@ members = [
     "rust/birnam-prelude",
     "rust/birnam-relational",
     "rust/birnam-store",
+    "rust/birnam-storage",
     "rust/birnam-tcc",
 ]
 resolver = "3"

@@ -13,6 +13,7 @@
     "birnam_id_live_heap_bytes_v1",
     "birnam_id_live_symbol_count_v1",
     "birnam_id_live_symbol_name_bytes_v1",
+    "birnam_id_observe_storage_v1",
     "birnam_id_release_stackless_generation_lease_v1",
     "birnam_id_retire_stackless_code_generation_v1",
     "birnam_id_rust_abi_descriptor_v1",

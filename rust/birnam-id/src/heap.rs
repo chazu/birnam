@@ -17,6 +17,7 @@ pub(crate) type LayoutProbe =
 pub(crate) const BLOCK_ALIGNMENT: usize = 16;
 pub(crate) const VTABLE_HEADER_SIZE: usize = size_of::<Oop>();
 pub(crate) const PAYLOAD_ALIGNMENT: usize = align_of::<Oop>();
+const _: () = assert!(PAYLOAD_ALIGNMENT == 8);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Permanence {
@@ -28,12 +29,32 @@ struct Block {
     /// Provenance-carrying allocation base returned by `alloc_zeroed`.
     base: NonNull<u8>,
     total_size: usize,
-    permanence: Permanence,
-    marked: bool,
+    // bit 0: mark; bit 1: permanence; bits 2..5: padding; bits 5..64:
+    // never-reused allocation identity. Preserve the four-word registry bound.
+    metadata: u64,
     finalizer: Option<Finalizer>,
 }
 
 impl Block {
+    fn identity(&self) -> u64 {
+        self.metadata >> 5
+    }
+    fn requested_size(&self) -> usize {
+        self.total_size - VTABLE_HEADER_SIZE - ((self.metadata >> 2) & 7) as usize
+    }
+    fn permanence(&self) -> Permanence {
+        if self.metadata & 2 == 0 {
+            Permanence::Collectable
+        } else {
+            Permanence::Permanent
+        }
+    }
+    fn marked(&self) -> bool {
+        self.metadata & 1 != 0
+    }
+    fn set_marked(&mut self, marked: bool) {
+        self.metadata = (self.metadata & !1) | u64::from(marked);
+    }
     fn payload(&self) -> NonNull<u8> {
         // SAFETY: a registered or detached Block retains its allocation base
         // until reclaim. Derivation preserves provenance without storing a
@@ -137,6 +158,7 @@ pub(crate) struct Heap {
     numeric_allocations: Vec<dead_allocations::numeric::Entry>,
     counted_frame_indices: Option<Box<dead_allocations::frame_indices::CountedFrameIndices>>,
     next_deferred_id: u64,
+    next_allocation_identity: u64,
 }
 
 mod dead_allocations;
@@ -155,6 +177,7 @@ impl Heap {
             counted_frame_indices: None,
             deferred_allocations: Vec::new(),
             next_deferred_id: 0,
+            next_allocation_identity: 0,
         }
     }
 
@@ -180,13 +203,22 @@ impl Heap {
         let payload = unsafe { payload_from_base(base) };
         let payload_address = payload.as_ptr().addr();
 
+        self.next_allocation_identity = self.next_allocation_identity
+            .checked_add(1)
+            .filter(|identity| *identity <= u64::MAX >> 5)
+            .unwrap_or_else(|| boundary::fatal_invariant("allocation identity exhausted"));
         let previous = self.blocks.insert(
             payload_address,
             Block {
                 base,
                 total_size,
-                permanence,
-                marked: false,
+                metadata: (self.next_allocation_identity << 5)
+                    | (((total_size - VTABLE_HEADER_SIZE - payload_size) as u64) << 2)
+                    | if permanence == Permanence::Permanent {
+                        2
+                    } else {
+                        0
+                    },
                 finalizer: None,
             },
         );
@@ -199,6 +231,24 @@ impl Heap {
             .checked_add(total_size)
             .unwrap_or_else(|| boundary::fatal_invariant("GC allocation byte counter overflow"));
         payload.as_ptr().cast()
+    }
+
+    /// Read-only inventory; neither materializes journals nor changes marks.
+    pub(crate) fn storage_allocations(&self) -> Vec<crate::abi::storage::AllocationV1> {
+        use crate::abi::storage::{AllocationV1, HAS_FINALIZER, PERMANENT};
+        let mut result: Vec<_> = self.blocks.values().map(|block| AllocationV1 {
+            object: block.payload().as_ptr().cast(),
+            identity: block.identity(),
+            requested_size: block.requested_size(),
+            padded_size: block.total_size - VTABLE_HEADER_SIZE,
+            allocation_bytes: block.total_size,
+            behavior: unsafe { vtable_slot_from_payload(block.payload()).read() },
+            flags: if block.permanence() == Permanence::Permanent { PERMANENT } else { 0 }
+                | if block.finalizer.is_some() { HAS_FINALIZER } else { 0 },
+            trace_hook: None,
+        }).collect();
+        result.sort_unstable_by_key(|entry| entry.identity);
+        result
     }
 
     pub(crate) fn contains(&self, object: Oop) -> bool {
@@ -259,7 +309,7 @@ impl Heap {
     pub(crate) fn permanence_of(&self, object: Oop) -> Option<Permanence> {
         self.blocks
             .get(&object.addr())
-            .map(|block| block.permanence)
+            .map(|block| block.permanence())
     }
 
     /// Vtable headers of permanent objects are strong floor edges even though
@@ -267,7 +317,7 @@ impl Heap {
     pub(crate) fn permanent_vtables(&self) -> Vec<Oop> {
         self.blocks
             .values()
-            .filter(|block| block.permanence == Permanence::Permanent)
+            .filter(|block| block.permanence() == Permanence::Permanent)
             .map(|block| {
                 // SAFETY: every registered block owns one initialized vtable
                 // header immediately before its payload.
@@ -278,7 +328,7 @@ impl Heap {
     }
 
     pub(crate) fn is_marked(&self, object: Oop) -> Option<bool> {
-        self.blocks.get(&object.addr()).map(|block| block.marked)
+        self.blocks.get(&object.addr()).map(|block| block.marked())
     }
 
     /// Mark exactly one registered collectable payload address. Interior,
@@ -287,10 +337,10 @@ impl Heap {
         let Some(block) = self.blocks.get_mut(&address) else {
             return false;
         };
-        if block.permanence == Permanence::Permanent || block.marked {
+        if block.permanence() == Permanence::Permanent || block.marked() {
             return false;
         }
-        block.marked = true;
+        block.set_marked(true);
         true
     }
 
@@ -344,7 +394,7 @@ impl Heap {
 
     pub(crate) fn clear_marks(&mut self) {
         for block in self.blocks.values_mut() {
-            block.marked = false;
+            block.set_marked(false);
         }
     }
 
@@ -354,7 +404,7 @@ impl Heap {
         self.blocks
             .iter()
             .filter_map(|(address, block)| {
-                (block.permanence == Permanence::Collectable && !block.marked).then_some(*address)
+                (block.permanence() == Permanence::Collectable && !block.marked()).then_some(*address)
             })
             .collect()
     }
@@ -363,7 +413,7 @@ impl Heap {
     /// live for a finalizer. Marked and permanent blocks cannot be detached.
     pub(crate) fn detach_dead_collectable(&mut self, address: usize) -> Option<DetachedBlock> {
         let block = self.blocks.get(&address)?;
-        if block.permanence != Permanence::Collectable || block.marked {
+        if block.permanence() != Permanence::Collectable || block.marked() {
             return None;
         }
         let block = self
@@ -383,7 +433,7 @@ impl Heap {
         let Some(block) = self.blocks.get_mut(&object.addr()) else {
             return false;
         };
-        if block.permanence == Permanence::Permanent {
+        if block.permanence() == Permanence::Permanent {
             return false;
         }
         block.finalizer = Some(finalizer);
@@ -582,7 +632,7 @@ mod tests {
     #[test]
     fn blocks_have_exact_base_header_and_payload_geometry() {
         // Metadata stays within four words despite preserving finalizers and
-        // exact membership. The former redundant payload pointer cost five.
+        // exact membership, requested extents and allocation identities.
         assert!(size_of::<Block>() <= 4 * size_of::<usize>());
         let mut heap = Heap::new();
         let sizes = [0, 1, 7, 8, 9, 15, 16, 17, 63, 64, 65, 255, 256, 4095];
@@ -606,6 +656,9 @@ mod tests {
                 heap.payload_size(object),
                 Some(expected_total - VTABLE_HEADER_SIZE)
             );
+            let entry = heap.storage_allocations().into_iter().find(|entry| entry.object == object).unwrap();
+            assert_eq!(entry.requested_size, requested);
+            assert_eq!(entry.identity, index as u64 + 1);
             assert_eq!(heap.permanence_of(object), Some(permanence));
             assert_eq!(heap.is_marked(object), Some(false));
             assert_eq!(heap.has_finalizer(object), Some(false));

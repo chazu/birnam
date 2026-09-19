@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 
 const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id.dylib",
+    "libbirnam_storage.dylib",
     "libbirnam_integer.dylib",
     "libbirnam_object_model.dylib",
     "libbirnam_id_artifact.dylib",
@@ -492,6 +493,7 @@ fn run_status(command: &mut Command, label: &str) -> Result<(), String> {
 fn native_library_source(canonical: &str) -> &'static str {
     match canonical {
         "libbirnam_id.dylib" => "libbirnam_id.dylib",
+        "libbirnam_storage.dylib" => "libbirnam_storage.dylib",
         "libbirnam_integer.dylib" => "libbirnam_integer.dylib",
         "libbirnam_object_model.dylib" => "libbirnam_object_model.dylib",
         "libbirnam_id_artifact.dylib" => "libbirnam_artifact.dylib",

@@ -84,6 +84,13 @@ passes; the user explicitly waived release validation. Continue with environment
 remaining primitive values, reflection and storage/collection, one committed
 extraction at a time.
 
+[81M](../design/81m-production-storage-observation.md) brings storage observation
+into production: Id supplies protected allocation/core-root/core-edge facts, and
+`birnam-storage` validates explicit owner descriptions. Existing GC and image
+semantics remain in place. Deferred identities, native roots, legacy providers
+and missing payload descriptions are reported as coverage gaps. The next seed
+promotion is tracing; full provider migration and reclamation remain separate.
+
 ## Selected sequence — 2026-09-06
 
 The current inquiry is [Design 74](../design/74-malleable-multicore-execution-and-optimization.md),

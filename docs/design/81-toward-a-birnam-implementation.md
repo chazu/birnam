@@ -359,3 +359,8 @@ family, primitive operations and methods. Its explicit native dependency reduces
 IdApi v4 to 45 fields / 360 bytes. The remaining Machine and optimizer components
 consume that dependency; the host and those runtime components are still Rust.
 Focused validation passes; release validation was explicitly waived.
+
+[81M](81m-production-storage-observation.md) adds protected production storage
+facts and a separately loaded description validator. GC policy, native-root
+capture and legacy tracing remain in the current runtime; their coverage gaps
+are explicit. The next seed promotion is the tracer.

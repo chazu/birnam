@@ -20,7 +20,18 @@ fn runtime() -> &'static Runtime {
     // SAFETY: id_init leaks the owning Bootstrap before returning the API, so
     // this exact Runtime remains live for the process. Runtime enforces its
     // constructing-thread ownership on every operation.
-    unsafe { &*pointer }
+    let runtime = unsafe { &*pointer };
+    runtime.require_storage_access();
+    runtime
+}
+
+/// Host observation rejects nested entry without going through ordinary access.
+pub(crate) unsafe fn observe_storage(request: *const birnam_abi::storage::RequestV1) -> i32 {
+    let pointer = PUBLIC_RUNTIME.load(Ordering::Acquire);
+    if pointer.is_null() {
+        return birnam_abi::storage::BUSY;
+    }
+    unsafe { (&*pointer).observe_storage(request) }
 }
 
 #[cfg(test)]
@@ -29,11 +40,13 @@ pub(crate) fn runtime_for_string_cleanup_test() -> &'static Runtime {
 }
 
 unsafe extern "C" fn api_dlopen(path: *const c_char, mode: c_int) -> *mut c_void {
+    let _ = runtime();
     // SAFETY: this is a transparent pass-through of the platform loader ABI.
     unsafe { crate::loader::open(path, mode) }
 }
 
 unsafe extern "C" fn api_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
+    let _ = runtime();
     // SAFETY: this is a transparent pass-through of the platform loader ABI.
     unsafe { crate::loader::symbol(handle, name) }
 }

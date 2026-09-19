@@ -56,6 +56,7 @@ mod consumer_lifetime_probe;
 #[cfg(test)]
 mod deopt_experiment;
 mod dispatch_cache;
+pub(crate) mod storage;
 #[cfg(all(test, target_os = "macos"))]
 mod generated_deopt_experiment;
 mod guarded_dispatch;
@@ -222,6 +223,7 @@ struct BlockVtableCatalogEntry {
 /// One runtime owned by the thread that constructed it.
 pub(crate) struct Runtime {
     owner: u64,
+    observation: storage::ObservationState,
     collection_phase: Cell<CollectionPhase>,
     state: UnsafeCell<RuntimeState>,
     entry_scopes: UnsafeCell<Vec<MachineCapability>>,
@@ -410,6 +412,7 @@ impl Runtime {
     ) -> Self {
         Self {
             owner: current_thread_token(),
+            observation: storage::ObservationState::new(),
             collection_phase: Cell::new(CollectionPhase::Idle),
             entry_scopes: UnsafeCell::new(Vec::new()),
             slot_guard_cache: Cell::new((u64::MAX, false)),
@@ -456,10 +459,7 @@ impl Runtime {
     }
 
     fn assert_owner(&self) {
-        boundary::require_invariant(
-            current_thread_token() == self.owner,
-            "Rust floor entered from a non-owner thread",
-        );
+        self.require_storage_access();
     }
 
     fn require_allocation_allowed(&self) {
@@ -4881,7 +4881,8 @@ impl Runtime {
     }
 }
 
-fn mark_floor_roots(state: &mut RuntimeState, marker: &mut Marker) {
+fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
+    let mut roots = Vec::new();
     let export_roots = state.environment.roots();
     let globals = state.globals.roots();
     let canonical = state
@@ -4912,16 +4913,23 @@ fn mark_floor_roots(state: &mut RuntimeState, marker: &mut Marker) {
         .chain(permanent_vtable_headers)
         .chain(permanent_vtable_edges)
     {
-        marker.mark_oop(&mut state.heap, root);
+        roots.push(root);
     }
     for root in state
         .execution
         .registration_roots_excluding_generation(state.suppressed_registration_generation)
     {
-        marker.mark_oop(&mut state.heap, root);
+        roots.push(root);
     }
     for entry in &state.block_vtable_catalog {
-        marker.mark_oop(&mut state.heap, entry.vtable);
+        roots.push(entry.vtable);
+    }
+    roots
+}
+
+fn mark_floor_roots(state: &mut RuntimeState, marker: &mut Marker) {
+    for root in floor_roots(state) {
+        marker.mark_oop(&mut state.heap, root);
     }
 }
 
@@ -5087,7 +5095,9 @@ pub(crate) fn with_active<R>(operation: impl FnOnce(&Runtime) -> R) -> R {
         boundary::require_invariant(!runtime.is_null(), "no active Rust floor runtime");
         // SAFETY: enter installs a pointer to a live owner-thread Runtime for
         // this dynamic extent, including synchronous reentrant callbacks.
-        operation(unsafe { &*runtime })
+        let runtime = unsafe { &*runtime };
+        runtime.require_storage_access();
+        operation(runtime)
     })
 }
 
@@ -5102,7 +5112,9 @@ pub(crate) fn with_active_if_present<R>(operation: impl FnOnce(&Runtime) -> R) -
         }
         // SAFETY: enter installs this live pointer only after assert_owner and
         // restores the previous TLS value before its Runtime can go out of scope.
-        Some(operation(unsafe { &*runtime }))
+        let runtime = unsafe { &*runtime };
+        runtime.require_storage_access();
+        Some(operation(runtime))
     })
 }
 

@@ -150,3 +150,7 @@ run = "./scripts/bench.sh --release --floor=rust"
 [tasks.bench-compare]
 description = "Diff two benchmark results; exits 1 on regression past threshold"
 run = "./scripts/bench-compare.sh {{arg(name='old')}} {{arg(name='new')}}"
+
+[tasks.storage-observation]
+description = "Check the production storage boundary with focused debug fixtures"
+run = "scripts/storage-observation-test.sh"

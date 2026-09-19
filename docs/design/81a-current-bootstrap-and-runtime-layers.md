@@ -8,9 +8,10 @@
 > descriptions are not evidence of the current implementation.
 
 **2026-09-18 update:** [81L](81l-production-integer-extraction.md) places Integer
-representation, construction and behavior in `libbirnam_integer.dylib`, directly
-after Id. [81J](81j-private-behavior-extraction.md)'s object-model library follows
-it, before Artifact. The native inventory contains 17 libraries. IdApi v4 has
+representation, construction and behavior in `libbirnam_integer.dylib`.
+[81M](81m-production-storage-observation.md) adds the stateless storage-description
+validator immediately after Id, followed by Integer. [81J](81j-private-behavior-extraction.md)'s object-model library follows
+it, before Artifact. The native inventory contains 18 libraries. IdApi v4 has
 45 fields / 360 bytes after 81J, [81K](81k-owner-and-parent-protocols.md), and 81L.
 The remaining Machine and optimizer components acquire Integer explicitly.
 This is still a Rust implementation; build stage and implementation language

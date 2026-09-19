@@ -165,6 +165,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-storage"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-store"
 version = "0.0.0"
 dependencies = [

@@ -15,7 +15,7 @@ fi
 
 test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
-test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 45
+test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 46
 
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v4 -Iscripts/fixtures \
   abi/fixtures/idapi-v4/client.c -o "$prefix_parent/idapi-client"
@@ -90,7 +90,7 @@ assert receipt["admission_contract"]["candidate_manifest_version"] == 4
 assert len(receipt["admission_contract"]["id_api_fingerprint"]) == 64
 assert receipt["publication"]["method"] == "atomic-sibling-rename"
 assert receipt["publication"]["durability"] == "fsync-staged-files-and-directories-before-and-after-rename"
-assert len(receipt["dynamic_libraries"]) == 17
+assert len(receipt["dynamic_libraries"]) == 18
 assert len(receipt["stage1_modules"]) == 28
 PY
 

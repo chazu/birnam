@@ -498,6 +498,9 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
         runtime.add_method(vtable_vt, selector, method);
     }
 
+    let storage_selector = runtime.intern(b"withStorageView:").expect("static storage selector");
+    runtime.add_method(vtable_vt, storage_selector, crate::runtime::storage::with_storage_view);
+
     runtime.install_canonical(CanonicalObjects {
         symbol_list,
         environment,
@@ -880,7 +883,7 @@ mod tests {
             assert_eq!(runtime.payload_size(expected), Some(80));
         }
 
-        let selector_names: [&[u8]; 18] = [
+        let selector_names: [&[u8]; 19] = [
             b"lookup",
             b"addMethod",
             b"removeMethod:",
@@ -897,6 +900,7 @@ mod tests {
             b"ownerOf:put:",
             b"parentOf:",
             b"parentOf:put:",
+            b"withStorageView:",
             b"Integer",
             b"IntegerVt",
         ];
@@ -931,6 +935,7 @@ mod tests {
             runtime.intern(b"ownerOf:put:").unwrap(),
             runtime.intern(b"parentOf:").unwrap(),
             runtime.intern(b"parentOf:put:").unwrap(),
+            runtime.intern(b"withStorageView:").unwrap(),
         ];
         for (index, selector) in meta_selectors.into_iter().enumerate() {
             assert_eq!(
