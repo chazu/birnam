@@ -707,6 +707,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
+- `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for Prelude.
 - `rust/birnam-system-output/` — System stdout methods, installed by Prelude using shared text views.
 - `rust/birnam-text-view/` — shared borrowed String/printable byte views for Prelude consumers.
 - `rust/birnam-system-gc/` — System collector queries and policy controls, installed by Prelude.
@@ -765,6 +766,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
   canonical objects and lookup/update operations through an
   [explicit dependency](abi/map-v2.md). [Map methods and traversal](docs/design/81ag-production-map-methods.md)
   complete native Map ownership. Run `mise run map` for focused checks.
+- [Error value policy](docs/design/81am-production-error-value.md) shares Prelude's
+  [lazy factory and exact-recognition helpers](abi/error-value-v1.md), preserving
+  callback order and pre-Error nil behavior. Run `mise run error-value`.
 - [System output](docs/design/81al-production-system-output.md) owns print:/println:
   through an [explicit installer](abi/system-output-v1.md), preserving byte output,
   flush behavior and original execution callbacks. Run `mise run system-output`.

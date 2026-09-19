@@ -18,6 +18,7 @@ members = [
     "rust/birnam-collection-value",
     "rust/birnam-collect",
     "rust/birnam-error",
+    "rust/birnam-error-value",
     "rust/birnam-float",
     "rust/birnam-word",
     "rust/birnam-id",

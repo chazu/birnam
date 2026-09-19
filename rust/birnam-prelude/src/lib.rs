@@ -3,6 +3,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use birnam_abi::{IdApi, ModuleInitFn, Oop, borrowed_oop_args};
+use birnam_abi::error_value::{is_error, numeric_error};
 use birnam_abi::text_view::{printable_string, string_bytes};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -107,45 +108,12 @@ unsafe fn block_loop(
     }
 }
 
-unsafe fn is_error(api: &IdApi, value: Oop) -> bool {
-    if value.is_null() || unsafe { (api.isExported)(c"ErrorVt".as_ptr()) } == 0 {
-        return false;
-    }
-    let error_vt = unsafe { (api.import)(c"ErrorVt".as_ptr()) };
-    !error_vt.is_null() && unsafe { (api.vtableOf)(value) } == error_vt
-}
-
 unsafe extern "C" fn block_while_true(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     unsafe { block_loop(self_object, args, count, true) }
 }
 
 unsafe extern "C" fn block_while_false(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     unsafe { block_loop(self_object, args, count, false) }
-}
-
-unsafe fn make_error(api: &IdApi, kind: Oop, message: Oop) -> Oop {
-    // Error owns its representation and Object protocol in the standalone
-    // Error rung. Prelude faults are intentionally lazy: before that rung is
-    // loaded, the floor has no catchable Error value and answers nil, matching
-    // the native prelude's `Error` import behavior.
-    if unsafe { (api.isExported)(c"Error".as_ptr()) } == 0 {
-        return api.nilObj;
-    }
-    let factory = unsafe { (api.import)(c"Error".as_ptr()) };
-    if factory.is_null() {
-        return api.nilObj;
-    }
-    let selector = unsafe { intern(api, b"kind:message:\0") };
-    let args = [kind, message];
-    // SAFETY: the standalone Error factory owns this selector and the stack
-    // argument array remains live for the duration of the synchronous send.
-    unsafe { (api.send)(factory, selector, args.as_ptr(), args.len()) }
-}
-
-unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
-    let kind = unsafe { intern(api, kind) };
-    let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
-    unsafe { make_error(api, kind, message) }
 }
 
 fn path_from_bytes(bytes: &[u8]) -> Option<&Path> {
@@ -512,3 +480,5 @@ birnam_abi::system_gc_dependency!();
 birnam_abi::text_view_dependency!();
 
 birnam_abi::system_output_dependency!();
+
+birnam_abi::error_value_dependency!();

@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Move Prelude's shared Error construction/recognition helpers into
+  `birnam-error-value` (Design 81AM). Preserve eager kind/message construction,
+  lazy Error exports, factory/behavior snapshots and fresh dispatch.
+
 - Move System print:/println: and their stdout writer into `birnam-system-output`
   (Design 81AL). Preserve registration snapshots, original execution callbacks,
   borrowed byte conversion, newline/flush order and ignored IO errors.

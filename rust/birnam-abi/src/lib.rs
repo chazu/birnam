@@ -16,6 +16,7 @@ pub mod printing;
 pub mod system_gc;
 pub mod system_output;
 pub mod text_view;
+pub mod error_value;
 pub mod range;
 pub mod vector;
 pub mod map;

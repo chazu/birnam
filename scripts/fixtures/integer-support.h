@@ -14,6 +14,7 @@
 #include "../../abi/fixtures/system-gc-v1/system_gc_v1.h"
 #include "../../abi/fixtures/system-output-v1/system_output_v1.h"
 #include "../../abi/fixtures/text-view-v1/text_view_v1.h"
+#include "../../abi/fixtures/error-value-v1/error_value_v1.h"
 #include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -58,6 +59,8 @@ static const CollectionValueApiV1 *fixture_collection_value;
 static const MapApiV1 *fixture_map; /* Historical storage oracle only. */
 static const MapApiV2 *fixture_map_v2;
 static inline void fixture_prepare_map(IdApi *api);
+static const ErrorValueApiV1 *fixture_error_value;
+static inline void fixture_prepare_error_value(IdApi *api);
 static const TextViewApiV1 *fixture_text_view;
 static inline void fixture_prepare_text_view(IdApi *api);
 static const SystemOutputApiV1 *fixture_system_output;
@@ -141,6 +144,8 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
         if(map_v2_attach) assert(map_v2_attach(fixture_map_v2)==1);
         else assert(map_attach(fixture_map)==1);
     }
+    ErrorValueDependencyV1 error_attach=(ErrorValueDependencyV1)api->dlsym_fn(image,"birnam_error_value_dependency_v1");
+    if(error_attach) { fixture_prepare_error_value(api); assert(error_attach(fixture_error_value)==1); }
     TextViewDependencyV1 text_attach=(TextViewDependencyV1)api->dlsym_fn(image,"birnam_text_view_dependency_v1");
     if(text_attach) { fixture_prepare_text_view(api); assert(text_attach(fixture_text_view)==1); }
     SystemOutputDependencyV1 output_attach=(SystemOutputDependencyV1)api->dlsym_fn(image,"birnam_system_output_dependency_v1");
@@ -186,6 +191,16 @@ static inline void fixture_prepare_map(IdApi *api) {
         MapProviderV1 previous=(MapProviderV1)api->dlsym_fn(map,"birnam_map_provider_v1"); assert(previous && !previous());
         init(api,NULL); fixture_map=previous(); assert(fixture_map);
     }
+}
+static inline void fixture_prepare_error_value(IdApi *api) {
+    if(fixture_error_value) return;
+    const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_error_value.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+    assert(n>0 && (size_t)n<sizeof(path));
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
+    ErrorValueProviderV1 provide=(ErrorValueProviderV1)api->dlsym_fn(image,"birnam_error_value_provider_v1"); assert(provide && !provide());
+    init(api,NULL); fixture_error_value=provide(); assert(fixture_error_value);
 }
 static inline void fixture_prepare_text_view(IdApi *api) {
     if(fixture_text_view) return;
