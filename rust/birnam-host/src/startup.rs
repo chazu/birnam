@@ -2041,7 +2041,7 @@ pub struct LoadedStack {
     string: *mut birnam_abi::string::StringApiV1,
     range: *const birnam_abi::range::ApiV2,
     vector: *const birnam_abi::vector::ApiV2,
-    map: *const birnam_abi::map::ApiV1,
+    map: *const birnam_abi::map::ApiV2,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2280,9 +2280,9 @@ impl LoadedStack {
                 return Err(ModuleError::CollectionValueDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_map_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_map_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::map::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::map::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.map.is_null() || unsafe { attach(self.map) } != 1 {
                 return Err(ModuleError::MapDependencyRejected { path: path.to_path_buf() });
             }
@@ -2343,9 +2343,9 @@ impl LoadedStack {
             }
             self.collection_value = provided;
         }
-        let map_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_map_provider_v1".as_ptr()) };
+        let map_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_map_provider_v2".as_ptr()) };
         if !map_provider.is_null() {
-            let provide: birnam_abi::map::ProviderV1 = unsafe { std::mem::transmute(map_provider) };
+            let provide: birnam_abi::map::ProviderV2 = unsafe { std::mem::transmute(map_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::map::attach(provided) } != 1 {
                 return Err(ModuleError::MapDependencyRejected { path: path.to_path_buf() });

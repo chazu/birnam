@@ -8,7 +8,7 @@
 #include "../../abi/fixtures/range-v1/range_v1.h"
 #include "../../abi/fixtures/range-v2/range_v2.h"
 #include "../../abi/fixtures/vector-v2/vector_v2.h"
-#include "../../abi/fixtures/map-v1/map_v1.h"
+#include "../../abi/fixtures/map-v2/map_v2.h"
 #include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -50,7 +50,9 @@ static inline Oop fixture_vector_at(Oop object,size_t index) {
 }
 static inline void fixture_prepare_vector(IdApi *api);
 static const CollectionValueApiV1 *fixture_collection_value;
-static const MapApiV1 *fixture_map;
+static const MapApiV1 *fixture_map; /* Historical storage oracle only. */
+static const MapApiV2 *fixture_map_v2;
+static inline void fixture_prepare_map(IdApi *api);
 static inline Oop fixture_integer_make(int64_t value) {
     assert(fixture_integer);
     return fixture_integer->make(fixture_integer->context, value);
@@ -117,18 +119,12 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
         else if (range_attach) assert(range_attach(fixture_range)==1);
         else assert(previous_attach(fixture_range_methods)==1);
     }
+    MapDependencyV2 map_v2_attach=(MapDependencyV2)api->dlsym_fn(image,"birnam_map_dependency_v2");
     MapDependencyV1 map_attach=(MapDependencyV1)api->dlsym_fn(image,"birnam_map_dependency_v1");
-    if(map_attach) {
-        if(!fixture_map) {
-            const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
-            int n=snprintf(path,sizeof(path),"%.*s/libbirnam_map.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
-            assert(n>0 && (size_t)n<sizeof(path));
-            void *map=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(map); fixture_attach_integer(api,map);
-            ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(map,"module_init"); assert(init);
-            MapProviderV1 provide=(MapProviderV1)api->dlsym_fn(map,"birnam_map_provider_v1"); assert(provide && !provide());
-            init(api,NULL); fixture_map=provide(); assert(fixture_map);
-        }
-        assert(map_attach(fixture_map)==1);
+    if(map_v2_attach || map_attach) {
+        fixture_prepare_map(api);
+        if(map_v2_attach) assert(map_v2_attach(fixture_map_v2)==1);
+        else assert(map_attach(fixture_map)==1);
     }
 
 }
@@ -150,6 +146,21 @@ static inline void fixture_prepare_vector(IdApi *api) {
         fixture_vector_ops=(FixtureVectorOps){fixture_vector_v1->empty,fixture_vector_v1->push,fixture_vector_v1->count,fixture_vector_v1->at,fixture_vector_v1->behavior};
     }
     fixture_vector=&fixture_vector_ops;
+}
+static inline void fixture_prepare_map(IdApi *api) {
+    if(fixture_map || fixture_map_v2) return;
+    const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_map.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+    assert(n>0 && (size_t)n<sizeof(path));
+    void *map=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(map); fixture_attach_integer(api,map);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(map,"module_init"); assert(init);
+    MapProviderV2 current=(MapProviderV2)api->dlsym_fn(map,"birnam_map_provider_v2");
+    if(current) {
+        assert(!current()); init(api,NULL); fixture_map_v2=current(); assert(fixture_map_v2);
+    } else {
+        MapProviderV1 previous=(MapProviderV1)api->dlsym_fn(map,"birnam_map_provider_v1"); assert(previous && !previous());
+        init(api,NULL); fixture_map=previous(); assert(fixture_map);
+    }
 }
 static inline void fixture_mount_integer(IdApi *api, const char *floor_path) {
     assert(strlen(floor_path)<sizeof(fixture_floor_path));

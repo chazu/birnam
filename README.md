@@ -709,7 +709,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
 - `rust/birnam-collection-value/` — shared native value comparison and key hashing for Vector and Map.
 - `rust/birnam-vector/` — independently loaded Vector storage, trie helpers, canonical objects, methods and sorting roots.
-- `rust/birnam-map/` — independently loaded Map storage, canonical objects and native HAMT helpers; methods remain in Collection.
+- `rust/birnam-map/` — independently loaded Map storage, canonical objects, methods, traversal and printing.
 - `rust/birnam-range/` — independently loaded Range representation, construction and all Range methods; uses native Vector storage.
 - `rust/birnam-string-builder/` — independently loaded StringBuilder buffer ownership and methods.
 - `rust/birnam-string/` — independently loaded String representation, byte owner and methods; splitting remains with Collection.
@@ -758,7 +758,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
   complete native Vector ownership. Run `mise run vector` for focused checks.
 - [Map storage](docs/design/81af-production-map-storage.md) owns the native HAMT,
   canonical objects and lookup/update operations through an
-  [explicit dependency](abi/map-v1.md). Run `mise run map` for focused checks.
+  [explicit dependency](abi/map-v2.md). [Map methods and traversal](docs/design/81ag-production-map-methods.md)
+  complete native Map ownership. Run `mise run map` for focused checks.
 - [Range methods](docs/design/81z-production-range-methods.md) use an explicit
   construction dependency to retain registration order and publication behavior.
   [Range representation](docs/design/81aa-production-range-storage.md) now lives

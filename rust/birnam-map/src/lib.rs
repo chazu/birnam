@@ -1,8 +1,8 @@
-//! Map canonical identities, representation and native HAMT storage.
+//! Map canonical identities, HAMT storage, methods, traversal and printing.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::map::{ApiV1, BehaviorsV1};
-use birnam_abi::{IdApi, MarkFn, Oop};
-use core::ffi::c_void;
+use birnam_abi::map::{ApiV2, BehaviorsV1};
+use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
+use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Once, OnceLock};
@@ -63,6 +63,11 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
         let object = root.load(Ordering::Acquire) as Oop;
         if !object.is_null() {
             unsafe { mark(object) };
+        }
+    }
+    if let Some(runtime) = RUNTIME.get() {
+        for value in [runtime.value, runtime.value2, runtime.print_string] {
+            unsafe { mark(value as Oop) };
         }
     }
 }
@@ -576,21 +581,300 @@ unsafe extern "C" fn slot(node: Oop, index: usize) -> Oop {
 unsafe extern "C" fn behavior() -> Oop {
     family().map_vt as Oop
 }
-static API: ApiV1 = ApiV1 {
-    version: 1,
-    byte_size: size_of::<ApiV1>(),
+struct Runtime {
+    api: usize,
+    value: usize,
+    value2: usize,
+    print_string: usize,
+}
+static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+fn runtime() -> &'static Runtime {
+    RUNTIME
+        .get()
+        .unwrap_or_else(|| abort("Map methods were not installed"))
+}
+unsafe fn api_ref() -> &'static IdApi {
+    // Family retains the first Collection-selected table for the process lifetime.
+    unsafe { &*(runtime().api as *const IdApi) }
+}
+unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
+    unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
+}
+unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
+    unsafe { borrowed_oop_args(args, count)?.first().copied() }
+}
+unsafe fn map_collect_values(node: Oop, mut result: Oop, keys: bool) -> Oop {
+    if node.is_null() {
+        return result;
+    }
+    let slots = unsafe { self::slot_count(node) };
+    for index in (0..slots).step_by(2) {
+        let key = unsafe { self::slot(node, index) };
+        if key.is_null() {
+            let child = unsafe { self::slot(node, index + 1) };
+            result = unsafe { map_collect_values(child, result, keys) };
+        } else {
+            let item = if keys {
+                key
+            } else {
+                unsafe { self::slot(node, index + 1) }
+            };
+            result = unsafe { birnam_abi::vector::push(result, item) };
+        }
+    }
+    result
+}
+
+unsafe fn map_walk_keys_and_values_do(node: Oop, block: Oop, api: &IdApi) {
+    if node.is_null() {
+        return;
+    }
+    let slots = unsafe { self::slot_count(node) };
+    let selector = runtime().value2 as Oop;
+    for index in (0..slots).step_by(2) {
+        let key = unsafe { self::slot(node, index) };
+        if key.is_null() {
+            unsafe { map_walk_keys_and_values_do(self::slot(node, index + 1), block, api) };
+        } else {
+            let value = unsafe { self::slot(node, index + 1) };
+            let arguments = [key, value];
+            unsafe { (api.send)(block, selector, arguments.as_ptr(), 2) };
+        }
+    }
+}
+
+unsafe fn map_append_print(api: &IdApi, node: Oop, output: &mut Vec<u8>, first: &mut bool) -> bool {
+    if node.is_null() {
+        return true;
+    }
+    let slots = unsafe { self::slot_count(node) };
+    let selector = runtime().print_string as Oop;
+    for index in (0..slots).step_by(2) {
+        let key = unsafe { self::slot(node, index) };
+        if key.is_null() {
+            if !unsafe { map_append_print(api, self::slot(node, index + 1), output, first) } {
+                return false;
+            }
+            continue;
+        }
+        if !*first {
+            output.extend_from_slice(b", ");
+        }
+        *first = false;
+        let value = unsafe { self::slot(node, index + 1) };
+        for (position, object) in [key, value].into_iter().enumerate() {
+            let printed = unsafe { (api.send)(object, selector, ptr::null(), 0) };
+            if printed.is_null() {
+                return false;
+            }
+            let mut length = 0;
+            let bytes = unsafe { (birnam_abi::string::bytes)(printed, &mut length) };
+            if bytes.is_null() {
+                return false;
+            }
+            output.extend_from_slice(unsafe { core::slice::from_raw_parts(bytes, length) });
+            if position == 0 {
+                output.extend_from_slice(b" -> ");
+            }
+        }
+    }
+    true
+}
+
+unsafe extern "C" fn map_new(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { self::empty() }
+}
+
+unsafe extern "C" fn map_at_put(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let key = arguments[0];
+    let value = arguments[1];
+    if key.is_null() || value.is_null() {
+        return api.nilObj;
+    }
+    unsafe { self::put(api, self_object, key, value) }
+}
+
+unsafe extern "C" fn map_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(key) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let value = unsafe { self::find(api, self_object, key) };
+    if value.is_null() { api.nilObj } else { value }
+}
+
+unsafe extern "C" fn map_at_if_absent(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 2 {
+        return api.nilObj;
+    }
+    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
+        return api.nilObj;
+    };
+    let key = arguments[0];
+    let fallback = arguments[1];
+    let value = unsafe { self::find(api, self_object, key) };
+    if !value.is_null() {
+        return value;
+    }
+    unsafe { (api.send)(fallback, runtime().value as Oop, ptr::null(), 0) }
+}
+
+unsafe extern "C" fn map_includes_key(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(key) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    let value = unsafe { self::find(api, self_object, key) };
+    if value.is_null() {
+        api.falseObj
+    } else {
+        api.trueObj
+    }
+}
+
+unsafe extern "C" fn map_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    unsafe { (birnam_abi::integer::make)(self::count(self_object) as i64) }
+}
+
+unsafe extern "C" fn map_keys(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let result = unsafe { birnam_abi::vector::empty() };
+    unsafe { map_collect_values(self::root(self_object), result, true) }
+}
+
+unsafe extern "C" fn map_values(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let result = unsafe { birnam_abi::vector::empty() };
+    unsafe { map_collect_values(self::root(self_object), result, false) }
+}
+
+unsafe extern "C" fn map_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    if count != 1 {
+        return unsafe { api_ref() }.nilObj;
+    }
+    let values = unsafe { map_values(self_object, ptr::null(), 0) };
+    let result = unsafe { birnam_abi::vector::for_each(values, args, count) };
+    if result.is_null() {
+        return result;
+    }
+    self_object
+}
+
+unsafe extern "C" fn map_inject(self_object: Oop, args: *const Oop, count: usize) -> Oop {
+    if count != 2 {
+        return unsafe { api_ref() }.nilObj;
+    }
+    let values = unsafe { map_values(self_object, ptr::null(), 0) };
+    unsafe { birnam_abi::vector::inject(values, args, count) }
+}
+
+unsafe extern "C" fn map_keys_and_values_do(
+    self_object: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 1 {
+        return api.nilObj;
+    }
+    let Some(block) = (unsafe { argument(args, count) }) else {
+        return api.nilObj;
+    };
+    unsafe { map_walk_keys_and_values_do(self::root(self_object), block, api) };
+    self_object
+}
+
+unsafe extern "C" fn map_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
+    let api = unsafe { api_ref() };
+    if count != 0 {
+        return api.nilObj;
+    }
+    let mut output = Vec::from(&b"{"[..]);
+    let mut first = true;
+    let ok = unsafe { map_append_print(api, self::root(self_object), &mut output, &mut first) };
+    if !ok {
+        return api.nilObj;
+    }
+    output.push(b'}');
+    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
+}
+
+unsafe extern "C" fn install(api_pointer: *mut IdApi, value: Oop, value2: Oop, print_string: Oop) {
+    RUNTIME.get_or_init(|| Runtime {
+        api: family().api,
+        value: value as usize,
+        value2: value2 as usize,
+        print_string: print_string as usize,
+    });
+    let api = unsafe { &*api_pointer };
+    unsafe {
+        (api.method)(self::behavior(), intern(api, b"new\0"), map_new);
+        (api.method)(self::behavior(), intern(api, b"clone\0"), map_new);
+        (api.method)(self::behavior(), intern(api, b"at:put:\0"), map_at_put);
+        (api.method)(self::behavior(), intern(api, b"at:\0"), map_at);
+        (api.method)(
+            self::behavior(),
+            intern(api, b"at:ifAbsent:\0"),
+            map_at_if_absent,
+        );
+        (api.method)(
+            self::behavior(),
+            intern(api, b"includesKey:\0"),
+            map_includes_key,
+        );
+        (api.method)(self::behavior(), intern(api, b"size\0"), map_size);
+        (api.method)(self::behavior(), intern(api, b"keys\0"), map_keys);
+        (api.method)(self::behavior(), intern(api, b"values\0"), map_values);
+        (api.method)(self::behavior(), intern(api, b"do:\0"), map_do);
+        (api.method)(self::behavior(), intern(api, b"inject:into:\0"), map_inject);
+        (api.method)(
+            self::behavior(),
+            intern(api, b"keysAndValuesDo:\0"),
+            map_keys_and_values_do,
+        );
+        (api.method)(
+            self::behavior(),
+            intern(api, b"printString\0"),
+            map_print_string,
+        );
+    }
+}
+static API: ApiV2 = ApiV2 {
+    version: 2,
+    byte_size: size_of::<ApiV2>(),
     prepare: Some(prepare),
     finish_prototype: Some(finish_prototype),
     set_layout: Some(set_layout),
     publish: Some(publish),
-    empty: Some(empty),
-    put: Some(put),
-    find: Some(find),
-    count: Some(count),
-    root: Some(root),
-    slot_count: Some(slot_count),
-    slot: Some(slot),
-    behavior: Some(behavior),
+    install: Some(install),
 };
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_void {
@@ -601,7 +885,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void) -> *mut c_
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_map_provider_v1() -> *const ApiV1 {
+pub extern "C" fn birnam_map_provider_v2() -> *const ApiV2 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {
@@ -613,3 +897,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
 birnam_abi::collection_value_dependency!();
+
+birnam_abi::integer_dependency!();
+birnam_abi::string_dependency!();
+birnam_abi::vector_dependency!();

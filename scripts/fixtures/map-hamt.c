@@ -30,7 +30,7 @@ static Oop allocate(Oop behavior,size_t size) {
         assert(behavior==type || behavior==node_type); allocations++;
         assert(behavior==type?size==16:(size>=32 && (size-16)%16==0));
         Dl_info owner; assert(dladdr(__builtin_return_address(0),&owner));
-        assert(strstr(owner.dli_fname,fixture_map?"/libbirnam_map.dylib":"_collection.dylib"));
+        assert(strstr(owner.dli_fname,(fixture_map || fixture_map_v2)?"/libbirnam_map.dylib":"_collection.dylib"));
     }
     if(capture) printf("alloc %s %zu\n",behavior==type?"Map":"Node",size);
     if(behavior==type && reenter_alloc) {
@@ -95,7 +95,7 @@ int main(int argc,char **argv) {
     type=api->import_fn("MapVt"); node_type=api->import_fn("MapNode"); prototype=api->import_fn("Map");
     new_method=lookup(type,"new"); put_method=lookup(type,"at:put:"); at_method=lookup(type,"at:");
     Method methods[]={new_method,put_method,at_method};
-    for(size_t i=0;i<3;i++) { Dl_info owner; assert(dladdr((const void *)methods[i],&owner) && strstr(owner.dli_fname,"_collection.dylib")); }
+    for(size_t i=0;i<3;i++) { Dl_info owner; assert(dladdr((const void *)methods[i],&owner) && strstr(owner.dli_fname,fixture_map_v2?"/libbirnam_map.dylib":"_collection.dylib")); }
     integer_read=fixture_integer->read; fixture_integer->read=read_integer;
     active=empty(); const size_t retained[]={32,33,1024,4096};
     for(size_t i=0;i<4096;i++) {
@@ -161,10 +161,10 @@ int main(int argc,char **argv) {
     Oop outer=keep(empty()); reenter_alloc=1; begin("shared added flag under reentry"); Oop reentrant=keep(put(outer,key,value)); end();
     assert(((Map *)reentrant)->count==0 && get(reentrant,key)==value && ((Map *)inner)->count==1);
     callback_gc=1; begin("live allocator and hash callback GC"); Oop live=keep(put(active,fixture_integer_make(6000),value)); end(); callback_gc=0; verify(live,4097);
-    if(fixture_map) {
+    if(fixture_map || fixture_map_v2) {
         const char *names[]={"new","at:","at:put:","size"};
         for(size_t i=0;i<4;i++) api->method(type,api->intern(names[i]),forbidden);
-        Oop direct=fixture_map->put(&selected,fixture_map->empty(),key,value); assert(fixture_map->find(&selected,direct,key)==value && fixture_map->count(direct)==1);
+        Oop direct=put(empty(),key,value); assert(get(direct,key)==value && ((Map *)direct)->count==1);
     }
     IdApi other=selected; other.nil_obj=value; mount(argv[3],&other); assert(put_method(active,NULL,1)==api->nil_obj);
     api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0);

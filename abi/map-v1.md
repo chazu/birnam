@@ -1,5 +1,8 @@
 # Map storage and construction v1
 
+Historical 81AF boundary, superseded in production by [Map v2](map-v2.md).
+The frozen C mirror remains available for independent baseline tests.
+
 Design [81AF](../docs/design/81af-production-map-storage.md) moves canonical Map
 objects, the two-word payload, variable-sized HAMT nodes, native lookup and
 persistent update into `birnam-map`. Collection retains the Map methods and

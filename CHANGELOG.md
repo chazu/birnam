@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move Map's thirteen method bindings, traversal and printing into `birnam-map`
+  (Design 81AG). Preserve registration order, live callbacks, null handling and
+  native Vector iteration. Map v2 reduces the native boundary to construction
+  and installation; Collection drops its unused Integer dependency.
+
 - Extract Map representation, canonical objects and native HAMT storage into
   `birnam-map` (Design 81AF). Preserve construction/publication order, persistent
   sharing, collision handling, callback timing and reentrant update behavior.

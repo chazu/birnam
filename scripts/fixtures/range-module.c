@@ -118,7 +118,7 @@ int main(int argc,char **argv) {
     selected=*api; selected.set_layout=layout; selected.method=method;
     selected.export_obj=publish; selected.gc_register_root_provider=roots;
     mount(argv[3],&selected);
-    assert(bindings==8 && publications==1 && collections==8 && registrations==(unsigned)(baseline?1:(fixture_map?4:(fixture_vector?3:2))));
+    assert(bindings==8 && publications==1 && collections==8 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
     assert(api->import_fn("Range")==prototype && api->import_fn("RangeVt")==behavior);
     assert(vtable_parent(api,behavior)==api->import_fn("CollectionVt"));
     for(size_t i=0;i<3;i++) assert(api->slot_kind(behavior,i)==IDAPI_V7_SLOT_RAW);
@@ -210,7 +210,7 @@ int main(int argc,char **argv) {
         prepare(api,NULL); assert(send0(r,"size")==r && bindings==8);
     }
     api->export_obj("Range",api->nil_obj); api->export_obj("RangeVt",api->nil_obj);
-    mount(argv[3],&selected); assert(bindings==16 && publications==1 && registrations==(unsigned)(baseline?1:(fixture_map?4:(fixture_vector?3:2))));
+    mount(argv[3],&selected); assert(bindings==16 && publications==1 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
     assert(api->import_fn("Range")==api->nil_obj && api->import_fn("RangeVt")==api->nil_obj);
     for(unsigned i=0;i<8;i++) assert(lookup(behavior,order[i])==implementations[i]);
     api->gc_set_precise(1); api->gc_collect(); integer_result(send0(r,"size"),3);

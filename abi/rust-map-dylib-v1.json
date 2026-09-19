@@ -1,11 +1,14 @@
 {
   "schema_version": 1,
-  "scope": "Map representation, canonical objects and native HAMT storage",
+  "scope": "Map canonical objects, HAMT storage, methods, traversal and printing",
   "install_name": "@rpath/libbirnam_map.dylib",
   "exported_symbols": [
     "birnam_collection_value_dependency_v1",
-    "birnam_map_provider_v1",
+    "birnam_integer_dependency_v1",
+    "birnam_map_provider_v2",
+    "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
+    "birnam_vector_dependency_v2",
     "module_init"
   ]
 }

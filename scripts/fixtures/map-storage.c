@@ -21,7 +21,10 @@ static int id(Oop value) {
 static Oop send0(Oop receiver,const char *name) { return api->send(receiver,api->intern(name),NULL,0); }
 static Oop send1(Oop receiver,const char *name,Oop arg) { return api->send(receiver,api->intern(name),&arg,1); }
 static Method lookup(Oop type,const char *name) { return (Method)send1(type,"lookup",api->intern(name)); }
-static void mark(Oop value) { assert(value==node_type || value==behavior || value==prototype); marks++; }
+static void mark(Oop value) {
+    if(value==node_type || value==behavior || value==prototype) marks++;
+    else assert(fixture_map_v2 && (value==api->intern("value") || value==api->intern("value:value:") || value==api->intern("printString")));
+}
 static void partial(size_t expected) {
     if(!modern) return;
     assert(owner_roots); marks=0; owner_roots(mark); assert(marks==expected); partial_checks++;
@@ -103,6 +106,14 @@ static Oop publish(const char *name,Oop value) {
 }
 static void validate(void *image,int attached) {
     if(!modern) return;
+    if(fixture_map_v2) {
+    MapDependencyV2 attach=(MapDependencyV2)api->dlsym_fn(image,"birnam_map_dependency_v2"); assert(attach && !attach(NULL));
+    MapApiV2 bad=*fixture_map_v2; bad.version++; assert(!attach(&bad)); bad=*fixture_map_v2; bad.byte_size--; assert(!attach(&bad));
+#define MISSING(field) bad=*fixture_map_v2; bad.field=NULL; assert(!attach(&bad))
+    MISSING(prepare); MISSING(finish_prototype); MISSING(set_layout); MISSING(publish); MISSING(install);
+#undef MISSING
+    if(attached) { bad=*fixture_map_v2; assert(!attach(&bad) && attach(fixture_map_v2)==1); }
+    } else {
     MapDependencyV1 attach=(MapDependencyV1)api->dlsym_fn(image,"birnam_map_dependency_v1"); assert(attach && !attach(NULL));
     MapApiV1 bad=*fixture_map; bad.version++; assert(!attach(&bad)); bad=*fixture_map; bad.byte_size--; assert(!attach(&bad));
 #define MISSING(field) bad=*fixture_map; bad.field=NULL; assert(!attach(&bad))
@@ -110,18 +121,13 @@ static void validate(void *image,int attached) {
     MISSING(find); MISSING(count); MISSING(root); MISSING(slot_count); MISSING(slot); MISSING(behavior);
 #undef MISSING
     if(attached) { bad=*fixture_map; assert(!attach(&bad) && attach(fixture_map)==1); }
+    }
 }
 static void mount(const char *path,IdApi *table) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     if(strstr(path,"collection")) {
-        modern=api->dlsym_fn(image,"birnam_map_dependency_v1")!=NULL;
-        if(modern && !fixture_map) {
-            const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char library[PATH_MAX];
-            int n=snprintf(library,sizeof(library),"%.*s/libbirnam_map.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
-            assert(n>0 && (size_t)n<sizeof(library)); void *map=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(map);
-            fixture_attach_integer(api,map); MapProviderV1 provide=(MapProviderV1)api->dlsym_fn(map,"birnam_map_provider_v1"); assert(provide && !provide());
-            ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(map,"module_init"); assert(init); init(api,NULL); fixture_map=provide(); assert(fixture_map); validate(image,0);
-        }
+        modern=api->dlsym_fn(image,"birnam_map_dependency_v1")!=NULL || api->dlsym_fn(image,"birnam_map_dependency_v2")!=NULL;
+        if(modern && !fixture_map && !fixture_map_v2) { fixture_prepare_map(api); validate(image,0); }
     }
     fixture_attach_integer(api,image);
     if(strstr(path,"collection")) validate(image,1);
@@ -138,7 +144,7 @@ static void seed(int map_only) {
     Oop map=api->alloc(types[4],16); *(Payload *)map=(Payload){NULL,0};
     api->export_obj("Map",missing?NULL:(rebound?api->nil_obj:map));
 }
-static Oop empty(void) { return modern?fixture_map->empty():new_method(prototype,NULL,0); }
+static Oop empty(void) { return fixture_map?fixture_map->empty():new_method(prototype,NULL,0); }
 int main(int argc,char **argv) {
     assert(argc==5); adopting=strcmp(argv[4],"normal") && strcmp(argv[4],"map-only-exports");
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
@@ -151,11 +157,11 @@ int main(int argc,char **argv) {
     selected.gc_register_root_provider=roots; selected.set_finalizer=finalize;
     capture=1; mount(argv[3],&selected); capture=0; phase=1;
     if(!prototype) prototype=candidate;
-    assert(prototype && !finalizers); partial(3); if(modern) assert(partial_checks>=3 && fixture_map->behavior()==behavior);
+    assert(prototype && !finalizers); partial(3); if(modern) assert(partial_checks>=3); if(fixture_map) assert(fixture_map->behavior()==behavior);
     if(!rebound) assert(!((Payload *)prototype)->root && !((Payload *)prototype)->count); else assert(prototype==api->nil_obj);
     new_method=lookup(behavior,"new"); allocation_count=0; operation_probe=1; Oop map=empty(); operation_probe=0;
     assert(allocation_count==1 && api->vtable_of(map)==behavior && !((Payload *)map)->root && !((Payload *)map)->count);
-    if(modern) assert(!fixture_map->count(map) && !fixture_map->root(map));
+    if(fixture_map) assert(!fixture_map->count(map) && !fixture_map->root(map));
     api->export_obj("MapVt",api->nil_obj); api->export_obj("Map",api->nil_obj); api->export_obj("MapNode",api->nil_obj);
     IdApi other=selected; other.alloc=forbidden_allocator; capture=1; mount(argv[3],&other); capture=0;
     assert(api->import_fn("Map")==api->nil_obj);
