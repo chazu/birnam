@@ -957,6 +957,7 @@ pub enum ModuleError {
     StringDependencyRejected { path: PathBuf },
     RangeDependencyRejected { path: PathBuf },
     VectorDependencyRejected { path: PathBuf },
+    CollectionValueDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
@@ -1059,6 +1060,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_string_builder",
     "libbirnam_vector",
     "libbirnam_range",
+    "libbirnam_collection_value",
     "libbirnam_id_collection",
     "libbirnam_id_error",
     "libbirnam_portable_code",
@@ -2037,6 +2039,7 @@ pub struct LoadedStack {
     string: *mut birnam_abi::string::StringApiV1,
     range: *const birnam_abi::range::ApiV2,
     vector: *const birnam_abi::vector::ApiV1,
+    collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
     prepared_string: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2065,6 +2068,7 @@ impl LoadedStack {
             string: std::ptr::null_mut(),
             range: std::ptr::null(),
             vector: std::ptr::null(),
+            collection_value: std::ptr::null(),
             prepared_float: None,
             prepared_word: None,
             prepared_string: None,
@@ -2265,6 +2269,13 @@ impl LoadedStack {
                 return Err(ModuleError::VectorDependencyRejected { path: path.to_path_buf() });
             }
         }
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_collection_value_dependency_v1".as_ptr()) };
+        if !dependency.is_null() {
+            let attach: birnam_abi::collection_value::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if self.collection_value.is_null() || unsafe { attach(self.collection_value) } != 1 {
+                return Err(ModuleError::CollectionValueDependencyRejected { path: path.to_path_buf() });
+            }
+        }
         let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v1".as_ptr()) };
         let word_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_provider_v1".as_ptr()) };
         let canonical_word = path.file_name().and_then(|name| name.to_str()) == Some("libbirnam_word.dylib");
@@ -2311,6 +2322,15 @@ impl LoadedStack {
                 return Err(ModuleError::VectorDependencyRejected { path: path.to_path_buf() });
             }
             self.vector = provided;
+        }
+        let collection_value_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_collection_value_provider_v1".as_ptr()) };
+        if !collection_value_provider.is_null() {
+            let provide: birnam_abi::collection_value::ProviderV1 = unsafe { std::mem::transmute(collection_value_provider) };
+            let provided = unsafe { provide() };
+            if unsafe { birnam_abi::collection_value::attach(provided) } != 1 {
+                return Err(ModuleError::CollectionValueDependencyRejected { path: path.to_path_buf() });
+            }
+            self.collection_value = provided;
         }
         let provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_integer_provider_v1".as_ptr()) };
         if !provider.is_null() {

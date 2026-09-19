@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Extract shared Vector/Map comparison and key hashing into
+  `birnam-collection-value` (Design 81AD). Preserve identity shortcuts, numeric
+  and byte semantics, hash bits and live callbacks; add no public selectors.
+
 - Move Range reversal and concatenation into `birnam-range` (Design 81AC).
   Preserve bounds snapshots, allocation order and direct native Vector calls.
   Range construction v2 retains the existing Vector comma function and removes

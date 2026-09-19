@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 
 use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
-use core::ffi::{CStr, c_char, c_void};
+use core::ffi::{c_char, c_void};
 use core::mem::size_of;
 use core::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -146,39 +146,6 @@ unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
     unsafe { borrowed_oop_args(args, count)?.first().copied() }
 }
 
-unsafe fn same_value(api: &IdApi, left: Oop, right: Oop) -> bool {
-    if left == right {
-        return true;
-    }
-    if left.is_null() || right.is_null() {
-        return false;
-    }
-    if unsafe { (birnam_abi::integer::is_integer)(left) } != 0 && unsafe { (birnam_abi::integer::is_integer)(right) } != 0 {
-        return unsafe { (birnam_abi::integer::value)(left) == (birnam_abi::integer::value)(right) };
-    }
-    if unsafe { (birnam_abi::float::is_float)(left) } != 0 && unsafe { (birnam_abi::float::is_float)(right) } != 0 {
-        return unsafe { (birnam_abi::float::value)(left) == (birnam_abi::float::value)(right) };
-    }
-    if unsafe { (api.vtableOf)(left) } != unsafe { birnam_abi::string::behavior() }
-        || unsafe { (api.vtableOf)(right) } != unsafe { birnam_abi::string::behavior() }
-    {
-        return false;
-    }
-    let mut left_len = 0;
-    let mut right_len = 0;
-    let left_bytes = unsafe { (birnam_abi::string::bytes)(left, &mut left_len) };
-    let right_bytes = unsafe { (birnam_abi::string::bytes)(right, &mut right_len) };
-    if left_len != right_len {
-        return false;
-    }
-    // SAFETY: stringBytes supplies borrowed byte extents for this synchronous
-    // comparison; both slices end before any foreign call.
-    unsafe {
-        core::slice::from_raw_parts(left_bytes, left_len)
-            == core::slice::from_raw_parts(right_bytes, right_len)
-    }
-}
-
 unsafe extern "C" fn vector_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 0 {
@@ -271,7 +238,7 @@ unsafe extern "C" fn vector_index_of(self_object: Oop, args: *const Oop, count: 
     let total = unsafe { birnam_abi::vector::count(self_object) };
     for index in 0..total {
         let value = unsafe { birnam_abi::vector::at(self_object, index) };
-        if unsafe { same_value(api, value, needle) } {
+        if unsafe { birnam_abi::collection_value::same_value(api, value, needle) } {
             return unsafe { (birnam_abi::integer::make)(index as i64) };
         }
     }
@@ -541,22 +508,6 @@ unsafe fn empty_map(api: &IdApi, runtime: &Runtime) -> Oop {
     map
 }
 
-fn map_mix(mut value: u64) -> u32 {
-    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    (value ^ (value >> 31)) as u32
-}
-
-fn map_fnv1a(bytes: &[u8]) -> u32 {
-    let mut hash = 2_166_136_261u32;
-    for byte in bytes {
-        hash ^= u32::from(*byte);
-        hash = hash.wrapping_mul(16_777_619);
-    }
-    hash
-}
-
 fn map_chunk(hash: u32, shift: usize) -> u32 {
     (hash >> shift.min(31)) & MASK as u32
 }
@@ -567,41 +518,6 @@ fn map_bit(hash: u32, shift: usize) -> u32 {
 
 fn map_sparse_index(bitmap: u32, bit: u32) -> usize {
     (bitmap & bit.wrapping_sub(1)).count_ones() as usize
-}
-
-unsafe fn map_key_hash(api: &IdApi, key: Oop) -> u32 {
-    if unsafe { (birnam_abi::integer::is_integer)(key) } != 0 {
-        return map_mix(unsafe { (birnam_abi::integer::value)(key) } as u64);
-    }
-    let value_type = unsafe { (api.vtableOf)(key) };
-    if value_type == unsafe { birnam_abi::string::behavior() } {
-        let mut length = 0;
-        let bytes = unsafe { (birnam_abi::string::bytes)(key, &mut length) };
-        if length == 0 {
-            return map_fnv1a(&[]);
-        }
-        if bytes.is_null() {
-            return 0;
-        }
-        return map_fnv1a(unsafe { core::slice::from_raw_parts(bytes, length) });
-    }
-    if value_type == api.symbol_vt {
-        let name = unsafe { (api.symbolName)(key) };
-        if name.is_null() {
-            return 0;
-        }
-        return map_fnv1a(unsafe { CStr::from_ptr(name) }.to_bytes());
-    }
-    if value_type == unsafe { birnam_abi::float::behavior() } {
-        let value = unsafe { (birnam_abi::float::value)(key) };
-        let bits = if value == 0.0 { 0 } else { value.to_bits() };
-        return map_mix(bits);
-    }
-    map_mix(key as usize as u64)
-}
-
-unsafe fn map_key_equal(api: &IdApi, left: Oop, right: Oop) -> bool {
-    unsafe { same_value(api, left, right) }
 }
 
 unsafe fn map_find(node: Oop, shift: usize, hash: u32, key: Oop, api: &IdApi) -> Oop {
@@ -620,7 +536,7 @@ unsafe fn map_find(node: Oop, shift: usize, hash: u32, key: Oop, api: &IdApi) ->
             let child = unsafe { hnode_slot(node, index + 1) };
             return unsafe { map_find(child, shift + BITS, hash, key, api) };
         }
-        if unsafe { map_key_equal(api, stored_key, key) } {
+        if unsafe { birnam_abi::collection_value::same_value(api, stored_key, key) } {
             return unsafe { hnode_slot(node, index + 1) };
         }
         return ptr::null_mut();
@@ -631,7 +547,7 @@ unsafe fn map_find(node: Oop, shift: usize, hash: u32, key: Oop, api: &IdApi) ->
     for entry in 0..header.n as usize {
         let index = 2 * entry;
         let stored_key = unsafe { hnode_slot(node, index) };
-        if unsafe { map_key_equal(api, stored_key, key) } {
+        if unsafe { birnam_abi::collection_value::same_value(api, stored_key, key) } {
             return unsafe { hnode_slot(node, index + 1) };
         }
     }
@@ -748,7 +664,7 @@ unsafe fn map_assoc(
                 unsafe { set_hnode_slot(result, index + 1, replacement) };
                 return result;
             }
-            if unsafe { map_key_equal(api, stored_key, key) } {
+            if unsafe { birnam_abi::collection_value::same_value(api, stored_key, key) } {
                 let old_value = unsafe { hnode_slot(node, index + 1) };
                 if old_value == value {
                     return node;
@@ -764,7 +680,7 @@ unsafe fn map_assoc(
                     runtime,
                     shift + BITS,
                     stored_key,
-                    map_key_hash(api, stored_key),
+                    birnam_abi::collection_value::key_hash(api, stored_key),
                     hnode_slot(node, index + 1),
                     key,
                     hash,
@@ -809,7 +725,7 @@ unsafe fn map_assoc(
         for entry in 0..header.n as usize {
             let index = 2 * entry;
             let stored_key = unsafe { hnode_slot(node, index) };
-            if unsafe { map_key_equal(api, stored_key, key) } {
+            if unsafe { birnam_abi::collection_value::same_value(api, stored_key, key) } {
                 let old_value = unsafe { hnode_slot(node, index + 1) };
                 if old_value == value {
                     return node;
@@ -975,7 +891,7 @@ unsafe extern "C" fn map_at_put(self_object: Oop, args: *const Oop, count: usize
     let root = unsafe { (*payload).root };
     MAP_ADDED.store(false, Ordering::Relaxed);
     let replacement =
-        unsafe { map_assoc(api, runtime(), root, 0, map_key_hash(api, key), key, value) };
+        unsafe { map_assoc(api, runtime(), root, 0, birnam_abi::collection_value::key_hash(api, key), key, value) };
     if replacement == root {
         return self_object;
     }
@@ -1008,7 +924,7 @@ unsafe extern "C" fn map_at(self_object: Oop, args: *const Oop, count: usize) ->
         map_find(
             (*map_payload(self_object)).root,
             0,
-            map_key_hash(api, key),
+            birnam_abi::collection_value::key_hash(api, key),
             key,
             api,
         )
@@ -1030,7 +946,7 @@ unsafe extern "C" fn map_at_if_absent(self_object: Oop, args: *const Oop, count:
         map_find(
             (*map_payload(self_object)).root,
             0,
-            map_key_hash(api, key),
+            birnam_abi::collection_value::key_hash(api, key),
             key,
             api,
         )
@@ -1053,7 +969,7 @@ unsafe extern "C" fn map_includes_key(self_object: Oop, args: *const Oop, count:
         map_find(
             (*map_payload(self_object)).root,
             0,
-            map_key_hash(api, key),
+            birnam_abi::collection_value::key_hash(api, key),
             key,
             api,
         )
@@ -1460,7 +1376,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mu
 
 birnam_abi::integer_dependency!();
 
-birnam_abi::float_dependency!();
+birnam_abi::collection_value_dependency!();
 
 birnam_abi::string_dependency!();
 

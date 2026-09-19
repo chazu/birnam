@@ -40,6 +40,10 @@ run = "cargo +nightly miri test --workspace --locked --offline"
 description = "Run the test-only Design 74F same-frame recovery experiment"
 run = "python3 scripts/same-frame-deopt.py"
 
+[tasks.collection-value]
+description = "Check loaded collection value comparison and hashing in debug"
+run = "scripts/collection-value-test.sh"
+
 [tasks.vector]
 description = "Check loaded Vector storage and persistent trie boundaries in debug"
 run = "scripts/vector-test.sh"

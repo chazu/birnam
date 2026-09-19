@@ -48,7 +48,7 @@ CARGO_HOME="$tmp/cargo-home" cargo metadata \
   --format-version=1 \
   --manifest-path "$tmp/birnam/share/birnam/src/Cargo.toml" >"$tmp/cargo-metadata.json"
 test "$(jq -r '.workspace_root' "$tmp/cargo-metadata.json")" = "$tmp/birnam/share/birnam/src"
-test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-alien birnam-artifact birnam-artifact-codec birnam-boolean birnam-codegen birnam-codegen-runtime birnam-collect birnam-collection birnam-error birnam-float birnam-host birnam-id birnam-image birnam-integer birnam-isolate birnam-lang birnam-native-compiler birnam-nil birnam-object-model birnam-peg birnam-portable-code birnam-prelude birnam-range birnam-relational birnam-storage birnam-store birnam-string birnam-string-builder birnam-tcc birnam-trace birnam-vector birnam-word"
+test "$(jq -r '[.packages[].name] | sort | join(" ")' "$tmp/cargo-metadata.json")" = "birnam-abi birnam-alien birnam-artifact birnam-artifact-codec birnam-boolean birnam-codegen birnam-codegen-runtime birnam-collect birnam-collection birnam-collection-value birnam-error birnam-float birnam-host birnam-id birnam-image birnam-integer birnam-isolate birnam-lang birnam-native-compiler birnam-nil birnam-object-model birnam-peg birnam-portable-code birnam-prelude birnam-range birnam-relational birnam-storage birnam-store birnam-string birnam-string-builder birnam-tcc birnam-trace birnam-vector birnam-word"
 
 find docs/guide -type f -name '*.md' -print | sed 's#^docs/guide/##' | sort >"$tmp/expected-guide"
 find "$tmp/birnam/share/birnam/docs/guide" -type f -name '*.md' -print | sed "s#^$tmp/birnam/share/birnam/docs/guide/##" | sort >"$tmp/installed-guide"
@@ -58,7 +58,7 @@ required_dylibs=(
   libbirnam_id.dylib libbirnam_store.dylib libbirnam_id_artifact.dylib
   libbirnam_id_peg.dylib libbirnam_id_lang.dylib libbirnam_id_tcc.dylib
   libbirnam_id_codegen.dylib libbirnam_boolean.dylib libbirnam_id_prelude.dylib
-  libbirnam_storage.dylib libbirnam_trace.dylib libbirnam_collect.dylib libbirnam_integer.dylib libbirnam_float.dylib libbirnam_word.dylib libbirnam_object_model.dylib libbirnam_nil.dylib libbirnam_string.dylib libbirnam_string_builder.dylib libbirnam_range.dylib libbirnam_vector.dylib libbirnam_id_collection.dylib libbirnam_id_error.dylib
+  libbirnam_storage.dylib libbirnam_trace.dylib libbirnam_collect.dylib libbirnam_integer.dylib libbirnam_float.dylib libbirnam_word.dylib libbirnam_object_model.dylib libbirnam_nil.dylib libbirnam_string.dylib libbirnam_string_builder.dylib libbirnam_range.dylib libbirnam_vector.dylib libbirnam_collection_value.dylib libbirnam_id_collection.dylib libbirnam_id_error.dylib
   libbirnam_portable_code.dylib
   libbirnam_id_isolate.dylib libbirnam_id_relational.dylib
   libbirnam_id_alien.dylib libbirnam_id_image.dylib

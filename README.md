@@ -707,6 +707,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v7.
+- `rust/birnam-collection-value/` — shared native value comparison and key hashing for Vector and Map.
 - `rust/birnam-vector/` — independently loaded Vector storage, trie helpers and canonical objects; language methods remain in Collection.
 - `rust/birnam-range/` — independently loaded Range representation, construction and all Range methods; uses native Vector storage.
 - `rust/birnam-string-builder/` — independently loaded StringBuilder buffer ownership and methods.
@@ -747,6 +748,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Float methods](docs/design/81q-production-float-methods.md) now load separately
   from Prelude; [Float representation](docs/design/81r-production-float-storage.md)
   also lives in that module through an explicit native dependency.
+- [Collection value policy](docs/design/81ad-production-collection-value.md) keeps
+  Vector and Map on the same private comparison/hash implementation through an
+  [explicit native interface](abi/collection-value-v1.md).
 - [Vector storage](docs/design/81ab-production-vector-storage.md) owns the native
   trie and allocation helpers used by Collection, with an explicit
   [native dependency](abi/vector-v1.md). Run `mise run vector` for focused checks.

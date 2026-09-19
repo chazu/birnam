@@ -8,6 +8,7 @@
 #include "../../abi/fixtures/range-v1/range_v1.h"
 #include "../../abi/fixtures/range-v2/range_v2.h"
 #include "../../abi/fixtures/vector-v1/vector_v1.h"
+#include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -19,6 +20,7 @@ static const RangeMethodsApiV1 *fixture_range_methods; /* Historical 81Z oracle 
 static const RangeApiV1 *fixture_range; /* Historical 81AA/AB oracle only. */
 static const RangeApiV2 *fixture_range_v2;
 static const VectorApiV1 *fixture_vector;
+static const CollectionValueApiV1 *fixture_collection_value;
 static inline Oop fixture_integer_make(int64_t value) {
     assert(fixture_integer);
     return fixture_integer->make(fixture_integer->context, value);
@@ -37,6 +39,19 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
     fixture_attach_word(api, image);
     IntegerDependencyV1 attach = (IntegerDependencyV1)api->dlsym_fn(image, "birnam_integer_dependency_v1");
     if (attach) { assert(fixture_integer); assert(attach(fixture_integer) == 1); }
+    CollectionValueDependencyV1 value_attach=(CollectionValueDependencyV1)api->dlsym_fn(image,"birnam_collection_value_dependency_v1");
+    if (value_attach) {
+        if (!fixture_collection_value) {
+            const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+            int n=snprintf(path,sizeof(path),"%.*s/libbirnam_collection_value.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+            assert(n>0 && (size_t)n<sizeof(path));
+            void *value=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(value); fixture_attach_integer(api,value);
+            ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(value,"module_init"); assert(init);
+            CollectionValueProviderV1 provide=(CollectionValueProviderV1)api->dlsym_fn(value,"birnam_collection_value_provider_v1"); assert(provide);
+            assert(!provide()); init(api,NULL); fixture_collection_value=provide(); assert(fixture_collection_value);
+        }
+        assert(value_attach(fixture_collection_value)==1);
+    }
     VectorDependencyV1 vector_attach=(VectorDependencyV1)api->dlsym_fn(image,"birnam_vector_dependency_v1");
     if (vector_attach) {
         if (!fixture_vector) {

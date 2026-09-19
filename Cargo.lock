@@ -73,6 +73,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-collection-value"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-error"
 version = "0.0.0"
 dependencies = [
