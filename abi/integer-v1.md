@@ -2,7 +2,7 @@
 
 `libbirnam_integer.dylib` owns Integer's canonical behavior and prototype, signed
 64-bit payload, primitive construction/reading/recognition, and thirteen methods.
-It depends on IdApi v5. Id boots without Integer; its remaining Machine and
+It depends on IdApi v6. Id boots without Integer; its remaining Machine and
 optimizer components explicitly acquire Integer when the host composes the stack.
 
 The host initializes Integer immediately after Id, obtains its table through
@@ -50,7 +50,7 @@ The private closure-elision hook is now `birnam_id_try_closure_elision_v2`, carr
 the producer's actual Integer table alongside its IdApi. Generated code's TCC
 bridge names, Method ABI, Frame descriptors and durable image bytes are unchanged.
 
-All native consumers must be rebuilt for IdApi v5. Historical IdApi manifests are
+All native consumers must be rebuilt for IdApi v6. Historical IdApi manifests are
 retained as evidence, not compatibility shims. The independent C fixture checks
 bare Id, arithmetic with a signed-128-bit oracle, errors, fresh identity, mixed
 Float behavior, replacement, reassociation, namespace rebinding, and collection.

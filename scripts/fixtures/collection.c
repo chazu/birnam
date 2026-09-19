@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v5/idapi_v5.h"
+#include "../../abi/fixtures/idapi-v6/idapi_v6.h"
 #include "../../abi/fixtures/collect-v1/collect_v1.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include <assert.h>

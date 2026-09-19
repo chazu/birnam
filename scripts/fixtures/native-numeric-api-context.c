@@ -1,4 +1,4 @@
-#include "idapi_v5.h"
+#include "idapi_v6.h"
 #include "integer-support.h"
 static unsigned boxes;
 static Oop (*original_make)(void *, int64_t);
@@ -12,6 +12,7 @@ int main(int argc, char **argv) {
     void *integer = floor_api->dlopen_fn(argv[2], RTLD_NOW | RTLD_LOCAL); assert(integer);
     ModuleInitFn init = (ModuleInitFn)floor_api->dlsym_fn(integer, "module_init"); assert(init);
     fixture_prepare_float(floor_api, argv[1]);
+    fixture_prepare_word(floor_api, argv[1]);
     fixture_attach_float(floor_api, integer);
     init(&module_api, NULL);
     IntegerProviderV1 provide = (IntegerProviderV1)floor_api->dlsym_fn(integer, "birnam_integer_provider_v1"); assert(provide);

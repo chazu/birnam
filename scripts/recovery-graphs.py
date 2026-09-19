@@ -19,8 +19,8 @@ AUTHORITIES = (
     "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-id/src/registration.rs",
     "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs",
 )
-CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v5.json",
-                 "abi/fixtures/idapi-v5/idapi_v5.h")
+CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v6.json",
+                 "abi/fixtures/idapi-v6/idapi_v6.h")
 
 
 def sha(path):
@@ -461,12 +461,12 @@ def main():
                 raise RuntimeError("changed compatibility authority: " + name)
             receipt["authorities"][name] = sha(ROOT / name)
         run(["python3", "scripts/compatibility-authority-test.py"], "image-compatibility-authority")
-        receipt["image_authority_migration"] = "Design 81K owner/parent, 81L Integer and 81R Float dependency call substitutions; encoding unchanged"
-        # 81J/81K/81L/81R deliberately reduce IdApi. Verify the current independent v5
+        receipt["image_authority_migration"] = "Design 81K owner/parent, 81L Integer and 81R Float and 81T Word dependency call substitutions; encoding unchanged"
+        # 81J/81K/81L/81R/81T deliberately reduce IdApi. Verify the current independent v6
         # manifest instead of claiming that this table matches the 74T baseline.
-        run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v5")
+        run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v6")
         receipt["current_id_api"] = {
-            "schema_version": 5, "change": "Design 81R Float dependency",
+            "schema_version": 6, "change": "Design 81T Word dependency",
             "files_sha256": {name: sha(ROOT / name) for name in CURRENT_IDAPI},
         }
         for profile in ("debug", "release"):
@@ -478,12 +478,12 @@ def main():
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["cargo", "build", "--locked", "--offline",
-                     "-p", "birnam-id", "-p", "birnam-object-model", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-prelude", "-p", "birnam-collection",
+                     "-p", "birnam-id", "-p", "birnam-object-model", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-collection",
                      "-p", "birnam-error", "-p", "birnam-portable-code",
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
                 fixture = work / (profile + "-block-construction")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v5",
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v6",
                      "scripts/fixtures/native-block-construction.c", "-o", fixture], profile + "-closure-native-fixture")
                 libraries = ROOT / ".cargo-target" / profile
                 run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
@@ -493,12 +493,12 @@ def main():
                     ("id", "prelude", "collection", "error", "portable_code")]
                     + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin", "without-prelude"], profile + "-closure-native-absent-family")
                 api_fixture = work / (profile + "-closure-api-context")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v5",
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v6",
                      "scripts/fixtures/closure-api-context.c", "-o", api_fixture], profile + "-closure-api-fixture")
                 run([api_fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
                     ("id", "tcc", "codegen_runtime")], profile + "-closure-api-context")
             output = run(["cargo", "test", "--locked", "--offline",
-                          "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
+                          "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
                          + (["--release"] if profile == "release" else []), profile + "-build")
             binaries = {}
             for line in output.splitlines():

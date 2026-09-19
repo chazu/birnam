@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move Word's canonical objects, payload and primitive operations into
+  `birnam-word` (Design 81T), with explicit dependencies for Machine, TCC and
+  Image. IdApi v6 removes four fields to 37 fields / 296 bytes; native modules
+  require rebuilding. Keep Word conversion, unsigned values, image handling,
+  live replacement and existing method reinitialization behavior.
 - Extract Word's existing printing, equality and Integer conversion methods
   from Prelude into `birnam-word` (Design 81S). Load it after Float and preserve
   current numeric/error behavior and live method replacements. Word storage

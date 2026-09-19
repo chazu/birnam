@@ -58,6 +58,17 @@ class CompatibilityAuthorityTests(unittest.TestCase):
             self.assertIn(before, self.current)
             self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
 
+    def test_word_migration_preserves_payload_and_inherited_recognition(self):
+        for before, after in (
+            (b'(birnam_abi::word::value)(object)', b'(birnam_abi::word::value)(vtable)'),
+            (b'vtable_inherits_from(api, vtable, birnam_abi::word::behavior())',
+             b'vtable == birnam_abi::word::behavior()'),
+            (b'birnam_abi::word_dependency!();', b''),
+            (b'(birnam_abi::word::make)(value)', b'(birnam_abi::word::make)(value >> 1)'),
+        ):
+            self.assertIn(before, self.current)
+            self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
+
     def test_exception_does_not_apply_to_other_contracts(self):
         self.assertFalse(unchanged_authority("rust/birnam-image/src/v8.rs", self.current, self.baseline))
 

@@ -1011,18 +1011,18 @@ pub unsafe extern "C" fn rt_float_value(object: Oop) -> f64 {
 
 #[unsafe(export_name = "birnam_mkWord")]
 pub unsafe extern "C" fn rt_mk_word(value: u64) -> Oop {
-    let runtime = RUNTIME
+    let _runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).mkWord)(value) }
+    unsafe { (birnam_abi::word::make)(value) }
 }
 
 #[unsafe(export_name = "birnam_wordValue")]
 pub unsafe extern "C" fn rt_word_value(object: Oop) -> u64 {
-    let runtime = RUNTIME
+    let _runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).wordValue)(object) }
+    unsafe { (birnam_abi::word::value)(object) }
 }
 
 #[unsafe(export_name = "birnam_mkForeignAddress")]
@@ -1054,12 +1054,11 @@ pub unsafe extern "C" fn rt_is_foreign_address(object: Oop) -> i64 {
 
 #[unsafe(export_name = "birnam_uintValue")]
 pub unsafe extern "C" fn rt_uint_value(object: Oop) -> u64 {
-    let runtime = RUNTIME
+    let _runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    if unsafe { (api.isWord)(object) } != 0 {
-        unsafe { (api.wordValue)(object) }
+    if unsafe { (birnam_abi::word::is_word)(object) } != 0 {
+        unsafe { (birnam_abi::word::value)(object) }
     } else {
         unsafe { (birnam_abi::integer::value)(object) as u64 }
     }
@@ -1525,3 +1524,5 @@ fn floor_lookup_contract_retirement() {
 birnam_abi::integer_dependency!();
 
 birnam_abi::float_dependency!();
+
+birnam_abi::word_dependency!();

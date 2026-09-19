@@ -345,7 +345,6 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
     let environment = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
     let string_vt = vtables.create(&mut heap, object_vt, vtable_vt);
-    let word_vt = vtables.create(&mut heap, object_vt, vtable_vt);
     let nil_vt = vtables.create(&mut heap, object_vt, vtable_vt);
     let bool_vt = vtables.create(&mut heap, object_vt, vtable_vt);
 
@@ -448,7 +447,6 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     });
 
     let object_prototype = runtime.allocate_empty(object_vt, Permanence::Permanent);
-    let word_prototype = runtime.allocate_word(word_vt, 0);
     let string_prototype = runtime.allocate_string(string_vt, b"");
     let symbol_prototype = runtime
         .intern(b"Symbol")
@@ -456,7 +454,6 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
 
     for (vtable, owner) in [
         (object_vt, object_prototype),
-        (word_vt, word_prototype),
         (string_vt, string_prototype),
         (symbol_vt, symbol_prototype),
         (nil_vt, nil),
@@ -502,14 +499,12 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
         symbol_list,
         environment,
         string_vt,
-        word_vt,
         nil_vt,
         bool_vt,
         nil,
         true_object,
         false_object,
         object_prototype,
-        word_prototype,
         string_prototype,
         symbol_prototype,
     });
@@ -519,6 +514,8 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     bootstrap.runtime.mount_test_float(crate::public_api::test_value_api(&bootstrap));
     #[cfg(test)]
     bootstrap.runtime.mount_test_integer(crate::public_api::test_value_api(&bootstrap));
+    #[cfg(test)]
+    bootstrap.runtime.mount_test_word(crate::public_api::test_value_api(&bootstrap));
     bootstrap
 }
 
@@ -851,11 +848,11 @@ mod tests {
             canonical.symbol_list,
             canonical.environment,
             canonical.string_vt,
-            canonical.word_vt,
             canonical.nil_vt,
             canonical.bool_vt,
             runtime.float_behavior(),
             runtime.integer_behavior(),
+            runtime.word_behavior(),
         ];
         let expected_parents = [
             globals.object_vt,
@@ -876,11 +873,11 @@ mod tests {
             assert_eq!(runtime.vtable_at(index), expected);
             assert_eq!(runtime.vtable_parent(expected), expected_parents[index]);
             assert_eq!(runtime.checked_vtable_of(expected), globals.vtable_vt);
-            assert_eq!(runtime.permanence_of(expected), Some(if expected == runtime.integer_behavior() || expected == runtime.float_behavior() { Permanence::Collectable } else { Permanence::Permanent }));
+            assert_eq!(runtime.permanence_of(expected), Some(if expected == runtime.integer_behavior() || expected == runtime.float_behavior() || expected == runtime.word_behavior() { Permanence::Collectable } else { Permanence::Permanent }));
             assert_eq!(runtime.payload_size(expected), Some(80));
         }
 
-        let selector_names: [&[u8]; 21] = [
+        let selector_names: [&[u8]; 23] = [
             b"lookup",
             b"addMethod",
             b"removeMethod:",
@@ -902,6 +899,8 @@ mod tests {
             b"FloatVt",
             b"Integer",
             b"IntegerVt",
+            b"Word",
+            b"WordVt",
         ];
         assert_eq!(runtime.symbol_count(), selector_names.len());
         for (index, name) in selector_names.iter().copied().enumerate() {
@@ -919,7 +918,7 @@ mod tests {
                 .vtable_selector_at(canonical.symbol_list, selector_names.len())
                 .is_null()
         );
-        assert_eq!(runtime.export_count(), 4);
+        assert_eq!(runtime.export_count(), 6);
         assert_eq!(runtime.import(b"Integer").unwrap(), runtime.integer_prototype());
 
         let meta_selectors = [
@@ -1075,7 +1074,6 @@ mod tests {
             runtime.integer_behavior(),
             canonical.string_vt,
             runtime.float_behavior(),
-            canonical.word_vt,
             canonical.nil_vt,
             canonical.bool_vt,
             canonical.nil,
@@ -1084,7 +1082,7 @@ mod tests {
             canonical.object_prototype,
             runtime.integer_prototype(),
             runtime.float_prototype(),
-            canonical.word_prototype,
+            runtime.word_prototype(),
             canonical.string_prototype,
             canonical.symbol_prototype,
         ];
@@ -1099,7 +1097,7 @@ mod tests {
             (canonical.object_prototype, globals.object_vt),
             (runtime.integer_prototype(), runtime.integer_behavior()),
             (runtime.float_prototype(), runtime.float_behavior()),
-            (canonical.word_prototype, canonical.word_vt),
+            (runtime.word_prototype(), runtime.word_behavior()),
             (canonical.string_prototype, canonical.string_vt),
             (canonical.symbol_prototype, globals.symbol_vt),
         ] {
@@ -1111,7 +1109,7 @@ mod tests {
             (globals.object_vt, canonical.object_prototype),
             (runtime.integer_behavior(), runtime.integer_prototype()),
             (runtime.float_behavior(), runtime.float_prototype()),
-            (canonical.word_vt, canonical.word_prototype),
+            (runtime.word_behavior(), runtime.word_prototype()),
             (canonical.string_vt, canonical.string_prototype),
             (globals.symbol_vt, canonical.symbol_prototype),
         ] {
@@ -1128,7 +1126,7 @@ mod tests {
         for object in [
             runtime.integer_prototype(),
             runtime.float_prototype(),
-            canonical.word_prototype,
+            runtime.word_prototype(),
             canonical.string_prototype,
             canonical.symbol_prototype,
         ] {
@@ -1144,12 +1142,12 @@ mod tests {
         }
         assert_eq!(runtime.payload_size(runtime.integer_prototype()), Some(8));
         assert_eq!(runtime.payload_size(runtime.float_prototype()), Some(8));
-        assert_eq!(runtime.payload_size(canonical.word_prototype), Some(8));
+        assert_eq!(runtime.payload_size(runtime.word_prototype()), Some(8));
         assert_eq!(runtime.payload_size(canonical.string_prototype), Some(16));
         assert_eq!(runtime.payload_size(canonical.symbol_prototype), Some(8));
         assert_eq!(runtime.integer_value(runtime.integer_prototype()), 0);
         assert_eq!(runtime.float_value(runtime.float_prototype()), 0.0);
-        assert_eq!(runtime.word_value(canonical.word_prototype), 0);
+        assert_eq!(runtime.word_value(runtime.word_prototype()), 0);
         assert_eq!(
             runtime.string_bytes(canonical.string_prototype),
             Some(&b""[..])
@@ -1341,8 +1339,9 @@ mod tests {
             (b"FloatVt", runtime.float_behavior()),
             (b"Integer", runtime.integer_prototype()),
             (b"IntegerVt", runtime.integer_behavior()),
+            (b"Word", runtime.word_prototype()),
+            (b"WordVt", runtime.word_behavior()),
             (b"Object", canonical.object_prototype),
-            (b"Word", canonical.word_prototype),
             (b"String", canonical.string_prototype),
             (b"Boolean", canonical.true_object),
             (b"False", canonical.false_object),
@@ -1350,7 +1349,6 @@ mod tests {
             (b"Symbol", canonical.symbol_prototype),
             (b"SymbolVt", globals.symbol_vt),
             (b"ObjectVt", globals.object_vt),
-            (b"WordVt", canonical.word_vt),
             (b"StringVt", canonical.string_vt),
         ];
 

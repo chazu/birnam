@@ -8,7 +8,6 @@ use crate::abi::{Finalizer, IdApi, Method, MethodOverwriteHook, Oop, RootProvide
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
 use crate::runtime::{Runtime, with_active_if_present};
-use crate::values::word_value_unchecked;
 
 static PUBLIC_API: AtomicPtr<IdApi> = AtomicPtr::new(core::ptr::null_mut());
 
@@ -159,21 +158,6 @@ pub(crate) fn test_dispatch_reentry(method: Method) -> usize {
     runtime
         .enter(|| runtime.send_slice(receiver, outer, &[inner]))
         .addr()
-}
-
-unsafe extern "C" fn api_make_word(value: u64) -> Oop {
-    runtime().make_word(value)
-}
-
-unsafe extern "C" fn api_word_value(object: Oop) -> u64 {
-    // SAFETY: the frozen IdApi contract requires a live Word object. The
-    // payload read needs no mutable runtime state; callers remain subject to
-    // the floor's owner-thread rule.
-    unsafe { word_value_unchecked(object) }
-}
-
-unsafe extern "C" fn api_is_word(object: Oop) -> c_int {
-    i32::from(runtime().is_word(object))
 }
 
 /// This exact cleanup routes only to the process-published Runtime and removes
@@ -352,10 +336,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         vtableCount: api_vtable_count,
         vtableAt: api_vtable_at,
         vtableSelectorAt: api_vtable_selector_at,
-        mkWord: api_make_word,
-        wordValue: api_word_value,
-        isWord: api_is_word,
-        word_vt: canonical.word_vt,
     }
 }
 
@@ -418,7 +398,6 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [
         canonical.string_vt,
-        canonical.word_vt,
         canonical.nil_vt,
         canonical.bool_vt,
     ] {
@@ -546,7 +525,6 @@ mod tests {
         assert_eq!(table.trueObj, canonical.true_object);
         assert_eq!(table.falseObj, canonical.false_object);
         assert_eq!(table.string_vt, canonical.string_vt);
-        assert_eq!(table.word_vt, canonical.word_vt);
         assert_eq!(
             bootstrap.runtime.has_finalizer(canonical.string_prototype),
             Some(true)
@@ -625,4 +603,10 @@ pub(crate) fn canonical_allocator() -> usize { canonical_numeric_functions().all
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_float_dependency_v1(ops: *mut birnam_abi::float::FloatApiV1) -> c_int {
     c_int::from(unsafe { runtime().attach_float(ops) })
+}
+
+/// Explicit dependency of the still-combined Machine layer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_word_dependency_v1(ops: *mut birnam_abi::word::WordApiV1) -> c_int {
+    c_int::from(unsafe { runtime().attach_word(ops) })
 }

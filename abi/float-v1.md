@@ -1,7 +1,7 @@
 # Native Float dependency v1
 
 `birnam-float` owns Float's canonical behavior, zero prototype and eight-byte
-IEEE payload. It depends on IdApi v5 and explicitly acquires Integer for mixed
+IEEE payload. It depends on IdApi v6 and explicitly acquires Integer for mixed
 operations and conversions. Id initializes without Float; its still-combined
 Machine and image/recovery consumers acquire the family through
 `birnam_float_dependency_v1`. There is no Float compatibility facade in IdApi.
@@ -48,7 +48,7 @@ when the loaded module publishes them. Canonical names, identities, first-alias
 selection and binding replacement rules are unchanged; numeric enumeration
 positions are a construction-order detail, not a promised ABI index.
 
-All native modules must be rebuilt for the 41-field, 328-byte IdApi v5. Historical
-v1-v4 manifests/fixtures remain unchanged. Method, Frame and image formats remain
+All native modules must be rebuilt for the 37-field, 296-byte IdApi v6. Historical
+v1-v5 manifests/fixtures remain unchanged. Method, Frame and image formats remain
 unchanged. Run `mise run float` and `scripts/float-image-smoke.sh PREFIX` against a
 debug prefix for the focused native and compiled-image checks.

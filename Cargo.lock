@@ -104,6 +104,7 @@ dependencies = [
  "birnam-native-compiler",
  "birnam-object-model",
  "birnam-trace",
+ "birnam-word",
  "sha2",
 ]
 

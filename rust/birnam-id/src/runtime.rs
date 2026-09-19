@@ -62,6 +62,7 @@ mod native_tier;
 mod numeric;
 mod integer;
 mod float;
+mod word;
 mod tracing;
 mod collect;
 mod recovery;
@@ -103,32 +104,28 @@ pub(crate) struct CanonicalObjects {
     pub(crate) symbol_list: Oop,
     pub(crate) environment: Oop,
     pub(crate) string_vt: Oop,
-    pub(crate) word_vt: Oop,
     pub(crate) nil_vt: Oop,
     pub(crate) bool_vt: Oop,
     pub(crate) nil: Oop,
     pub(crate) true_object: Oop,
     pub(crate) false_object: Oop,
     pub(crate) object_prototype: Oop,
-    pub(crate) word_prototype: Oop,
     pub(crate) string_prototype: Oop,
     pub(crate) symbol_prototype: Oop,
 }
 
 impl CanonicalObjects {
-    fn roots(self) -> [Oop; 13] {
+    fn roots(self) -> [Oop; 11] {
         [
             self.symbol_list,
             self.environment,
             self.string_vt,
-            self.word_vt,
             self.nil_vt,
             self.bool_vt,
             self.nil,
             self.true_object,
             self.false_object,
             self.object_prototype,
-            self.word_prototype,
             self.string_prototype,
             self.symbol_prototype,
         ]
@@ -232,12 +229,15 @@ pub(crate) struct Runtime {
     numeric: core::cell::RefCell<numeric::Registry>,
     integer: Cell<Option<integer::Binding>>,
     float: Cell<Option<float::Binding>>,
+    word: Cell<Option<word::Binding>>,
     trace: Cell<Option<birnam_abi::trace_live::TraceLiveV1>>,
     collect: Cell<Option<birnam_abi::collect::CollectV1>>,
     #[cfg(test)]
     test_integer: UnsafeCell<Option<integer::TestOwner>>,
     #[cfg(test)]
     test_float: UnsafeCell<Option<float::TestOwner>>,
+    #[cfg(test)]
+    test_word: UnsafeCell<Option<word::TestOwner>>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
     #[cfg(test)]
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,
@@ -423,6 +423,7 @@ impl Runtime {
             numeric: core::cell::RefCell::new(numeric::Registry::default()),
             integer: Cell::new(None),
             float: Cell::new(None),
+            word: Cell::new(None),
             #[cfg(not(test))]
             trace: Cell::new(None),
             #[cfg(test)]
@@ -435,6 +436,8 @@ impl Runtime {
             test_integer: UnsafeCell::new(None),
             #[cfg(test)]
             test_float: UnsafeCell::new(None),
+            #[cfg(test)]
+            test_word: UnsafeCell::new(None),
             recovery_requests: core::cell::RefCell::new(Vec::new()),
             #[cfg(test)]
             deopt_trial: core::cell::RefCell::new(None),
@@ -939,28 +942,6 @@ impl Runtime {
             .allocate_empty(&mut state.heap, vtable, permanence)
     }
 
-    pub(crate) fn allocate_word(&self, vtable: Oop, value: u64) -> Oop {
-        self.assert_owner();
-        self.require_allocation_allowed();
-        self.maybe_collect_before_allocation();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        state.values.allocate_word(&mut state.heap, vtable, value)
-    }
-
-    pub(crate) fn make_word(&self, value: u64) -> Oop {
-        self.assert_owner();
-        self.require_allocation_allowed();
-        self.maybe_collect_before_allocation();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        let vtable = state
-            .canonical
-            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"))
-            .word_vt;
-        state.values.allocate_word(&mut state.heap, vtable, value)
-    }
-
     pub(crate) fn allocate_string(&self, vtable: Oop, bytes: &[u8]) -> Oop {
         self.assert_owner();
         self.require_allocation_allowed();
@@ -1129,7 +1110,6 @@ impl Runtime {
         let canonical = self.canonical();
         for (name, value) in [
             (&b"Object"[..], canonical.object_prototype),
-            (&b"Word"[..], canonical.word_prototype),
             (&b"String"[..], canonical.string_prototype),
             (&b"Boolean"[..], canonical.true_object),
             (&b"False"[..], canonical.false_object),
@@ -1137,7 +1117,6 @@ impl Runtime {
             (&b"Symbol"[..], canonical.symbol_prototype),
             (&b"SymbolVt"[..], globals.symbol_vt),
             (&b"ObjectVt"[..], globals.object_vt),
-            (&b"WordVt"[..], canonical.word_vt),
             (&b"StringVt"[..], canonical.string_vt),
         ] {
             self.export(name, value)
@@ -4627,32 +4606,6 @@ impl Runtime {
     pub(crate) fn permanence_of(&self, object: Oop) -> Option<Permanence> {
         // SAFETY: test calls remain owner-thread and copy only the class.
         unsafe { (*self.state.get()).heap.permanence_of(object) }
-    }
-
-    pub(crate) fn word_value(&self, object: Oop) -> u64 {
-        self.assert_owner();
-        // SAFETY: caller supplies a Word object.
-        unsafe { (*self.state.get()).values.word_value(object) }
-    }
-
-    pub(crate) fn is_word(&self, object: Oop) -> bool {
-        self.has_canonical_vtable(object, |canonical| canonical.word_vt)
-    }
-
-    fn has_canonical_vtable(
-        &self,
-        object: Oop,
-        select: impl FnOnce(CanonicalObjects) -> Oop,
-    ) -> bool {
-        self.assert_owner();
-        // SAFETY: owner-thread serialization keeps both the exact-address heap
-        // membership query and copied canonical identities in one state access.
-        let state = unsafe { &*self.state.get() };
-        let vtable = Vtables::checked_vtable_of(&state.heap, object);
-        let canonical = state
-            .canonical
-            .unwrap_or_else(|| boundary::fatal_invariant("canonical objects not installed"));
-        vtable == select(canonical)
     }
 
     pub(crate) fn string_bytes(&self, object: Oop) -> Option<&[u8]> {

@@ -381,3 +381,9 @@ metadata operations and physical allocation/reclamation remain in Id.
 with Float's seventeen methods, loaded independently of Prelude. Float storage,
 canonical objects, constructors and native consumers still await their own
 checkpoint; the current IdApi stays unchanged.
+
+[81R](81r-production-float-storage.md) moves Float representation and its actual
+consumers onto an explicit dependency. [81S](81s-production-word-methods.md)
+and [81T](81t-production-word-storage.md) do the same in two checkpoints for
+Word. IdApi v6 now has 37 fields / 296 bytes. The installed modules and host
+remain Rust; these are extraction boundaries for the later Birnam rewrite.

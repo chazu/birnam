@@ -9,19 +9,12 @@ use crate::heap::{Heap, Permanence};
 use crate::raw::AddressMap;
 
 #[repr(C)]
-struct RawWord {
-    value: u64,
-}
-
-#[repr(C)]
 struct RawString {
     pointer: *const u8,
     length: usize,
 }
 
 const _: () = {
-    assert!(size_of::<RawWord>() == 8);
-    assert!(align_of::<RawWord>() == 8);
     assert!(size_of::<RawString>() == 16);
     assert!(align_of::<RawString>() == 8);
     assert!(offset_of!(RawString, pointer) == 0);
@@ -49,13 +42,6 @@ impl Values {
         allocate_payload(heap, vtable, 0, permanence)
     }
 
-    pub(crate) fn allocate_word(&mut self, heap: &mut Heap, vtable: Oop, value: u64) -> Oop {
-        let object = allocate_payload(heap, vtable, size_of::<RawWord>(), Permanence::Collectable);
-        // SAFETY: object owns an aligned payload of RawWord's exact size.
-        unsafe { object.cast::<RawWord>().write(RawWord { value }) };
-        object
-    }
-
     pub(crate) fn allocate_string(&mut self, heap: &mut Heap, vtable: Oop, bytes: &[u8]) -> Oop {
         let mut owned_bytes = bytes.to_vec().into_boxed_slice();
         let pointer = owned_bytes.as_mut_ptr().cast_const();
@@ -78,11 +64,6 @@ impl Values {
         object
     }
 
-    pub(crate) fn word_value(&self, object: Oop) -> u64 {
-        // SAFETY: internal caller supplies a Word object with this payload.
-        unsafe { word_value_unchecked(object) }
-    }
-
     pub(crate) fn string_bytes(&self, object: Oop) -> Option<&[u8]> {
         self.string_bytes.get(&object.addr()).map(Box::as_ref)
     }
@@ -90,18 +71,6 @@ impl Values {
     pub(crate) fn release_string(&mut self, object: Oop) -> bool {
         self.string_bytes.remove(&object.addr()).is_some()
     }
-}
-
-/// Read a Word payload without consulting runtime-owned state.
-///
-/// # Safety
-///
-/// `object` must be a live Word object whose payload has `RawWord`'s final ABI
-/// shape. The caller must preserve the floor's owner-thread and object-lifetime
-/// rules for the duration of the read.
-pub(crate) unsafe fn word_value_unchecked(object: Oop) -> u64 {
-    // SAFETY: forwarded caller contract supplies a live, aligned RawWord.
-    unsafe { object.cast::<RawWord>().read().value }
 }
 
 fn allocate_payload(
@@ -131,22 +100,6 @@ mod tests {
         assert!(heap.set_vtable(meta, meta));
         let family = vtables.create(&mut heap, core::ptr::null_mut(), meta);
         (heap, Values::new(), family)
-    }
-
-    #[test]
-    fn scalar_payloads_have_final_shapes_and_values() {
-        let (mut heap, mut values, family) = value_harness();
-        let word = values.allocate_word(&mut heap, family, 0xfedc_ba98_7654_3210);
-        assert_eq!(values.word_value(word), 0xfedc_ba98_7654_3210);
-        // SAFETY: the harness owns live objects of each exact payload type.
-        unsafe {
-            assert_eq!(word_value_unchecked(word), 0xfedc_ba98_7654_3210);
-        }
-        for object in [word] {
-            assert_eq!(heap.payload_size(object), Some(8));
-            assert_eq!(heap.permanence_of(object), Some(Permanence::Collectable));
-            assert_eq!(Vtables::checked_vtable_of(&heap, object), family);
-        }
     }
 
     #[test]

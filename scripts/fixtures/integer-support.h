@@ -2,6 +2,7 @@
 #define FIXTURE_INTEGER_SUPPORT_H
 #include "../../abi/fixtures/integer-v1/integer_v1.h"
 #include "float-support.h"
+#include "word-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -22,11 +23,13 @@ static inline int fixture_is_integer(Oop value) {
 }
 static inline void fixture_attach_integer(IdApi *api, void *image) {
     fixture_attach_float(api, image);
+    fixture_attach_word(api, image);
     IntegerDependencyV1 attach = (IntegerDependencyV1)api->dlsym_fn(image, "birnam_integer_dependency_v1");
     if (attach) { assert(fixture_integer); assert(attach(fixture_integer) == 1); }
 }
 static inline void fixture_mount_integer(IdApi *api, const char *floor_path) {
     assert(!fixture_integer);
+    fixture_prepare_word(api, floor_path);
     fixture_prepare_float(api, floor_path);
     const char *slash = strrchr(floor_path, '/'); assert(slash);
     char path[PATH_MAX];
@@ -44,5 +47,6 @@ static inline void fixture_mount_integer(IdApi *api, const char *floor_path) {
     void *floor = api->dlopen_fn(floor_path, RTLD_NOW | RTLD_LOCAL); assert(floor);
     fixture_attach_integer(api, floor);
     fixture_attach_integer(api, fixture_float_image);
+    fixture_attach_integer(api, fixture_word_image);
 }
 #endif

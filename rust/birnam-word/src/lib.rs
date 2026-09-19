@@ -1,21 +1,69 @@
 //! Existing Word methods, loaded independently of Prelude (Design 81S).
-//! Canonical objects and representation remain in Id for this checkpoint.
+//! Owns canonical objects and representation through an explicit dependency (81T).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::sync::OnceLock;
-static API: OnceLock<usize> = OnceLock::new();
+use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
+pub mod storage;
+
+static INSTANCE: AtomicPtr<storage::Instance> = AtomicPtr::new(ptr::null_mut());
+// 0 unprepared, 1 preparing, 2 prepared, 3 activating, 4 active.
+static PHASE: AtomicU8 = AtomicU8::new(0);
 fn abort(message: &str) -> ! {
     eprintln!("birnam Word: {message}");
     std::process::abort();
 }
 unsafe fn api_ref() -> &'static IdApi {
-    let api = *API
-        .get()
-        .unwrap_or_else(|| abort("module_init was not called"));
-    // The host retains the selected Id table and this module for process life.
-    unsafe { &*(api as *const IdApi) }
+    let instance = INSTANCE.load(Ordering::Acquire);
+    if instance.is_null() {
+        abort("Word was not prepared");
+    }
+    unsafe { &*(*instance).api() }
+}
+unsafe extern "C" fn word_roots(mark: birnam_abi::MarkFn) {
+    let instance = INSTANCE.load(Ordering::Acquire);
+    if !instance.is_null() {
+        unsafe { (*instance).trace(mark) };
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_word_provider_v1() -> *mut birnam_abi::word::WordApiV1 {
+    if PHASE.load(Ordering::Acquire) < 2 {
+        return ptr::null_mut();
+    }
+    unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_word_prepare_v1(
+    api: *mut IdApi,
+) -> *mut birnam_abi::word::WordApiV1 {
+    if api.is_null() {
+        abort("preparation received a null IdApi");
+    }
+    if PHASE.load(Ordering::Acquire) != 0 {
+        let instance = INSTANCE.load(Ordering::Acquire);
+        if instance.is_null() || unsafe { (*instance).api() } != api {
+            abort("another IdApi is already mounted");
+        }
+        if PHASE.load(Ordering::Acquire) == 1 {
+            abort("recursive Word preparation");
+        }
+        return unsafe { birnam_word_provider_v1() };
+    }
+    PHASE.store(1, Ordering::Release);
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api) });
+    INSTANCE.store(instance, Ordering::Release);
+    unsafe {
+        ((*api).gcRegisterRootProvider)(word_roots);
+        (*instance).prepare();
+    }
+    let operations = unsafe { (*instance).operations() };
+    if unsafe { birnam_abi::word::attach(operations) } != 1 {
+        abort("invalid Word table");
+    }
+    PHASE.store(2, Ordering::Release);
+    operations
 }
 
 unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
@@ -53,11 +101,11 @@ unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
     unsafe { make_error(api, kind, message) }
 }
 
-unsafe fn word_value(api: &IdApi, value: Oop) -> Option<u64> {
-    if value.is_null() || unsafe { (api.isWord)(value) } == 0 {
+unsafe fn word_value(_api: &IdApi, value: Oop) -> Option<u64> {
+    if value.is_null() || unsafe { (birnam_abi::word::is_word)(value) } == 0 {
         return None;
     }
-    Some(unsafe { (api.wordValue)(value) })
+    Some(unsafe { (birnam_abi::word::value)(value) })
 }
 
 unsafe extern "C" fn word_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
@@ -107,14 +155,23 @@ unsafe extern "C" fn word_as_integer(self_object: Oop, _args: *const Oop, count:
     unsafe { (birnam_abi::integer::make)(value as i64) }
 }
 
-/// Install the existing Word protocol on the canonical floor behavior.
+/// Install the existing Word protocol on this module's canonical behavior.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) -> *mut c_void {
-    if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
+    let operations = unsafe { birnam_word_prepare_v1(api_pointer) };
+    let previous = PHASE.swap(3, Ordering::AcqRel);
+    if previous != 2 && previous != 4 {
+        abort("recursive Word activation");
     }
-    let _ = API.get_or_init(|| api_pointer as usize);
+    // Verify Integer before the first replaceable publication callback.
+    let _ = unsafe { birnam_abi::integer::operations() };
     let api = unsafe { &*api_pointer };
+    if previous == 2 {
+        unsafe { (*INSTANCE.load(Ordering::Acquire)).publish() };
+    }
+    // Reinitialization retains canonical objects but reinstalls the existing
+    // methods, exactly as the method-only module did before extraction.
+    let behavior = unsafe { (*operations).behavior };
     let word_methods: &[(&[u8], birnam_abi::Method)] = &[
         (b"printString\0", word_print_string),
         (b"=\0", word_eq),
@@ -123,8 +180,9 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void) ->
     for (selector, method) in word_methods {
         let symbol = unsafe { intern(api, selector) };
         // SAFETY: word_vt and each callback are process-lifetime values.
-        unsafe { (api.method)(api.word_vt, symbol, *method) };
+        unsafe { (api.method)(behavior, symbol, *method) };
     }
+    PHASE.store(4, Ordering::Release);
     ptr::null_mut()
 }
 

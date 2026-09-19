@@ -60,3 +60,5 @@ and its unsigned-value recognition, Image's inherited-family recognition, and
 Machine's boxed frame-identity values. ForeignAddress already owns its own
 family; this extraction must not merge it with Word. Review these consumers and
 bootstrap timing before removing `word_vt`, `mkWord`, `wordValue` and `isWord`.
+
+[81T](81t-production-word-storage.md) completes this representation follow-up.

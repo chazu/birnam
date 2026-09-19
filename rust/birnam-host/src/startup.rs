@@ -953,6 +953,7 @@ pub enum ModuleError {
     },
     IntegerDependencyRejected { path: PathBuf },
     FloatDependencyRejected { path: PathBuf },
+    WordDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
@@ -2023,7 +2024,9 @@ pub struct LoadedStack {
     all_modules_borrow_safe: bool,
     integer: *mut birnam_abi::integer::IntegerApiV1,
     float: *mut birnam_abi::float::FloatApiV1,
+    word: *mut birnam_abi::word::WordApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
+    prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
 }
 
 impl LoadedStack {
@@ -2045,7 +2048,9 @@ impl LoadedStack {
             all_modules_borrow_safe: true,
             integer: std::ptr::null_mut(),
             float: std::ptr::null_mut(),
+            word: std::ptr::null_mut(),
             prepared_float: None,
+            prepared_word: None,
         }
     }
 
@@ -2107,6 +2112,22 @@ impl LoadedStack {
         self.attach_float(path, ops)
     }
 
+    /// Prepare Word before Integer installs any numeric methods. The
+    /// handle is pinned before publishing callbacks, including on startup failure.
+    fn prepare_word(&mut self, path: &Path) -> Result<(), ModuleError> {
+        if self.prepared_word.is_some() { return Ok(()); }
+        let encoded = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
+        let handle = unsafe { (self.api().dlopen)(encoded.as_ptr(), RTLD_LAZY) };
+        let handle = NonNull::new(handle).ok_or_else(|| ModuleError::OpenFailed { path: path.to_path_buf() })?;
+        self.prepared_word = Some((path.to_path_buf(), handle));
+        self.configure_symbol_borrow(path, handle)?;
+        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v1".as_ptr()) };
+        if prepare.is_null() { return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() }); }
+        let prepare: birnam_abi::word::WordPrepareV1 = unsafe { std::mem::transmute(prepare) };
+        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi) };
+        self.attach_word(path, ops)
+    }
+
     fn attach_float(&mut self, path: &Path, ops: *mut birnam_abi::float::FloatApiV1) -> Result<(), ModuleError> {
         if (!self.float.is_null() && self.float != ops) || unsafe { birnam_abi::float::attach(ops) } != 1 {
             return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
@@ -2119,6 +2140,18 @@ impl LoadedStack {
         Ok(())
     }
 
+    fn attach_word(&mut self, path: &Path, ops: *mut birnam_abi::word::WordApiV1) -> Result<(), ModuleError> {
+        if (!self.word.is_null() && self.word != ops) || unsafe { birnam_abi::word::attach(ops) } != 1 {
+            return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() });
+        }
+        let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_word_dependency_v1".as_ptr()) };
+        if dependency.is_null() { return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() }); }
+        let attach: birnam_abi::word::WordDependencyV1 = unsafe { std::mem::transmute(dependency) };
+        if unsafe { attach(ops) } != 1 { return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() }); }
+        self.word = ops;
+        Ok(())
+    }
+
     /// Load one higher rung through the selected floor's dynamic-loader API.
     /// No host-side `dlopen` is used after the floor has initialized.
     fn load_module_handle(
@@ -2128,9 +2161,11 @@ impl LoadedStack {
         let path_bytes = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
         // SAFETY: the floor API is process-owned and the C string lives across
         // this synchronous call.
-        let handle = match &self.prepared_float {
-            Some((prepared_path, handle)) if prepared_path == path => handle.as_ptr(),
-            _ => unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) },
+        let prepared = self.prepared_float.as_ref().filter(|(prepared, _)| prepared == path)
+            .or_else(|| self.prepared_word.as_ref().filter(|(prepared, _)| prepared == path));
+        let handle = match prepared {
+            Some((_, handle)) => handle.as_ptr(),
+            None => unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) },
         };
         let Some(handle) = NonNull::new(handle) else {
             return Err(ModuleError::OpenFailed {
@@ -2158,6 +2193,26 @@ impl LoadedStack {
             let attach: birnam_abi::float::FloatDependencyV1 = unsafe { std::mem::transmute(dependency) };
             if self.float.is_null() || unsafe { attach(self.float) } != 1 {
                 return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
+            }
+        }
+        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v1".as_ptr()) };
+        let word_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_provider_v1".as_ptr()) };
+        let canonical_word = path.file_name().and_then(|name| name.to_str()) == Some("libbirnam_word.dylib");
+        if prepare.is_null() != word_provider.is_null() || (canonical_word && prepare.is_null()) {
+            return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() });
+        }
+        if !prepare.is_null() {
+            // This opened library remains pinned even if startup fails after
+            // it publishes roots. Attach primitives before publication reentry.
+            let prepare: birnam_abi::word::WordPrepareV1 = unsafe { std::mem::transmute(prepare) };
+            let operations = unsafe { prepare(self.api() as *const IdApi as *mut IdApi) };
+            self.attach_word(path, operations)?;
+        }
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_dependency_v1".as_ptr()) };
+        if !dependency.is_null() {
+            let attach: birnam_abi::word::WordDependencyV1 = unsafe { std::mem::transmute(dependency) };
+            if self.word.is_null() || unsafe { attach(self.word) } != 1 {
+                return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() });
             }
         }
         // SAFETY: module_init is the frozen higher-rung ABI and the floor table
@@ -2188,6 +2243,10 @@ impl LoadedStack {
             self.attach_float(path, unsafe { provide() })?;
         } else if self.prepared_float.as_ref().is_some_and(|(prepared, _)| prepared == path) {
             return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
+        }
+        if !word_provider.is_null() {
+            let provide: birnam_abi::word::WordProviderV1 = unsafe { std::mem::transmute(word_provider) };
+            self.attach_word(path, unsafe { provide() })?;
         }
         let provider = unsafe {
             (self.api().dlsym)(handle.as_ptr(), c"birnam_trace_provider_v1".as_ptr())
@@ -2237,6 +2296,7 @@ impl LoadedStack {
         let mut store_compensation_api = None;
         for name in SCRIPT_MODULES {
             if *name == "libbirnam_integer" {
+                self.prepare_word(&resources.lib_dir.join("libbirnam_word.dylib"))?;
                 self.prepare_float(&resources.lib_dir.join("libbirnam_float.dylib"))?;
             }
             let path = if *name == "libbirnam_id_tcc" {

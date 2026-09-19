@@ -32,6 +32,7 @@
     "birnam_register_resumable_v1",
     "birnam_register_resumable_v2",
     "birnam_trace_dependency_v1",
+    "birnam_word_dependency_v1",
     "id_init"
   ]
 }
