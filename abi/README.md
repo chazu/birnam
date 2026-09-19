@@ -157,3 +157,9 @@ objects, roots or representation changes.
 installer at their original Prelude binding positions. The
 [export inventory](rust-file-io-dylib-v1.json) adds no IdApi fields, object
 representation or image encoding.
+
+[Block Loop v1](block-loop-v1.md) owns the native whileTrue:/whileFalse: methods
+through a 24-byte installer. Prelude retains Block identity/layout and authored
+stackless control still replaces the methods later. The
+[export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
+encoding.

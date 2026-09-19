@@ -10,6 +10,9 @@ loader ports are complete.
 
 ### Changed
 
+- Extract native Block whileTrue:/whileFalse: into Block Loop (Design 81AT),
+  preserving fresh value sends, evaluation order, live Boolean/Error policy and
+  later replacement by authored stackless control. Run `mise run block-loop`.
 - Extract System readFile: and writeFile:contents: into File IO (Design 81AS),
   preserving binary data, the read limit, borrowed path callback order and lazy
   errors. Verify with `mise run file-io` and the focused file IO image smoke.

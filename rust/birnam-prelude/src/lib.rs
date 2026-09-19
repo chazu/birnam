@@ -1,4 +1,4 @@
-//! Prelude coordinates printing defaults and owns Block and System primitives.
+//! Prelude coordinates native defaults and owns System source/module loading.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -66,53 +66,6 @@ unsafe fn send_args(api: &IdApi, receiver: Oop, selector: &[u8], args: &[Oop]) -
     // SAFETY: callers keep the synchronous stack-backed argument slice alive
     // until this send returns; IdApi does not retain the pointer.
     unsafe { (api.send)(receiver, selector, arguments, args.len()) }
-}
-
-unsafe fn block_loop(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-    continue_on_true: bool,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(body) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    loop {
-        let condition = unsafe { send0(api, self_object, b"value\0") };
-        if unsafe { is_error(api, condition) } {
-            return condition;
-        }
-        let is_true = condition == api.trueObj;
-        let is_false = condition == api.falseObj;
-        if !is_true && !is_false {
-            return unsafe {
-                numeric_error(
-                    api,
-                    b"mustBeBoolean\0",
-                    b"while loop condition must answer true or false",
-                )
-            };
-        }
-        if is_true != continue_on_true {
-            return api.nilObj;
-        }
-        let result = unsafe { send0(api, body, b"value\0") };
-        if unsafe { is_error(api, result) } {
-            return result;
-        }
-    }
-}
-
-unsafe extern "C" fn block_while_true(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { block_loop(self_object, args, count, true) }
-}
-
-unsafe extern "C" fn block_while_false(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { block_loop(self_object, args, count, false) }
 }
 
 fn path_from_bytes(bytes: &[u8]) -> Option<&Path> {
@@ -325,8 +278,9 @@ unsafe fn install_block_protocol(api: &IdApi) {
     let while_false = unsafe { intern(api, b"whileFalse:\0") };
     // SAFETY: the Block vtable is process-owned and remains live with the image.
     unsafe {
-        (api.method)(block_vt, while_true, block_while_true);
-        (api.method)(block_vt, while_false, block_while_false);
+        birnam_abi::block_loop::install(
+            api, runtime().api as *const IdApi, block_vt, while_true, while_false,
+        );
     }
 }
 
@@ -396,3 +350,5 @@ birnam_abi::system_input_dependency!();
 birnam_abi::environment_dependency!();
 
 birnam_abi::file_io_dependency!();
+
+birnam_abi::block_loop_dependency!();

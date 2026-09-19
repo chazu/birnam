@@ -38,6 +38,7 @@ members = [
     "rust/birnam-system-input",
     "rust/birnam-environment",
     "rust/birnam-file-io",
+    "rust/birnam-block-loop",
     "rust/birnam-text-view",
     "rust/birnam-relational",
     "rust/birnam-store",
