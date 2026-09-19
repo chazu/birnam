@@ -734,6 +734,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
   its [native interface](abi/trace-v1.md) calculate reachability over those facts;
   [production GC traversal](docs/design/81o-production-live-gc-traversal.md) also
   uses the loaded tracer through a [live interface](abi/trace-live-v1.md).
+- [Float methods](docs/design/81q-production-float-methods.md) now load separately
+  from Prelude; representation migration is the next checkpoint.
 - [Production collection coordination](docs/design/81p-production-collection-coordinator.md)
   moves phase order and finalization into `birnam-collect`, through its
   [scoped native interface](abi/collect-v1.md).

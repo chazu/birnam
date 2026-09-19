@@ -9,6 +9,7 @@ members = [
     "rust/birnam-collection",
     "rust/birnam-collect",
     "rust/birnam-error",
+    "rust/birnam-float",
     "rust/birnam-id",
     "rust/birnam-integer",
     "rust/birnam-object-model",

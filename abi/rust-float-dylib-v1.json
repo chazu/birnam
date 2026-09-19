@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "scope": "Existing Float methods; IdApi v4 representation and explicit Integer dependency",
+  "install_name": "@rpath/libbirnam_float.dylib",
+  "exported_symbols": [
+    "birnam_integer_dependency_v1",
+    "birnam_symbol_borrow_v1",
+    "module_init"
+  ]
+}

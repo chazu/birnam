@@ -376,3 +376,8 @@ reclamation remain in Id. Observation gaps are not used to authorize collection.
 `birnam-collect`: phase transitions, settlement ordering, metadata retirement
 before detachment, live finalizer invocation and completion. Owner-specific
 metadata operations and physical allocation/reclamation remain in Id.
+
+[81Q](81q-production-float-methods.md) begins the remaining primitive families
+with Float's seventeen methods, loaded independently of Prelude. Float storage,
+canonical objects, constructors and native consumers still await their own
+checkpoint; the current IdApi stays unchanged.

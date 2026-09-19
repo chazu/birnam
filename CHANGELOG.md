@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Extract the seventeen existing Float methods from Prelude into `birnam-float`
+  (Design 81Q), loaded after Integer. Arithmetic, conversions, errors and current
+  method replacement retain their behavior. This first checkpoint leaves Float
+  representation/constructors and their consumers in Id; IdApi/image bytes stay
+  unchanged.
+
 - Move production collection coordination into the loaded `birnam-collect`
   module (Design 81P): phase order, conditional deferred settlement, retirement
   before detachment, live finalizer invocation, reclamation and completion.

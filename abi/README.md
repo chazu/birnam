@@ -51,3 +51,7 @@ native GC and current IdApi checks.
 [Collection coordination v1](collect-v1.md) moves collection phase order,
 conditional settlement and the finalizer/reclamation loop into a loaded module.
 Its per-invocation source preserves storage and metadata ownership; IdApi stays v4.
+
+The [Float method module](../docs/design/81q-production-float-methods.md) uses
+existing Method/module-init contracts and the explicit Integer dependency.
+Its [export inventory](rust-float-dylib-v1.json) adds no IdApi or image fields.

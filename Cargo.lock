@@ -73,6 +73,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-float"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-host"
 version = "0.0.0"
 dependencies = [
