@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "scope": "Shared borrowed exact-String and printable-value byte views",
+  "install_name": "@rpath/libbirnam_text_view.dylib",
+  "exported_symbols": [
+    "birnam_string_dependency_v1",
+    "birnam_symbol_borrow_v1",
+    "birnam_text_view_provider_v1",
+    "module_init"
+  ]
+}

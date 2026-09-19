@@ -129,3 +129,7 @@ adds no IdApi fields, objects or roots.
 Prelude supplies its selected behavior, selectors and original execution table at
 the final four installation slots. The [export inventory](rust-system-gc-dylib-v1.json)
 adds no IdApi fields, collector state, objects or roots.
+
+[Text views v1](text-view-v1.md) supplies shared exact-String and printable byte
+borrowing to Prelude consumers. The [export inventory](rust-text-view-dylib-v1.json)
+adds no IdApi fields, objects, roots or owned buffers.

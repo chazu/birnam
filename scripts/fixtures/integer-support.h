@@ -12,6 +12,7 @@
 #include "../../abi/fixtures/string-collection-v1/string_collection_v1.h"
 #include "../../abi/fixtures/printing-v1/printing_v1.h"
 #include "../../abi/fixtures/system-gc-v1/system_gc_v1.h"
+#include "../../abi/fixtures/text-view-v1/text_view_v1.h"
 #include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -56,6 +57,8 @@ static const CollectionValueApiV1 *fixture_collection_value;
 static const MapApiV1 *fixture_map; /* Historical storage oracle only. */
 static const MapApiV2 *fixture_map_v2;
 static inline void fixture_prepare_map(IdApi *api);
+static const TextViewApiV1 *fixture_text_view;
+static inline void fixture_prepare_text_view(IdApi *api);
 static const SystemGcApiV1 *fixture_system_gc;
 static inline void fixture_prepare_system_gc(IdApi *api);
 static const PrintingApiV1 *fixture_printing;
@@ -135,6 +138,8 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
         if(map_v2_attach) assert(map_v2_attach(fixture_map_v2)==1);
         else assert(map_attach(fixture_map)==1);
     }
+    TextViewDependencyV1 text_attach=(TextViewDependencyV1)api->dlsym_fn(image,"birnam_text_view_dependency_v1");
+    if(text_attach) { fixture_prepare_text_view(api); assert(text_attach(fixture_text_view)==1); }
     SystemGcDependencyV1 gc_attach=(SystemGcDependencyV1)api->dlsym_fn(image,"birnam_system_gc_dependency_v1");
     if(gc_attach) { fixture_prepare_system_gc(api); assert(gc_attach(fixture_system_gc)==1); }
     PrintingDependencyV1 printing_attach=(PrintingDependencyV1)api->dlsym_fn(image,"birnam_printing_dependency_v1");
@@ -176,6 +181,16 @@ static inline void fixture_prepare_map(IdApi *api) {
         MapProviderV1 previous=(MapProviderV1)api->dlsym_fn(map,"birnam_map_provider_v1"); assert(previous && !previous());
         init(api,NULL); fixture_map=previous(); assert(fixture_map);
     }
+}
+static inline void fixture_prepare_text_view(IdApi *api) {
+    if(fixture_text_view) return;
+    const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_text_view.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+    assert(n>0 && (size_t)n<sizeof(path));
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
+    TextViewProviderV1 provide=(TextViewProviderV1)api->dlsym_fn(image,"birnam_text_view_provider_v1"); assert(provide && !provide());
+    init(api,NULL); fixture_text_view=provide(); assert(fixture_text_view);
 }
 static inline void fixture_prepare_system_gc(IdApi *api) {
     if(fixture_system_gc) return;

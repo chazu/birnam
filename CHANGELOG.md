@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Move Prelude's shared exact-String and printable-byte helpers into
+  `birnam-text-view` (Design 81AK). Preserve borrowed pointers, callback timing,
+  fresh printing lookup and path aliasing across later callbacks in all consumers.
+
 - Move System gc/liveObjects/autoGc:/preciseGc: into `birnam-system-gc`
   (Design 81AJ). Preserve registration snapshots, original execution callbacks,
   live Boolean identities, count conversion and Integer construction after queries.

@@ -276,6 +276,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-text-view"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-trace"
 version = "0.0.0"
 dependencies = [

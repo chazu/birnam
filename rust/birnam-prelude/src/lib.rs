@@ -3,6 +3,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use birnam_abi::{IdApi, ModuleInitFn, Oop, borrowed_oop_args};
+use birnam_abi::text_view::{printable_string, string_bytes};
 use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::ffi::CString;
@@ -145,23 +146,6 @@ unsafe fn numeric_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
     let kind = unsafe { intern(api, kind) };
     let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
     unsafe { make_error(api, kind, message) }
-}
-
-unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<&[u8]> {
-    if value.is_null() || unsafe { (api.vtableOf)(value) } != unsafe { birnam_abi::string::behavior() } {
-        return None;
-    }
-    let mut length = 0usize;
-    let bytes = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
-    if length == 0 {
-        return Some(&[]);
-    }
-    if bytes.is_null() {
-        return None;
-    }
-    // SAFETY: stringBytes returns the floor-owned String payload for the
-    // duration of this callback; the write completes before the borrow ends.
-    Some(unsafe { core::slice::from_raw_parts(bytes, length) })
 }
 
 fn write_system_output(bytes: &[u8], newline: bool) {
@@ -422,17 +406,6 @@ unsafe fn system_output(self_object: Oop, args: *const Oop, count: usize, newlin
     self_object
 }
 
-unsafe fn printable_string(api: &IdApi, value: Oop) -> Option<&[u8]> {
-    if let Some(bytes) = unsafe { string_bytes(api, value) } {
-        return Some(bytes);
-    }
-    if value.is_null() {
-        return None;
-    }
-    let rendered = unsafe { send0(api, value, b"printString\0") };
-    unsafe { string_bytes(api, rendered) }
-}
-
 unsafe extern "C" fn system_print(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     unsafe { system_output(self_object, args, count, false) }
 }
@@ -604,3 +577,5 @@ birnam_abi::string_dependency!();
 birnam_abi::printing_dependency!();
 
 birnam_abi::system_gc_dependency!();
+
+birnam_abi::text_view_dependency!();
