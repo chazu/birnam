@@ -1,16 +1,11 @@
-//! Rust primitive-prelude rung.
-//!
-//! This N7.1 slice owns the primitive protocol through the frozen IdApi
-//! boundary. It is deliberately a separate cdylib: the native prelude remains the
-//! oracle until the remaining Block and System parity gates
-//! pass.
+//! Prelude coordinates printing defaults and owns Block and System primitives.
 
 #![allow(clippy::missing_safety_doc)]
 
 use birnam_abi::{IdApi, ModuleInitFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{self, BufRead, Read, Write};
 use std::path::Path;
@@ -70,44 +65,6 @@ unsafe fn send_args(api: &IdApi, receiver: Oop, selector: &[u8], args: &[Oop]) -
     // SAFETY: callers keep the synchronous stack-backed argument slice alive
     // until this send returns; IdApi does not retain the pointer.
     unsafe { (api.send)(receiver, selector, arguments, args.len()) }
-}
-
-unsafe extern "C" fn object_print_string(
-    _self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::string::make)(b"anObject".as_ptr(), b"anObject".len()) }
-}
-
-unsafe extern "C" fn object_as_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    unsafe { send0(api, self_object, b"printString\0") }
-}
-
-unsafe extern "C" fn symbol_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let name = unsafe { (api.symbolName)(self_object) };
-    if name.is_null() {
-        return api.nilObj;
-    }
-    // SAFETY: self_object remains rooted for this active send; copy its
-    // borrowed name before mkString can allocate or collect.
-    let name = unsafe { CStr::from_ptr(name) }.to_bytes();
-    let mut rendered = Vec::with_capacity(name.len().saturating_add(1));
-    rendered.push(b'#');
-    rendered.extend_from_slice(name);
-    unsafe { (birnam_abi::string::make)(rendered.as_ptr(), rendered.len()) }
 }
 
 unsafe fn block_loop(
@@ -617,23 +574,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi) {
     let _ = RUNTIME.get_or_init(|| Runtime {
         api: api_pointer as usize,
     });
-    let print_string = unsafe { intern(api, b"printString\0") };
-    let as_string = unsafe { intern(api, b"asString\0") };
-    let symbol_print_string = print_string;
-    unsafe {
-        (api.method)(api.object_vt, print_string, object_print_string);
-        (api.method)(api.object_vt, as_string, object_as_string);
-        (api.method)(
-            api.symbol_vt,
-            symbol_print_string,
-            self::symbol_print_string,
-        );
-    }
+    unsafe { birnam_abi::printing::install(api_pointer, runtime().api as *const IdApi) };
     unsafe { install_block_protocol(api) };
     unsafe { install_system_protocol(api) };
 }
 
-/// Identifies this Rust prelude Object, Symbol, Block and System slice.
+/// Identifies the original Rust Prelude rung; identity remains stable.
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_prelude_rust_identity() -> *const c_char {
     RUST_PRELUDE_IDENTITY.as_ptr().cast()
@@ -704,3 +650,5 @@ mod tests {
 birnam_abi::integer_dependency!();
 
 birnam_abi::string_dependency!();
+
+birnam_abi::printing_dependency!();

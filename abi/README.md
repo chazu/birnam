@@ -119,3 +119,8 @@ and printing. Collection installs it through the ordered construction boundary. 
 [String collection v1](string-collection-v1.md) installs String split: through a
 late adapter that depends on String and Vector. Its [export inventory](rust-string-collection-dylib-v1.json)
 adds no IdApi fields, objects or roots; Collection preserves ordered installation.
+
+[Printing v1](printing-v1.md) owns the three Object/Symbol printing defaults.
+Prelude supplies separate registration and original execution tables at its
+existing installation point. The [export inventory](rust-printing-dylib-v1.json)
+adds no IdApi fields, objects or roots.

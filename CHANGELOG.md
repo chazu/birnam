@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Move Object printString/asString and Symbol printString into `birnam-printing`
+  (Design 81AI). Preserve Prelude's registration order, original execution table,
+  fresh lookup, borrowed Symbol-name copies and live String construction.
+
 - Move String split: into the late `birnam-string-collection` adapter (Design
   81AH). Preserve byte snapshots, invalid/empty separator behavior, native Vector
   construction, callback timing and the original execution table across reentry.

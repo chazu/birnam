@@ -10,6 +10,7 @@
 #include "../../abi/fixtures/vector-v2/vector_v2.h"
 #include "../../abi/fixtures/map-v2/map_v2.h"
 #include "../../abi/fixtures/string-collection-v1/string_collection_v1.h"
+#include "../../abi/fixtures/printing-v1/printing_v1.h"
 #include "../../abi/fixtures/collection-value-v1/collection_value_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -54,6 +55,8 @@ static const CollectionValueApiV1 *fixture_collection_value;
 static const MapApiV1 *fixture_map; /* Historical storage oracle only. */
 static const MapApiV2 *fixture_map_v2;
 static inline void fixture_prepare_map(IdApi *api);
+static const PrintingApiV1 *fixture_printing;
+static inline void fixture_prepare_printing(IdApi *api);
 static const StringCollectionApiV1 *fixture_string_collection;
 static inline void fixture_prepare_string_collection(IdApi *api);
 static inline Oop fixture_integer_make(int64_t value) {
@@ -129,6 +132,8 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
         if(map_v2_attach) assert(map_v2_attach(fixture_map_v2)==1);
         else assert(map_attach(fixture_map)==1);
     }
+    PrintingDependencyV1 printing_attach=(PrintingDependencyV1)api->dlsym_fn(image,"birnam_printing_dependency_v1");
+    if(printing_attach) { fixture_prepare_printing(api); assert(printing_attach(fixture_printing)==1); }
     StringCollectionDependencyV1 split_attach=(StringCollectionDependencyV1)api->dlsym_fn(image,"birnam_string_collection_dependency_v1");
     if(split_attach) { fixture_prepare_string_collection(api); assert(split_attach(fixture_string_collection)==1); }
 
@@ -166,6 +171,16 @@ static inline void fixture_prepare_map(IdApi *api) {
         MapProviderV1 previous=(MapProviderV1)api->dlsym_fn(map,"birnam_map_provider_v1"); assert(previous && !previous());
         init(api,NULL); fixture_map=previous(); assert(fixture_map);
     }
+}
+static inline void fixture_prepare_printing(IdApi *api) {
+    if(fixture_printing) return;
+    const char *slash=strrchr(fixture_floor_path,'/'); assert(slash); char path[PATH_MAX];
+    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_printing.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
+    assert(n>0 && (size_t)n<sizeof(path));
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
+    PrintingProviderV1 provide=(PrintingProviderV1)api->dlsym_fn(image,"birnam_printing_provider_v1"); assert(provide && !provide());
+    init(api,NULL); fixture_printing=provide(); assert(fixture_printing);
 }
 static inline void fixture_prepare_string_collection(IdApi *api) {
     if(fixture_string_collection) return;

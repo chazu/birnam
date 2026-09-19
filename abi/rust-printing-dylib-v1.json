@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "scope": "Object and Symbol printing defaults installed by Prelude",
+  "install_name": "@rpath/libbirnam_printing.dylib",
+  "exported_symbols": [
+    "birnam_printing_provider_v1",
+    "birnam_string_dependency_v1",
+    "birnam_symbol_borrow_v1",
+    "module_init"
+  ]
+}

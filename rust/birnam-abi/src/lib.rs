@@ -12,6 +12,7 @@ pub mod float;
 pub mod word;
 pub mod string;
 pub mod string_collection;
+pub mod printing;
 pub mod range;
 pub mod vector;
 pub mod map;

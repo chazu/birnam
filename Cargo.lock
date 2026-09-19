@@ -205,6 +205,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-printing"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-range"
 version = "0.0.0"
 dependencies = [

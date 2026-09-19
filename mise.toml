@@ -44,6 +44,10 @@ run = "python3 scripts/same-frame-deopt.py"
 description = "Check loaded collection value comparison and hashing in debug"
 run = "scripts/collection-value-test.sh"
 
+[tasks.printing]
+description = "Focused debug Object/Symbol printing checks"
+run = "scripts/printing-test.sh"
+
 [tasks.string-collection]
 description = "Focused debug String split adapter checks"
 run = "scripts/string-collection-test.sh"
