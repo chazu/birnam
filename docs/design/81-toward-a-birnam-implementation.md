@@ -391,3 +391,6 @@ remain Rust; these are extraction boundaries for the later Birnam rewrite.
 [81U](81u-production-boolean-methods.md) extracts Boolean's existing methods from
 Prelude. The singleton representation and shared IdApi fields remain in Id for
 a separate caller/startup audit; this checkpoint adds no native interface.
+
+[81V](81v-production-nil-methods.md) moves the five existing Object/nil methods
+out of Collection. Nil's identity and roots still await their separate audit.

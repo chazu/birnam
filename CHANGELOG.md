@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Extract Object/nil's five existing predicate and printing methods from
+  Collection into `birnam-nil` (Design 81V), loaded immediately before Collection.
+  Keep nil's identity and roots in Id, preserving inherited behavior, live
+  callback/method replacement and existing ABI/image formats.
 - Extract Boolean's existing methods and False's private-behavior setup from
   Prelude into `birnam-boolean` (Design 81U), loaded immediately before Prelude.
   Preserve branching, short-circuiting, inherited behavior and live replacement;

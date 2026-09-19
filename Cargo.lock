@@ -153,6 +153,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-nil"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-object-model"
 version = "0.0.0"
 dependencies = [

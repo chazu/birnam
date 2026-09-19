@@ -74,3 +74,7 @@ The [Boolean method module](../docs/design/81u-production-boolean-methods.md)
 uses existing Method/module-init interfaces and object-model messages.
 Its [export inventory](rust-boolean-dylib-v1.json) adds no IdApi or image fields;
 canonical singleton representation remains in Id at this checkpoint.
+
+The [nil method module](../docs/design/81v-production-nil-methods.md) similarly
+moves existing Object/nil methods from Collection, using current interfaces.
+Its [export inventory](rust-nil-dylib-v1.json) adds no IdApi or image fields.
