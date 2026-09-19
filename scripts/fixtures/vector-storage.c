@@ -1,4 +1,4 @@
-#include "idapi_v7.h"
+#include "idapi_v8.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -61,8 +61,8 @@ static int exported(const char *name) { int result=api->is_exported(name); if(ca
 static Oop intern(const char *name) { if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==0 && rest==IDAPI_V7_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V7_SLOT_RAW,IDAPI_V7_SLOT_RAW,IDAPI_V7_SLOT_OOP,IDAPI_V7_SLOT_OOP,IDAPI_V7_SLOT_RAW}; assert(count==5 && rest==IDAPI_V7_SLOT_RAW && !memcmp(kinds,expected,5)); }
+    if(type==node_type) assert(count==0 && rest==IDAPI_V8_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V8_SLOT_RAW,IDAPI_V8_SLOT_RAW,IDAPI_V8_SLOT_OOP,IDAPI_V8_SLOT_OOP,IDAPI_V8_SLOT_RAW}; assert(count==5 && rest==IDAPI_V8_SLOT_RAW && !memcmp(kinds,expected,5)); }
     api->set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {

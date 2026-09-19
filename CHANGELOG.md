@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Extract reverse export-name lookup into Namespace (Design 81AX), including
+  Image, Alien, Reflect and Portable Code consumers. Preserve live callback and
+  context selection, first-alias lookup and borrowed names. IdApi v8 has 33 fields
+  / 264 bytes; native consumers must be rebuilt. Run `mise run namespace-names`.
+
 - Move raw export namespace storage out of Id into the loaded Namespace module
   (Design 81AW), preserving binding order, aliases, nulls, enumeration and roots.
   Native hosts now prepare its factory before Id initialization. Run `mise run namespace`.

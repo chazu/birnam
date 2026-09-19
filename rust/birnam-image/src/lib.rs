@@ -707,7 +707,7 @@ mod runtime {
         }
         let vtable = unsafe { (api.vtableOf)(object) };
         (unsafe { vtable_inherits_from(api, vtable, api.symbol_vt) })
-            || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some()
+            || unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(object)) }.is_some()
     }
 
     unsafe fn vtable_inherits_from(api: &IdApi, mut vtable: Oop, ancestor: Oop) -> bool {
@@ -730,7 +730,7 @@ mod runtime {
     }
 
     unsafe fn boxed_value(api: &IdApi, object: Oop) -> Option<BoxedValue> {
-        if object.is_null() || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some() {
+        if object.is_null() || unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(object)) }.is_some() {
             return None;
         }
         let vtable = unsafe { (api.vtableOf)(object) };
@@ -848,14 +848,14 @@ mod runtime {
             let portable_program = unsafe { copy_code_object_program(api, object) };
             let portable_block = unsafe { portable_block_code_object(api, vtable) };
             let has_exported_vtable =
-                unsafe { c_string_bytes((api.exportedNameOf)(vtable)) }.is_some();
+                unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(vtable)) }.is_some();
             let has_resumable_vtable =
                 unsafe { self.block_vtable_image_reference(api, vtable).is_some() };
             let owned_parent = unsafe { birnam_abi::vtable_owner(api, vtable) } == object;
             let parent = unsafe { birnam_abi::vtable_parent(api, vtable) };
             let has_exported_parent = owned_parent
                 && !parent.is_null()
-                && unsafe { c_string_bytes((api.exportedNameOf)(parent)) }.is_some();
+                && unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(parent)) }.is_some();
             if !has_exported_vtable
                 && !has_resumable_vtable
                 && !has_exported_parent
@@ -884,7 +884,7 @@ mod runtime {
                 self.portable_programs.push((key, program));
                 let provenance = unsafe { send0(api, object, b"sourceProvenance\0") };
                 if !unsafe { runtime_oop_is_canonical_reference(api, provenance) }
-                    && unsafe { c_string_bytes((api.exportedNameOf)(provenance)) }.is_none()
+                    && unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(provenance)) }.is_none()
                 {
                     unsafe { self.intern(api, provenance) }?;
                 }
@@ -967,12 +967,12 @@ mod runtime {
                 }
                 let portable_code_object = unsafe { portable_block_code_object(api, vtable) };
                 let layout_vtable = if portable_code_object.is_some()
-                    || unsafe { c_string_bytes((api.exportedNameOf)(vtable)) }.is_some()
+                    || unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(vtable)) }.is_some()
                 {
                     vtable
                 } else {
                     let parent = unsafe { birnam_abi::vtable_parent(api, vtable) };
-                    unsafe { c_string_bytes((api.exportedNameOf)(parent)) }?;
+                    unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(parent)) }?;
                     parent
                 };
                 if let Some(code_object) = portable_code_object {
@@ -980,7 +980,7 @@ mod runtime {
                     payload.push(12);
                     payload.extend_from_slice(&code_object.to_le_bytes());
                 } else {
-                    let name = unsafe { c_string_bytes((api.exportedNameOf)(layout_vtable)) }?;
+                    let name = unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(layout_vtable)) }?;
                     encode_v8_name_field(&mut payload, 9, &name)?;
                 }
                 let payload_size = unsafe { (api.objectPayloadSize)(object) };
@@ -1063,7 +1063,7 @@ mod runtime {
             encode_v8_name_field(output, 5, &unsafe {
                 c_string_bytes((api.symbolName)(object))
             }?)?;
-        } else if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
+        } else if let Some(name) = unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(object)) } {
             encode_v8_name_field(output, 9, &name)?;
         } else if unsafe { (api.vtableOf)(object) } == api.vtable_vt
             && let Some(code_object) = unsafe { portable_block_code_object(api, object) }
@@ -1098,7 +1098,7 @@ mod runtime {
                 c_string_bytes((api.symbolName)(object))
             }?));
         }
-        if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
+        if let Some(name) = unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(object)) } {
             return Some(OwnedBindingField::ExportRef(name));
         }
         heap.relocations
@@ -1359,7 +1359,7 @@ mod runtime {
 
     unsafe fn copy_code_object_program(api: &IdApi, object: Oop) -> Option<Vec<u8>> {
         let vtable = unsafe { (api.vtableOf)(object) };
-        if unsafe { c_string_bytes((api.exportedNameOf)(vtable)) }.as_deref()
+        if unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(vtable)) }.as_deref()
             != Some(b"CodeObjectVt")
         {
             return None;
@@ -1387,7 +1387,7 @@ mod runtime {
             return None;
         }
         let owner_vtable = unsafe { (api.vtableOf)(owner) };
-        if unsafe { c_string_bytes((api.exportedNameOf)(owner_vtable)) }.as_deref()
+        if unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(owner_vtable)) }.as_deref()
             != Some(PORTABLE_BLOCK_CARRIER_VTABLE_NAME)
             || unsafe { (api.objectPayloadSize)(owner) } != 2 * size_of::<Oop>()
         {
@@ -1473,7 +1473,7 @@ mod runtime {
             };
             return encoder.symbol(&bytes).is_ok();
         }
-        if let Some(name) = unsafe { c_string_bytes((api.exportedNameOf)(object)) } {
+        if let Some(name) = unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(object)) } {
             return encoder.export_ref(&name).is_ok();
         }
         let Some(id) = (unsafe { heap.intern(api, object) }) else {
@@ -2504,7 +2504,7 @@ mod runtime {
                 .flat_map(|binding| [binding.target, binding.implementation, binding.provenance])
             {
                 if unsafe { runtime_oop_is_canonical_reference(api, object) }
-                    || unsafe { c_string_bytes((api.exportedNameOf)(object)) }.is_some()
+                    || unsafe { c_string_bytes((birnam_abi::namespace_names::name_of)(object)) }.is_some()
                 {
                     continue;
                 }
@@ -3187,3 +3187,5 @@ birnam_abi::float_dependency!();
 birnam_abi::word_dependency!();
 
 birnam_abi::string_dependency!();
+
+birnam_abi::namespace_names_dependency!();

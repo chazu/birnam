@@ -23,7 +23,7 @@ pub(crate) struct BlockConstructionSummary {
 impl BlockConstructionSummary {
     pub(crate) fn discover(constructor: *const c_void) -> Option<Self> {
         let (image, declaration) =
-            resident_address_declaration(constructor, c"birnam_native_block_construction_v2")?;
+            resident_address_declaration(constructor, c"birnam_native_block_construction_v3")?;
         Some(Self {
             constructor,
             query: unsafe { core::mem::transmute(declaration) },
@@ -52,8 +52,11 @@ impl BlockConstructionSummary {
             return false;
         };
         let globals = runtime.globals();
-        let context =
-            crate::public_api::block_construction_context(globals.symbol_vt, globals.vtable_vt);
+        let context = crate::public_api::block_construction_context(
+            runtime,
+            globals.symbol_vt,
+            globals.vtable_vt,
+        );
         let mode = unsafe {
             (self.query)(
                 self.constructor,

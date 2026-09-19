@@ -6,7 +6,7 @@ mise exec -- cargo build -p birnam-namespace -p birnam-id -p birnam-trace -p bir
 adapter_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-string-collection.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v7 -Iscripts/fixtures scripts/fixtures/string-collection.c -o "$scratch/adapter"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v8 -Iscripts/fixtures scripts/fixtures/string-collection.c -o "$scratch/adapter"
 for mode in normal first-install-reentry; do
   "$scratch/adapter" "$adapter_target/debug/libbirnam_id.dylib" "$adapter_target/debug/libbirnam_object_model.dylib" "$adapter_target/debug/libbirnam_collection.dylib" "$mode" >"$scratch/$mode.log"
   tail -1 "$scratch/$mode.log"

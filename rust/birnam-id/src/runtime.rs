@@ -1007,6 +1007,23 @@ impl Runtime {
         Ok(exported)
     }
 
+    pub(crate) fn namespace_names(&self) -> *mut birnam_abi::namespace_names::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.names() }
+    }
+    pub(crate) fn canonical_namespace_names(&self) -> birnam_abi::namespace_names::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.canonical_names() }
+    }
+    pub(crate) fn namespace_name_preflight(&self) {
+        self.assert_owner();
+    }
+    /// Caller has performed preflight, with no intervening Id call or callback.
+    pub(crate) unsafe fn namespace_symbol_bytes(&self, symbol: Oop) -> *const core::ffi::c_char {
+        unsafe { (*self.state.get()).symbols.c_name_of(symbol) }
+    }
+
+    #[cfg(test)]
     pub(crate) fn exported_name(&self, object: Oop) -> *const core::ffi::c_char {
         self.assert_owner();
         // SAFETY: owner-thread serialization. Environment strongly owns the
@@ -6172,6 +6189,26 @@ mod tests {
         runtime.enter(|| runtime.run_mark_phase((0, 0), &initial_roots));
         assert_eq!(runtime.is_marked_for_test(selected), Some(false));
         assert_eq!(runtime.is_marked_for_test(continuation), Some(false));
+    }
+
+    #[test]
+    fn namespace_names_follow_independent_moved_runtime_state() {
+        // Moving completed bootstraps must not leave a captured Runtime pointer.
+        let runtimes = vec![build_bootstrap(), build_bootstrap()];
+        assert_ne!(runtimes[0].runtime.namespace_names(), runtimes[1].runtime.namespace_names());
+        for (index, bootstrap) in runtimes.iter().enumerate() {
+            let runtime = &bootstrap.runtime;
+            let object = runtime.allocate_instance(runtime.globals().object_vt, 0);
+            let alias = format!("independent-{index}");
+            runtime.export(alias.as_bytes(), object).unwrap();
+            runtime.enter(|| {
+                let names = unsafe { *runtime.namespace_names() };
+                for value in [object, core::ptr::null_mut()] {
+                    assert_eq!(unsafe { names.name_of.unwrap()(names.context, value) }, runtime.exported_name(value));
+                }
+                assert_eq!(unsafe { core::ffi::CStr::from_ptr(names.name_of.unwrap()(names.context, object)) }.to_bytes(), alias.as_bytes());
+            });
+        }
     }
 
     #[test]

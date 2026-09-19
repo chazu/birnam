@@ -241,10 +241,6 @@ unsafe extern "C" fn api_object_payload_size(object: Oop) -> usize {
     runtime().payload_size(object).unwrap_or(0)
 }
 
-unsafe extern "C" fn api_exported_name_of(object: Oop) -> *const c_char {
-    runtime().exported_name(object)
-}
-
 unsafe extern "C" fn api_slot_kind(vtable: Oop, word: usize) -> u8 {
     runtime().slot_kind(vtable, word)
 }
@@ -297,7 +293,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         setLayout: api_set_layout,
         gcSetPrecise: api_gc_set_precise,
         objectPayloadSize: api_object_payload_size,
-        exportedNameOf: api_exported_name_of,
         slotKind: api_slot_kind,
         setMethodOverwriteHook: api_set_method_overwrite_hook,
         vtableCount: api_vtable_count,
@@ -338,7 +333,12 @@ pub(crate) fn numeric_functions(runtime: &Runtime) -> [usize; 10] {
 }
 
 /// Current floor operands for the optional warm Block constructor declaration.
-pub(crate) fn block_construction_context(symbol_vtable: Oop, metavtable: Oop) -> [usize; 11] {
+pub(crate) fn block_construction_context(
+    runtime: &Runtime,
+    symbol_vtable: Oop,
+    metavtable: Oop,
+) -> [usize; 12] {
+    let names = runtime.canonical_namespace_names();
     [
         canonical_numeric_functions().alloc as usize,
         canonical_numeric_functions().import as usize,
@@ -349,7 +349,8 @@ pub(crate) fn block_construction_context(symbol_vtable: Oop, metavtable: Oop) ->
         api_symbol_name as *const () as usize,
         api_intern as *const () as usize,
         symbol_vtable as usize,
-        api_exported_name_of as *const () as usize,
+        names.name_of.unwrap() as usize,
+        names.context as usize,
         metavtable as usize,
     ]
 }
@@ -588,4 +589,37 @@ static NATIVE_ALLOCATION: AtomicPtr<birnam_abi::native_allocation::NativeAllocat
 pub unsafe extern "C" fn birnam_native_allocation_provider_v1() -> *const birnam_abi::native_allocation::NativeAllocationV1 {
     let _ = runtime();
     NATIVE_ALLOCATION.load(Ordering::Acquire)
+}
+
+/// Primitive floor facts for the namespace's reverse-name operation. Constructing
+/// this descriptor does not inspect a Runtime or call into it.
+pub(crate) fn namespace_name_access() -> birnam_abi::namespace_names::FloorV1 {
+    unsafe extern "C" fn preflight(_: *mut c_void) {
+        #[cfg(not(test))]
+        runtime().namespace_name_preflight();
+        #[cfg(test)]
+        crate::runtime::with_active(|r| r.namespace_name_preflight());
+    }
+    unsafe extern "C" fn symbol_name(_: *mut c_void, symbol: Oop) -> *const c_char {
+        #[cfg(not(test))]
+        {
+            unsafe { runtime().namespace_symbol_bytes(symbol) }
+        }
+        #[cfg(test)]
+        {
+            crate::runtime::with_active(|r| unsafe { r.namespace_symbol_bytes(symbol) })
+        }
+    }
+    birnam_abi::namespace_names::FloorV1 {
+        version: 1,
+        byte_size: size_of::<birnam_abi::namespace_names::FloorV1>(),
+        context: core::ptr::null_mut(),
+        preflight: Some(preflight),
+        symbol_name: Some(symbol_name),
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_namespace_names_provider_v1()
+-> *mut birnam_abi::namespace_names::ApiV1 {
+    runtime().namespace_names()
 }

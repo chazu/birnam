@@ -78,3 +78,5 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void) -> *mu
 birnam_abi::integer_dependency!();
 
 birnam_abi::string_dependency!();
+
+birnam_abi::namespace_names_dependency!();

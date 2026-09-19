@@ -60,6 +60,10 @@ run = "scripts/word-error-value-test.sh"
 description = "Focused debug lazy Error value policy checks"
 run = "scripts/error-value-test.sh"
 
+[tasks.namespace-names]
+description = "Focused debug reverse-name capability and consumer admission checks"
+run = "scripts/namespace-names-test.sh"
+
 [tasks.namespace]
 description = "Focused debug raw namespace state and bootstrap checks"
 run = "scripts/namespace-test.sh"

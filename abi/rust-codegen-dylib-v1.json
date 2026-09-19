@@ -16,6 +16,7 @@
     "birnam_install_method",
     "birnam_integer_dependency_v1",
     "birnam_is_error",
+    "birnam_namespace_names_dependency_v1",
     "birnam_record_global_src",
     "birnam_record_module_source",
     "birnam_remove_method",

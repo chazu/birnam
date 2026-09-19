@@ -1,4 +1,4 @@
-#include "idapi_v7.h"
+#include "idapi_v8.h"
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include <assert.h>
@@ -17,6 +17,12 @@ typedef unsigned (*Admission)(const void *, Oop, Oop, size_t, Oop, const uint8_t
 
 static IdApi *api;
 static unsigned allocations;
+static NamespaceNamesApiV1 original_names, selected_names;
+static unsigned name_calls;
+static const char *counted_name(void *context,Oop value) {
+    assert(context==&selected_names);name_calls++;
+    return original_names.name_of(original_names.context,value);
+}
 static Admission admission;
 static Oop probe, probe_selector;
 static struct {
@@ -55,6 +61,9 @@ int main(int argc, char **argv) {
     IdInitFn initialize = (IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init"));
     assert(initialize);
     api = initialize();
+    original_names=*fixture_namespace_names();
+    selected_names=original_names;
+    fixture_names=&selected_names; /* Independently selected copied capability. */
     fixture_mount_object_model(api, argv[1]);
     admission = (Admission)dlsym(floor, "birnam_id_warm_block_construction_v1");
     assert(admission);
@@ -75,7 +84,7 @@ int main(int argc, char **argv) {
         init(i == 5 ? &module_api : api, NULL);
         if (i == 5) portable = module;
     }
-    Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v2");
+    Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v3");
     assert(query);
     PortableV1 *v1 = api->import_fn("_BirnamPortableCodeApiV1");
     PortableV2 *v2 = api->import_fn("_BirnamPortableCodeApiV2");
@@ -85,7 +94,7 @@ int main(int argc, char **argv) {
         (uintptr_t)api->alloc, (uintptr_t)api->import_fn, (uintptr_t)api->object_payload_size,
         (uintptr_t)api->vtable_of, (uintptr_t)api->send, (uintptr_t)api->vtable_selector_at,
         (uintptr_t)api->symbol_name, (uintptr_t)api->intern, (uintptr_t)api->symbol_vt,
-        (uintptr_t)api->exported_name_of, (uintptr_t)api->vtable_vt,
+        (uintptr_t)fixture_namespace_names()->name_of, (uintptr_t)fixture_namespace_names()->context, (uintptr_t)api->vtable_vt,
     };
     FILE *file = fopen(argv[6], "rb");
     assert(file && fseek(file, 0, SEEK_END) == 0);
@@ -140,11 +149,25 @@ int main(int argc, char **argv) {
     bytes[0] ^= 1;
     assert(ASK(v1->construct, vt, code, 2, NULL) == 0);
     bytes[0] ^= 1;
-    for (unsigned i = 0; i < 11; ++i) {
+    for (unsigned i = 0; i < sizeof(context)/sizeof(context[0]); ++i) {
         uintptr_t saved = context[i]; context[i] = 0;
         assert(ASK(v1->construct, vt, code, 2, NULL) == 0);
         context[i] = saved;
     }
+    /* Both live operands are part of pure admission. Never invoke a changed
+       capability even when it forwards to the original implementation. */
+    selected_names.name_of=counted_name;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==0);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==0);
+    assert(name_calls==0);
+    selected_names=original_names;selected_names.context=&selected_names;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==0);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==0);
+    selected_names.name_of=counted_name;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==0 && name_calls==0);
+    selected_names=original_names;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==1);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==1);
     module_api.alloc = counted_alloc;
     assert(ASK(v1->construct, vt, code, 2, NULL) == 0);
     assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0) == 0);

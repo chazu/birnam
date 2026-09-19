@@ -1,4 +1,4 @@
-#include "idapi_v7.h"
+#include "idapi_v8.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "collect-support.h"
@@ -149,7 +149,7 @@ int main(int argc,char **argv) {
     else assert(api->import_fn("StringBuilder")==prototype && api->import_fn("StringBuilderVt")==behavior);
     assert(vtable_parent(api,behavior)==api->object_vt);
     if(!present) assert(vtable_owner(api,behavior)==prototype);
-    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V7_SLOT_RAW);
+    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V8_SLOT_RAW);
     print_selector=api->intern("printString"); roots(record_mark); assert(marked==3);
     Method create=lookup("new"), clone=lookup("clone"), append=lookup("add:"), add_byte=lookup("addByte:");
     assert(create==clone && create && append && add_byte && lookup("asString")==lookup("printString"));

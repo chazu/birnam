@@ -1,5 +1,6 @@
 #ifndef FIXTURE_INTEGER_SUPPORT_H
 #define FIXTURE_INTEGER_SUPPORT_H
+#include "namespace-support.h"
 #include "../../abi/fixtures/integer-v1/integer_v1.h"
 #include "float-support.h"
 #include "word-support.h"
@@ -102,6 +103,7 @@ static inline int fixture_is_integer(Oop value) {
     return fixture_integer->is_exact(fixture_integer->context, value);
 }
 static inline void fixture_attach_integer(IdApi *api, void *image) {
+    fixture_attach_namespace_names(api,image);
     fixture_attach_string(api, image);
     fixture_attach_float(api, image);
     fixture_attach_word(api, image);

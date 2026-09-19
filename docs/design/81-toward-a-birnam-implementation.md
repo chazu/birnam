@@ -420,3 +420,9 @@ objects and Integer `to:` into the Range module. Explicit construction stages
 retain the existing interleaving with Vector/Map; the two remaining Vector-backed
 methods read bounds through the immutable Range dependency. IdApi v7 and Image
 encoding remain unchanged.
+
+[81AW](81aw-production-namespace-state.md) moves ordered raw export bindings
+into Namespace. [81AX](81ax-production-namespace-names.md) moves reverse-name
+lookup and its Image, Alien, Reflect and Portable Code consumers onto a live
+Namespace capability. IdApi v8 has 33 fields / 264 bytes. Import, export, presence
+and enumeration remain in Id for subsequent extractions.

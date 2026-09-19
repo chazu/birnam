@@ -1,4 +1,4 @@
-#include "idapi_v7.h"
+#include "idapi_v8.h"
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include <assert.h>
@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
     New baseline = (New)dlsym(codegen, "birnam_portable_block_new_v1"); assert(baseline);
     OwnedNew owned_baseline = (OwnedNew)dlsym(codegen, "birnam_portable_materialized_block_new_v2"); assert(owned_baseline);
     Oop v1vt = api->proto(api->object_vt), v2vt = api->proto(api->object_vt);
-    api->set_layout(v1vt, NULL, 0, IDAPI_V7_SLOT_RAW); api->set_layout(v2vt, NULL, 0, IDAPI_V7_SLOT_RAW);
+    api->set_layout(v1vt, NULL, 0, IDAPI_V8_SLOT_RAW); api->set_layout(v2vt, NULL, 0, IDAPI_V8_SLOT_RAW);
     V1 *v1 = api->alloc(v1vt, sizeof(V1)); *v1 = (V1){1, sizeof(V1), admit, construct};
     V2 *v2 = api->alloc(v2vt, sizeof(V2)); *v2 = (V2){2, sizeof(V2), construct_owned};
     api->export_obj("_BirnamPortableCodeApiV1", v1); api->export_obj("_BirnamPortableCodeApiV1Vt", v1vt);

@@ -19,8 +19,8 @@ AUTHORITIES = (
     "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-id/src/registration.rs",
     "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs",
 )
-CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v7.json",
-                 "abi/fixtures/idapi-v7/idapi_v7.h")
+CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v8.json",
+                 "abi/fixtures/idapi-v8/idapi_v8.h")
 
 
 def sha(path):
@@ -461,12 +461,12 @@ def main():
                 raise RuntimeError("changed compatibility authority: " + name)
             receipt["authorities"][name] = sha(ROOT / name)
         run(["python3", "scripts/compatibility-authority-test.py"], "image-compatibility-authority")
-        receipt["image_authority_migration"] = "Design 81K owner/parent, 81L Integer and 81R Float and 81T Word dependency call substitutions; encoding unchanged"
-        # 81J/81K/81L/81R/81T deliberately reduce IdApi. Verify the current independent v6
+        receipt["image_authority_migration"] = "Design 81K owner/parent, 81L Integer, 81R Float, 81T Word, 81X String and 81AX Namespace names dependency call substitutions; encoding unchanged"
+        # 81J through 81AX deliberately reduce IdApi. Verify the current independent v8
         # manifest instead of claiming that this table matches the 74T baseline.
-        run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v7")
+        run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v8")
         receipt["current_id_api"] = {
-            "schema_version": 6, "change": "Design 81T Word dependency",
+            "schema_version": 8, "change": "Design 81AX Namespace names dependency",
             "files_sha256": {name: sha(ROOT / name) for name in CURRENT_IDAPI},
         }
         for profile in ("debug", "release"):
@@ -483,7 +483,7 @@ def main():
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
                 fixture = work / (profile + "-block-construction")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v7",
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v8",
                      "scripts/fixtures/native-block-construction.c", "-o", fixture], profile + "-closure-native-fixture")
                 libraries = ROOT / ".cargo-target" / profile
                 run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
@@ -493,7 +493,7 @@ def main():
                     ("id", "prelude", "collection", "error", "portable_code")]
                     + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin", "without-prelude"], profile + "-closure-native-absent-family")
                 api_fixture = work / (profile + "-closure-api-context")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v7",
+                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v8",
                      "scripts/fixtures/closure-api-context.c", "-o", api_fixture], profile + "-closure-api-fixture")
                 run([api_fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
                     ("id", "tcc", "codegen_runtime")], profile + "-closure-api-context")

@@ -895,10 +895,10 @@ unsafe extern "C" fn native_new_block(
 }
 
 /// Optional, pure declaration of the exact warm constructor operation.
-/// See abi/native-block-construction-v2.md. This never constructs an object,
+/// See abi/native-block-construction-v3.md. This never constructs an object,
 /// installs a carrier, calls an Id Method, or grants invocation authority.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_block_construction_v2(
+pub unsafe extern "C" fn birnam_native_block_construction_v3(
     constructor: *const core::ffi::c_void,
     nil: Oop,
     context: *const usize,
@@ -927,8 +927,9 @@ pub unsafe extern "C" fn birnam_native_block_construction_v2(
         let api = runtime.api();
         // Check the current table before calling any entry. Copied tables work;
         // instrumentation or a different floor must withdraw this declaration.
+        let names = unsafe { birnam_abi::namespace_names::operations() };
         if nil != api.nilObj
-            || unsafe { core::slice::from_raw_parts(context, 11) }
+            || unsafe { core::slice::from_raw_parts(context, 12) }
                 != [
                     api.alloc as usize,
                     api.import as usize,
@@ -939,7 +940,8 @@ pub unsafe extern "C" fn birnam_native_block_construction_v2(
                     api.symbolName as usize,
                     api.intern as usize,
                     api.symbol_vt as usize,
-                    api.exportedNameOf as usize,
+                    names.name_of.unwrap() as usize,
+                    names.context as usize,
                     api.vtable_vt as usize,
                 ]
         {
@@ -961,7 +963,7 @@ pub unsafe extern "C" fn birnam_native_block_construction_v2(
             if object.is_null() {
                 return false;
             }
-            let name = unsafe { (api.exportedNameOf)(object) };
+            let name = unsafe { (birnam_abi::namespace_names::name_of)(object) };
             !name.is_null() && unsafe { core::ffi::CStr::from_ptr(name) }.to_bytes() == expected
         };
         // The floor attests unchanged default owner/parent protocols and Block

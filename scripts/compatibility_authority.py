@@ -13,6 +13,16 @@ only those complete expressions, with their original operands and exact counts.
 
 def unchanged_authority(name, current, baseline):
     if name == "rust/birnam-image/src/lib.rs" and current != baseline:
+        name_call = b'(birnam_abi::namespace_names::name_of)'
+        if name_call in current:
+            old_call = b'(api.exportedNameOf)'
+            if baseline.count(old_call) != 14 or current.count(name_call) != 14 or name_call in baseline:
+                return False
+            current = current.replace(name_call, old_call)
+            dependency = b'\nbirnam_abi::namespace_names_dependency!();\n'
+            if dependency in baseline or current.count(dependency) != 1:
+                return False
+            current = current.replace(dependency, b'')
         string_migrations = (
             (b'(api.mkString)', b'(birnam_abi::string::make)', 10),
             (b'(api.stringBytes)', b'(birnam_abi::string::bytes)', 4),

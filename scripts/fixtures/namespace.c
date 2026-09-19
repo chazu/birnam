@@ -1,11 +1,11 @@
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
-#include "idapi_v7.h"
+#include "idapi_v8.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include <stdlib.h>
 
-static const NamespaceApiV1 *storage;
-static NamespaceApiV1 observed;
+static const NamespaceApiV2 *storage;
+static NamespaceApiV2 observed;
 static size_t creates, binds, finds, reverses, views;
 static void *floor_context;
 static void *create(void) { creates++; return floor_context=storage->create(); }
@@ -57,7 +57,8 @@ static void storage_oracle(void) {
 int main(int argc,char **argv) {
     assert(argc==2 || argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
-    NamespaceDependencyV1 attach=(NamespaceDependencyV1)dlsym(floor,"birnam_namespace_dependency_v1");
+    fixture_namespace_floor=floor;
+    NamespaceDependencyV2 attach=(NamespaceDependencyV2)dlsym(floor,"birnam_namespace_dependency_v2");
     assert(argc==2 || attach);
     void *namespace_image=NULL,*extra=NULL;ModuleInitFn reload=NULL;
     if(attach) {
@@ -65,14 +66,14 @@ int main(int argc,char **argv) {
         snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-argv[1]),argv[1]);
         namespace_image=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(namespace_image);
         extra=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(extra);
-        NamespaceProviderV1 provide=(NamespaceProviderV1)dlsym(namespace_image,"birnam_namespace_provider_v1");assert(provide);
+        NamespaceProviderV2 provide=(NamespaceProviderV2)dlsym(namespace_image,"birnam_namespace_provider_v2");assert(provide);
         storage=provide();assert(storage && storage==provide());
-        assert(storage->version==1 && storage->byte_size==sizeof(*storage));
+        assert(storage->version==2 && storage->byte_size==sizeof(*storage));
         storage_oracle();
-        assert(!attach(NULL));NamespaceApiV1 bad=*storage;bad.version++;assert(!attach(&bad));
+        assert(!attach(NULL));NamespaceApiV2 bad=*storage;bad.version++;assert(!attach(&bad));
         bad=*storage;bad.byte_size--;assert(!attach(&bad));
 #define REJECT(field) bad=*storage;bad.field=NULL;assert(!attach(&bad))
-        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);
+        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);
 #undef REJECT
         observed=*storage;observed.create=create;observed.bind=bind;observed.find=find;observed.reverse=reverse;observed.bindings=bindings;
         assert(attach(&observed)==1 && attach(&observed)==1 && !attach(storage));
@@ -109,17 +110,17 @@ int main(int argc,char **argv) {
         for(size_t i=0;i<16;i++) {
             const char *expected=NULL;
             if(values[i])for(size_t j=0;j<used;j++)if(current[order[j]]==values[i]){expected=names[order[j]];break;}
-            const char *actual=api->exported_name_of(values[i]);assert((!actual)==(!expected));
+            const char *actual=fixture_namespace_name_of(values[i]);assert((!actual)==(!expected));
             if(actual)assert(!strcmp(actual,expected));
         }
     }
     for(size_t i=0;i<base;i++)assert(name_at(i)==original[i]);free(original);
-    assert(!name_at(count()) && !name_at(SIZE_MAX));assert(!api->exported_name_of(NULL));
+    assert(!name_at(count()) && !name_at(SIZE_MAX));assert(!fixture_namespace_name_of(NULL));
     Oop retained=api->alloc(api->object_vt,0),discarded=api->alloc(api->object_vt,0);
     api->export_obj("namespace-first-alias",retained);api->export_obj("namespace-second-alias",retained);
-    assert(!strcmp(api->exported_name_of(retained),"namespace-first-alias"));
+    assert(!strcmp(fixture_namespace_name_of(retained),"namespace-first-alias"));
     api->export_obj("namespace-first-alias",discarded);
-    assert(!strcmp(api->exported_name_of(retained),"namespace-second-alias"));
+    assert(!strcmp(fixture_namespace_name_of(retained),"namespace-second-alias"));
     api->export_obj("namespace-first-alias",NULL);
     Oop root_name=api->intern("namespace-second-alias"),null_name=api->intern("namespace-first-alias");
     api->gc_set_precise(1);collect_now(api);

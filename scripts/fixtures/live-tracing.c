@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v7/idapi_v7.h"
+#include "../../abi/fixtures/idapi-v8/idapi_v8.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include "collect-support.h"

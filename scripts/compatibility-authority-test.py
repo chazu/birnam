@@ -79,6 +79,15 @@ class CompatibilityAuthorityTests(unittest.TestCase):
             self.assertIn(before, self.current)
             self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
 
+    def test_namespace_names_preserve_operands_and_complete_migration(self):
+        for before, after in (
+            (b'(birnam_abi::namespace_names::name_of)(object)', b'(birnam_abi::namespace_names::name_of)(vtable)'),
+            (b'(birnam_abi::namespace_names::name_of)(parent)', b'(api.exportedNameOf)(parent)'),
+            (b'birnam_abi::namespace_names_dependency!();', b''),
+        ):
+            self.assertIn(before, self.current)
+            self.assertFalse(unchanged_authority(IMAGE, self.current.replace(before, after, 1), self.baseline))
+
     def test_exception_does_not_apply_to_other_contracts(self):
         self.assertFalse(unchanged_authority("rust/birnam-image/src/v8.rs", self.current, self.baseline))
 

@@ -1,5 +1,7 @@
 # Raw namespace storage v1
 
+> Historical contract; [v2](namespace-v2.md) adds names-service ownership in 81AX.
+
 Design [81AW](../docs/design/81aw-production-namespace-state.md) moves the ordered
 raw export table and address index from Id into `birnam-namespace`. It is separate
 from the authored Globals store and System's operating-system Environment module.

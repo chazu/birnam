@@ -1,5 +1,7 @@
 # Optional native Block construction declaration, v2
 
+> Historical contract; [v3](native-block-construction-v3.md) replaces it in 81AX.
+
 Design 81K removes the parent/owner entries from IdApi. The current optional
 producer export is:
 

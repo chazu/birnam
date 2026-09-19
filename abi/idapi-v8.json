@@ -1,0 +1,444 @@
+{
+  "schema_version": 8,
+  "role": "build-test-evidence-only",
+  "target": {
+    "arch": "aarch64",
+    "os": "macos",
+    "abi": "none",
+    "object_format": "macho",
+    "endian": "little",
+    "pointer_bits": 64,
+    "c_int_bits": 32
+  },
+  "types": [
+    {
+      "name": "Oop",
+      "size": 8,
+      "alignment": 8,
+      "nullable": true,
+      "signature": "nullable(ptr<void>)"
+    },
+    {
+      "name": "Method",
+      "size": 8,
+      "alignment": 8,
+      "nullable": false,
+      "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),many<const nullable(ptr<void>)>,usize)->nullable(ptr<void>)"
+    },
+    {
+      "name": "RootProvider",
+      "size": 8,
+      "alignment": 8,
+      "nullable": false,
+      "signature": "fnptr[aarch64_aapcs_darwin](fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void)->void"
+    },
+    {
+      "name": "TraceHook",
+      "size": 8,
+      "alignment": 8,
+      "nullable": false,
+      "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void)->void"
+    },
+    {
+      "name": "Finalizer",
+      "size": 8,
+      "alignment": 8,
+      "nullable": false,
+      "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void"
+    },
+    {
+      "name": "MethodOverwriteHook",
+      "size": 8,
+      "alignment": 8,
+      "nullable": false,
+      "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),nullable(ptr<void>))->void"
+    },
+    {
+      "name": "IdInitFn",
+      "size": 8,
+      "alignment": 8,
+      "nullable": false,
+      "signature": "fnptr[aarch64_aapcs_darwin]()->ptr<IdApi>"
+    },
+    {
+      "name": "ModuleInitFn",
+      "size": 8,
+      "alignment": 8,
+      "nullable": false,
+      "signature": "fnptr[aarch64_aapcs_darwin](ptr<IdApi>,nullable(ptr<void>))->nullable(ptr<void>)"
+    }
+  ],
+  "id_api": {
+    "size": 264,
+    "alignment": 8,
+    "field_count": 33,
+    "fields": [
+      {
+        "index": 0,
+        "name": "dlopen",
+        "offset": 0,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](cstr<const u8>,c_int)->nullable(ptr<void>)"
+      },
+      {
+        "index": 1,
+        "name": "dlsym",
+        "offset": 8,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),cstr<const u8>)->nullable(ptr<void>)"
+      },
+      {
+        "index": 2,
+        "name": "object_vt",
+        "offset": 16,
+        "size": 8,
+        "alignment": 8,
+        "nullable": true,
+        "kind": "data-pointer",
+        "signature": "nullable(ptr<void>)"
+      },
+      {
+        "index": 3,
+        "name": "vtable_vt",
+        "offset": 24,
+        "size": 8,
+        "alignment": 8,
+        "nullable": true,
+        "kind": "data-pointer",
+        "signature": "nullable(ptr<void>)"
+      },
+      {
+        "index": 4,
+        "name": "symbol_vt",
+        "offset": 32,
+        "size": 8,
+        "alignment": 8,
+        "nullable": true,
+        "kind": "data-pointer",
+        "signature": "nullable(ptr<void>)"
+      },
+      {
+        "index": 5,
+        "name": "intern",
+        "offset": 40,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](cstr<const u8>)->nullable(ptr<void>)"
+      },
+      {
+        "index": 6,
+        "name": "proto",
+        "offset": 48,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->nullable(ptr<void>)"
+      },
+      {
+        "index": 7,
+        "name": "method",
+        "offset": 56,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),nullable(ptr<void>),fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),many<const nullable(ptr<void>)>,usize)->nullable(ptr<void>))->void"
+      },
+      {
+        "index": 8,
+        "name": "alloc",
+        "offset": 64,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),usize)->nullable(ptr<void>)"
+      },
+      {
+        "index": 9,
+        "name": "import",
+        "offset": 72,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](cstr<const u8>)->nullable(ptr<void>)"
+      },
+      {
+        "index": 10,
+        "name": "exportObj",
+        "offset": 80,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](cstr<const u8>,nullable(ptr<void>))->nullable(ptr<void>)"
+      },
+      {
+        "index": 11,
+        "name": "isExported",
+        "offset": 88,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](cstr<const u8>)->c_int"
+      },
+      {
+        "index": 12,
+        "name": "send",
+        "offset": 96,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),nullable(ptr<void>),many<const nullable(ptr<void>)>,usize)->nullable(ptr<void>)"
+      },
+      {
+        "index": 13,
+        "name": "nilObj",
+        "offset": 104,
+        "size": 8,
+        "alignment": 8,
+        "nullable": true,
+        "kind": "data-pointer",
+        "signature": "nullable(ptr<void>)"
+      },
+      {
+        "index": 14,
+        "name": "trueObj",
+        "offset": 112,
+        "size": 8,
+        "alignment": 8,
+        "nullable": true,
+        "kind": "data-pointer",
+        "signature": "nullable(ptr<void>)"
+      },
+      {
+        "index": 15,
+        "name": "falseObj",
+        "offset": 120,
+        "size": 8,
+        "alignment": 8,
+        "nullable": true,
+        "kind": "data-pointer",
+        "signature": "nullable(ptr<void>)"
+      },
+      {
+        "index": 16,
+        "name": "symbolName",
+        "offset": 128,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->cstr<const u8>"
+      },
+      {
+        "index": 17,
+        "name": "vtableOf",
+        "offset": 136,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->nullable(ptr<void>)"
+      },
+      {
+        "index": 18,
+        "name": "gcSetStackBottom",
+        "offset": 144,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](usize)->void"
+      },
+      {
+        "index": 19,
+        "name": "gcRegisterRootProvider",
+        "offset": 152,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](fnptr[aarch64_aapcs_darwin](fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void)->void)->void"
+      },
+      {
+        "index": 20,
+        "name": "gcCollect",
+        "offset": 160,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin]()->usize"
+      },
+      {
+        "index": 21,
+        "name": "gcLiveCount",
+        "offset": 168,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin]()->usize"
+      },
+      {
+        "index": 22,
+        "name": "setTraceHook",
+        "offset": 176,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void)->void)->void"
+      },
+      {
+        "index": 23,
+        "name": "gcSetAuto",
+        "offset": 184,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](c_int)->void"
+      },
+      {
+        "index": 24,
+        "name": "setFinalizer",
+        "offset": 192,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void)->void"
+      },
+      {
+        "index": 25,
+        "name": "setLayout",
+        "offset": 200,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),nullable(many<const u8>),usize,u8)->void"
+      },
+      {
+        "index": 26,
+        "name": "gcSetPrecise",
+        "offset": 208,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](c_int)->void"
+      },
+      {
+        "index": 27,
+        "name": "objectPayloadSize",
+        "offset": 216,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->usize"
+      },
+      {
+        "index": 28,
+        "name": "slotKind",
+        "offset": 224,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),usize)->u8"
+      },
+      {
+        "index": 29,
+        "name": "setMethodOverwriteHook",
+        "offset": 232,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),nullable(ptr<void>))->void))->void"
+      },
+      {
+        "index": 30,
+        "name": "vtableCount",
+        "offset": 240,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin]()->usize"
+      },
+      {
+        "index": 31,
+        "name": "vtableAt",
+        "offset": 248,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](usize)->nullable(ptr<void>)"
+      },
+      {
+        "index": 32,
+        "name": "vtableSelectorAt",
+        "offset": 256,
+        "size": 8,
+        "alignment": 8,
+        "nullable": false,
+        "kind": "function-pointer",
+        "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),usize)->nullable(ptr<void>)"
+      }
+    ]
+  },
+  "contracts": [
+    {
+      "path": "Method.args",
+      "rule": "null permitted exactly when count is zero"
+    },
+    {
+      "path": "IdApi.send.args",
+      "rule": "null permitted exactly when count is zero"
+    },
+    {
+      "path": "IdApi.setLayout.kinds",
+      "rule": "null permitted exactly when prefix count is zero"
+    }
+  ],
+  "constants": [
+    {
+      "name": "slot_raw",
+      "value": 0
+    },
+    {
+      "name": "slot_oop",
+      "value": 1
+    },
+    {
+      "name": "slot_code",
+      "value": 2
+    },
+    {
+      "name": "slot_unknown",
+      "value": 255
+    }
+  ],
+  "fingerprint": {
+    "algorithm": "sha256",
+    "value": "1cc531291476ffef9076aec66640fa248db1024e1ad4ae7c2bfcae0877997c34"
+  }
+}

@@ -208,7 +208,7 @@ unsafe fn record_alien_source(api: &IdApi, source: &[u8]) {
 }
 
 unsafe fn global_name(api: &IdApi, target: Oop) -> Option<Vec<u8>> {
-    let exported = unsafe { (api.exportedNameOf)(target) };
+    let exported = unsafe { (birnam_abi::namespace_names::name_of)(target) };
     if !exported.is_null() {
         return Some(
             unsafe { std::ffi::CStr::from_ptr(exported) }

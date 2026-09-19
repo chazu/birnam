@@ -12373,7 +12373,7 @@ unsafe fn reflect_exported_symbol(api: &IdApi, value: Oop) -> Oop {
     if value.is_null() {
         return api.nilObj;
     }
-    let name = unsafe { (api.exportedNameOf)(value) };
+    let name = unsafe { (birnam_abi::namespace_names::name_of)(value) };
     if name.is_null() {
         return api.nilObj;
     }
@@ -14682,3 +14682,5 @@ mod state_contract;
 birnam_abi::integer_dependency!();
 
 birnam_abi::string_dependency!();
+
+birnam_abi::namespace_names_dependency!();

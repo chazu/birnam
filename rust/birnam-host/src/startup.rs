@@ -941,6 +941,7 @@ impl fmt::Debug for FloorError {
 /// owns process-wide heap/GC state and may retain function pointers in modules.
 pub struct LoadedFloor {
     _namespace: NonNull<std::ffi::c_void>,
+    namespace_names: NonNull<birnam_abi::namespace_names::ApiV1>,
     handle: NonNull<std::ffi::c_void>,
     api: NonNull<IdApi>,
     // Keep this type !Send/!Sync until host threading and the floor owner-thread
@@ -974,6 +975,7 @@ pub enum ModuleError {
     BlockLoopDependencyRejected { path: PathBuf },
     NativeLoaderDependencyRejected { path: PathBuf },
     SourceLoaderDependencyRejected { path: PathBuf },
+    NamespaceNamesDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
     MissingModuleInit {
@@ -2290,6 +2292,21 @@ impl LoadedStack {
             });
         };
         self.configure_symbol_borrow(path, handle)?;
+        let dependency = unsafe {
+            (self.api().dlsym)(
+                handle.as_ptr(),
+                c"birnam_namespace_names_dependency_v1".as_ptr(),
+            )
+        };
+        if !dependency.is_null() {
+            let attach: birnam_abi::namespace_names::DependencyV1 =
+                unsafe { std::mem::transmute(dependency) };
+            if unsafe { attach(self.floor.namespace_names.as_ptr()) } != 1 {
+                return Err(ModuleError::NamespaceNamesDependencyRejected {
+                    path: path.to_path_buf(),
+                });
+            }
+        }
         let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_integer_dependency_v1".as_ptr()) };
         if !dependency.is_null() {
             let attach: birnam_abi::integer::IntegerDependencyV1 = unsafe { std::mem::transmute(dependency) };
@@ -3013,7 +3030,29 @@ pub fn load_floor(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::NullApi
     })?;
+    let names_provider = unsafe {
+        system_dlsym(
+            handle.as_ptr(),
+            c"birnam_namespace_names_provider_v1".as_ptr(),
+        )
+    };
+    if names_provider.is_null() {
+        return Err(FloorError::Namespace {
+            path: namespace_path,
+            reason: "missing names capability",
+        });
+    }
+    let provide: birnam_abi::namespace_names::ProviderV1 =
+        unsafe { std::mem::transmute(names_provider) };
+    let names = unsafe { provide() };
+    if !unsafe { birnam_abi::namespace_names::valid(names) } {
+        return Err(FloorError::Namespace {
+            path: namespace_path,
+            reason: "invalid names capability",
+        });
+    }
     Ok(LoadedFloor {
+        namespace_names: NonNull::new(names).unwrap(),
         _namespace: namespace,
         handle,
         api,
@@ -3027,19 +3066,28 @@ unsafe fn prepare_namespace(
     floor: NonNull<std::ffi::c_void>,
     path: &Path,
 ) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::Namespace { path: path.to_path_buf(), reason };
-    let attach = unsafe { system_dlsym(floor.as_ptr(), c"birnam_namespace_dependency_v1".as_ptr()) };
-    if attach.is_null() { return Err(error("missing floor dependency")); }
+    let error = |reason| FloorError::Namespace {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_namespace_dependency_v2".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
     let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
     let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
         .ok_or_else(|| error("open failed"))?;
     let result = (|| {
-        let provider = unsafe { system_dlsym(image.as_ptr(), c"birnam_namespace_provider_v1".as_ptr()) };
-        if provider.is_null() { return Err(error("missing provider")); }
-        let provide: birnam_abi::namespace::ProviderV1 = unsafe { std::mem::transmute(provider) };
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_namespace_provider_v2".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::namespace::ProviderV2 = unsafe { std::mem::transmute(provider) };
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::namespace::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::namespace::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        let attach: birnam_abi::namespace::DependencyV2 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

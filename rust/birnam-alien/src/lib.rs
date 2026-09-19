@@ -365,3 +365,5 @@ birnam_abi::integer_dependency!();
 birnam_abi::float_dependency!();
 
 birnam_abi::string_dependency!();
+
+birnam_abi::namespace_names_dependency!();

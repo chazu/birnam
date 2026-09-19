@@ -23,7 +23,7 @@ pub struct ViewV1 {
 /// the next bind/destroy and must not escape its synchronous use by the caller.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV1 {
+pub struct ApiV2 {
     pub version: u32,
     pub byte_size: usize,
     pub create: Option<unsafe extern "C" fn() -> *mut c_void>,
@@ -34,26 +34,35 @@ pub struct ApiV1 {
     pub count: Option<unsafe extern "C" fn(*const c_void) -> usize>,
     pub name_at: Option<unsafe extern "C" fn(*const c_void, usize) -> Oop>,
     pub bindings: Option<unsafe extern "C" fn(*const c_void) -> ViewV1>,
+    // Service creation only copies the access descriptor: no floor callbacks.
+    pub create_names: Option<
+        unsafe extern "C" fn(
+            *mut c_void,
+            Option<unsafe extern "C" fn(*const c_void, Oop) -> Oop>,
+            *const crate::namespace_names::FloorV1,
+        ) -> *mut crate::namespace_names::ApiV1,
+    >,
+    pub destroy_names: Option<unsafe extern "C" fn(*mut crate::namespace_names::ApiV1)>,
 }
 const _: () = {
-    assert!(size_of::<ApiV1>() == 80);
-    assert!(core::mem::offset_of!(ApiV1, create) == 16);
-    assert!(core::mem::offset_of!(ApiV1, bindings) == 72);
+    assert!(size_of::<ApiV2>() == 96);
+    assert!(core::mem::offset_of!(ApiV2, create) == 16);
+    assert!(core::mem::offset_of!(ApiV2, bindings) == 72);
     assert!(size_of::<BindingV1>() == 16);
     assert!(size_of::<ViewV1>() == 16);
 };
-pub type ProviderV1 = unsafe extern "C" fn() -> *const ApiV1;
-pub type DependencyV1 = unsafe extern "C" fn(*const ApiV1) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV1> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV2 = unsafe extern "C" fn() -> *const ApiV2;
+pub type DependencyV2 = unsafe extern "C" fn(*const ApiV2) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV2> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Readable aligned descriptor; valid immutable operations/code stay pinned.
-pub unsafe fn valid(pointer: *const ApiV1) -> bool {
+pub unsafe fn valid(pointer: *const ApiV2) -> bool {
     if pointer.is_null() {
         return false;
     }
     let a = unsafe { *pointer };
-    a.version == 1
-        && a.byte_size == size_of::<ApiV1>()
+    a.version == 2
+        && a.byte_size == size_of::<ApiV2>()
         && a.create.is_some()
         && a.destroy.is_some()
         && a.bind.is_some()
@@ -62,11 +71,13 @@ pub unsafe fn valid(pointer: *const ApiV1) -> bool {
         && a.count.is_some()
         && a.name_at.is_some()
         && a.bindings.is_some()
+        && a.create_names.is_some()
+        && a.destroy_names.is_some()
 }
 /// # Safety
 /// Owner-thread admission before constructing any namespace. Descriptor and code
 /// are immutable and process-pinned. Different descriptors cannot retarget it.
-pub unsafe fn attach(pointer: *const ApiV1) -> c_int {
+pub unsafe fn attach(pointer: *const ApiV2) -> c_int {
     if !unsafe { valid(pointer) } {
         return 0;
     }
@@ -82,7 +93,7 @@ pub unsafe fn attach(pointer: *const ApiV1) -> c_int {
 }
 /// # Safety
 /// Use only after the declared dependency is prepared by the host.
-pub unsafe fn operations() -> ApiV1 {
+pub unsafe fn operations() -> ApiV2 {
     let pointer = DEPENDENCY.load(Ordering::Acquire);
     assert!(
         !pointer.is_null(),
@@ -94,8 +105,8 @@ pub unsafe fn operations() -> ApiV1 {
 macro_rules! namespace_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_namespace_dependency_v1(
-            api: *const $crate::namespace::ApiV1,
+        pub unsafe extern "C" fn birnam_namespace_dependency_v2(
+            api: *const $crate::namespace::ApiV2,
         ) -> core::ffi::c_int {
             unsafe { $crate::namespace::attach(api) }
         }

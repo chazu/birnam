@@ -1,4 +1,4 @@
-#include "idapi_v7.h"
+#include "idapi_v8.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
