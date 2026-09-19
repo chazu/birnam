@@ -154,3 +154,7 @@ run = "./scripts/bench-compare.sh {{arg(name='old')}} {{arg(name='new')}}"
 [tasks.storage-observation]
 description = "Check the production storage boundary with focused debug fixtures"
 run = "scripts/storage-observation-test.sh"
+
+[tasks.storage-tracing]
+description = "Check the loaded tracer over production storage with focused debug fixtures"
+run = "scripts/storage-tracing-test.sh"

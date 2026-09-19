@@ -56,3 +56,10 @@ storage-description library, then runs the independent C fixture. Rust checks
 are `cargo test -p birnam-id runtime::storage` and `cargo test -p birnam-storage`.
 These checks require neither an installation nor release validation. The
 [storage ABI](../abi/storage-v1.md) documents coverage and lifetime limits.
+
+The loaded graph tracer has a separate focused debug check:
+`mise run storage-tracing`. It uses the actual Id, storage, Integer and tracer
+libraries with an independent C graph oracle. `cargo test -p birnam-trace`
+checks graph traversal against transitive closure plus identity, coverage and
+error cases. See the [tracer ABI](../abi/trace-v1.md). These checks do not install
+Birnam or run release validation.

@@ -8,6 +8,11 @@
 > This records the 81H checkpoint; [81I](81i-ordinary-storage-reclamation.md) extends
 > the workspace with ordinary reclamation and a prepared tracer entry.
 
+Production promotion follows in [81M](81m-production-storage-observation.md)
+(storage observation/description validation) and
+[81N](81n-production-storage-tracer.md) (the scoped graph tracer). Production
+coverage gaps and the existing automatic collector remain explicit there.
+
 ## 1. Result and boundaries
 
 **Reachability can be computed above Id without sharing its private Rust heap

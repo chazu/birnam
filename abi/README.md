@@ -37,3 +37,8 @@ The current optional numeric declaration is [v2](native-numeric-semantics-v2.md)
 stateless description validator. It leaves IdApi v4 and its fingerprint unchanged.
 The independent C fixture lives in `fixtures/storage-v1`; run the focused debug
 check with `scripts/storage-observation-test.sh`.
+
+[Storage tracing v1](trace-v1.md) adds the stateless loaded graph tracer over
+described observations. Its report is strict by default and never authorizes
+reclamation. Run `scripts/storage-tracing-test.sh` for the independent C oracle
+against actual production dylibs.

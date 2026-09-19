@@ -363,4 +363,6 @@ Focused validation passes; release validation was explicitly waived.
 [81M](81m-production-storage-observation.md) adds protected production storage
 facts and a separately loaded description validator. GC policy, native-root
 capture and legacy tracing remain in the current runtime; their coverage gaps
-are explicit. The next seed promotion is the tracer.
+are explicit. [81N](81n-production-storage-tracer.md) promotes the scoped graph
+tracer over those facts into a loaded production module. Automatic GC's mark
+path still awaits its root/provider and collection migration.

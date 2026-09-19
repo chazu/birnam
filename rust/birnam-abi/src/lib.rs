@@ -9,6 +9,7 @@ use core::mem::{align_of, offset_of, size_of};
 pub mod foreign_address;
 pub mod integer;
 pub mod storage;
+pub mod trace;
 pub mod private;
 
 pub const SLOT_RAW: u8 = 0;

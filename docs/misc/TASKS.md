@@ -89,7 +89,11 @@ into production: Id supplies protected allocation/core-root/core-edge facts, and
 `birnam-storage` validates explicit owner descriptions. Existing GC and image
 semantics remain in place. Deferred identities, native roots, legacy providers
 and missing payload descriptions are reported as coverage gaps. The next seed
-promotion is tracing; full provider migration and reclamation remain separate.
+promotion is implemented in [81N](../design/81n-production-storage-tracer.md):
+the loaded `birnam-trace` module computes a scoped declared-graph partition and
+rejects gaps by default. Automatic GC still traces inside Id. Production provider
+coverage, native roots and transactional reclamation remain to be migrated;
+accepting diagnostic gaps does not satisfy those obligations.
 
 ## Selected sequence — 2026-09-06
 

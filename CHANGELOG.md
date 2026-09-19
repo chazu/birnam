@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Promote the seed's graph tracer into the production `birnam-trace` module
+  (Design 81N). It reports reached/not-reached allocation identities from scoped
+  storage descriptions, rejects coverage gaps by default and preserves accepted
+  omissions in diagnostic reports. Automatic GC marking and reclamation remain
+  in Id. The host and installer inventories include the new native library.
+
 - Extract the production storage-observation boundary (Design 81M): protected
   ordinary `withStorageView:` dispatch, runtime/allocation identities, requested
   and padded extents, shared core-root facts and explicit coverage gaps. A new

@@ -99,6 +99,10 @@ visitor runs. Other gaps remain visible. Supplied providers do not silently clea
 legacy/native-root gaps. There is no reachability calculation or authorization
 to reclaim storage in this interface.
 
+[Storage tracing v1](trace-v1.md) consumes this exact scoped result to calculate
+declared graph reachability. It preserves the coverage gaps and does not change
+the existing collector's marking path.
+
 Production-wide representation providers, native/root-hook integration, tracing
 and reclamation are subsequent work. The fixture supplies independently known
 Pair/Integer allocations and demonstrates explicit incomplete coverage for the

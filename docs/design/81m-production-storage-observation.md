@@ -4,6 +4,10 @@
 > This is the storage-observation prerequisite from 81H; tracing and collection
 > remain separate extractions. Validation is focused, as requested by the user.
 
+[81N](81n-production-storage-tracer.md) subsequently adds a loaded graph tracer
+over these scoped descriptions. The automatic collector still uses its existing
+mark path.
+
 ## Boundary decision
 
 Three designs considered a compact callback-scoped snapshot, a streaming visitor

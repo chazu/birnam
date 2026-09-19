@@ -730,6 +730,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Production storage observation](docs/design/81m-production-storage-observation.md)
   and its [native interface](abi/storage-v1.md) describe protected storage facts,
   owner-supplied payload descriptions and explicit coverage gaps.
+- [Production storage tracer](docs/design/81n-production-storage-tracer.md) and
+  its [native interface](abi/trace-v1.md) calculate reachability over those facts;
+  automatic collection remains in Id.
 - [Compiled units](docs/design/45-compiled-units.md) defines executable
   authority, image integrity, recovery, and the next live-reload boundary.
 - [Concurrency](docs/design/48-concurrency-reactors-and-isolates.md) and

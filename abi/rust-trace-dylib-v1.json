@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "scope": "Stateless reachability over described production storage; depends only on birnam-abi",
+  "install_name": "@rpath/libbirnam_trace.dylib",
+  "exported_symbols": [
+    "birnam_symbol_borrow_v1",
+    "birnam_trace_described_v1",
+    "module_init"
+  ]
+}

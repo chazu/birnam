@@ -1033,6 +1033,7 @@ fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleErro
 /// Codegen, and every later rung sees the same canonical floor/API table.
 pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_storage",
+    "libbirnam_trace",
     "libbirnam_integer",
     "libbirnam_object_model",
     "libbirnam_id_artifact",
