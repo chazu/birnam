@@ -220,8 +220,8 @@ pub(crate) struct Runtime {
     entry_scopes: UnsafeCell<Vec<MachineCapability>>,
     // Design 74A §3.2: the vtable mutation epoch at which the guarded-slot
     // conditions 2–4 were last verified, and their verdict at that epoch.
-    slot_guard_cache: Cell<(u64, bool)>,
-    lookup_guard_cache: Cell<(u64, bool)>,
+    slot_guard_cache: crate::guard_verdict::Service,
+    lookup_guard_cache: crate::guard_verdict::Service,
     dispatch_cache: dispatch_cache::Cache,
     native_tier: core::cell::RefCell<native_tier::Registry>,
     numeric: core::cell::RefCell<numeric::Registry>,
@@ -402,8 +402,8 @@ impl Runtime {
             observation: storage::ObservationState::new(),
             collection_phase: crate::collection_phase::Service::new(),
             entry_scopes: UnsafeCell::new(Vec::new()),
-            slot_guard_cache: Cell::new((u64::MAX, false)),
-            lookup_guard_cache: Cell::new((u64::MAX, false)),
+            slot_guard_cache: crate::guard_verdict::Service::new(),
+            lookup_guard_cache: crate::guard_verdict::Service::new(),
             dispatch_cache: dispatch_cache::Cache::default(),
             native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
             numeric: core::cell::RefCell::new(numeric::Registry::default()),

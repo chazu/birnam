@@ -1,7 +1,24 @@
 # 81BV — Guard-verdict cache ownership
 
-> **Status:** Audited next extraction after completed 81BU (`3d009cbf`).
-> Production migration pending. Preserve behavior; debug validation only.
+> **Status:** Implementation checkpoint after completed 81BU (`3d009cbf`).
+> Production wiring is implemented; extraction validation and fixture migration
+> remain pending. Preserve behavior; debug validation only.
+
+## Checkpoint scope
+
+The checkpoint adds the guard-verdict ABI, two independent Dispatch Cache owners,
+Id's tuple-shaped adapter and pre-initialization host attachment. Runtime field
+types and construction change; the existing guard expressions and read/write
+sites are unchanged. Native export manifests include the new factory and
+dependency. The debug workspace check passes with all targets.
+The ABI, Dispatch Cache, host and Id library tests pass: 389 passed, 16 ignored.
+These checks do not complete the loaded-runtime and image gates below.
+
+This is not a completed extraction. C/Rust fixture preparation, the independent
+old/new Runtime witness, loaded-factory and host-admission probes, compiled/image
+and worker comparisons, final inventory/receipts, ABI reference and focused task
+remain to be completed as described below. Direct Id fixture loaders still need
+to attach the new dependency before initialization.
 
 Move the two `(mutation_epoch, verified)` cells from Runtime into the existing
 Dispatch Cache module. They memoize different proofs: canonical lookup and

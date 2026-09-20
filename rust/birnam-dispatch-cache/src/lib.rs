@@ -1,4 +1,6 @@
 //! Bounded inherited dictionary answers, without roots or executable leases.
+mod guard_verdict;
+pub use guard_verdict::birnam_guard_verdict_factory_v1;
 use birnam_abi::dispatch_cache::FactoryV1;
 use core::{cell::Cell, ffi::{c_int, c_void}, ptr};
 

@@ -11,6 +11,7 @@
     "birnam_finalizers_provider_v1",
     "birnam_float_dependency_v1",
     "birnam_gc_settings_dependency_v1",
+    "birnam_guard_verdict_dependency_v1",
     "birnam_gc_settings_provider_v1",
     "birnam_id_begin_portable_resumable_unit_v1",
     "birnam_id_begin_resumable_unit_v1",

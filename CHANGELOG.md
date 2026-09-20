@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Checkpoint guard-verdict cache extraction into Dispatch Cache (81BV): add
+  independent native owners, the Id adapter and host dependency preparation.
+  Guard evaluation remains in Id. Fixture migration and extraction validation
+  are still pending; see the [checkpoint status](docs/design/81bv-production-guard-verdict-caches.md).
+
 - Extract the per-Runtime inherited-lookup table into Dispatch Cache (81BU).
   Preserve direct lookup, collision handling, live mutation, GC invalidation and
   fresh target classification. The Siphon loads the new native module; IdApi,

@@ -903,6 +903,7 @@ pub enum FloorError {
     CollectionPhase { path: PathBuf, reason: &'static str },
     StorageObservation { path: PathBuf, reason: &'static str },
     DispatchCache { path: PathBuf, reason: &'static str },
+    GuardVerdict { path: PathBuf, reason: &'static str },
     NativeMark { path: PathBuf, reason: &'static str },
     NativeStack { path: PathBuf, reason: &'static str },
     VtableEnumeration { path: PathBuf, reason: &'static str },
@@ -951,6 +952,7 @@ impl fmt::Debug for FloorError {
             Self::CollectionPhase { path, reason } => write!(formatter, "Collection phase preparation failed: {} ({reason})", path.display()),
             Self::StorageObservation { path, reason } => write!(formatter, "Storage observation preparation failed: {} ({reason})", path.display()),
             Self::DispatchCache { path, reason } => write!(formatter, "Dispatch cache preparation failed: {} ({reason})", path.display()),
+            Self::GuardVerdict { path, reason } => write!(formatter, "Guard verdict preparation failed: {} ({reason})", path.display()),
             Self::VtableEnumeration { path, reason } => write!(formatter, "Vtable enumeration preparation failed: {} ({reason})", path.display()),
             Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
@@ -985,6 +987,7 @@ pub struct LoadedFloor {
     _collection_phase: NonNull<std::ffi::c_void>,
     _storage_observation: NonNull<std::ffi::c_void>,
     _dispatch_cache: NonNull<std::ffi::c_void>,
+    _guard_verdict: NonNull<std::ffi::c_void>,
     native_stack: NonNull<birnam_abi::native_stack::ApiV1>,
     _method_observation: NonNull<std::ffi::c_void>,
     method_observation: NonNull<birnam_abi::method_observation::ApiV1>,
@@ -3085,6 +3088,7 @@ pub fn load_floor(
     let collection_phase_path = path.with_file_name("libbirnam_collect.dylib");
     let storage_observation_path = path.with_file_name("libbirnam_storage.dylib");
     let dispatch_cache_path = path.with_file_name("libbirnam_dispatch_cache.dylib");
+    let guard_verdict_path = path.with_file_name("libbirnam_dispatch_cache.dylib");
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -3217,6 +3221,13 @@ pub fn load_floor(
         }
     };
     let dispatch_cache_image = match unsafe { prepare_dispatch_cache(handle, &dispatch_cache_path) } {
+        Ok(image) => image,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
+    let guard_verdict_image = match unsafe { prepare_guard_verdict(handle, &guard_verdict_path) } {
         Ok(image) => image,
         Err(error) => {
             unsafe { system_dlclose(handle.as_ptr()) };
@@ -3372,6 +3383,7 @@ pub fn load_floor(
         _collection_phase: collection_phase_image,
         _storage_observation: storage_observation_image,
         _dispatch_cache: dispatch_cache_image,
+        _guard_verdict: guard_verdict_image,
         native_stack: NonNull::new(native_stack).unwrap(),
         _method_observation: observation_image,
         method_observation: NonNull::new(observation).unwrap(),
@@ -3845,6 +3857,39 @@ unsafe fn prepare_dispatch_cache(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::dispatch_cache::valid(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::dispatch_cache::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
+}
+
+unsafe fn prepare_guard_verdict(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::GuardVerdict {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_guard_verdict_dependency_v1".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_guard_verdict_factory_v1".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::guard_verdict::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::guard_verdict::valid(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::guard_verdict::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();
