@@ -91,6 +91,10 @@ run = "scripts/native-stack-test.sh"
 description = "Check allocation-budget ownership, actual Heap charges and host admission"
 run = "scripts/allocation-budget-test.sh"
 
+[tasks.collection-phase]
+description = "Check Runtime collection phases, callback admission and host preparation (debug)"
+run = "scripts/collection-phase-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"

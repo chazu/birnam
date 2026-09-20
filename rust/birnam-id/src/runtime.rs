@@ -215,7 +215,7 @@ struct BlockVtableCatalogEntry {
 pub(crate) struct Runtime {
     owner: u64,
     observation: storage::ObservationState,
-    collection_phase: Cell<CollectionPhase>,
+    collection_phase: crate::collection_phase::Service,
     state: UnsafeCell<RuntimeState>,
     entry_scopes: UnsafeCell<Vec<MachineCapability>>,
     // Design 74A §3.2: the vtable mutation epoch at which the guarded-slot
@@ -248,12 +248,7 @@ pub(crate) struct Runtime {
     read_reuse_gc_epoch: Cell<u64>,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum CollectionPhase {
-    Idle,
-    Marking,
-    Finalizing,
-}
+use crate::collection_phase::Phase as CollectionPhase;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CodeGenerationRetirement {
@@ -273,7 +268,7 @@ impl CodeGenerationRetirement {
 }
 
 struct CollectionGuard<'a> {
-    phase: &'a Cell<CollectionPhase>,
+    phase: &'a crate::collection_phase::Service,
 }
 
 struct StacklessDriveRootGuard<'a> {
@@ -405,7 +400,7 @@ impl Runtime {
         Self {
             owner: current_thread_token(),
             observation: storage::ObservationState::new(),
-            collection_phase: Cell::new(CollectionPhase::Idle),
+            collection_phase: crate::collection_phase::Service::new(),
             entry_scopes: UnsafeCell::new(Vec::new()),
             slot_guard_cache: Cell::new((u64::MAX, false)),
             lookup_guard_cache: Cell::new((u64::MAX, false)),
@@ -11105,3 +11100,6 @@ impl birnam_object_model::BehaviorAccess for Runtime {
         self.reassociate_behavior(object, behavior);
     }
 }
+
+#[cfg(test)]
+mod collection_phase_tests;

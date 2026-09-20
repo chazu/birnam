@@ -1,7 +1,8 @@
 # 81BS — Per-runtime collection-phase ownership
 
-> **Status:** Audited next extraction after completed 81BR (`57925cdc`).
-> Production migration pending. Preserve behavior; debug validation only.
+> **Status:** Implemented and verified after completed 81BR (`57925cdc`).
+> Dynamic Siphon startup and compiled/image consumers verified with debug builds.
+> No new language behavior; public IdApi and image encoding unchanged.
 
 [81BR](81br-production-allocation-budget.md) moved Heap allocation charges into
 their own owner. The next small boundary is Runtime's `Cell<CollectionPhase>`.
@@ -124,3 +125,77 @@ probe and executable-retirement coverage. Check unchanged old/new consumer
 transcripts, exports, linkage, admission contracts and final source/artifact
 receipts. Add a repeatable focused gate, ABI reference, README links and changelog;
 record completion evidence and commit before selecting another extraction.
+
+## Completed implementation and evidence
+
+Collect now owns the opaque phase context. Id holds its owner handle, preserves
+the existing phase enum for callers, and retains assignment diagnostics and
+`CollectionGuard`. Host and standalone fixture preparation attach the new
+factory before Id initialization. Collect's normal initializer, coordinator
+selection and Siphon position remain unchanged. The
+[v1 contract](../../abi/collection-phase-v1.md), C mirror, focused gate, image
+smoke, README links and changelog accompany the implementation.
+
+Final review confirmed that the coordinator body and thread-local `ACTIVE`
+guard are byte-for-byte unchanged. The storage, tracing, inherited lookup-cache
+and source-probe consumer files are unchanged, as are Collect's v1 descriptors.
+Runtime's allocation and nested-GC admission expressions and guard reset remain
+at their previous sites. The phase callback delegates only phase validation and
+assignment; its exact invariant diagnostic remains in Id.
+
+Debug evidence:
+
+- ABI, Collect and Id library tests passed: 297 tests, 15 ignored. Workspace
+  build and all-target workspace check passed. The additional `ffi-test-hooks`
+  source-probe test passed.
+- The same new Runtime witness passed against preserved pre-extraction Runtime
+  code, augmented only with test code invoking its original phase callback.
+  All eleven transcript rows matched: moved/independent owners, every valid
+  assignment, early GC/trace/coordinator/storage refusals, unwind reset, direct
+  and inherited lookup-cache behavior, live default storage admission after
+  permission creation, and surviving owner destruction. Both builds preserved
+  the exact abort diagnostics for invalid phase and marking/finalizing allocation.
+- The focused C gate captures the actual Runtime's native context at factory
+  creation. Preparation creates no context; Id initialization creates one.
+  Actual collection performs Marking, Finalizing, Idle, then the guard's Idle
+  reset. Root and finalizer callbacks retain nested-GC, attachment and storage
+  refusal while allowing ordinary reads. Runtime is Idle during pruning while
+  the independent coordinator returns BUSY. Four failure subprocesses preserve
+  exact diagnostics, including an unmounted coordinator: early phase preparation
+  does not silently attach the collection driver.
+- All twelve real host factory-admission cases passed, covering successful
+  initialization, missing library/provider, null/version/size/four-operation
+  rejection, absent floor dependency and rejected attachment.
+- Six old/new actual runtime transcripts and exit statuses matched using the
+  independent native-anchor and live-tracing fixtures. They preserve native and
+  provider roots, automatic collection, callback/finalizer reset, owner-thread
+  and observation admission, traversal order, live hooks, immutable attachment
+  and failure before sweep.
+- The Collection Phase image smoke passed dynamic Siphon startup, source-free
+  compiled callers, mapped/rebuilt saved native Code images and baked execution.
+  It verifies already-loaded operation ownership, independent contexts even
+  during root callbacks, invalid/reordered assignment, nested collection and
+  attachment refusal, arithmetic loops, automatic collection, roots, aliases
+  and reload. The existing Finalizers image smoke passed the same execution
+  paths for native cleanup and detachment.
+- Old/new actual image-backed workers passed twelve exact wire-v1 value round
+  trips and orderly stop; complete transcripts matched byte for byte. The
+  external debug harness did not change production handshake deadlines.
+- The Allocation Budget regression gate passed, including its actual bootstrap
+  Heap, overflow diagnostic and fourteen host-admission cases after the earlier
+  Collect preparation was added to fixture dependencies.
+- Installation still contains 52 native libraries and 28 compiled modules.
+  All 80 export sets match the baseline plus the two new factory/dependency
+  exports. All 36 native manifests match; Id and Collect link only system
+  libraries. Old/new installed admission contracts match exactly, including
+  IdApi v20, runtime ABI hash and image v8. Native initialization remains twelve
+  arguments and Native Loader remains v12.
+- All 489 current source inputs and 527 installed artifacts match receipts.
+  Source digest:
+  `01023e683e98694ba3ecf9f66847a75be5ff9ef83009529639e6e9206c4e6864`.
+  Artifact digest:
+  `430b1b2349e5d96236c386069cec8ed6792f2142100b949c88d05ff8c6f306e1`.
+
+Local logs and prefix markers are `.cargo-target/81bs-*`. Repeatable checks are
+`scripts/collection-phase-test.sh [PREFIX]` and
+`scripts/collection-phase-image-smoke.sh PREFIX`. No release validation was run.

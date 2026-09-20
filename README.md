@@ -840,6 +840,10 @@ artifact required. The Rust host owns the complete runtime and build closure.
   Heap's allocation charges through an [explicit dependency](abi/allocation-budget-v1.md).
   Run `mise run allocation-budget`; use `scripts/allocation-budget-image-smoke.sh PREFIX`
   for installed startup and compiled-image checks.
+- [Collection Phase](docs/design/81bs-production-collection-phase.md) moves each
+  Runtime's phase state into Collect through an [explicit dependency](abi/collection-phase-v1.md).
+  Run `mise run collection-phase`; use `scripts/collection-phase-image-smoke.sh PREFIX`
+  for installed startup and compiled-image checks.
 - [Root Registry](docs/design/81bj-production-root-provider-registry.md) owns
   ordered native root-provider registration and copied snapshots through an
   [explicit capability](abi/root-registry-v1.md). Collector phases and storage

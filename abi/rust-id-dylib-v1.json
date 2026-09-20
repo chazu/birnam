@@ -5,6 +5,7 @@
   "exported_symbols": [
     "birnam_allocation_budget_dependency_v1",
     "birnam_collect_dependency_v1",
+    "birnam_collection_phase_dependency_v1",
     "birnam_finalizers_dependency_v1",
     "birnam_finalizers_provider_v1",
     "birnam_float_dependency_v1",

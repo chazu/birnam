@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mise exec -- cargo build -p birnam-id -p birnam-namespace -p birnam-object-model -p birnam-method-observation -p birnam-root-registry -p birnam-gc-settings -p birnam-payload-layout -p birnam-trace-hooks -p birnam-finalizers -p birnam-native-stack -p birnam-native-mark -p birnam-allocation-budget -p birnam-image -p birnam-alien -p birnam-portable-code -p birnam-codegen-runtime --offline --locked
+mise exec -- cargo build -p birnam-id -p birnam-namespace -p birnam-object-model -p birnam-method-observation -p birnam-root-registry -p birnam-gc-settings -p birnam-payload-layout -p birnam-trace-hooks -p birnam-finalizers -p birnam-native-stack -p birnam-native-mark -p birnam-allocation-budget -p birnam-collect -p birnam-image -p birnam-alien -p birnam-portable-code -p birnam-codegen-runtime --offline --locked
 names_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-namespace-names-native.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT

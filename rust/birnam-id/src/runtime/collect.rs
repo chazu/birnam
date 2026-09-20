@@ -2,7 +2,7 @@
 use super::*;
 use crate::heap::DetachedBlock;
 use birnam_abi::collect::{
-    ApiV1, DeadV1, DetachedV1, FINALIZING, IDLE, MARKING, SourceV1, VERSION,
+    ApiV1, DeadV1, DetachedV1, SourceV1, VERSION,
 };
 use birnam_abi::storage::OK;
 use core::ffi::c_void;
@@ -17,12 +17,16 @@ struct Source<'a> {
 
 unsafe extern "C" fn phase(context: *mut c_void, phase: u32) {
     let source = unsafe { &*context.cast::<Source<'_>>() };
-    source.runtime.collection_phase.set(match phase {
-        IDLE => CollectionPhase::Idle,
-        MARKING => CollectionPhase::Marking,
-        FINALIZING => CollectionPhase::Finalizing,
-        _ => boundary::fatal_invariant("invalid collection phase"),
-    });
+    source.runtime.collection_phase.set_raw(phase);
+}
+
+#[cfg(test)]
+pub(super) fn assign_phase_for_test(runtime: &Runtime, code: u32) {
+    let mut source = Source {
+        runtime, native_range: (0, 0), dead_bindings: Vec::new(),
+        dead: Vec::new(), detached: None,
+    };
+    unsafe { phase((&raw mut source).cast(), code) };
 }
 
 unsafe extern "C" fn clear_marks(context: *mut c_void) {

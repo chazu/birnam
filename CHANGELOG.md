@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move per-Runtime collection-phase ownership into Collect (81BS), preserving
+  allocation and storage admission, dispatch-cache bypass, callback restrictions
+  and guard reset. Keep the coordinator's reentry guard separate. The host
+  prepares the phase factory before Id; public IdApi and image formats are unchanged.
+
 - Extract per-Heap allocation-byte budget ownership into Allocation Budget
   (81BR). Preserve charge and refusal order, overflow diagnostics, deferred
   materialization, collection timing and reset. The Siphon prepares the new

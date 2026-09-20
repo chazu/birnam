@@ -1,4 +1,7 @@
 //! Production collection order, independent of storage and metadata owners.
+mod phase;
+pub use phase::birnam_collection_phase_factory_v1;
+
 use birnam_abi::collect::{
     ApiV1, DeadV1, DetachedV1, FINALIZING, IDLE, MARKING, SourceV1, VERSION,
 };
