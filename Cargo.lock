@@ -19,6 +19,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-allocation-budget"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-artifact"
 version = "0.0.0"
 dependencies = [
@@ -152,6 +159,7 @@ name = "birnam-id"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+ "birnam-allocation-budget",
  "birnam-artifact",
  "birnam-codegen",
  "birnam-collect",

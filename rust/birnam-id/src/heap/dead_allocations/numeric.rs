@@ -93,10 +93,7 @@ impl Heap {
             return None;
         }
         let next = self.next_deferred_id.checked_add(1)?;
-        self.bytes_since_collection = self
-            .bytes_since_collection
-            .checked_add(batch.total_size)
-            .unwrap_or_else(|| boundary::fatal_invariant("GC allocation byte counter overflow"));
+        boundary::require_invariant(self.budget.charge(batch.total_size), "GC allocation byte counter overflow");
         let identity = DeferredAllocation(self.next_deferred_id);
         self.next_deferred_id = next;
         self.numeric_allocations.push(Entry {
@@ -323,7 +320,7 @@ mod tests {
         let batch = heap.prepare_numeric_batch(vt, vec![41, 999, -5]).unwrap();
         let weak = Rc::downgrade(&batch);
         let size = batch.total_size;
-        heap.bytes_since_collection = usize::MAX - 2 * size;
+        heap.budget.replace(usize::MAX - 2 * size);
         let first = heap.record_numeric_result(batch.clone(), 2).unwrap();
         heap.record_numeric_result(batch, 0).unwrap();
         let before = counts(&heap);

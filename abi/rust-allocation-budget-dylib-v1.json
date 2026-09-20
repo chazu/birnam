@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "scope": "Per-Heap allocation-byte budget ownership",
+  "install_name": "@rpath/libbirnam_allocation_budget.dylib",
+  "exported_symbols": [
+    "birnam_symbol_borrow_v1",
+    "birnam_allocation_budget_factory_v1",
+    "module_init"
+  ]
+}

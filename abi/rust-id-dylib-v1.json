@@ -3,6 +3,7 @@
   "scope": "Normal bare Cargo floor, without diagnostic features or the published module wrapper",
   "install_name": "@rpath/libbirnam_id.dylib",
   "exported_symbols": [
+    "birnam_allocation_budget_dependency_v1",
     "birnam_collect_dependency_v1",
     "birnam_finalizers_dependency_v1",
     "birnam_finalizers_provider_v1",

@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mise exec -- cargo test --offline --locked -p birnam-payload-layout --lib
-mise exec -- cargo build --offline --locked -p birnam-id -p birnam-gc-settings -p birnam-payload-layout -p birnam-trace-hooks -p birnam-finalizers -p birnam-native-stack -p birnam-native-mark -p birnam-root-registry -p birnam-object-model -p birnam-method-observation -p birnam-namespace -p birnam-trace -p birnam-collect -p birnam-tcc
+mise exec -- cargo build --offline --locked -p birnam-id -p birnam-gc-settings -p birnam-payload-layout -p birnam-trace-hooks -p birnam-finalizers -p birnam-native-stack -p birnam-native-mark -p birnam-allocation-budget -p birnam-root-registry -p birnam-object-model -p birnam-method-observation -p birnam-namespace -p birnam-trace -p birnam-collect -p birnam-tcc
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-payload-layout.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v20 -Iscripts/fixtures scripts/fixtures/payload-layout.c -o "$scratch/layouts"

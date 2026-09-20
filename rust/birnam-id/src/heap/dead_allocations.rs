@@ -164,10 +164,7 @@ impl Heap {
         if !self.admits_dead_allocations(1) {
             return false;
         }
-        self.bytes_since_collection = self
-            .bytes_since_collection
-            .checked_add(allocation.total_size)
-            .unwrap_or_else(|| boundary::fatal_invariant("GC allocation byte counter overflow"));
+        boundary::require_invariant(self.budget.charge(allocation.total_size), "GC allocation byte counter overflow");
         self.dead_allocations.push(allocation);
         true
     }
@@ -219,10 +216,10 @@ impl Heap {
     }
 
     fn materialize_raw(&mut self, vtable: usize, payload: &[u8]) -> Oop {
-        let allocation_bytes = self.bytes_since_collection;
+        let allocation_bytes = self.budget.read();
         // Construction realizes a previously charged allocation; it must not
         // overflow by charging that allocation for a second time.
-        self.bytes_since_collection = 0;
+        self.budget.replace(0);
         let object = self.allocate(payload.len(), Permanence::Collectable);
         boundary::require_invariant(
             self.set_vtable(object, core::ptr::with_exposed_provenance_mut(vtable)),
@@ -231,7 +228,7 @@ impl Heap {
         unsafe {
             core::ptr::copy_nonoverlapping(payload.as_ptr(), object.cast::<u8>(), payload.len())
         };
-        self.bytes_since_collection = allocation_bytes;
+        self.budget.replace(allocation_bytes);
         object
     }
 
@@ -550,7 +547,7 @@ mod tests {
         let prototype = heap.allocate(0, Permanence::Permanent);
         heap.set_vtable(prototype, prototype);
         let snapshot = heap.prepare_dead_clone(prototype).unwrap();
-        heap.bytes_since_collection = usize::MAX - snapshot.total_size();
+        heap.budget.replace(usize::MAX - snapshot.total_size());
         assert!(heap.record_dead_allocation(snapshot));
         assert_eq!(heap.bytes_since_collection(), usize::MAX);
         heap.settle_dead_allocations();

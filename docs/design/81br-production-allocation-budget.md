@@ -1,7 +1,8 @@
 # 81BR — Allocation-byte budget ownership
 
-> **Status:** Audited next extraction after completed 81BQ (`d833d6bb`).
-> Production migration pending. Preserve behavior; debug validation only.
+> **Status:** Implementation checkpoint after completed 81BQ (`d833d6bb`).
+> Module, heap callers and startup/build wiring implemented; integration proof
+> and completion documentation pending. Preserve behavior; debug validation only.
 
 [81D](81d-id-api-partition.md) separates collector policy from Id's storage
 mechanisms. GC Settings already owns automatic/precise policy, Native Stack owns
@@ -115,3 +116,34 @@ reload and the actual image-backed worker comparison. Check that allocation
 count, storage identities, header layout, payload extent, roots and image data
 are unchanged. Check manifests, exports, linkage and final source/artifact
 receipts; record completed evidence before committing the extraction.
+
+## Implementation checkpoint — 2026-09-20
+
+Committed at the user's request to save and push current progress. This is an
+implementation checkpoint, not a declaration that the extraction's completion
+gates above have passed.
+
+The new module owns each Heap's budget through the factory described above.
+Physical, deferred and counted charges, reset and materialization now use that
+owner. Host preparation attaches the dependency before Id initialization; the
+Siphon module list, installer inventory and standalone fixture preparation include
+the library. Public IdApi, native initialization and image versions are unchanged.
+
+Debug checkpoint evidence:
+
+- `cargo check --offline --locked -p birnam-allocation-budget -p birnam-id
+  -p birnam-host` passed.
+- `cargo test --offline --locked -p birnam-allocation-budget -p birnam-abi
+  -p birnam-id --lib -- --nocapture` passed: 292 tests, 15 ignored.
+- The same new heap witness ran against the preserved `d833d6bb` implementation,
+  with only its test budget-seeding helper adapted to the old scalar field.
+  All twelve transcript rows matched, including materialization near
+  `usize::MAX`, reset, refusal and independent owners. All three actual heap
+  overflow paths retained their abort signal and exact diagnostic in both builds.
+  The witness's initial expected totals were corrected to account for the
+  existing eight-byte header; no production layout was changed.
+
+Still pending: the repeatable Allocation Budget gate and ABI reference,
+dynamic runtime and host-admission checks, installed compiled/image/worker
+comparisons, final manifests and artifact receipts, and completion documentation.
+Release validation remains waived.

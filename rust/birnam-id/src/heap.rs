@@ -153,7 +153,7 @@ unsafe fn vtable_slot_from_payload(payload: NonNull<u8>) -> *mut Oop {
 /// exposed as language behavior.
 pub(crate) struct Heap {
     blocks: AddressMap<Block>,
-    bytes_since_collection: usize,
+    budget: crate::allocation_budget::Service,
     dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
     deferred_allocations: Vec<(DeferredAllocation, usize)>,
     numeric_allocations: Vec<dead_allocations::numeric::Entry>,
@@ -174,7 +174,7 @@ impl Heap {
     pub(crate) fn new() -> Self {
         Self {
             blocks: AddressMap::default(),
-            bytes_since_collection: 0,
+            budget: crate::allocation_budget::Service::new(),
             dead_allocations: Vec::new(),
             numeric_allocations: Vec::new(),
             counted_frame_indices: None,
@@ -230,10 +230,7 @@ impl Heap {
             previous.is_none(),
             "allocator reused a live payload address",
         );
-        self.bytes_since_collection = self
-            .bytes_since_collection
-            .checked_add(total_size)
-            .unwrap_or_else(|| boundary::fatal_invariant("GC allocation byte counter overflow"));
+        boundary::require_invariant(self.budget.charge(total_size), "GC allocation byte counter overflow");
         payload.as_ptr().cast()
     }
 
@@ -276,11 +273,11 @@ impl Heap {
     }
 
     pub(crate) fn bytes_since_collection(&self) -> usize {
-        self.bytes_since_collection
+        self.budget.read()
     }
 
     pub(crate) fn reset_allocation_bytes(&mut self) {
-        self.bytes_since_collection = 0;
+        self.budget.replace(0);
     }
 
     pub(crate) fn base_address(&self, object: Oop) -> Option<usize> {
@@ -854,3 +851,6 @@ mod tests {
         assert!(!heap.reclaim_for_test(object));
     }
 }
+
+#[cfg(test)]
+mod allocation_budget_tests;

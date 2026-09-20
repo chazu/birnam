@@ -1,0 +1,78 @@
+//! Allocation charges since collection, independent of storage and GC policy.
+use birnam_abi::allocation_budget::FactoryV1;
+use core::ffi::{c_int, c_void};
+use core::ptr;
+
+struct Budget {
+    bytes: usize,
+}
+unsafe extern "C" fn create() -> *mut c_void {
+    Box::into_raw(Box::new(Budget { bytes: 0 })).cast()
+}
+unsafe extern "C" fn destroy(context: *mut c_void) {
+    unsafe { drop(Box::from_raw(context.cast::<Budget>())) };
+}
+unsafe extern "C" fn read(context: *const c_void) -> usize {
+    unsafe { (*context.cast::<Budget>()).bytes }
+}
+unsafe extern "C" fn replace(context: *mut c_void, bytes: usize) {
+    unsafe { (*context.cast::<Budget>()).bytes = bytes };
+}
+unsafe extern "C" fn charge(context: *mut c_void, bytes: usize) -> c_int {
+    let Some(total) = unsafe { read(context) }.checked_add(bytes) else {
+        return 0;
+    };
+    unsafe { replace(context, total) };
+    1
+}
+unsafe extern "C" fn preview(context: *const c_void, bytes: usize, out: *mut usize) -> c_int {
+    let Some(total) = unsafe { read(context) }.checked_add(bytes) else {
+        return 0;
+    };
+    unsafe { out.write(total) };
+    1
+}
+static FACTORY: FactoryV1 = FactoryV1 {
+    version: 1,
+    byte_size: size_of::<FactoryV1>(),
+    create: Some(create),
+    destroy: Some(destroy),
+    read: Some(read),
+    replace: Some(replace),
+    charge: Some(charge),
+    preview: Some(preview),
+};
+/// # Safety
+/// The host pins this immutable descriptor and implementation for every owner.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_allocation_budget_factory_v1() -> *const FactoryV1 {
+    &FACTORY
+}
+
+/// # Safety
+/// All descriptors and code have the native initialization lifetime.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn module_init(
+    api: *mut birnam_abi::IdApi,
+    _: *mut c_void,
+    _: *const birnam_abi::namespace_presence::ApiV1,
+    _: *const birnam_abi::namespace_import::ApiV1,
+    _: *const birnam_abi::namespace_export::ApiV1,
+    _: *const birnam_abi::vtable_enumeration::ApiV2,
+    _: *const birnam_abi::method_observation::ApiV1,
+    _: *const birnam_abi::root_registry::ApiV1,
+    _: *const birnam_abi::gc_settings::ApiV1,
+    _: *const birnam_abi::payload_layout::ApiV1,
+    _: *const birnam_abi::trace_hooks::ApiV1,
+    _: *const birnam_abi::finalizers::ApiV1,
+) -> *mut c_void {
+    assert!(!api.is_null(), "Allocation Budget received a null IdApi");
+    ptr::null_mut()
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> c_int {
+    1
+}
+
+#[cfg(test)]
+mod tests;

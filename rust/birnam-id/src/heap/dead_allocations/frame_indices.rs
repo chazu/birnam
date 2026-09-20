@@ -28,7 +28,7 @@ impl Heap {
         let Some(bytes) = indices.len().checked_mul(size) else {
             return false;
         };
-        let Some(charged) = self.bytes_since_collection.checked_add(bytes) else {
+        let Some(charged) = self.budget.preview(bytes) else {
             return false;
         };
         if !self.contains(core::ptr::with_exposed_provenance_mut(batch.vtable))
@@ -56,7 +56,7 @@ impl Heap {
             ledger.counts[index as usize] += 1;
         }
         ledger.total += indices.len();
-        self.bytes_since_collection = charged;
+        self.budget.replace(charged);
         true
     }
 
@@ -266,7 +266,7 @@ mod tests {
         assert!(!heap.record_dead_frame_indices(first, &[0]));
         assert_eq!(counts(&heap), full);
         assert_eq!(heap.reclaim_dead_allocations(), MAX_COUNTED_FRAME_INDICES);
-        heap.bytes_since_collection = usize::MAX;
+        heap.budget.replace(usize::MAX);
         assert!(!heap.record_dead_frame_indices(first, &[0]));
         assert_eq!(heap.counted_frame_index_count(), 0);
         assert_eq!(heap.bytes_since_collection(), usize::MAX);

@@ -102,5 +102,14 @@ pub unsafe fn prepare(floor: *mut c_void, floor_path: &Path) {
     let provider: birnam_abi::native_mark::ProviderV1 = unsafe { std::mem::transmute(provider) };
     let attach: birnam_abi::native_mark::DependencyV1 = unsafe { std::mem::transmute(dependency) };
     assert_eq!(unsafe { attach(provider()) }, 1);
+    let path = CString::new(floor_path.with_file_name("libbirnam_allocation_budget.dylib").as_os_str().as_encoded_bytes()).unwrap();
+    let image = unsafe { dlopen(path.as_ptr(), 6) };
+    assert!(!image.is_null());
+    let provider = unsafe { dlsym(image, c"birnam_allocation_budget_factory_v1".as_ptr()) };
+    let dependency = unsafe { dlsym(floor, c"birnam_allocation_budget_dependency_v1".as_ptr()) };
+    assert!(!provider.is_null() && !dependency.is_null());
+    let provider: birnam_abi::allocation_budget::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+    let attach: birnam_abi::allocation_budget::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+    assert_eq!(unsafe { attach(provider()) }, 1);
     // The process-owned runtime retains this descriptor and code.
 }
