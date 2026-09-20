@@ -1,10 +1,9 @@
 # 81BN — Native finalizer registration
 
-> **Status:** Implementation and ABI/caller migration in progress against
-> completed 81BM (`67373979`). This is a progress checkpoint, requested for
-> commit and push; finalizer-focused image validation and final review remain
-> before declaring the extraction complete. Debug evidence is recorded below.
-> Debug validation only.
+> **Status:** Completed against 81BM (`67373979`), following checkpoint
+> `40cbbe05`. Finalizers owns registration policy and inline attachments;
+> startup, source-free compiled callers, mapped/rebuilt images and baked
+> execution pass. Debug validation only; release validation was waived.
 
 [81D](81d-id-api-partition.md) places finalizer registration in the reclamation
 protocol above Id. Extract that registration policy and its inline callback
@@ -94,7 +93,7 @@ cleanup implementations remain unchanged.
 | Prelude / Native Loader | Retain and forward the first execution capability on later native initialization |
 | Collect and storage/recovery consumers | Read the current inline attachment at their old call points; retain detachment, callback and reclamation order |
 
-Remove only `setFinalizer` from IdApi: v19 will have 19 fields / 152 bytes.
+Remove only `setFinalizer` from IdApi: v19 has 19 fields / 152 bytes.
 Native initialization gains a twelfth explicit capability; Native Loader becomes
 v12. Early value preparation and Native Allocation's existing finalizer-bearing
 plan need no new argument. Keep Finalizer's signature and the existing Collect
@@ -131,9 +130,9 @@ symbol ownership, system-only links, export deltas, the current ABI manifest and
 source/artifact agreement. Commit this extraction only after these checks pass;
 then select the next responsibility. Do not run release gates.
 
-## Implementation progress
+## Completed implementation and evidence
 
-The working implementation supplies the 40-byte Finalizers factory, copied
+The implementation supplies the 40-byte Finalizers factory, copied
 48-byte floor descriptor, 32-byte public capability and eight-byte inline slot.
 Id retains exact facts and attachment storage; canonical construction calls the
 factory. Collect's detach/call/reclaim code is unchanged. IdApi v19 removes only
@@ -191,9 +190,46 @@ Initial debug evidence:
   The external debug harness waits for startup without changing the production
   Isolate handshake deadline.
 
-Remaining before completion: wire the new caller fixtures into the focused
-Finalizers gate, add finalizer-focused installed image coverage, and finish the
-boundary/evidence review, including source/artifact agreement after the final
-changes. The source-hash and 77-fixture counts above describe the earlier build;
-the subsequent caller fixtures and Codegen test are additional checkpoint work.
-This checkpoint does not claim completion of the extraction.
+The final focused gate, `scripts/finalizers-test.sh`, passes registration,
+admission, loaded Collect, the six actual native-owner probes and the seventh
+caller's Codegen commit-seam test. The full Codegen suite also passes. All 77
+current ABI C fixtures under `scripts/fixtures`, plus the worker transport peer,
+pass strict C syntax checks.
+
+The dedicated `scripts/finalizers-image-smoke.sh PREFIX` passes on the final
+debug installation. A native consumer loaded through `System loadModule:`
+receives the explicit capability and verifies the setter's library ownership.
+It replaces a callback, ignores null/permanent/interior targets, observes actual
+detachment before cleanup, frees initialized native storage exactly once, and
+rejects re-registration of the detached object. It uses the installed tracer
+unchanged, scrubbing returned helper frames before collection so stale native
+locals cannot keep the test allocation alive. Rooted objects and aliases survive.
+
+The caller runs from source and from a compiled module after deleting its
+source. A separately compiled saver publishes `main` explicitly to Globals;
+both the saver source and dylib are deleted before image execution. The saved
+v8 native-Code record is present and nonempty. Ordinary mapped reload, forced
+rebuild and baked execution all repeat the cleanup, alias and reload checks.
+
+Final boundary review found no additional production changes necessary. The
+seven consumers retain their original first execution selection and registration
+points. TCC's invalid/installed/disposable/released guards, Isolate's allocation
+failure cleanup, Portable Code's temporary roots and Codegen's commit ordering
+remain in place. The public route admits before exact membership; internal
+construction uses the immutable canonical factory. Collect still selects each
+callback at detachment, and Heap destruction does not invoke callbacks.
+Historical ABI contracts, object headers, record footprint and image encoding
+are unchanged.
+
+The final prefix, recorded in `.cargo-target/81bn-final-prefix-path`, contains
+49 native libraries and 28 compiled modules. All 77 export sets match the
+baseline plus declared changes, 33 native manifests match, and Id/Finalizers
+link only system libraries. All 16 host admission cases, the v19 independent C
+client/module, and the six native-owner probes pass against that installation.
+Its receipt matches all 466 current build-input hashes and all 501 published
+artifact hashes. The later edits only add test commands/fixtures and record
+evidence; they do not change those build inputs.
+
+Local receipts are under `.cargo-target/81bn-*`, including
+`81bn-final-{install,receipt,inventory,host-validation,idapi,consumers,c-syntax,finalizers-image}.log`.
+The frozen final build inputs are recorded in `81bn-final-source-hashes.json`.

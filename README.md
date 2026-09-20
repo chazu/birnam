@@ -820,7 +820,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
   Run `mise run trace-hooks`.
 - [Finalizers](docs/design/81bn-production-finalizers.md) owns native finalizer
   registration and inline callbacks through an [explicit capability](abi/finalizers-v1.md).
-  Run `mise run finalizers`.
+  Run `mise run finalizers`; use `scripts/finalizers-image-smoke.sh PREFIX` for
+  installed startup and compiled-image checks.
 - [Payload Layout](docs/design/81bl-production-payload-layout.md) owns exact-vtable
   slot descriptions shared by GC, Image and recovery through an
   [explicit capability](abi/payload-layout-v1.md). Run `mise run payload-layout`.

@@ -45,5 +45,8 @@ The [independent C header](fixtures/finalizers-v1/finalizers_v1.h) and
 IdApi v19 removes only `setFinalizer`; object headers, heap-record size and image
 v8 encoding are unchanged. Consumers must rebuild.
 
-Run `mise run finalizers` for focused debug registration, admission and loaded
-Collect checks. The design document tracks the broader completion evidence.
+Run `mise run finalizers` for focused debug registration, admission, loaded
+Collect and saved-caller lifecycle checks. Run
+`scripts/finalizers-image-smoke.sh PREFIX` against a debug installation for
+startup, source-free compiled callers, mapped/rebuilt images and baked execution.
+The design document records the independent old/new comparison evidence.
