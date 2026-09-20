@@ -1,5 +1,8 @@
 //! GC and private-behavior metadata above Id's method dictionaries.
-use crate::abi::{Oop, TraceHook};
+use crate::abi::{Method, Oop, TraceHook};
+use crate::vtable::AddMethod as NativeAddMethod;
+pub(crate) type AddMethod = NativeAddMethod<MethodAddress>;
+use crate::legacy_method;
 use crate::boundary;
 use crate::heap::{Heap, Permanence};
 use crate::raw::{AddressMap, MethodAddress};
@@ -14,6 +17,7 @@ struct Metadata {
 }
 pub(crate) struct Behaviors {
     dictionaries: Vtables,
+    legacy_lookup: Oop,
     metadata: AddressMap<Metadata>,
     layouts: crate::payload_layout::Service,
     hooks: crate::trace_hooks::Service,
@@ -26,6 +30,26 @@ impl core::ops::DerefMut for Behaviors {
     fn deref_mut(&mut self) -> &mut Vtables { &mut self.dictionaries }
 }
 impl Behaviors {
+    pub(crate) fn set_legacy_lookup(&mut self, selector: Oop) { self.legacy_lookup = selector; }
+    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
+        match self.dictionaries.add_method(vtable, selector, legacy_method::encode(method, selector == self.legacy_lookup)) {
+            NativeAddMethod::Added => AddMethod::Added,
+            NativeAddMethod::Overwrote(previous) => AddMethod::Overwrote(legacy_method::decode(previous)),
+        }
+    }
+    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+        self.dictionaries.remove_method(vtable, selector).map(legacy_method::decode)
+    }
+    pub(crate) fn lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+        self.dictionaries.lookup(vtable, selector).map(legacy_method::decode)
+    }
+    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+        self.dictionaries.direct_lookup(vtable, selector).map(legacy_method::decode)
+    }
+    pub(crate) fn lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<MethodAddress>, Oop> {
+        self.dictionaries.lookup_head(vtable, selector).map(|entry| entry.map(legacy_method::decode))
+    }
+
     /// # Safety
     /// The caller keeps the containing Behaviors live for the entire Id scope.
     pub(crate) unsafe fn dictionaries_ptr(this: *mut Self) -> *mut Vtables {
@@ -41,7 +65,7 @@ impl Behaviors {
         let metadata = dictionaries.ordered.iter().map(|object| (object.addr(), Metadata {
             owner: core::ptr::null_mut(), trace_hook: birnam_abi::trace_hooks::SlotV1::EMPTY, layout: layouts.empty(),
         })).collect();
-        Self { dictionaries, metadata, layouts, hooks: crate::trace_hooks::Service::new() }
+        Self { dictionaries, legacy_lookup: core::ptr::null_mut(), metadata, layouts, hooks: crate::trace_hooks::Service::new() }
     }
     pub(crate) fn create(&mut self, heap: &mut Heap, parent: Oop, metavtable: Oop) -> Oop {
         self.create_with_permanence(heap, parent, metavtable, Permanence::Permanent)
@@ -97,7 +121,7 @@ impl Behaviors {
     pub(crate) fn has_permanent_binding(&self, heap: &Heap, methods: &[MethodAddress]) -> bool {
         self.dictionaries.ordered.iter().copied().any(|vtable| {
             heap.permanence_of(vtable) == Some(Permanence::Permanent)
-                && self.dictionaries.methods(vtable).any(|method| methods.contains(&method))
+                && self.dictionaries.methods(vtable).any(|method| methods.contains(&legacy_method::decode(method)))
         })
     }
     pub(crate) fn dead_collectable_bindings(&self, heap: &Heap) -> Vec<(Oop, Vec<MethodAddress>)> {
@@ -109,7 +133,7 @@ impl Behaviors {
                     && heap.is_marked(*vtable) == Some(false)
             })
             .map(|vtable| {
-                let methods = self.dictionaries.methods(vtable).collect();
+                let methods = self.dictionaries.methods(vtable).map(legacy_method::decode).collect();
                 (vtable, methods)
             })
             .collect()
@@ -210,7 +234,6 @@ impl Behaviors {
 
 #[cfg(test)]
 mod tests {
-    use crate::vtable::AddMethod;
 
     use super::*;
     use core::ffi::c_void;
@@ -374,7 +397,7 @@ mod tests {
             assert_eq!(vtables.selector_at(parent, position), keys[index]);
         }
         vtables.add_weak_opaque_binding(parent, keys[4], keys[1]);
-        assert_eq!(vtables.dictionaries.record(parent).values[1], keys[1]);
+        assert_eq!(vtables.dictionaries.record(parent).values[1].as_object(), Some(keys[1]));
         vtables.add_weak_opaque_binding(parent, keys[0], keys[0]);
         assert_eq!(vtables.selector_at(parent, 3), keys[0]);
         heap.clear_marks();
@@ -693,9 +716,7 @@ mod tests {
                                 .keys
                                 .iter()
                                 .position(|candidate| *candidate == key)
-                                .and_then(|index| unsafe {
-                                    MethodAddress::from_oop(record.values[index])
-                                })
+                                .and_then(|index| record.values[index].as_entry().map(legacy_method::decode))
                         };
                         black_box(result);
                     }

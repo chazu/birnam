@@ -23,7 +23,7 @@ use crate::registration::{
     ABORT_V1, DescriptorAdmission, PREPARE_V1, ResumableRegistrationEnvelope, StagedUnit,
 };
 use crate::symbol::{EmbeddedNul, Symbols};
-use crate::vtable::AddMethod;
+use crate::behaviors::AddMethod;
 use crate::behaviors::Behaviors;
 
 #[cfg(all(test, target_os = "macos"))]
@@ -5014,7 +5014,7 @@ mod tests {
         birnam_id_stackless_block_vtable_matches_v1,
         birnam_id_stackless_resumable_manifest_matches_v1, birnam_register_resumable_v1,
     };
-    use crate::vtable::AddMethod;
+    use crate::behaviors::AddMethod;
     use core::cell::Cell;
     use sha2::{Digest, Sha256};
 
@@ -6430,7 +6430,7 @@ mod tests {
             capacity: usize,
             tally: usize,
             keys: *const Oop,
-            values: *const Oop,
+            values: *const crate::abi::id_protocol::Operand,
         }
         let runtimes = vec![build_bootstrap(), build_bootstrap()];
         for bootstrap in &runtimes {
@@ -6448,7 +6448,7 @@ mod tests {
             let mirror = || unsafe {
                 let view = &*runtime.canonical().environment.cast::<DictionaryView>();
                 (0..view.tally).find(|&i| *view.keys.add(i) == symbol)
-                    .map(|i| *view.values.add(i))
+                    .and_then(|i| (*view.values.add(i)).as_object())
             };
             for value in [value, core::ptr::null_mut(), value] {
                 let before = snapshot();

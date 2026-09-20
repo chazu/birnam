@@ -73,16 +73,8 @@ static inline int fixture_presence_slot(void *context,const char *name) {
 }
 #define FIXTURE_PRESENCE(slot) {1,sizeof(NamespacePresenceV1),&(slot),fixture_presence_slot}
 
-static inline void fixture_prepare_namespace(void *floor, const char *floor_path) {
-    NamespaceDependencyV8 attach=(NamespaceDependencyV8)dlsym(floor,"birnam_namespace_dependency_v8");
-    assert(attach);fixture_namespace_floor=floor;
-    const char *slash=strrchr(floor_path,'/'); assert(slash); char path[PATH_MAX];
-    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-floor_path),floor_path);
-    assert(n>0 && (size_t)n<sizeof(path));
-    void *image=dlopen(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    NamespaceProviderV8 provide=(NamespaceProviderV8)dlsym(image,"birnam_namespace_provider_v8"); assert(provide);
-    const NamespaceApiV8 *api=provide(); assert(api && attach(api)==1);
-    /* Both handles remain pinned for the process-owned floor. */
+/* Current aggregate-floor prerequisites, shared by ordinary and custom Namespace fixtures. */
+static inline void fixture_prepare_non_namespace_services(void *floor,const char *floor_path) {
     fixture_prepare_vtable_enumeration(floor,floor_path);
     fixture_prepare_method_observation(floor,floor_path);
     fixture_prepare_root_registry(floor,floor_path);
@@ -99,6 +91,19 @@ static inline void fixture_prepare_namespace(void *floor, const char *floor_path
     fixture_prepare_deferred_index(floor,floor_path);
     fixture_prepare_dispatch_cache(floor,floor_path);
     fixture_prepare_guard_verdict(floor,floor_path);
+}
+
+static inline void fixture_prepare_namespace(void *floor, const char *floor_path) {
+    NamespaceDependencyV8 attach=(NamespaceDependencyV8)dlsym(floor,"birnam_namespace_dependency_v8");
+    assert(attach);fixture_namespace_floor=floor;
+    const char *slash=strrchr(floor_path,'/'); assert(slash); char path[PATH_MAX];
+    int n=snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-floor_path),floor_path);
+    assert(n>0 && (size_t)n<sizeof(path));
+    void *image=dlopen(path,RTLD_NOW|RTLD_LOCAL); assert(image);
+    NamespaceProviderV8 provide=(NamespaceProviderV8)dlsym(image,"birnam_namespace_provider_v8"); assert(provide);
+    const NamespaceApiV8 *api=provide(); assert(api && attach(api)==1);
+    /* Both handles remain pinned for the process-owned floor. */
+    fixture_prepare_non_namespace_services(floor,floor_path);
 }
 static inline NamespaceNamesApiV1 *fixture_namespace_names(void) {
     if(!fixture_names) {

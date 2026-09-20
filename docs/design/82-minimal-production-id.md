@@ -111,7 +111,8 @@ references and define their borrow duration.
 The first handoff and later loads must share the loading protocol; they must
 not become unrelated special-purpose loaders. [83 section 3](83-production-id-construction-and-lifetimes.md#3-the-common-native-loading-protocol)
 defines the native operands, result/failure contract and image lifetime; the
-C layout is still to be implemented. The native carrier contains only what is
+C layout and core typed dispatch are implemented; the common descriptor loader
+and production handoff remain in progress. The native carrier contains only what is
 needed to enter the message protocol and identify its initial receiver/selectors.
 It must not accumulate every upper module's capabilities.
 

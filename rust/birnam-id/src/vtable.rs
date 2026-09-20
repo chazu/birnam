@@ -4,10 +4,11 @@
 use core::mem::offset_of;
 use core::ptr::NonNull;
 
-use crate::abi::{Method, Oop};
+use crate::abi::Oop;
+use crate::abi::id_protocol::{NativeEntry, Operand};
 use crate::boundary;
 use crate::object_memory::ObjectMemory;
-use crate::raw::{AddressMap, MethodAddress};
+use crate::raw::AddressMap;
 
 /// The payload shape retained for vtable objects themselves.
 #[allow(non_snake_case)]
@@ -16,7 +17,7 @@ pub(crate) struct RawVtable {
     pub(crate) size: usize,
     pub(crate) tally: usize,
     pub(crate) keys: *mut Oop,
-    pub(crate) values: *mut Oop,
+    pub(crate) values: *mut Operand,
     pub(crate) parent: Oop,
 }
 
@@ -34,7 +35,7 @@ pub(crate) struct VtableRecord {
     pub(crate) raw: NonNull<RawVtable>,
     pub(crate) logical_capacity: usize,
     pub(crate) keys: Vec<Oop>,
-    pub(crate) values: Vec<Oop>,
+    pub(crate) values: Vec<Operand>,
     pub(crate) weak_keys: Vec<bool>,
     // Derived identity lookup only. Ordered vectors retain raw-view and GC
     // authority; these integer addresses never add roots or cache dispatch.
@@ -115,9 +116,9 @@ impl VtableRecord {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AddMethod {
+pub(crate) enum AddMethod<T = NativeEntry> {
     Added,
-    Overwrote(MethodAddress),
+    Overwrote(T),
 }
 
 /// Ordered registry of every vtable in one runtime.
@@ -276,54 +277,48 @@ impl Vtables {
         let keys = &self.record(vtable).keys;
         birnam_abi::vtable_enumeration::ViewV1 { entries: keys.as_ptr(), count: keys.len() }
     }
-    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+    pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         let record = self.record(vtable);
         record
             .key_index(selector)
-            // SAFETY: callers use this only for method dictionaries. Opaque
-            // internal dictionaries are enumerated but never dispatched.
-            .and_then(|index| unsafe { MethodAddress::from_oop(record.values[index]) })
+            // Object-valued internal dictionary entries are not methods.
+            .and_then(|index| record.values[index].as_entry())
     }
     pub(crate) fn lookup_head(
         &self,
         vtable: Oop,
         selector: Oop,
-    ) -> Result<Option<MethodAddress>, Oop> {
+    ) -> Result<Option<NativeEntry>, Oop> {
         let record = self.record(vtable);
         if let Some(index) = record.key_index(selector) {
-            // SAFETY: same method-dictionary contract as lookup/direct_lookup.
-            return Ok(unsafe { MethodAddress::from_oop(record.values[index]) });
+            return Ok(record.values[index].as_entry());
         }
         Err(record.parent)
     }
-    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+    pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         while !vtable.is_null() {
             let record = self.record(vtable);
             if let Some(index) = record.key_index(selector) {
-                // SAFETY: dispatch reaches registered method dictionaries;
-                // opaque internal dictionaries are not receiver families.
-                return unsafe { MethodAddress::from_oop(record.values[index]) };
+                return record.values[index].as_entry();
             }
             vtable = record.parent;
         }
         None
     }
-    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
-        let method = MethodAddress::from_method(method);
+    pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: NativeEntry) -> AddMethod<NativeEntry> {
+        assert!(method.method.is_some(), "method binding requires a native entry");
         self.note_mutation();
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(selector) {
-            let previous = core::mem::replace(&mut record.values[index], method.as_oop());
+            let previous = core::mem::replace(&mut record.values[index], Operand::entry(method)).as_entry().expect("method dictionary held non-entry");
             record.sync_raw_view();
-            let previous = unsafe { MethodAddress::from_oop(previous) }
-                .unwrap_or_else(|| boundary::fatal_invariant("method binding held null data"));
             return AddMethod::Overwrote(previous);
         }
         if record.keys.len() == record.logical_capacity {
             record.grow_dictionary();
         }
         record.keys.push(selector);
-        record.values.push(method.as_oop());
+        record.values.push(Operand::entry(method));
         record.weak_keys.push(false);
         record.index_appended_key();
         record.sync_raw_view();
@@ -333,7 +328,7 @@ impl Vtables {
         self.note_mutation();
         let record = self.record_mut(vtable);
         if let Some(index) = record.key_index(key) {
-            record.values[index] = value;
+            record.values[index] = Operand::object(value);
             record.weak_keys[index] = true;
             record.sync_raw_view();
             return;
@@ -342,12 +337,12 @@ impl Vtables {
             record.grow_dictionary();
         }
         record.keys.push(key);
-        record.values.push(value);
+        record.values.push(Operand::object(value));
         record.weak_keys.push(true);
         record.index_appended_key();
         record.sync_raw_view();
     }
-    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+    pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         self.note_mutation();
         let record = self.record_mut(vtable);
         let index = record.key_index(selector)?;
@@ -356,9 +351,7 @@ impl Vtables {
         record.weak_keys.remove(index);
         record.rebuild_key_indices();
         record.sync_raw_view();
-        // SAFETY: remove_method is used only for direct method dictionaries.
-        unsafe { MethodAddress::from_oop(removed) }
-            .or_else(|| boundary::fatal_invariant("method binding held null data"))
+        removed.as_entry()
     }
     pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {
         // SAFETY: forwarded caller precondition.
@@ -372,8 +365,8 @@ impl Vtables {
         self.ordered.retain(|vtable| !dead.contains(vtable));
         if !dead.is_empty() { self.note_mutation(); }
     }
-    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = MethodAddress> + '_ {
-        self.record(vtable).values.iter().filter_map(|value| unsafe { MethodAddress::from_oop(*value) })
+    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = NativeEntry> + '_ {
+        self.record(vtable).values.iter().filter_map(|value| value.as_entry())
     }
     pub(crate) fn remove_weak_keys(&mut self, dead: &[usize]) -> usize {
         let dead: AddressMap<()> = dead.iter().map(|address| (*address, ())).collect();
@@ -417,13 +410,14 @@ mod core_tests {
         let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let child = tables.create(&mut memory, parent, meta);
         assert_eq!(memory.get(child.addr()).map(|allocation| allocation.requested_size()), Some(40));
-        unsafe extern "C" fn identity(receiver: Oop, _: *const Oop, _: usize) -> Oop { receiver }
+        unsafe extern "C" fn identity(_: *mut core::ffi::c_void, receiver: Oop, _: *const crate::abi::id_protocol::Operand, _: usize) -> crate::abi::id_protocol::Outcome { crate::abi::id_protocol::Outcome::loaded(crate::abi::id_protocol::Operand::object(receiver)) }
+        let identity = NativeEntry::new(identity, core::ptr::null_mut());
         let mut symbols = crate::symbol::Symbols::new();
         let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let keys: Vec<_> = (0..24).map(|index| symbols.intern(&mut memory, symbol_behavior, format!("key-{index}").as_bytes()).unwrap()).collect();
         assert_eq!(symbols.intern(&mut memory, symbol_behavior, b"key-7").unwrap(), keys[7]);
         for &key in &keys { tables.add_method(parent, key, identity); }
-        for &key in &keys { assert_eq!(tables.lookup(child, key), Some(MethodAddress::from_method(identity))); }
+        for &key in &keys { assert_eq!(tables.lookup(child, key), Some(identity)); }
         tables.remove_method(parent, keys[7]);
         assert!(tables.lookup(child, keys[7]).is_none());
         tables.remove_objects(&[child]);

@@ -6,6 +6,7 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::mem::{align_of, offset_of, size_of};
 
+pub mod id_protocol;
 pub mod foreign_address;
 pub mod integer;
 pub mod float;

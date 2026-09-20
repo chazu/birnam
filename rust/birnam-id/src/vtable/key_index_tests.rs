@@ -15,7 +15,7 @@ fn snapshot(tables: &Behaviors, table: Oop, keys: &[Oop], expected: &[(usize,Oop
     assert_eq!(record.logical_capacity,capacity);assert_eq!(raw.parent,record.parent);
     assert_eq!(record.key_indices.is_empty(),expected.len()<=16);
     assert_eq!(record.keys,expected.iter().map(|(i,_)| keys[*i]).collect::<Vec<_>>());
-    assert_eq!(record.values,expected.iter().map(|(_,v)| *v).collect::<Vec<_>>());
+    assert_eq!(record.values.iter().map(|entry| if weak { entry.as_object().unwrap() } else { crate::legacy_method::decode(entry.as_entry().unwrap()).as_oop() }).collect::<Vec<_>>(),expected.iter().map(|(_,v)| *v).collect::<Vec<_>>());
     assert_eq!(record.weak_keys,vec![weak;expected.len()]);
     if raw.tally>0 {
         assert_eq!(unsafe { core::slice::from_raw_parts(raw.keys,raw.tally) },record.keys);

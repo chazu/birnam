@@ -1,4 +1,5 @@
 #define _DARWIN_C_SOURCE
+#include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
 #include "idapi_v20.h"
 #include "namespace-support.h"
@@ -54,13 +55,13 @@ static void publication_oracle(void) {
     }
 }
 
-/* Inspect the historical raw dictionary view, including null values. */
-typedef struct { size_t capacity,tally; Oop *keys,*values; } DictionaryView;
+/* Inspect the typed dictionary view, including null Object values. */
+typedef struct { size_t capacity,tally; Oop *keys; BirnamOperand *values; } DictionaryView;
 static Oop mirror_of(IdApi *api,Oop symbol) {
     (void)api;
     for(size_t i=0;i<vtable_count_v2(fixture_vtable_enumeration());i++) {
         DictionaryView *view=vtable_at_v2(fixture_vtable_enumeration(),i);
-        for(size_t j=0;j<view->tally;j++)if(view->keys[j]==symbol && view->values[j])return view->values[j];
+        for(size_t j=0;j<view->tally;j++)if(view->keys[j]==symbol && view->values[j].kind==BIRNAM_OBJECT && view->values[j].data.object)return view->values[j].data.object;
     }
     return NULL;
 }
@@ -151,8 +152,7 @@ int main(int argc,char **argv) {
         assert(attach(&observed)==1 && attach(&observed)==1 && !attach(storage));
         reload=(ModuleInitFn)dlsym(namespace_image,"module_init");assert(reload);
     }
-    fixture_prepare_vtable_enumeration(floor,argv[1]);
-    fixture_prepare_method_observation(floor,argv[1]);
+    fixture_prepare_non_namespace_services(floor,argv[1]);
     IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init");assert(initialize);
     IdApi *api=initialize();assert(api);fixture_set_auto(0);
     Dl_info owner;assert(dladdr((void *)fixture_namespace_presence()->contains,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));

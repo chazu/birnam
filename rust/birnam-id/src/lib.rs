@@ -12,6 +12,7 @@ mod boundary;
 mod dev_slot_access;
 mod dispatch;
 mod id_dispatch;
+mod legacy_method;
 mod env;
 mod execution;
 mod gc;

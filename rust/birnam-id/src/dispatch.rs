@@ -42,7 +42,8 @@ impl Runtime {
         }
 
         unsafe { crate::id_dispatch::bind(receiver, selector) }
-            .unwrap_or_else(|_| boundary::fatal_invariant("doesNotUnderstand: is unbound"))
+            .unwrap_or_else(|_| boundary::fatal_invariant("Id lookup failed"))
+            .map(crate::legacy_method::decode)
     }
 
     /// Send while preserving the raw C argument-buffer contract.
@@ -164,9 +165,9 @@ impl Runtime {
     }
 }
 
-pub(crate) use crate::id_dispatch::vtable_lookup_method;
+pub(crate) use crate::legacy_method::lookup_method as vtable_lookup_method;
 
-unsafe extern "C" fn vtable_add_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+pub(crate) unsafe extern "C" fn vtable_add_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     if count < 2 || args.is_null() {
         boundary::fatal_invariant("vtable addMethod requires selector and method");
     }
@@ -184,7 +185,7 @@ unsafe extern "C" fn vtable_add_method(receiver: Oop, args: *const Oop, count: u
     encoded_method
 }
 
-unsafe extern "C" fn vtable_remove_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+pub(crate) unsafe extern "C" fn vtable_remove_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     if count == 0 || args.is_null() {
         boundary::fatal_invariant("vtable removeMethod: requires one selector");
     }
@@ -317,6 +318,7 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     let mut heap = Heap::adopt(memory);
     heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
     let mut vtables = Behaviors::adopt(dictionaries);
+    vtables.set_legacy_lookup(lookup);
 
     let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
     let environment = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
@@ -354,8 +356,8 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     runtime.install_internal_dictionaries(symbol_list, environment);
 
     for (selector, previous, replacement) in [
-        (selectors.add_method, crate::id_dispatch::vtable_add_method as crate::abi::Method, vtable_add_method as crate::abi::Method),
-        (selectors.remove_method, crate::id_dispatch::vtable_remove_method as crate::abi::Method, vtable_remove_method as crate::abi::Method),
+        (selectors.add_method, crate::legacy_method::add_method as crate::abi::Method, vtable_add_method as crate::abi::Method),
+        (selectors.remove_method, crate::legacy_method::remove_method as crate::abi::Method, vtable_remove_method as crate::abi::Method),
     ] {
         boundary::require_invariant(
             runtime.add_method(vtable_vt, selector, replacement)

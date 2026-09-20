@@ -2,7 +2,8 @@
 
 > **Status:** Production migration in progress, 2026-09-20. Exact-entry adapters
 > and managed-turn checkpoints are implemented in the existing production
-> runtime; the minimal Id and upper ownership cutover remains open.
+> runtime. Core Id allocation, Symbols, dictionaries and typed dispatch no longer
+> require upper services; the library/ownership and loading cutover remains open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -182,9 +183,30 @@ their executable release until the checkpoint.
 
 ## 3. The common native loading protocol
 
-These are semantic ABI requirements. Freeze a C layout and versioned independent
-oracle during the production implementation; do not preserve the twelve-argument
-initializer as a compatibility layer.
+The native C layout is frozen in
+[`id-protocol-v1/id_protocol.h`](../../abi/fixtures/id-protocol-v1/id_protocol.h)
+and mirrored by [`id_protocol.rs`](../../rust/birnam-abi/src/id_protocol.rs).
+The current production Id dictionaries and core dispatch use these typed
+operands. The descriptor loader and production Siphon handoff remain to be wired;
+do not preserve the twelve-argument initializer as the final compatibility layer.
+
+On the supported 64-bit target, an operand is a 32-bit kind, 32 reserved zero
+bits and a 16-byte union (24 bytes total). A native entry is a function and native
+context (16 bytes); its function takes context, receiver, operand pointer and
+count. The context is untraced native data with a caller-retained owner. An
+outcome contains status/reserved words, scalar detail and an operand (40 bytes).
+The carrier contains version/size, message function, context, receiver, intern
+selector and load selector (48 bytes). The fixed descriptor symbol is
+`birnam_native_module_v1`: version/size and an initializer function (16 bytes).
+The initializer receives the current carrier and explicit operands. Loading
+uses a Bytes path as its first argument and passes the remaining operands
+unchanged to that initializer. Interning takes one Bytes argument.
+
+Success is status zero. Failure codes distinguish invalid request, mapping,
+missing entry, incompatible ABI, initializer failure and unbound dispatch.
+Reserved fields are zero. Bytes results may borrow caller-owned inputs or
+storage whose owner the caller retains; they must never refer to a callee's
+stack. A Protocol result points to a complete carrier with a retained owner.
 
 The native Id carrier identifies a live message entry, its context/Id receiver,
 and the primordial interning and loading selectors. Include version and byte
@@ -203,7 +225,7 @@ Use the following native operand/result kinds, distinct from language objects:
 | Object | An actual Id object reference. The owning caller keeps it live for the call. |
 | Word | An unboxed size, status or native scalar; never a traced Oop. |
 | Bytes | Pointer plus length, borrowed for the synchronous call. Retention requires copying. |
-| Native entry | A correctly typed native implementation address; its image must remain mapped. This is not a language-level arbitrary pointer. |
+| Native entry | A correctly typed native implementation and its native context; their owners remain live. This is not a language-level arbitrary pointer. |
 | Protocol | A complete admitted Id carrier with a live owner. Bootstrap returns this kind. |
 | Unit | No value; does not depend on Nil. |
 
@@ -521,12 +543,38 @@ attaching Execution metadata to an unrelated primitive address does not replace
 that primitive's behavior during Id lookup. Machine classification remains above
 Id. The debug suite passes 303 tests, including the actual initial graph sending
 before Runtime exists, guard invalidation and a resumable lookup adapter invoked
-once with all Frame pins released. Method arguments/results still use the legacy
-Oop ABI; the typed native bridge is part of the remaining loading cutover.
+once with all Frame pins released. This first dispatch change still used the
+legacy Oop method ABI; the subsequent typed transition is described below.
 A fresh 53-native/28-authored debug installation also passes the allocation
 identity source/compiled/mapped/rebuilt/baked image workload and both portable
 resumable and CodeBinding lifecycle checks (including self-removal and retirement
 after the outer turn).
+
+Core Id now stores typed dictionary values and invokes native entries with typed
+operands/results. Lookup returns Native entry or Unit, and DNU forwards the
+original operand kinds. Its primitive argument failures return native status.
+A dictionary value now occupies 24 bytes instead of one 8-byte Oop; the behavior
+payload remains 40 bytes. Internal Namespace/Symbol mirrors also expose typed
+values. Image runtime ABI 7 (`f57d502f7c1c0437`) rejects the older representation;
+image format 8 and the upper IdApi v20 table shape are unchanged.
+
+`legacy_method.rs` is an upper Runtime migration adapter for existing native
+modules, generated code and reflection. It converts their all-Oop convention at
+that boundary, including method-valued lookup answers; core Id does not know
+about this adapter or Execution. The current upper binder still requires a
+legacy adapter for entries it exposes through the old Method interface. Migrate
+that binder and its consumers before admitting arbitrary typed modules through
+it; this restriction does not belong in the final Id protocol. The independent
+C fixture checks all operand kinds and native failure detail through the actual
+Id dictionary/bind/invoke path, without constructing Runtime. The existing
+303-test Id suite also passes the typed transition. The separate C interoperability
+check and 12 Image unit tests pass. A fresh 53-native/28-authored debug install
+passes the allocation-identity source/compiled/mapped/rebuilt/baked workload,
+portable resumable and CodeBinding retirement checks, and the loaded Namespace
+oracle including its typed raw mirror, aliases, precise GC and reload. The
+custom Namespace fixture now uses the same complete aggregate-floor preparation
+as the ordinary fixture; its stale two-service setup failed before reaching the
+runtime under test.
 
 These changes establish the lifetime mechanism, **not independent Id**. Its
 registration owner, turn state and temporary private retirement queue export

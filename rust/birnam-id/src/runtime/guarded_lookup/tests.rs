@@ -207,7 +207,6 @@ fn native_registration_invalidates_lookup_guard_without_dictionary_change() {
     runtime.publish_canonical_exports();
     runtime.install_execution_objects();
     let child = runtime.create_vtable(runtime.globals().object_vt);
-    let receiver = runtime.allocate_instance(child, 0);
     let selector = runtime.intern(b"registeredLookupProbe").unwrap();
     runtime.add_method(child, selector, one);
     let method = crate::dispatch::vtable_lookup_method as Method;
