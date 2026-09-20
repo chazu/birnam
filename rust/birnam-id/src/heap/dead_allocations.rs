@@ -176,13 +176,13 @@ impl Heap {
         &mut self,
         allocation: std::rc::Rc<DeadAllocation>,
     ) -> Option<DeferredAllocation> {
-        let next = self.next_deferred_id.checked_add(1)?;
+        let next = self.next_deferred_id.get().checked_add(1)?;
         let index = self.dead_allocations.len();
         if !self.record_dead_allocation(allocation) {
             return None;
         }
-        let identity = DeferredAllocation(self.next_deferred_id);
-        self.next_deferred_id = next;
+        let identity = DeferredAllocation(self.next_deferred_id.get());
+        self.next_deferred_id.set(next);
         self.deferred_allocations.push((identity, index));
         Some(identity)
     }
@@ -246,7 +246,7 @@ impl Heap {
 
     pub(crate) fn admits_virtual_allocations(&self, count: usize) -> bool {
         self.admits_dead_allocations(count)
-            && self.next_deferred_id.checked_add(count as u64).is_some()
+            && self.next_deferred_id.get().checked_add(count as u64).is_some()
     }
 
     /// Realize already-charged garbage before an observing sweep. This is not
@@ -610,7 +610,7 @@ mod tests {
         assert!(heap.materialize_recorded_clone(stale).is_none());
         heap.settle_dead_allocations();
         assert!(heap.materialize_recorded_clone(current).is_none());
-        heap.next_deferred_id = u64::MAX;
+        heap.set_deferred_identity_for_test(u64::MAX);
         let before = (heap.allocation_count(), heap.bytes_since_collection());
         assert!(heap.record_virtual_clone(snapshot.clone()).is_none());
         assert_eq!(
@@ -623,3 +623,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod deferred_identity_tests;

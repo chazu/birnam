@@ -21,6 +21,7 @@ mod collection_phase;
 mod guard_verdict;
 mod mutation_epoch;
 mod allocation_identity;
+mod deferred_identity;
 mod key_index;
 mod storage_observation;
 mod payload_layout;

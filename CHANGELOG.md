@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move the deferred-allocation identity storage cell into Storage (81BZ).
+  Id retains shared clone/numeric issuance, checked exhaustion, journal admission,
+  charging and recovery. Physical allocation identities and public formats stay
+  unchanged.
+
 - Move the Heap's allocation-identity storage cell into Storage (81BY). Id keeps
   checked issuance, the 59-bit exhaustion bound, packed block metadata and byte
   charging. GC and address reuse do not reset identities; public formats and

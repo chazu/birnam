@@ -3,7 +3,9 @@
 //! No heap, registry, mark algorithm or GC policy.
 mod observation;
 mod allocation_identity;
+mod deferred_identity;
 pub use allocation_identity::birnam_allocation_identity_factory_v1;
+pub use deferred_identity::birnam_deferred_identity_factory_v1;
 pub use observation::birnam_storage_observation_factory_v1;
 use birnam_abi::storage::*;
 use birnam_abi::{IdApi, Oop, borrowed_slice};

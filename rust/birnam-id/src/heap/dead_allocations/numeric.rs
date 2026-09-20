@@ -92,10 +92,10 @@ impl Heap {
         if index >= batch.count || !self.admits_virtual_allocations(1) {
             return None;
         }
-        let next = self.next_deferred_id.checked_add(1)?;
+        let next = self.next_deferred_id.get().checked_add(1)?;
         boundary::require_invariant(self.budget.charge(batch.total_size), "GC allocation byte counter overflow");
-        let identity = DeferredAllocation(self.next_deferred_id);
-        self.next_deferred_id = next;
+        let identity = DeferredAllocation(self.next_deferred_id.get());
+        self.next_deferred_id.set(next);
         self.numeric_allocations.push(Entry {
             identity,
             batch,
@@ -305,7 +305,7 @@ mod tests {
         heap.settle_dead_allocations();
         assert_eq!(counts(&heap), charged);
         assert!(heap.materialize_recorded_clone(current).is_none());
-        heap.next_deferred_id = u64::MAX;
+        heap.set_deferred_identity_for_test(u64::MAX);
         assert!(heap.record_numeric_result(batch, 0).is_none());
         assert!(heap.record_virtual_clone(snapshot.clone()).is_none());
         assert_eq!(counts(&heap), charged);

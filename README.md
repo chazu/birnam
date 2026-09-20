@@ -860,6 +860,12 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [separate dependency](abi/guard-verdict-v1.md). Guard evaluation stays in Id.
   Run `mise run guard-verdict`; use `scripts/guard-verdict-image-smoke.sh PREFIX`
   for startup and compiled-image checks with active Frame reads and writes.
+- [Deferred Identity](docs/design/81bz-production-deferred-identity.md) moves
+  the separate clone/numeric journal counter into Storage through an
+  [explicit dependency](abi/deferred-identity-v1.md). Id retains admission,
+  charging, issuance and recovery. Run `mise run deferred-identity`;
+  use `scripts/deferred-identity-loaded-smoke.sh PREFIX` and
+  `scripts/deferred-identity-image-smoke.sh PREFIX` for actual deferred work.
 - [Allocation Identity](docs/design/81by-production-allocation-identity.md) moves
   the Heap's counter storage into Storage through an [explicit dependency](abi/allocation-identity-v1.md).
   Id retains issuance, exhaustion and packed metadata.

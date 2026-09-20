@@ -158,7 +158,7 @@ pub(crate) struct Heap {
     deferred_allocations: Vec<(DeferredAllocation, usize)>,
     numeric_allocations: Vec<dead_allocations::numeric::Entry>,
     counted_frame_indices: Option<Box<dead_allocations::frame_indices::CountedFrameIndices>>,
-    next_deferred_id: u64,
+    next_deferred_id: crate::deferred_identity::Service,
     next_allocation_identity: crate::allocation_identity::Service,
     // Retaining records precede the service in field drop order.
     finalizers: crate::finalizers::Service,
@@ -179,11 +179,14 @@ impl Heap {
             numeric_allocations: Vec::new(),
             counted_frame_indices: None,
             deferred_allocations: Vec::new(),
-            next_deferred_id: 0,
+            next_deferred_id: crate::deferred_identity::Service::new(),
             next_allocation_identity: crate::allocation_identity::Service::new(),
             finalizers: crate::finalizers::Service::new(),
         }
     }
+
+    #[cfg(test)]
+    fn set_deferred_identity_for_test(&mut self, value: u64) { self.next_deferred_id.set(value); }
 
     #[cfg(test)]
     fn set_allocation_identity_for_test(&mut self, value: u64) { self.next_allocation_identity.set(value); }

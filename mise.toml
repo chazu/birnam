@@ -119,6 +119,10 @@ run = "scripts/key-index-test.sh"
 description = "Check Heap allocation-identity ownership, exhaustion, storage reports and host admission (debug)"
 run = "scripts/allocation-identity-test.sh"
 
+[tasks.deferred-identity]
+description = "Check deferred identity ownership, mixed journals, exhaustion, recovery and host admission (debug)"
+run = "scripts/deferred-identity-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"

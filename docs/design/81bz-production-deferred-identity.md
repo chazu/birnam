@@ -1,6 +1,6 @@
 # 81BZ — Deferred-allocation identity storage
 
-> **Status:** Audited next extraction after 81BY (`45bdd38f`).
+> **Status:** Completed production extraction after 81BY (`45bdd38f`).
 > Debug validation only; journal admission, charging and recovery stay in Id.
 
 Move only `Heap::next_deferred_id`, a separate per-Heap `u64` cell, into the
@@ -117,3 +117,107 @@ are not made image values, and no counter field/reset is added to recovery.
   linkage/install names, public formats and final source/artifact receipts.
   Add ABI reference, focused task, README and changelog, then commit the completed
   extraction. Release validation is waived.
+
+## Implementation and evidence
+
+Storage owns the zero-initialized per-Heap cell. Id retains both checked
+successors, the shared handle sequence, capacity/index admission, all charging,
+entry construction, searches, materialization, settlement and reclaim.
+Reversing only storage-adapter syntax and private test setup reproduces the
+preserved Heap, clone-journal and numeric-journal sources exactly. Another 85
+Runtime, native-tier, Vtable, counted-frame and physical-identity files match the
+baseline byte for byte. No new language method or production test hook is added.
+
+The host and fixture loaders prepare/pin the descriptor after Allocation
+Identity. Storage's semantic initializer remains stateless. Later cache-admission
+fixtures acknowledge the dependency without hiding their original failure gates.
+The independent C header, ABI reference, focused task and README document the
+boundary.
+
+Debug evidence:
+
+- Core ABI, Storage, Object Model, Dispatch Cache, host and Id suites: 422 passed,
+  16 ignored. The workspace all-targets check passes. The focused task passes,
+  including Heap/journal, physical-identity and native-tier regressions.
+- Four identical new witnesses pass against original and extracted storage;
+  all 12 transcript lines match exactly. They cover interleaved clone/numeric
+  handles beginning at zero, equal values/repeated batch indices, out-of-order
+  single-use recovery, exact payload/padding bits, repaired journal indices,
+  Rc release, charges, physical identities, settlement and reclaim. Capacity
+  refusal, invalid indices, stale handles across batches and budget reset do not
+  consume or reset the sequence. Moved/independent Heaps retain separate owners.
+- Last handle `u64::MAX - 1` and exhaustion are tested through both journals.
+  At `u64::MAX`, further handles return `None` without charging, while zero-count
+  admission and unhandled dead allocations retain their existing behavior.
+  Native module tests cover every bit position, arbitrary/repeated writes and
+  independent destruction. ABI admission invokes no operation and rejects every
+  invalid field and retargeting.
+- All 12 new host-admission cases pass against workspace and installed libraries.
+  Installed Allocation Identity, Dispatch Cache, Guard Verdict and Storage
+  Observation regressions pass 12, 13, 12 and 14 cases. The Relational native-output
+  contract passes through the updated Rust fixture loader and installed floor.
+  The updated C loader also passes the actual physical-allocation/GC probe,
+  last valid physical identity and both original fatal exhaustion paths.
+- A harness-only forwarding Storage library observes the actual loaded Heap
+  cell; every create/read/write reaches installed Storage. Attachment is inert,
+  the one Heap starts at zero and every observed write is exactly the successor.
+  Source and compiled callers match: disabled paths write zero; enabled closure
+  work writes 386 times and numeric work 150 times; forced numeric recovery
+  writes 75 times, with closure issuance still 386. Source-free compiled recovery
+  matches. The fixture crosses the unchanged 64-entry hot threshold instead of
+  lowering that production threshold.
+- The original installed closure-elision suite passes ordinary fallback,
+  enabled and forced recovery, including precise/conservative collection,
+  observer entry, escaping identities, shared Cells, replacement and eviction.
+- Actual old/new image-backed host workers match all 12 wire values and orderly
+  shutdown byte for byte. Only the external harness waits for debug boot; no
+  production deadline changes.
+
+The image fixture constructs source-less portable Code programs using existing
+ordinary Code APIs after each load. It does not try to persist temporary runtime
+closures. An earlier fixture that constructed those closures before saving was
+rejected by the same image preflight on both the baseline and extracted runtime.
+The saved payload now contains the existing recoverable main/CodeBindings and
+24 distinct methods. The saver asserts `#saved` before inspecting the image.
+
+Dynamic Siphon startup and source-free compiled callers pass. Mapped/rebuilt
+native Code images and baked executables reproduce the same exact 31-line
+output, including all 24 saved method values and their alias. Authored sources
+and the saver library are removed before recovery. The workload covers real
+closure and numeric construction, fresh escaping identities, shared Cells,
+method replacement, eviction, precise GC, finalization and reload, alongside
+large-dictionary and active Frame/lookup regressions.
+
+The actual host asserts `Mapped` for ordinary/baked loads and `SourceRecovery`
+for rebuild. Additional forwarding-library runs observe the real Heap sequence
+in all three modes: normal execution reports 386 clone writes and 150 numeric
+writes; forced recovery reports 386 and 75. All six match their source/compiled
+counterparts and all twelve image-carrier transcripts match byte for byte.
+No wrapper policy or counter emulation replaces installed Storage operations.
+
+Physical storage checks run before the workload, when the host is idle: exact
+identities/extents survive rooted alias retention, GC and one-time finalization.
+After the workload evicts materializations, the existing storage admission guard
+returns `BUSY`; the fixture asserts that result and leaves its output untouched.
+It does not force pending code retirement or weaken observation admission.
+
+## Inventory and receipts
+
+The inventory remains 81 libraries: 53 native and 28 compiled modules. All 38
+native manifests match. Only Storage's deferred-identity factory and Id's
+attachment export are added; both libraries link only system libraries and
+Storage retains `@rpath/libbirnam_storage.dylib`. IdApi v20, twelve-argument
+ModuleInit, Native Loader v12 and image v8 match the baseline exactly.
+
+Preserved 81BY baseline: 516 source inputs and 555 installed artifacts.
+
+- Source: `5d03e1080fe395f6fe2b44ff98485f050e56e852ccefebd1fec578ed7a498a06`
+- Artifacts: `5af4ea2ccc1902fa18b3a1080d51d655544645a20a217e950ad90aa6dc07ccd5`
+
+Final debug installation: 520 source inputs and 559 installed artifacts, verified
+against current source and installed contents.
+
+- Source: `e18010a0327ba3dc35707c3540f171963a8a5c9233b081eaa7ca4d97aca75fad`
+- Artifacts: `16a9731d11206ea463fa5abe9203f056fc62c1ca08493cec6a7ba27b3e5cf50f`
+
+No release validation was run.
