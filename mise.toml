@@ -123,6 +123,10 @@ run = "scripts/allocation-identity-test.sh"
 description = "Check deferred identity ownership, mixed journals, exhaustion, recovery and host admission (debug)"
 run = "scripts/deferred-identity-test.sh"
 
+[tasks.deferred-index]
+description = "Check lazy deferred-clone index ownership, ordered recovery, capacity and host admission (debug)"
+run = "scripts/deferred-index-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"

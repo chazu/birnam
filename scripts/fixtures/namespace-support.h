@@ -17,6 +17,7 @@
 #include "storage-observation-scope-support.h"
 #include "allocation-identity-support.h"
 #include "deferred-identity-support.h"
+#include "deferred-index-support.h"
 #include "dispatch-cache-support.h"
 #include "guard-verdict-support.h"
 #include <assert.h>
@@ -101,6 +102,7 @@ static inline void fixture_prepare_namespace(void *floor, const char *floor_path
     fixture_prepare_storage_observation(floor,floor_path);
     fixture_prepare_allocation_identity(floor,floor_path);
     fixture_prepare_deferred_identity(floor,floor_path);
+    fixture_prepare_deferred_index(floor,floor_path);
     fixture_prepare_dispatch_cache(floor,floor_path);
     fixture_prepare_guard_verdict(floor,floor_path);
 }

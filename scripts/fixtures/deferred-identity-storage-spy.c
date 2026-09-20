@@ -42,6 +42,9 @@ uint64_t deferred_identity_fixture_writes_v1(void) {
     assert(creates==1 && owner && real_factory->read(owner)==writes);
     if(writes)assert(reads>=writes);return writes;
 }
+const void *birnam_deferred_index_factory_v1(void) {
+    return ((const void *(*)(void))symbol("birnam_deferred_index_factory_v1"))();
+}
 const void *birnam_allocation_identity_factory_v1(void) {
     return ((const void *(*)(void))symbol("birnam_allocation_identity_factory_v1"))();
 }

@@ -3,6 +3,7 @@
 use super::*;
 pub(super) mod frame_indices;
 pub(super) mod numeric;
+pub(super) mod deferred_index;
 
 /// A process-local, single-use identity for an already charged allocation.
 /// Never an Oop; collection or materialization makes the capability stale.
@@ -73,6 +74,9 @@ impl DeadAllocation {
 }
 
 impl Heap {
+    #[cfg(test)]
+    fn deferred_index_rows_for_test(&self) -> Vec<(u64, usize)> { self.deferred_allocations.iter().map(|(id, index)| (id.0, index)).collect() }
+
     /// Exact raw payload bits, held outside the traced heap until realization.
     /// The caller proves current constructor/storage authority and excludes
     /// observation while any live identity remains virtual.
@@ -196,16 +200,17 @@ impl Heap {
         let Some(position) = self
             .deferred_allocations
             .iter()
-            .position(|(key, _)| *key == identity)
+            .position(|(key, _)| key == identity)
         else {
             return self.materialize_numeric(identity);
         };
         let (_, index) = self.deferred_allocations.swap_remove(position);
         let displaced = self.dead_allocations.len() - 1;
         let snapshot = self.dead_allocations.swap_remove(index);
-        for (_, recorded_index) in &mut self.deferred_allocations {
-            if *recorded_index == displaced {
-                *recorded_index = index;
+        for position in 0..self.deferred_allocations.len() {
+            let (key, recorded_index) = self.deferred_allocations.get(position);
+            if recorded_index == displaced {
+                self.deferred_allocations.set(position, (key, index));
             }
         }
         Some(self.materialize_snapshot(&snapshot))
@@ -626,3 +631,6 @@ mod tests {
 
 #[cfg(test)]
 mod deferred_identity_tests;
+
+#[cfg(test)]
+mod deferred_index_tests;

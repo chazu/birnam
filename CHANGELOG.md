@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move lazy deferred-clone index storage into Storage (81CA). Id retains
+  ordered handle lookup, numeric fallback, displaced-index repair, journal
+  charging and materialization. Empty indices remain unallocated and clear
+  retains capacity; public formats and identity sequences stay unchanged.
+
 - Move the deferred-allocation identity storage cell into Storage (81BZ).
   Id retains shared clone/numeric issuance, checked exhaustion, journal admission,
   charging and recovery. Physical allocation identities and public formats stay

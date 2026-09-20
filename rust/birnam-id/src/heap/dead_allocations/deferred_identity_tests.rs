@@ -13,7 +13,7 @@ fn counts(heap: &Heap) -> (usize, usize, usize) {
 fn report(name: &str, heap: &Heap) {
     let mut physical = heap.blocks.values().map(|b| (b.identity(), b.total_size, b.metadata)).collect::<Vec<_>>();
     physical.sort_unstable();
-    let handles = heap.deferred_allocations.iter().map(|(id, index)| (id.0, *index)).collect::<Vec<_>>();
+    let handles = heap.deferred_allocations.iter().map(|(id, index)| (id.0, index)).collect::<Vec<_>>();
     println!("deferred-identity {name}: counts={:?} physical={physical:?} clones={handles:?} numeric={}", counts(heap), heap.numeric_allocations.len());
 }
 

@@ -1,6 +1,6 @@
 # 81CA — Deferred-clone index storage
 
-> **Status:** Audited next extraction after 81BZ (`29880f1a`).
+> **Status:** Completed production extraction after 81BZ (`29880f1a`).
 > Debug validation only; handle lookup, journal ordering and recovery stay in Id.
 
 Move only `Heap::deferred_allocations`, the vector of deferred-handle/dead-journal
@@ -113,3 +113,107 @@ serialized. Existing image recovery reconstructs ordinary runtime state.
   and storage observation regressions. Check all exports, linkage, install names,
   public formats and final source/artifact receipts. Add ABI reference, focused
   task, README and changelog, then commit. Release validation is waived.
+
+## Implementation and evidence
+
+Storage owns the lazy Vec of 16-byte rows. Id's adapter starts with a null context
+and returns copied rows; only push allocates the owner. Id retains forward
+lookup, numeric fallback, swap-removal order and the displaced-index repair loop.
+Clear retains ownership/capacity. The existing native-storage accounting term
+and both identity services remain unchanged.
+
+Reversing the field/constructor and copied iteration/repair syntax reproduces
+the preserved Heap and clone-journal source exactly. The private test row
+snapshot is the only other seam. Another 87 Runtime, native-tier, Vtable,
+numeric/counted-journal and identity-service files match the baseline byte for
+byte. No production test hook, language method or serialized index is added.
+
+The host and C/Rust fixture loaders prepare the dependency after Deferred
+Identity, before Id initialization. Later admission fixtures and the previous
+identity forwarding probe acknowledge the new factory. Ordinary Siphon
+initialization order is unchanged.
+
+Debug evidence:
+
+- Core ABI, Storage, Object Model, Dispatch Cache, host and Id suites: 428 passed,
+  16 ignored. The workspace all-targets check and focused task pass.
+- Three identical new witnesses pass against the original vector and extracted
+  owner, with all 15 transcript lines matching exactly. They compare ordered
+  rows, unique snapshot tags, payload bytes, journal indices, both identity
+  sequences, charges and retained capacities. The witness grows through 52
+  indexed clones mixed with unhandled snapshots and numeric entries, then
+  recovers front/middle/end rows out of order. It checks actual displaced-index
+  repair, numeric fallback, stale handles, repeated recovery, settlement,
+  reclaim, regrowth, moved independent Heaps and final Rc release.
+- Numeric-only/unhandled work fills the journal without allocating index
+  capacity. Failed capacity admission, invalid numeric indices and exhausted
+  handles leave the unused index unallocated. The previous mixed-journal and
+  exhaustion witnesses also pass old/new: four tests and 12 exact transcript
+  lines match.
+- Storage tests cover null/no-allocation behavior, every bit position, duplicate
+  identities, arbitrary replacement, miss outputs, all remaining rows after each
+  swap removal, capacity retention and moved-owner destruction. The independent
+  C caller exercises all eight operations against workspace and installed Storage,
+  including writes, misses, 128 all-bit rows and exact removal order.
+- All 16 new host-admission cases pass against workspace and installed libraries.
+  Installed Deferred Identity, Allocation Identity, Dispatch Cache, Guard Verdict
+  and Storage Observation admission checks pass 12, 12, 13, 12 and 14 cases.
+  The updated C fixture loader preserves actual physical allocations, GC and
+  last-valid identity. The Relational native-output contract passes through the
+  updated Rust fixture loader and installed floor.
+- A harness-only forwarding library observes the real Heap index and delegates
+  every operation to installed Storage. It compares rows with an independent
+  ordered C model after every mutation, checks reads and retained capacity, and
+  observes lazy first allocation plus stable ownership. Source and compiled
+  callers match: enabled closure work performs 386 pushes and 193 removals;
+  forced recovery performs 386 pushes and 386 removals. Numeric-only work changes
+  no clone-index rows; disabled paths perform no pushes/removals/writes. The
+  source-free compiled recovery caller matches too.
+- The previous actual identity-counter probe still passes: closure/numeric
+  issuance remains 386/150 normally and 386/75 under forced recovery. The original
+  closure-elision suite passes fallback, enabled and forced modes, including
+  precise/conservative GC, collecting observation, escaping aliases, shared Cells,
+  replacement and eviction.
+- Actual old/new image-backed workers match all 12 wire values and orderly
+  shutdown byte for byte. Only the external harness waits for debug boot.
+
+Dynamic Siphon startup and source-free compiled callers pass. Mapped/rebuilt
+native Code images and baked execution reproduce the same 31-line output,
+including 24 saved method values and their alias. Authored source and the saver
+library are deleted before recovery. Existing portable Code constructors create
+the transient workload after loading, without serializing native journals.
+
+The actual host asserts `Mapped` for ordinary/baked loads and `SourceRecovery`
+for rebuild. It verifies idle physical identities, sizes, rooted aliases and
+one-time finalization before the workload, and the existing `BUSY` observation
+result after eviction. Active Frame reads/writes, custom lookup, large-dictionary
+mutation, parent/behavior replacement, GC and reload retain their previous checks.
+
+Six additional forwarding runs observe real index operations in every image
+mode: normal closure execution performs 386 pushes and 193 removals, while
+forced recovery performs 386 pushes and 386 removals. Numeric-only work performs
+no clone-index pushes, removals or writes. All three loader modes match exactly
+within each recovery setting; all twelve image-carrier outputs match byte for
+byte. The forwarding harness compares real rows and capacity against its own
+ordered model while leaving every actual allocation and mutation in Storage.
+
+## Inventory and receipts
+
+The inventory remains 81 libraries: 53 native and 28 compiled modules. All 38
+native manifests match; only Storage's index factory and Id's attachment export
+are added. Id and Storage link only system libraries; Storage retains
+`@rpath/libbirnam_storage.dylib`. IdApi v20, twelve-argument ModuleInit, Native
+Loader v12 and image v8 match the baseline exactly.
+
+Preserved 81BZ baseline: 520 source inputs and 559 installed artifacts.
+
+- Source: `e18010a0327ba3dc35707c3540f171963a8a5c9233b081eaa7ca4d97aca75fad`
+- Artifacts: `16a9731d11206ea463fa5abe9203f056fc62c1ca08493cec6a7ba27b3e5cf50f`
+
+Final debug installation: 524 source inputs and 563 installed artifacts, verified
+against current source and installed contents.
+
+- Source: `49dd52d2a257f131c119bd0ddf2f07cb839876cd0e52dc5dbfd53e364883c601`
+- Artifacts: `c838d01f5048689391755766266457d10118b2707ffe7e59e8f7dd8f5cfb5d9c`
+
+No release validation was run.
