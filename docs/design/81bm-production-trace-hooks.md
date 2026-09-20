@@ -1,6 +1,8 @@
 # 81BM — Native trace-hook descriptions
 
-> **Status:** Audited against completed 81BL (`2cb614b2`). Implementation pending.
+> **Status:** Implementation checkpoint after completed 81BL (`2cb614b2`).
+> Canonical module and Id/host wiring implemented; public caller migration and
+> extraction-completion evidence remain pending.
 > Debug validation only.
 
 [81D](81d-id-api-partition.md) places trace-provider integration above Id. The
@@ -127,3 +129,31 @@ Code and TCC paths, storage observation, recovery/optimizer refusal, adjacent
 GC/image checks and image-backed worker replies. Check the final source/artifact
 relationship, exports and system-only link dependencies. Commit the completed
 extraction before selecting the next responsibility. Do not run release gates.
+
+## Implementation checkpoint
+
+The workspace now includes `birnam-trace-hooks`, its C/Rust factory and capability
+contracts, independent selection tests, Id's inline attachment and registry-fact
+adapter, and host preparation before `id_init`. Build/install inventories and
+native fixture preparation include the new library. The canonical selection
+algorithm lives in the new module; GC still invokes the returned hook at the
+existing call site.
+
+This checkpoint retains IdApi v17, the ten-argument native initializer and Native
+Loader v10. Existing production callers still register through `setTraceHook`.
+The public v18 migration, matching saved capabilities in PEG/Store/Portable Code/
+TCC, and Native Loader v11 are the next implementation step. The proposed final
+boundary above is not yet complete.
+
+Checkpoint validation: the locked, offline workspace check passes for all
+targets. Focused debug library tests pass: 14 ABI, 262 Id and four Trace Hooks
+tests; 15 existing Id tests remain ignored. The selection suite compares 18,000
+graph/budget/root cases with an independent shortest-path oracle and exercises
+exact reads, admission reentry and descriptor independence. Full old/new native
+transcript comparisons and installed compiled/image/baked validation remain
+pending for the completed extraction.
+
+The existing debug live-tracing and IdApi v17 C client, storage-observation, and
+storage-tracing scripts also pass with the new factory mounted. The last fixture
+needed its current v17 storage header and ten-argument initializer calls restored;
+historical ABI headers remain unchanged.

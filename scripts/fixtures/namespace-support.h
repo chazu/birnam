@@ -6,6 +6,7 @@
 #include "root-registry-support.h"
 #include "gc-settings-support.h"
 #include "payload-layout-support.h"
+#include "trace-hooks-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -77,6 +78,7 @@ static inline void fixture_prepare_namespace(void *floor, const char *floor_path
     fixture_prepare_root_registry(floor,floor_path);
     fixture_prepare_gc_settings(floor,floor_path);
     fixture_prepare_payload_layout(floor,floor_path);
+    fixture_prepare_trace_hooks(floor,floor_path);
 }
 static inline NamespaceNamesApiV1 *fixture_namespace_names(void) {
     if(!fixture_names) {

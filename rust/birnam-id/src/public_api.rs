@@ -762,3 +762,29 @@ pub unsafe extern "C" fn birnam_payload_layout_dependency_v1(
 pub unsafe extern "C" fn birnam_payload_layout_provider_v1() -> *mut birnam_abi::payload_layout::ApiV1 {
     runtime().payload_layout()
 }
+
+pub(crate) fn trace_hooks_access() -> birnam_abi::trace_hooks::FloorV1 {
+    use birnam_abi::trace_hooks::{FloorV1, SlotV1};
+    unsafe extern "C" fn admit(_: *mut c_void) {
+        #[cfg(not(test))]
+        { runtime().admit_trace_hooks(); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|r| r.admit_trace_hooks()); }
+    }
+    unsafe extern "C" fn replace(_: *mut c_void, vtable: Oop, slot: SlotV1) {
+        #[cfg(not(test))]
+        { runtime().replace_trace_hook(vtable, slot); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|r| r.replace_trace_hook(vtable, slot)); }
+    }
+    FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: core::ptr::null_mut(),
+        admit: Some(admit), replace: Some(replace) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_trace_hooks_dependency_v1(factory: *const birnam_abi::trace_hooks::FactoryV1) -> c_int {
+    unsafe { birnam_abi::trace_hooks::attach(factory) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_trace_hooks_provider_v1() -> *mut birnam_abi::trace_hooks::ApiV1 {
+    runtime().trace_hooks()
+}

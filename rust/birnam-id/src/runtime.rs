@@ -4579,6 +4579,17 @@ impl Runtime {
         };
     }
 
+    pub(crate) fn trace_hooks(&self) -> *mut birnam_abi::trace_hooks::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).vtables.trace_hooks_api() }
+    }
+
+    pub(crate) fn admit_trace_hooks(&self) { self.assert_owner(); }
+
+    pub(crate) fn replace_trace_hook(&self, vtable: Oop, slot: birnam_abi::trace_hooks::SlotV1) {
+        unsafe { (&mut *self.state.get()).vtables.replace_trace_hook(vtable, slot) };
+    }
+
     pub(crate) fn set_finalizer(&self, object: Oop, finalizer: crate::abi::Finalizer) {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.

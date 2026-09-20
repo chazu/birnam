@@ -159,6 +159,7 @@ dependencies = [
  "birnam-root-registry",
  "birnam-string",
  "birnam-trace",
+ "birnam-trace-hooks",
  "birnam-word",
  "sha2",
 ]
@@ -243,14 +244,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-peg"
+name = "birnam-payload-layout"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
 ]
 
 [[package]]
-name = "birnam-payload-layout"
+name = "birnam-peg"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
@@ -380,6 +381,13 @@ dependencies = [
 
 [[package]]
 name = "birnam-trace"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
+name = "birnam-trace-hooks"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",

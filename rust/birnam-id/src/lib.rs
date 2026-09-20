@@ -16,6 +16,7 @@ mod execution;
 mod gc;
 mod gc_settings;
 mod payload_layout;
+mod trace_hooks;
 mod heap;
 mod loader;
 #[cfg(feature = "ffi-test-hooks")]

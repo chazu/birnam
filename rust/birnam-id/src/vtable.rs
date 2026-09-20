@@ -55,7 +55,7 @@ struct VtableRecord {
     key_indices: AddressMap<usize>,
     parent: Oop,
     owner: Oop,
-    trace_hook: Option<TraceHook>,
+    trace_hook: birnam_abi::trace_hooks::SlotV1,
     layout: crate::payload_layout::Owned,
 }
 
@@ -112,7 +112,7 @@ impl VtableRecord {
             self.values.as_mut_ptr()
         };
         raw.parent = self.parent;
-        raw.trace_hook = self.trace_hook;
+        raw.trace_hook = self.trace_hook.hook;
         let layout = self.layout.view();
         raw.layout_kinds = layout.kinds;
         raw.layout_n = layout.count;
@@ -153,6 +153,7 @@ pub(crate) struct Vtables {
     mutation_epoch: u64,
     // Records release their carriers before this capability is destroyed.
     layouts: crate::payload_layout::Service,
+    hooks: crate::trace_hooks::Service,
 }
 
 impl Vtables {
@@ -162,6 +163,7 @@ impl Vtables {
             by_address: AddressMap::default(),
             mutation_epoch: 0,
             layouts: crate::payload_layout::Service::new(),
+            hooks: crate::trace_hooks::Service::new(),
         }
     }
 
@@ -238,7 +240,7 @@ impl Vtables {
                 key_indices: AddressMap::default(),
                 parent,
                 owner: core::ptr::null_mut(),
-                trace_hook: None,
+                trace_hook: birnam_abi::trace_hooks::SlotV1::EMPTY,
                 layout: self.layouts.empty(),
             },
         );
@@ -435,23 +437,32 @@ impl Vtables {
     }
 
     pub(crate) fn set_trace_hook(&mut self, vtable: Oop, hook: TraceHook) {
+        let slot = self.hooks.slot(hook);
+        self.replace_trace_hook(vtable, slot);
+    }
+
+    pub(crate) fn replace_trace_hook(&mut self, vtable: Oop, slot: birnam_abi::trace_hooks::SlotV1) {
         let record = self.record_mut(vtable);
-        record.trace_hook = Some(hook);
+        record.trace_hook = slot;
         record.sync_raw_view();
     }
 
+    pub(crate) fn trace_hooks_api(&self) -> *mut birnam_abi::trace_hooks::ApiV1 {
+        self.hooks.api()
+    }
+
     pub(crate) fn trace_hook(&self, vtable: Oop) -> Option<TraceHook> {
-        let mut current = vtable;
-        let mut remaining = self.by_address.len();
-        while !current.is_null() && remaining != 0 {
-            let record = self.by_address.get(&current.addr())?;
-            if let Some(hook) = record.trace_hook {
-                return Some(hook);
-            }
-            current = record.parent;
-            remaining -= 1;
+        use birnam_abi::trace_hooks::{EntryV1, SourceV1};
+        unsafe extern "C" fn read(context: *const core::ffi::c_void, vtable: Oop, output: *mut EntryV1) -> core::ffi::c_int {
+            let registry = unsafe { &*context.cast::<Vtables>() };
+            let Some(record) = registry.by_address.get(&vtable.addr()) else { return 0; };
+            unsafe { output.write(EntryV1 { parent: record.parent, slot: record.trace_hook }) };
+            1
         }
-        None
+        // Canonical selection uses only synchronous, immutable registry facts.
+        // The borrow ends before a caller invokes the returned hook.
+        let source = SourceV1 { context: core::ptr::from_ref(self).cast(), budget: self.by_address.len(), read };
+        self.hooks.resolve(&source, vtable)
     }
 
     pub(crate) fn set_layout(&mut self, vtable: Oop, kinds: *const u8, count: usize, rest: u8) {

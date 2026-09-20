@@ -897,6 +897,7 @@ pub enum FloorError {
     RootRegistry { path: PathBuf, reason: &'static str },
     GcSettings { path: PathBuf, reason: &'static str },
     PayloadLayout { path: PathBuf, reason: &'static str },
+    TraceHooks { path: PathBuf, reason: &'static str },
     VtableEnumeration { path: PathBuf, reason: &'static str },
     Namespace { path: PathBuf, reason: &'static str },
     NullApi,
@@ -935,6 +936,7 @@ impl fmt::Debug for FloorError {
             Self::RootRegistry { path, reason } => write!(formatter, "Root registry preparation failed: {} ({reason})", path.display()),
             Self::GcSettings { path, reason } => write!(formatter, "GC settings preparation failed: {} ({reason})", path.display()),
             Self::PayloadLayout { path, reason } => write!(formatter, "Payload layout preparation failed: {} ({reason})", path.display()),
+            Self::TraceHooks { path, reason } => write!(formatter, "Trace hooks preparation failed: {} ({reason})", path.display()),
             Self::VtableEnumeration { path, reason } => write!(formatter, "Vtable enumeration preparation failed: {} ({reason})", path.display()),
             Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
@@ -959,6 +961,8 @@ pub struct LoadedFloor {
     gc_settings: NonNull<birnam_abi::gc_settings::ApiV1>,
     _payload_layout: NonNull<std::ffi::c_void>,
     payload_layout: NonNull<birnam_abi::payload_layout::ApiV1>,
+    _trace_hooks: NonNull<std::ffi::c_void>,
+    trace_hooks: NonNull<birnam_abi::trace_hooks::ApiV1>,
     _method_observation: NonNull<std::ffi::c_void>,
     method_observation: NonNull<birnam_abi::method_observation::ApiV1>,
     vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV2>,
@@ -1095,6 +1099,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_root_registry",
     "libbirnam_gc_settings",
     "libbirnam_payload_layout",
+    "libbirnam_trace_hooks",
     "libbirnam_id_artifact",
     "libbirnam_store",
     "libbirnam_id_peg",
@@ -2129,6 +2134,7 @@ impl LoadedStack {
     pub fn root_registry(&self) -> *const birnam_abi::root_registry::ApiV1 { self.floor.root_registry() }
     pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.floor.gc_settings() }
     pub fn payload_layout(&self) -> *const birnam_abi::payload_layout::ApiV1 { self.floor.payload_layout() }
+    pub fn trace_hooks(&self) -> *const birnam_abi::trace_hooks::ApiV1 { self.floor.trace_hooks() }
 
     pub fn new(floor: LoadedFloor) -> Self {
         let control = unsafe {
@@ -2998,6 +3004,7 @@ impl LoadedFloor {
     pub fn root_registry(&self) -> *const birnam_abi::root_registry::ApiV1 { self.root_registry.as_ptr() }
     pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.gc_settings.as_ptr() }
     pub fn payload_layout(&self) -> *const birnam_abi::payload_layout::ApiV1 { self.payload_layout.as_ptr() }
+    pub fn trace_hooks(&self) -> *const birnam_abi::trace_hooks::ApiV1 { self.trace_hooks.as_ptr() }
 
     pub fn api(&self) -> &IdApi {
         // SAFETY: `id_init` returned a process-owned, non-null table and the
@@ -3037,6 +3044,7 @@ pub fn load_floor(
     let root_registry_path = path.with_file_name("libbirnam_root_registry.dylib");
     let gc_settings_path = path.with_file_name("libbirnam_gc_settings.dylib");
     let payload_layout_path = path.with_file_name("libbirnam_payload_layout.dylib");
+    let trace_hooks_path = path.with_file_name("libbirnam_trace_hooks.dylib");
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -3113,6 +3121,13 @@ pub fn load_floor(
         }
     };
     let payload_layout_image = match unsafe { prepare_payload_layout(handle, &payload_layout_path) } {
+        Ok(image) => image,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
+    let trace_hooks_image = match unsafe { prepare_trace_hooks(handle, &trace_hooks_path) } {
         Ok(image) => image,
         Err(error) => {
             unsafe { system_dlclose(handle.as_ptr()) };
@@ -3224,6 +3239,15 @@ pub fn load_floor(
     if !unsafe { birnam_abi::payload_layout::valid(payload_layout) } {
         return Err(FloorError::PayloadLayout { path: payload_layout_path, reason: "invalid capability" });
     }
+    let trace_hooks_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_trace_hooks_provider_v1".as_ptr()) };
+    if trace_hooks_provider.is_null() {
+        return Err(FloorError::TraceHooks { path: trace_hooks_path, reason: "missing capability" });
+    }
+    let provide: birnam_abi::trace_hooks::ProviderV1 = unsafe { std::mem::transmute(trace_hooks_provider) };
+    let trace_hooks = unsafe { provide() };
+    if !unsafe { birnam_abi::trace_hooks::valid(trace_hooks) } {
+        return Err(FloorError::TraceHooks { path: trace_hooks_path, reason: "invalid capability" });
+    }
     Ok(LoadedFloor {
         _root_registry: root_registry_image,
         root_registry: NonNull::new(root_registry).unwrap(),
@@ -3231,6 +3255,8 @@ pub fn load_floor(
         gc_settings: NonNull::new(gc_settings).unwrap(),
         _payload_layout: payload_layout_image,
         payload_layout: NonNull::new(payload_layout).unwrap(),
+        _trace_hooks: trace_hooks_image,
+        trace_hooks: NonNull::new(trace_hooks).unwrap(),
         _method_observation: observation_image,
         method_observation: NonNull::new(observation).unwrap(),
         _object_model: object_model,
@@ -3439,6 +3465,39 @@ unsafe fn prepare_payload_layout(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::payload_layout::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::payload_layout::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
+}
+
+unsafe fn prepare_trace_hooks(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::TraceHooks {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_trace_hooks_dependency_v1".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_trace_hooks_factory_v1".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::trace_hooks::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::trace_hooks::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::trace_hooks::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

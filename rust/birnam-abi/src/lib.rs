@@ -32,6 +32,7 @@ pub mod method_observation;
 pub mod root_registry;
 pub mod gc_settings;
 pub mod payload_layout;
+pub mod trace_hooks;
 pub mod text_view;
 pub mod error_value;
 pub mod range;
