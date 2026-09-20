@@ -20,6 +20,23 @@ pub struct ViewV1 {
 /// Null means embedded NUL; no sends, collection, reentry or retained borrows.
 pub type InternV1 = unsafe extern "C" fn(*mut c_void, *const u8, usize) -> Oop;
 pub type FindV1 = unsafe extern "C" fn(*const c_void, Oop) -> Oop;
+pub type BindV1 = unsafe extern "C" fn(*mut c_void, Oop, Oop) -> Oop;
+/// Restricted primitive: update the existing weak dictionary mirror, if present.
+/// No sends, collection, reentry or retained borrows.
+pub type MirrorV1 = unsafe extern "C" fn(*mut c_void, Oop, Oop);
+/// Intern once, bind, then mirror the original Symbol/value pair. Zero leaves
+/// output untouched; one writes the selected bind's return value (possibly null).
+pub type PublishV1 = unsafe extern "C" fn(
+    *mut c_void,
+    BindV1,
+    *mut c_void,
+    InternV1,
+    MirrorV1,
+    *const u8,
+    usize,
+    Oop,
+    *mut Oop,
+) -> c_int;
 /// Intern once, then use the selected raw find. Zero leaves output untouched;
 /// one writes the binding, which may itself be null. All pointers are borrowed.
 pub type LookupV1 = unsafe extern "C" fn(
@@ -49,13 +66,14 @@ pub type CreateEnumerationV1 = unsafe extern "C" fn(
 /// Immutable descriptor and code stay pinned until all contexts are destroyed.
 /// Raw storage operations are owner-serialized, with no Id calls, GC, callbacks
 /// or reentry. create/bind may allocate native storage; reads do not mutate.
-/// lookup calls only the supplied restricted interner and selected find; service
-/// operations retain their separately documented floor access contracts.
+/// lookup/publish call only the supplied restricted interner, selected storage
+/// operation and (for publish) weak mirror. Service operations retain their
+/// separately documented floor access contracts.
 /// Oops are opaque identities, never dereferenced. View data is borrowed until
 /// the next bind/destroy and must not escape its synchronous use by the caller.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV5 {
+pub struct ApiV6 {
     pub version: u32,
     pub byte_size: usize,
     pub create: Option<unsafe extern "C" fn() -> *mut c_void>,
@@ -80,29 +98,31 @@ pub struct ApiV5 {
     pub lookup: Option<LookupV1>,
     pub create_presence: Option<CreatePresenceV1>,
     pub destroy_presence: Option<unsafe extern "C" fn(*mut crate::namespace_presence::ApiV1)>,
+    pub publish: Option<PublishV1>,
 }
 const _: () = {
-    assert!(size_of::<ApiV5>() == 136);
-    assert!(core::mem::offset_of!(ApiV5, create_presence) == 120);
-    assert!(core::mem::offset_of!(ApiV5, destroy_presence) == 128);
-    assert!(core::mem::offset_of!(ApiV5, create) == 16);
-    assert!(core::mem::offset_of!(ApiV5, bindings) == 72);
-    assert!(core::mem::offset_of!(ApiV5, lookup) == 112);
+    assert!(size_of::<ApiV6>() == 144);
+    assert!(core::mem::offset_of!(ApiV6, publish) == 136);
+    assert!(core::mem::offset_of!(ApiV6, create_presence) == 120);
+    assert!(core::mem::offset_of!(ApiV6, destroy_presence) == 128);
+    assert!(core::mem::offset_of!(ApiV6, create) == 16);
+    assert!(core::mem::offset_of!(ApiV6, bindings) == 72);
+    assert!(core::mem::offset_of!(ApiV6, lookup) == 112);
     assert!(size_of::<BindingV1>() == 16);
     assert!(size_of::<ViewV1>() == 16);
 };
-pub type ProviderV5 = unsafe extern "C" fn() -> *const ApiV5;
-pub type DependencyV5 = unsafe extern "C" fn(*const ApiV5) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV5> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV6 = unsafe extern "C" fn() -> *const ApiV6;
+pub type DependencyV6 = unsafe extern "C" fn(*const ApiV6) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV6> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Readable aligned descriptor; valid immutable operations/code stay pinned.
-pub unsafe fn valid(pointer: *const ApiV5) -> bool {
+pub unsafe fn valid(pointer: *const ApiV6) -> bool {
     if pointer.is_null() {
         return false;
     }
     let a = unsafe { *pointer };
-    a.version == 5
-        && a.byte_size == size_of::<ApiV5>()
+    a.version == 6
+        && a.byte_size == size_of::<ApiV6>()
         && a.create.is_some()
         && a.destroy.is_some()
         && a.bind.is_some()
@@ -118,11 +138,12 @@ pub unsafe fn valid(pointer: *const ApiV5) -> bool {
         && a.lookup.is_some()
         && a.create_presence.is_some()
         && a.destroy_presence.is_some()
+        && a.publish.is_some()
 }
 /// # Safety
 /// Owner-thread admission before constructing any namespace. Descriptor and code
 /// are immutable and process-pinned. Different descriptors cannot retarget it.
-pub unsafe fn attach(pointer: *const ApiV5) -> c_int {
+pub unsafe fn attach(pointer: *const ApiV6) -> c_int {
     if !unsafe { valid(pointer) } {
         return 0;
     }
@@ -138,7 +159,7 @@ pub unsafe fn attach(pointer: *const ApiV5) -> c_int {
 }
 /// # Safety
 /// Use only after the declared dependency is prepared by the host.
-pub unsafe fn operations() -> ApiV5 {
+pub unsafe fn operations() -> ApiV6 {
     let pointer = DEPENDENCY.load(Ordering::Acquire);
     assert!(
         !pointer.is_null(),
@@ -150,8 +171,8 @@ pub unsafe fn operations() -> ApiV5 {
 macro_rules! namespace_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_namespace_dependency_v5(
-            api: *const $crate::namespace::ApiV5,
+        pub unsafe extern "C" fn birnam_namespace_dependency_v6(
+            api: *const $crate::namespace::ApiV6,
         ) -> core::ffi::c_int {
             unsafe { $crate::namespace::attach(api) }
         }

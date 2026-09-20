@@ -184,14 +184,14 @@ installer. Integer, String, Text View and Error Value attachments move with thei
 last Prelude consumers. The [export inventory](rust-source-loader-dylib-v1.json)
 adds no IdApi fields, objects or image encoding.
 
-[Namespace v5](namespace-v5.md) supplies a 136-byte immutable storage/service factory,
+[Namespace v6](namespace-v6.md) supplies a 144-byte immutable storage/service factory,
 prepared explicitly before Id initialization. It owns ordered bindings and
 independent contexts; Id consumes a borrowed binding view for roots. The
 [export inventory](rust-namespace-dylib-v1.json) adds no IdApi fields or image
 encoding. Current native hosts must attach this prerequisite before id_init.
 
 `idapi-v7.json` and `fixtures/idapi-v7` preserve the 81X checkpoint. Current
-Namespace [storage v5](namespace-v5.md) creates the per-runtime names service;
+Namespace [storage v6](namespace-v6.md) creates the per-runtime names service;
 its four consumers attach the [names capability](namespace-names-v1.md) explicitly.
 
 [Namespace enumeration v1](namespace-enumeration-v1.md) replaces the private Id
@@ -200,7 +200,7 @@ floor. Reflect retains live discovery and its original operation order.
 Image encoding remains unchanged.
 
 `idapi-v8.json` and `fixtures/idapi-v8` preserve the 81AX-81BA checkpoint.
-Namespace [factory v5](namespace-v5.md) owns canonical interned lookup and the
+Namespace [factory v6](namespace-v6.md) owns canonical interned lookup, publication and the
 live presence service. The restricted interner remains in Id; missing names
 are still interned before the selected raw find. IdApi v9 retains the public
 import slot; isExported has moved into the explicit presence capability.

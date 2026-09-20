@@ -68,9 +68,10 @@ void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presenc
     int length=snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-info.dli_fname),info.dli_fname);
     assert(length>0 && (size_t)length<sizeof(path));
     void *namespace=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(namespace);
-    NamespaceProviderV5 factory=(NamespaceProviderV5)api->dlsym_fn(namespace,"birnam_namespace_provider_v5");assert(factory);
-    const NamespaceApiV5 *operations=factory();assert(operations && operations->version==5 && operations->byte_size==sizeof(*operations));
+    NamespaceProviderV6 factory=(NamespaceProviderV6)api->dlsym_fn(namespace,"birnam_namespace_provider_v6");assert(factory);
+    const NamespaceApiV6 *operations=factory();assert(operations && operations->version==6 && operations->byte_size==sizeof(*operations));
     assert(dladdr((void *)operations->lookup,&info) && strstr(info.dli_fname,"libbirnam_namespace.dylib"));
+    assert(dladdr((void *)operations->publish,&info) && strstr(info.dli_fname,"libbirnam_namespace.dylib"));
     fixture_namespace_floor=floor;count_exports=fixture_namespace_count;name_at=fixture_namespace_name_at;
     api->method(api->import_fn("SystemVt"),api->intern("namespaceExercise:"),exercise);
     api->method(api->import_fn("SystemVt"),api->intern("namespaceObserveNames"),observe_names);

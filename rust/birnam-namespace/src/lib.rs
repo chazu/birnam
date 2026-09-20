@@ -5,8 +5,9 @@ mod enumeration;
 mod names;
 mod lookup;
 mod presence;
+mod publication;
 mod state;
-use birnam_abi::namespace::{ApiV5, ViewV1};
+use birnam_abi::namespace::{ApiV6, ViewV1};
 use birnam_abi::{IdApi, Oop};
 use core::ffi::c_void;
 use state::Environment;
@@ -34,9 +35,9 @@ unsafe extern "C" fn name_at(context: *const c_void, index: usize) -> Oop {
 unsafe extern "C" fn bindings(context: *const c_void) -> ViewV1 {
     unsafe { &*context.cast::<Environment>() }.bindings()
 }
-static API: ApiV5 = ApiV5 {
-    version: 5,
-    byte_size: size_of::<ApiV5>(),
+static API: ApiV6 = ApiV6 {
+    version: 6,
+    byte_size: size_of::<ApiV6>(),
     create: Some(create),
     destroy: Some(destroy),
     bind: Some(bind),
@@ -52,10 +53,11 @@ static API: ApiV5 = ApiV5 {
     lookup: Some(lookup::lookup),
     create_presence: Some(presence::create),
     destroy_presence: Some(presence::destroy),
+    publish: Some(publication::publish),
 };
 /// Preparation has no side effects and needs no Id or namespace instance.
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_namespace_provider_v5() -> *const ApiV5 {
+pub extern "C" fn birnam_namespace_provider_v6() -> *const ApiV6 {
     &API
 }
 /// Normal mounting must not recreate any already-constructed namespace.

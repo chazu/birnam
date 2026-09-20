@@ -441,3 +441,11 @@ a separate extraction, preserving each caller's live API selection.
 presence consumer onto an explicit per-call capability. Callers lend their live
 slots without early function snapshots; native initialization transport and
 removing the remaining IdApi namespace fields remain separate work.
+
+[81BB](81bb-production-namespace-presence.md) moves canonical presence into
+Namespace and migrates native initializers and actual consumers to an explicit
+live capability. IdApi v9 has 32 fields / 256 bytes.
+
+[81BC](81bc-production-namespace-publication.md) moves intern/bind/weak-mirror
+publication policy into Namespace factory v6. The remaining public import/export
+capability handoff and field removal remain separate work.

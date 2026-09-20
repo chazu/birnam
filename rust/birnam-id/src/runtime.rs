@@ -1005,16 +1005,19 @@ impl Runtime {
 
     pub(crate) fn export(&self, bytes: &[u8], value: Oop) -> Result<Oop, EmbeddedNul> {
         self.assert_owner();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        let state = unsafe { &mut *self.state.get() };
-        let symbol = intern_in_state(state, bytes)?;
-        let exported = state.environment.export(symbol, value);
-        if let Some((_, environment)) = state.internal_dictionaries {
-            state
-                .vtables
-                .add_weak_opaque_binding(environment, symbol, value);
+        // Copy selection before either restricted primitive borrows RuntimeState.
+        // No movable Runtime pointer or state reference crosses the call.
+        let (publish, namespace, bind) = unsafe { (*self.state.get()).environment.publication() };
+        let mut exported = core::ptr::null_mut();
+        let status = unsafe {
+            publish(namespace, bind, self.state.get().cast(), namespace_intern,
+                    namespace_mirror, bytes.as_ptr(), bytes.len(), value, &mut exported)
+        };
+        match status {
+            0 => Err(EmbeddedNul),
+            1 => Ok(exported),
+            _ => boundary::fatal_invariant("Namespace publication returned invalid status"),
         }
-        Ok(exported)
     }
 
     pub(crate) fn namespace_enumeration(&self) -> *const birnam_abi::namespace_enumeration::ApiV1 {
@@ -4717,13 +4720,22 @@ fn note_block_vtable_replaced(state: &mut RuntimeState, vtable: Oop, method: Met
     }
 }
 
-/// Namespace borrows this primitive only during the owner-checked import call.
+/// Namespace borrows this primitive only during owner-checked namespace calls.
 /// It must not collect, send, reenter, or keep the transient RuntimeState pointer.
 pub(crate) unsafe extern "C" fn namespace_intern(context: *mut core::ffi::c_void, bytes: *const u8, length: usize) -> Oop {
     let bytes = unsafe { birnam_abi::borrowed_slice(bytes, length) }
         .expect("Namespace interner received invalid bytes");
     unsafe { intern_in_state(&mut *context.cast::<RuntimeState>(), bytes) }
         .unwrap_or(core::ptr::null_mut())
+}
+
+/// Update the existing representation after raw binding, without collection,
+/// sends or reentry. The state pointer is borrowed only for this call.
+unsafe extern "C" fn namespace_mirror(context: *mut core::ffi::c_void, symbol: Oop, value: Oop) {
+    let state = unsafe { &mut *context.cast::<RuntimeState>() };
+    if let Some((_, environment)) = state.internal_dictionaries {
+        state.vtables.add_weak_opaque_binding(environment, symbol, value);
+    }
 }
 
 fn intern_in_state(state: &mut RuntimeState, bytes: &[u8]) -> Result<Oop, EmbeddedNul> {
@@ -6249,6 +6261,54 @@ mod tests {
             assert_eq!(runtime.import(name), Ok(runtime.canonical().nil));
         }
         assert_ne!(runtimes[0].runtime.intern(name).unwrap(), runtimes[1].runtime.intern(name).unwrap());
+    }
+
+    #[test]
+    fn namespace_publication_preserves_rejection_mirrors_and_runtime_isolation() {
+        #[repr(C)]
+        struct DictionaryView {
+            capacity: usize,
+            tally: usize,
+            keys: *const Oop,
+            values: *const Oop,
+        }
+        let runtimes = vec![build_bootstrap(), build_bootstrap()];
+        for bootstrap in &runtimes {
+            let runtime = &bootstrap.runtime;
+            let name = b"namespace-publication-\xff";
+            let value = runtime.canonical().nil;
+            let snapshot = || unsafe {
+                let state = &*runtime.state.get();
+                (state.symbols.count(), state.environment.count(), state.vtables.mutation_epoch())
+            };
+            let before = snapshot();
+            assert_eq!(runtime.export(b"invalid\0publication", value), Err(crate::symbol::EmbeddedNul));
+            assert_eq!(snapshot(), before);
+            let symbol = runtime.intern(name).unwrap();
+            let mirror = || unsafe {
+                let view = &*runtime.canonical().environment.cast::<DictionaryView>();
+                (0..view.tally).find(|&i| *view.keys.add(i) == symbol)
+                    .map(|i| *view.values.add(i))
+            };
+            for value in [value, core::ptr::null_mut(), value] {
+                let before = snapshot();
+                assert_eq!(runtime.export(name, value), Ok(value));
+                assert_eq!(runtime.import(name), Ok(value));
+                assert_eq!(mirror(), Some(value));
+                assert_eq!(snapshot().2, before.2 + 1);
+            }
+            // Early bootstrap publication still works without a mirror.
+            let dictionaries = unsafe { (*runtime.state.get()).internal_dictionaries.take() };
+            let before = snapshot();
+            assert_eq!(runtime.export(name, core::ptr::null_mut()), Ok(core::ptr::null_mut()));
+            assert_eq!(runtime.import(name), Ok(core::ptr::null_mut()));
+            assert_eq!(snapshot().2, before.2);
+            assert_eq!(mirror(), Some(value));
+            unsafe { (*runtime.state.get()).internal_dictionaries = dictionaries };
+            assert_eq!(runtime.export(name, value), Ok(value));
+        }
+        assert_ne!(runtimes[0].runtime.intern(b"namespace-publication-\xff").unwrap(),
+                   runtimes[1].runtime.intern(b"namespace-publication-\xff").unwrap());
     }
 
     #[test]

@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Move interned publication into Namespace (Design 81BC), preserving selected
+  raw binding, weak dictionary mirrors, Symbol identity and callback order.
+  Namespace factory is v6; IdApi v9 and image encoding are unchanged.
+
 - Move canonical export presence into Namespace (Design 81BB). IdApi v9 has
   32 fields / 256 bytes; native initializers receive an explicit live presence
   capability. Update Float/Word preparation, System/Block installers and numeric

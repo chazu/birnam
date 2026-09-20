@@ -5,12 +5,13 @@
 #include "trace-support.h"
 #include <stdlib.h>
 
-static const NamespaceApiV5 *storage;
-static NamespaceApiV5 observed;
-static size_t creates, binds, finds, reverses, views, counts, names_at, lookups;
+static const NamespaceApiV6 *storage;
+static NamespaceApiV6 observed;
+static size_t creates, binds, finds, reverses, views, counts, names_at, lookups, publications;
+static Oop altered_bind_symbol, altered_bind_result;
 static void *floor_context;
 static void *create(void) { creates++; return floor_context=storage->create(); }
-static Oop bind(void *context,Oop name,Oop value) { assert(context==floor_context);binds++;return storage->bind(context,name,value); }
+static Oop bind(void *context,Oop name,Oop value) { assert(context==floor_context);binds++;Oop result=storage->bind(context,name,value);return name==altered_bind_symbol?altered_bind_result:result; }
 static Oop find(const void *context,Oop name) { assert(context==floor_context);finds++;return storage->find(context,name); }
 static Oop reverse(const void *context,Oop value) { assert(context==floor_context);reverses++;return storage->reverse(context,value); }
 static NamespaceViewV1 bindings(const void *context) { assert(context==floor_context);views++;return storage->bindings(context); }
@@ -19,6 +20,46 @@ static Oop selected_name_at(const void *context,size_t index) { assert(context==
 static int selected_lookup(const void *context,Oop (*selected_find)(const void *,Oop),void *interner,Oop (*intern)(void *,const uint8_t *,size_t),const uint8_t *bytes,size_t length,Oop *result) {
     assert(context==floor_context && selected_find==find && interner && intern && result);
     lookups++;return storage->lookup(context,selected_find,interner,intern,bytes,length,result);
+}
+static int selected_publish(void *context,Oop (*selected_bind)(void *,Oop,Oop),void *floor,Oop (*intern)(void *,const uint8_t *,size_t),void (*mirror)(void *,Oop,Oop),const uint8_t *bytes,size_t length,Oop value,Oop *result) {
+    assert(context==floor_context && selected_bind==bind && floor && intern && mirror && result);
+    publications++;return storage->publish(context,selected_bind,floor,intern,mirror,bytes,length,value,result);
+}
+
+/* Independent native oracle: no Rust layouts or implementation helper calls. */
+typedef struct { unsigned step; const uint8_t *bytes; size_t length; Oop symbol,value,result,*output; void *storage; } PublicationProbe;
+static Oop publication_intern(void *context,const uint8_t *bytes,size_t length) {
+    PublicationProbe *probe=context;assert(probe->step++==0 && bytes==probe->bytes && length==probe->length);return probe->symbol;
+}
+static Oop publication_bind(void *context,Oop name,Oop value) {
+    PublicationProbe *probe=context;assert(probe->step++==1 && name==probe->symbol && value==probe->value);
+    assert(*probe->output==probe->storage);return probe->result;
+}
+static void publication_mirror(void *context,Oop name,Oop value) {
+    PublicationProbe *probe=context;assert(probe->step++==1 && name==probe->symbol && value==probe->value);
+    PublicationProbe *raw=probe->storage;assert(raw->step==2 && *probe->output==(Oop)probe);
+}
+static void publication_oracle(void) {
+    uintptr_t identities[3]={0};const uint8_t bytes[]={0xff,0,'x'};
+    PublicationProbe floor={0},raw={0};Oop output;
+    for(size_t i=0;i<6;i++) {
+        output=&floor;
+        floor=(PublicationProbe){0,bytes,sizeof(bytes),i?(Oop)&identities[0]:NULL,i%2?(Oop)&identities[1]:NULL,i%3?(Oop)&identities[2]:NULL,&output,&raw};
+        raw=floor;raw.step=1;raw.storage=&floor;
+        assert(storage->publish(&raw,publication_bind,&floor,publication_intern,publication_mirror,bytes,sizeof(bytes),floor.value,&output)==(i!=0));
+        assert(floor.step==(i?2u:1u) && raw.step==(i?2u:1u));
+        assert(output==(i?floor.result:(Oop)&floor));
+    }
+}
+
+/* Inspect the historical raw dictionary view, including null values. */
+typedef struct { size_t capacity,tally; Oop *keys,*values; } DictionaryView;
+static Oop mirror_of(IdApi *api,Oop symbol) {
+    for(size_t i=0;i<api->vtable_count();i++) {
+        DictionaryView *view=api->vtable_at(i);
+        for(size_t j=0;j<view->tally;j++)if(view->keys[j]==symbol && view->values[j])return view->values[j];
+    }
+    return NULL;
 }
 static Oop forbidden_intern(const char *name) { (void)name;abort(); }
 static Oop forbidden_alloc(Oop type,size_t size) { (void)type;(void)size;abort(); }
@@ -84,7 +125,7 @@ int main(int argc,char **argv) {
     assert(argc==2 || argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_namespace_floor=floor;
-    NamespaceDependencyV5 attach=(NamespaceDependencyV5)dlsym(floor,"birnam_namespace_dependency_v5");
+    NamespaceDependencyV6 attach=(NamespaceDependencyV6)dlsym(floor,"birnam_namespace_dependency_v6");
     assert(argc==2 || attach);
     void *namespace_image=NULL,*extra=NULL;ModuleInitFn reload=NULL;
     if(attach) {
@@ -92,23 +133,24 @@ int main(int argc,char **argv) {
         snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-argv[1]),argv[1]);
         namespace_image=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(namespace_image);
         extra=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(extra);
-        NamespaceProviderV5 provide=(NamespaceProviderV5)dlsym(namespace_image,"birnam_namespace_provider_v5");assert(provide);
+        NamespaceProviderV6 provide=(NamespaceProviderV6)dlsym(namespace_image,"birnam_namespace_provider_v6");assert(provide);
         storage=provide();assert(storage && storage==provide());
-        assert(storage->version==5 && storage->byte_size==sizeof(*storage));
-        storage_oracle();lookup_oracle();
-        assert(!attach(NULL));NamespaceApiV5 bad=*storage;bad.version++;assert(!attach(&bad));
+        assert(storage->version==6 && storage->byte_size==sizeof(*storage));
+        storage_oracle();lookup_oracle();publication_oracle();
+        assert(!attach(NULL));NamespaceApiV6 bad=*storage;bad.version++;assert(!attach(&bad));
         bad=*storage;bad.byte_size--;assert(!attach(&bad));
 #define REJECT(field) bad=*storage;bad.field=NULL;assert(!attach(&bad))
-        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);REJECT(create_enumeration);REJECT(destroy_enumeration);REJECT(lookup);REJECT(create_presence);REJECT(destroy_presence);
+        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);REJECT(create_enumeration);REJECT(destroy_enumeration);REJECT(lookup);REJECT(create_presence);REJECT(destroy_presence);REJECT(publish);
 #undef REJECT
         observed=*storage;observed.create=create;observed.bind=bind;observed.find=find;observed.reverse=reverse;observed.bindings=bindings;observed.count=selected_count;observed.name_at=selected_name_at;observed.lookup=selected_lookup;
+        observed.publish=selected_publish;
         assert(attach(&observed)==1 && attach(&observed)==1 && !attach(storage));
         reload=(ModuleInitFn)dlsym(namespace_image,"module_init");assert(reload);
     }
     IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init");assert(initialize);
     IdApi *api=initialize();assert(api);api->gc_set_auto(0);
     Dl_info owner;assert(dladdr((void *)fixture_namespace_presence()->contains,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));
-    if(attach)assert(creates==1 && binds>0 && floor_context);
+    if(attach)assert(creates==1 && binds>0 && publications==binds && floor_context);
     fixture_mount_trace(api,argv[1]);
     size_t (*count)(void)=fixture_namespace_count;
     Oop (*name_at)(size_t)=fixture_namespace_name_at;
@@ -127,6 +169,16 @@ int main(int argc,char **argv) {
     assert(!original_import("namespace-canonical-import"));
     assert(symbol_count()==symbols+4);
     api->intern=original_intern;api->import_fn=original_import;
+    /* Bind's result is returned; the weak mirror still receives the input. */
+    altered_bind_symbol=api->intern("Object");altered_bind_result=api->false_obj;
+    Oop original_object=api->import_fn("Object");
+    api->intern=forbidden_intern;
+    assert(api->export_obj("Object",original_object)==api->false_obj);
+    assert(api->import_fn("Object")==original_object && mirror_of(api,altered_bind_symbol)==original_object);
+    assert(api->export_obj("Object",NULL)==api->false_obj);
+    assert(!api->import_fn("Object") && !mirror_of(api,altered_bind_symbol));
+    assert(api->export_obj("Object",original_object)==api->false_obj);
+    api->intern=original_intern;altered_bind_symbol=NULL;
     assert(count()==base);
     char names[32][40];Oop current[32]={0},keys[32]={0},values[16];size_t order[32],used=0;
     for(size_t i=0;i<32;i++)snprintf(names[i],sizeof(names[i]),"namespace-probe-%zu",i);
@@ -167,7 +219,7 @@ int main(int argc,char **argv) {
         size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence()));assert(!reload(api,NULL,fixture_namespace_presence()));
         assert(count()==before && binds==was_binds && creates==1);
         assert(api->import_fn("namespace-second-alias")==retained);
-        assert(finds && reverses && views && counts && names_at && lookups);
+        assert(finds && reverses && views && counts && names_at && lookups && publications==binds);
         // Descriptor/code remain mapped after relinquishing this extra open.
         assert(dlclose(extra)==0);assert(api->import_fn("namespace-second-alias")==retained);
     }

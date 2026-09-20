@@ -788,7 +788,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
   preserves each caller's live selection. Run `mise run error-value` and
   `scripts/error-presence-image-smoke.sh PREFIX` for the native handoff image check.
 - [Namespace state](docs/design/81aw-production-namespace-state.md) owns raw
-  Symbol/value bindings through an [opaque storage contract](abi/namespace-v5.md).
+  Symbol/value bindings through an [opaque storage contract](abi/namespace-v6.md).
   [Namespace names](docs/design/81ax-production-namespace-names.md) owns reverse
   export lookup through a [live capability](abi/namespace-names-v1.md); IdApi v9
   has 32 fields / 256 bytes. Native initializers receive the explicit
@@ -797,9 +797,11 @@ artifact required. The Rust host owns the complete runtime and build closure.
   count/name-at behind Namespace descriptors while preserving Reflect discovery.
   [Interned lookup](docs/design/81az-production-namespace-lookup.md) moves the
   canonical intern-then-find policy into Namespace.
+  [Publication](docs/design/81bc-production-namespace-publication.md) moves the
+  intern/bind/weak-mirror sequence into the same loaded module.
   [Presence](docs/design/81bb-production-namespace-presence.md) moves isExported
   into an explicit capability; public import remains in IdApi. The host prepares
-  factory v5 before Id; Globals remains separate. Run `mise run namespace`.
+  factory v6 before Id; Globals remains separate. Run `mise run namespace`.
 - [Source Loader](docs/design/81av-production-source-loader.md) owns load:
   through an [explicit installer](abi/source-loader-v2.md), leaving Prelude
   responsible for identity, layout and installation. Run `mise run source-loader`.

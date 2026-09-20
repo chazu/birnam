@@ -3088,7 +3088,7 @@ unsafe fn prepare_namespace(
         reason,
     };
     let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_namespace_dependency_v5".as_ptr()) };
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_namespace_dependency_v6".as_ptr()) };
     if attach.is_null() {
         return Err(error("missing floor dependency"));
     }
@@ -3097,14 +3097,14 @@ unsafe fn prepare_namespace(
         .ok_or_else(|| error("open failed"))?;
     let result = (|| {
         let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_namespace_provider_v5".as_ptr()) };
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_namespace_provider_v6".as_ptr()) };
         if provider.is_null() {
             return Err(error("missing provider"));
         }
-        let provide: birnam_abi::namespace::ProviderV5 = unsafe { std::mem::transmute(provider) };
+        let provide: birnam_abi::namespace::ProviderV6 = unsafe { std::mem::transmute(provider) };
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::namespace::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::namespace::DependencyV5 = unsafe { std::mem::transmute(attach) };
+        let attach: birnam_abi::namespace::DependencyV6 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();
