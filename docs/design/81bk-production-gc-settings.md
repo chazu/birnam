@@ -1,7 +1,8 @@
 # 81BK — Native GC settings
 
-> **Status:** Audited against completed 81BJ (`69065fe8`); implementation and
-> installed startup/image evidence pending. Debug validation only.
+> **Status:** Completed against 81BJ (`69065fe8`), including installed dynamic
+> startup, source-free compiled callers, saved images and baked executables.
+> Debug validation only; release validation was waived.
 
 [81D](81d-id-api-partition.md) places collection policy above Id. After
 [81BJ](81bj-production-root-provider-registry.md), `gc::MetadataShell` retains
@@ -107,5 +108,54 @@ call order and first execution selection, including early returns and reload.
 Validate the actual installed module at siphon startup, in source-free compiled
 callers, saved native-Code images and baked executables. Check ABI/exports,
 dynamic ownership, stdlib and affected recovery/worker paths. Use focused debug
-checks; release validation is waived. This document does not declare completion
-until those observations exist.
+checks; release validation is waived.
+
+## Completed implementation and evidence
+
+`birnam-gc-settings` owns the flags and predicate through GC Settings v1. Id keeps
+the stack anchor, accounting and existing read/admission points. All native
+initializers and consumers now carry the explicit capability; IdApi v16 removes
+the two setter slots without a compatibility table. Historical ABI fixtures are
+unchanged, and current fixtures describe v16, Native Loader v9 and System GC v2.
+
+The completed debug checks are:
+
+- Workspace/all-target checking, workspace build and affected all-feature
+  checking passed. ABI, Id and GC Settings tests passed: 275 tests, with 15
+  existing Id timing tests ignored. Coverage includes independent/moved Runtime
+  ownership, public-descriptor instrumentation, admission reentry, live precise
+  changes between traced objects and restricted storage observation.
+- The focused `scripts/gc-settings-test.sh` gate passed. Five stdout/stderr/exit
+  comparisons against the archived `69065fe8` implementation matched exactly:
+  normal operation, both owner rejections and both observation rejections.
+  Nineteen existing native-consumer transcripts also matched, including all
+  three System GC installation/reentry modes. All 71 current C fixtures passed
+  syntax checking.
+- All 20 host factory/capability admission cases passed. The installed v16 C
+  client/module probe passed, as did all 145 stdlib tests. Nine floor-discovery
+  cases passed.
+- The final debug installation contains 46 native libraries and 28 compiled
+  Birnam modules. All 74 export inventories match the previous installation plus
+  the declared changes; all 30 native manifests match. Id and GC Settings link
+  only system libraries, and GC Settings uses its `@rpath` install name.
+- The final installed GC Settings image suite passed dynamic startup,
+  source-free compiled execution, saved v8 native-Code images and baked
+  execution. It checked setter ownership, threshold admission, callback-time
+  mutation, nested collection, roots, aliases and reload. The actual image-backed
+  worker matched the old installation byte for byte on 12 wire-value round trips
+  and orderly shutdown. An external harness waited for debug startup without
+  changing the production handshake deadline.
+
+Local receipts are under `.cargo-target/81bk-*`. The final prefix is recorded in
+`81bk-final-prefix-path`; its installation source hashes are in
+`81bk-final-source-hashes.json` (1,978 files unchanged during installation).
+`81bk-final-{inventory,host-validation,native-audit,idapi,stdlib,gc-settings-image,worker-wire}.log`
+record the final installed checks. Subsequent edits only record this evidence
+and correct the native-smoke script's expected library count to 74.
+
+Eight adjacent image suites also passed: Root Registry, System GC, Method
+Observation, Native Loader, Namespace, Namespace Enumeration, Selector
+Enumeration and Block Loop. These ran on the preceding debug prefix, before
+correcting the new library's install name. The final prefix was rebuilt and
+received the GC Settings, worker, admission, ABI, inventory and stdlib checks
+above; the adjacent image results are not presented as reruns of that prefix.

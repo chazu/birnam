@@ -5,6 +5,52 @@ use core::cell::RefCell;
 thread_local! {
     static OBJECTS: Cell<[Oop; 6]> = const { Cell::new([core::ptr::null_mut(); 6]) };
     static EVENTS: RefCell<Vec<&'static str>> = const { RefCell::new(Vec::new()) };
+    static NEXT_PRECISE: Cell<bool> = const { Cell::new(false) };
+}
+
+unsafe extern "C" fn change_settings_hook(_: Oop, _: MarkFn) {
+    event("change settings");
+    with_active(|runtime| unsafe {
+        let settings = runtime.gc_settings();
+        birnam_abi::gc_settings::set_precise(settings, i32::from(NEXT_PRECISE.get()));
+        birnam_abi::gc_settings::set_auto(settings, 0);
+        assert_eq!(runtime.gc_collect(), 0);
+    });
+}
+
+#[test]
+fn precise_mode_is_read_per_object_after_earlier_trace_hook_changes_it() {
+    for next in [true, false] {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.enter(|| {
+            EVENTS.with_borrow_mut(Vec::clear);
+            NEXT_PRECISE.set(next);
+            let base = runtime.globals().object_vt;
+            let a_vt = runtime.create_vtable(base);
+            let b_vt = runtime.create_vtable(base);
+            let child_vt = runtime.create_vtable(base);
+            let a = runtime.allocate_instance(a_vt, size_of::<Oop>());
+            let b = runtime.allocate_instance(b_vt, 0);
+            let child = runtime.allocate_instance(child_vt, 0);
+            unsafe { a.cast::<Oop>().write(child) };
+            OBJECTS.set([a, b, core::ptr::null_mut(), child, core::ptr::null_mut(), a_vt]);
+            runtime.set_layout(a_vt, &crate::abi::SLOT_RAW, 1, crate::abi::SLOT_RAW);
+            runtime.set_trace_hook(b_vt, change_settings_hook);
+            runtime.set_trace_hook(child_vt, child_hook);
+            runtime.gc_set_precise(!next);
+            runtime.gc_register_root_provider(first_roots);
+            runtime.gc_collect_from_native_range(0, 0);
+            let metadata = unsafe { &(*runtime.state.get()).metadata };
+            assert_eq!(metadata.precise(), next);
+            assert!(!metadata.auto_requested());
+            assert_eq!(runtime.checked_vtable_of(child).is_null(), next);
+            let expected: &[&str] = if next { &["roots1", "change settings"] }
+                else { &["roots1", "change settings", "child"] };
+            assert_eq!(EVENTS.with_borrow(Clone::clone), expected);
+            OBJECTS.set([core::ptr::null_mut(); 6]);
+        });
+    }
 }
 fn event(value: &'static str) {
     EVENTS.with_borrow_mut(|events| events.push(value));

@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v15/idapi_v15.h"
+#include "../../abi/fixtures/idapi-v16/idapi_v16.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include "collect-support.h"
@@ -83,14 +83,14 @@ int main(int argc, char **argv) {
     assert(argc==3);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     IdInitFn initialize=(IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")); assert(initialize);
-    api=initialize(); assert(api); api->gc_set_auto(0);
+    api=initialize(); assert(api); fixture_set_auto(0);
     uintptr_t stack_anchor=0;
     api->gc_set_stack_bottom((uintptr_t)&stack_anchor+sizeof(stack_anchor));
     attach=(TraceLiveDependencyV1)dlsym(floor,"birnam_trace_dependency_v1"); assert(attach);
     fixture_mount_collect(api,argv[1],fixture_root_registry());
     must_abort_collection(); /* no in-Id fallback */
     void *image=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
     TraceLiveProviderV1 provide=(TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"); assert(provide);
     const TraceLiveApiV1 *implementation=provide(); assert(implementation);
     actual_trace=implementation->trace; assert(actual_trace);
@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
     *(uintptr_t *)native_root=0x12345678;
     for(int precise=0; precise<=1; precise++) {
         uint8_t kind=1; api->set_layout(vtable,&kind,1,0);
-        api->gc_set_precise(precise);
+        fixture_set_precise(precise);
         size_t before=trace_calls;
         (void)api->gc_collect();
         assert(trace_calls==before+1 && provider_calls==trace_calls);
@@ -121,11 +121,11 @@ int main(int argc, char **argv) {
         assert(*(uintptr_t *)native_root==0x12345678);
     }
     size_t before=trace_calls;
-    api->gc_set_auto(1);
+    fixture_set_auto(1);
     (void)api->alloc(api->object_vt,16u<<20);
     (void)api->alloc(api->object_vt,0);
     assert(trace_calls==before+1 && provider_calls==trace_calls && edge_calls>0);
-    api->gc_set_auto(0);
+    fixture_set_auto(0);
     failure_victim=api->alloc(api->object_vt,0);
     api->set_finalizer(failure_victim,failure_finalizer);
     fail_trace=1; must_abort_collection(); /* failure cannot fall through to sweep */

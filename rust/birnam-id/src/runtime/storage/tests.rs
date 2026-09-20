@@ -12,6 +12,7 @@ struct Snapshot {
     deferred_bytes: usize,
     gaps: u32,
     providers: Vec<crate::abi::RootProvider>,
+    precise: bool,
 }
 unsafe extern "C" fn capture(context: *mut core::ffi::c_void, view: *const ViewV1) -> Status {
     let (output, view) = unsafe { (&mut *context.cast::<Snapshot>(), &*view) };
@@ -30,6 +31,7 @@ unsafe extern "C" fn capture(context: *mut core::ffi::c_void, view: *const ViewV
     output.deferred_count = view.deferred_count;
     output.deferred_bytes = view.deferred_bytes;
     output.gaps = view.coverage_gaps;
+    output.precise = view.gc_precise != 0;
     output.providers = unsafe { crate::abi::borrowed_slice(view.legacy_root_providers, view.legacy_root_provider_count) }.unwrap().to_vec();
     OK
 }
@@ -43,6 +45,21 @@ fn snapshot(runtime: &Runtime) -> Snapshot {
     };
     assert_eq!(unsafe { runtime.observe_storage(&request) }, OK);
     output
+}
+
+#[test]
+fn precise_settings_are_copied_during_restricted_observation() {
+    let bootstrap = build_bootstrap();
+    let runtime = &bootstrap.runtime;
+    let before = snapshot(runtime);
+    assert!(!before.precise);
+    runtime.gc_set_precise(true);
+    let enabled = snapshot(runtime);
+    assert!(enabled.precise);
+    runtime.gc_set_precise(false);
+    assert!(!snapshot(runtime).precise);
+    assert!(enabled.precise);
+    assert_eq!(before.gaps, enabled.gaps);
 }
 #[test]
 fn actual_sizes_clone_headers_and_marks_are_observed_without_changes() {

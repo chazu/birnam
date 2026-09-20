@@ -3,7 +3,7 @@
 #define CONTEXT
 #define CONTEXT_CHECK(expected) ((void)(expected))
 #else
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #define CONTEXT void *context,
 #define CONTEXT_CHECK(expected) assert(context==(expected))
 #endif
@@ -23,7 +23,7 @@ static void init(IdApi *table,const RootRegistryV1 *root_registry) {
 #ifndef FIXTURE_IDAPI_V13
         ,table==&first?&first_observation:&second_observation,root_registry
 #endif
-    );
+    ,fixture_gc_settings());
 }
 static void root_registration(RootProvider provider) {
     assert(!registered++ && methods);puts("root registration after methods");fixture_register_root(provider);
@@ -48,7 +48,7 @@ static void bind(Oop type,Oop selector,Method method) { methods++;api->method(ty
 static void forbidden(Oop type,Oop selector,Method method) { (void)type;(void)selector;(void)method;assert(!"selected later execution API"); }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);mode=!strcmp(argv[3],"root-reentry")?1:!strcmp(argv[3],"hook-reentry")?2:0;
-    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);api->gc_set_auto(0);
+    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);fixture_set_auto(0);
     fixture_mount_object_model(api,argv[1],fixture_root_registry());fixture_mount_trace(api,argv[1],fixture_root_registry());
     void *image=dlopen(argv[2],RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image,fixture_root_registry());initialize=(ModuleInitFn)dlsym(image,"module_init");assert(initialize);
     first=*api;first.method=bind;first_root_slot=root_registration;second=first;second.method=forbidden;

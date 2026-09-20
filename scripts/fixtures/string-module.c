@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -51,7 +51,7 @@ static Oop forwarded(Oop receiver, Oop selector, const Oop *args, size_t count) 
 static void mount(const char *path, IdApi *selected,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
 }
 static Oop raw(const uint8_t *bytes, size_t length) { return fixture_string_make(bytes,length); }
 static Oop text(const char *value) { return raw((const uint8_t *)value,strlen(value)); }
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
     assert(argc==5 || (argc==6 && !strcmp(argv[5],"baseline")));
     int baseline=argc==6;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry());
     string_api=*api; string_api_root_slot=register_roots;
     string_api.set_layout=collecting_layout; string_api.method=collecting_method;
@@ -112,7 +112,7 @@ int main(int argc, char **argv) {
     assert(storage->cleanup_owner(storage->cleanup)==fixture_string->context && !storage->cleanup_owner(inert_cleanup));
     size_t absent_length=123; assert(!storage->borrow(fixture_string->context,api->true_obj,&absent_length));
     assert(!storage->release(fixture_string->context,api->true_obj));
-    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V15_SLOT_RAW);
+    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V16_SLOT_RAW);
     Oop owner=text("owned"); size_t owned_length=0; const uint8_t *owned=fixture_string_bytes(owner,&owned_length);
     assert(api->object_payload_size(owner)==16 && owned_length==5);
     uintptr_t *words=(uintptr_t *)owner; assert(words[0]==(uintptr_t)owned && words[1]==5);
@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
     expect_text(send(array,"at:",fixture_integer_make(0)),"");
     expect_text(send(array,"at:",fixture_integer_make(1)),"a");
     expect_text(send(array,"at:",fixture_integer_make(2)),"");
-    api->gc_set_precise(1); (void)api->gc_collect(); expect_integer(send0(kept,"size"),4);
+    fixture_set_precise(1); (void)api->gc_collect(); expect_integer(send0(kept,"size"),4);
     marked_selector=0; provider(record_mark); assert(marked_selector==1);
     printf("string-module: %u binary/index/slice cases, 18 numeric boundaries, trimming, search, replacement, symbols, bracket depth, exact recognition, live operations, ownership, clone/new, partial roots, publication reentry, reinitialization and GC passed%s\n",checked,baseline?" (Collection baseline)":"");
 }

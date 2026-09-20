@@ -5,7 +5,7 @@
   "exported_symbols": [
     "birnam_integer_dependency_v1",
     "birnam_symbol_borrow_v1",
-    "birnam_system_gc_provider_v1",
+    "birnam_system_gc_provider_v2",
     "module_init"
   ]
 }

@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "collect-support.h"
@@ -34,7 +34,7 @@ static void mount_trace(const char *floor_path, void *floor) {
     const char *slash=strrchr(floor_path,'/'); assert(slash); char path[PATH_MAX];
     snprintf(path,sizeof(path),"%.*s/libbirnam_trace.dylib",(int)(slash-floor_path),floor_path);
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
     const TraceLiveApiV1 *provided=((TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"))();
     actual_trace=provided->trace;
     TraceLiveApiV1 watched={1,sizeof(watched),traced};
@@ -44,7 +44,7 @@ static void mount_trace(const char *floor_path, void *floor) {
 static void mount(const char *path, IdApi *selected,const NamespaceExportV1 *exports,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
 }
 static Oop send0(Oop receiver,const char *name) { return api->send(receiver,api->intern(name),NULL,0); }
 static Oop send(Oop receiver,const char *name,Oop argument) { return api->send(receiver,api->intern(name),&argument,1); }
@@ -130,7 +130,7 @@ int main(int argc,char **argv) {
     assert(argc==7 || argc==8); baseline=argc==8;
     int adopted=strstr(argv[6],"adopted")!=NULL, present=strstr(argv[6],"present")!=NULL;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry()); mount(argv[2],api,fixture_namespace_exports(),fixture_root_registry()); mount(argv[3],api,fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     if(present) seed_collections();
@@ -152,7 +152,7 @@ int main(int argc,char **argv) {
     else assert(fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     assert(vtable_parent(api,behavior)==api->object_vt);
     if(!present) assert(vtable_owner(api,behavior)==prototype);
-    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V15_SLOT_RAW);
+    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V16_SLOT_RAW);
     print_selector=api->intern("printString"); roots(record_mark); assert(marked==3);
     Method create=lookup("new"), clone=lookup("clone"), append=lookup("add:"), add_byte=lookup("addByte:");
     assert(create==clone && create && append && add_byte && lookup("asString")==lookup("printString"));
@@ -208,7 +208,7 @@ int main(int argc,char **argv) {
     assert(integer_calls==1); fixture_integer->make=original_integer;
     send(reentrant_builder,"addByte:",fixture_integer_make('?')); expect_bytes(copied,(const uint8_t *)"one!two!",8);
     victim=send0(prototype,"new"); send(victim,"add:",text("dead")); api->set_finalizer(victim,observed_cleanup);
-    api->gc_set_precise(1); api->gc_collect(); assert(finalized==1); victim=NULL; api->gc_collect(); assert(finalized==1);
+    fixture_set_precise(1); api->gc_collect(); assert(finalized==1); victim=NULL; api->gc_collect(); assert(finalized==1);
     /* Match the ordinary next rung and preserve a replacement through it. */
     Method size=lookup("size"); api->method(behavior,api->intern("size"),identity);
     if(!baseline) { mount(argv[5],api,fixture_namespace_exports(),fixture_root_registry()); assert(lookup("size")==identity); }

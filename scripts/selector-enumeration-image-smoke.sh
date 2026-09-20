@@ -5,7 +5,7 @@ prefix=${1:?usage: selector-enumeration-image-smoke.sh PREFIX}
 bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-selector-enumeration-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'selector-enumeration image root: %s\n' "$scratch"; fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v15 scripts/fixtures/selector-enumeration-native.c -o "$scratch/selector-enumeration-native.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v16 scripts/fixtures/selector-enumeration-native.c -o "$scratch/selector-enumeration-native.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/selector-enumeration-native.dylib"];
 let value := [Object clone];

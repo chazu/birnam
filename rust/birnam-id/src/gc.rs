@@ -147,20 +147,19 @@ pub(crate) fn trace_conservative_for_test(heap: &mut Heap, roots: &[Oop]) {
     );
 }
 
-pub(crate) const AUTO_COLLECTION_THRESHOLD: usize = 16 << 20;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+pub(crate) use birnam_abi::gc_settings::AUTO_COLLECTION_THRESHOLD;
 
 pub(crate) struct MetadataShell {
     stack_bottom: usize,
-    auto_requested: bool,
-    precise: bool,
+    settings: crate::gc_settings::Service,
 }
 
 impl MetadataShell {
     pub(crate) fn new() -> Self {
         Self {
             stack_bottom: 0,
-            auto_requested: true,
-            precise: false,
+            settings: crate::gc_settings::Service::new(),
         }
     }
 
@@ -169,11 +168,11 @@ impl MetadataShell {
     }
 
     pub(crate) fn set_auto_requested(&mut self, enabled: bool) {
-        self.auto_requested = enabled;
+        self.settings.set_auto(enabled);
     }
 
     pub(crate) fn set_precise(&mut self, enabled: bool) {
-        self.precise = enabled;
+        self.settings.set_precise(enabled);
     }
 
     pub(crate) fn stack_bottom(&self) -> usize {
@@ -182,20 +181,20 @@ impl MetadataShell {
 
     #[cfg(test)]
     pub(crate) fn auto_requested(&self) -> bool {
-        self.auto_requested
+        self.settings.automatic_due(true, AUTO_COLLECTION_THRESHOLD)
     }
 
     pub(crate) fn automatic_collection_due(&self, allocated_bytes: usize) -> bool {
-        self.auto_requested
-            && self.stack_bottom != 0
-            && allocated_bytes >= AUTO_COLLECTION_THRESHOLD
+        self.settings.automatic_due(self.stack_bottom != 0, allocated_bytes)
     }
 
     pub(crate) fn precise(&self) -> bool {
-        self.precise
+        self.settings.precise()
     }
 
-
+    pub(crate) fn settings(&self) -> *mut birnam_abi::gc_settings::ApiV1 {
+        self.settings.api()
+    }
 }
 
 #[cfg(test)]

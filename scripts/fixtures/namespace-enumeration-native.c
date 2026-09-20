@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "../../abi/fixtures/namespace-enumeration-v1/namespace_enumeration_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -21,6 +21,8 @@ static NamespaceNameAtV1 real_name;
 static size_t (*real_count)(void);
 static Oop (*real_name)(size_t);
 #endif
+static GcSettingsV1 *gc_settings;
+static GcSettingsV1 saved_settings;
 static IdApi *api,saved;
 static NamespaceImportV1 *imports,saved_imports;
 static Oop reflect,rows[5];
@@ -114,15 +116,19 @@ static Oop import_name(void *context,const char *name) {
     }
     return namespace_import_v1(&saved_imports,name);
 }
-static void auto_gc(int enabled) {
+static void auto_gc(void *context,int enabled) {
+    assert(context==&saved_settings);
     event(enabled?"gc-on;":"gc-off;");if(!enabled && mode==8)generation=1;
-    saved.gc_set_auto(enabled);
+    gc_settings_auto_v1(&saved_settings,enabled);
+}
+static void precise_gc(void *context,int enabled) {
+    assert(context==&saved_settings);gc_settings_precise_v1(&saved_settings,enabled);
 }
 static void start(int selected_mode) {
     mode=selected_mode;generation=0;nested=0;used=0;trace[0]=0;
-    saved=*api;saved_imports=*imports;api->dlsym_fn=lookup;imports->context=&saved_imports;imports->import=import_name;api->gc_set_auto=auto_gc;
+    saved=*api;saved_imports=*imports;api->dlsym_fn=lookup;imports->context=&saved_imports;imports->import=import_name;saved_settings=*gc_settings;gc_settings->context=&saved_settings;gc_settings->set_auto=auto_gc;gc_settings->set_precise=precise_gc;
 }
-static void stop(void) { api->dlsym_fn=saved.dlsym_fn;*imports=saved_imports;api->gc_set_auto=saved.gc_set_auto; }
+static void stop(void) { api->dlsym_fn=saved.dlsym_fn;*imports=saved_imports;*gc_settings=saved_settings; }
 static Oop exercise(Oop self,const Oop *args,size_t count) {
     (void)self;(void)args;assert(count==0);
     for(int selected_mode=0;selected_mode<=11;selected_mode++) {
@@ -153,7 +159,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
             if(selected_mode==6 || selected_mode==7 || selected_mode==8 || selected_mode==10) {
                 printf("enumeration mode %d first: %s\n",selected_mode,trace);
                 /* Retain updated lookup choice, reset only the event stream. */
-                used=0;trace[0]=0;saved=*api;saved_imports=*imports;api->dlsym_fn=lookup;imports->context=&saved_imports;imports->import=import_name;api->gc_set_auto=auto_gc;
+                used=0;trace[0]=0;saved=*api;saved_imports=*imports;api->dlsym_fn=lookup;imports->context=&saved_imports;imports->import=import_name;saved_settings=*gc_settings;gc_settings->context=&saved_settings;gc_settings->set_auto=auto_gc;gc_settings->set_precise=precise_gc;
                 vector=enumerate(reflect,NULL,0);stop();verify_fake(vector,1,1);
                 assert(strstr(trace,"gc-off;C1;N1:0;N1:1;gc-on;"));
             }
@@ -183,10 +189,10 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     return api->true_obj;
 }
 static void roots(void (*mark)(Oop)) { for(size_t i=0;i<5;i++)if(rows[i])mark(rows[i]); }
-void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry) { (void)root_registry; (void)observation; (void)vtables;
+void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings) { (void)settings; (void)root_registry; (void)observation; (void)vtables;
     (void)exports;
     (void)presence;
-    assert(selected && !state);if(api){assert(api==selected && imports==selected_imports);return NULL;}api=selected;imports=(NamespaceImportV1 *)selected_imports;
+    assert(selected && !state);if(api){assert(api==selected && imports==selected_imports);return NULL;}api=selected;gc_settings=(GcSettingsV1 *)settings;imports=(NamespaceImportV1 *)selected_imports;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
     void *floor=api->dlopen_fn(info.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(floor);
 #if ENUMERATION_V1

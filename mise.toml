@@ -72,6 +72,10 @@ run = "scripts/namespace-test.sh"
 description = "Check native root registration, snapshots and admission (debug)"
 run = "scripts/root-registry-test.sh"
 
+[tasks.gc-settings]
+description = "Check native GC settings, allocation policy and admission (debug)"
+run = "scripts/gc-settings-test.sh"
+
 [tasks.method-observation]
 description = "Check native pre-overwrite observation and Store registration (debug)"
 run = "scripts/method-observation-test.sh"

@@ -1,24 +1,24 @@
 # ABI evidence
 
-The current boundary is **IdApi v15**, with 25 fields / 200 bytes. Design
-[81BJ](../docs/design/81bj-production-root-provider-registry.md) extracts native
-root registration into [Root Registry](root-registry-v1.md). Initializers receive
-`(api, state, presence, imports, exports, vtables, observation, roots)`.
-[Native Loader v8](native-loader-v8.md), the [early preparation contracts](root-registry-preparation.md),
-and [Range](range-v5.md), [Vector](vector-v5.md), [Map](map-v5.md) construction v5
-carry matching explicit capabilities. Current native consumers must be rebuilt;
-image encoding is unchanged. [IdApi v15 manifest](idapi-v15.json) and
-[C fixture](fixtures/idapi-v15/README.md) describe the current boundary.
+The current boundary is **IdApi v16**, with 23 fields / 184 bytes. Design
+[81BK](../docs/design/81bk-production-gc-settings.md) moves automatic and precise
+GC flags and their collection predicate into [GC Settings](gc-settings-v1.md).
+Initializers receive `(api, state, presence, imports, exports, vtables,
+observation, roots, settings)`. [Native Loader v9](native-loader-v9.md) and
+[System GC v2](system-gc-v2.md) carry the matching settings selection. Native
+consumers require rebuilding; early value preparation and image encoding are
+unchanged. [IdApi v16 manifest](idapi-v16.json) and the
+[C fixture](fixtures/idapi-v16/README.md) describe the current boundary.
 
-`idapi-v15.json` describes the current arm64 macOS IdApi.
+`idapi-v16.json` describes the current arm64 macOS IdApi.
 Design 81BI removes `setMethodOverwriteHook` into [Method Observation](method-observation-v1.md).
 Design 81BH removes `vtableSelectorAt` into the same explicit enumeration service.
 Design 81BG removes `vtableCount` and `vtableAt` into [Object Model enumeration](vtable-enumeration-v2.md).
 Design 81BF removes `exportObj` into the explicit [Namespace export capability](namespace-export-v1.md).
 Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
 following 81BB's [presence capability](namespace-presence-v1.md).
-Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *, const NamespaceExportV1 *, const VtableEnumerationV2 *, const MethodObservationV1 *, const RootRegistryV1 *)`.
-All native modules must be rebuilt for this signature and IdApi v15.
+Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *, const NamespaceExportV1 *, const VtableEnumerationV2 *, const MethodObservationV1 *, const RootRegistryV1 *, const GcSettingsV1 *)`.
+All native modules must be rebuilt for this signature and IdApi v16.
 After `id_init`, the selected floor exposes `birnam_namespace_presence_provider_v1`,
 `birnam_namespace_import_provider_v1` and `birnam_namespace_export_provider_v1`. The host and Native Loader pass these
 selections explicitly. The floor also supplies `birnam_vtable_enumeration_provider_v2`
@@ -26,7 +26,8 @@ from the Object Model factory prepared before Id initialization. The Method Obse
 factory is also prepared before Id; `birnam_method_observation_provider_v1` supplies
 its matching registration capability as the seventh initialization argument. The
 Root Registry factory is prepared before Id and exposes
-`birnam_root_registry_provider_v1` as the eighth argument. Modules capture matching live capabilities when they save
+`birnam_root_registry_provider_v1` as the eighth argument. GC Settings is also prepared before Id;
+`birnam_gc_settings_provider_v1` supplies the ninth argument. Modules capture matching live capabilities when they save
 their execution API; incoming registration/adoption uses the incoming selection
 at its original call points. There is no API-address registry or production
 callback-slot loan. Code, contexts and descriptors must remain valid for every
@@ -39,23 +40,23 @@ Design 81R removes the four Float fields into an explicit [Float dependency](flo
 Design 81J removes `ensurePrivateVtable`; 81K removes owner/parent getters and
 setters. 81L removes the four Integer fields into an explicit
 [Integer dependency](integer-v1.md). Object-model consumers use ordinary Vtable
-messages. Existing v1-v14 native consumers
+messages. Existing v1-v15 native consumers
 must be rebuilt.
 Backward compatibility is not a requirement for this refactor.
 
 The Rust mirror has compile-time offsets and exports a diagnostic descriptor.
-The descriptor's format version remains 1, while its IdApi schema version is 15.
-Its fingerprint matches the independent v15 manifest. The v15 fingerprint algorithm
+The descriptor's format version remains 1, while its IdApi schema version is 16.
+Its fingerprint matches the independent v16 manifest. The v16 fingerprint algorithm
 is SHA-256 over compact, key-sorted UTF-8 JSON, excluding the `fingerprint` member.
 The workspace tests verify that fingerprint and every compiled field offset.
 
-`fixtures/idapi-v15/idapi_v15.h` is the current independent C header. The routine
-native gate compiles the v15 client/module and checks the table and separately
+`fixtures/idapi-v16/idapi_v16.h` is the current independent C header. The routine
+native gate compiles the v16 client/module and checks the table and separately
 loaded String, Integer, Float, Word and object-model implementations. Other active foreign fixtures use this header.
 
 `idapi-v1.json` and `fixtures/idapi-v1` preserve the historical 54-field ABI and
-its frozen binary evidence. They are not changed to match v15. Their old opt-in
-compatibility script applies only to a v1 floor; running that client against v15
+its frozen binary evidence. They are not changed to match v16. Their old opt-in
+compatibility script applies only to a v1 floor; running that client against v16
 is unsupported. The archived v4 image remains historical evidence as before.
 
 The Cargo workspace and `scripts/rust-install.sh` remain the build authority.
@@ -157,7 +158,7 @@ Prelude supplies separate registration and original execution tables at its
 existing installation point. The [export inventory](rust-printing-dylib-v1.json)
 adds no IdApi fields, objects or roots.
 
-[System GC v1](system-gc-v1.md) owns System's four collector control methods.
+[System GC v2](system-gc-v2.md) owns System's four collector control methods.
 Prelude supplies its selected behavior, selectors and original execution table at
 the final four installation slots. The [export inventory](rust-system-gc-dylib-v1.json)
 adds no IdApi fields, collector state, objects or roots.
@@ -199,7 +200,7 @@ stackless control still replaces the methods later. The
 [export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
 encoding.
 
-[Native Loader v8](native-loader-v8.md) owns System loadModule: through a 24-byte
+[Native Loader v9](native-loader-v9.md) owns System loadModule: through a 24-byte
 installer, preserving the existing direct path without host dependency admission.
 The [export inventory](rust-native-loader-dylib-v1.json) adds no IdApi fields,
 objects or image encoding.

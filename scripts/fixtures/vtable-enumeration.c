@@ -1,7 +1,7 @@
 #ifdef FIXTURE_IDAPI_V11
 #include "idapi_v11.h"
 #else
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"
@@ -34,8 +34,8 @@ int main(int argc,char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_prepare_namespace(floor,argv[1]);
     IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init");assert(initialize);api=initialize();assert(api);
-    api->gc_set_auto(0);fixture_mount_trace(api,argv[1],fixture_root_registry());
-    fixture_register_root(mark_roots);api->gc_set_precise(1);collect_now();
+    fixture_set_auto(0);fixture_mount_trace(api,argv[1],fixture_root_registry());
+    fixture_register_root(mark_roots);fixture_set_precise(1);collect_now();
 #ifndef FIXTURE_IDAPI_V11
     VtableEnumerationV2 *selected=fixture_vtable_enumeration();
     Dl_info owner;

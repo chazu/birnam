@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v15/storage_v1.h"
+#include "../../abi/fixtures/idapi-v16/storage_v1.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
@@ -110,7 +110,7 @@ static int inspect(void *context, const StorageViewV1 *view) {
         case 9: api->set_trace_hook(pair_vt,legacy_trace); break;
         case 10: api->gc_collect(); break;
         case 11: fixture_register_root(legacy_roots); break;
-        case 12: api->gc_set_auto(1); break;
+        case 12: fixture_set_auto(1); break;
         case 13: api->set_finalizer(pair,finalizer); break;
         default: abort();
         }
@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1"); assert(observe);
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);
     describe=(StorageDescribeV1)api->dlsym_fn(storage,"birnam_storage_describe_v1"); assert(describe);
-    ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
     StorageRequestV1 bare_request={1,sizeof(bare_request),NULL,bare};
     assert(observe(&bare_request)==STORAGE_OK);
     fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());

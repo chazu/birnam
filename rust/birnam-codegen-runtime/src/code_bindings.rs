@@ -331,14 +331,14 @@ pub(super) unsafe extern "C" fn rust_codegen_portable_image_bindings(
         abort("RustCodegen portableImageBindings expects no arguments");
     }
     let api = unsafe { api(runtime()) };
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let rows = CODE_BINDINGS
         .lock()
         .ok()

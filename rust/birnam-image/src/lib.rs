@@ -521,6 +521,7 @@ mod runtime {
     #[derive(Clone, Copy)]
     struct Runtime {
         api: usize,
+        settings: usize,
         vtables: usize,
         imports: usize,
         report_obj: usize,
@@ -1219,6 +1220,8 @@ mod runtime {
         // retains that table for the loaded floor's lifetime.
         unsafe { &*(runtime().api as *const IdApi) }
     }
+
+    fn execution_settings() -> *const birnam_abi::gc_settings::ApiV1 { runtime().settings as *const birnam_abi::gc_settings::ApiV1 }
 
     fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { runtime().imports as *const birnam_abi::namespace_import::ApiV1 }
 
@@ -2186,14 +2189,14 @@ mod runtime {
         let Ok(decoded) = v8::decode(bytes, IMAGE_ARCH_TAG, runtime_abi_hash()) else {
             return api.nilObj;
         };
-        unsafe { (api.gcSetAuto)(0) };
-        struct AutoGc<'a>(&'a IdApi);
-        impl Drop for AutoGc<'_> {
+        unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+        struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+        impl Drop for AutoGc {
             fn drop(&mut self) {
-                unsafe { (self.0.gcSetAuto)(1) };
+                unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
             }
         }
-        let _auto_gc = AutoGc(api);
+        let _auto_gc = AutoGc(execution_settings());
         let Some((owner, mapped)) = (unsafe { begin_v8_native_unit(api, &decoded, rebuild) })
         else {
             return api.nilObj;
@@ -3038,7 +3041,7 @@ mod runtime {
         api.nilObj
     }
 
-    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1) {
+    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) {
         if api.is_null() {
             abort("module_init received a null IdApi");
         }
@@ -3140,6 +3143,7 @@ mod runtime {
         }
         let _ = RUNTIME.set(Runtime {
             api: api as usize,
+            settings: settings as usize,
             vtables: vtables as usize,
             imports: imports as usize,
             report_obj: report_obj as usize,
@@ -3178,10 +3182,10 @@ mod runtime {
 
     /// Initialize the Rust Image shell against the process floor.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
+    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
         let _ = state;
         if RUNTIME.get().is_none() {
-            unsafe { bring_up(api, presence, imports, exports, vtables, roots) };
+            unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings) };
         }
         ptr::null_mut()
     }

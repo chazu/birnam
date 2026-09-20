@@ -4526,6 +4526,13 @@ impl Runtime {
 
     pub(crate) fn admit_root_registration(&self) { self.assert_owner(); }
 
+    pub(crate) fn gc_settings(&self) -> *mut birnam_abi::gc_settings::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).metadata.settings() }
+    }
+
+    pub(crate) fn admit_gc_settings(&self) { self.assert_owner(); }
+
     pub(crate) fn gc_collect(&self) -> usize {
         self.enter(|| self.gc_collect_active())
     }
@@ -6808,6 +6815,36 @@ mod tests {
         });
         second.runtime.enter(|| second.runtime.gc_collect_from_native_range(0, 0));
         assert_eq!(CALLS.get(), 3);
+    }
+
+    #[test]
+    fn gc_settings_follow_independent_moved_runtime_state() {
+        let first = build_bootstrap();
+        let second = build_bootstrap();
+        first.runtime.gc_set_auto_requested(false);
+        first.runtime.gc_set_precise(true);
+        let api = first.runtime.gc_settings();
+        let mut runtimes = vec![first, second];
+        assert_eq!(runtimes[0].runtime.gc_settings(), api);
+        assert_ne!(runtimes[1].runtime.gc_settings(), api);
+        // Public instrumentation must not redirect canonical internal queries.
+        unsafe { (*api).context = core::ptr::null_mut(); (*api).set_auto = None; (*api).set_precise = None; }
+        for (index, bootstrap) in runtimes.iter().enumerate() {
+            let metadata = unsafe { &(*bootstrap.runtime.state.get()).metadata };
+            assert_eq!(metadata.precise(), index == 0);
+            assert_eq!(metadata.auto_requested(), index != 0);
+        }
+        runtimes[0].runtime.gc_set_auto_requested(true);
+        runtimes[0].runtime.gc_set_precise(false);
+        let second = runtimes.pop().unwrap();
+        drop(runtimes);
+        second.runtime.enter(|| unsafe {
+            birnam_abi::gc_settings::set_auto(second.runtime.gc_settings(), 0);
+            birnam_abi::gc_settings::set_precise(second.runtime.gc_settings(), -1);
+        });
+        let metadata = unsafe { &(*second.runtime.state.get()).metadata };
+        assert!(metadata.precise());
+        assert!(!metadata.auto_requested());
     }
 
     #[test]

@@ -195,20 +195,12 @@ unsafe extern "C" fn api_set_trace_hook(vtable: Oop, hook: TraceHook) {
     runtime().set_trace_hook(vtable, hook);
 }
 
-unsafe extern "C" fn api_gc_set_auto(enabled: c_int) {
-    runtime().gc_set_auto_requested(enabled != 0);
-}
-
 unsafe extern "C" fn api_set_finalizer(object: Oop, finalizer: Finalizer) {
     runtime().set_finalizer(object, finalizer);
 }
 
 unsafe extern "C" fn api_set_layout(vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
     runtime().set_layout(vtable, kinds, count, rest);
-}
-
-unsafe extern "C" fn api_gc_set_precise(enabled: c_int) {
-    runtime().gc_set_precise(enabled != 0);
 }
 
 unsafe extern "C" fn api_object_payload_size(object: Oop) -> usize {
@@ -242,10 +234,8 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         gcCollect: api_gc_collect,
         gcLiveCount: api_gc_live_count,
         setTraceHook: api_set_trace_hook,
-        gcSetAuto: api_gc_set_auto,
         setFinalizer: api_set_finalizer,
         setLayout: api_set_layout,
-        gcSetPrecise: api_gc_set_precise,
         objectPayloadSize: api_object_payload_size,
         slotKind: api_slot_kind,
     }
@@ -727,4 +717,27 @@ pub unsafe extern "C" fn birnam_root_registry_dependency_v1(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_root_registry_provider_v1() -> *mut birnam_abi::root_registry::ApiV1 {
     runtime().root_registry()
+}
+
+pub(crate) fn gc_settings_access() -> birnam_abi::gc_settings::FloorV1 {
+    unsafe extern "C" fn admit(_: *mut c_void) {
+        #[cfg(not(test))]
+        { runtime().admit_gc_settings(); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|runtime| runtime.admit_gc_settings()); }
+    }
+    birnam_abi::gc_settings::FloorV1 {
+        version:1, byte_size:size_of::<birnam_abi::gc_settings::FloorV1>(),
+        context:core::ptr::null_mut(), admit:Some(admit),
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_gc_settings_dependency_v1(
+    factory: *const birnam_abi::gc_settings::FactoryV1,
+) -> c_int {
+    unsafe { birnam_abi::gc_settings::attach(factory) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_gc_settings_provider_v1() -> *mut birnam_abi::gc_settings::ApiV1 {
+    runtime().gc_settings()
 }

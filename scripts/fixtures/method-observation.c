@@ -2,12 +2,12 @@
 #ifdef FIXTURE_IDAPI_V13
 #include "idapi_v13.h"
 #else
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/idapi-v15/storage_v1.h"
+#include "../../abi/fixtures/idapi-v16/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static Oop roots[5],target,expected;
@@ -36,7 +36,7 @@ __attribute__((noinline)) static void collect_now(void) { uintptr_t anchor=0;api
 int main(int argc,char **argv) {
     assert(argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);
-    api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);api->gc_set_auto(0);
+    api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);fixture_set_auto(0);
     fixture_mount_object_model(api,argv[1],fixture_root_registry());fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_register_root(mark_roots);
     roots[0]=api->proto(api->object_vt);roots[1]=api->proto(roots[0]);roots[2]=api->intern("observedMethod");
     roots[3]=api->alloc(roots[1],0);target=roots[1];expected=api->true_obj;
@@ -49,7 +49,7 @@ int main(int argc,char **argv) {
     if(!strncmp(mode,"invalid-",8)) {
         if(strstr(mode,"null"))target=NULL;
         else if(strstr(mode,"instance"))target=roots[3];
-        else if(strstr(mode,"stale")) { target=api->proto(api->object_vt);api->gc_set_precise(1);collect_now(); }
+        else if(strstr(mode,"stale")) { target=api->proto(api->object_vt);fixture_set_precise(1);collect_now(); }
         else target=(Oop)(uintptr_t)0x40;
         if(strstr(mode,"hook"))replace(hook);
         api->method(target,roots[2],first);assert(!"invalid target accepted");
@@ -70,7 +70,7 @@ int main(int argc,char **argv) {
     api->send(target,api->intern("removeMethod:"),&roots[2],1);assert(calls==3);
     api->send(target,api->intern("removeMethod:"),&roots[2],1);assert(calls==3);
     replace(NULL);replace(NULL);api->method(target,roots[2],first);api->method(target,roots[2],second);assert(calls==3);
-    replace(hook);api->gc_set_precise(1);collect_now();
+    replace(hook);fixture_set_precise(1);collect_now();
     api->send(target,api->intern("removeMethod:"),&roots[2],1);assert(calls==4);
     replace(NULL);puts("method observation: replacement, clearing, old dictionary, exact bindings, identities and GC passed");
 }

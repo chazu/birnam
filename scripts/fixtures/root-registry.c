@@ -5,8 +5,8 @@
 #define ROOTS_ARGUMENT
 #define REGISTER(provider) api->gc_register_root_provider(provider)
 #else
-#include "idapi_v15.h"
-#include "../../abi/fixtures/idapi-v15/storage_v1.h"
+#include "idapi_v16.h"
+#include "../../abi/fixtures/idapi-v16/storage_v1.h"
 #define ROOTS_ARGUMENT ,fixture_root_registry()
 #define REGISTER(provider) fixture_register_root(provider)
 #endif
@@ -62,13 +62,13 @@ static void factory_probe(const char *floor_path) {
     Dl_info owner;assert(dladdr((void *)fixture_root_registry()->register_root,&owner));
     assert(strstr(owner.dli_fname,"libbirnam_root_registry.dylib"));
     ModuleInitFn initialize=(ModuleInitFn)dlsym(image,"module_init");assert(initialize);
-    initialize(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    initialize(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
 }
 #endif
 int main(int argc,char **argv) {
     assert(argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
-    fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);api->gc_set_auto(0);
+    fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);fixture_set_auto(0);
     fixture_mount_trace(api,argv[1] ROOTS_ARGUMENT);
     StorageObserveV1 inspect=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1");assert(inspect);
 #ifndef ROOT_REGISTRY_BASELINE

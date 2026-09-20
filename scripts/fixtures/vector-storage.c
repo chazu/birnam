@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -68,8 +68,8 @@ static int exported(const char *name) { int result=fixture_namespace_contains(na
 static Oop intern(const char *name) { if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==0 && rest==IDAPI_V15_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V15_SLOT_RAW,IDAPI_V15_SLOT_RAW,IDAPI_V15_SLOT_OOP,IDAPI_V15_SLOT_OOP,IDAPI_V15_SLOT_RAW}; assert(count==5 && rest==IDAPI_V15_SLOT_RAW && !memcmp(kinds,expected,5)); }
+    if(type==node_type) assert(count==0 && rest==IDAPI_V16_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V16_SLOT_RAW,IDAPI_V16_SLOT_RAW,IDAPI_V16_SLOT_OOP,IDAPI_V16_SLOT_OOP,IDAPI_V16_SLOT_RAW}; assert(count==5 && rest==IDAPI_V16_SLOT_RAW && !memcmp(kinds,expected,5)); }
     api->set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
@@ -146,7 +146,7 @@ static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *prese
     if(modern && strstr(path,"collection")) {
         validate_dependency(image,1);
     }
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
     if(strstr(path,"collection")) collection=image;
 }
 static void seed(void) {
@@ -185,7 +185,7 @@ int main(int argc,char **argv) {
     int ignored=!strcmp(argv[4],"vector-only-exports"); adopting=strcmp(argv[4],"normal")!=0 && !ignored;
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api);
-    api->gc_set_auto(0); fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
+    fixture_set_auto(0); fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     if(adopting || ignored) seed();
     if(ignored) { fixture_namespace_export("Vector",NULL); node_type=behavior=prototype=NULL; }
@@ -251,7 +251,7 @@ int main(int argc,char **argv) {
     Oop fresh=empty(); assert(live_allocations==3 && api->vtable_of(fresh)==behavior);
     fresh=push(fresh,api->true_obj); assert(live_allocations==5 && ((Payload *)fresh)->count==1);
     selected.alloc=allocate;
-    api->gc_set_precise(1); api->gc_collect(); partial(3);
+    fixture_set_precise(1); api->gc_collect(); partial(3);
     vector=fixture_namespace_import("VectorStorageRoot"); assert(vector==fixture_namespace_import("VectorStorageAlias")); verify(vector,32801);
     for(size_t j=0;j<4;j++) verify(versions[j],retained[j]);
     fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots); capture=0;

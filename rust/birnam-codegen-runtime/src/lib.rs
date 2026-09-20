@@ -232,6 +232,7 @@ const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    settings: usize,
     roots: usize,
     vtables: usize,
     exports: usize,
@@ -3604,14 +3605,14 @@ unsafe extern "C" fn rust_codegen_record_module_source(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let Some(name) = (unsafe { symbol_bytes(api, values[1]) }) else {
         note_error(b"RustCodegen module name was not a Symbol");
         return api.nilObj;
@@ -3706,14 +3707,14 @@ unsafe fn register_artifact_source(
     // the same source export for diagnostics, but deliberately have no
     // revision identity and must not collide with an earlier path-derived
     // artifact entry.
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let name = unsafe { intern_bytes(api, identity) };
     let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
     let Some((_, metadata)) = (unsafe { parse_revision_metadata(api, source_object) }) else {
@@ -3787,14 +3788,14 @@ unsafe extern "C" fn rust_codegen_initialize_current_generation(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
 
     let durable = unsafe { durable_current_generation(api) };
     if !durable.is_null() && durable != api.nilObj {
@@ -4697,14 +4698,14 @@ unsafe extern "C" fn rust_codegen_initial_generation_projection(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let vector_proto = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     if vector_proto.is_null() {
         note_error(b"RustCodegen Vector is unavailable");
@@ -4789,14 +4790,14 @@ unsafe extern "C" fn rust_codegen_successor_generation_projection(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let vector_proto = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     let Some(count) = (unsafe { vector_length(api, values[0], vector_vt) }) else {
@@ -5073,14 +5074,14 @@ unsafe extern "C" fn rust_codegen_generation_sources(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
         note_error(b"RustCodegen generation source registry is malformed");
@@ -5103,14 +5104,14 @@ unsafe extern "C" fn rust_codegen_generation_method_sources(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
         note_error(b"RustCodegen generation source registry is malformed");
@@ -5185,14 +5186,14 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let recovery_generation_available = IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
         && RUNTIME_PHASE.load(Ordering::Acquire) == PHASE_IMAGE_RECOVERY
         && unsafe { durable_generation_is_canonical(api, durable_current_generation(api)) };
@@ -8265,14 +8266,14 @@ unsafe fn rust_codegen_compile_candidate_impl(
     let runtime = runtime();
     let api = unsafe { api(runtime) };
     clear_error();
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
 
     let Some(source_bytes) = (unsafe { string_bytes(api, values[0]) }) else {
         note_error(b"RustCodegen candidate source was not a String");
@@ -8813,14 +8814,14 @@ unsafe extern "C" fn rust_codegen_inspect_candidate(
         note_error(b"RustCodegen candidate artifact checksum mismatches");
         return api.nilObj;
     }
-    unsafe { (api.gcSetAuto)(0) };
-    struct AutoGc<'a>(&'a IdApi);
-    impl Drop for AutoGc<'_> {
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
+    struct AutoGc(*const birnam_abi::gc_settings::ApiV1);
+    impl Drop for AutoGc {
         fn drop(&mut self) {
-            unsafe { (self.0.gcSetAuto)(1) };
+            unsafe { birnam_abi::gc_settings::set_auto(self.0, 1) };
         }
     }
-    let _auto_gc = AutoGc(api);
+    let _auto_gc = AutoGc(execution_settings());
     let source_object = unsafe { (birnam_abi::string::make)(envelope.source.as_ptr(), envelope.source.len()) };
     let Some((source, metadata)) = (unsafe { parse_revision_metadata(api, source_object) }) else {
         note_error(b"RustCodegen candidate source is not indexable");
@@ -12617,7 +12618,7 @@ unsafe extern "C" fn rust_reflect_all_global_names(
     if vector.is_null() || vector == api.nilObj {
         return api.nilObj;
     }
-    unsafe { (api.gcSetAuto)(0) };
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
     let names = (0..unsafe { export_count.count.unwrap()(export_count.context) })
         .filter_map(|index| {
             let name = unsafe { export_name_at.name_at.unwrap()(export_name_at.context, index) };
@@ -12625,7 +12626,7 @@ unsafe extern "C" fn rust_reflect_all_global_names(
         })
         .collect::<Vec<_>>();
     let result = unsafe { make_vector(api, vector, &names) };
-    unsafe { (api.gcSetAuto)(1) };
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 1) };
     result
 }
 
@@ -12845,7 +12846,7 @@ unsafe extern "C" fn rust_reflect_all_methods(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
     let result = (|| {
         let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), b"Vector\0".as_ptr().cast()) };
         if vector.is_null() || vector == api.nilObj {
@@ -12875,7 +12876,7 @@ unsafe extern "C" fn rust_reflect_all_methods(
         }
         unsafe { make_vector(api, vector, &entries) }
     })();
-    unsafe { (api.gcSetAuto)(1) };
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 1) };
     result
 }
 
@@ -12914,7 +12915,7 @@ unsafe extern "C" fn rust_reflect_facts_of(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    unsafe { (api.gcSetAuto)(0) };
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 0) };
     let result = (|| {
         let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), b"Vector\0".as_ptr().cast()) };
         if vector.is_null() || vector == api.nilObj {
@@ -12930,7 +12931,7 @@ unsafe extern "C" fn rust_reflect_facts_of(
         }
         unsafe { make_vector(api, vector, &facts) }
     })();
-    unsafe { (api.gcSetAuto)(1) };
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), 1) };
     result
 }
 
@@ -12964,7 +12965,7 @@ unsafe extern "C" fn rust_reflect_collect_fact(
     unsafe { api(runtime()) }.nilObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -13054,6 +13055,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let store = unsafe { birnam_abi::namespace_import::import(imports, STORE_NAME.as_ptr().cast()) };
         Runtime {
             api: api_pointer as usize,
+            settings: settings as usize,
             roots: roots as usize,
             vtables: vtables as usize,
             exports: exports as usize,
@@ -13796,8 +13798,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, vtables, roots) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings) };
     ptr::null_mut()
 }
 
@@ -14698,6 +14700,8 @@ birnam_abi::string_dependency!();
 birnam_abi::namespace_names_dependency!();
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
+
+fn execution_settings() -> *const birnam_abi::gc_settings::ApiV1 { runtime().settings as *const birnam_abi::gc_settings::ApiV1 }
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
 

@@ -4,6 +4,7 @@
 #include "vtable-enumeration-support.h"
 #include "method-observation-support.h"
 #include "root-registry-support.h"
+#include "gc-settings-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -73,6 +74,7 @@ static inline void fixture_prepare_namespace(void *floor, const char *floor_path
     fixture_prepare_vtable_enumeration(floor,floor_path);
     fixture_prepare_method_observation(floor,floor_path);
     fixture_prepare_root_registry(floor,floor_path);
+    fixture_prepare_gc_settings(floor,floor_path);
 }
 static inline NamespaceNamesApiV1 *fixture_namespace_names(void) {
     if(!fixture_names) {

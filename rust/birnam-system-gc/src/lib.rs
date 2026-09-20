@@ -1,6 +1,6 @@
 //! System's existing GC control methods, installed by Prelude (81AJ).
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::system_gc::ApiV1;
+use birnam_abi::system_gc::ApiV2;
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::c_void;
 use core::ptr;
@@ -10,14 +10,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static READY: AtomicBool = AtomicBool::new(false);
 // Prelude supplies its original selection, even when registration reenters
 // with another table before the first GC control installation. The host pins it.
-static EXECUTION_API: OnceLock<usize> = OnceLock::new();
+static EXECUTION_API: OnceLock<(usize, usize)> = OnceLock::new();
 
 unsafe fn api_ref() -> &'static IdApi {
-    let pointer = *EXECUTION_API
+    let (pointer, _) = *EXECUTION_API
         .get()
         .expect("System GC control methods were not installed");
     unsafe { &*(pointer as *const IdApi) }
 }
+fn execution_settings() -> *const birnam_abi::gc_settings::ApiV1 { EXECUTION_API.get().expect("System GC control methods were not installed").1 as *const birnam_abi::gc_settings::ApiV1 }
 unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
     // SAFETY: the host owns the argument buffer for the duration of the call.
     unsafe { borrowed_oop_args(args, count)?.first().copied() }
@@ -54,7 +55,7 @@ unsafe extern "C" fn system_auto_gc(self_object: Oop, args: *const Oop, count: u
     if value != api.trueObj && value != api.falseObj {
         return api.nilObj;
     }
-    unsafe { (api.gcSetAuto)(if value == api.trueObj { 1 } else { 0 }) };
+    unsafe { birnam_abi::gc_settings::set_auto(execution_settings(), if value == api.trueObj { 1 } else { 0 }) };
     self_object
 }
 
@@ -69,13 +70,14 @@ unsafe extern "C" fn system_precise_gc(self_object: Oop, args: *const Oop, count
     if value != api.trueObj && value != api.falseObj {
         return api.nilObj;
     }
-    unsafe { (api.gcSetPrecise)(if value == api.trueObj { 1 } else { 0 }) };
+    unsafe { birnam_abi::gc_settings::set_precise(execution_settings(), if value == api.trueObj { 1 } else { 0 }) };
     self_object
 }
 
 unsafe extern "C" fn install(
     registration: *const IdApi,
     execution: *const IdApi,
+    settings: *const birnam_abi::gc_settings::ApiV1,
     system_vt: Oop,
     gc: Oop,
     live_objects: Oop,
@@ -86,7 +88,7 @@ unsafe extern "C" fn install(
         READY.load(Ordering::Acquire) && !registration.is_null() && !execution.is_null(),
         "invalid System GC installation"
     );
-    EXECUTION_API.get_or_init(|| execution as usize);
+    EXECUTION_API.get_or_init(|| (execution as usize, settings as usize));
     let api = unsafe { &*registration };
     unsafe {
         (api.method)(system_vt, gc, system_gc);
@@ -95,19 +97,19 @@ unsafe extern "C" fn install(
         (api.method)(system_vt, precise_gc, system_precise_gc);
     }
 }
-static API: ApiV1 = ApiV1 {
-    version: 1,
-    byte_size: size_of::<ApiV1>(),
+static API: ApiV2 = ApiV2 {
+    version: 2,
+    byte_size: size_of::<ApiV2>(),
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "System GC received a null IdApi");
     READY.store(true, Ordering::Release);
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_system_gc_provider_v1() -> *const ApiV1 {
+pub extern "C" fn birnam_system_gc_provider_v2() -> *const ApiV2 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {

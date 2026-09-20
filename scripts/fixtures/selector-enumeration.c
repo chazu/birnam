@@ -2,12 +2,12 @@
 #ifdef FIXTURE_IDAPI_V12
 #include "idapi_v12.h"
 #else
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/idapi-v15/storage_v1.h"
+#include "../../abi/fixtures/idapi-v16/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static Oop roots[70],candidate;
@@ -32,7 +32,7 @@ __attribute__((noinline)) static void collect_now(void) {
 int main(int argc,char **argv) {
     assert(argc==3);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);
-    api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);api->gc_set_auto(0);
+    api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);fixture_set_auto(0);
     fixture_mount_object_model(api,argv[1],fixture_root_registry());fixture_mount_trace(api,argv[1],fixture_root_registry());
     fixture_register_root(mark_roots);
     roots[0]=api->proto(api->object_vt);roots[1]=api->proto(roots[0]);
@@ -48,7 +48,7 @@ int main(int argc,char **argv) {
     if(!strncmp(mode,"invalid-",8)) {
         if(strstr(mode,"null"))candidate=NULL;
         else if(strstr(mode,"instance"))candidate=api->alloc(roots[0],0);
-        else if(strstr(mode,"stale")) { candidate=api->proto(api->object_vt);api->gc_set_precise(1);collect_now(); }
+        else if(strstr(mode,"stale")) { candidate=api->proto(api->object_vt);fixture_set_precise(1);collect_now(); }
         else candidate=(Oop)(uintptr_t)0x40;
         if(strstr(mode,"max"))checked_index=SIZE_MAX;
         (void)at(candidate,checked_index);assert(!"invalid vtable was accepted");
@@ -69,7 +69,7 @@ int main(int argc,char **argv) {
     for(size_t i=0;i<32;i++)assert(at(candidate,i)==roots[i*2+3]);
     for(size_t i=0;i<64;i+=2)api->method(candidate,roots[i+2],answer);
     for(size_t i=0;i<32;i++)assert(at(candidate,i+32)==roots[i*2+2]);
-    api->gc_set_precise(1);collect_now();
+    fixture_set_precise(1);collect_now();
     for(size_t i=0;i<32;i++)assert(at(candidate,i)==roots[i*2+3]);
     /* Raw reflection does not send to the behavior's replaceable lookup. */
     Oop lookup=api->intern("lookup");

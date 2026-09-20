@@ -14,6 +14,7 @@ mod dispatch;
 mod env;
 mod execution;
 mod gc;
+mod gc_settings;
 mod heap;
 mod loader;
 #[cfg(feature = "ffi-test-hooks")]

@@ -10,5 +10,5 @@ static void fixture_mount_object_model(IdApi *api, const char *floor_path,const 
     if (!module) fprintf(stderr, "%s\n", dlerror());
     assert(module);
     ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(module, "module_init"); assert(init);
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
 }

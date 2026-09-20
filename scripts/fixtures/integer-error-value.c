@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -113,10 +113,10 @@ static void method(Oop type,Oop selector,Method implementation) {
 }
 static void begin(const char *name) { printf("case %s\n",name);capture=1;reads=interns=makes=exports=imports=vt_calls=sends=calls=0; }
 static void end(void) { capture=0;printf("done read=%zu intern=%zu make=%zu export=%zu import=%zu vtable=%zu send=%zu calls=%zu\n",reads,interns,makes,exports,imports,vt_calls,sends,calls); }
-static void mount(const char *path) { void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image,fixture_root_registry());ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry()); }
+static void mount(const char *path) { void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image,fixture_root_registry());ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings()); }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);
-    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);fixture_mount_trace(api,argv[1],fixture_root_registry());
+    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);fixture_set_auto(0);fixture_mount_trace(api,argv[1],fixture_root_registry());
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));fixture_register_root(roots);
     selected=*api;selected_presence_slot=exported;selected_import_slot=imported;selected.vtable_of=vtable;selected.intern=intern;selected.send=send;selected.method=method;
     fixture_prepare_string(api,argv[1],fixture_namespace_exports(),fixture_root_registry());fixture_prepare_word(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());fixture_prepare_float(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
@@ -173,8 +173,8 @@ int main(int argc,char **argv) {
     begin("iteration rechecks export after block callback");publish_type=1;assert(run_loop(zero,left)==block_result && iterations==1);end();
     begin("iteration accepts numeric Error alias and retains max endpoint");block_result=one;error_type=fixture_integer->behavior;assert(run_loop(zero,left)==one && iterations==1);error_type=saved_type;block_result=NULL;assert(run_loop(high,high)==high && iterations==1 && visited[0]==INT64_MAX);assert(run_loop(left,zero)==left && !iterations);end();
     Oop behavior=fixture_integer->behavior,prototype=fixture_integer->prototype;api->method(behavior,api->intern("+"),construct_second);
-    begin("copied method survives replacement and reload does not reinstall");assert(overflow()==answer);integer_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());end();assert(fixture_integer->behavior==behavior && fixture_integer->prototype==prototype && bindings==10 && lookup("+")==construct_second);
-    api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(overflow()==answer);
+    begin("copied method survives replacement and reload does not reinstall");assert(overflow()==answer);integer_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());end();assert(fixture_integer->behavior==behavior && fixture_integer->prototype==prototype && bindings==10 && lookup("+")==construct_second);
+    fixture_set_precise(1);api->gc_collect();fixture_set_precise(0);assert(overflow()==answer);
     fixture_string->make=original_make;fixture_string->context=string_context;fixture_integer->read=original_read;
     printf("integer-error-value: %zu failure/recognition/construction cases, registration calls, iteration, precedence, live callbacks, lookup, reentry, GC and reload passed\n",cases);
 }

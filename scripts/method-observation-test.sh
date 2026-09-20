@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mise exec -- cargo test --offline --locked -p birnam-method-observation -p birnam-root-registry --lib
-mise exec -- cargo build --offline --locked -p birnam-id -p birnam-method-observation -p birnam-root-registry -p birnam-object-model -p birnam-namespace -p birnam-integer -p birnam-float -p birnam-word -p birnam-string -p birnam-trace -p birnam-collect -p birnam-store
+mise exec -- cargo test --offline --locked -p birnam-method-observation -p birnam-root-registry -p birnam-gc-settings --lib
+mise exec -- cargo build --offline --locked -p birnam-id -p birnam-method-observation -p birnam-root-registry -p birnam-gc-settings -p birnam-object-model -p birnam-namespace -p birnam-integer -p birnam-float -p birnam-word -p birnam-string -p birnam-trace -p birnam-collect -p birnam-store
 observation_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-method-observation.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 for fixture in method-observation method-observation-store; do
-  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v15 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
+  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v16 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
 done
 for mode in normal root-reentry hook-reentry; do
   "$scratch/method-observation-store" "$observation_target/debug/libbirnam_id.dylib" "$observation_target/debug/libbirnam_store.dylib" "$mode"

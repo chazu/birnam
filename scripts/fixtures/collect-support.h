@@ -12,7 +12,7 @@ static inline void fixture_mount_collect(IdApi *api, const char *floor_path,cons
     int length=snprintf(path,sizeof(path),"%.*s/libbirnam_collect.dylib",(int)(slash-floor_path),floor_path);
     assert(length>0 && (size_t)length<sizeof(path));
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
     CollectProviderV1 provide=(CollectProviderV1)api->dlsym_fn(image,"birnam_collect_provider_v1"); assert(provide);
     void *floor=api->dlopen_fn(floor_path,RTLD_NOW|RTLD_LOCAL); assert(floor);
     CollectDependencyV1 attach=(CollectDependencyV1)api->dlsym_fn(floor,"birnam_collect_dependency_v1"); assert(attach);

@@ -23,6 +23,7 @@ birnam-integer = { path = "../birnam-integer" }
 birnam-object-model = { path = "../birnam-object-model" }
 birnam-method-observation = { path = "../birnam-method-observation" }
 birnam-root-registry = { path = "../birnam-root-registry" }
+birnam-gc-settings = { path = "../birnam-gc-settings" }
 birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization", "dev-frame-read-reuse"] }
 
 [features]

@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -42,7 +42,7 @@ static void other_method(Oop type,Oop selector,Method implementation) {
 }
 static Oop send(Oop self,Oop selector,const Oop *args,size_t count) {
     if(first_reentry && self==api->vtable_vt && !strcmp(api->symbol_name(selector),"parentOf:put:") && count==2 && args[0]==fixture_string->behavior) {
-        first_reentry=0; reentered=1; collection_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots);
+        first_reentry=0; reentered=1; collection_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings());
         Method first=lookup(fixture_string->behavior,"split:"); assert(first && first(NULL,NULL,0)==api->nil_obj);
     }
     return api->send(self,selector,args,count);
@@ -90,7 +90,7 @@ static void mount(const char *path,IdApi *table,const RootRegistryV1 *root_regis
     }
     fixture_attach_integer(api,image,fixture_root_registry());
     if(strstr(path,"collection")) { validate(image,1); collection_init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(collection_init); }
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
 }
 static void expect_part(Oop item,const uint8_t *expected,size_t length) {
     assert(item && api->vtable_of(item)==fixture_string->behavior);
@@ -118,7 +118,7 @@ static void end(void) { capture=0; printf("done alloc=%zu vtable=%zu bytes=%zu m
 static Oop forbidden(Oop self,const Oop *args,size_t count) { (void)self; (void)args; (void)count; assert(!"split used public String/Vector dispatch or lost a copied Method"); return NULL; }
 int main(int argc,char **argv) {
     assert(argc==5); first_reentry=!strcmp(argv[4],"first-install-reentry");
-    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_root_registry());
     original_make=fixture_string->make; original_bytes=fixture_string->bytes;
@@ -169,10 +169,10 @@ int main(int argc,char **argv) {
     api->method(fixture_string->behavior,api->intern("split:"),forbidden);
     begin("copied Method and native Vector operations"); result=split(subject,&separator,1); end(); expect(result,(const uint8_t *)"a,b",3,(const uint8_t *)",",1);
     for(size_t i=0;i<4;i++) api->method(fixture_vector->behavior(),api->intern(vector_names[i]),prior[i]);
-    collection_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots); assert(lookup(fixture_string->behavior,"split:")==split && split(subject,NULL,1)==api->nil_obj && registrations==4);
+    collection_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings()); assert(lookup(fixture_string->behavior,"split:")==split && split(subject,NULL,1)==api->nil_obj && registrations==4);
     if(fixture_string_collection) fixture_string_collection->install(&other,&other);
     begin("reload retains original execution table"); result=split(subject,&separator,1); end(); expect(result,(const uint8_t *)"a,b",3,(const uint8_t *)",",1);
-    api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0); expect(result,(const uint8_t *)"a,b",3,(const uint8_t *)",",1);
+    fixture_set_precise(1); api->gc_collect(); fixture_set_precise(0); expect(result,(const uint8_t *)"a,b",3,(const uint8_t *)",",1);
     fixture_string->make=original_make; fixture_string->bytes=original_bytes;
     printf("string-collection: %zu scalar cases, native dispatch, byte snapshots, live callbacks, GC and table retention passed mode=%s\n",cases,argv[4]);
 }

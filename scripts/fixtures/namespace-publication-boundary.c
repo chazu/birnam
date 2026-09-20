@@ -1,7 +1,7 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/idapi-v15/storage_v1.h"
+#include "../../abi/fixtures/idapi-v16/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static unsigned root_calls;

@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -33,7 +33,7 @@ static void mount(const char *path, IdApi *selected) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image,fixture_root_registry());
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
 }
 static Oop send0(Oop receiver, const char *selector) {
     return api->send(receiver,api->intern(selector),NULL,0);
@@ -55,7 +55,7 @@ static Oop right(Oop receiver, const Oop *args, size_t count) {
 int main(int argc, char **argv) {
     assert(argc==6);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry());
     assert(!fixture_namespace_contains("Word") && !fixture_namespace_contains("WordVt"));
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
     unsigned pairs=0;
     for(size_t i=0;i<sizeof(inputs)/sizeof(*inputs);i++) {
         Oop word=fixture_word_make(inputs[i]);
-        assert(api->object_payload_size(word)==8 && api->slot_kind(fixture_word->behavior,0)==IDAPI_V15_SLOT_RAW);
+        assert(api->object_payload_size(word)==8 && api->slot_kind(fixture_word->behavior,0)==IDAPI_V16_SLOT_RAW);
         assert(!memcmp(word,&inputs[i],8));
         uint8_t raw[10]; memset(raw,0xab,sizeof(raw));
         fixture_word->storage->initialize(raw+1,inputs[i]);
@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
     assert(lookup("=")==right && send(seven,"=",high)==high);
     api->method(fixture_word->behavior,api->intern("="),equal);
     Oop volatile kept=fixture_word_make(UINT64_C(0xfedcba9876543210));
-    api->gc_set_precise(1); (void)api->gc_collect();
+    fixture_set_precise(1); (void)api->gc_collect();
     expect_text(kept,"0xfedcba9876543210");
     printf("word-module: %u equality cases, hex printing, conversion bounds, errors, raw bits, preparation GC, publication reentry, live operations, reinitialization and method replacement, GC passed\n",pairs);
 }

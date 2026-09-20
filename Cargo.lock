@@ -122,6 +122,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-gc-settings"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-host"
 version = "0.0.0"
 dependencies = [
@@ -142,6 +149,7 @@ dependencies = [
  "birnam-codegen",
  "birnam-collect",
  "birnam-float",
+ "birnam-gc-settings",
  "birnam-integer",
  "birnam-method-observation",
  "birnam-namespace",

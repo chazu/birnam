@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
     assert(argc==5);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); if(!floor) { fputs(dlerror(),stderr); abort(); }
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api);
-    api->gc_set_auto(0);
+    fixture_set_auto(0);
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1"); assert(observe);
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);
     describe=(StorageDescribeV1)api->dlsym_fn(storage,"birnam_storage_describe_v1"); assert(describe);

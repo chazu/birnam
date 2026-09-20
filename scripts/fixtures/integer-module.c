@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
@@ -24,7 +24,7 @@ static void mount(const char *path) {
         assert(attach(&copied) == 0); /* no silent remount onto another table */
     }
     fixture_attach_integer(api, image,fixture_root_registry());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
 }
 static Method lookup(Oop behavior, const char *name) {
     Oop selector = api->intern(name);
@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
     IdInitFn initialize = (IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init"));
     assert(initialize);
     api = initialize();
-    api->gc_set_auto(0);
+    fixture_set_auto(0);
     assert(!fixture_namespace_import("Integer"));
     assert(!fixture_namespace_import("IntegerVt"));
     Oop lower = api->alloc(api->object_vt, 0);
@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
     Oop prototype = fixture_integer->prototype, behavior = fixture_integer->behavior;
     fixture_namespace_export("Integer", api->nil_obj);
     fixture_namespace_export("IntegerVt", api->nil_obj);
-    api->gc_set_precise(1); api->gc_set_stack_bottom(0); api->gc_collect();
+    fixture_set_precise(1); api->gc_set_stack_bottom(0); api->gc_collect();
     assert(api->vtable_of(prototype) == behavior && fixture_integer_value(prototype) == 0);
     assert(fixture_integer_value(fixture_integer_make(INT64_MIN)) == INT64_MIN);
     fixture_namespace_export("Integer", prototype); fixture_namespace_export("IntegerVt", behavior);

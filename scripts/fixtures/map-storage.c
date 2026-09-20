@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -66,8 +66,8 @@ static int exported(const char *name) { int result=fixture_namespace_contains(na
 static Oop intern(const char *name) { if(phase==0 && candidate) { prototype=candidate; candidate=NULL; partial(3); } if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V15_SLOT_RAW && kinds[1]==IDAPI_V15_SLOT_RAW && rest==IDAPI_V15_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V15_SLOT_OOP,IDAPI_V15_SLOT_RAW}; assert(count==2 && rest==IDAPI_V15_SLOT_RAW && !memcmp(kinds,expected,2)); }
+    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V16_SLOT_RAW && kinds[1]==IDAPI_V16_SLOT_RAW && rest==IDAPI_V16_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V16_SLOT_OOP,IDAPI_V16_SLOT_RAW}; assert(count==2 && rest==IDAPI_V16_SLOT_RAW && !memcmp(kinds,expected,2)); }
     api->set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
@@ -140,7 +140,7 @@ static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *prese
     }
     fixture_attach_integer(api,image,fixture_root_registry());
     if(strstr(path,"collection")) validate(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
 }
 static void seed(int map_only) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"}; Oop types[6];
@@ -157,7 +157,7 @@ static Oop empty(void) { return fixture_map?fixture_map->empty():new_method(prot
 int main(int argc,char **argv) {
     assert(argc==5); adopting=strcmp(argv[4],"normal") && strcmp(argv[4],"map-only-exports");
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
-    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     if(adopting || !strcmp(argv[4],"map-only-exports")) seed(!adopting);
@@ -177,7 +177,7 @@ int main(int argc,char **argv) {
     selected.alloc=second_allocator; live_allocations=0; map=empty(); assert(live_allocations==1 && api->vtable_of(map)==behavior);
     /* Forget temporary trace identities before precise GC can recycle their addresses. */
     identity_count=0;
-    selected.alloc=allocate; api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0); partial(3);
+    selected.alloc=allocate; fixture_set_precise(1); api->gc_collect(); fixture_set_precise(0); partial(3);
     fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots); capture=0;
     assert(fixture_namespace_import("MapVt")==behavior && fixture_namespace_import("Map")==prototype && fixture_namespace_import("MapNode")==node_type && !finalizers);
     printf("map-storage: construction, adoption, allocation, partial roots, live allocator and reload passed mode=%s\n",argv[4]);

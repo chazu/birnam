@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -123,7 +123,7 @@ static int64_t read_integer(void *context,Oop object) {
 }
 static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
 }
 static void seed(void) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"}; Oop types[6];
@@ -140,7 +140,7 @@ int main(int argc,char **argv) {
     adopting=strcmp(argv[4],"normal")!=0 && !ignored_exports;
     missing_prototype=!strcmp(argv[4],"missing-prototype"); rebound_prototype=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     if(adopting || ignored_exports) seed();
@@ -183,7 +183,7 @@ int main(int argc,char **argv) {
     capture=1; mount(argv[3],&other,&selected_presence,&other_imports,&other_exports,&selected_roots); capture=0;
     assert(to(end,NULL,0)==api->nil_obj && lookup(fixture_integer->behavior,"to:")==to);
     assert(fixture_namespace_import("Range")==api->nil_obj && fixture_namespace_import("RangeVt")==api->nil_obj);
-    api->gc_set_precise(1); api->gc_collect();
+    fixture_set_precise(1); api->gc_collect();
     Oop rebuilt=to(first_integer,&last_integer,1); assert(api->vtable_of(rebuilt)==behavior);
     if(modern) { family_marks=selector_marks=0; owner_roots(mark); assert(family_marks==2 && selector_marks==3); }
     fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots); capture=0;

@@ -895,6 +895,7 @@ pub enum FloorError {
     MissingIdInit,
     MethodObservation { path: PathBuf, reason: &'static str },
     RootRegistry { path: PathBuf, reason: &'static str },
+    GcSettings { path: PathBuf, reason: &'static str },
     VtableEnumeration { path: PathBuf, reason: &'static str },
     Namespace { path: PathBuf, reason: &'static str },
     NullApi,
@@ -931,6 +932,7 @@ impl fmt::Debug for FloorError {
             Self::MissingIdInit => formatter.write_str("MissingIdInit"),
             Self::MethodObservation { path, reason } => write!(formatter, "Method observation preparation failed: {} ({reason})", path.display()),
             Self::RootRegistry { path, reason } => write!(formatter, "Root registry preparation failed: {} ({reason})", path.display()),
+            Self::GcSettings { path, reason } => write!(formatter, "GC settings preparation failed: {} ({reason})", path.display()),
             Self::VtableEnumeration { path, reason } => write!(formatter, "Vtable enumeration preparation failed: {} ({reason})", path.display()),
             Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
@@ -951,6 +953,8 @@ pub struct LoadedFloor {
     _object_model: NonNull<std::ffi::c_void>,
     _root_registry: NonNull<std::ffi::c_void>,
     root_registry: NonNull<birnam_abi::root_registry::ApiV1>,
+    _gc_settings: NonNull<std::ffi::c_void>,
+    gc_settings: NonNull<birnam_abi::gc_settings::ApiV1>,
     _method_observation: NonNull<std::ffi::c_void>,
     method_observation: NonNull<birnam_abi::method_observation::ApiV1>,
     vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV2>,
@@ -1085,6 +1089,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_object_model",
     "libbirnam_method_observation",
     "libbirnam_root_registry",
+    "libbirnam_gc_settings",
     "libbirnam_id_artifact",
     "libbirnam_store",
     "libbirnam_id_peg",
@@ -1405,7 +1410,7 @@ impl HostRuntime {
         let api = self.stack.api();
         unsafe { (api.gcSetStackBottom)(anchor as *mut usize as usize) };
         if self.policy.precise_gc {
-            unsafe { (api.gcSetPrecise)(1) };
+            unsafe { birnam_abi::gc_settings::set_precise(self.stack.gc_settings(), 1) };
         }
     }
 
@@ -2094,7 +2099,7 @@ pub struct LoadedStack {
     map: *const birnam_abi::map::ApiV5,
     string_collection: *const birnam_abi::string_collection::ApiV1,
     printing: *const birnam_abi::printing::ApiV1,
-    system_gc: *const birnam_abi::system_gc::ApiV1,
+    system_gc: *const birnam_abi::system_gc::ApiV2,
     text_view: *const birnam_abi::text_view::ApiV1,
     error_value: *const birnam_abi::error_value::ApiV3,
     system_output: *const birnam_abi::system_output::ApiV1,
@@ -2102,7 +2107,7 @@ pub struct LoadedStack {
     environment: *const birnam_abi::environment::ApiV3,
     file_io: *const birnam_abi::file_io::ApiV3,
     block_loop: *const birnam_abi::block_loop::ApiV3,
-    native_loader: *const birnam_abi::native_loader::ApiV8,
+    native_loader: *const birnam_abi::native_loader::ApiV9,
     source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2117,6 +2122,7 @@ impl LoadedStack {
     pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.floor.vtables() }
     pub fn observation(&self) -> *const birnam_abi::method_observation::ApiV1 { self.floor.observation() }
     pub fn root_registry(&self) -> *const birnam_abi::root_registry::ApiV1 { self.floor.root_registry() }
+    pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.floor.gc_settings() }
 
     pub fn new(floor: LoadedFloor) -> Self {
         let control = unsafe {
@@ -2425,9 +2431,9 @@ impl LoadedStack {
                 return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v8".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v9".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::native_loader::DependencyV8 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::native_loader::DependencyV9 = unsafe { std::mem::transmute(dependency) };
             if self.native_loader.is_null() || unsafe { attach(self.native_loader) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
             }
@@ -2439,9 +2445,9 @@ impl LoadedStack {
                 return Err(ModuleError::SourceLoaderDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_dependency_v1".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_dependency_v2".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::system_gc::DependencyV1 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::system_gc::DependencyV2 = unsafe { std::mem::transmute(dependency) };
             if self.system_gc.is_null() || unsafe { attach(self.system_gc) } != 1 {
                 return Err(ModuleError::SystemGcDependencyRejected { path: path.to_path_buf() });
             }
@@ -2500,6 +2506,7 @@ impl LoadedStack {
                 self.floor.vtables(),
                 self.floor.observation(),
                 self.floor.root_registry(),
+                self.floor.gc_settings(),
             )
         };
         let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v5".as_ptr()) };
@@ -2592,9 +2599,9 @@ impl LoadedStack {
             }
             self.block_loop = provided;
         }
-        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v8".as_ptr()) };
+        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v9".as_ptr()) };
         if !native_loader_provider.is_null() {
-            let provide: birnam_abi::native_loader::ProviderV8 = unsafe { std::mem::transmute(native_loader_provider) };
+            let provide: birnam_abi::native_loader::ProviderV9 = unsafe { std::mem::transmute(native_loader_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::native_loader::attach(provided) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
@@ -2610,9 +2617,9 @@ impl LoadedStack {
             }
             self.source_loader = provided;
         }
-        let system_gc_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_provider_v1".as_ptr()) };
+        let system_gc_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_provider_v2".as_ptr()) };
         if !system_gc_provider.is_null() {
-            let provide: birnam_abi::system_gc::ProviderV1 = unsafe { std::mem::transmute(system_gc_provider) };
+            let provide: birnam_abi::system_gc::ProviderV2 = unsafe { std::mem::transmute(system_gc_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::system_gc::attach(provided) } != 1 {
                 return Err(ModuleError::SystemGcDependencyRejected { path: path.to_path_buf() });
@@ -2982,6 +2989,7 @@ impl LoadedFloor {
     pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.vtable_enumeration.as_ptr() }
     pub fn observation(&self) -> *const birnam_abi::method_observation::ApiV1 { self.method_observation.as_ptr() }
     pub fn root_registry(&self) -> *const birnam_abi::root_registry::ApiV1 { self.root_registry.as_ptr() }
+    pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.gc_settings.as_ptr() }
 
     pub fn api(&self) -> &IdApi {
         // SAFETY: `id_init` returned a process-owned, non-null table and the
@@ -3019,6 +3027,7 @@ pub fn load_floor(
     let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
     let observation_path = path.with_file_name("libbirnam_method_observation.dylib");
     let root_registry_path = path.with_file_name("libbirnam_root_registry.dylib");
+    let gc_settings_path = path.with_file_name("libbirnam_gc_settings.dylib");
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -3081,6 +3090,13 @@ pub fn load_floor(
         }
     };
     let root_registry_image = match unsafe { prepare_root_registry(handle, &root_registry_path) } {
+        Ok(image) => image,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
+    let gc_settings_image = match unsafe { prepare_gc_settings(handle, &gc_settings_path) } {
         Ok(image) => image,
         Err(error) => {
             unsafe { system_dlclose(handle.as_ptr()) };
@@ -3174,9 +3190,20 @@ pub fn load_floor(
     if !unsafe { birnam_abi::root_registry::valid(root_registry) } {
         return Err(FloorError::RootRegistry { path: root_registry_path, reason: "invalid capability" });
     }
+    let gc_settings_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_gc_settings_provider_v1".as_ptr()) };
+    if gc_settings_provider.is_null() {
+        return Err(FloorError::GcSettings { path: gc_settings_path, reason: "missing capability" });
+    }
+    let provide: birnam_abi::gc_settings::ProviderV1 = unsafe { std::mem::transmute(gc_settings_provider) };
+    let gc_settings = unsafe { provide() };
+    if !unsafe { birnam_abi::gc_settings::valid(gc_settings) } {
+        return Err(FloorError::GcSettings { path: gc_settings_path, reason: "invalid capability" });
+    }
     Ok(LoadedFloor {
         _root_registry: root_registry_image,
         root_registry: NonNull::new(root_registry).unwrap(),
+        _gc_settings: gc_settings_image,
+        gc_settings: NonNull::new(gc_settings).unwrap(),
         _method_observation: observation_image,
         method_observation: NonNull::new(observation).unwrap(),
         _object_model: object_model,
@@ -3319,6 +3346,39 @@ unsafe fn prepare_root_registry(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::root_registry::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::root_registry::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
+}
+
+unsafe fn prepare_gc_settings(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::GcSettings {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_gc_settings_dependency_v1".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_gc_settings_factory_v1".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::gc_settings::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::gc_settings::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::gc_settings::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

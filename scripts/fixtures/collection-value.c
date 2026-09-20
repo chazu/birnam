@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -107,11 +107,11 @@ static void mount(const char *path,IdApi *table,const RootRegistryV1 *root_regis
         void *value=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(value); fixture_attach_integer(api,value,fixture_root_registry());
         CollectionValueProviderV1 provide=(CollectionValueProviderV1)api->dlsym_fn(value,"birnam_collection_value_provider_v1"); assert(provide && !provide());
         ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(value,"module_init"); assert(init); unsigned before=roots_registered;
-        init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry); assert(roots_registered==before); fixture_collection_value=provide(); assert(fixture_collection_value); validate(image,0);
+        init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings()); assert(roots_registered==before); fixture_collection_value=provide(); assert(fixture_collection_value); validate(image,0);
     }
     fixture_attach_integer(api,image,fixture_root_registry());
     if(strstr(path,"collection") && fixture_collection_value) validate(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
 }
 static void begin(const char *name) { capture=1; sends=0; printf("case %s\n",name); }
 static void end(void) { capture=0; assert(!sends); checks++; }
@@ -122,7 +122,7 @@ static void pair(size_t left,size_t right,int expected) {
 }
 int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_root_registry());
     selected=*api; selected.vtable_of=vt; selected.symbol_name=sn; selected.send=send; selected_root_slot=roots; mount(argv[3],&selected,&selected_roots);
@@ -180,7 +180,7 @@ int main(int argc,char **argv) {
     assert(((Map *)active_map)->count==5); old_map=active_map;
     Oop args[]={samples[27].object,fixture_integer_make(99)}; active_map=map_put(active_map,args,2);
     assert(((Map *)active_map)->count==5 && fixture_integer_value(map_at(old_map,&args[0],1))==3 && fixture_integer_value(map_at(active_map,&args[0],1))==99);
-    api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0);
+    fixture_set_precise(1); api->gc_collect(); fixture_set_precise(0);
     for(size_t i=0;i<5;i++) assert(fixture_is_integer(map_at(active_map,&samples[keys[i]].object,1)));
     IdApi other=selected; other.symbol_vt=api->object_vt; other.symbol_name=null_name; mount(argv[3],&other,&selected_roots);
     begin("reload retains caller table"); assert(map_at(maps[6],&samples[6].object,1)==api->true_obj); pair(26,27,1); end();

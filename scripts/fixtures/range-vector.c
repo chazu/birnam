@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -60,12 +60,12 @@ static void mount(const char *path,IdApi *table) {
         assert(n>0 && (size_t)n<sizeof(library));
         void *range=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(range); fixture_attach_integer(api,range,fixture_root_registry());
         RangeProviderV5 provide=(RangeProviderV5)api->dlsym_fn(range,"birnam_range_provider_v5"); assert(provide && !provide());
-        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
         fixture_range_v2=provide(); assert(fixture_range_v2); validate_dependency(image,0);
     }
     fixture_attach_integer(api,image,fixture_root_registry());
     if(strstr(path,"collection") && fixture_range_v2) validate_dependency(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
 }
 static Oop vector(const int64_t *values,size_t count) {
     Oop result=fixture_vector->empty();
@@ -86,7 +86,7 @@ static void end(unsigned expected_integers,unsigned expected_exacts) {
 int main(int argc,char **argv) {
     assert(argc==4);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.alloc=counted_alloc; selected.vtable_of=counted_vtable; selected.send=counted_send; mount(argv[3],&selected);
@@ -143,7 +143,7 @@ int main(int argc,char **argv) {
         fixture_range_v2->install(&other,api->intern("value:"),api->intern("value:value:"),api->intern("printString"),forbidden);
     }
     api->method(fixture_vector->behavior(),api->intern(","),forbidden);
-    api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0);
+    fixture_set_precise(1); api->gc_collect(); fixture_set_precise(0);
     argument=other_vector; const int64_t joined[]={1,2,3,41,42};
     begin("reload keeps native comma and table"); result=comma_method(active_range,&argument,1); end(3,2); expect(result,joined,5);
     assert(lookup(range_type,"reversed")==reverse_method && lookup(range_type,",")==comma_method);

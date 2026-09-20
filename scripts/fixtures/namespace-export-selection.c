@@ -3,7 +3,7 @@
 #ifdef FIXTURE_IDAPI_V10
 #include "idapi_v10.h"
 #else
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #endif
 #include "namespace-support.h"
 #include "integer-support.h"
@@ -81,7 +81,7 @@ int main(int argc,char **argv) {
     assert(!strcmp(family,"Integer") || !strcmp(family,"Float") || !strcmp(family,"Word") || !strcmp(family,"String"));
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);
-    api->gc_set_auto(0);uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    fixture_set_auto(0);uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     fixture_mount_trace(api,argv[1],fixture_root_registry());
     selected=*api;selected.proto=proto;
 #ifdef FIXTURE_IDAPI_V10
@@ -110,7 +110,7 @@ int main(int argc,char **argv) {
 #ifdef FIXTURE_IDAPI_V10
         init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports());
 #else
-        init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+        init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
 #endif
     }
     assert(publications==2 && !during_construction);

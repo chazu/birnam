@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -95,7 +95,7 @@ static Oop print_replacement(Oop self,const Oop *args,size_t count) { puts("repl
 static Oop forbidden(Oop self,const Oop *args,size_t count) { (void)self; (void)args; (void)count; assert(!"private operation used public lookup or reloaded selectors"); return NULL; }
 static void mount(const char *path,IdApi *table,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
 }
 static void expect_vector(Oop object,const int *indices,size_t count) {
     assert(fixture_vector->count(object)==count);
@@ -109,7 +109,7 @@ static void begin(const char *name) { printf("case %s\n",name); capture=1; }
 static void end(void) { capture=0; }
 int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_root_registry());
     selected=*api; selected.alloc=allocate; selected.send=send; selected_root_slot=register_roots; mount(argv[3],&selected,&selected_roots);
@@ -172,7 +172,7 @@ int main(int argc,char **argv) {
     for(size_t i=0;i<13;i++) assert(lookup(type,names[i])==methods[i]);
     assert(methods[4](table,(Oop[]){pieces[2],block},2)==pieces[7]);
     reset(); visits=0; assert(methods[11](subject,&block,1)==subject && visits==3); expect_print(methods[12](empty_map,NULL,0),"{}");
-    api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0); marks=0; owner_roots(mark); assert(marks==(fixture_map_v2?6:3));
+    fixture_set_precise(1); api->gc_collect(); fixture_set_precise(0); marks=0; owner_roots(mark); assert(marks==(fixture_map_v2?6:3));
     fixture_string->make=original_make; fixture_string->bytes=original_bytes; fixture_integer->make=original_integer_make;
     puts("map-methods: 13 bindings, null contracts, projection/traversal timing, fresh dispatch, native Vector calls, live operations, GC and reload passed");
 }

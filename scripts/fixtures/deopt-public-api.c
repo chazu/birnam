@@ -157,8 +157,8 @@ int main(int argc, char **argv) {
     require(api != NULL, "id_init returned null");
     uintptr_t stack_anchor = 0;
     api->gc_set_stack_bottom((uintptr_t)&stack_anchor + sizeof(stack_anchor));
-    api->gc_set_auto(0);
-    api->gc_set_precise(1);
+    fixture_set_auto(0);
+    fixture_set_precise(1);
     const char *unavailable[] = {
         "birnam_dev_frame_oop_at_v1", "birnam_dev_frame_oop_at_put_v1",
         "birnam_dev_frame_slot_get_v1", "birnam_dev_frame_slot_put_v1",

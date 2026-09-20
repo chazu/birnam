@@ -1,4 +1,4 @@
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -53,7 +53,7 @@ static int64_t read_integer(void *context,Oop value) {
 }
 static void mount(const char *path,IdApi *table) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
 }
 static uint32_t hash(uint64_t input) {
     uint64_t x=input+UINT64_C(0x9e3779b97f4a7c15); x^=x>>30; x*=UINT64_C(0xbf58476d1ce4e5b9);
@@ -89,7 +89,7 @@ static Oop forbidden(Oop self,const Oop *args,size_t count) { (void)self; (void)
 int main(int argc,char **argv) {
     setvbuf(stdout,NULL,_IONBF,0);
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.alloc=allocate; mount(argv[3],&selected); fixture_register_root(roots);
@@ -168,7 +168,7 @@ int main(int argc,char **argv) {
         Oop direct=put(empty(),key,value); assert(get(direct,key)==value && ((Map *)direct)->count==1);
     }
     IdApi other=selected; other.nil_obj=value; mount(argv[3],&other); assert(put_method(active,NULL,1)==api->nil_obj);
-    api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0);
+    fixture_set_precise(1); api->gc_collect(); fixture_set_precise(0);
     for(size_t i=0;i<4;i++) verify(versions[i],retained[i]); verify(deep,2); verify(collision,8); verify(mixed,9);
     assert(fixture_integer_value(get(active,key))==34 && get(replaced,key)==value);
     fixture_integer->read=integer_read;

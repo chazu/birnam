@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Extract automatic and precise GC settings and the 16 MiB collection predicate
+  into GC Settings (81BK). IdApi v16 has 23 fields / 184 bytes; nine-argument
+  initialization, Native Loader v9 and System GC installation v2 carry explicit
+  settings selections. Preserve per-object precise reads, allocation checkpoints,
+  callback admission and Codegen/Image suppression timing. Native consumers
+  require rebuilding; image encoding is unchanged.
+
 - Extract the ordered native root-provider list into Root Registry (81BJ).
   IdApi v15 has 25 fields / 200 bytes; eight-argument initialization and Native
   Loader v8 carry explicit registration capabilities. Early String, Float, Word,

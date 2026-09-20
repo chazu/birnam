@@ -1,12 +1,12 @@
 /* Seed otherwise unconstructible nonzero Words through the public native API.
    Save unexported clones so the image encodes values, not external export names.
    The fixture library can then be removed before image boot. */
-#include "idapi_v15.h"
+#include "idapi_v16.h"
 #include "word_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdlib.h>
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry) { (void)root_registry; (void)observation; (void)vtables;
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings) { (void)settings; (void)root_registry; (void)observation; (void)vtables;
     (void)exports;
     (void)presence;(void)imports;
     assert(api && !state);

@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v15/idapi_v15.h"
+#include "../../abi/fixtures/idapi-v16/idapi_v16.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/collect-v1/collect_v1.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
@@ -155,17 +155,17 @@ static void must_abort(void) {
 int main(int argc, char **argv) {
     assert(argc==4);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
-    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
+    api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     void *tracer=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(tracer);
-    ((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    ((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
     const TraceLiveApiV1 *trace_api=((TraceLiveProviderV1)api->dlsym_fn(tracer,"birnam_trace_provider_v1"))();
     actual_trace=trace_api->trace;
     TraceLiveApiV1 watched_trace=*trace_api; watched_trace.trace=traced;
     assert(((TraceLiveDependencyV1)dlsym(floor,"birnam_trace_dependency_v1"))(&watched_trace)==1);
     must_abort(); /* trace alone is insufficient; there is no coordinator fallback */
     void *collector=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL); assert(collector);
-    ((ModuleInitFn)api->dlsym_fn(collector,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    ((ModuleInitFn)api->dlsym_fn(collector,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());
     const CollectApiV1 *implementation=((CollectProviderV1)api->dlsym_fn(collector,"birnam_collect_provider_v1"))();
     actual_collect=implementation->collect; mounted=*implementation; mounted.collect=collected;
     attach=(CollectDependencyV1)dlsym(floor,"birnam_collect_dependency_v1"); assert(attach);
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
     size_t before=calls; (void)api->gc_collect();
     assert(calls==before+1 && initial_calls==1 && replacement_calls==2 && finalized_count==3);
     for(size_t i=0;i<3;i++) victims[i]=NULL;
-    before=calls; api->gc_set_auto(1);
+    before=calls; fixture_set_auto(1);
     (void)api->alloc(api->object_vt,16u<<20);
     (void)api->alloc(api->object_vt,0);
     assert(calls==before+1);
