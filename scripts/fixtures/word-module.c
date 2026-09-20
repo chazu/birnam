@@ -1,4 +1,4 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -31,9 +31,9 @@ static Oop reenter_publication(Oop receiver, Oop selector, const Oop *args, size
 }
 static void mount(const char *path, IdApi *selected) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    fixture_attach_integer(api,image);
+    fixture_attach_integer(api,image,fixture_root_registry());
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
 }
 static Oop send0(Oop receiver, const char *selector) {
     return api->send(receiver,api->intern(selector),NULL,0);
@@ -56,20 +56,20 @@ int main(int argc, char **argv) {
     assert(argc==6);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);
+    fixture_mount_trace(api,argv[1],fixture_root_registry());
     assert(!fixture_namespace_contains("Word") && !fixture_namespace_contains("WordVt"));
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     word_api=*api; word_api.alloc=collecting_alloc;
-    fixture_prepare_word(&word_api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_prepare_word(&word_api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     assert(preparation_collections==1); word_api.alloc=api->alloc;
-    fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     assert(!lookup("asInteger"));
     word_api.send=reenter_publication;
     mount(argv[2],&word_api);
     assert(publication_reentries==1); word_api.send=api->send;
     WordProviderV1 provide=(WordProviderV1)api->dlsym_fn(fixture_word_image,"birnam_word_provider_v1");
-    WordPrepareV4 prepare=(WordPrepareV4)api->dlsym_fn(fixture_word_image,"birnam_word_prepare_v4");
-    assert(provide && prepare && provide()==fixture_word && prepare(&word_api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports())==fixture_word);
+    WordPrepareV5 prepare=(WordPrepareV5)api->dlsym_fn(fixture_word_image,"birnam_word_prepare_v5");
+    assert(provide && prepare && provide()==fixture_word && prepare(&word_api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry())==fixture_word);
     WordDependencyV1 attach=(WordDependencyV1)api->dlsym_fn(floor,"birnam_word_dependency_v1");
     assert(attach && !attach(NULL) && attach(fixture_word)==1);
     WordApiV1 copy=*fixture_word; copy.version=999; assert(!attach(&copy));
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
     unsigned pairs=0;
     for(size_t i=0;i<sizeof(inputs)/sizeof(*inputs);i++) {
         Oop word=fixture_word_make(inputs[i]);
-        assert(api->object_payload_size(word)==8 && api->slot_kind(fixture_word->behavior,0)==IDAPI_V14_SLOT_RAW);
+        assert(api->object_payload_size(word)==8 && api->slot_kind(fixture_word->behavior,0)==IDAPI_V15_SLOT_RAW);
         assert(!memcmp(word,&inputs[i],8));
         uint8_t raw[10]; memset(raw,0xab,sizeof(raw));
         fixture_word->storage->initialize(raw+1,inputs[i]);

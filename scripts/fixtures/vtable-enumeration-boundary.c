@@ -1,11 +1,11 @@
 #ifdef FIXTURE_IDAPI_V11
 #include "idapi_v11.h"
 #else
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/storage-v1/storage_v1.h"
+#include "../../abi/fixtures/idapi-v15/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static unsigned root_calls;
@@ -38,8 +38,8 @@ int main(int argc,char **argv) {
         StorageRequestV1 request={1,sizeof(request),NULL,inspect};(void)observe(&request);
         assert(!"observation did not invoke visitor");
     }
-    assert(strstr(argv[2],"collection"));fixture_mount_trace(api,argv[1]);
+    assert(strstr(argv[2],"collection"));fixture_mount_trace(api,argv[1],fixture_root_registry());
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
-    api->gc_register_root_provider(roots);(void)api->gc_collect();assert(root_calls);
+    fixture_register_root(roots);(void)api->gc_collect();assert(root_calls);
     puts("enumeration remains callable during root collection");return 0;
 }

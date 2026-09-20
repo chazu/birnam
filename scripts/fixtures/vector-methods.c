@@ -1,8 +1,10 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <inttypes.h>
+static FixtureRootSlot selected_root_slot;
+static RootRegistryV1 selected_roots=FIXTURE_ROOTS(selected_root_slot);
 
 /* Independent method, callback-order and precise-root oracle, runnable on 81AD. */
 static IdApi *api,selected;
@@ -26,7 +28,7 @@ static void register_roots(RootProvider provider) {
     Dl_info owner; assert(dladdr((const void *)provider,&owner));
     if(strstr(owner.dli_fname,"/libbirnam_vector.dylib")) vector_roots=provider;
     if(strstr(owner.dli_fname,"_collection.dylib")) collection_roots=provider;
-    api->gc_register_root_provider(provider);
+    fixture_register_root(provider);
 }
 static Oop counted_send(Oop self,Oop selector,const Oop *args,size_t count) {
     if(trace) printf("send %s %zu\n",api->symbol_name(selector),count);
@@ -97,16 +99,16 @@ static Oop sum(Oop self,const Oop *args,size_t count) {
     return fixture_integer_make(fixture_integer_value(args[0])+fixture_integer_value(args[1]));
 }
 static Oop null_sum(Oop self,const Oop *args,size_t count) { (void)self; (void)args; assert(count==2); visits++; return NULL; }
-static void mount(const char *path,IdApi *table) {
-    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+static void mount(const char *path,IdApi *table,const RootRegistryV1 *root_registry) {
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
 }
 int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
-    selected=*api; selected.send=counted_send; selected.gc_register_root_provider=register_roots; mount(argv[3],&selected);
+    fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_root_registry());
+    selected=*api; selected.send=counted_send; selected_root_slot=register_roots; mount(argv[3],&selected,&selected_roots);
     type=fixture_vector->behavior();
     for(size_t i=0;i<13;i++) {
         methods[i]=lookup(type,names[i]); assert(methods[i]);
@@ -117,7 +119,7 @@ int main(int argc,char **argv) {
     }
     assert(methods[11]==methods[12]);
     block_type=api->proto(api->object_vt); block=api->alloc(block_type,0); key_type=api->proto(api->object_vt);
-    api->set_layout(key_type,NULL,0,IDAPI_V14_SLOT_RAW); api->method(key_type,api->intern("<"),less);
+    api->set_layout(key_type,NULL,0,IDAPI_V15_SLOT_RAW); api->method(key_type,api->intern("<"),less);
     fixture_namespace_export("VectorTestBlock",block); fixture_namespace_export("VectorTestKeys",key_type);
     const int64_t values[]={5,2,4,1,3,0},inner[]={12,11,10};
     input=vector(values,6); nested=vector(inner,3);
@@ -165,7 +167,7 @@ int main(int argc,char **argv) {
     api->method(block_type,api->intern("value:value:"),sum);
     assert(fixture_integer_value(api->send(map,api->intern("inject:into:"),arguments,2))==25);
     api->method(type,api->intern("size"),forbidden); assert(fixture_integer_value(methods[0](input,NULL,0))==6);
-    IdApi other=selected; other.nil_obj=block; mount(argv[3],&other);
+    IdApi other=selected; other.nil_obj=block; mount(argv[3],&other,&selected_roots);
     if(fixture_vector_v2) {
         Method comma=fixture_vector_v2->install(&other,api->nil_obj,api->nil_obj,api->nil_obj);
         assert(comma==methods[6] && fixture_vector_v2->for_each==methods[3] && fixture_vector_v2->inject==methods[4]);

@@ -1956,7 +1956,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// initialization. The returned module state is null and no caller memory is
 /// retained beyond the process-owned API table.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
     if api.is_null() {
         return ptr::null_mut();
     }
@@ -1996,7 +1996,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: 
     let handle_vt = runtime.handle_vt as Oop;
     let failure_vt = runtime.failure_vt as Oop;
     ROOT_REGISTERED.get_or_init(|| unsafe {
-        (api_ref.gcRegisterRootProvider)(mark_runtime_roots);
+        birnam_abi::root_registry::register(roots, mark_runtime_roots);
     });
     unsafe {
         (api_ref.setLayout)(isolate_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);

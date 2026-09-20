@@ -7,7 +7,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
-static inline void fixture_mount_trace(IdApi *api, const char *floor_path) {
+static inline void fixture_mount_trace(IdApi *api, const char *floor_path,const RootRegistryV1 *root_registry) {
     const char *slash=strrchr(floor_path,'/'); assert(slash);
     char path[PATH_MAX];
     int length=snprintf(path,sizeof(path),"%.*s/libbirnam_trace.dylib",(int)(slash-floor_path),floor_path);
@@ -15,11 +15,11 @@ static inline void fixture_mount_trace(IdApi *api, const char *floor_path) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);
     if(!image) fprintf(stderr,"%s\n",dlerror());
     assert(image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
     TraceLiveProviderV1 provide=(TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"); assert(provide);
     void *floor=api->dlopen_fn(floor_path,RTLD_NOW|RTLD_LOCAL); assert(floor);
     TraceLiveDependencyV1 attach=(TraceLiveDependencyV1)api->dlsym_fn(floor,"birnam_trace_dependency_v1"); assert(attach);
     assert(attach(provide())==1);
-    fixture_mount_collect(api,floor_path);
+    fixture_mount_collect(api,floor_path,root_registry);
 }
 #endif

@@ -5,10 +5,10 @@
   "exported_symbols": [
     "birnam_collection_value_dependency_v1",
     "birnam_integer_dependency_v1",
-    "birnam_map_provider_v4",
+    "birnam_map_provider_v5",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
-    "birnam_vector_dependency_v4",
+    "birnam_vector_dependency_v5",
     "module_init"
   ]
 }

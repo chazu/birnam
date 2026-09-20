@@ -2,11 +2,11 @@
 #ifdef FIXTURE_IDAPI_V8
 #include "idapi_v8.h"
 #else
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/storage-v1/storage_v1.h"
+#include "../../abi/fixtures/idapi-v15/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static unsigned root_calls;
@@ -42,7 +42,7 @@ int main(int argc,char **argv) {
         (void)observe(&request);assert(!"observation did not invoke the presence visitor");
     }
     assert(!strcmp(argv[2],"collection"));
-    fixture_mount_trace(api,argv[1]);
+    fixture_mount_trace(api,argv[1],fixture_root_registry());
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
-    api->gc_register_root_provider(roots);(void)api->gc_collect();assert(root_calls);puts("presence remains callable during root collection");return 0;
+    fixture_register_root(roots);(void)api->gc_collect();assert(root_calls);puts("presence remains callable during root collection");return 0;
 }

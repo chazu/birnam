@@ -4,7 +4,7 @@ use core::ffi::{c_char, c_int, c_void};
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::abi::{Finalizer, IdApi, Method, Oop, RootProvider, TraceHook};
+use crate::abi::{Finalizer, IdApi, Method, Oop, TraceHook};
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
 use crate::runtime::{Runtime, with_active_if_present};
@@ -181,9 +181,7 @@ unsafe extern "C" fn api_gc_set_stack_bottom(address: usize) {
     runtime().gc_set_stack_bottom(address);
 }
 
-unsafe extern "C" fn api_gc_register_root_provider(provider: RootProvider) {
-    runtime().gc_register_root_provider(provider);
-}
+
 
 unsafe extern "C" fn api_gc_collect() -> usize {
     runtime().gc_collect()
@@ -241,7 +239,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         symbolName: api_symbol_name,
         vtableOf: canonical_numeric_functions().vtable_of,
         gcSetStackBottom: api_gc_set_stack_bottom,
-        gcRegisterRootProvider: api_gc_register_root_provider,
         gcCollect: api_gc_collect,
         gcLiveCount: api_gc_live_count,
         setTraceHook: api_set_trace_hook,
@@ -703,4 +700,31 @@ pub unsafe extern "C" fn birnam_method_observation_dependency_v1(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_method_observation_provider_v1() -> *mut birnam_abi::method_observation::ApiV1 {
     runtime().method_observation()
+}
+
+
+pub(crate) fn root_registry_access() -> birnam_abi::root_registry::FloorV1 {
+    unsafe extern "C" fn admit(_: *mut c_void) {
+        #[cfg(not(test))]
+        { runtime().admit_root_registration(); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|runtime| runtime.admit_root_registration()); }
+    }
+    unsafe extern "C" fn overflow(_: *mut c_void) -> ! {
+        crate::boundary::fatal_invariant("gc: too many root providers")
+    }
+    birnam_abi::root_registry::FloorV1 {
+        version: 1, byte_size: size_of::<birnam_abi::root_registry::FloorV1>(),
+        context: core::ptr::null_mut(), admit: Some(admit), overflow: Some(overflow),
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_root_registry_dependency_v1(
+    factory: *const birnam_abi::root_registry::FactoryV1,
+) -> c_int {
+    unsafe { birnam_abi::root_registry::attach(factory) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_root_registry_provider_v1() -> *mut birnam_abi::root_registry::ApiV1 {
+    runtime().root_registry()
 }

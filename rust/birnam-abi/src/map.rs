@@ -14,32 +14,32 @@ pub struct BehaviorsV1 {
 /// and selectors remain process-owned; reinstallation only reapplies bindings.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV4 {
+pub struct ApiV5 {
     pub version: u32,
     pub byte_size: usize,
-    pub prepare: Option<unsafe extern "C" fn(*mut IdApi, *const crate::namespace_import::ApiV1, Oop, c_int) -> BehaviorsV1>,
+    pub prepare: Option<unsafe extern "C" fn(*mut IdApi, *const crate::namespace_import::ApiV1, *const crate::root_registry::ApiV1, Oop, c_int) -> BehaviorsV1>,
     pub finish_prototype: Option<unsafe extern "C" fn(*mut IdApi)>,
     pub set_layout: Option<unsafe extern "C" fn(*mut IdApi)>,
     pub publish: Option<unsafe extern "C" fn(*mut IdApi, *const crate::namespace_export::ApiV1)>,
     pub install: Option<unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop)>,
 }
 const _: () = {
-    assert!(size_of::<ApiV4>() == 56);
-    assert!(core::mem::offset_of!(ApiV4, install) == 48);
+    assert!(size_of::<ApiV5>() == 56);
+    assert!(core::mem::offset_of!(ApiV5, install) == 48);
     assert!(size_of::<BehaviorsV1>() == 16);
 };
-pub type ProviderV4 = unsafe extern "C" fn() -> *const ApiV4;
-pub type DependencyV4 = unsafe extern "C" fn(*const ApiV4) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV4> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV5 = unsafe extern "C" fn() -> *const ApiV5;
+pub type DependencyV5 = unsafe extern "C" fn(*const ApiV5) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV5> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Mount on the owner thread; immutable descriptor/code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV4) -> c_int {
+pub unsafe fn attach(api: *const ApiV5) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 4
-        || value.byte_size != size_of::<ApiV4>()
+    if value.version != 5
+        || value.byte_size != size_of::<ApiV5>()
         || value.prepare.is_none()
         || value.finish_prototype.is_none()
         || value.set_layout.is_none()
@@ -58,15 +58,15 @@ pub unsafe fn attach(api: *const ApiV4) -> c_int {
         Err(existing) => c_int::from(ptr::eq(existing, api)),
     }
 }
-fn operations() -> ApiV4 {
+fn operations() -> ApiV5 {
     let api = DEPENDENCY.load(Ordering::Acquire);
     assert!(!api.is_null(), "native Map dependency was not mounted");
     unsafe { *api }
 }
 /// # Safety
 /// Call at Map behavior creation after Range preparation, retaining the table and parent.
-pub unsafe fn prepare(api: *mut IdApi, imports: *const crate::namespace_import::ApiV1, parent: Oop, adopting: bool) -> BehaviorsV1 {
-    unsafe { operations().prepare.unwrap()(api, imports, parent, c_int::from(adopting)) }
+pub unsafe fn prepare(api: *mut IdApi, imports: *const crate::namespace_import::ApiV1, roots: *const crate::root_registry::ApiV1, parent: Oop, adopting: bool) -> BehaviorsV1 {
+    unsafe { operations().prepare.unwrap()(api, imports, roots, parent, c_int::from(adopting)) }
 }
 /// # Safety
 /// Call after prepare and Range prototype creation.
@@ -93,8 +93,8 @@ pub unsafe fn install(api: *mut IdApi, value: Oop, value2: Oop, print_string: Oo
 macro_rules! map_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_map_dependency_v4(
-            api: *const $crate::map::ApiV4,
+        pub unsafe extern "C" fn birnam_map_dependency_v5(
+            api: *const $crate::map::ApiV5,
         ) -> core::ffi::c_int {
             unsafe { $crate::map::attach(api) }
         }

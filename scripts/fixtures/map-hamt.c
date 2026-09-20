@@ -1,4 +1,4 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -52,8 +52,8 @@ static int64_t read_integer(void *context,Oop value) {
     return result;
 }
 static void mount(const char *path,IdApi *table) {
-    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
 }
 static uint32_t hash(uint64_t input) {
     uint64_t x=input+UINT64_C(0x9e3779b97f4a7c15); x^=x>>30; x*=UINT64_C(0xbf58476d1ce4e5b9);
@@ -90,9 +90,9 @@ int main(int argc,char **argv) {
     setvbuf(stdout,NULL,_IONBF,0);
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
-    selected=*api; selected.alloc=allocate; mount(argv[3],&selected); api->gc_register_root_provider(roots);
+    selected=*api; selected.alloc=allocate; mount(argv[3],&selected); fixture_register_root(roots);
     type=fixture_namespace_import("MapVt"); node_type=fixture_namespace_import("MapNode"); prototype=fixture_namespace_import("Map");
     new_method=lookup(type,"new"); put_method=lookup(type,"at:put:"); at_method=lookup(type,"at:");
     Method methods[]={new_method,put_method,at_method};

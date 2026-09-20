@@ -10,6 +10,14 @@ loader ports are complete.
 
 ### Changed
 
+- Extract the ordered native root-provider list into Root Registry (81BJ).
+  IdApi v15 has 25 fields / 200 bytes; eight-argument initialization and Native
+  Loader v8 carry explicit registration capabilities. Early String, Float, Word,
+  Range, Vector and Map preparation receive their matching incoming selection.
+  Preserve admission, duplicate entries, the 32-entry limit, callback timing and
+  copied GC/diagnostic snapshots. Native consumers require rebuilding; image
+  encoding is unchanged.
+
 - Move the native pre-overwrite hook into Method Observation (81BI). IdApi v14
   has 26 fields / 208 bytes; seven-argument initialization and Native Loader v7
   carry the explicit capability. Preserve exact direct-binding notification,

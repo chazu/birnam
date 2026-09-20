@@ -19,6 +19,7 @@ const GRAMMAR_NAME: &[u8] = b"BirnamGrammar\0";
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    roots: usize,
     exports: usize,
     presence: usize,
     peg: usize,
@@ -711,7 +712,7 @@ unsafe extern "C" fn lang_furthest_fail(
     unsafe { send0(api, grammar, b"furthestFail\0") }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -736,6 +737,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
         Runtime {
             api: api_pointer as usize,
+            roots: roots as usize,
             exports: exports as usize,
             presence: presence as usize,
             peg: peg as usize,
@@ -747,7 +749,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     let exports = runtime.exports as *const birnam_abi::namespace_export::ApiV1;
     let presence = runtime.presence as *const birnam_abi::namespace_presence::ApiV1;
     ROOT_REGISTERED.get_or_init(|| unsafe {
-        (api.gcRegisterRootProvider)(mark_runtime_roots);
+        birnam_abi::root_registry::register(runtime.roots as *const birnam_abi::root_registry::ApiV1, mark_runtime_roots);
     });
     let grammar = unsafe { build_grammar(api, as_oop(runtime.peg)) };
     GRAMMAR.store(grammar as usize, Ordering::Release);
@@ -781,8 +783,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` is the live host IdApi table or null for the documented fatal boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports, roots) };
     ptr::null_mut()
 }
 

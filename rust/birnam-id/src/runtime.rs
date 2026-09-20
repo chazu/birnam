@@ -131,6 +131,7 @@ impl CanonicalObjects {
 
 struct RuntimeState {
     method_observation: crate::method_observation::Service,
+    root_registry: crate::root_registry::Service,
     vtable_enumeration: crate::vtable_enumeration::Service,
     // Ordered authorities are dropped before the raw heap owner at harness
     // teardown. No destructor dereferences a heap payload.
@@ -440,6 +441,7 @@ impl Runtime {
             read_reuse_gc_epoch: Cell::new(0),
             state: UnsafeCell::new(RuntimeState {
                 method_observation: crate::method_observation::Service::new(),
+                root_registry: crate::root_registry::Service::new(),
                 vtable_enumeration: crate::vtable_enumeration::Service::new(),
                 symbols,
                 vtables,
@@ -4513,13 +4515,16 @@ impl Runtime {
 
     pub(crate) fn gc_register_root_provider(&self, provider: crate::abi::RootProvider) {
         self.assert_owner();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        unsafe {
-            (&mut *self.state.get())
-                .metadata
-                .register_root_provider(provider)
-        };
+        // Canonical append invokes no callbacks and does not borrow RuntimeState.
+        unsafe { (*self.state.get()).root_registry.register(provider) };
     }
+
+    pub(crate) fn root_registry(&self) -> *mut birnam_abi::root_registry::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).root_registry.api() }
+    }
+
+    pub(crate) fn admit_root_registration(&self) { self.assert_owner(); }
 
     pub(crate) fn gc_collect(&self) -> usize {
         self.enter(|| self.gc_collect_active())
@@ -6774,6 +6779,67 @@ mod tests {
         assert_eq!(runtime.vtable_owner(live_vtable), live_owner);
         assert!((0..runtime.vtable_count()).any(|index| runtime.vtable_at(index) == live_vtable));
         assert!((0..runtime.vtable_count()).all(|index| runtime.vtable_at(index) != dead_vtable));
+    }
+
+    #[test]
+    fn root_registry_follows_independent_moved_runtime_state() {
+        thread_local! { static CALLS: Cell<usize> = const { Cell::new(0) }; }
+        unsafe extern "C" fn roots(_: crate::abi::MarkFn) { CALLS.set(CALLS.get() + 1); }
+        let first = build_bootstrap();
+        // Internal registration also works before this Runtime has an active entry.
+        first.runtime.gc_register_root_provider(roots);
+        let api = first.runtime.root_registry();
+        let mut runtimes = Vec::with_capacity(1);
+        runtimes.push(first);
+        runtimes.push(build_bootstrap());
+        assert_eq!(runtimes[0].runtime.root_registry(), api);
+        assert_ne!(runtimes[1].runtime.root_registry(), api);
+        unsafe { (*api).context = core::ptr::null_mut(); (*api).register = None; }
+        runtimes[0].runtime.gc_register_root_provider(roots);
+        CALLS.set(0);
+        for bootstrap in &runtimes {
+            bootstrap.runtime.enter(|| bootstrap.runtime.gc_collect_from_native_range(0, 0));
+        }
+        assert_eq!(CALLS.get(), 2);
+        drop(runtimes.remove(0));
+        let second = runtimes.pop().unwrap();
+        second.runtime.enter(|| unsafe {
+            birnam_abi::root_registry::register(second.runtime.root_registry(), roots);
+        });
+        second.runtime.enter(|| second.runtime.gc_collect_from_native_range(0, 0));
+        assert_eq!(CALLS.get(), 3);
+    }
+
+    #[test]
+    fn root_registry_callback_append_is_visible_only_in_the_next_gc_snapshot() {
+        thread_local! {
+            static ORDER: core::cell::RefCell<Vec<usize>> = const { core::cell::RefCell::new(Vec::new()) };
+            static APPENDED: Cell<bool> = const { Cell::new(false) };
+        }
+        unsafe extern "C" fn later(_: crate::abi::MarkFn) {
+            ORDER.with(|order| order.borrow_mut().push(2));
+        }
+        unsafe extern "C" fn first(_: crate::abi::MarkFn) {
+            ORDER.with(|order| order.borrow_mut().push(1));
+            crate::runtime::with_active(|runtime| {
+                // The existing collection guard rejects nested collection before callbacks.
+                assert_eq!(runtime.gc_collect(), 0);
+                if !APPENDED.replace(true) {
+                    unsafe { birnam_abi::root_registry::register(runtime.root_registry(), later) };
+                }
+            });
+        }
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.gc_register_root_provider(first);
+        runtime.gc_register_root_provider(first);
+        APPENDED.set(false);
+        ORDER.with(|order| order.borrow_mut().clear());
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+        ORDER.with(|order| assert_eq!(*order.borrow(), [1, 1]));
+        ORDER.with(|order| order.borrow_mut().clear());
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+        ORDER.with(|order| assert_eq!(*order.borrow(), [1, 1, 2]));
     }
 
     #[test]

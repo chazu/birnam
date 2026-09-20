@@ -11,6 +11,7 @@ struct Snapshot {
     deferred_count: usize,
     deferred_bytes: usize,
     gaps: u32,
+    providers: Vec<crate::abi::RootProvider>,
 }
 unsafe extern "C" fn capture(context: *mut core::ffi::c_void, view: *const ViewV1) -> Status {
     let (output, view) = unsafe { (&mut *context.cast::<Snapshot>(), &*view) };
@@ -29,6 +30,7 @@ unsafe extern "C" fn capture(context: *mut core::ffi::c_void, view: *const ViewV
     output.deferred_count = view.deferred_count;
     output.deferred_bytes = view.deferred_bytes;
     output.gaps = view.coverage_gaps;
+    output.providers = unsafe { crate::abi::borrowed_slice(view.legacy_root_providers, view.legacy_root_provider_count) }.unwrap().to_vec();
     OK
 }
 fn snapshot(runtime: &Runtime) -> Snapshot {
@@ -231,4 +233,26 @@ fn detached_storage_loses_its_identity_before_subsequent_allocation() {
         .unwrap();
     assert!(current.identity > previous);
     assert_eq!(current.requested_size, 9);
+}
+
+#[test]
+fn root_registry_diagnostic_snapshot_preserves_duplicates_without_invocation() {
+    unsafe extern "C" fn uncalled(_: crate::abi::MarkFn) { panic!("diagnostics invoked a provider"); }
+    let bootstrap = build_bootstrap();
+    let runtime = &bootstrap.runtime;
+    let before = snapshot(runtime);
+    runtime.gc_register_root_provider(uncalled);
+    runtime.gc_register_root_provider(uncalled);
+    let api = runtime.root_registry();
+    // Restricted storage observation uses immutable owned operations, not this
+    // mutable public descriptor or its ordinary-admission callback.
+    unsafe { (*api).context = core::ptr::null_mut(); (*api).register = None; }
+    let observed = snapshot(runtime);
+    assert_eq!(observed.providers.len(), before.providers.len() + 2);
+    assert!(observed.providers[before.providers.len()..].iter().all(|provider|
+        core::ptr::fn_addr_eq(*provider, uncalled as crate::abi::RootProvider)));
+    assert_ne!(observed.gaps & LEGACY_ROOTS_UNOBSERVED, 0);
+    runtime.gc_register_root_provider(uncalled);
+    assert_eq!(observed.providers.len(), before.providers.len() + 2);
+    assert_eq!(snapshot(runtime).providers.len(), before.providers.len() + 3);
 }

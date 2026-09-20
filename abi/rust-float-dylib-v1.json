@@ -4,7 +4,7 @@
   "install_name": "@rpath/libbirnam_float.dylib",
   "exported_symbols": [
     "birnam_error_value_dependency_v3",
-    "birnam_float_prepare_v4",
+    "birnam_float_prepare_v5",
     "birnam_float_provider_v1",
     "birnam_integer_dependency_v1",
     "birnam_string_dependency_v1",

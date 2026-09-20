@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -49,7 +49,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(vtable_selector_at_v2(enumeration,rooted,0)==b && !vtable_selector_at_v2(enumeration,rooted,1));
     rooted=NULL;return args[0];
 }
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation) { (void)observation;
+void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry) { (void)root_registry; (void)observation;
     (void)presence;(void)exports;assert(selected && !prior && vtables && !observing);
     if(api)assert(api==selected && enumeration==vtables);else { api=selected;enumeration=(VtableEnumerationV2 *)vtables; }
     assert(enumeration->version==2 && enumeration->byte_size==sizeof(*enumeration));
@@ -57,7 +57,7 @@ void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presenc
     assert(dladdr((void *)enumeration->count,&owner) && strstr(owner.dli_fname,"libbirnam_object_model.dylib"));
     assert(dladdr((void *)enumeration->at,&owner) && strstr(owner.dli_fname,"libbirnam_object_model.dylib"));
     assert(dladdr((void *)enumeration->selector_at,&owner) && strstr(owner.dli_fname,"libbirnam_object_model.dylib"));
-    if(!rooted_registered) { api->gc_register_root_provider(mark_root);rooted_registered=1; }
+    if(!rooted_registered) { root_registry_register_v1(root_registry,mark_root);rooted_registered=1; }
     Oop system=namespace_import_v1(imports,"SystemVt");assert(system);
     api->method(system,api->intern("selectorExercise:"),exercise);
     api->method(system,api->intern("selectorObserve"),observe);

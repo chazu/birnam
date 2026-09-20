@@ -73,3 +73,137 @@ pub unsafe extern "C" fn module_init(
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use birnam_abi::{MarkFn, Oop};
+    use core::cell::{Cell, RefCell};
+
+    #[derive(Default)]
+    struct Admission {
+        calls: Cell<usize>,
+        reenter: Cell<bool>,
+        api: Cell<*mut ApiV1>,
+    }
+    unsafe extern "C" fn admit(context: *mut c_void) {
+        let state = unsafe { &*context.cast::<Admission>() };
+        state.calls.set(state.calls.get() + 1);
+        if state.reenter.replace(false) {
+            unsafe { birnam_abi::root_registry::register(state.api.get(), second) };
+        }
+    }
+    unsafe extern "C" fn overflow(_: *mut c_void) -> ! {
+        eprintln!("gc: too many root providers");
+        std::process::exit(71)
+    }
+    fn floor(state: &Admission) -> FloorV1 {
+        FloorV1 { version: 1, byte_size: size_of::<FloorV1>(),
+            context: ptr::from_ref(state).cast_mut().cast(), admit: Some(admit), overflow: Some(overflow) }
+    }
+    unsafe extern "C" fn first(mark: MarkFn) { unsafe { mark(1usize as Oop) }; }
+    unsafe extern "C" fn second(mark: MarkFn) { unsafe { mark(2usize as Oop) }; }
+    thread_local! { static MARKED: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) }; }
+    unsafe extern "C" fn mark(object: Oop) { MARKED.with(|values| values.borrow_mut().push(object.addr())); }
+    fn invoke(view: SnapshotV1) -> Vec<usize> {
+        MARKED.with(|values| values.borrow_mut().clear());
+        assert!(view.entries[view.count..].iter().all(Option::is_none));
+        for provider in &view.entries[..view.count] { unsafe { provider.unwrap()(mark) }; }
+        MARKED.with(|values| values.borrow().clone())
+    }
+
+    #[test]
+    fn creation_validates_inertly_and_copies_floor() {
+        let state = Admission::default();
+        let mut selected = floor(&state);
+        unsafe {
+            assert!(create(ptr::null()).is_null());
+            selected.version = 2; assert!(create(&selected).is_null());
+            selected = floor(&state); selected.byte_size -= 1; assert!(create(&selected).is_null());
+            selected = floor(&state); selected.admit = None; assert!(create(&selected).is_null());
+            selected = floor(&state); selected.overflow = None; assert!(create(&selected).is_null());
+            selected = floor(&state);
+            let api = create(&selected); assert!(!api.is_null());
+            assert_eq!(state.calls.get(), 0);
+            selected.context = ptr::null_mut(); selected.admit = None;
+            assert!(selected.admit.is_none());
+            birnam_abi::root_registry::register(api, first);
+            assert_eq!(state.calls.get(), 1);
+            assert_eq!(invoke(snapshot(api)), [1]);
+            destroy(api);
+            assert_eq!(state.calls.get(), 1);
+        }
+    }
+
+    #[test]
+    fn duplicates_consume_all_32_slots_and_failed_append_leaves_order_unchanged() {
+        let state = Admission::default();
+        unsafe {
+            let api = create(&floor(&state));
+            for index in 0..CAPACITY { assert_eq!(append(api, if index % 2 == 0 { first } else { second }), 1); }
+            assert_eq!(append(api, first), 0);
+            assert_eq!(state.calls.get(), 0);
+            assert_eq!(invoke(snapshot(api)), (0..32).map(|i| i % 2 + 1).collect::<Vec<_>>());
+            destroy(api);
+        }
+    }
+
+    #[test]
+    fn snapshot_is_owned_and_canonical_operations_ignore_mutable_public_selection() {
+        let state = Admission::default();
+        unsafe {
+            let api = create(&floor(&state));
+            assert_eq!(append(api, first), 1);
+            let before = snapshot(api);
+            (*api).context = ptr::null_mut(); (*api).register = None;
+            assert_eq!(append(api, second), 1);
+            let after = snapshot(api);
+            destroy(api);
+            assert_eq!(invoke(before), [1]);
+            assert_eq!(invoke(after), [1, 2]);
+            assert_eq!(state.calls.get(), 0);
+        }
+    }
+
+    #[test]
+    fn admission_can_reenter_and_inner_registration_precedes_outer_append() {
+        let state = Admission::default();
+        unsafe {
+            let api = create(&floor(&state));
+            state.api.set(api); state.reenter.set(true);
+            birnam_abi::root_registry::register(api, first);
+            assert_eq!(state.calls.get(), 2);
+            assert_eq!(invoke(snapshot(api)), [2, 1]);
+            destroy(api);
+        }
+    }
+
+    #[test]
+    fn public_overflow_occurs_after_admission_and_reentrant_last_append() {
+        const CHILD: &str = "BIRNAM_ROOT_REGISTRY_OVERFLOW_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            unsafe extern "C" fn checked_overflow(context: *mut c_void) -> ! {
+                let state = unsafe { &*context.cast::<Admission>() };
+                let view = unsafe { snapshot(state.api.get()) };
+                if state.calls.get() != 2 || view.count != CAPACITY || invoke(view).last() != Some(&2) {
+                    std::process::exit(72);
+                }
+                unsafe { overflow(context) }
+            }
+            let state = Admission::default();
+            let mut selected = floor(&state); selected.overflow = Some(checked_overflow);
+            unsafe {
+                let api = create(&selected); state.api.set(api);
+                for _ in 0..CAPACITY - 1 { assert_eq!(append(api, first), 1); }
+                state.reenter.set(true);
+                birnam_abi::root_registry::register(api, first);
+            }
+            unreachable!("overflow must not return");
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "tests::public_overflow_occurs_after_admission_and_reentrant_last_append", "--nocapture"])
+            .env(CHILD, "1").output().unwrap();
+        assert_eq!(output.status.code(), Some(71));
+        assert_eq!(String::from_utf8(output.stderr).unwrap(), "gc: too many root providers\n");
+    }
+}

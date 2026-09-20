@@ -11,7 +11,7 @@ if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then
 else
   printf 'block loop image smoke root: %s\n' "$scratch"
 fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v14 \
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v15 \
   -DEXPECT_BLOCK_LOOP_LIBRARY='"libbirnam_block_loop.dylib"' \
   scripts/fixtures/block-loop-native.c -o "$scratch/native-guard.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM

@@ -26,7 +26,7 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
         .set(runtime.read_reuse_gc_epoch.get().saturating_add(1));
     let (roots, providers) = unsafe {
         let state = &*runtime.state.get();
-        (floor_roots(state), state.metadata.root_providers())
+        (floor_roots(state), state.root_registry.snapshot())
     };
     for root in roots {
         emit_candidate(sink, root.addr());

@@ -1,8 +1,10 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <inttypes.h>
+static FixtureRootSlot selected_root_slot;
+static RootRegistryV1 selected_roots=FIXTURE_ROOTS(selected_root_slot);
 
 /* Independent payload/arithmetic oracle; no Rust layout or method code. */
 typedef struct { int64_t start, end; } Range;
@@ -17,16 +19,16 @@ static const char *order[]={"size","includes:","do:","inject:into:","at:","rever
 static Oop send0(Oop object,const char *name) { return api->send(object,api->intern(name),NULL,0); }
 static Oop send1(Oop object,const char *name,Oop value) { return api->send(object,api->intern(name),&value,1); }
 static Method lookup(Oop type,const char *name) { return (Method)send1(type,"lookup",api->intern(name)); }
-static void mount(const char *path,IdApi *table,const NamespaceExportV1 *exports) {
+static void mount(const char *path,IdApi *table,const NamespaceExportV1 *exports,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation());
+    fixture_attach_integer(api,image,fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
 }
 static void roots(RootProvider provider) {
     registrations++;
     Dl_info owner; assert(dladdr((const void *)provider,&owner));
     if(strstr(owner.dli_fname,"/libbirnam_range.dylib")) range_roots=provider;
-    api->gc_register_root_provider(provider);
+    fixture_register_root(provider);
 }
 static void record_mark(Oop object) {
     if(object==api->intern("value:") || object==api->intern("value:value:") || object==api->intern("printString")) marks++;
@@ -114,16 +116,16 @@ int main(int argc,char **argv) {
     int methods_baseline=argc==5 && !strcmp(argv[4],"methods-baseline");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
-    mount(argv[2],api,fixture_namespace_exports());
+    mount(argv[2],api,fixture_namespace_exports(),fixture_root_registry());
     selected=*api; selected.set_layout=layout; selected.method=method;
-    NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; selected.gc_register_root_provider=roots;
-    mount(argv[3],&selected,&selected_exports);
+    NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; selected_root_slot=roots;
+    mount(argv[3],&selected,&selected_exports,&selected_roots);
     assert(bindings==8 && publications==1 && collections==8 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
     assert(fixture_namespace_import("Range")==prototype && fixture_namespace_import("RangeVt")==behavior);
     assert(vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
-    for(size_t i=0;i<3;i++) assert(api->slot_kind(behavior,i)==IDAPI_V14_SLOT_RAW);
+    for(size_t i=0;i<3;i++) assert(api->slot_kind(behavior,i)==IDAPI_V15_SLOT_RAW);
     if(!baseline) {
         assert(range_roots); range_roots(record_mark); assert(marks==3);
         if(!methods_baseline && !fixture_range_v2) {
@@ -209,15 +211,15 @@ int main(int argc,char **argv) {
     api->method(behavior,api->intern("size"),identity); assert(send0(r,"size")==r);
     if(!baseline) {
         ModuleInitFn prepare=(ModuleInitFn)api->dlsym_fn(range_module,"module_init"); assert(prepare);
-        prepare(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()); assert(send0(r,"size")==r && bindings==8);
+        prepare(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry()); assert(send0(r,"size")==r && bindings==8);
     }
     fixture_namespace_export("Range",api->nil_obj); fixture_namespace_export("RangeVt",api->nil_obj);
-    mount(argv[3],&selected,&selected_exports); assert(bindings==16 && publications==1 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
+    mount(argv[3],&selected,&selected_exports,&selected_roots); assert(bindings==16 && publications==1 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
     assert(fixture_namespace_import("Range")==api->nil_obj && fixture_namespace_import("RangeVt")==api->nil_obj);
     for(unsigned i=0;i<8;i++) assert(lookup(behavior,order[i])==implementations[i]);
     api->gc_set_precise(1); api->gc_collect(); integer_result(send0(r,"size"),3);
     if(!baseline) { marks=0; range_roots(record_mark); assert(marks==3); }
-    fixture_namespace_export("Vector",NULL); mount(argv[3],&selected,&selected_exports);
+    fixture_namespace_export("Vector",NULL); mount(argv[3],&selected,&selected_exports,&selected_roots);
     assert(bindings==24 && publications==2 && fixture_namespace_import("Range")==prototype && fixture_namespace_import("RangeVt")==behavior);
     Oop reversed=send0(r,"reversed"); integer_result(send1(reversed,"at:",fixture_integer_make(0)),3);
     Oop combined=send1(r,",",reversed); integer_result(send0(combined,"size"),6);

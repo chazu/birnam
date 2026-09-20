@@ -1,8 +1,10 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <inttypes.h>
+static FixtureRootSlot selected_root_slot;
+static RootRegistryV1 selected_roots=FIXTURE_ROOTS(selected_root_slot);
 
 /* Compare foreign construction traces against the previous installed build. */
 typedef struct { int64_t start,end; } Payload;
@@ -38,7 +40,7 @@ static void partial(unsigned expected) {
 static void roots(RootProvider provider) {
     Dl_info owner; assert(dladdr((const void *)provider,&owner));
     if(strstr(owner.dli_fname,"/libbirnam_range.dylib")) owner_roots=provider;
-    api->gc_register_root_provider(provider);
+    fixture_register_root(provider);
 }
 static Oop proto(Oop parent) {
     if(proto_calls==4) partial(1);
@@ -119,9 +121,9 @@ static int64_t read_integer(void *context,Oop object) {
     }
     return original_read(context,object);
 }
-static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap) {
-    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation());
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const RootRegistryV1 *root_registry) {
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
 }
 static void seed(void) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"}; Oop types[6];
@@ -139,15 +141,15 @@ int main(int argc,char **argv) {
     missing_prototype=!strcmp(argv[4],"missing-prototype"); rebound_prototype=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     if(adopting || ignored_exports) seed();
     if(ignored_exports) { fixture_namespace_export("Vector",NULL); behavior=prototype=NULL; }
     Oop adopted_behavior=behavior,adopted_prototype=prototype;
     selected=*api; selected.proto=proto; selected_import_slot=import; selected_presence_slot=exported;
     selected.intern=intern; selected.alloc=allocate; selected.method=method; selected.send=send;
-    NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; selected.set_layout=layout; selected.set_finalizer=finalize; selected.gc_register_root_provider=roots;
-    capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports); capture=0; phase=1;
+    NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; selected.set_layout=layout; selected.set_finalizer=finalize; selected_root_slot=roots;
+    capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots); capture=0; phase=1;
     if(range_candidate) { prototype=range_candidate; range_candidate=NULL; }
     if(adopting) assert(behavior==adopted_behavior && (!adopted_prototype || prototype==adopted_prototype));
     else assert(fixture_namespace_import("RangeVt")==behavior && fixture_namespace_import("Range")==prototype && vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
@@ -178,13 +180,13 @@ int main(int argc,char **argv) {
     fixture_namespace_export("RangeVt",api->nil_obj); fixture_namespace_export("Range",api->nil_obj);
     /* Selection comes from the first table, including after a different reload table. */
     IdApi other=selected;NamespaceExportV1 other_exports=selected_exports;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot); other.nil_obj=created;
-    capture=1; mount(argv[3],&other,&selected_presence,&other_imports,&other_exports); capture=0;
+    capture=1; mount(argv[3],&other,&selected_presence,&other_imports,&other_exports,&selected_roots); capture=0;
     assert(to(end,NULL,0)==api->nil_obj && lookup(fixture_integer->behavior,"to:")==to);
     assert(fixture_namespace_import("Range")==api->nil_obj && fixture_namespace_import("RangeVt")==api->nil_obj);
     api->gc_set_precise(1); api->gc_collect();
     Oop rebuilt=to(first_integer,&last_integer,1); assert(api->vtable_of(rebuilt)==behavior);
     if(modern) { family_marks=selector_marks=0; owner_roots(mark); assert(family_marks==2 && selector_marks==3); }
-    fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports); capture=0;
+    fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots); capture=0;
     assert(fixture_namespace_import("RangeVt")==behavior && fixture_namespace_import("Range")==prototype && !finalizers);
     printf("range-storage: construction, adoption, callbacks, roots, clone and reload passed mode=%s\n",argv[4]);
 }

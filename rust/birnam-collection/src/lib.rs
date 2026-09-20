@@ -53,7 +53,7 @@ unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8
     unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -65,9 +65,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         } else {
             unsafe { (api.proto)(api.object_vt) }
         };
-        let vector = unsafe { birnam_abi::vector::prepare(api_pointer, imports, collection_vt, reloading) };
-        let range_vt = unsafe { birnam_abi::range::prepare(api_pointer, imports, collection_vt, reloading) };
-        let map = unsafe { birnam_abi::map::prepare(api_pointer, imports, collection_vt, reloading) };
+        let vector = unsafe { birnam_abi::vector::prepare(api_pointer, imports, roots, collection_vt, reloading) };
+        let range_vt = unsafe { birnam_abi::range::prepare(api_pointer, imports, roots, collection_vt, reloading) };
+        let map = unsafe { birnam_abi::map::prepare(api_pointer, imports, roots, collection_vt, reloading) };
         if [collection_vt, vector.node, vector.vector, range_vt, map.map, map.node]
             .iter().any(|value| value.is_null())
         {
@@ -86,7 +86,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
     });
     ROOTS_REGISTERED.call_once(|| unsafe {
-        (api.gcRegisterRootProvider)(mark_roots);
+        birnam_abi::root_registry::register(roots, mark_roots);
     });
     unsafe {
         birnam_abi::vector::set_layout(api_pointer);
@@ -146,9 +146,9 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust Collection vector protocol against the process floor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
     let _ = state;
-    unsafe { bring_up(api, presence, imports, exports) };
+    unsafe { bring_up(api, presence, imports, exports, roots) };
     ptr::null_mut()
 }
 

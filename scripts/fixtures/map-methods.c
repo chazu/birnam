@@ -1,8 +1,10 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <inttypes.h>
+static FixtureRootSlot selected_root_slot;
+static RootRegistryV1 selected_roots=FIXTURE_ROOTS(selected_root_slot);
 
 typedef struct { Oop root; size_t count; } Map;
 typedef struct { uint32_t tag,n,hash,pad; Oop items[6]; } Node;
@@ -28,7 +30,7 @@ static void mark(Oop value) { assert(value); marks++; }
 static void register_roots(RootProvider provider) {
     Dl_info owner; assert(dladdr((const void *)provider,&owner));
     if(strstr(owner.dli_fname,"/libbirnam_map.dylib")) owner_roots=provider;
-    api->gc_register_root_provider(provider);
+    fixture_register_root(provider);
 }
 static int identity(Oop object) { for(int i=0;i<8;i++) if(pieces[i]==object) return i; return -1; }
 static void reset(void) {
@@ -91,9 +93,9 @@ static Oop print(Oop self,const Oop *args,size_t count) {
 }
 static Oop print_replacement(Oop self,const Oop *args,size_t count) { puts("replacement print"); return print(self,args,count); }
 static Oop forbidden(Oop self,const Oop *args,size_t count) { (void)self; (void)args; (void)count; assert(!"private operation used public lookup or reloaded selectors"); return NULL; }
-static void mount(const char *path,IdApi *table) {
-    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+static void mount(const char *path,IdApi *table,const RootRegistryV1 *root_registry) {
+    void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
 }
 static void expect_vector(Oop object,const int *indices,size_t count) {
     assert(fixture_vector->count(object)==count);
@@ -108,15 +110,15 @@ static void end(void) { capture=0; }
 int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
-    selected=*api; selected.alloc=allocate; selected.send=send; selected.gc_register_root_provider=register_roots; mount(argv[3],&selected);
+    fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_root_registry());
+    selected=*api; selected.alloc=allocate; selected.send=send; selected_root_slot=register_roots; mount(argv[3],&selected,&selected_roots);
     type=fixture_namespace_import("MapVt"); node_type=fixture_namespace_import("MapNode");
     for(size_t i=0;i<13;i++) {
         methods[i]=lookup(type,names[i]); assert(methods[i]); Dl_info owner; assert(dladdr((const void *)methods[i],&owner));
         assert(strstr(owner.dli_fname,fixture_map_v2?"/libbirnam_map.dylib":"_collection.dylib"));
     }
-    assert(methods[0]==methods[1]); api->gc_register_root_provider(roots);
+    assert(methods[0]==methods[1]); fixture_register_root(roots);
     block_type=api->proto(api->object_vt); block=api->alloc(block_type,0); piece_type=api->proto(api->object_vt);
     for(size_t i=0;i<8;i++) pieces[i]=api->alloc(piece_type,0);
     api->method(block_type,api->intern("value"),fallback);
@@ -164,7 +166,7 @@ int main(int argc,char **argv) {
     reset(); null_make=1; assert(methods[12](subject,NULL,0)==NULL && make_calls==1); reset();
     expect_print(methods[12](empty_map,NULL,0),"{}");
     marks=0; assert(owner_roots); owner_roots(mark); assert(marks==(fixture_map_v2?6:3));
-    IdApi other=selected; other.nil_obj=pieces[7]; mount(argv[3],&other);
+    IdApi other=selected; other.nil_obj=pieces[7]; mount(argv[3],&other,&selected_roots);
     if(fixture_map_v2) fixture_map_v2->install(&other,pieces[0],pieces[0],pieces[0]);
     assert(methods[6](subject,NULL,1)==api->nil_obj);
     for(size_t i=0;i<13;i++) assert(lookup(type,names[i])==methods[i]);

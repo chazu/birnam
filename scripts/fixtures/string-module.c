@@ -1,8 +1,10 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
 #include <math.h>
+static FixtureRootSlot string_api_root_slot;
+static RootRegistryV1 string_api_roots=FIXTURE_ROOTS(string_api_root_slot);
 
 static IdApi *api;
 static Oop (*original_string)(void *, const uint8_t *, size_t);
@@ -33,7 +35,7 @@ static Oop reenter_publication(Oop receiver, Oop selector, const Oop *args, size
 }
 static void inert_cleanup(Oop object) { (void)object; }
 static void register_roots(RootProvider roots) {
-    ++registrations; provider=roots; api->gc_register_root_provider(roots);
+    ++registrations; provider=roots; fixture_register_root(roots);
 }
 static void record_mark(Oop object) { if(object==print_selector) ++marked_selector; }
 static Oop counted_string(void *context, const uint8_t *bytes, size_t length) { ++strings; return original_string(context,bytes,length); }
@@ -46,10 +48,10 @@ static Oop forwarded(Oop receiver, Oop selector, const Oop *args, size_t count) 
     if(selector==print_selector) ++sends;
     return api->send(receiver,selector,args,count);
 }
-static void mount(const char *path, IdApi *selected) {
+static void mount(const char *path, IdApi *selected,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    fixture_attach_integer(api,image,fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
 }
 static Oop raw(const uint8_t *bytes, size_t length) { return fixture_string_make(bytes,length); }
 static Oop text(const char *value) { return raw((const uint8_t *)value,strlen(value)); }
@@ -85,22 +87,22 @@ int main(int argc, char **argv) {
     int baseline=argc==6;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);
-    string_api=*api; string_api.gc_register_root_provider=register_roots;
+    fixture_mount_trace(api,argv[1],fixture_root_registry());
+    string_api=*api; string_api_root_slot=register_roots;
     string_api.set_layout=collecting_layout; string_api.method=collecting_method;
     string_api.alloc=forbidden_alloc; string_api.set_finalizer=forbidden_finalizer;
-    fixture_prepare_string(&string_api,argv[1],fixture_namespace_exports());
+    fixture_prepare_string(&string_api,argv[1],fixture_namespace_exports(),&string_api_roots);
     assert(preparation_collections==3);
     string_api.set_layout=api->set_layout; string_api.method=api->method;
-    fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports()); mount(argv[2],api);
+    fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry()); mount(argv[2],api,fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     assert(!lookup("size"));
     string_api.send=reenter_publication;
-    mount(argv[3],&string_api); assert(registrations==2 && provider && publication_reentries==1);
+    mount(argv[3],&string_api,&string_api_roots); assert(registrations==2 && provider && publication_reentries==1);
     string_api.send=api->send;
     StringProviderV1 provide=(StringProviderV1)api->dlsym_fn(fixture_string_image,"birnam_string_provider_v1");
-    StringPrepareV2 prepare=(StringPrepareV2)api->dlsym_fn(fixture_string_image,"birnam_string_prepare_v2");
-    assert(provide && prepare && provide()==fixture_string && prepare(&string_api,fixture_namespace_exports(),NULL)==fixture_string);
+    StringPrepareV3 prepare=(StringPrepareV3)api->dlsym_fn(fixture_string_image,"birnam_string_prepare_v3");
+    assert(provide && prepare && provide()==fixture_string && prepare(&string_api,fixture_namespace_exports(),NULL,&string_api_roots)==fixture_string);
     StringDependencyV1 attach=(StringDependencyV1)api->dlsym_fn(floor,"birnam_string_dependency_v1");
     assert(attach && !attach(NULL) && attach(fixture_string)==1);
     StringApiV1 copy=*fixture_string; copy.version=999; assert(!attach(&copy));
@@ -110,7 +112,7 @@ int main(int argc, char **argv) {
     assert(storage->cleanup_owner(storage->cleanup)==fixture_string->context && !storage->cleanup_owner(inert_cleanup));
     size_t absent_length=123; assert(!storage->borrow(fixture_string->context,api->true_obj,&absent_length));
     assert(!storage->release(fixture_string->context,api->true_obj));
-    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V14_SLOT_RAW);
+    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V15_SLOT_RAW);
     Oop owner=text("owned"); size_t owned_length=0; const uint8_t *owned=fixture_string_bytes(owner,&owned_length);
     assert(api->object_payload_size(owner)==16 && owned_length==5);
     uintptr_t *words=(uintptr_t *)owner; assert(words[0]==(uintptr_t)owned && words[1]==5);
@@ -223,13 +225,13 @@ int main(int argc, char **argv) {
     api->method(fixture_string->behavior,api->intern("new"),identity);
     Method size=lookup("size"); api->method(fixture_string->behavior,api->intern("size"),identity);
     Oop prototype=fixture_namespace_import("String"); fixture_namespace_export("String",api->nil_obj);
-    mount(argv[3],&string_api); assert(registrations==2 && lookup("size")==size);
+    mount(argv[3],&string_api,&string_api_roots); assert(registrations==2 && lookup("size")==size);
     assert(lookup("clone")==identity && lookup("new")==identity);
     api->method(fixture_string->behavior,api->intern("clone"),clone);
     api->method(fixture_string->behavior,api->intern("new"),create);
     assert(fixture_namespace_import("String")==api->nil_obj); fixture_namespace_export("String",prototype);
     api->method(fixture_string->behavior,api->intern("size"),identity);
-    if(!baseline) { mount(argv[4],api); assert(lookup("size")==identity && send0(kept,"size")==kept); }
+    if(!baseline) { mount(argv[4],api,fixture_root_registry()); assert(lookup("size")==identity && send0(kept,"size")==kept); }
     api->method(fixture_string->behavior,api->intern("size"),size);
     Oop array=send(text(",a,"),"split:",text(",")); expect_integer(send0(array,"size"),3);
     expect_text(send(array,"at:",fixture_integer_make(0)),"");

@@ -3,7 +3,7 @@
 #ifdef FIXTURE_IDAPI_V10
 #include "idapi_v10.h"
 #else
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #endif
 #include "namespace-support.h"
 #include "integer-support.h"
@@ -58,20 +58,20 @@ static Oop proto(Oop parent) {
 static void mount_integer(const char *path,int selected_api) {
     IdApi *table=selected_api?&selected:api;
 #ifdef FIXTURE_IDAPI_V10
-    fixture_mount_integer(table,path,fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_mount_integer(table,path,fixture_namespace_presence(),fixture_namespace_imports(),fixture_root_registry());
 #else
-    fixture_mount_integer(table,path,fixture_namespace_presence(),fixture_namespace_imports(),selected_api?&exports:fixture_namespace_exports());
+    fixture_mount_integer(table,path,fixture_namespace_presence(),fixture_namespace_imports(),selected_api?&exports:fixture_namespace_exports(),fixture_root_registry());
 #endif
 }
 static void prepare(const char *path) {
 #ifdef FIXTURE_IDAPI_V10
-    if(!strcmp(family,"Float"))fixture_prepare_float(&selected,path,fixture_namespace_presence(),fixture_namespace_imports());
-    else if(!strcmp(family,"Word"))fixture_prepare_word(&selected,path,fixture_namespace_presence(),fixture_namespace_imports());
-    else fixture_prepare_string(&selected,path);
+    if(!strcmp(family,"Float"))fixture_prepare_float(&selected,path,fixture_namespace_presence(),fixture_namespace_imports(),fixture_root_registry());
+    else if(!strcmp(family,"Word"))fixture_prepare_word(&selected,path,fixture_namespace_presence(),fixture_namespace_imports(),fixture_root_registry());
+    else fixture_prepare_string(&selected,path,fixture_root_registry());
 #else
-    if(!strcmp(family,"Float"))fixture_prepare_float(&selected,path,fixture_namespace_presence(),fixture_namespace_imports(),&exports);
-    else if(!strcmp(family,"Word"))fixture_prepare_word(&selected,path,fixture_namespace_presence(),fixture_namespace_imports(),&exports);
-    else fixture_prepare_string(&selected,path,&exports);
+    if(!strcmp(family,"Float"))fixture_prepare_float(&selected,path,fixture_namespace_presence(),fixture_namespace_imports(),&exports,fixture_root_registry());
+    else if(!strcmp(family,"Word"))fixture_prepare_word(&selected,path,fixture_namespace_presence(),fixture_namespace_imports(),&exports,fixture_root_registry());
+    else fixture_prepare_string(&selected,path,&exports,fixture_root_registry());
 #endif
 }
 int main(int argc,char **argv) {
@@ -82,7 +82,7 @@ int main(int argc,char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);
     api->gc_set_auto(0);uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
-    fixture_mount_trace(api,argv[1]);
+    fixture_mount_trace(api,argv[1],fixture_root_registry());
     selected=*api;selected.proto=proto;
 #ifdef FIXTURE_IDAPI_V10
     selected.export_obj=first;
@@ -92,25 +92,25 @@ int main(int argc,char **argv) {
     if(!strcmp(family,"Integer")) {
         /* Other families are prepared before the Integer snapshot under test. */
 #ifdef FIXTURE_IDAPI_V10
-        fixture_prepare_string(api,argv[1]);
-        fixture_prepare_word(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
-        fixture_prepare_float(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+        fixture_prepare_string(api,argv[1],fixture_root_registry());
+        fixture_prepare_word(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_root_registry());
+        fixture_prepare_float(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_root_registry());
 #else
-        fixture_prepare_string(api,argv[1],fixture_namespace_exports());
-        fixture_prepare_word(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
-        fixture_prepare_float(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+        fixture_prepare_string(api,argv[1],fixture_namespace_exports(),fixture_root_registry());
+        fixture_prepare_word(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
+        fixture_prepare_float(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
 #endif
         mount_integer(argv[1],1);
     } else {
         prepare(argv[1]);mount_integer(argv[1],0);
         void *image=!strcmp(family,"Float")?fixture_float_image:!strcmp(family,"Word")?fixture_word_image:fixture_string_image;
-        fixture_attach_integer(api,image);
+        fixture_attach_integer(api,image,fixture_root_registry());
         ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
         /* Execution must retain the earlier preparation's API/capability. */
 #ifdef FIXTURE_IDAPI_V10
         init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports());
 #else
-        init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+        init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
 #endif
     }
     assert(publications==2 && !during_construction);

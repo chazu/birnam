@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -15,7 +15,7 @@ static int incoming(void *context,const char *name) {
     early_checks++;
     return namespace_presence_contains_v1(original,name);
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation) { (void)observation; (void)vtables;
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry) { (void)root_registry; (void)observation; (void)vtables;
     (void)exports;
     assert(api && !state && presence);original=presence;early_checks=0;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
@@ -28,7 +28,7 @@ void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,con
         assert(n>0 && (size_t)n<sizeof(path));
         void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
         ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
-        assert(!init(&copied,NULL,&selected,&copied_imports,exports,vtables,observation));
+        assert(!init(&copied,NULL,&selected,&copied_imports,exports,vtables,observation,root_registry));
         assert(early_checks==(i?2u:0u));
     }
     return NULL;

@@ -4,7 +4,7 @@
 #define CONTEXT
 #define CHECK_CONTEXT() ((void)0)
 #else
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #define CONTEXT void *context,
 #define CHECK_CONTEXT() assert(context==&context_token)
 static int context_token;
@@ -91,12 +91,12 @@ static void initialize(void *image,IdApi *table,int alternate) {
 #ifdef FIXTURE_IDAPI_V11
     (void)alternate;init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
 #else
-    init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),alternate?&other_vtables:&selected_vtables,fixture_method_observation());
+    init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),alternate?&other_vtables:&selected_vtables,fixture_method_observation(),fixture_root_registry());
 #endif
 }
 static void *mount(const char *path) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    fixture_attach_integer(api,image);initialize(image,&selected,0);return image;
+    fixture_attach_integer(api,image,fixture_root_registry());initialize(image,&selected,0);return image;
 }
 static Oop invoke(Oop object,const char *selector) { return api->send(object,api->intern(selector),NULL,0); }
 static Method method(Oop object,const char *name) {
@@ -113,9 +113,9 @@ int main(int argc,char **argv) {
     assert(argc==5);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);
     IdInitFn init=(IdInitFn)dlsym(floor,"id_init");assert(init);api=init();assert(api);
-    fixture_mount_object_model(api,argv[1]);fixture_mount_trace(api,argv[1]);api->gc_set_auto(0);
+    fixture_mount_object_model(api,argv[1],fixture_root_registry());fixture_mount_trace(api,argv[1],fixture_root_registry());api->gc_set_auto(0);
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
-    api->gc_register_root_provider(mark_roots);
+    fixture_register_root(mark_roots);
     selected=*api;selected.send=send;selected.vtable_of=vtable;
 #ifndef FIXTURE_IDAPI_V11
     selected_vtables=*fixture_vtable_enumeration();selected_vtables.selector_at=selector_at;

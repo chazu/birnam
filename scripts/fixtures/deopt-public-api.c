@@ -123,8 +123,8 @@ static void check_collection(void) {
     api->set_layout(vtable, kinds, 1, IDAPI_V1_SLOT_RAW);
     watched = api->alloc(vtable, sizeof(Oop));
     *(Oop *)watched = api->true_obj;
-    api->gc_register_root_provider(mutate_root);
-    api->gc_register_root_provider(collection_observer);
+    fixture_register_root(mutate_root);
+    fixture_register_root(collection_observer);
     /* Run before the dispatch cases so their temporary objects cannot make
        conservative native roots affect this equal-count counterexample. */
     api->gc_collect();

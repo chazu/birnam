@@ -351,11 +351,11 @@ unsafe extern "C" fn callback_roots(mark: MarkFn) {
     }
 }
 
-unsafe fn ensure_callback_roots(api: &IdApi) {
+unsafe fn ensure_callback_roots(roots: *const birnam_abi::root_registry::ApiV1) {
     CALLBACK_ROOTS.call_once(|| {
         // SAFETY: the host IdApi retains this process-owned root provider for
         // the lifetime of the floor. Registration occurs once per process.
-        unsafe { (api.gcRegisterRootProvider)(callback_roots) };
+        unsafe { birnam_abi::root_registry::register(roots, callback_roots) };
     });
 }
 
@@ -1114,7 +1114,7 @@ unsafe extern "C" fn alien_release_callback(
     api.trueObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -1132,7 +1132,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     else {
         abort("ForeignAddress exports were incomplete");
     };
-    unsafe { ensure_callback_roots(api) };
+    unsafe { ensure_callback_roots(roots) };
     let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ALIEN_NAME.as_ptr().cast()) } != 0;
     let (alien_vt, alien_obj) = if reloading {
         let alien_vt = unsafe { birnam_abi::namespace_import::import(imports, ALIEN_VT_NAME.as_ptr().cast()) };
@@ -1275,11 +1275,11 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust Alien object family and its dynamic-library protocol.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
     let _ = state;
     // SAFETY: the host supplies the process-owned IdApi table and retains it
     // for the module lifetime.
-    unsafe { bring_up(api, presence, imports, exports, vtables) };
+    unsafe { bring_up(api, presence, imports, exports, vtables, roots) };
     ptr::null_mut()
 }
 

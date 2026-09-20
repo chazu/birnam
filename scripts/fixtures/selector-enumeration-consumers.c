@@ -4,7 +4,7 @@
 #define CONTEXT
 #define CHECK_CONTEXT(expected) ((void)(expected))
 #else
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #define Enumeration VtableEnumerationV2
 #define CONTEXT void *context,
 #define CHECK_CONTEXT(expected) assert(context==(expected))
@@ -15,7 +15,7 @@
 #ifdef FIXTURE_IDAPI_V12
 #define OBSERVATION_ARGUMENT
 #else
-#define OBSERVATION_ARGUMENT ,fixture_method_observation()
+#define OBSERVATION_ARGUMENT ,fixture_method_observation(),fixture_root_registry()
 #endif
 static IdApi *api,selected,other;
 static Enumeration enumeration,alternate;
@@ -56,10 +56,10 @@ static void begin(void) {
 int main(int argc,char **argv) {
     assert(argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();
-    fixture_mount_object_model(api,argv[1]);fixture_mount_trace(api,argv[1]);api->gc_set_auto(0);
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));api->gc_register_root_provider(mark_roots);
+    fixture_mount_object_model(api,argv[1],fixture_root_registry());fixture_mount_trace(api,argv[1],fixture_root_registry());api->gc_set_auto(0);
+    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));fixture_register_root(mark_roots);
     selected=*api;enumeration=*fixture_vtable_enumeration();
-    void *store_image=dlopen(argv[2],RTLD_NOW|RTLD_LOCAL);assert(store_image);fixture_attach_integer(api,store_image);
+    void *store_image=dlopen(argv[2],RTLD_NOW|RTLD_LOCAL);assert(store_image);fixture_attach_integer(api,store_image,fixture_root_registry());
     ModuleInitFn init=(ModuleInitFn)dlsym(store_image,"module_init");assert(init);
     init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),&enumeration OBSERVATION_ARGUMENT);
     other=selected;alternate=enumeration;

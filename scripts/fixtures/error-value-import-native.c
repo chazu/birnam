@@ -1,6 +1,6 @@
 /* Independent import-handoff oracle, usable in every execution form. */
 #define _DARWIN_C_SOURCE
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "../../abi/fixtures/error-value-v3/error_value_v3.h"
 #include "../../abi/fixtures/string-v1/string_v1.h"
 #include <assert.h>
@@ -97,7 +97,7 @@ static void *open_sibling(const char *floor_path,const char *name) {
     int length=snprintf(path,sizeof(path),"%.*s/%s",(int)(slash-floor_path),floor_path,name);
     assert(length>0 && (size_t)length<sizeof(path));void *image=floor_api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);return image;
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation) { (void)observation; (void)vtables;
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry) { (void)root_registry; (void)observation; (void)vtables;
     (void)exports;
     (void)presence;assert(api && !state);if(floor_api)assert(floor_api==api);else floor_api=api;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);

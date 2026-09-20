@@ -2,12 +2,12 @@
 #ifdef FIXTURE_IDAPI_V13
 #include "idapi_v13.h"
 #else
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/storage-v1/storage_v1.h"
+#include "../../abi/fixtures/idapi-v15/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static Oop roots[5],target,expected;
@@ -37,7 +37,7 @@ int main(int argc,char **argv) {
     assert(argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);
     api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);api->gc_set_auto(0);
-    fixture_mount_object_model(api,argv[1]);fixture_mount_trace(api,argv[1]);api->gc_register_root_provider(mark_roots);
+    fixture_mount_object_model(api,argv[1],fixture_root_registry());fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_register_root(mark_roots);
     roots[0]=api->proto(api->object_vt);roots[1]=api->proto(roots[0]);roots[2]=api->intern("observedMethod");
     roots[3]=api->alloc(roots[1],0);target=roots[1];expected=api->true_obj;
     const char *mode=argv[2];

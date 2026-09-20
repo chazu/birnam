@@ -150,7 +150,7 @@ impl Runtime {
                 allocations,
                 roots,
                 edges,
-                state.metadata.root_providers(),
+                state.root_registry.snapshot(),
                 deferred_count,
                 deferred_bytes,
                 state.metadata.precise(),

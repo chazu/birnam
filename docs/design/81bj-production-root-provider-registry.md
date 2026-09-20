@@ -1,29 +1,18 @@
 # 81BJ — Native root-provider registry
 
-> **Status:** Implementation checkpoint against completed 81BI (`868f62ed`).
-> Caller selection audited; service and ABI scaffolding are present. Production
-> integration and behavioral validation are pending.
-
-The checkpoint includes the standalone `birnam-root-registry` crate, its ABI
-descriptors, and a draft Id service bridge. The bridge is not declared in Id's
-module tree and still needs its floor callbacks and Runtime ownership wiring.
-Production continues to use the existing registry in Id. The IdApi v15 and
-initializer/prepare contract changes below describe the selected next steps;
-they are not yet installed. Caller migration, host loading, ABI manifests,
-installation inventories, and independent behavioral/image checks remain open.
-
-Checkpoint validation: `cargo check -p birnam-abi -p birnam-root-registry
--p birnam-id --all-targets --locked --offline` passes in the debug profile.
-This checks the compiled scaffolding and existing Id targets; the undeclared
-bridge and production integration are not covered by that result.
+> **Status:** Completed against 81BI (`868f62ed`), with focused debug validation.
+> Root Registry owns registration and copied snapshots. Id, all native callers,
+> early preparation and host loading use explicit capabilities. Installed startup,
+> source-free compiled callers, saved native-Code images and baked executables
+> pass. Release validation was explicitly waived.
 
 [81D](81d-id-api-partition.md) places root-provider registration with collector
 integration. [81O](81o-production-live-gc-traversal.md) and
 [81P](81p-production-collection-coordinator.md) already moved traversal and
-collection coordination above Id. The next bounded state owner is the ordered
-native root-provider list still held by `gc::MetadataShell`.
+collection coordination above Id. This extraction moves the ordered native
+root-provider list from `gc::MetadataShell` into `birnam-root-registry`.
 
-## Existing state and entry
+## State and entry before extraction
 
 `MetadataShell` owns a `Vec<RootProvider>` alongside three independent settings:
 stack bottom, automatic collection requested and precise tracing. Registration
@@ -179,3 +168,59 @@ actual state/operation ownership, startup preparation before the first root
 registration, ordinary siphon loading, source-free compiled callers, saved
 native-Code images and baked executables. Keep image encoding unchanged. Use
 focused debug validation; no release validation is required.
+
+## Completed evidence
+
+The independent oracle is the archived source at `cfacc90f`, which retains the
+completed 81BI implementation and v14 headers, plus its separately installed
+debug prefix. Current fixtures compile against independent v15 C headers;
+historical headers remain unchanged. The current installation contains 45 native
+libraries and 28 authored modules. All 1,953 recorded source files remained
+unchanged during installation and through the installed checks.
+
+- Workspace all-target checking and the debug workspace build pass. Affected
+  ABI, Id, Root Registry, host and native consumer crates also pass all-target,
+  all-feature checking. Focused ABI/Id/registry tests pass **272 tests**, with
+  15 existing Id timing tests ignored. All 69 current C fixtures pass syntax
+  checking.
+- Four root-registry comparisons match old/new output and exit status: copied
+  ordered duplicates, callback-time append visible only to the next collection,
+  nested GC, exact capacity overflow, owner rejection and observation rejection.
+  The current C probe also checks the factory's by-value snapshot layout, public
+  descriptor independence, destruction at the original address, ordinary module
+  mounting and dynamic operation ownership.
+- Sixteen existing native consumer transcripts and 32 registration/callback
+  transcripts match the oracle exactly. These cover early preparation,
+  adoption/presence branches, incoming versus saved selections, Store root/hook
+  reentry and String Collection installation reentry. Error-presence admission
+  and numeric copied-API context checks also pass.
+- Seventeen host admission cases pass, including missing or malformed factories,
+  rejected dependencies, missing or malformed public capabilities and successful
+  preparation. The installed prefix repeats the native consumer and host checks
+  and passes the independent v15 client/module fixture.
+- Export inspection covers all 73 installed libraries and 29 current native
+  manifests. Changes are the new Root Registry exports, two Id attachment/provider
+  exports and the declared preparation/dependency version changes. Id and Root
+  Registry retain only system linkage; the new library has its expected install
+  name.
+- Installed stdlib execution passes **145 assertions**. Root Registry, Method
+  Observation, Native Loader, Namespace, Selector Enumeration and Block Loop
+  each pass startup, source-free compilation, saved v8 native-Code recovery and
+  baked execution. The Root Registry fixture verifies loaded library ownership,
+  duplicate provider order, callback-time append, nested GC, kept roots, aliases
+  and repeated loading.
+- All nine floor-discovery cases pass. An actual image-backed host worker
+  completes 12 exact wire-value round trips and orderly shutdown in both old and
+  new installations, with byte-identical transcripts. The external harness
+  accommodates debug boot time; the production handshake deadline is unchanged.
+
+The durable focused entry points are `mise run root-registry` and
+`scripts/root-registry-image-smoke.sh PREFIX`. Local evidence is under
+`.cargo-target/81bj-`: `rust-check4.log`, `all-features-check.log`,
+`debug-build.log`, `integrated-tests3.log`, `c-syntax.log`, `root-oracle.json`,
+`native-audit.log`, `registration-consumers.json`, `host-validation.log`,
+`install.log`, `source-hashes.json`, `installed-idapi.log`,
+`installed-native-audit.log`, `installed-host-validation.log`,
+`installed-stdlib.log`, the six `*-image.log` files, `floor-discovery.json` and
+`worker-wire.log`. `prefix-path` records the independently installed current
+debug prefix. These are scoped development checks, not release validation.

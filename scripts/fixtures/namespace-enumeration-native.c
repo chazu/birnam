@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "../../abi/fixtures/namespace-enumeration-v1/namespace_enumeration_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -183,7 +183,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     return api->true_obj;
 }
 static void roots(void (*mark)(Oop)) { for(size_t i=0;i<5;i++)if(rows[i])mark(rows[i]); }
-void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation) { (void)observation; (void)vtables;
+void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry) { (void)root_registry; (void)observation; (void)vtables;
     (void)exports;
     (void)presence;
     assert(selected && !state);if(api){assert(api==selected && imports==selected_imports);return NULL;}api=selected;imports=(NamespaceImportV1 *)selected_imports;
@@ -200,7 +200,7 @@ void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presenc
 #endif
     reflect=namespace_import_v1(imports,"RustReflectAdapter");assert(reflect);
     Oop selector=api->intern("allGlobalNames"),raw=api->send(api->vtable_of(reflect),api->intern("lookup"),&selector,1);assert(raw);memcpy(&enumerate,&raw,sizeof(enumerate));
-    rows[0]=rows[2]=api->intern("enumeration-alpha");rows[1]=rows[4]=NULL;rows[3]=api->intern("enumeration-beta");api->gc_register_root_provider(roots);
+    rows[0]=rows[2]=api->intern("enumeration-alpha");rows[1]=rows[4]=NULL;rows[3]=api->intern("enumeration-beta");root_registry_register_v1(root_registry,roots);
     api->method(namespace_import_v1(imports,"SystemVt"),api->intern("namespaceEnumerationProbe"),exercise);
     return NULL;
 }

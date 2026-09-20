@@ -2,12 +2,12 @@
 #ifdef FIXTURE_IDAPI_V12
 #include "idapi_v12.h"
 #else
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/storage-v1/storage_v1.h"
+#include "../../abi/fixtures/idapi-v15/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static Oop roots[70],candidate;
@@ -33,8 +33,8 @@ int main(int argc,char **argv) {
     assert(argc==3);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);
     api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);api->gc_set_auto(0);
-    fixture_mount_object_model(api,argv[1]);fixture_mount_trace(api,argv[1]);
-    api->gc_register_root_provider(mark_roots);
+    fixture_mount_object_model(api,argv[1],fixture_root_registry());fixture_mount_trace(api,argv[1],fixture_root_registry());
+    fixture_register_root(mark_roots);
     roots[0]=api->proto(api->object_vt);roots[1]=api->proto(roots[0]);
     for(size_t i=0;i<64;i++) { char name[48];snprintf(name,sizeof(name),"selector-enumeration-%zu",i);roots[i+2]=api->intern(name); }
     candidate=roots[1];api->method(candidate,roots[2],answer);
@@ -44,7 +44,7 @@ int main(int argc,char **argv) {
         StorageObserveV1 observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1");assert(observe);
         StorageRequestV1 request={1,sizeof(request),NULL,inspect};observe(&request);assert(!"missing observation callback");
     }
-    if(!strcmp(mode,"collection")) { api->gc_register_root_provider(probe_roots);collect_now();assert(root_calls);puts("selector observation during root collection passed");return 0; }
+    if(!strcmp(mode,"collection")) { fixture_register_root(probe_roots);collect_now();assert(root_calls);puts("selector observation during root collection passed");return 0; }
     if(!strncmp(mode,"invalid-",8)) {
         if(strstr(mode,"null"))candidate=NULL;
         else if(strstr(mode,"instance"))candidate=api->alloc(roots[0],0);

@@ -1,9 +1,11 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "collect-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include <stdlib.h>
+static FixtureRootSlot builder_api_root_slot;
+static RootRegistryV1 builder_api_roots=FIXTURE_ROOTS(builder_api_root_slot);
 
 /* Independent byte/growth oracle. No Rust implementation constants imported. */
 typedef struct { uint8_t *bytes; size_t length, capacity; } Builder;
@@ -32,17 +34,17 @@ static void mount_trace(const char *floor_path, void *floor) {
     const char *slash=strrchr(floor_path,'/'); assert(slash); char path[PATH_MAX];
     snprintf(path,sizeof(path),"%.*s/libbirnam_trace.dylib",(int)(slash-floor_path),floor_path);
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
     const TraceLiveApiV1 *provided=((TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"))();
     actual_trace=provided->trace;
     TraceLiveApiV1 watched={1,sizeof(watched),traced};
     assert(((TraceLiveDependencyV1)api->dlsym_fn(floor,"birnam_trace_dependency_v1"))(&watched)==1);
-    fixture_mount_collect(api,floor_path);
+    fixture_mount_collect(api,floor_path,fixture_root_registry());
 }
-static void mount(const char *path, IdApi *selected,const NamespaceExportV1 *exports) {
+static void mount(const char *path, IdApi *selected,const NamespaceExportV1 *exports,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation());
+    fixture_attach_integer(api,image,fixture_root_registry());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
 }
 static Oop send0(Oop receiver,const char *name) { return api->send(receiver,api->intern(name),NULL,0); }
 static Oop send(Oop receiver,const char *name,Oop argument) { return api->send(receiver,api->intern(name),&argument,1); }
@@ -57,7 +59,7 @@ static void expect_size(Oop value,size_t length) {
     Oop result=send0(value,"size"); assert(fixture_is_integer(result) && fixture_integer_value(result)==(int64_t)length);
 }
 static void register_roots(RootProvider provider) {
-    registrations++; roots=provider; api->gc_register_root_provider(provider);
+    registrations++; roots=provider; fixture_register_root(provider);
 }
 static void record_mark(Oop object) { if(object==behavior || object==prototype || object==print_selector) marked++; }
 static Oop allocate(Oop type,size_t length) {
@@ -129,7 +131,7 @@ int main(int argc,char **argv) {
     int adopted=strstr(argv[6],"adopted")!=NULL, present=strstr(argv[6],"present")!=NULL;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports()); mount(argv[2],api,fixture_namespace_exports()); mount(argv[3],api,fixture_namespace_exports());
+    mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry()); mount(argv[2],api,fixture_namespace_exports(),fixture_root_registry()); mount(argv[3],api,fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     if(present) seed_collections();
     Oop adopted_type=NULL, adopted_prototype=NULL;
@@ -140,8 +142,8 @@ int main(int argc,char **argv) {
     }
     builder_api=*api; builder_api.alloc=allocate; builder_api.set_finalizer=finalizer;
     builder_api.intern=intern; builder_api.set_layout=layout; NamespaceExportV1 builder_exports={1,sizeof(NamespaceExportV1),NULL,publish};
-    builder_api.gc_register_root_provider=register_roots;
-    initializing=1; force_preparation_gc=!baseline; mount(argv[4],&builder_api,&builder_exports); initializing=0;
+    builder_api_root_slot=register_roots;
+    initializing=1; force_preparation_gc=!baseline; mount(argv[4],&builder_api,&builder_exports,&builder_api_roots); initializing=0;
     assert(registrations==1 && roots && behavior && prototype && publications==(unsigned)!present);
     if(!baseline) assert(collections>0);
     if(adopted) assert(behavior==adopted_type && prototype==adopted_prototype);
@@ -150,7 +152,7 @@ int main(int argc,char **argv) {
     else assert(fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     assert(vtable_parent(api,behavior)==api->object_vt);
     if(!present) assert(vtable_owner(api,behavior)==prototype);
-    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V14_SLOT_RAW);
+    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V15_SLOT_RAW);
     print_selector=api->intern("printString"); roots(record_mark); assert(marked==3);
     Method create=lookup("new"), clone=lookup("clone"), append=lookup("add:"), add_byte=lookup("addByte:");
     assert(create==clone && create && append && add_byte && lookup("asString")==lookup("printString"));
@@ -209,15 +211,15 @@ int main(int argc,char **argv) {
     api->gc_set_precise(1); api->gc_collect(); assert(finalized==1); victim=NULL; api->gc_collect(); assert(finalized==1);
     /* Match the ordinary next rung and preserve a replacement through it. */
     Method size=lookup("size"); api->method(behavior,api->intern("size"),identity);
-    if(!baseline) { mount(argv[5],api,fixture_namespace_exports()); assert(lookup("size")==identity); }
+    if(!baseline) { mount(argv[5],api,fixture_namespace_exports(),fixture_root_registry()); assert(lookup("size")==identity); }
     else api->method(behavior,api->intern("size"),size);
     /* Vector present: own reinitialization reinstalls methods but not exports. */
     fixture_namespace_export("Vector",api->true_obj); fixture_namespace_export("StringBuilder",api->nil_obj); fixture_namespace_export("StringBuilderVt",api->nil_obj);
-    unsigned before=publications; mount(argv[4],&builder_api,&builder_exports); assert(lookup("size")==size && publications==before);
+    unsigned before=publications; mount(argv[4],&builder_api,&builder_exports,&builder_api_roots); assert(lookup("size")==size && publications==before);
     assert(fixture_namespace_import("StringBuilder")==api->nil_obj && fixture_namespace_import("StringBuilderVt")==api->nil_obj);
     api->gc_collect(); expect_size(builder,length); marked=0; roots(record_mark); assert(marked==3 && registrations==1);
     /* Vector absent: cached canonical identities are republished, as before. */
-    fixture_namespace_export("Vector",NULL); mount(argv[4],&builder_api,&builder_exports);
+    fixture_namespace_export("Vector",NULL); mount(argv[4],&builder_api,&builder_exports,&builder_api_roots);
     assert(publications==before+1 && fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     printf("string-builder: %zu byte/growth cases, empty clone/new, inherited receivers, live callbacks, conversion reentry, cleanup, roots and Vector-guarded reinitialization passed mode=%s%s\n",checked,argv[6],baseline?" baseline":"");
 }

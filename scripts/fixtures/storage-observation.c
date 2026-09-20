@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/storage-v1/storage_v1.h"
+#include "../../abi/fixtures/idapi-v15/storage_v1.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
@@ -109,7 +109,7 @@ static int inspect(void *context, const StorageViewV1 *view) {
         case 8: api->method(api->vtable_vt,storage_selector,wrapper); break;
         case 9: api->set_trace_hook(pair_vt,legacy_trace); break;
         case 10: api->gc_collect(); break;
-        case 11: api->gc_register_root_provider(legacy_roots); break;
+        case 11: fixture_register_root(legacy_roots); break;
         case 12: api->gc_set_auto(1); break;
         case 13: api->set_finalizer(pair,finalizer); break;
         default: abort();
@@ -155,10 +155,10 @@ int main(int argc, char **argv) {
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1"); assert(observe);
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);
     describe=(StorageDescribeV1)api->dlsym_fn(storage,"birnam_storage_describe_v1"); assert(describe);
-    ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
     StorageRequestV1 bare_request={1,sizeof(bare_request),NULL,bare};
     assert(observe(&bare_request)==STORAGE_OK);
-    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     integers=fixture_integer;
     storage_selector=api->intern("withStorageView:"); lookup_selector=api->intern("lookup");
     owner_selector=api->intern("ownerOf:put:"); parent_selector=api->intern("parentOf:put:");
@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
     ((Oop*)pair)[0]=child; ((Oop*)pair)[1]=api->nil_obj;
     raw_integer=integers->make(integers->context,(int64_t)(uintptr_t)pair);
     fixture_namespace_export("StorageObservationPair",pair);
-    api->gc_register_root_provider(legacy_roots);
+    fixture_register_root(legacy_roots);
     api->set_trace_hook(pair_vt,legacy_trace);
     StorageRequestV1 request={1,sizeof(request),NULL,inspect};
     size_t count=api->gc_live_count();

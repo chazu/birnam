@@ -1,4 +1,4 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -44,8 +44,8 @@ static Oop counted_send(Oop self,Oop selector,const Oop *args,size_t count) {
     return api->send(self,selector,args,count);
 }
 static void validate_dependency(void *collection,int attached) {
-    RangeDependencyV4 attach=(RangeDependencyV4)api->dlsym_fn(collection,"birnam_range_dependency_v4"); assert(attach);
-    RangeApiV4 bad=*fixture_range_v2; assert(!attach(NULL)); bad.version=1; assert(!attach(&bad));
+    RangeDependencyV5 attach=(RangeDependencyV5)api->dlsym_fn(collection,"birnam_range_dependency_v5"); assert(attach);
+    RangeApiV5 bad=*fixture_range_v2; assert(!attach(NULL)); bad.version=1; assert(!attach(&bad));
     bad=*fixture_range_v2; bad.byte_size++; assert(!attach(&bad));
 #define MISSING(field) bad=*fixture_range_v2; bad.field=NULL; assert(!attach(&bad))
     MISSING(prepare); MISSING(finish_prototype); MISSING(set_layout); MISSING(install); MISSING(publish);
@@ -54,18 +54,18 @@ static void validate_dependency(void *collection,int attached) {
 }
 static void mount(const char *path,IdApi *table) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    if(strstr(path,"collection") && !fixture_range_v2 && api->dlsym_fn(image,"birnam_range_dependency_v4")) {
+    if(strstr(path,"collection") && !fixture_range_v2 && api->dlsym_fn(image,"birnam_range_dependency_v5")) {
         const char *slash=strrchr(fixture_floor_path,'/'); char library[PATH_MAX]; assert(slash);
         int n=snprintf(library,sizeof(library),"%.*s/libbirnam_range.dylib",(int)(slash-fixture_floor_path),fixture_floor_path);
         assert(n>0 && (size_t)n<sizeof(library));
-        void *range=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(range); fixture_attach_integer(api,range);
-        RangeProviderV4 provide=(RangeProviderV4)api->dlsym_fn(range,"birnam_range_provider_v4"); assert(provide && !provide());
-        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+        void *range=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(range); fixture_attach_integer(api,range,fixture_root_registry());
+        RangeProviderV5 provide=(RangeProviderV5)api->dlsym_fn(range,"birnam_range_provider_v5"); assert(provide && !provide());
+        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
         fixture_range_v2=provide(); assert(fixture_range_v2); validate_dependency(image,0);
     }
-    fixture_attach_integer(api,image);
+    fixture_attach_integer(api,image,fixture_root_registry());
     if(strstr(path,"collection") && fixture_range_v2) validate_dependency(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
 }
 static Oop vector(const int64_t *values,size_t count) {
     Oop result=fixture_vector->empty();
@@ -87,7 +87,7 @@ int main(int argc,char **argv) {
     assert(argc==4);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.alloc=counted_alloc; selected.vtable_of=counted_vtable; selected.send=counted_send; mount(argv[3],&selected);
     range_type=fixture_namespace_import("RangeVt"); reverse_method=lookup(range_type,"reversed"); comma_method=lookup(range_type,",");

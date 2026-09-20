@@ -1,4 +1,4 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
@@ -23,8 +23,8 @@ static void mount(const char *path) {
         copied = *fixture_integer;
         assert(attach(&copied) == 0); /* no silent remount onto another table */
     }
-    fixture_attach_integer(api, image);
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    fixture_attach_integer(api, image,fixture_root_registry());
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
 }
 static Method lookup(Oop behavior, const char *name) {
     Oop selector = api->intern(name);
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     assert(cloned != lower && api->vtable_of(cloned) == api->object_vt);
     assert(api->send(lower, api->intern("=="), &lower, 1) == api->true_obj);
     assert(!fixture_namespace_import("Integer"));
-    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     assert(lookup(fixture_integer->behavior, "+"));
     mount(argv[3]); /* Errors are independently mounted, without Prelude. */
     const int64_t inputs[] = {INT64_MIN, INT64_MIN + 1, -17, -1, 0, 1, 17,

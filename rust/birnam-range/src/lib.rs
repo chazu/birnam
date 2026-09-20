@@ -1,6 +1,6 @@
 //! Range representation, construction and all existing Range methods.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::range::ApiV4;
+use birnam_abi::range::ApiV5;
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -74,12 +74,12 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
         }
     }
 }
-unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, parent: Oop, adopting: i32) -> Oop {
+unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop, adopting: i32) -> Oop {
     if !READY.load(Ordering::Acquire) || api_pointer.is_null() {
         abort("invalid Range preparation");
     }
     let api = unsafe { &*api_pointer };
-    ROOTS_REGISTERED.call_once(|| unsafe { (api.gcRegisterRootProvider)(mark_roots) });
+    ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });
     let family = FAMILY.get_or_init(|| {
         let behavior = if adopting != 0 {
             unsafe { birnam_abi::namespace_import::import(imports, RANGE_VT_NAME.as_ptr().cast()) }
@@ -384,9 +384,9 @@ unsafe extern "C" fn install(
         );
     }
 }
-static API: ApiV4 = ApiV4 {
-    version: 4,
-    byte_size: size_of::<ApiV4>(),
+static API: ApiV5 = ApiV5 {
+    version: 5,
+    byte_size: size_of::<ApiV5>(),
     prepare: Some(prepare),
     finish_prototype: Some(finish_prototype),
     set_layout: Some(set_layout),
@@ -394,7 +394,7 @@ static API: ApiV4 = ApiV4 {
     publish: Some(publish),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
     if api.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -402,7 +402,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence:
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_range_provider_v4() -> *const ApiV4 {
+pub extern "C" fn birnam_range_provider_v5() -> *const ApiV5 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {

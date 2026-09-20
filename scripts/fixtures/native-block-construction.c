@@ -1,4 +1,4 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include <assert.h>
@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     original_names=*fixture_namespace_names();
     selected_names=original_names;
     fixture_names=&selected_names; /* Independently selected copied capability. */
-    fixture_mount_object_model(api, argv[1]);
+    fixture_mount_object_model(api, argv[1],fixture_root_registry());
     admission = (Admission)dlsym(floor, "birnam_id_warm_block_construction_v1");
     assert(admission);
     api->gc_set_auto(0);
@@ -90,8 +90,8 @@ int main(int argc, char **argv) {
         assert(module);
         ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(module, "module_init");
         assert(init);
-        fixture_attach_integer(api, module);
-        init(i == 5 ? &module_api : api,NULL,fixture_namespace_presence(),i == 5 ? &module_imports : fixture_namespace_imports(),fixture_namespace_exports(),i == 5 ? &module_vtables : fixture_vtable_enumeration(),fixture_method_observation());
+        fixture_attach_integer(api, module,fixture_root_registry());
+        init(i == 5 ? &module_api : api,NULL,fixture_namespace_presence(),i == 5 ? &module_imports : fixture_namespace_imports(),fixture_namespace_exports(),i == 5 ? &module_vtables : fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
         if (i == 5) portable = module;
     }
     Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v5");

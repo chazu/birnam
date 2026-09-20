@@ -1,7 +1,11 @@
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
+static FixtureRootSlot watched_root_slot;
+static RootRegistryV1 watched_roots=FIXTURE_ROOTS(watched_root_slot);
+static FixtureRootSlot selected_root_slot;
+static RootRegistryV1 selected_roots=FIXTURE_ROOTS(selected_root_slot);
 
 static IdApi *api,selected,other;
 static ModuleInitFn collection_init;
@@ -15,7 +19,7 @@ static const uint8_t *(*original_bytes)(void *,Oop,size_t *);
 static Oop send1(Oop self,const char *name,Oop value) { return api->send(self,api->intern(name),&value,1); }
 static Method lookup(Oop type,const char *name) { return (Method)send1(type,"lookup",api->intern(name)); }
 static void roots(MarkFn mark) { mark(subject); mark(separator); mark(result); mark(alias); }
-static void registered(RootProvider provider) { registrations++; api->gc_register_root_provider(provider); }
+static void registered(RootProvider provider) { registrations++; fixture_register_root(provider); }
 static Oop allocate(Oop type,size_t size) {
     if(capture) { allocations++; printf("alloc %zu\n",size); }
     if(collect) api->gc_collect();
@@ -38,7 +42,7 @@ static void other_method(Oop type,Oop selector,Method implementation) {
 }
 static Oop send(Oop self,Oop selector,const Oop *args,size_t count) {
     if(first_reentry && self==api->vtable_vt && !strcmp(api->symbol_name(selector),"parentOf:put:") && count==2 && args[0]==fixture_string->behavior) {
-        first_reentry=0; reentered=1; collection_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+        first_reentry=0; reentered=1; collection_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots);
         Method first=lookup(fixture_string->behavior,"split:"); assert(first && first(NULL,NULL,0)==api->nil_obj);
     }
     return api->send(self,selector,args,count);
@@ -77,16 +81,16 @@ static void validate(void *image,int attached) {
     bad.byte_size--; assert(!attach(&bad)); bad=*fixture_string_collection; bad.install=NULL; assert(!attach(&bad));
     if(attached) { bad=*fixture_string_collection; assert(!attach(&bad) && attach(fixture_string_collection)==1); }
 }
-static void mount(const char *path,IdApi *table) {
+static void mount(const char *path,IdApi *table,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     if(strstr(path,"collection") && api->dlsym_fn(image,"birnam_string_collection_dependency_v1") && !fixture_string_collection) {
-        IdApi watched=*api; watched.gc_register_root_provider=registered; watched.alloc=allocate; watched.method=method;
-        size_t before=registrations; fixture_prepare_string_collection(&watched);
+        IdApi watched=*api; watched_root_slot=registered; watched.alloc=allocate; watched.method=method;
+        size_t before=registrations; fixture_prepare_string_collection(&watched,&watched_roots);
         assert(registrations==before && !lookup(fixture_string->behavior,"split:")); validate(image,0);
     }
-    fixture_attach_integer(api,image);
+    fixture_attach_integer(api,image,fixture_root_registry());
     if(strstr(path,"collection")) { validate(image,1); collection_init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(collection_init); }
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry);
 }
 static void expect_part(Oop item,const uint8_t *expected,size_t length) {
     assert(item && api->vtable_of(item)==fixture_string->behavior);
@@ -115,13 +119,13 @@ static Oop forbidden(Oop self,const Oop *args,size_t count) { (void)self; (void)
 int main(int argc,char **argv) {
     assert(argc==5); first_reentry=!strcmp(argv[4],"first-install-reentry");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
+    fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_root_registry());
     original_make=fixture_string->make; original_bytes=fixture_string->bytes;
-    selected=*api; selected.alloc=allocate; selected.vtable_of=vtable; selected.send=send; selected.method=method; selected.gc_register_root_provider=registered;
+    selected=*api; selected.alloc=allocate; selected.vtable_of=vtable; selected.send=send; selected.method=method; selected_root_slot=registered;
     other=selected; other.nil_obj=api->true_obj; other.vtable_of=forbidden_vtable; other.method=other_method;
-    mount(argv[3],&selected); assert(bindings==(reentered?2u:1u) && other_bindings==(reentered?1u:0u));
-    assert(registrations==4); api->gc_register_root_provider(roots);
+    mount(argv[3],&selected,&selected_roots); assert(bindings==(reentered?2u:1u) && other_bindings==(reentered?1u:0u));
+    assert(registrations==4); fixture_register_root(roots);
     split=lookup(fixture_string->behavior,"split:"); assert(split); Dl_info owner; assert(dladdr((const void *)split,&owner));
     assert(strstr(owner.dli_fname,fixture_string_collection?"/libbirnam_string_collection.dylib":"/libbirnam_id_collection.dylib") || (!fixture_string_collection && strstr(owner.dli_fname,"/libbirnam_collection.dylib")));
     fixture_string->bytes=bytes; fixture_string->make=make;
@@ -165,7 +169,7 @@ int main(int argc,char **argv) {
     api->method(fixture_string->behavior,api->intern("split:"),forbidden);
     begin("copied Method and native Vector operations"); result=split(subject,&separator,1); end(); expect(result,(const uint8_t *)"a,b",3,(const uint8_t *)",",1);
     for(size_t i=0;i<4;i++) api->method(fixture_vector->behavior(),api->intern(vector_names[i]),prior[i]);
-    collection_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()); assert(lookup(fixture_string->behavior,"split:")==split && split(subject,NULL,1)==api->nil_obj && registrations==4);
+    collection_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots); assert(lookup(fixture_string->behavior,"split:")==split && split(subject,NULL,1)==api->nil_obj && registrations==4);
     if(fixture_string_collection) fixture_string_collection->install(&other,&other);
     begin("reload retains original execution table"); result=split(subject,&separator,1); end(); expect(result,(const uint8_t *)"a,b",3,(const uint8_t *)",",1);
     api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0); expect(result,(const uint8_t *)"a,b",3,(const uint8_t *)",",1);

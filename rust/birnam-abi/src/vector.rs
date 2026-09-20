@@ -9,11 +9,11 @@ pub struct BehaviorsV1 {
     pub node: Oop,
     pub vector: Oop,
 }
-pub type PrepareV4 = unsafe extern "C" fn(*mut IdApi, *const crate::namespace_import::ApiV1, Oop, c_int) -> BehaviorsV1;
+pub type PrepareV5 = unsafe extern "C" fn(*mut IdApi, *const crate::namespace_import::ApiV1, *const crate::root_registry::ApiV1, Oop, c_int) -> BehaviorsV1;
 pub type StageV1 = unsafe extern "C" fn(*mut IdApi);
 pub type EmptyV1 = unsafe extern "C" fn() -> Oop;
 pub type PushV1 = unsafe extern "C" fn(Oop, Oop) -> Oop;
-pub type InstallV4 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop) -> Method;
+pub type InstallV5 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop) -> Method;
 /// Owner-thread construction stages preserve Collection's callback order.
 /// Descriptor/code are immutable and process-pinned. Empty/push use the first
 /// selected table's live allocator. Behavior never calls Id. Installation uses
@@ -21,10 +21,10 @@ pub type InstallV4 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop) -> Method;
 /// native comma callback. Native iteration requires prior method installation.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV4 {
+pub struct ApiV5 {
     pub version: u32,
     pub byte_size: usize,
-    pub prepare: Option<PrepareV4>,
+    pub prepare: Option<PrepareV5>,
     pub finish_prototype: Option<StageV1>,
     pub set_layout: Option<StageV1>,
     pub set_owner: Option<StageV1>,
@@ -32,29 +32,29 @@ pub struct ApiV4 {
     pub empty: Option<EmptyV1>,
     pub push: Option<PushV1>,
     pub behavior: Option<EmptyV1>,
-    pub install: Option<InstallV4>,
+    pub install: Option<InstallV5>,
     pub for_each: Option<Method>,
     pub inject: Option<Method>,
 }
 const _: () = {
-    assert!(size_of::<ApiV4>() == 104);
-    assert!(core::mem::offset_of!(ApiV4, behavior) == 72);
-    assert!(core::mem::offset_of!(ApiV4, install) == 80);
-    assert!(core::mem::offset_of!(ApiV4, inject) == 96);
+    assert!(size_of::<ApiV5>() == 104);
+    assert!(core::mem::offset_of!(ApiV5, behavior) == 72);
+    assert!(core::mem::offset_of!(ApiV5, install) == 80);
+    assert!(core::mem::offset_of!(ApiV5, inject) == 96);
     assert!(size_of::<BehaviorsV1>() == 16);
 };
-pub type ProviderV4 = unsafe extern "C" fn() -> *const ApiV4;
-pub type DependencyV4 = unsafe extern "C" fn(*const ApiV4) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV4> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV5 = unsafe extern "C" fn() -> *const ApiV5;
+pub type DependencyV5 = unsafe extern "C" fn(*const ApiV5) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV5> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Mount on the owner thread; the immutable descriptor/code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV4) -> c_int {
+pub unsafe fn attach(api: *const ApiV5) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 4
-        || value.byte_size != size_of::<ApiV4>()
+    if value.version != 5
+        || value.byte_size != size_of::<ApiV5>()
         || value.prepare.is_none()
         || value.finish_prototype.is_none()
         || value.set_layout.is_none()
@@ -79,7 +79,7 @@ pub unsafe fn attach(api: *const ApiV4) -> c_int {
         Err(existing) => c_int::from(ptr::eq(existing, api)),
     }
 }
-fn operations() -> ApiV4 {
+fn operations() -> ApiV5 {
     let api = DEPENDENCY.load(Ordering::Acquire);
     assert!(!api.is_null(), "native Vector dependency was not mounted");
     unsafe { *api }
@@ -87,8 +87,8 @@ fn operations() -> ApiV4 {
 /// # Safety
 /// At the original node/Vector preparation point, before Range. Retain the table
 /// and parent; adopting is Collection's existing Vector export predicate.
-pub unsafe fn prepare(api: *mut IdApi, imports: *const crate::namespace_import::ApiV1, parent: Oop, adopting: bool) -> BehaviorsV1 {
-    unsafe { operations().prepare.unwrap()(api, imports, parent, c_int::from(adopting)) }
+pub unsafe fn prepare(api: *mut IdApi, imports: *const crate::namespace_import::ApiV1, roots: *const crate::root_registry::ApiV1, parent: Oop, adopting: bool) -> BehaviorsV1 {
+    unsafe { operations().prepare.unwrap()(api, imports, roots, parent, c_int::from(adopting)) }
 }
 /// # Safety
 /// Finish an absent prototype after prepare and before Range prototype creation.
@@ -146,8 +146,8 @@ pub unsafe fn behavior() -> Oop {
 macro_rules! vector_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_vector_dependency_v4(
-            api: *const $crate::vector::ApiV4,
+        pub unsafe extern "C" fn birnam_vector_dependency_v5(
+            api: *const $crate::vector::ApiV5,
         ) -> core::ffi::c_int {
             unsafe { $crate::vector::attach(api) }
         }

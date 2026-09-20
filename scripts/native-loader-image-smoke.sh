@@ -10,10 +10,10 @@ if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then
 else
   printf 'native loader image smoke root: %s\n' "$scratch"
 fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v14 \
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v15 \
   -DEXPECT_NATIVE_LOADER_LIBRARY='"libbirnam_native_loader.dylib"' \
   scripts/fixtures/native-loader-target.c -o "$scratch/target.dylib"
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v14 \
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v15 \
   -DNATIVE_LOADER_NO_INIT scripts/fixtures/native-loader-target.c -o "$scratch/not-module.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System println: [[[System loadModule: "$scratch/target.dylib"] == System] printString]];

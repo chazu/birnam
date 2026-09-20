@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -30,13 +30,13 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(api->send(basis_root,api->intern("="),&basis_after,1)==api->true_obj);
     rooted=basis_root=NULL;return args[0];
 }
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *selected_observation) {
+void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *selected_observation,const RootRegistryV1 *root_registry) {
     (void)presence;(void)exports;(void)vtables;assert(selected && !prior && selected_imports && selected_observation);
     if(api)assert(api==selected && imports==selected_imports && observation==selected_observation);
     else { api=selected;imports=selected_imports;observation=selected_observation; }
     assert(observation->version==1 && observation->byte_size==sizeof(*observation));
     Dl_info owner;assert(dladdr((void *)observation->replace,&owner));assert(strstr(owner.dli_fname,"libbirnam_method_observation.dylib"));
-    if(!rooted_registered) { api->gc_register_root_provider(mark_root);rooted_registered=1; }
+    if(!rooted_registered) { root_registry_register_v1(root_registry,mark_root);rooted_registered=1; }
     Oop system=namespace_import_v1(imports,"SystemVt");assert(system);
     api->method(system,api->intern("observationExercise:"),exercise);return NULL;
 }

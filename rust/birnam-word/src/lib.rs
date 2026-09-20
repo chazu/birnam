@@ -36,12 +36,11 @@ pub unsafe extern "C" fn birnam_word_provider_v1() -> *mut birnam_abi::word::Wor
     unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_word_prepare_v4(
+pub unsafe extern "C" fn birnam_word_prepare_v5(
     api: *mut IdApi,
     presence: *const birnam_abi::namespace_presence::ApiV1,
     imports: *const birnam_abi::namespace_import::ApiV1,
-    exports: *const birnam_abi::namespace_export::ApiV1,
-) -> *mut birnam_abi::word::WordApiV1 {
+    exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut birnam_abi::word::WordApiV1 {
     if api.is_null() {
         abort("preparation received a null IdApi");
     }
@@ -59,7 +58,7 @@ pub unsafe extern "C" fn birnam_word_prepare_v4(
     let instance = Box::into_raw(unsafe { storage::Instance::empty(api, presence, imports, exports) });
     INSTANCE.store(instance, Ordering::Release);
     unsafe {
-        ((*api).gcRegisterRootProvider)(word_roots);
+        birnam_abi::root_registry::register(roots, word_roots);
         (*instance).prepare();
     }
     let operations = unsafe { (*instance).operations() };
@@ -136,8 +135,8 @@ unsafe extern "C" fn word_as_integer(self_object: Oop, _args: *const Oop, count:
 
 /// Install the existing Word protocol on this module's canonical behavior.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1) -> *mut c_void {
-    let operations = unsafe { birnam_word_prepare_v4(api_pointer, presence, imports, exports) };
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut c_void {
+    let operations = unsafe { birnam_word_prepare_v5(api_pointer, presence, imports, exports, roots) };
     let previous = PHASE.swap(3, Ordering::AcqRel);
     if previous != 2 && previous != 4 {
         abort("recursive Word activation");

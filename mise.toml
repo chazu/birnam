@@ -68,6 +68,10 @@ run = "scripts/namespace-names-test.sh"
 description = "Focused debug raw namespace state and bootstrap checks"
 run = "scripts/namespace-test.sh"
 
+[tasks.root-registry]
+description = "Check native root registration, snapshots and admission (debug)"
+run = "scripts/root-registry-test.sh"
+
 [tasks.method-observation]
 description = "Check native pre-overwrite observation and Store registration (debug)"
 run = "scripts/method-observation-test.sh"

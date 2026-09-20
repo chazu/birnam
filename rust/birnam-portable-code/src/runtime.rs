@@ -17,6 +17,7 @@ pub(crate) struct Globals {
 
 pub(crate) struct Runtime {
     api: usize,
+    roots: usize,
     imports: usize,
     exports: usize,
     vtables: usize,
@@ -50,10 +51,10 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
     });
 }
 
-pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2) -> &'static Runtime {
-    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
+pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1) -> &'static Runtime {
+    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, roots: roots as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
     ROOTS_REGISTERED.call_once(|| unsafe {
-        (runtime.api().gcRegisterRootProvider)(mark_roots);
+        birnam_abi::root_registry::register(runtime.roots as *const birnam_abi::root_registry::ApiV1, mark_roots);
     });
     runtime
 }

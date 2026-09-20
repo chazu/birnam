@@ -2,7 +2,7 @@
 
 use core::cell::Cell;
 
-use crate::abi::{MarkFn, Oop, RootProvider};
+use crate::abi::{MarkFn, Oop};
 use crate::boundary;
 #[cfg(test)]
 use crate::heap::Heap;
@@ -147,14 +147,12 @@ pub(crate) fn trace_conservative_for_test(heap: &mut Heap, roots: &[Oop]) {
     );
 }
 
-pub(crate) const MAX_ROOT_PROVIDERS: usize = 32;
 pub(crate) const AUTO_COLLECTION_THRESHOLD: usize = 16 << 20;
 
 pub(crate) struct MetadataShell {
     stack_bottom: usize,
     auto_requested: bool,
     precise: bool,
-    root_providers: Vec<RootProvider>,
 }
 
 impl MetadataShell {
@@ -163,7 +161,6 @@ impl MetadataShell {
             stack_bottom: 0,
             auto_requested: true,
             precise: false,
-            root_providers: Vec::new(),
         }
     }
 
@@ -177,18 +174,6 @@ impl MetadataShell {
 
     pub(crate) fn set_precise(&mut self, enabled: bool) {
         self.precise = enabled;
-    }
-
-    pub(crate) fn register_root_provider(&mut self, provider: RootProvider) {
-        boundary::require_invariant(
-            self.root_providers.len() < MAX_ROOT_PROVIDERS,
-            "gc: too many root providers",
-        );
-        self.root_providers.push(provider);
-    }
-
-    pub(crate) fn root_providers(&self) -> Vec<RootProvider> {
-        self.root_providers.clone()
     }
 
     pub(crate) fn stack_bottom(&self) -> usize {
@@ -210,34 +195,24 @@ impl MetadataShell {
         self.precise
     }
 
-    #[cfg(test)]
-    pub(crate) fn root_provider_count(&self) -> usize {
-        self.root_providers.len()
-    }
+
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::abi::MarkFn;
     use crate::heap::Permanence;
 
-    unsafe extern "C" fn provider(_: MarkFn) {}
-
     #[test]
-    fn shell_retains_settings_and_maximum_provider_mix() {
+    fn shell_retains_collection_settings() {
         let mut metadata = MetadataShell::new();
         assert!(metadata.auto_requested());
         assert!(!metadata.automatic_collection_due(AUTO_COLLECTION_THRESHOLD));
         metadata.set_stack_bottom(0x1234_5678);
         metadata.set_precise(true);
-        for _ in 0..MAX_ROOT_PROVIDERS {
-            metadata.register_root_provider(provider);
-        }
         assert_eq!(metadata.stack_bottom(), 0x1234_5678);
         assert!(metadata.auto_requested());
         assert!(metadata.precise());
-        assert_eq!(metadata.root_provider_count(), MAX_ROOT_PROVIDERS);
         assert!(!metadata.automatic_collection_due(AUTO_COLLECTION_THRESHOLD - 1));
         assert!(metadata.automatic_collection_due(AUTO_COLLECTION_THRESHOLD));
         metadata.set_auto_requested(false);

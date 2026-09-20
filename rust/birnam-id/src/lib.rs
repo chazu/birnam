@@ -27,6 +27,7 @@ mod values;
 mod vtable;
 mod vtable_enumeration;
 mod method_observation;
+mod root_registry;
 
 use core::ffi::c_char;
 

@@ -1,6 +1,6 @@
 #ifndef FIXTURE_FLOAT_SUPPORT_H
 #define FIXTURE_FLOAT_SUPPORT_H
-#include "../../abi/fixtures/float-v1/float_v1.h"
+#include "../../abi/fixtures/float-prepare-v5/float_prepare_v5.h"
 #include "string-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -26,8 +26,8 @@ static inline void fixture_attach_float(IdApi *api, void *image) {
     FloatDependencyV1 attach = (FloatDependencyV1)api->dlsym_fn(image, "birnam_float_dependency_v1");
     if (attach) { assert(fixture_float); assert(attach(fixture_float) == 1); }
 }
-static inline void fixture_prepare_float(IdApi *api, const char *floor_path, const NamespacePresenceV1 *presence, const NamespaceImportV1 *imports,const NamespaceExportV1 *exports) {
-    fixture_prepare_string(api, floor_path, exports);
+static inline void fixture_prepare_float(IdApi *api, const char *floor_path, const NamespacePresenceV1 *presence, const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const RootRegistryV1 *root_registry) {
+    fixture_prepare_string(api, floor_path, exports,root_registry);
     if (fixture_float) return;
     const char *slash = strrchr(floor_path, '/'); assert(slash);
     char path[PATH_MAX];
@@ -36,8 +36,8 @@ static inline void fixture_prepare_float(IdApi *api, const char *floor_path, con
     fixture_float_image = api->dlopen_fn(path, RTLD_NOW | RTLD_LOCAL);
     if (!fixture_float_image) fprintf(stderr, "%s\n", dlerror());
     assert(fixture_float_image);
-    FloatPrepareV4 prepare = (FloatPrepareV4)api->dlsym_fn(fixture_float_image, "birnam_float_prepare_v4"); assert(prepare);
-    fixture_float = prepare(api,presence,imports,exports); assert(fixture_float);
+    FloatPrepareV5 prepare = (FloatPrepareV5)api->dlsym_fn(fixture_float_image, "birnam_float_prepare_v5"); assert(prepare);
+    fixture_float = prepare(api,presence,imports,exports,root_registry); assert(fixture_float);
     assert(fixture_float->version == 1 && fixture_float->byte_size == sizeof(FloatApiV1));
     void *floor = api->dlopen_fn(floor_path, RTLD_NOW | RTLD_LOCAL); assert(floor);
     fixture_attach_float(api, floor);

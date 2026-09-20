@@ -170,8 +170,8 @@ int main(int argc, char **argv) {
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1"); assert(observe);
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);
     describe=(StorageDescribeV1)api->dlsym_fn(storage,"birnam_storage_describe_v1"); assert(describe);
-    ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
-    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry());
+    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     IntegerApiV1 *integer=fixture_integer;
     pair_vt=api->proto(api->object_vt);
     for(size_t i=0; i<8; i++) if(i!=5) nodes[i]=api->alloc(pair_vt,(i==0||i==1||i==3||i==4)?2*sizeof(Oop):0);
@@ -184,7 +184,7 @@ int main(int argc, char **argv) {
     api->send(api->vtable_vt,api->intern("ownerOf:put:"),owner_args,2);
     Oop reassociate[]={nodes[0],integer->behavior};
     api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),reassociate,2);
-    api->gc_register_root_provider(legacy_roots);
+    fixture_register_root(legacy_roots);
     api->set_trace_hook(pair_vt,legacy_hook);
     api->set_finalizer(nodes[3],finalizer);
     Oop selector=api->intern("withStorageView:");
@@ -193,7 +193,7 @@ int main(int argc, char **argv) {
     /* Load the tracer after the objects exist. It acquires no heap or Id state. */
     void *tracer=api->dlopen_fn(argv[4],RTLD_NOW|RTLD_LOCAL); assert(tracer);
     trace=(TraceDescribedV1)api->dlsym_fn(tracer,"birnam_trace_described_v1"); assert(trace);
-    assert(!((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()));
+    assert(!((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry()));
     StorageRequestV1 request={1,sizeof(request),NULL,inspect};
     size_t count=api->gc_live_count();
     for(scenario=0; scenario<4; scenario++) {

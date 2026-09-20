@@ -1,9 +1,11 @@
 #define _DARWIN_C_SOURCE
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
-#include "idapi_v14.h"
+#include "idapi_v15.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include <stdlib.h>
+static FixtureRootSlot probe_root_slot;
+static RootRegistryV1 probe_roots=FIXTURE_ROOTS(probe_root_slot);
 
 static const NamespaceApiV8 *storage;
 static NamespaceApiV8 observed;
@@ -157,7 +159,7 @@ int main(int argc,char **argv) {
     assert(dladdr((void *)fixture_namespace_imports()->import,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));
     assert(dladdr((void *)fixture_namespace_exports()->export,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));
     if(attach)assert(creates==1 && binds>0 && publications==binds && floor_context);
-    fixture_mount_trace(api,argv[1]);
+    fixture_mount_trace(api,argv[1],fixture_root_registry());
     size_t (*count)(void)=fixture_namespace_count;
     Oop (*name_at)(size_t)=fixture_namespace_name_at;
     size_t (*symbol_count)(void)=(size_t(*)(void))dlsym(floor,"birnam_id_live_symbol_count_v1");
@@ -221,8 +223,8 @@ int main(int argc,char **argv) {
     assert(api->vtable_of(root_name)==api->symbol_vt && api->vtable_of(null_name)==api->symbol_vt);
     assert(fixture_namespace_import("namespace-second-alias")==retained && !fixture_namespace_contains("namespace-first-alias"));
     if(reload) {
-        IdApi probe=*api;probe.intern=forbidden_intern;probe.alloc=forbidden_alloc;probe.method=forbidden_method;probe.gc_register_root_provider=forbidden_roots;
-        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()));
+        IdApi probe=*api;probe.intern=forbidden_intern;probe.alloc=forbidden_alloc;probe.method=forbidden_method;probe_root_slot=forbidden_roots;
+        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&probe_roots));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry()));
         assert(count()==before && binds==was_binds && creates==1);
         assert(fixture_namespace_import("namespace-second-alias")==retained);
         assert(finds && reverses && views && counts && names_at && lookups && publications==binds);

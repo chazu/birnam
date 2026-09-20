@@ -19,7 +19,7 @@ def main():
         temp = Path(temp)
         for name, identity in [('selected', 7), ('competitor', 19)]:
             subprocess.run(['cc', '-Wall', '-Wextra', '-Werror', '-dynamiclib',
-                '-I'+str(ROOT/'abi/fixtures/idapi-v14'), '-DFIXTURE_ID='+str(identity),
+                '-I'+str(ROOT/'abi/fixtures/idapi-v15'), '-DFIXTURE_ID='+str(identity),
                 str(ROOT/'scripts/fixtures/floor-lookup.c'), '-o', str(temp/(name+'.dylib'))], check=True)
         build = command(['cargo', 'test', '--locked', '--offline', '--no-run', '--message-format=json',
                          '-p', 'birnam-tcc', '-p', 'birnam-codegen-runtime'], timeout=300)
