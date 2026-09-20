@@ -2,12 +2,12 @@
 #ifdef FIXTURE_IDAPI_V12
 #include "idapi_v12.h"
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/idapi-v19/storage_v1.h"
+#include "../../abi/fixtures/idapi-v20/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static Oop roots[70],candidate;
@@ -27,7 +27,7 @@ static void *worker(void *context) { (void)context;check();return NULL; }
 static void probe_roots(MarkFn mark) { (void)mark;root_calls++;check(); }
 static int inspect(void *context,const StorageViewV1 *view) { (void)context;(void)view;check();return 1; }
 __attribute__((noinline)) static void collect_now(void) {
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));api->gc_collect();
+    uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));api->gc_collect();
 }
 int main(int argc,char **argv) {
     assert(argc==3);

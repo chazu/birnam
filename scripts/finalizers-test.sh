@@ -8,7 +8,7 @@ mise exec -- cargo build --offline --locked --workspace
 finalizers_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-finalizers.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/finalizers.c -o "$scratch/finalizers"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v20 -Iscripts/fixtures scripts/fixtures/finalizers.c -o "$scratch/finalizers"
 python3 - "$scratch/finalizers" "$finalizers_target/debug/libbirnam_id.dylib" <<'PY'
 import resource,subprocess,sys
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
@@ -20,7 +20,7 @@ for mode,message in [('owner','Rust floor entered from a non-owner thread'),('ob
 PY
 cc -std=c11 -Wall -Wextra -Werror scripts/fixtures/collection.c -o "$scratch/collection"
 "$scratch/collection" "$finalizers_target/debug/libbirnam_id.dylib" "$finalizers_target/debug/libbirnam_trace.dylib" "$finalizers_target/debug/libbirnam_collect.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/finalizers-consumers.c -o "$scratch/consumers"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v20 -Iscripts/fixtures scripts/fixtures/finalizers-consumers.c -o "$scratch/consumers"
 cc -std=c11 -Wall -Wextra -Werror scripts/fixtures/finalizers-worker.c -o "$scratch/worker"
 BIRNAM_WORKER_EXECUTABLE="$scratch/worker" FINALIZER_WORKER_PID_FILE="$scratch/worker.pid" \
 python3 - "$scratch/consumers" "$finalizers_target/debug" <<'PY'

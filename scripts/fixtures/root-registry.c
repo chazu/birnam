@@ -5,8 +5,8 @@
 #define ROOTS_ARGUMENT
 #define REGISTER(provider) api->gc_register_root_provider(provider)
 #else
-#include "idapi_v19.h"
-#include "../../abi/fixtures/idapi-v19/storage_v1.h"
+#include "idapi_v20.h"
+#include "../../abi/fixtures/idapi-v20/storage_v1.h"
 #define ROOTS_ARGUMENT ,fixture_root_registry()
 #define REGISTER(provider) fixture_register_root(provider)
 #endif
@@ -86,7 +86,7 @@ int main(int argc,char **argv) {
     assert(provider_count==initial+2 && !call_count && !appended);
     puts("diagnostics copy ordered providers without invoking them");
     kept=api->alloc(api->object_vt,0);assert(kept);
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     api->gc_collect();assert(call_count==2 && calls[0]==1 && calls[1]==1 && api->vtable_of(kept)==api->object_vt);
     puts("first GC invokes duplicate entries; callback append waits");
     snapshot(inspect);assert(provider_count==initial+3 && call_count==2);

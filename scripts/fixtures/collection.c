@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v19/idapi_v19.h"
+#include "../../abi/fixtures/idapi-v20/idapi_v20.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/collect-v1/collect_v1.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
@@ -156,7 +156,7 @@ int main(int argc, char **argv) {
     assert(argc==4);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     void *tracer=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(tracer);
     ((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
     const TraceLiveApiV1 *trace_api=((TraceLiveProviderV1)api->dlsym_fn(tracer,"birnam_trace_provider_v1"))();

@@ -162,6 +162,7 @@ dependencies = [
  "birnam-method-observation",
  "birnam-namespace",
  "birnam-native-compiler",
+ "birnam-native-stack",
  "birnam-object-model",
  "birnam-payload-layout",
  "birnam-root-registry",
@@ -232,6 +233,13 @@ dependencies = [
 
 [[package]]
 name = "birnam-native-loader"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
+name = "birnam-native-stack"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",

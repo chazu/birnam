@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -17,7 +17,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(count==1 && args[0]);retained[0]=args[0];
     gc_settings_precise_v1(settings,1);
     Oop vt=api->proto(api->object_vt);retained[1]=vt;
-    payload_layout_set_v1(layouts,vt,NULL,0,IDAPI_V19_SLOT_RAW);
+    payload_layout_set_v1(layouts,vt,NULL,0,IDAPI_V20_SLOT_RAW);
     trace_hooks_set_v1(hooks,vt,trace);
     Oop object=api->alloc(vt,sizeof(Oop));retained[2]=object;
     Oop hidden=api->alloc(api->object_vt,0);*(Oop *)object=hidden;

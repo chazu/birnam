@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -114,7 +114,7 @@ int main(int argc,char **argv) {
     assert(argc==5);reentry_mode=!strcmp(argv[4],"first-gc-intern-reentry")?1:(!strcmp(argv[4],"first-readline-binding-reentry")?2:0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0,fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout());fixture_register_root(roots);
+    uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0,fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout());fixture_register_root(roots);
     selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected_root_slot=registered;
     selected.gc_collect=gc;selected.gc_live_count=live;selected_settings_slots.automatic=auto_gc;selected_settings_slots.precise=precise_gc;
     other=selected;other.nil_obj=api->true_obj;other.gc_collect=other.gc_live_count=forbidden_query;other_settings_slots.automatic=other_settings_slots.precise=forbidden_setter;

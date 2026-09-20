@@ -79,6 +79,10 @@ run = "scripts/gc-settings-test.sh"
 description = "Check native Payload layout, allocation policy and admission (debug)"
 run = "scripts/payload-layout-test.sh"
 
+[tasks.native-stack]
+description = "Check native stack-anchor ownership, admission and collection (debug)"
+run = "scripts/native-stack-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"

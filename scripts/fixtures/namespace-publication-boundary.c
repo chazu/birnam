@@ -1,7 +1,7 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/idapi-v19/storage_v1.h"
+#include "../../abi/fixtures/idapi-v20/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static unsigned root_calls;
@@ -27,7 +27,7 @@ int main(int argc,char **argv) {
     }
     assert(!strcmp(argv[2],"collection"));assert(publish("namespace-root-publication"));
     fixture_mount_trace(api,argv[1],fixture_root_registry());
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     fixture_register_root(roots);(void)api->gc_collect();assert(root_calls);
     assert(fixture_namespace_import("namespace-root-publication")==api->nil_obj);
     puts("publication remains callable during root collection");return 0;

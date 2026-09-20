@@ -4,7 +4,7 @@
 #include "idapi_v18.h"
 #define INIT(fn,table,cap) fn(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks())
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #define INIT(fn,table,cap) fn(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),cap)
 #endif
 #include "namespace-support.h"
@@ -139,7 +139,7 @@ int main(int argc,char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);
     fixture_set_auto(0);fixture_set_precise(1);
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     mount(load_sibling(argv[1],"object_model"));
     if(!is("builder"))mount(load_sibling(argv[1],"collection"));

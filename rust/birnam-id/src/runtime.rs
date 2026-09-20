@@ -4491,6 +4491,13 @@ impl Runtime {
         unsafe { (*self.state.get()).heap.payload_size(object) }
     }
 
+    pub(crate) fn native_stack(&self) -> *mut birnam_abi::native_stack::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).metadata.native_stack() }
+    }
+
+    pub(crate) fn admit_native_stack(&self) { self.assert_owner(); }
+
     pub(crate) fn gc_set_stack_bottom(&self, address: usize) {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
@@ -7013,6 +7020,33 @@ mod tests {
         assert!(remaining.runtime.checked_vtable_of(dead).is_null());
         assert!(selected(&remaining.runtime, dead).is_none());
         assert_eq!(selected(&remaining.runtime, b), Some(second_hook as *const () as usize));
+    }
+
+    #[test]
+    fn native_stack_anchor_follows_moved_runtimes_and_canonical_reads_ignore_public_selection() {
+        let first = build_bootstrap();
+        let second = build_bootstrap();
+        let anchor = |runtime: &super::Runtime| unsafe { (*runtime.state.get()).metadata.stack_bottom() };
+        assert_eq!(anchor(&first.runtime), 0);
+        assert_eq!(anchor(&second.runtime), 0);
+        let api = first.runtime.native_stack();
+        first.runtime.enter(|| unsafe { birnam_abi::native_stack::set(api, 17) });
+        second.runtime.gc_set_stack_bottom(91);
+        let mut runtimes = vec![first, second];
+        assert_eq!(runtimes[0].runtime.native_stack(), api);
+        assert_ne!(runtimes[1].runtime.native_stack(), api);
+        assert_eq!(anchor(&runtimes[0].runtime), 17);
+        assert_eq!(anchor(&runtimes[1].runtime), 91);
+        unsafe { (*api).context = core::ptr::null_mut(); (*api).set = None; }
+        runtimes[0].runtime.gc_set_stack_bottom(0);
+        assert_eq!(anchor(&runtimes[0].runtime), 0);
+        assert_eq!(runtimes[0].runtime.gc_collect(), 0);
+        assert!(!unsafe { (*runtimes[0].runtime.state.get()).metadata.automatic_collection_due(usize::MAX) });
+        let remaining = runtimes.pop().unwrap();drop(runtimes);
+        remaining.runtime.enter(|| unsafe {
+            birnam_abi::native_stack::set(remaining.runtime.native_stack(), 0);
+        });
+        assert_eq!(anchor(&remaining.runtime), 0);
     }
 
     #[test]

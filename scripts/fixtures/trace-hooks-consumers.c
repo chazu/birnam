@@ -2,7 +2,7 @@
 #ifdef TRACE_HOOKS_BASELINE
 #include "idapi_v17.h"
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"

@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 static FixtureFinalizerSlot string_finalizer_slot;
 static FinalizersV1 string_finalizers=FIXTURE_FINALIZERS(string_finalizer_slot);
@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
     assert(preparation_collections==3);
     layout_slots.set=fixture_set_layout; string_api.method=api->method;
     fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry()); mount(argv[2],api,fixture_root_registry(),fixture_payload_layout());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     assert(!lookup("size"));
     string_api.send=reenter_publication;
     mount(argv[3],&string_api,&string_api_roots,&selected_layouts); assert(registrations==2 && provider && publication_reentries==1);
@@ -114,7 +114,7 @@ int main(int argc, char **argv) {
     assert(storage->cleanup_owner(storage->cleanup)==fixture_string->context && !storage->cleanup_owner(inert_cleanup));
     size_t absent_length=123; assert(!storage->borrow(fixture_string->context,api->true_obj,&absent_length));
     assert(!storage->release(fixture_string->context,api->true_obj));
-    assert(fixture_slot_kind(fixture_string->behavior,0)==IDAPI_V19_SLOT_RAW);
+    assert(fixture_slot_kind(fixture_string->behavior,0)==IDAPI_V20_SLOT_RAW);
     Oop owner=text("owned"); size_t owned_length=0; const uint8_t *owned=fixture_string_bytes(owner,&owned_length);
     assert(api->object_payload_size(owner)==16 && owned_length==5);
     uintptr_t *words=(uintptr_t *)owner; assert(words[0]==(uintptr_t)owned && words[1]==5);

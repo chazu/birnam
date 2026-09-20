@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v19/idapi_v19.h"
+#include "../../abi/fixtures/idapi-v20/idapi_v20.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include "collect-support.h"
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
     IdInitFn initialize=(IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")); assert(initialize);
     api=initialize(); assert(api); fixture_set_auto(0);
     uintptr_t stack_anchor=0;
-    api->gc_set_stack_bottom((uintptr_t)&stack_anchor+sizeof(stack_anchor));
+    fixture_set_stack_bottom((uintptr_t)&stack_anchor+sizeof(stack_anchor));
     attach=(TraceLiveDependencyV1)dlsym(floor,"birnam_trace_dependency_v1"); assert(attach);
     fixture_mount_collect(api,argv[1],fixture_root_registry());
     must_abort_collection(); /* no in-Id fallback */

@@ -3,7 +3,7 @@
 #define CONTEXT
 #define CONTEXT_CHECK(expected) ((void)(expected))
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #define CONTEXT void *context,
 #define CONTEXT_CHECK(expected) assert(context==(expected))
 #endif

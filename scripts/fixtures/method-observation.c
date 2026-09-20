@@ -2,12 +2,12 @@
 #ifdef FIXTURE_IDAPI_V13
 #include "idapi_v13.h"
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/idapi-v19/storage_v1.h"
+#include "../../abi/fixtures/idapi-v20/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static Oop roots[5],target,expected;
@@ -32,7 +32,7 @@ static void replace(void (*callback)(Oop,Oop)) {
 }
 static void *worker(void *context) { (void)context;replace(NULL);return NULL; }
 static int inspect(void *context,const StorageViewV1 *view) { (void)context;(void)view;replace(NULL);return 1; }
-__attribute__((noinline)) static void collect_now(void) { uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));api->gc_collect(); }
+__attribute__((noinline)) static void collect_now(void) { uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));api->gc_collect(); }
 int main(int argc,char **argv) {
     assert(argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);

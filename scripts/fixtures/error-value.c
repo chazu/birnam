@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -123,7 +123,7 @@ static Oop provider_from_bytes(const IdApi *table,const NamespacePresenceV1 *pre
 }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);fixture_set_auto(0);
-    fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0,fixture_root_registry());fixture_register_root(roots);
+    fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0,fixture_root_registry());fixture_register_root(roots);
     selected=*api;selected_presence_slot=exported;selected_import_slot=imported;selected.intern=intern;selected.send=send;selected.vtable_of=vtable;mount(argv[3],&selected,&selected_presence,&selected_imports,1,fixture_root_registry());
     system_object=fixture_namespace_import("System");Oop system_type=fixture_namespace_import("SystemVt");
     read_file=lookup(system_type,"readFile:");write_file=lookup(system_type,"writeFile:contents:");get_env=lookup(system_type,"getEnv:");load_source=lookup(system_type,"load:");load_module=lookup(system_type,"loadModule:");read_line=lookup(system_type,"readLine");while_true=lookup(fixture_namespace_import("BlockVt"),"whileTrue:");

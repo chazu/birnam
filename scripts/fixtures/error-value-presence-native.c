@@ -1,6 +1,6 @@
 /* Independent v2 presence-handoff oracle, usable in all execution forms. */
 #define _DARWIN_C_SOURCE
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "../../abi/fixtures/error-value-v3/error_value_v3.h"
 #include "../../abi/fixtures/string-v1/string_v1.h"
 #include <assert.h>

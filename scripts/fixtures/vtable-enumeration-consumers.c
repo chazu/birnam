@@ -4,7 +4,7 @@
 #define CONTEXT
 #define CHECK_CONTEXT() ((void)0)
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #define CONTEXT void *context,
 #define CHECK_CONTEXT() assert(context==&context_token)
 static int context_token;
@@ -114,7 +114,7 @@ int main(int argc,char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);fixture_prepare_namespace(floor,argv[1]);
     IdInitFn init=(IdInitFn)dlsym(floor,"id_init");assert(init);api=init();assert(api);
     fixture_mount_object_model(api,argv[1],fixture_root_registry());fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_set_auto(0);
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     fixture_register_root(mark_roots);
     selected=*api;selected.send=send;selected.vtable_of=vtable;
 #ifndef FIXTURE_IDAPI_V11

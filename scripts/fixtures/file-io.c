@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -174,7 +174,7 @@ int main(int argc,char **argv) {
     assert(mkdtemp(directory));snprintf(first_path,sizeof(first_path),"%s/first",directory);snprintf(second_path,sizeof(second_path),"%s/other",directory);
     strcpy(lookup_buffer,first_path);path_extent=strlen(first_path);assert(strlen(second_path)==path_extent);write_bytes(first_path,(const uint8_t *)"ready",5);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);fixture_set_auto(0);
-    fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0,fixture_root_registry());fixture_register_root(roots);
+    fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0,fixture_root_registry());fixture_register_root(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;fixture_string->make=make;fixture_string->bytes=bytes;
     path_name=text((const uint8_t *)first_path,path_extent);bad_name=text((const uint8_t *)"\xff",1);contents=text((const uint8_t *)"ready",5);
     selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected_root_slot=registered;selected.vtable_of=vtable;selected_presence_slot=exported;selected_import_slot=imported;selected.send=send;

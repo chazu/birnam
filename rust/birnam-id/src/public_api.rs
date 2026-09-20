@@ -177,9 +177,6 @@ unsafe extern "C" fn api_vtable_of(object: Oop) -> Oop {
     runtime().checked_vtable_of(object)
 }
 
-unsafe extern "C" fn api_gc_set_stack_bottom(address: usize) {
-    runtime().gc_set_stack_bottom(address);
-}
 
 
 
@@ -215,7 +212,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         falseObj: canonical.false_object,
         symbolName: api_symbol_name,
         vtableOf: canonical_numeric_functions().vtable_of,
-        gcSetStackBottom: api_gc_set_stack_bottom,
         gcCollect: api_gc_collect,
         gcLiveCount: api_gc_live_count,
         objectPayloadSize: api_object_payload_size,
@@ -813,4 +809,25 @@ pub unsafe extern "C" fn birnam_finalizers_dependency_v1(factory: *const birnam_
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_finalizers_provider_v1() -> *mut birnam_abi::finalizers::ApiV1 {
     runtime().finalizers()
+}
+
+pub(crate) fn native_stack_access() -> birnam_abi::native_stack::FloorV1 {
+    unsafe extern "C" fn admit(_: *mut c_void) {
+        #[cfg(not(test))]
+        { runtime().admit_native_stack(); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|r| r.admit_native_stack()); }
+    }
+    birnam_abi::native_stack::FloorV1 {
+        version: 1, byte_size: size_of::<birnam_abi::native_stack::FloorV1>(),
+        context: core::ptr::null_mut(), admit: Some(admit),
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_native_stack_dependency_v1(factory: *const birnam_abi::native_stack::FactoryV1) -> c_int {
+    unsafe { birnam_abi::native_stack::attach(factory) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_native_stack_provider_v1() -> *mut birnam_abi::native_stack::ApiV1 {
+    runtime().native_stack()
 }

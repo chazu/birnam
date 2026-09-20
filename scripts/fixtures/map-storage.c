@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 static FixtureFinalizerSlot selected_finalizer_slot;
 static FinalizersV1 selected_finalizers=FIXTURE_FINALIZERS(selected_finalizer_slot);
@@ -68,8 +68,8 @@ static int exported(const char *name) { int result=fixture_namespace_contains(na
 static Oop intern(const char *name) { if(phase==0 && candidate) { prototype=candidate; candidate=NULL; partial(3); } if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V19_SLOT_RAW && kinds[1]==IDAPI_V19_SLOT_RAW && rest==IDAPI_V19_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V19_SLOT_OOP,IDAPI_V19_SLOT_RAW}; assert(count==2 && rest==IDAPI_V19_SLOT_RAW && !memcmp(kinds,expected,2)); }
+    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V20_SLOT_RAW && kinds[1]==IDAPI_V20_SLOT_RAW && rest==IDAPI_V20_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V20_SLOT_OOP,IDAPI_V20_SLOT_RAW}; assert(count==2 && rest==IDAPI_V20_SLOT_RAW && !memcmp(kinds,expected,2)); }
     fixture_set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
@@ -161,7 +161,7 @@ int main(int argc,char **argv) {
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry(),fixture_payload_layout());
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry(),fixture_payload_layout());
     if(adopting || !strcmp(argv[4],"map-only-exports")) seed(!adopting);
     selected=*api; selected.proto=proto; selected.alloc=allocate; selected_import_slot=import; selected_presence_slot=exported;
     selected.intern=intern; FixtureLayoutSlots layout_slots={layout,fixture_slot_kind}; PayloadLayoutV1 selected_layouts=FIXTURE_LAYOUTS(layout_slots); selected.method=method; selected.send=send; NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish};

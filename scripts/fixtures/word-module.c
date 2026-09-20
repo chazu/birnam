@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry());
     assert(!fixture_namespace_contains("Word") && !fixture_namespace_contains("WordVt"));
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     word_api=*api; word_api.alloc=collecting_alloc;
     fixture_prepare_word(&word_api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     assert(preparation_collections==1); word_api.alloc=api->alloc;
@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
     unsigned pairs=0;
     for(size_t i=0;i<sizeof(inputs)/sizeof(*inputs);i++) {
         Oop word=fixture_word_make(inputs[i]);
-        assert(api->object_payload_size(word)==8 && fixture_slot_kind(fixture_word->behavior,0)==IDAPI_V19_SLOT_RAW);
+        assert(api->object_payload_size(word)==8 && fixture_slot_kind(fixture_word->behavior,0)==IDAPI_V20_SLOT_RAW);
         assert(!memcmp(word,&inputs[i],8));
         uint8_t raw[10]; memset(raw,0xab,sizeof(raw));
         fixture_word->storage->initialize(raw+1,inputs[i]);

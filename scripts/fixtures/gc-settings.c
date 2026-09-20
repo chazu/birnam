@@ -5,8 +5,8 @@
 #define SET_AUTO(value) api->gc_set_auto(value)
 #define SET_PRECISE(value) api->gc_set_precise(value)
 #else
-#include "idapi_v19.h"
-#include "../../abi/fixtures/idapi-v19/storage_v1.h"
+#include "idapi_v20.h"
+#include "../../abi/fixtures/idapi-v20/storage_v1.h"
 static GcSettingsV1 *settings;
 #define SET_AUTO(value) gc_settings_auto_v1(settings,value)
 #define SET_PRECISE(value) gc_settings_precise_v1(settings,value)
@@ -89,11 +89,11 @@ int main(int argc,char **argv) {
     SET_PRECISE(0);snapshot(inspect);assert(!observed_precise);
     puts("precise defaults, nonzero conversion and copied observation agree");
     SET_AUTO(0);fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_register_root(roots);
-    api->gc_set_stack_bottom(0);
+    fixture_set_stack_bottom(0);
     (void)api->alloc(api->object_vt,16u<<20);assert(!collections);
     SET_AUTO(-1);assert(!collections);
     (void)api->alloc(api->object_vt,0);assert(!collections);
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     (void)api->alloc(api->object_vt,0);assert(collections==1);
     puts("automatic collection waits for stack readiness and the next allocation");
     SET_AUTO(0);(void)api->alloc(api->object_vt,16u<<20);assert(collections==1);

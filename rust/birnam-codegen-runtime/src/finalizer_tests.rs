@@ -18,7 +18,6 @@ unsafe extern "C" fn method(_: Oop, _: Oop, _: Method) {}
 unsafe extern "C" fn allocate(_: Oop, _: usize) -> Oop { panic!("adopted families should not allocate"); }
 unsafe extern "C" fn send(_: Oop, _: Oop, _: *const Oop, _: usize) -> Oop { panic!("unexpected send"); }
 unsafe extern "C" fn name(_: Oop) -> *const c_char { c"fixture".as_ptr() }
-unsafe extern "C" fn stack(_: usize) {}
 unsafe extern "C" fn count() -> usize { 0 }
 unsafe extern "C" fn size(_: Oop) -> usize { 0 }
 unsafe extern "C" fn contains(_: *mut c_void, _: *const c_char) -> c_int { 1 }
@@ -60,7 +59,7 @@ fn mapped_commit_retains_first_finalizers_reads_live_selection_and_preserves_com
         dlopen: open, dlsym: symbol, object_vt: oop(10), vtable_vt: oop(10), symbol_vt: oop(10),
         intern, proto: identity, method, alloc: allocate, send,
         nilObj: oop(1), trueObj: oop(2), falseObj: oop(3), symbolName: name, vtableOf: identity,
-        gcSetStackBottom: stack, gcCollect: count, gcLiveCount: count, objectPayloadSize: size,
+        gcCollect: count, gcLiveCount: count, objectPayloadSize: size,
     }));
     let other = Box::into_raw(Box::new(unsafe { ptr::read(api) }));
     unsafe { (*other).nilObj = oop(21); (*other).trueObj = oop(22); }

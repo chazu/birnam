@@ -3,7 +3,7 @@
 #ifdef FIXTURE_IDAPI_V10
 #include "idapi_v10.h"
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #endif
 #include "namespace-support.h"
 #include "integer-support.h"
@@ -81,7 +81,7 @@ int main(int argc,char **argv) {
     assert(!strcmp(family,"Integer") || !strcmp(family,"Float") || !strcmp(family,"Word") || !strcmp(family,"String"));
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);
-    fixture_set_auto(0);uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    fixture_set_auto(0);uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     fixture_mount_trace(api,argv[1],fixture_root_registry());
     selected=*api;selected.proto=proto;
 #ifdef FIXTURE_IDAPI_V10

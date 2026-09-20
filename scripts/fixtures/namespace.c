@@ -1,6 +1,6 @@
 #define _DARWIN_C_SOURCE
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include <stdlib.h>
@@ -91,7 +91,7 @@ Oop lookup_probe_intern(void *context,const uint8_t *bytes,size_t length) {
 
 __attribute__((noinline)) static void collect_now(IdApi *api) {
     uintptr_t anchor=0;
-    api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     assert(api->gc_collect()>0);
 }
 static void storage_oracle(void) {

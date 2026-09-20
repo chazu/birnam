@@ -151,20 +151,20 @@ pub(crate) fn trace_conservative_for_test(heap: &mut Heap, roots: &[Oop]) {
 pub(crate) use birnam_abi::gc_settings::AUTO_COLLECTION_THRESHOLD;
 
 pub(crate) struct MetadataShell {
-    stack_bottom: usize,
+    native_stack: crate::native_stack::Service,
     settings: crate::gc_settings::Service,
 }
 
 impl MetadataShell {
     pub(crate) fn new() -> Self {
         Self {
-            stack_bottom: 0,
+            native_stack: crate::native_stack::Service::new(),
             settings: crate::gc_settings::Service::new(),
         }
     }
 
     pub(crate) fn set_stack_bottom(&mut self, address: usize) {
-        self.stack_bottom = address;
+        self.native_stack.set(address);
     }
 
     pub(crate) fn set_auto_requested(&mut self, enabled: bool) {
@@ -176,7 +176,7 @@ impl MetadataShell {
     }
 
     pub(crate) fn stack_bottom(&self) -> usize {
-        self.stack_bottom
+        self.native_stack.get()
     }
 
     #[cfg(test)]
@@ -185,11 +185,15 @@ impl MetadataShell {
     }
 
     pub(crate) fn automatic_collection_due(&self, allocated_bytes: usize) -> bool {
-        self.settings.automatic_due(self.stack_bottom != 0, allocated_bytes)
+        self.settings.automatic_due(self.native_stack.get() != 0, allocated_bytes)
     }
 
     pub(crate) fn precise(&self) -> bool {
         self.settings.precise()
+    }
+
+    pub(crate) fn native_stack(&self) -> *mut birnam_abi::native_stack::ApiV1 {
+        self.native_stack.api()
     }
 
     pub(crate) fn settings(&self) -> *mut birnam_abi::gc_settings::ApiV1 {

@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     mount(argv[2],api); /* object-model for Collection in the baseline/later check */
     Oop nil_vt=api->vtable_of(api->nil_obj);
     assert(!lookup(api->object_vt,"isNil") && !lookup(nil_vt,"printString"));

@@ -1,8 +1,8 @@
 # 81BO — Native stack-anchor ownership
 
-> **Status:** Audited next extraction after completed 81BN (`6608e7fb`).
-> No production migration yet. Preserve behavior and validate in debug only;
-> release validation remains waived.
+> **Status:** Production extraction complete after 81BN (`6608e7fb`).
+> Native Stack owns the anchor; Id retains physical capture and scanning.
+> Validated in debug only; release validation remains waived.
 
 [81D](81d-id-api-partition.md) assigns `gcSetStackBottom` to native-root
 integration. After Root Registry, GC Settings and Finalizers, `gc::MetadataShell`
@@ -129,5 +129,55 @@ provider getter cannot mask a missing check. Run startup through siphon,
 source-free compiled calling, saved mapped/rebuilt images, baked execution and
 the real image-backed worker comparison. Check dynamic symbol ownership,
 system-only links, exports, ABI fingerprints and installation receipts against
-the final build inputs. Commit only after this extraction is complete, then
-select the next responsibility.
+the final build inputs.
+
+## Completed implementation and evidence
+
+`birnam-native-stack` now owns the per-Runtime anchor allocation. Id owns its
+service lifetime and retains canonical operations for internal reads and writes.
+The host mounts the factory before Id initialization and uses the live public
+capability in `prepare_execution`, before optional precise-GC policy. Current
+native fixtures and build scripts use IdApi v20 and prepare Native Stack;
+historical v19 and earlier contracts remain frozen.
+
+The independent baseline is the completed 81BN source at `6608e7fb` and its
+installed debug prefix. The following checks passed against the final production
+build inputs:
+
+- ABI, Id and Native Stack library tests: 287 passed, with 15 existing Id tests
+  ignored. Workspace build and all-target checks passed. All 79 current ABI C
+  script fixtures passed strict syntax checks, and the installed v20 C client
+  and module passed with 18 fields.
+- Five independent old/new anchor transcripts matched exit status, stdout and
+  stderr exactly. They cover raw assignment, zero/reset behavior, the existing
+  automatic-collection threshold, native and provider roots, callback-time
+  resets, finalizer reentry, and wrong-thread/storage-observation rejection for
+  both zero and nonzero assignments.
+- The installed host integration test exercised actual `prepare_execution`
+  with two successive public callback/context selections. It verified the exact
+  anchor address and ordering before optional precise-GC policy. All 17 host
+  factory/capability admission cases passed.
+- Adjacent GC Settings and Finalizers gates passed with v20, including the
+  loaded collection coordinator, automatic readiness, admission boundaries,
+  Codegen Runtime registration and all seven native finalizer callers.
+- `scripts/native-stack-image-smoke.sh PREFIX` passed dynamic startup,
+  source-free compiled calling, saved mapped and rebuilt native Code images,
+  and baked execution, including aliases and module reload.
+- Both old and new installed hosts completed 12 exact image-backed worker wire
+  round trips and orderly shutdown; their transcripts matched byte for byte.
+  The external debug harness allowed startup time without changing the
+  production worker handshake deadline.
+- The debug installation contains 50 native libraries and 28 compiled modules.
+  All 78 library export inventories and 34 native manifests matched the declared
+  changes; Id and Native Stack link only system libraries. The receipt matched
+  all 473 current build inputs and 509 published artifact hashes.
+
+Physical capture and scanning in `gc.rs`, source-probe roots, collection and
+tracing adapters, and Native Loader are byte-for-byte unchanged from 81BN.
+Native initialization still takes twelve arguments and the image format remains
+v8. This extraction removes only `gcSetStackBottom` from IdApi.
+
+Local evidence is recorded in `.cargo-target/81bo-*.log`; the focused module,
+host and image checks are repeatable through
+`scripts/native-stack-test.sh PREFIX` and
+`scripts/native-stack-image-smoke.sh PREFIX`.

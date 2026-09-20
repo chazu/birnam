@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -117,7 +117,7 @@ int main(int argc,char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     mount(argv[2],api,fixture_namespace_exports(),fixture_root_registry(),fixture_payload_layout());
     selected=*api; FixtureLayoutSlots layout_slots={layout,fixture_slot_kind}; PayloadLayoutV1 selected_layouts=FIXTURE_LAYOUTS(layout_slots); selected.method=method;
     NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; selected_root_slot=roots;
@@ -125,7 +125,7 @@ int main(int argc,char **argv) {
     assert(bindings==8 && publications==1 && collections==8 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
     assert(fixture_namespace_import("Range")==prototype && fixture_namespace_import("RangeVt")==behavior);
     assert(vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
-    for(size_t i=0;i<3;i++) assert(fixture_slot_kind(behavior,i)==IDAPI_V19_SLOT_RAW);
+    for(size_t i=0;i<3;i++) assert(fixture_slot_kind(behavior,i)==IDAPI_V20_SLOT_RAW);
     if(!baseline) {
         assert(range_roots); range_roots(record_mark); assert(marks==3);
         if(!methods_baseline && !fixture_range_v2) {

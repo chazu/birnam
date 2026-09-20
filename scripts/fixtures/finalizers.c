@@ -3,7 +3,7 @@
 #include "idapi_v18.h"
 #define SET(o,f) api->set_finalizer(o,f)
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 static FinalizersV1 *finalizer_cap;
 #define SET(o,f) finalizers_set_v1(finalizer_cap,o,f)
 #endif

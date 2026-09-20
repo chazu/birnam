@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -107,7 +107,7 @@ int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_root_registry());
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_root_registry());
     selected=*api; selected.send=counted_send; selected_root_slot=register_roots; mount(argv[3],&selected,&selected_roots);
     type=fixture_vector->behavior();
     for(size_t i=0;i<13;i++) {
@@ -119,7 +119,7 @@ int main(int argc,char **argv) {
     }
     assert(methods[11]==methods[12]);
     block_type=api->proto(api->object_vt); block=api->alloc(block_type,0); key_type=api->proto(api->object_vt);
-    fixture_set_layout(key_type,NULL,0,IDAPI_V19_SLOT_RAW); api->method(key_type,api->intern("<"),less);
+    fixture_set_layout(key_type,NULL,0,IDAPI_V20_SLOT_RAW); api->method(key_type,api->intern("<"),less);
     fixture_namespace_export("VectorTestBlock",block); fixture_namespace_export("VectorTestKeys",key_type);
     const int64_t values[]={5,2,4,1,3,0},inner[]={12,11,10};
     input=vector(values,6); nested=vector(inner,3);

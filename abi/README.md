@@ -1,17 +1,20 @@
 # ABI evidence
 
-The current boundary is **IdApi v19**, with 19 fields / 152 bytes. Design
-[81BN](../docs/design/81bn-production-finalizers.md) moves native finalizer registration
-and inline callback construction into [Finalizers](finalizers-v1.md).
+The current boundary is **IdApi v20**, with 18 fields / 144 bytes. Design
+[81BO](../docs/design/81bo-production-native-stack-anchor.md) moves native
+stack-anchor ownership into [Native Stack](native-stack-v1.md), exposing its
+setter directly to the host. Design [81BN](../docs/design/81bn-production-finalizers.md)
+moves native finalizer registration and inline callback construction into
+[Finalizers](finalizers-v1.md).
 Initializers receive `(api, state, presence, imports, exports, vtables,
 observation, roots, settings, layouts, hooks, finalizers)`. [Native Loader v12](native-loader-v12.md)
 forwards the matching finalizer selection. Early String preparation is v4;
 Float/Word preparation and Range/Vector/Map installation are v6. Native
 consumers require rebuilding; image encoding is unchanged.
-[IdApi v19 manifest](idapi-v19.json) and the
-[C fixture](fixtures/idapi-v19/README.md) describe the current boundary.
+[IdApi v20 manifest](idapi-v20.json) and the
+[C fixture](fixtures/idapi-v20/README.md) describe the current boundary.
 
-`idapi-v19.json` describes the current arm64 macOS IdApi.
+`idapi-v20.json` describes the current arm64 macOS IdApi.
 Design 81BK removes `gcSetAuto` and `gcSetPrecise` into [GC Settings](gc-settings-v1.md).
 Design 81BI removes `setMethodOverwriteHook` into [Method Observation](method-observation-v1.md).
 Design 81BH removes `vtableSelectorAt` into the same explicit enumeration service.
@@ -20,7 +23,7 @@ Design 81BF removes `exportObj` into the explicit [Namespace export capability](
 Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
 following 81BB's [presence capability](namespace-presence-v1.md).
 Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *, const NamespaceExportV1 *, const VtableEnumerationV2 *, const MethodObservationV1 *, const RootRegistryV1 *, const GcSettingsV1 *, const PayloadLayoutV1 *, const TraceHooksV1 *, const FinalizersV1 *)`.
-All native modules must be rebuilt for this signature and IdApi v19.
+All native modules must be rebuilt for this signature and IdApi v20.
 After `id_init`, the selected floor exposes `birnam_namespace_presence_provider_v1`,
 `birnam_namespace_import_provider_v1` and `birnam_namespace_export_provider_v1`. The host and Native Loader pass these
 selections explicitly. The floor also supplies `birnam_vtable_enumeration_provider_v2`
@@ -33,7 +36,9 @@ Root Registry factory is prepared before Id and exposes
 prepared before Id and exposes `birnam_payload_layout_provider_v1` as the tenth
 argument. Trace Hooks is prepared before Id and exposes
 `birnam_trace_hooks_provider_v1` as the eleventh argument. Finalizers is also prepared before Id and exposes
-`birnam_finalizers_provider_v1` as the twelfth argument. Modules capture matching live capabilities when they save
+`birnam_finalizers_provider_v1` as the twelfth argument. Native Stack is prepared
+before Id and exposes `birnam_native_stack_provider_v1` directly to the host;
+initialization stays at twelve arguments and Native Loader stays v12. Modules capture matching live capabilities when they save
 their execution API; incoming registration/adoption uses the incoming selection
 at its original call points. There is no API-address registry or production
 callback-slot loan. Code, contexts and descriptors must remain valid for every
@@ -46,23 +51,23 @@ Design 81R removes the four Float fields into an explicit [Float dependency](flo
 Design 81J removes `ensurePrivateVtable`; 81K removes owner/parent getters and
 setters. 81L removes the four Integer fields into an explicit
 [Integer dependency](integer-v1.md). Object-model consumers use ordinary Vtable
-messages. Existing v1-v18 native consumers
+messages. Existing v1-v19 native consumers
 must be rebuilt.
 Backward compatibility is not a requirement for this refactor.
 
 The Rust mirror has compile-time offsets and exports a diagnostic descriptor.
-The descriptor's format version remains 1, while its IdApi schema version is 19.
-Its fingerprint matches the independent v19 manifest. The v19 fingerprint algorithm
+The descriptor's format version remains 1, while its IdApi schema version is 20.
+Its fingerprint matches the independent v20 manifest. The v20 fingerprint algorithm
 is SHA-256 over compact, key-sorted UTF-8 JSON, excluding the `fingerprint` member.
 The workspace tests verify that fingerprint and every compiled field offset.
 
-`fixtures/idapi-v19/idapi_v19.h` is the current independent C header. The routine
-native gate compiles the v19 client/module and checks the table and separately
+`fixtures/idapi-v20/idapi_v20.h` is the current independent C header. The routine
+native gate compiles the v20 client/module and checks the table and separately
 loaded String, Integer, Float, Word and object-model implementations. Other active foreign fixtures use this header.
 
 `idapi-v1.json` and `fixtures/idapi-v1` preserve the historical 54-field ABI and
-its frozen binary evidence. They are not changed to match v19. Their old opt-in
-compatibility script applies only to a v1 floor; running that client against v19
+its frozen binary evidence. They are not changed to match v20. Their old opt-in
+compatibility script applies only to a v1 floor; running that client against v20
 is unsupported. The archived v4 image remains historical evidence as before.
 
 The Cargo workspace and `scripts/rust-install.sh` remain the build authority.
@@ -238,3 +243,7 @@ names are still interned before the selected raw find. All three operations use 
 
 [Isolate OOP bridges v2](isolate-oop-v2.md) receive the incoming API and import
 capability explicitly; wire encoding and worker lifecycle are unchanged.
+
+`idapi-v19.json` and `fixtures/idapi-v19` preserve the 81BN checkpoint.
+[Native Stack v1](native-stack-v1.md) owns the native root anchor and removes
+`gcSetStackBottom` from IdApi v20 without moving register capture or scanning.

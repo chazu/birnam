@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
@@ -116,7 +116,7 @@ int main(int argc, char **argv) {
     Oop prototype = fixture_integer->prototype, behavior = fixture_integer->behavior;
     fixture_namespace_export("Integer", api->nil_obj);
     fixture_namespace_export("IntegerVt", api->nil_obj);
-    fixture_set_precise(1); api->gc_set_stack_bottom(0); api->gc_collect();
+    fixture_set_precise(1); fixture_set_stack_bottom(0); api->gc_collect();
     assert(api->vtable_of(prototype) == behavior && fixture_integer_value(prototype) == 0);
     assert(fixture_integer_value(fixture_integer_make(INT64_MIN)) == INT64_MIN);
     fixture_namespace_export("Integer", prototype); fixture_namespace_export("IntegerVt", behavior);

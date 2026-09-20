@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Extract native stack-anchor ownership into Native Stack (81BO). IdApi v20
+  has 18 fields / 144 bytes. The host sets the anchor through an explicit
+  capability; native initialization keeps twelve arguments. Preserve register
+  capture, scan bounds, automatic collection readiness and callback-time changes.
+  Native consumers require rebuilding; image encoding is unchanged.
+
 - Extract native finalizer registration into Finalizers (81BN). IdApi v19 has
   19 fields / 152 bytes; native initialization receives a twelfth capability,
   forwarded by Native Loader v12. Preserve canonical native allocation, saved

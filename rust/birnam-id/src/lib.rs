@@ -15,6 +15,7 @@ mod env;
 mod execution;
 mod gc;
 mod gc_settings;
+mod native_stack;
 mod payload_layout;
 mod trace_hooks;
 mod finalizers;

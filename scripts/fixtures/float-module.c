@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     api=((IdInitFn)(fixture_prepare_namespace(floor_handle,argv[1]),dlsym(floor_handle,"id_init")))(); assert(api); fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry());
     assert(!fixture_namespace_contains("Float") && !fixture_namespace_contains("FloatVt"));
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     float_api=*api; float_api.alloc=collecting_alloc;
     fixture_prepare_float(&float_api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
     assert(preparation_collections==1);
@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
     for(size_t i=0;i<sizeof(payloads)/sizeof(*payloads);i++) {
         double value; memcpy(&value,&payloads[i],8);
         Oop boxed=fixture_float_make(value);
-        assert(api->object_payload_size(boxed)==8 && fixture_slot_kind(fixture_float->behavior,0)==IDAPI_V19_SLOT_RAW);
+        assert(api->object_payload_size(boxed)==8 && fixture_slot_kind(fixture_float->behavior,0)==IDAPI_V20_SLOT_RAW);
         assert(!memcmp(boxed,&payloads[i],8));
         double read=fixture_float_value(boxed); assert(!memcmp(&read,&payloads[i],8));
         uint8_t raw[10]; memset(raw,0xab,sizeof(raw));

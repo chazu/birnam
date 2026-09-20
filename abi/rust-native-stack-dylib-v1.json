@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "scope": "Runtime-local native stack-anchor ownership",
+  "install_name": "@rpath/libbirnam_native_stack.dylib",
+  "exported_symbols": [
+    "birnam_symbol_borrow_v1",
+    "birnam_native_stack_factory_v1",
+    "module_init"
+  ]
+}

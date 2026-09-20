@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v19/storage_v1.h"
+#include "../../abi/fixtures/idapi-v20/storage_v1.h"
 #include "../../abi/fixtures/trace-v1/trace_v1.h"
 #include "namespace-support.h"
 #include "integer-support.h"

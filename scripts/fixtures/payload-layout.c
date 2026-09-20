@@ -5,8 +5,8 @@
 #define SET(v,k,n,r) api->set_layout(v,k,n,r)
 #define SLOT(v,i) api->slot_kind(v,i)
 #else
-#include "idapi_v19.h"
-#include "../../abi/fixtures/idapi-v19/storage_v1.h"
+#include "idapi_v20.h"
+#include "../../abi/fixtures/idapi-v20/storage_v1.h"
 static const PayloadLayoutV1 *layouts;
 #define SET(v,k,n,r) payload_layout_set_v1(layouts,v,k,n,r)
 #define SLOT(v,i) payload_layout_slot_v1(layouts,v,i)

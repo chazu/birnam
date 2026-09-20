@@ -1,7 +1,7 @@
 #ifdef FIXTURE_IDAPI_V11
 #include "idapi_v11.h"
 #else
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"
@@ -12,7 +12,7 @@ static Oop created[64];
 static void mark_roots(MarkFn mark) { for(size_t i=0;i<64;i++)mark(roots[i]); }
 __attribute__((noinline)) static void collect_now(void) {
     uintptr_t anchor=0;
-    api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     (void)api->gc_collect();
 }
 static size_t count(void) {

@@ -1,4 +1,4 @@
-#include "idapi_v19.h"
+#include "idapi_v20.h"
 #include "namespace-support.h"
 static FixtureFinalizerSlot builder_finalizer_slot;
 static FinalizersV1 builder_finalizers=FIXTURE_FINALIZERS(builder_finalizer_slot);
@@ -134,7 +134,7 @@ int main(int argc,char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry()); mount(argv[2],api,fixture_namespace_exports(),fixture_root_registry(),fixture_payload_layout()); mount(argv[3],api,fixture_namespace_exports(),fixture_root_registry(),fixture_payload_layout());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0; fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     if(present) seed_collections();
     Oop adopted_type=NULL, adopted_prototype=NULL;
     if(adopted) {
@@ -154,7 +154,7 @@ int main(int argc,char **argv) {
     else assert(fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     assert(vtable_parent(api,behavior)==api->object_vt);
     if(!present) assert(vtable_owner(api,behavior)==prototype);
-    for(size_t i=0;i<4;i++) assert(fixture_slot_kind(behavior,i)==IDAPI_V19_SLOT_RAW);
+    for(size_t i=0;i<4;i++) assert(fixture_slot_kind(behavior,i)==IDAPI_V20_SLOT_RAW);
     print_selector=api->intern("printString"); roots(record_mark); assert(marked==3);
     Method create=lookup("new"), clone=lookup("clone"), append=lookup("add:"), add_byte=lookup("addByte:");
     assert(create==clone && create && append && add_byte && lookup("asString")==lookup("printString"));
