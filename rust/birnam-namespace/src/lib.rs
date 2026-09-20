@@ -65,7 +65,7 @@ pub extern "C" fn birnam_namespace_provider_v7() -> *const ApiV7 {
 }
 /// Normal mounting must not recreate any already-constructed namespace.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "Namespace received a null IdApi");
     core::ptr::null_mut()
 }

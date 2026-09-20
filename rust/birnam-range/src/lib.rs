@@ -394,7 +394,7 @@ static API: ApiV3 = ApiV3 {
     publish: Some(publish),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     if api.is_null() {
         abort("module_init received a null IdApi");
     }

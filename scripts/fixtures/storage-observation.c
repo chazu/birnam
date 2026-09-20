@@ -155,10 +155,10 @@ int main(int argc, char **argv) {
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1"); assert(observe);
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);
     describe=(StorageDescribeV1)api->dlsym_fn(storage,"birnam_storage_describe_v1"); assert(describe);
-    ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence());
+    ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
     StorageRequestV1 bare_request={1,sizeof(bare_request),NULL,bare};
     assert(observe(&bare_request)==STORAGE_OK);
-    fixture_mount_integer(api, argv[1], fixture_namespace_presence());
+    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     integers=fixture_integer;
     storage_selector=api->intern("withStorageView:"); lookup_selector=api->intern("lookup");
     owner_selector=api->intern("ownerOf:put:"); parent_selector=api->intern("parentOf:put:");

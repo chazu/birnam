@@ -233,6 +233,7 @@ const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 struct Runtime {
     api: usize,
     presence: usize,
+    imports: usize,
     rust_codegen_vt: usize,
     rust_codegen: usize,
     adapter_codegen_vt: usize,
@@ -504,7 +505,7 @@ fn note_error(message: &[u8]) {
 }
 
 unsafe fn error_value(api: &IdApi, kind: &[u8]) -> Oop {
-    let factory = unsafe { (api.import)(c"Error".as_ptr()) };
+    let factory = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Error".as_ptr()) };
     if factory.is_null() || factory == api.nilObj {
         return api.nilObj;
     }
@@ -708,7 +709,7 @@ pub unsafe extern "C" fn birnam_global(name: *const c_char) -> Oop {
         return value;
     }
     if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), name.cast()) } != 0 {
-        unsafe { (api.import)(name.cast()) }
+        unsafe { birnam_abi::namespace_import::import(execution_imports(), name.cast()) }
     } else {
         api.nilObj
     }
@@ -1009,7 +1010,7 @@ pub unsafe extern "C" fn birnam_rust_codegen_is_error(value: Oop) -> c_long {
     if value.is_null() || value == api.nilObj {
         return 0;
     }
-    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    let error_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), ERROR_VT_NAME.as_ptr().cast()) };
     if error_vt.is_null() || error_vt == api.nilObj {
         return 0;
     }
@@ -1209,8 +1210,8 @@ pub unsafe extern "C" fn birnam_vtable_cache_set(generation: u64, index: u64, va
 }
 
 unsafe fn portable_code_api(api: &IdApi) -> Option<&'static PortableCodeApiV1> {
-    let object = unsafe { (api.import)(c"_BirnamPortableCodeApiV1".as_ptr()) };
-    let vtable = unsafe { (api.import)(c"_BirnamPortableCodeApiV1Vt".as_ptr()) };
+    let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableCodeApiV1".as_ptr()) };
+    let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableCodeApiV1Vt".as_ptr()) };
     if object.is_null()
         || object == api.nilObj
         || vtable.is_null()
@@ -1230,8 +1231,8 @@ unsafe fn portable_code_api(api: &IdApi) -> Option<&'static PortableCodeApiV1> {
 }
 
 unsafe fn portable_code_api_v2(api: &IdApi) -> Option<&'static PortableCodeApiV2> {
-    let object = unsafe { (api.import)(c"_BirnamPortableCodeApiV2".as_ptr()) };
-    let vtable = unsafe { (api.import)(c"_BirnamPortableCodeApiV2Vt".as_ptr()) };
+    let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableCodeApiV2".as_ptr()) };
+    let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableCodeApiV2Vt".as_ptr()) };
     if object.is_null()
         || object == api.nilObj
         || vtable.is_null()
@@ -1251,8 +1252,8 @@ unsafe fn portable_code_api_v2(api: &IdApi) -> Option<&'static PortableCodeApiV2
 }
 
 unsafe fn portable_program_view_api(api: &IdApi) -> Option<&'static PortableProgramViewApiV1> {
-    let object = unsafe { (api.import)(c"_BirnamPortableProgramViewApiV1".as_ptr()) };
-    let vtable = unsafe { (api.import)(c"_BirnamPortableProgramViewApiV1Vt".as_ptr()) };
+    let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableProgramViewApiV1".as_ptr()) };
+    let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableProgramViewApiV1Vt".as_ptr()) };
     if object.is_null()
         || object == api.nilObj
         || vtable.is_null()
@@ -1667,11 +1668,11 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
 }
 
 unsafe fn borrowed_address(api: &IdApi, address: usize) -> Option<Oop> {
-    unsafe { foreign_address::allocate(api, execution_presence(), address, KIND_BORROWED) }
+    unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), address, KIND_BORROWED) }
 }
 
 unsafe fn foreign_address_value(api: &IdApi, object: Oop) -> Option<usize> {
-    unsafe { foreign_address::value(api, object) }.map(|(address, _kind)| address)
+    unsafe { foreign_address::value(api, execution_imports(), object) }.map(|(address, _kind)| address)
 }
 
 // JIT identities are scalar registry keys, not roots. Payload addresses are
@@ -2011,7 +2012,7 @@ unsafe fn parse_selection_requests(
     if unsafe { symbol_bytes(api, request) }.as_deref() == Some(b"resumableRequired") {
         return Ok(ParsedSelectionRequests::WholeUnitResumable);
     }
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     if vector_vt.is_null() || vector_vt == api.nilObj {
         return Err(SelectionRequestError::Vector);
     }
@@ -2951,7 +2952,7 @@ unsafe fn global_by_name(api: &IdApi, runtime: &Runtime, name: &[u8]) -> Oop {
     terminated.extend_from_slice(name);
     terminated.push(0);
     if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), terminated.as_ptr().cast()) } != 0 {
-        unsafe { (api.import)(terminated.as_ptr().cast()) }
+        unsafe { birnam_abi::namespace_import::import(execution_imports(), terminated.as_ptr().cast()) }
     } else {
         api.nilObj
     }
@@ -3237,9 +3238,9 @@ type ArtifactMetadata = (Option<ModuleMetadata>, Vec<Vec<u8>>);
 
 unsafe fn artifact_metadata(api: &IdApi, source_object: Oop) -> Option<ArtifactMetadata> {
     let source = unsafe { string_bytes(api, source_object) }?;
-    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
-    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
         return None;
     }
@@ -3565,9 +3566,9 @@ unsafe fn parse_revision_metadata(
     source_object: Oop,
 ) -> Option<(Vec<u8>, RevisionMetadata)> {
     let source = unsafe { string_bytes(api, source_object) }?;
-    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
-    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
         return None;
     }
@@ -3932,7 +3933,7 @@ fn is_digest(bytes: &[u8]) -> bool {
 }
 
 unsafe fn valid_revision(api: &IdApi, revision: Oop) -> bool {
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     if unsafe { vector_length(api, revision, vector_vt) } != Some(7) {
         return false;
     }
@@ -3965,7 +3966,7 @@ unsafe fn valid_revision(api: &IdApi, revision: Oop) -> bool {
 }
 
 unsafe fn revision_transition_allowed(api: &IdApi, current: Oop, successor: Oop) -> bool {
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     if vector_vt.is_null()
         || !unsafe { valid_revision(api, current) }
         || !unsafe { valid_revision(api, successor) }
@@ -4042,7 +4043,7 @@ unsafe fn generation_modules(
     api: &IdApi,
     source_map: Oop,
 ) -> Option<Vec<GenerationModuleProjection>> {
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     let count = unsafe { vector_length(api, source_map, vector_vt) }?;
     let mut modules = Vec::with_capacity(count);
     for index in 0..count {
@@ -4499,7 +4500,7 @@ unsafe fn durable_generation_sources(api: &IdApi) -> Option<Vec<(usize, usize)>>
             &[generation, intern(api, b"sourceMap\0")],
         )
     };
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     let count = unsafe { vector_length(api, source_map, vector_vt) }?;
     let mut modules = Vec::with_capacity(count);
     for index in 0..count {
@@ -4577,7 +4578,7 @@ unsafe fn durable_generation_entry(api: &IdApi, generation: Oop, name: Oop) -> O
             &[generation, intern(api, b"sourceMap\0")],
         )
     };
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     let count = unsafe { vector_length(api, source_map, vector_vt) }?;
     for index in 0..count {
         let entry = unsafe { vector_item(api, source_map, index) };
@@ -4701,7 +4702,7 @@ unsafe extern "C" fn rust_codegen_initial_generation_projection(
         }
     }
     let _auto_gc = AutoGc(api);
-    let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector_proto = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     if vector_proto.is_null() {
         note_error(b"RustCodegen Vector is unavailable");
         return api.nilObj;
@@ -4793,8 +4794,8 @@ unsafe extern "C" fn rust_codegen_successor_generation_projection(
         }
     }
     let _auto_gc = AutoGc(api);
-    let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_proto = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     let Some(count) = (unsafe { vector_length(api, values[0], vector_vt) }) else {
         note_error(b"RustCodegen source map is malformed");
         return api.nilObj;
@@ -5077,7 +5078,7 @@ unsafe extern "C" fn rust_codegen_generation_sources(
         }
     }
     let _auto_gc = AutoGc(api);
-    let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
         note_error(b"RustCodegen generation source registry is malformed");
         return api.nilObj;
@@ -5107,7 +5108,7 @@ unsafe extern "C" fn rust_codegen_generation_method_sources(
         }
     }
     let _auto_gc = AutoGc(api);
-    let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     let Some(sources) = (unsafe { ordered_generation_sources(api) }) else {
         note_error(b"RustCodegen generation source registry is malformed");
         return api.nilObj;
@@ -5265,9 +5266,9 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
             .collect::<Vec<_>>();
         if !module_requests.is_empty() {
             let source_object = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
-            let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+            let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
             let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
-            let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+            let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
             if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
                 note_error(b"RustCodegen selected image source could not be parsed");
                 return api.nilObj;
@@ -5566,7 +5567,7 @@ unsafe extern "C" fn rust_codegen_replay_aliens(
         records.push((index, source));
     }
     records.sort_by_key(|(index, _)| *index);
-    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    let error_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), ERROR_VT_NAME.as_ptr().cast()) };
     let mut replayed = 0usize;
     for (_, source) in records {
         clear_error();
@@ -5675,9 +5676,9 @@ unsafe fn emit_source(
     projected_statement_indices: Option<&[usize]>,
 ) -> Option<EmittedSource> {
     let source = unsafe { string_bytes(api, source_object) }?;
-    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
-    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
         unsafe { note_syntax_error(api, lang, source_object) };
         return None;
@@ -5760,9 +5761,9 @@ unsafe fn emit_image_recovery_source(
     block_resumables: Option<Vec<BlockResumableEmission>>,
 ) -> Option<EmittedSource> {
     let source = unsafe { string_bytes(api, source_object) }?;
-    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
-    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
         unsafe { note_syntax_error(api, lang, source_object) };
         return None;
@@ -5838,7 +5839,7 @@ unsafe extern "C" fn rust_codegen_embedded_files(
     }
     let runtime = runtime();
     let api = unsafe { api(runtime) };
-    let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector_proto = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     if vector_proto.is_null() {
         note_error(b"RustCodegen Vector is unavailable");
         return api.nilObj;
@@ -5848,9 +5849,9 @@ unsafe extern "C" fn rust_codegen_embedded_files(
         note_error(b"RustCodegen source was not a String");
         return result;
     };
-    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[values[0]]) };
-    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
         return result;
     }
@@ -5882,7 +5883,7 @@ unsafe extern "C" fn rust_codegen_module_metadata(
     let Some((source, metadata)) = (unsafe { parse_revision_metadata(api, values[0]) }) else {
         return api.nilObj;
     };
-    let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector_proto = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     if vector_proto.is_null() {
         note_error(b"RustCodegen Vector is unavailable");
         return api.nilObj;
@@ -5945,7 +5946,7 @@ unsafe fn source_revision_from_metadata(
     source_object: Oop,
     metadata: &RevisionMetadata,
 ) -> Oop {
-    let vector_proto = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector_proto = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     if vector_proto.is_null() {
         note_error(b"RustCodegen Vector is unavailable");
         return api.nilObj;
@@ -6179,7 +6180,7 @@ unsafe fn compile_synchronous_materialization(
         unsafe { dispose_unit(api, unit) };
         return None;
     }
-    let block_family = unsafe { (api.import)(c"BlockVt".as_ptr()) };
+    let block_family = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"BlockVt".as_ptr()) };
     let vtable = if block_family.is_null() || block_family == api.nilObj {
         ptr::null_mut()
     } else {
@@ -7694,7 +7695,7 @@ unsafe extern "C" fn rust_codegen_materialize_synchronous(
         note_error(b"RustCodegen materialization rejected PortableProgram semantics");
         return api.nilObj;
     };
-    let vector_vtable = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     if unsafe { vector_length(api, captures_object, vector_vtable) }
         != usize::try_from(capture_count).ok()
     {
@@ -7773,7 +7774,7 @@ unsafe extern "C" fn rust_codegen_materialize_resumable(
         note_error(b"RustCodegen resumable materialization rejected PortableProgram semantics");
         return api.nilObj;
     };
-    let vector_vtable = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     if unsafe { vector_length(api, captures_object, vector_vtable) }
         != usize::try_from(capture_count).ok()
     {
@@ -8009,9 +8010,9 @@ unsafe extern "C" fn rust_codegen_compile_initial_module_selection(
         note_error(b"RustCodegen initial generation authority is unavailable");
         return api.nilObj;
     };
-    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[values[0]]) };
-    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) } != cst_vt {
         note_error(b"RustCodegen initial module source could not be parsed");
         return api.nilObj;
@@ -8369,9 +8370,9 @@ unsafe fn rust_codegen_compile_candidate_impl(
     let has_resumables = requests
         .iter()
         .any(|request| request.disposition == SelectionDisposition::ResumableRequired);
-    let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast()) };
+    let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[values[0]]) };
-    let cst_vt = unsafe { (api.import)(PEG_CST_VT_NAME.as_ptr().cast()) };
+    let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
     if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
         note_error(b"RustCodegen candidate source could not be parsed");
         return api.nilObj;
@@ -8740,7 +8741,7 @@ unsafe fn assert_candidate_fact(
 }
 
 unsafe fn candidate_manifest_vector(api: &IdApi, metadata: &RevisionMetadata) -> Oop {
-    let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     if vector.is_null() {
         return api.nilObj;
     }
@@ -9878,7 +9879,7 @@ unsafe fn parse_publication_plan(
     plan: Oop,
     action: &[u8],
 ) -> Option<(usize, PublicationPlanState)> {
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     if vector_vt.is_null() || unsafe { (api.vtableOf)(plan) } != vector_vt {
         note_error(b"RustCodegen publication plan is not a Vector");
         return None;
@@ -9995,7 +9996,7 @@ unsafe extern "C" fn rust_codegen_prepare_activation(
     };
     let (prior, plan) = if let Some(raw_plan) = values.get(1).copied()
         && unsafe { (api.vtableOf)(raw_plan) }
-            == unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) }
+            == unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) }
     {
         let Some((prior, plan)) =
             (unsafe { parse_publication_plan(api, values[0], name, raw_plan, b"activate\0") })
@@ -10286,7 +10287,7 @@ unsafe extern "C" fn rust_codegen_commit_prepared(
         let _ = unsafe { stage.close(false) };
         abort("candidate initializer transaction disappeared");
     };
-    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    let error_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), ERROR_VT_NAME.as_ptr().cast()) };
     let accepted = result != api.nilObj
         && (error_vt.is_null()
             || error_vt == api.nilObj
@@ -10651,7 +10652,7 @@ unsafe extern "C" fn rust_codegen_adopt_composed_generation(
         note_error(b"RustCodegen composed generation source map is malformed");
         return api.nilObj;
     };
-    let vector_vt = unsafe { (api.import)(VECTOR_VT_NAME.as_ptr().cast()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     let Some(entry_count) = (unsafe { vector_length(api, source_map, vector_vt) }) else {
         note_error(b"RustCodegen composed generation source map is malformed");
         return api.nilObj;
@@ -11706,7 +11707,7 @@ unsafe fn rust_codegen_load_impl(
         .as_ref()
         .and_then(|stage| stage.artifact_end)
         .is_none_or(|end| unsafe { end() } == 0);
-    let error_vt = unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) };
+    let error_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), ERROR_VT_NAME.as_ptr().cast()) };
     let is_error = !error_vt.is_null()
         && error_vt != api.nilObj
         && unsafe { (api.vtableOf)(result) } == error_vt;
@@ -12388,7 +12389,7 @@ unsafe fn reflect_map_put(api: &IdApi, map: Oop, key: &[u8], value: Oop) -> Oop 
 }
 
 unsafe fn reflect_new_map(api: &IdApi) -> Oop {
-    let map = unsafe { (api.import)(b"Map\0".as_ptr().cast()) };
+    let map = unsafe { birnam_abi::namespace_import::import(execution_imports(), b"Map\0".as_ptr().cast()) };
     if map.is_null() || map == api.nilObj {
         return api.nilObj;
     }
@@ -12547,7 +12548,7 @@ unsafe extern "C" fn rust_reflect_name_of(
     let api = unsafe { api(runtime()) };
     let Some(name) = (unsafe { reflect_symbol_name(api, values[0]) }) else {
         note_error(b"RustReflect nameOf: expects a symbol");
-        let error = unsafe { (api.import)(c"Error".as_ptr()) };
+        let error = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Error".as_ptr()) };
         if error.is_null() || error == api.nilObj {
             return api.nilObj;
         }
@@ -12581,7 +12582,7 @@ unsafe extern "C" fn rust_reflect_global_named(
     };
     let name =
         CString::new(name).unwrap_or_else(|_| abort("Symbol name unexpectedly contained NUL"));
-    let imported = unsafe { (api.import)(name.as_ptr()) };
+    let imported = unsafe { birnam_abi::namespace_import::import(execution_imports(), name.as_ptr()) };
     if !imported.is_null() && imported != api.nilObj {
         return imported;
     }
@@ -12609,7 +12610,7 @@ unsafe extern "C" fn rust_reflect_all_global_names(
     let Some(export_name_at) = (unsafe { birnam_abi::namespace_enumeration::resolve_name_at(name_address as *const _) }) else {
         return api.nilObj;
     };
-    let vector = unsafe { (api.import)(b"Vector\0".as_ptr().cast()) };
+    let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), b"Vector\0".as_ptr().cast()) };
     if vector.is_null() || vector == api.nilObj {
         return api.nilObj;
     }
@@ -12648,7 +12649,7 @@ unsafe extern "C" fn rust_reflect_export_vtable(
         return api.nilObj;
     }
     if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), name.as_ptr()) } != 0 {
-        return if unsafe { (api.import)(name.as_ptr()) } == vt {
+        return if unsafe { birnam_abi::namespace_import::import(execution_imports(), name.as_ptr()) } == vt {
             values[0]
         } else {
             note_error(b"RustReflect exportVtableOf:as: name conflict");
@@ -12680,7 +12681,7 @@ unsafe extern "C" fn rust_reflect_export_object(
     let name =
         CString::new(name).unwrap_or_else(|_| abort("Symbol name unexpectedly contained NUL"));
     if unsafe { birnam_abi::namespace_presence::contains(execution_presence(), name.as_ptr()) } != 0 {
-        return if unsafe { (api.import)(name.as_ptr()) } == values[0] {
+        return if unsafe { birnam_abi::namespace_import::import(execution_imports(), name.as_ptr()) } == values[0] {
             values[0]
         } else {
             note_error(b"RustReflect exportObject:as: name conflict");
@@ -12843,7 +12844,7 @@ unsafe extern "C" fn rust_reflect_all_methods(
     let api = unsafe { api(runtime) };
     unsafe { (api.gcSetAuto)(0) };
     let result = (|| {
-        let vector = unsafe { (api.import)(b"Vector\0".as_ptr().cast()) };
+        let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), b"Vector\0".as_ptr().cast()) };
         if vector.is_null() || vector == api.nilObj {
             return api.nilObj;
         }
@@ -12912,7 +12913,7 @@ unsafe extern "C" fn rust_reflect_facts_of(
     let api = unsafe { api(runtime) };
     unsafe { (api.gcSetAuto)(0) };
     let result = (|| {
-        let vector = unsafe { (api.import)(b"Vector\0".as_ptr().cast()) };
+        let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), b"Vector\0".as_ptr().cast()) };
         if vector.is_null() || vector == api.nilObj {
             return api.nilObj;
         }
@@ -12960,7 +12961,7 @@ unsafe extern "C" fn rust_reflect_collect_fact(
     unsafe { api(runtime()) }.nilObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -12969,8 +12970,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, RUST_CODEGEN_NAME.as_ptr().cast()) != 0 };
         let (rust_codegen_vt, rust_codegen) = if reloading {
             (
-                unsafe { (host_api.import)(RUST_CODEGEN_VT_NAME.as_ptr().cast()) },
-                unsafe { (host_api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, RUST_CODEGEN_VT_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, RUST_CODEGEN_NAME.as_ptr().cast()) },
             )
         } else {
             let vt = unsafe { (host_api.proto)(host_api.object_vt) };
@@ -12984,8 +12985,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             unsafe { birnam_abi::namespace_presence::contains(presence, ADAPTER_CODEGEN_NAME.as_ptr().cast()) != 0 };
         let (adapter_codegen_vt, adapter_codegen) = if adapter_reloading {
             (
-                unsafe { (host_api.import)(ADAPTER_CODEGEN_VT_NAME.as_ptr().cast()) },
-                unsafe { (host_api.import)(ADAPTER_CODEGEN_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, ADAPTER_CODEGEN_VT_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, ADAPTER_CODEGEN_NAME.as_ptr().cast()) },
             )
         } else {
             let vt = unsafe { (host_api.proto)(host_api.object_vt) };
@@ -12994,8 +12995,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         };
         let (adapter_reflect_vt, adapter_reflect) = if adapter_reloading {
             (
-                unsafe { (host_api.import)(ADAPTER_REFLECT_VT_NAME.as_ptr().cast()) },
-                unsafe { (host_api.import)(ADAPTER_REFLECT_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, ADAPTER_REFLECT_VT_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, ADAPTER_REFLECT_NAME.as_ptr().cast()) },
             )
         } else {
             let vt = unsafe { (host_api.proto)(host_api.object_vt) };
@@ -13003,7 +13004,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             (vt, object)
         };
         let adapter_collector_vt = if adapter_reloading {
-            unsafe { (host_api.import)(ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast()) }
+            unsafe { birnam_abi::namespace_import::import(imports, ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast()) }
         } else {
             unsafe { (host_api.proto)(host_api.object_vt) }
         };
@@ -13011,8 +13012,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             unsafe { birnam_abi::namespace_presence::contains(presence, DISCARD_RECEIPT_NAME.as_ptr().cast()) != 0 };
         let (discard_receipt_vt, discard_receipt) = if receipt_reloading {
             (
-                unsafe { (host_api.import)(DISCARD_RECEIPT_VT_NAME.as_ptr().cast()) },
-                unsafe { (host_api.import)(DISCARD_RECEIPT_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, DISCARD_RECEIPT_VT_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, DISCARD_RECEIPT_NAME.as_ptr().cast()) },
             )
         } else {
             let vt = unsafe { (host_api.proto)(host_api.object_vt) };
@@ -13022,7 +13023,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let portable_mapped_unit_vt = if unsafe {
             birnam_abi::namespace_presence::contains(presence, PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) != 0
         } {
-            unsafe { (host_api.import)(PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) }
+            unsafe { birnam_abi::namespace_import::import(imports, PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) }
         } else {
             unsafe { (host_api.proto)(host_api.object_vt) }
         };
@@ -13042,15 +13043,16 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             (host_api.setLayout)(discard_receipt_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
             (host_api.setLayout)(portable_mapped_unit_vt, ptr::null(), 0, SLOT_RAW);
         }
-        let tcc = unsafe { (host_api.import)(TCC_NAME.as_ptr().cast()) };
+        let tcc = unsafe { birnam_abi::namespace_import::import(imports, TCC_NAME.as_ptr().cast()) };
         if tcc.is_null() {
             abort("RustCodegen requires Tcc to be loaded");
         }
-        let globals = unsafe { (host_api.import)(GLOBALS_NAME.as_ptr().cast()) };
-        let store = unsafe { (host_api.import)(STORE_NAME.as_ptr().cast()) };
+        let globals = unsafe { birnam_abi::namespace_import::import(imports, GLOBALS_NAME.as_ptr().cast()) };
+        let store = unsafe { birnam_abi::namespace_import::import(imports, STORE_NAME.as_ptr().cast()) };
         Runtime {
             api: api_pointer as usize,
             presence: presence as usize,
+            imports: imports as usize,
             rust_codegen_vt: rust_codegen_vt as usize,
             rust_codegen: rust_codegen as usize,
             adapter_codegen_vt: adapter_codegen_vt as usize,
@@ -13750,7 +13752,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
                 ),
             ] {
                 if birnam_abi::namespace_presence::contains(execution_presence(), name.as_ptr().cast()) != 0 {
-                    if (api.import)(name.as_ptr().cast()) != value {
+                    if birnam_abi::namespace_import::import(execution_imports(), name.as_ptr().cast()) != value {
                         abort("RustCodegen canonical export conflicts with an existing authority");
                     }
                 } else if (api.exportObj)(name.as_ptr().cast(), value).is_null() {
@@ -13788,7 +13790,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence) };
+    unsafe { bring_up(api, presence, imports) };
     ptr::null_mut()
 }
 
@@ -14689,3 +14691,5 @@ birnam_abi::string_dependency!();
 birnam_abi::namespace_names_dependency!();
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
+
+fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }

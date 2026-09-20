@@ -12,9 +12,10 @@ use super::*;
 /// remain valid for the duration of this synchronous decode.
 pub unsafe fn decode_project_source_metadata(
     api: &IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     metadata: birnam_abi::Oop,
 ) -> Result<ProjectSourceMetadata, ProjectMetadataError> {
-    let vector_vt = unsafe { (api.import)(c"VectorVt".as_ptr()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(imports, c"VectorVt".as_ptr()) };
     if metadata == api.nilObj
         || vector_vt == api.nilObj
         || unsafe { (api.vtableOf)(metadata) } != vector_vt
@@ -101,9 +102,9 @@ struct ProjectManifestDecoder<'a> {
 }
 
 impl<'a> ProjectManifestDecoder<'a> {
-    unsafe fn new(api: &'a IdApi) -> Result<Self, ProjectManifestDecodeError> {
-        let map_vt = unsafe { (api.import)(c"MapVt".as_ptr()) };
-        let vector_vt = unsafe { (api.import)(c"VectorVt".as_ptr()) };
+    unsafe fn new(api: &'a IdApi, imports: *const birnam_abi::namespace_import::ApiV1) -> Result<Self, ProjectManifestDecodeError> {
+        let map_vt = unsafe { birnam_abi::namespace_import::import(imports, c"MapVt".as_ptr()) };
+        let vector_vt = unsafe { birnam_abi::namespace_import::import(imports, c"VectorVt".as_ptr()) };
         if map_vt == api.nilObj {
             return Err(ProjectManifestDecodeError::NotMap);
         }
@@ -517,9 +518,10 @@ impl<'a> ProjectManifestDecoder<'a> {
 /// sends must occur on the floor owner thread with a live GC anchor.
 pub unsafe fn decode_project_manifest(
     api: &IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     parsed: birnam_abi::Oop,
 ) -> Result<ProjectManifestObservation, ProjectManifestDecodeError> {
-    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
+    let decoder = unsafe { ProjectManifestDecoder::new(api, imports)? };
     if parsed == api.nilObj || unsafe { (api.vtableOf)(parsed) } != decoder.map_vt {
         return Err(ProjectManifestDecodeError::NotMap);
     }
@@ -584,9 +586,10 @@ pub unsafe fn decode_project_manifest(
 /// must remain valid for the duration of this synchronous decode.
 pub unsafe fn decode_project_resolution(
     api: &IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     resolution: birnam_abi::Oop,
 ) -> Result<ProjectResolutionObservation, ProjectManifestDecodeError> {
-    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
+    let decoder = unsafe { ProjectManifestDecoder::new(api, imports)? };
     if resolution == api.nilObj || unsafe { (api.vtableOf)(resolution) } != decoder.map_vt {
         return Err(ProjectManifestDecodeError::NotMap);
     }
@@ -682,9 +685,10 @@ pub unsafe fn decode_project_resolution(
 /// remain valid for the duration of this synchronous decode.
 pub unsafe fn decode_project_artifact_plan(
     api: &IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     plan: birnam_abi::Oop,
 ) -> Result<ProjectArtifactPlan, ProjectManifestDecodeError> {
-    let decoder = unsafe { ProjectManifestDecoder::new(api)? };
+    let decoder = unsafe { ProjectManifestDecoder::new(api, imports)? };
     if plan == api.nilObj || unsafe { (api.vtableOf)(plan) } != decoder.map_vt {
         return Err(ProjectManifestDecodeError::NotMap);
     }
@@ -765,8 +769,8 @@ unsafe fn active_project_bridge_runtime() -> Option<&'static HostRuntime> {
     }
 }
 
-unsafe fn project_bridge_failure(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, kind: &str, message: &str) -> birnam_abi::Oop {
-    let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api, presence) }) else {
+unsafe fn project_bridge_failure(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, kind: &str, message: &str) -> birnam_abi::Oop {
+    let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api, presence, imports) }) else {
         return api.nilObj;
     };
     let Ok(mut result) = (unsafe { builder.new_map() }) else {
@@ -804,6 +808,7 @@ unsafe extern "C" fn project_path_for_uri_native(
     };
     let api = runtime.stack.api();
     let presence = runtime.stack.presence();
+    let imports = runtime.stack.imports();
     if count != 1 || args.is_null() {
         return api.nilObj;
     }
@@ -813,7 +818,7 @@ unsafe extern "C" fn project_path_for_uri_native(
     };
     let Ok(path) = project_path_from_uri(&uri) else {
         return unsafe {
-            project_bridge_failure(api, presence, "projectUriInvalid", "could not decode workspace URI")
+            project_bridge_failure(api, presence, imports, "projectUriInvalid", "could not decode workspace URI")
         };
     };
     let bytes = path_bytes(&path);
@@ -830,6 +835,7 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
     };
     let api = runtime.stack.api();
     let presence = runtime.stack.presence();
+    let imports = runtime.stack.imports();
     if count != 1 || args.is_null() {
         return api.nilObj;
     }
@@ -839,7 +845,7 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
     };
     let Ok(path) = project_path_from_uri(&uri) else {
         return unsafe {
-            project_bridge_failure(api, presence, "projectUriInvalid", "could not decode workspace URI")
+            project_bridge_failure(api, presence, imports, "projectUriInvalid", "could not decode workspace URI")
         };
     };
     let start = if std::fs::metadata(&path)
@@ -854,14 +860,14 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
         Ok(snapshot) => snapshot,
         Err(error) => {
             let message = format!("{error:?}");
-            return unsafe { project_bridge_failure(api, presence, "projectResolutionFailed", &message) };
+            return unsafe { project_bridge_failure(api, presence, imports, "projectResolutionFailed", &message) };
         }
     };
     let snapshot = match unsafe { runtime.materialize_project_snapshot(&snapshot) } {
         Ok(snapshot) => snapshot,
         Err(error) => {
             let message = format!("{error:?}");
-            return unsafe { project_bridge_failure(api, presence, "projectSnapshotFailed", &message) };
+            return unsafe { project_bridge_failure(api, presence, imports, "projectSnapshotFailed", &message) };
         }
     };
     match unsafe { runtime.resolve_project_snapshot(snapshot) } {
@@ -869,7 +875,7 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
             // ProjectPolicy returns the resolution payload itself. The shared
             // LSP bridge contract adds an explicit success bit so Birnam can
             // distinguish a valid snapshot from its typed failure maps.
-            let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api, presence) }) else {
+            let Ok(builder) = (unsafe { ProjectSnapshotBuilder::new(api, presence, imports) }) else {
                 return api.nilObj;
             };
             match unsafe { builder.put(resolution, "ok", api.trueObj) } {
@@ -878,11 +884,11 @@ unsafe extern "C" fn project_snapshot_for_uri_native(
             }
         }
         Err(ProjectPolicyError::ResolutionDiagnostic { kind, message }) => unsafe {
-            project_bridge_failure(api, presence, &kind, &message)
+            project_bridge_failure(api, presence, imports, &kind, &message)
         },
         Err(error) => {
             let message = format!("{error:?}");
-            unsafe { project_bridge_failure(api, presence, "projectResolutionFailed", &message) }
+            unsafe { project_bridge_failure(api, presence, imports, "projectResolutionFailed", &message) }
         }
     }
 }
@@ -895,9 +901,9 @@ struct ProjectSnapshotBuilder<'a> {
 }
 
 impl<'a> ProjectSnapshotBuilder<'a> {
-    unsafe fn new(api: &'a IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) -> Result<Self, ProjectSnapshotError> {
-        let vector_class = unsafe { (api.import)(c"Vector".as_ptr()) };
-        let map_class = unsafe { (api.import)(c"Map".as_ptr()) };
+    unsafe fn new(api: &'a IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> Result<Self, ProjectSnapshotError> {
+        let vector_class = unsafe { birnam_abi::namespace_import::import(imports, c"Vector".as_ptr()) };
+        let map_class = unsafe { birnam_abi::namespace_import::import(imports, c"Map".as_ptr()) };
         if vector_class == api.nilObj {
             return Err(ProjectSnapshotError::MissingVector);
         }
@@ -1183,13 +1189,13 @@ impl HostRuntime {
         &self,
     ) -> Result<ProjectRunObservation, ProjectRunError> {
         let api = self.stack.api();
-        let repl = unsafe { global_named(api, PROJECT_REPL_GLOBAL) }
+        let repl = unsafe { global_named(api, self.stack.imports(), PROJECT_REPL_GLOBAL) }
             .and_then(|value| unsafe { bridge_string(api, value) })
             .ok_or(ProjectRunError::PublishedConfiguration)?;
-        let socket_bind = unsafe { global_named(api, PROJECT_SOCKET_BIND_GLOBAL) }
+        let socket_bind = unsafe { global_named(api, self.stack.imports(), PROJECT_SOCKET_BIND_GLOBAL) }
             .and_then(|value| unsafe { bridge_string(api, value) })
             .ok_or(ProjectRunError::PublishedConfiguration)?;
-        let port = unsafe { global_named(api, PROJECT_SOCKET_PORT_GLOBAL) }
+        let port = unsafe { global_named(api, self.stack.imports(), PROJECT_SOCKET_PORT_GLOBAL) }
             .ok_or(ProjectRunError::PublishedConfiguration)?;
         if unsafe { (birnam_abi::integer::is_integer)(port) } == 0 {
             return Err(ProjectRunError::PublishedConfiguration);
@@ -1288,8 +1294,8 @@ impl HostRuntime {
         }
         let api = self.stack.api();
         let globals =
-            unsafe { global_named(api, "Globals") }.ok_or(ProjectRunError::ArgumentsRejected)?;
-        let values = unsafe { native_os_string_vector(api, self.stack.presence(), &options.arguments) }
+            unsafe { global_named(api, self.stack.imports(), "Globals") }.ok_or(ProjectRunError::ArgumentsRejected)?;
+        let values = unsafe { native_os_string_vector(api, self.stack.presence(), self.stack.imports(), &options.arguments) }
             .map_err(|_| ProjectRunError::ArgumentsRejected)?;
         let key = unsafe { (api.intern)(c"ProjectArgs".as_ptr()) };
         let put = unsafe { (api.intern)(c"at:put:".as_ptr()) };
@@ -1362,8 +1368,8 @@ impl HostRuntime {
         unsafe { eval_script(self, test_source) }.map_err(ProjectRunError::Main)?;
         let api = self.stack.api();
         let test =
-            unsafe { global_named(api, "Test") }.ok_or(ProjectRunError::TestHarnessUnavailable)?;
-        let runner = unsafe { global_named(api, "ConsoleRunner") }
+            unsafe { global_named(api, self.stack.imports(), "Test") }.ok_or(ProjectRunError::TestHarnessUnavailable)?;
+        let runner = unsafe { global_named(api, self.stack.imports(), "ConsoleRunner") }
             .ok_or(ProjectRunError::TestHarnessUnavailable)?;
         let suites_selector = unsafe { (api.intern)(c"suites".as_ptr()) };
         let suites = unsafe { (api.send)(test, suites_selector, std::ptr::null(), 0) };
@@ -1398,7 +1404,7 @@ impl HostRuntime {
     /// The caller must have prepared a live GC anchor and remain on the floor
     /// owner thread for all synchronous sends.
     pub unsafe fn load_project_policy(&self) -> Result<(), ProjectPolicyError> {
-        if unsafe { global_named(self.stack.api(), "ProjectPolicy") }.is_some() {
+        if unsafe { global_named(self.stack.api(), self.stack.imports(), "ProjectPolicy") }.is_some() {
             return Ok(());
         }
         unsafe {
@@ -1412,7 +1418,7 @@ impl HostRuntime {
             )
         }
         .map_err(ProjectPolicyError::Source)?;
-        if let Some(manager) = unsafe { global_named(self.stack.api(), "Module") } {
+        if let Some(manager) = unsafe { global_named(self.stack.api(), self.stack.imports(), "Module") } {
             unsafe { mark_module_loaded(self.stack.api(), manager, PROJECT_POLICY_MODULE.name) };
         }
         Ok(())
@@ -1436,7 +1442,7 @@ impl HostRuntime {
             return Err(ProjectPolicyError::InvalidSnapshot);
         }
         unsafe { self.load_project_policy()? };
-        let Some(policy) = (unsafe { global_named(api, "ProjectPolicy") }) else {
+        let Some(policy) = (unsafe { global_named(api, self.stack.imports(), "ProjectPolicy") }) else {
             return Err(ProjectPolicyError::MissingPolicy);
         };
         let selector = unsafe { (api.intern)(c"resolveSnapshot:".as_ptr()) };
@@ -1462,7 +1468,7 @@ impl HostRuntime {
         &self,
         snapshot: &ProjectSnapshot,
     ) -> Result<birnam_abi::Oop, ProjectSnapshotError> {
-        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api(), self.stack.presence())? };
+        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api(), self.stack.presence(), self.stack.imports())? };
         unsafe { builder.snapshot(snapshot) }
     }
 
@@ -1484,7 +1490,7 @@ impl HostRuntime {
             kind: error.kind(),
         })?;
         let api = self.stack.api();
-        let toml = unsafe { global_named(api, "Toml") }.ok_or(ProjectManifestError::MissingToml)?;
+        let toml = unsafe { global_named(api, self.stack.imports(), "Toml") }.ok_or(ProjectManifestError::MissingToml)?;
         let source = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"parse:".as_ptr()) };
         let result = unsafe { (api.send)(toml, selector, [source].as_ptr(), 1) };
@@ -1537,7 +1543,7 @@ impl HostRuntime {
             let manifest_path = root.join("birnam.toml");
             let parsed = unsafe { self.parse_project_manifest(&manifest_path) }
                 .map_err(ProjectFetchError::Manifest)?;
-            let manifest = unsafe { decode_project_manifest(self.stack.api(), parsed) }
+            let manifest = unsafe { decode_project_manifest(self.stack.api(), self.stack.imports(), parsed) }
                 .map_err(ProjectFetchError::Decode)?;
             for dependency in &manifest.dependencies {
                 let dependency_root = match &dependency.source {
@@ -1624,7 +1630,7 @@ impl HostRuntime {
         let manifest_path = root.join("birnam.toml");
         let parsed = unsafe { self.parse_project_manifest(&manifest_path) }
             .map_err(ProjectObservationBuildError::Manifest)?;
-        let manifest = unsafe { decode_project_manifest(self.stack.api(), parsed) }
+        let manifest = unsafe { decode_project_manifest(self.stack.api(), self.stack.imports(), parsed) }
             .map_err(ProjectObservationBuildError::Decode)?;
         let dependencies = resolve_project_dependencies_cached(root, &manifest.dependencies)
             .map_err(ProjectObservationBuildError::Dependency)?;
@@ -1787,7 +1793,7 @@ impl HostRuntime {
             .map_err(ProjectCheckError::Snapshot)?;
         let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
             .map_err(ProjectCheckError::Policy)?;
-        let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
+        let resolution = unsafe { decode_project_resolution(self.stack.api(), self.stack.imports(), raw_resolution) }
             .map_err(ProjectCheckError::Resolution)?;
         let wrapped = resolution.wrapped.clone();
         let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
@@ -1944,7 +1950,7 @@ impl HostRuntime {
             });
         }
         let api = self.stack.api();
-        let codegen = unsafe { global_named(api, "Codegen") }
+        let codegen = unsafe { global_named(api, self.stack.imports(), "Codegen") }
             .ok_or(ProjectSourceIndexError::MissingCodegen)?;
         let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
@@ -1952,7 +1958,7 @@ impl HostRuntime {
         if metadata == api.nilObj || send_is_error(api, self.stack.presence(), metadata) {
             return Err(ProjectSourceIndexError::MetadataRejected);
         }
-        let metadata = unsafe { decode_project_source_metadata(api, metadata) }
+        let metadata = unsafe { decode_project_source_metadata(api, self.stack.imports(), metadata) }
             .map_err(ProjectSourceIndexError::MetadataMalformed)?;
         Ok(ProjectSourceObservation {
             name: metadata.name,
@@ -2180,13 +2186,13 @@ impl HostRuntime {
         &self,
         request: &ProjectArtifactPlanRequest<'_>,
     ) -> Result<ProjectArtifactPlan, ProjectArtifactPlanError> {
-        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api(), self.stack.presence()) }
+        let builder = unsafe { ProjectSnapshotBuilder::new(self.stack.api(), self.stack.presence(), self.stack.imports()) }
             .map_err(ProjectArtifactPlanError::Snapshot)?;
         let snapshot = unsafe { builder.artifact_plan_input(request) }
             .map_err(ProjectArtifactPlanError::Snapshot)?;
         unsafe { self.load_project_policy() }.map_err(ProjectArtifactPlanError::Policy)?;
         let api = self.stack.api();
-        let Some(policy) = (unsafe { global_named(api, "ProjectPolicy") }) else {
+        let Some(policy) = (unsafe { global_named(api, self.stack.imports(), "ProjectPolicy") }) else {
             return Err(ProjectArtifactPlanError::Policy(
                 ProjectPolicyError::MissingPolicy,
             ));
@@ -2198,7 +2204,7 @@ impl HostRuntime {
                 ProjectPolicyError::ResolutionRejected,
             ));
         }
-        let plan = unsafe { decode_project_artifact_plan(api, plan) }
+        let plan = unsafe { decode_project_artifact_plan(api, self.stack.imports(), plan) }
             .map_err(ProjectArtifactPlanError::Decode)?;
         validate_project_artifact_plan(&plan, request)
             .map_err(ProjectArtifactPlanError::Validation)?;
@@ -2307,7 +2313,7 @@ impl HostRuntime {
             .map_err(ProjectBuildError::Snapshot)?;
         let raw_resolution = unsafe { self.resolve_project_snapshot(raw_snapshot) }
             .map_err(ProjectBuildError::Policy)?;
-        let resolution = unsafe { decode_project_resolution(self.stack.api(), raw_resolution) }
+        let resolution = unsafe { decode_project_resolution(self.stack.api(), self.stack.imports(), raw_resolution) }
             .map_err(ProjectBuildError::Resolution)?;
         let wrapped = resolution.wrapped.clone();
         let manifest = std::fs::read(&resolution.manifest).map_err(|error| {
@@ -2676,7 +2682,7 @@ impl HostRuntime {
             });
         }
         let api = self.stack.api();
-        let codegen = unsafe { global_named(api, "Codegen") }
+        let codegen = unsafe { global_named(api, self.stack.imports(), "Codegen") }
             .ok_or(ProjectSourceIndexError::MissingCodegen)?;
         let source = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
@@ -2715,7 +2721,7 @@ impl HostRuntime {
             });
         }
         let api = self.stack.api();
-        let codegen = unsafe { global_named(api, "Codegen") }
+        let codegen = unsafe { global_named(api, self.stack.imports(), "Codegen") }
             .ok_or(ProjectSourceIndexError::MissingCodegen)?;
         let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
@@ -2726,7 +2732,7 @@ impl HostRuntime {
         if send_is_error(api, self.stack.presence(), metadata) {
             return Err(ProjectSourceIndexError::MetadataRejected);
         }
-        let metadata = unsafe { decode_project_source_metadata(api, metadata) }
+        let metadata = unsafe { decode_project_source_metadata(api, self.stack.imports(), metadata) }
             .map_err(ProjectSourceIndexError::MetadataMalformed)?;
         Ok(Some(ProjectSourceObservation {
             name: metadata.name,
@@ -2756,7 +2762,7 @@ impl HostRuntime {
         let source = unsafe { self.compose_project_sources(paths) }
             .map_err(ProjectSourceIndexError::Composition)?;
         let api = self.stack.api();
-        let codegen = unsafe { global_named(api, "Codegen") }
+        let codegen = unsafe { global_named(api, self.stack.imports(), "Codegen") }
             .ok_or(ProjectSourceIndexError::MissingCodegen)?;
         let source_value = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
         let selector = unsafe { (api.intern)(c"moduleMetadataOf:".as_ptr()) };
@@ -2767,7 +2773,7 @@ impl HostRuntime {
         if send_is_error(api, self.stack.presence(), metadata) {
             return Err(ProjectSourceIndexError::MetadataRejected);
         }
-        let metadata = unsafe { decode_project_source_metadata(api, metadata) }
+        let metadata = unsafe { decode_project_source_metadata(api, self.stack.imports(), metadata) }
             .map_err(ProjectSourceIndexError::MetadataMalformed)?;
         let path = paths
             .first()
@@ -2802,8 +2808,8 @@ impl HostRuntime {
     ) -> Result<Vec<u8>, ProjectCompositionError> {
         let api = self.stack.api();
         let module =
-            unsafe { global_named(api, "Module") }.ok_or(ProjectCompositionError::MissingModule)?;
-        let vector_class = unsafe { (api.import)(c"Vector".as_ptr()) };
+            unsafe { global_named(api, self.stack.imports(), "Module") }.ok_or(ProjectCompositionError::MissingModule)?;
+        let vector_class = unsafe { birnam_abi::namespace_import::import(self.stack.imports(), c"Vector".as_ptr()) };
         if vector_class == api.nilObj {
             return Err(ProjectCompositionError::MissingVector);
         }
@@ -2860,15 +2866,15 @@ impl HostRuntime {
         if !owner.is_null() && owner != runtime_pointer {
             return Err(ProjectBridgeError::AlreadyOwned);
         }
-        let project = if let Some(project) = unsafe { global_named(api, "Project") } {
+        let project = if let Some(project) = unsafe { global_named(api, self.stack.imports(), "Project") } {
             project
         } else {
             let object = {
-                let imported = unsafe { (api.import)(c"Object".as_ptr()) };
+                let imported = unsafe { birnam_abi::namespace_import::import(self.stack.imports(), c"Object".as_ptr()) };
                 if imported != api.nilObj {
                     imported
                 } else {
-                    unsafe { global_named(api, "Object") }
+                    unsafe { global_named(api, self.stack.imports(), "Object") }
                         .ok_or(ProjectBridgeError::MissingObject)?
                 }
             };
@@ -2893,7 +2899,7 @@ impl HostRuntime {
         if exported == api.nilObj {
             return Err(ProjectBridgeError::GlobalRejected);
         }
-        let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+        let globals = unsafe { birnam_abi::namespace_import::import(self.stack.imports(), c"Globals".as_ptr()) };
         if globals == api.nilObj {
             return Err(ProjectBridgeError::GlobalRejected);
         }

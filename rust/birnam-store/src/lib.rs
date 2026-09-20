@@ -261,7 +261,7 @@ unsafe extern "C" fn set_method_authorizer(
     let api = unsafe { api(runtime) };
     // SAFETY: this selector has exactly one argument. Native callback authority
     // is explicit and cannot be smuggled through a portable numeric object.
-    let Some((candidate, _kind)) = (unsafe { foreign_address::value(api, *args) }) else {
+    let Some((candidate, _kind)) = (unsafe { foreign_address::value(api, runtime.imports as *const birnam_abi::namespace_import::ApiV1, *args) }) else {
         return mop_error(runtime, b"methodMutationAuthorizerNeedsForeignAddress\0");
     };
     let current = METHOD_AUTHORIZER.load(Ordering::Acquire);

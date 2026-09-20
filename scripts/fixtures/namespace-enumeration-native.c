@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "../../abi/fixtures/namespace-enumeration-v1/namespace_enumeration_v1.h"
 #include <assert.h>
 #include <dlfcn.h>

@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -111,13 +111,13 @@ static void method(Oop type,Oop selector,Method implementation) {
 }
 static void begin(const char *name) { printf("case %s\n",name);capture=1;reads=interns=makes=exports=imports=vt_calls=sends=calls=0; }
 static void end(void) { capture=0;printf("done read=%zu intern=%zu make=%zu export=%zu import=%zu vtable=%zu send=%zu calls=%zu\n",reads,interns,makes,exports,imports,vt_calls,sends,calls); }
-static void mount(const char *path) { void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);init(api,NULL,fixture_namespace_presence()); }
+static void mount(const char *path) { void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports()); }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);fixture_mount_trace(api,argv[1]);
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));api->gc_register_root_provider(roots);
     selected=*api;selected_presence_slot=exported;selected.import_fn=imported;selected.vtable_of=vtable;selected.intern=intern;selected.send=send;selected.method=method;
-    fixture_prepare_string(api,argv[1]);fixture_prepare_word(api,argv[1], fixture_namespace_presence());fixture_prepare_float(api,argv[1], fixture_namespace_presence());
+    fixture_prepare_string(api,argv[1]);fixture_prepare_word(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());fixture_prepare_float(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     original_make=fixture_string->make;string_context=fixture_string->context;fixture_string->make=make;
     Oop block_type=api->proto(api->object_vt);block=api->alloc(block_type,0);api->method(block_type,api->intern("value:"),block_call);
     void *image=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL);assert(image);

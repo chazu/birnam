@@ -13,7 +13,8 @@ struct Saved {
     integer: unsafe extern "C" fn(*mut c_void, i64) -> Oop,
     integer_api: *mut birnam_abi::integer::IntegerApiV1,
     alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
-    import: unsafe extern "C" fn(*const c_char) -> Oop,
+    imports: birnam_abi::namespace_import::ApiV1,
+    import_api: *mut birnam_abi::namespace_import::ApiV1,
     vtable: unsafe extern "C" fn(Oop) -> Oop,
     size: unsafe extern "C" fn(Oop) -> usize,
     open: unsafe extern "C" fn(*const c_char, c_int) -> *mut c_void,
@@ -26,6 +27,7 @@ thread_local! {
 pub(super) unsafe fn attach(pointer: *mut IdApi) {
     let api = unsafe { &*pointer };
     let integer_api = with_active(|r| r.integer_live_pointer());
+    let import_api = with_active(|r| r.namespace_import());
     SAVED.set(Some(Saved {
         api: pointer,
         send: api.send,
@@ -33,7 +35,8 @@ pub(super) unsafe fn attach(pointer: *mut IdApi) {
         integer: unsafe { (*integer_api).make },
         integer_api,
         alloc: api.alloc,
-        import: api.import,
+        imports: unsafe { *import_api },
+        import_api,
         vtable: api.vtableOf,
         size: api.objectPayloadSize,
         open: api.dlopen,
@@ -66,9 +69,9 @@ unsafe extern "C" fn alloc(vtable: Oop, size: usize) -> Oop {
     event(format!("alloc:{size}"));
     unsafe { (SAVED.get().unwrap().alloc)(vtable, size) }
 }
-unsafe extern "C" fn import(value: *const c_char) -> Oop {
+unsafe extern "C" fn import(context: *mut c_void, value: *const c_char) -> Oop {
     event(format!("import:{}", unsafe { name(value) }));
-    unsafe { (SAVED.get().unwrap().import)(value) }
+    unsafe { (SAVED.get().unwrap().imports.import.unwrap())(context, value) }
 }
 unsafe extern "C" fn vtable(value: Oop) -> Oop {
     event("vtable".into());
@@ -98,7 +101,7 @@ impl Drop for Restore {
             api.intern = self.0.intern;
             (*self.0.integer_api).make = self.0.integer;
             api.alloc = self.0.alloc;
-            api.import = self.0.import;
+            *self.0.import_api = self.0.imports;
             api.vtableOf = self.0.vtable;
             api.objectPayloadSize = self.0.size;
             api.dlopen = self.0.open;
@@ -129,7 +132,7 @@ pub(super) unsafe extern "C" fn check(probe: Oop, args: *const Oop, count: usize
                 2 => api.intern = intern,
                 3 => (*saved.integer_api).make = integer,
                 4 => api.alloc = alloc,
-                5 => api.import = import,
+                5 => (*saved.import_api).import = Some(import),
                 6 => api.vtableOf = vtable,
                 7 => api.objectPayloadSize = size,
                 _ => unreachable!(),

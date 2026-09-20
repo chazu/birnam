@@ -87,10 +87,10 @@ impl HostRuntime {
         }
         unsafe { self.load_runtime_module("cli") }.map_err(CliError::Module)?;
         let api = self.stack.api();
-        let Some(cli) = (unsafe { global_named(api, "Cli") }) else {
+        let Some(cli) = (unsafe { global_named(api, self.stack.imports(), "Cli") }) else {
             return Err(CliError::MissingCli);
         };
-        let values = unsafe { native_os_string_vector(api, self.stack.presence(), args) }?;
+        let values = unsafe { native_os_string_vector(api, self.stack.presence(), self.stack.imports(), args) }?;
         let rust_workspace = path_bytes(&self.resources.rust_workspace_dir);
         let guides = path_bytes(&self.resources.guide_dir);
         let selector = unsafe { (api.intern)(c"run:rustWorkspace:guides:".as_ptr()) };
@@ -140,10 +140,10 @@ impl HostRuntime {
     /// owner thread for generation publication, phase transition, and dispatch.
     pub unsafe fn run_image_main(&self) -> Result<bool, ImageEntryError> {
         let api = self.stack.api();
-        let Some(main) = (unsafe { global_named(api, "main") }) else {
+        let Some(main) = (unsafe { global_named(api, self.stack.imports(), "main") }) else {
             return Ok(false);
         };
-        let Some(generations) = (unsafe { global_named(api, "DispatchGeneration") }) else {
+        let Some(generations) = (unsafe { global_named(api, self.stack.imports(), "DispatchGeneration") }) else {
             return Err(ImageEntryError::MissingDispatchGeneration);
         };
         let initialize_selector = unsafe { (api.intern)(c"initializeCurrent".as_ptr()) };
@@ -192,7 +192,7 @@ impl HostRuntime {
         let stale_repl = if image_booted {
             true
         } else {
-            unsafe { global_named(self.stack.api(), "Repl") }
+            unsafe { global_named(self.stack.api(), self.stack.imports(), "Repl") }
                 .map(|repl| unsafe {
                     !receiver_has_selector(self.stack.api(), repl, init_selector)
                 })
@@ -202,14 +202,14 @@ impl HostRuntime {
             unsafe { self.load_host_runtime_module("repl") }.map_err(ReplError::Module)?;
         }
         let api = self.stack.api();
-        let Some(repl) = (unsafe { global_named(api, "Repl") }) else {
+        let Some(repl) = (unsafe { global_named(api, self.stack.imports(), "Repl") }) else {
             return Err(ReplError::MissingRepl);
         };
         let initialized = unsafe { (api.send)(repl, init_selector, std::ptr::null(), 0) };
         if send_is_error(api, self.stack.presence(), initialized) {
             return Err(ReplError::InitializationRejected);
         }
-        let Some(generations) = (unsafe { global_named(api, "DispatchGeneration") }) else {
+        let Some(generations) = (unsafe { global_named(api, self.stack.imports(), "DispatchGeneration") }) else {
             return Err(ReplError::MissingDispatchGeneration);
         };
         let initialize_selector = unsafe { (api.intern)(c"initializeCurrent".as_ptr()) };
@@ -324,7 +324,7 @@ impl HostRuntime {
     /// a live GC anchor and remain on the floor owner thread.
     pub unsafe fn run_repl(&self, session: &mut ReplSession) -> Result<(), ReplError> {
         let api = self.stack.api();
-        let Some(intents) = (unsafe { global_named(api, "EvolutionIntent") }) else {
+        let Some(intents) = (unsafe { global_named(api, self.stack.imports(), "EvolutionIntent") }) else {
             return Err(ReplError::MissingEvolutionIntent);
         };
         let intent_selector = unsafe { (api.intern)(c"isIntent:".as_ptr()) };
@@ -364,7 +364,7 @@ impl HostRuntime {
         unsafe { self.load_runtime_module("socket") }.map_err(SocketReplError::Module)?;
         unsafe { self.load_runtime_module("repl") }.map_err(SocketReplError::Module)?;
         let api = self.stack.api();
-        let Some(repl) = (unsafe { global_named(api, "Repl") }) else {
+        let Some(repl) = (unsafe { global_named(api, self.stack.imports(), "Repl") }) else {
             return Err(SocketReplError::MissingRepl);
         };
         let bind = CString::new(bind).map_err(|_| SocketReplError::ServeRejected)?;
@@ -399,7 +399,7 @@ impl HostRuntime {
         selector: birnam_abi::Oop,
     ) -> Result<(), WorkerError> {
         let api = self.stack.api() as *const IdApi as *mut IdApi;
-        let status = unsafe { self.isolate.driver(api, fd, receiver, selector) };
+        let status = unsafe { self.isolate.driver(api, self.stack.imports(), fd, receiver, selector) };
         if status == 0 {
             Ok(())
         } else {
@@ -426,7 +426,7 @@ impl HostRuntime {
     ) -> Result<(), WorkerStartupError> {
         unsafe { load_image(self, image, false) }.map_err(WorkerStartupError::Image)?;
         let api = self.stack.api();
-        let Some(generations) = (unsafe { global_named(api, "DispatchGeneration") }) else {
+        let Some(generations) = (unsafe { global_named(api, self.stack.imports(), "DispatchGeneration") }) else {
             return Err(WorkerStartupError::MissingDispatchGeneration);
         };
         let current_selector = unsafe { (api.intern)(c"current".as_ptr()) };
@@ -435,7 +435,7 @@ impl HostRuntime {
             return Err(WorkerStartupError::InvalidDispatchGeneration);
         }
         let codegen =
-            unsafe { global_named(api, "Codegen") }.ok_or(WorkerStartupError::MissingCodegen)?;
+            unsafe { global_named(api, self.stack.imports(), "Codegen") }.ok_or(WorkerStartupError::MissingCodegen)?;
         let digest_selector = unsafe { (api.intern)(c"currentGenerationDigest".as_ptr()) };
         let digest = unsafe { (api.send)(codegen, digest_selector, std::ptr::null(), 0) };
         if digest == api.nilObj || unsafe { (api.vtableOf)(digest) } != unsafe { birnam_abi::string::behavior() } {
@@ -454,13 +454,13 @@ impl HostRuntime {
         let selector_name =
             CString::new(selector_name).map_err(|_| WorkerStartupError::EmbeddedNul)?;
         let globals =
-            unsafe { global_named(api, "Globals") }.ok_or(WorkerStartupError::MissingGlobals)?;
+            unsafe { global_named(api, self.stack.imports(), "Globals") }.ok_or(WorkerStartupError::MissingGlobals)?;
         let receiver_symbol = unsafe { (api.intern)(receiver_name.as_ptr()) };
         let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
         let mut receiver =
             unsafe { (api.send)(globals, at_selector, [receiver_symbol].as_ptr(), 1) };
         if receiver == api.nilObj {
-            receiver = unsafe { (api.import)(receiver_name.as_ptr()) };
+            receiver = unsafe { birnam_abi::namespace_import::import(self.stack.imports(), receiver_name.as_ptr()) };
         }
         if receiver == api.nilObj {
             return Err(WorkerStartupError::ReceiverNotFound);

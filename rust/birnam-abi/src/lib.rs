@@ -131,8 +131,8 @@ pub type TraceHook = unsafe extern "C" fn(Oop, MarkFn);
 pub type Finalizer = unsafe extern "C" fn(Oop);
 pub type MethodOverwriteHook = unsafe extern "C" fn(Oop, Oop);
 pub type IdInitFn = unsafe extern "C" fn() -> *mut IdApi;
-/// Native initialization receives the presence capability associated with `api`.
-/// Both live selections and their code/context must outlive any retained module
+/// Native initialization receives the presence and import capabilities associated
+/// with `api`. All live selections and their code/context must outlive any retained module
 /// execution state; callers do not transfer ownership.
 pub type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void, *const namespace_presence::ApiV1, *const namespace_import::ApiV1) -> *mut c_void;
 
@@ -363,7 +363,7 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         SLOT_CODE as usize,
         SLOT_UNKNOWN as usize,
     ],
-    fingerprint: [0x99, 0xdd, 0xcd, 0x27, 0x50, 0x16, 0xe2, 0x0a, 0x2f, 0x9c, 0x12, 0xd2, 0x22, 0xbb, 0x4e, 0x52, 0x13, 0xf7, 0xce, 0x9c, 0xe5, 0x3d, 0x5a, 0xa4, 0xa6, 0xd6, 0x94, 0x53, 0x1d, 0xb9, 0x1a, 0x27],
+    fingerprint: [0xb0, 0x00, 0x5f, 0x93, 0xb3, 0x97, 0xd1, 0xcd, 0xb2, 0x2b, 0x2b, 0x26, 0x0c, 0x3d, 0x62, 0x4c, 0x48, 0x22, 0x21, 0x99, 0xce, 0x39, 0x1d, 0x44, 0x7c, 0x8c, 0x65, 0x17, 0x24, 0x31, 0xad, 0xef],
 };
 
 macro_rules! assert_field_offset {
@@ -543,11 +543,11 @@ unsafe fn vtable_protocol(api: &IdApi, selector: &core::ffi::CStr, args: &[Oop])
 }
 
 #[cfg(test)]
-mod v9_manifest_tests {
+mod v10_manifest_tests {
     use super::*;
     use sha2::{Digest, Sha256};
     #[test]
-    fn current_descriptor_matches_independent_v9_manifest() {
+    fn current_descriptor_matches_independent_v10_manifest() {
         let mut manifest: serde_json::Value =
             serde_json::from_str(include_str!("../../../abi/idapi-v10.json")).unwrap();
         let expected = manifest
@@ -569,7 +569,7 @@ mod v9_manifest_tests {
             assert_eq!(field["size"], actual.size);
             assert_eq!(field["alignment"], actual.alignment);
             for removed in [
-                "exportedNameOf", "isExported",
+                "exportedNameOf", "isExported", "import",
                 "string_vt", "mkString", "stringBytes",
                 "smallint_vt", "mkSmallInt", "smallIntValue", "isSmallInt",
                 "ensurePrivateVtable",

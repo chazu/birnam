@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 static int forbidden_presence(void *context,const char *name) { (void)context;(void)name;assert(!"numeric admission invoked presence");return 0; }
@@ -14,8 +14,8 @@ int main(int argc, char **argv) {
     NamespacePresenceV1 module_presence=*fixture_namespace_presence();
     void *integer = floor_api->dlopen_fn(argv[2], RTLD_NOW | RTLD_LOCAL); assert(integer);
     ModuleInitFn init = (ModuleInitFn)floor_api->dlsym_fn(integer, "module_init"); assert(init);
-    fixture_prepare_float(floor_api, argv[1], fixture_namespace_presence());
-    fixture_prepare_word(floor_api, argv[1], fixture_namespace_presence());
+    fixture_prepare_float(floor_api, argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_prepare_word(floor_api, argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     assert(strlen(argv[1])<sizeof(fixture_floor_path));
     strcpy(fixture_floor_path,argv[1]);
     fixture_attach_integer(floor_api, integer);

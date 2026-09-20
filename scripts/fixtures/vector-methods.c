@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -99,12 +99,12 @@ static Oop sum(Oop self,const Oop *args,size_t count) {
 static Oop null_sum(Oop self,const Oop *args,size_t count) { (void)self; (void)args; assert(count==2); visits++; return NULL; }
 static void mount(const char *path,IdApi *table) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports());
 }
 int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1], fixture_namespace_presence());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.send=counted_send; selected.gc_register_root_provider=register_roots; mount(argv[3],&selected);
     type=fixture_vector->behavior();
@@ -117,7 +117,7 @@ int main(int argc,char **argv) {
     }
     assert(methods[11]==methods[12]);
     block_type=api->proto(api->object_vt); block=api->alloc(block_type,0); key_type=api->proto(api->object_vt);
-    api->set_layout(key_type,NULL,0,IDAPI_V9_SLOT_RAW); api->method(key_type,api->intern("<"),less);
+    api->set_layout(key_type,NULL,0,IDAPI_V10_SLOT_RAW); api->method(key_type,api->intern("<"),less);
     api->export_obj("VectorTestBlock",block); api->export_obj("VectorTestKeys",key_type);
     const int64_t values[]={5,2,4,1,3,0},inner[]={12,11,10};
     input=vector(values,6); nested=vector(inner,3);

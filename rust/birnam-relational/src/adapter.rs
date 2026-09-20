@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.5-project\0";
-static API: OnceLock<usize> = OnceLock::new();
+static API: OnceLock<(usize, usize)> = OnceLock::new();
 static ACTIVE_PROBE_BLOCK: AtomicUsize = AtomicUsize::new(0);
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static ENTITY_VT: OnceLock<usize> = OnceLock::new();
@@ -27,16 +27,16 @@ fn abort(message: &str) -> ! {
     std::process::abort();
 }
 
-unsafe fn bring_up(api: *mut IdApi) {
+unsafe fn bring_up(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api.is_null() {
         abort("module_init received a null IdApi");
     }
     let address = api as usize;
     match API.get() {
-        Some(existing) if *existing != address => abort("IdApi was replaced"),
+        Some(existing) if existing.0 != address => abort("IdApi was replaced"),
         Some(_) => {}
         None => {
-            let _ = API.set(address);
+            let _ = API.set((address, imports as usize));
         }
     }
 }
@@ -144,7 +144,7 @@ unsafe extern "C" fn rust_logicvar_named(_self_object: Oop, args: *const Oop, co
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
@@ -176,7 +176,7 @@ unsafe extern "C" fn rust_logicvar_name(self_object: Oop, _args: *const Oop, cou
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     if count != 0 || self_object.is_null() {
         return api.nilObj;
     }
@@ -191,7 +191,7 @@ pub unsafe extern "C" fn birnam_native_field_projection_v1(method: *const c_void
     let Some(api_address) = API.get() else {
         return 0;
     };
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     field_projection_declaration(method, api.nilObj, nil)
 }
 
@@ -235,7 +235,7 @@ unsafe extern "C" fn rust_logicvar_print_string(
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     if count != 0 || self_object.is_null() {
         return api.nilObj;
     }
@@ -250,8 +250,8 @@ unsafe extern "C" fn rust_logicvar_print_string(
     unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
 }
 
-unsafe fn ensure_relational_contract(api: &IdApi) {
-    let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
+unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1) {
+    let logicvar_vt = unsafe { birnam_abi::namespace_import::import(imports, c"LogicVarVt".as_ptr()) };
     let logicvar_vt = if logicvar_vt.is_null() {
         let created = unsafe { (api.proto)(api.object_vt) };
         if created.is_null() {
@@ -264,7 +264,7 @@ unsafe fn ensure_relational_contract(api: &IdApi) {
     };
     let _ = LOGICVAR_VT.set(logicvar_vt as usize);
 
-    let factory_vt = unsafe { (api.import)(c"LogicVarFactoryVt".as_ptr()) };
+    let factory_vt = unsafe { birnam_abi::namespace_import::import(imports, c"LogicVarFactoryVt".as_ptr()) };
     let factory_vt = if factory_vt.is_null() {
         let created = unsafe { (api.proto)(api.object_vt) };
         if created.is_null() {
@@ -277,7 +277,7 @@ unsafe fn ensure_relational_contract(api: &IdApi) {
     };
     let _ = LOGICVAR_FACTORY_VT.set(factory_vt as usize);
 
-    let factory = unsafe { (api.import)(c"LogicVar".as_ptr()) };
+    let factory = unsafe { birnam_abi::namespace_import::import(imports, c"LogicVar".as_ptr()) };
     let factory = if factory.is_null() {
         let created = unsafe { (api.alloc)(factory_vt, 0) };
         if created.is_null() {
@@ -290,7 +290,7 @@ unsafe fn ensure_relational_contract(api: &IdApi) {
     };
     let _ = LOGICVAR_FACTORY.set(factory as usize);
 
-    let entity_vt = unsafe { (api.import)(c"EntityVt".as_ptr()) };
+    let entity_vt = unsafe { birnam_abi::namespace_import::import(imports, c"EntityVt".as_ptr()) };
     let entity_vt = if entity_vt.is_null() {
         let created = unsafe { (api.proto)(api.object_vt) };
         if created.is_null() {
@@ -303,7 +303,7 @@ unsafe fn ensure_relational_contract(api: &IdApi) {
     };
     let _ = ENTITY_VT.set(entity_vt as usize);
 
-    let collector_vt = unsafe { (api.import)(c"RelCollectorVt".as_ptr()) };
+    let collector_vt = unsafe { birnam_abi::namespace_import::import(imports, c"RelCollectorVt".as_ptr()) };
     let collector_vt = if collector_vt.is_null() {
         let created = unsafe { (api.proto)(api.object_vt) };
         if created.is_null() {
@@ -346,7 +346,7 @@ unsafe extern "C" fn rust_entity(_self_object: Oop, _args: *const Oop, _count: u
         return ptr::null_mut();
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(vtable) = ENTITY_VT.get() else {
         return ptr::null_mut();
     };
@@ -377,7 +377,7 @@ unsafe fn rust_find_all_window(store: Oop, args: *const Oop, count: usize, mode:
         return ptr::null_mut();
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
@@ -390,7 +390,7 @@ unsafe fn rust_find_all_window(store: Oop, args: *const Oop, count: usize, mode:
     if arguments.len() != expected_count || store.is_null() {
         return api.nilObj;
     }
-    let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
+    let logicvar_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"LogicVarVt".as_ptr()) };
     if logicvar_vt.is_null() {
         return api.nilObj;
     }
@@ -451,7 +451,7 @@ unsafe fn rust_find_all_window(store: Oop, args: *const Oop, count: usize, mode:
         Err(_) => return api.nilObj,
     };
     let values = project_rule_body(&facts, &definitions, &body, result);
-    let vector_factory = unsafe { (api.import)(c"Vector".as_ptr()) };
+    let vector_factory = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) };
     if vector_factory.is_null() {
         return api.nilObj;
     }
@@ -502,7 +502,7 @@ unsafe fn rust_aggregate(store: Oop, args: *const Oop, count: usize, kind: u8) -
         return ptr::null_mut();
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let values = unsafe { rust_find_all_window(store, args, count, 0) };
     if values.is_null() || values == api.nilObj {
         return api.nilObj;
@@ -594,14 +594,14 @@ unsafe extern "C" fn rust_group_by(_self_object: Oop, args: *const Oop, count: u
         return ptr::null_mut();
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
     if arguments.len() != 4 {
         return api.nilObj;
     }
-    let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
+    let logicvar_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"LogicVarVt".as_ptr()) };
     let Some(operation) = (unsafe { parse_aggregate_kind(api, arguments[1]) }) else {
         return api.nilObj;
     };
@@ -667,7 +667,7 @@ unsafe extern "C" fn rust_group_by(_self_object: Oop, args: *const Oop, count: u
         Ok(grouped) => grouped,
         Err(_) => return api.nilObj,
     };
-    let map_factory = unsafe { (api.import)(c"Map".as_ptr()) };
+    let map_factory = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Map".as_ptr()) };
     if map_factory.is_null() {
         return api.nilObj;
     }
@@ -709,7 +709,7 @@ unsafe fn parse_store_pull_specs(
         return Err(-7);
     }
     let elements = unsafe { vector_elements(api, spec)? };
-    let vector_vt = unsafe { (api.import)(c"VectorVt".as_ptr()) };
+    let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"VectorVt".as_ptr()) };
     if vector_vt.is_null() {
         return Err(-6);
     }
@@ -746,7 +746,7 @@ unsafe fn parse_store_pull_specs(
 }
 
 unsafe fn new_vector(api: &IdApi) -> Oop {
-    let factory = unsafe { (api.import)(c"Vector".as_ptr()) };
+    let factory = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) };
     if factory.is_null() {
         return ptr::null_mut();
     }
@@ -760,7 +760,7 @@ unsafe fn materialize_pull_entity(
     entity: &Value,
     specs: &[PullSpec],
 ) -> Oop {
-    let factory = unsafe { (api.import)(c"Map".as_ptr()) };
+    let factory = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Map".as_ptr()) };
     if factory.is_null() {
         return ptr::null_mut();
     }
@@ -852,7 +852,7 @@ unsafe extern "C" fn rust_pull(_self_object: Oop, args: *const Oop, count: usize
         return ptr::null_mut();
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
@@ -883,7 +883,7 @@ unsafe extern "C" fn rust_define_rule(self_object: Oop, args: *const Oop, count:
         return ptr::null_mut();
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
     };
@@ -893,7 +893,7 @@ unsafe extern "C" fn rust_define_rule(self_object: Oop, args: *const Oop, count:
     {
         return api.nilObj;
     }
-    let vector_factory = unsafe { (api.import)(c"Vector".as_ptr()) };
+    let vector_factory = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) };
     if vector_factory.is_null() {
         return api.nilObj;
     }
@@ -937,25 +937,25 @@ unsafe extern "C" fn rust_rebuild_rules(self_object: Oop, _args: *const Oop, cou
         return ptr::null_mut();
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     if count != 0 || self_object.is_null() {
         return api.nilObj;
     }
     self_object
 }
 
-unsafe fn install_entity_method(api: &IdApi) {
-    let store_vt = unsafe { (api.import)(c"StoreVt".as_ptr()) };
+unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1) {
+    let store_vt = unsafe { birnam_abi::namespace_import::import(imports, c"StoreVt".as_ptr()) };
     if store_vt.is_null() {
         // The classifier-only probe may load this dylib before Store. The
         // canonical bridge is installed once StoreVt is available.
         return;
     }
-    let store = unsafe { (api.import)(c"Store".as_ptr()) };
+    let store = unsafe { birnam_abi::namespace_import::import(imports, c"Store".as_ptr()) };
     if store.is_null() {
         return;
     }
-    let entity_vt = unsafe { (api.import)(c"EntityVt".as_ptr()) };
+    let entity_vt = unsafe { birnam_abi::namespace_import::import(imports, c"EntityVt".as_ptr()) };
     let entity_vt = if entity_vt.is_null() {
         // SAFETY: the new vtable delegates to the process Object vtable and
         // carries no payload, matching the EntityVt contract.
@@ -973,8 +973,8 @@ unsafe fn install_entity_method(api: &IdApi) {
     // SAFETY: the Store vtable and selector are process-owned and the method
     // has the frozen IdApi callback ABI.
     unsafe { (api.method)(store_vt, selector, rust_entity) };
-    if unsafe { (api.import)(c"Vector".as_ptr()) }.is_null()
-        || unsafe { (api.import)(c"Map".as_ptr()) }.is_null()
+    if unsafe { birnam_abi::namespace_import::import(imports, c"Vector".as_ptr()) }.is_null()
+        || unsafe { birnam_abi::namespace_import::import(imports, c"Map".as_ptr()) }.is_null()
     {
         return;
     }
@@ -1051,7 +1051,7 @@ pub unsafe extern "C" fn birnam_relational_rust_classify(
         return -2;
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     // SAFETY: object is borrowed for this call under the module probe contract.
     let Some(value) = (unsafe { oop::classify(api, object) }) else {
         return -3;
@@ -1295,7 +1295,7 @@ unsafe fn collect_window(
         return -2;
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let callback_vt = unsafe { (api.proto)(api.object_vt) };
     if callback_vt.is_null() {
         return -6;
@@ -1374,7 +1374,7 @@ unsafe fn collect_project_facts_window_with_rules(
         return Err(-2);
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let callback_vt = unsafe { (api.proto)(api.object_vt) };
     if callback_vt.is_null() {
         return Err(-6);
@@ -2333,13 +2333,13 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     // SAFETY: forwarded frozen host initialization contract.
-    unsafe { bring_up(api) };
+    unsafe { bring_up(api, imports) };
     // Publish the complete shared relational object contract before exposing
     // the Store as `db`; this is safe to repeat across reloads.
-    unsafe { ensure_relational_contract(&*api) };
+    unsafe { ensure_relational_contract(&*api, imports) };
     // SAFETY: module_init received the process-owned IdApi used to install the
     // Store-facing entity constructor.
-    unsafe { install_entity_method(&*api) };
+    unsafe { install_entity_method(&*api, imports) };
     // SAFETY: module_init received the same process-owned IdApi recorded above.
     register_probe_root(unsafe { &*api });
     ptr::null_mut()
@@ -2502,12 +2502,12 @@ unsafe fn pull_live(
         return -2;
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let (facts, collected_api) = match unsafe { collect_project_facts(store) } {
         Ok(snapshot) => snapshot,
         Err(status) => return status,
     };
-    debug_assert_eq!(*api_address as *const IdApi, collected_api);
+    debug_assert_eq!(api_address.0 as *const IdApi, collected_api);
     // SAFETY: the caller validated the pointer/count pair above and retains the
     // flat specification for this synchronous call.
     let nodes: &[PullSpecNode] = if node_count == 0 {
@@ -2962,7 +2962,7 @@ unsafe fn parse_store_rule_definitions(
     api: &IdApi,
     pairs: &[(Oop, Oop)],
 ) -> Result<Vec<RuleDefinition>, i32> {
-    let logicvar_vt = unsafe { (api.import)(c"LogicVarVt".as_ptr()) };
+    let logicvar_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"LogicVarVt".as_ptr()) };
     if logicvar_vt.is_null() {
         return Err(-6);
     }
@@ -3205,7 +3205,7 @@ unsafe fn project_rule_store_live(
         return -2;
     };
     // SAFETY: module_init stores only the process-owned IdApi address.
-    let api = unsafe { &*(*api_address as *const IdApi) };
+    let api = unsafe { &*(api_address.0 as *const IdApi) };
     let rule_name = unsafe { (api.intern)(c"__rule-name__".as_ptr()) };
     let (facts, pairs, api_address) =
         match unsafe { collect_project_facts_and_rules(store, rule_name) } {
@@ -3213,7 +3213,7 @@ unsafe fn project_rule_store_live(
             Err(status) => return status,
         };
     debug_assert_eq!(
-        *API.get().expect("IdApi initialized") as *const IdApi,
+        API.get().expect("IdApi initialized").0 as *const IdApi,
         api_address
     );
     let definitions = match unsafe { parse_store_rule_definitions(api, &pairs) } {
@@ -3242,3 +3242,5 @@ unsafe fn project_rule_store_live(
 #[cfg(test)]
 #[path = "native_output.rs"]
 mod native_output;
+
+fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { API.get().expect("module not initialized").1 as *const birnam_abi::namespace_import::ApiV1 }

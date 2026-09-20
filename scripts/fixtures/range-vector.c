@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -60,12 +60,12 @@ static void mount(const char *path,IdApi *table) {
         assert(n>0 && (size_t)n<sizeof(library));
         void *range=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(range); fixture_attach_integer(api,range);
         RangeProviderV2 provide=(RangeProviderV2)api->dlsym_fn(range,"birnam_range_provider_v2"); assert(provide && !provide());
-        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence());
+        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
         fixture_range_v2=provide(); assert(fixture_range_v2); validate_dependency(image,0);
     }
     fixture_attach_integer(api,image);
     if(strstr(path,"collection") && fixture_range_v2) validate_dependency(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports());
 }
 static Oop vector(const int64_t *values,size_t count) {
     Oop result=fixture_vector->empty();
@@ -87,7 +87,7 @@ int main(int argc,char **argv) {
     assert(argc==4);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1], fixture_namespace_presence());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.alloc=counted_alloc; selected.vtable_of=counted_vtable; selected.send=counted_send; mount(argv[3],&selected);
     range_type=api->import_fn("RangeVt"); reverse_method=lookup(range_type,"reversed"); comma_method=lookup(range_type,",");

@@ -122,7 +122,7 @@ pub(super) unsafe extern "C" fn submit(handle: Oop, args: *const Oop, count: usi
         );
     }
     // Copy before acquiring native registry state: encoders use ordinary sends.
-    let payload = match encode_oop_value(api, args[0]) {
+    let payload = match encode_oop_value(api, execution_imports(), args[0]) {
         Ok(payload) => payload,
         Err(error) => {
             return make_failure(api, b"encode", b"nonTransferable", codec_error_name(error));
@@ -281,15 +281,15 @@ pub(super) unsafe extern "C" fn poll(handle: Oop, args: *const Oop, count: usize
     let answer = if reply.header.kind == FrameKind::ReplyOk {
         // Build the envelope after decoding, so it does not consume a wire
         // nesting level or reduce the protocol's maximum payload size.
-        decode_oop_value(api, &reply.payload).map(|value| unsafe {
-            let vector = (api.import)(c"Vector".as_ptr());
+        decode_oop_value(api, execution_imports(), &reply.payload).map(|value| unsafe {
+            let vector = birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr());
             let new = (api.intern)(c"new".as_ptr());
             let empty = (api.send)(vector, new, ptr::null(), 0);
             let add = (api.intern)(c"add:".as_ptr());
             (api.send)(empty, add, &value, 1)
         })
     } else {
-        decode_oop_error_record(api, APPLICATION_ERROR_SCHEMA, &reply.payload).map(
+        decode_oop_error_record(api, execution_imports(), APPLICATION_ERROR_SCHEMA, &reply.payload).map(
             |(kind, message)| {
                 let class = unsafe {
                     (api.intern)(if task_service {

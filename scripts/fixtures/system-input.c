@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -143,7 +143,7 @@ int main(int argc,char **argv) {
     assert(argc==5);setvbuf(stdout,NULL,_IONBF,0);
     reentry_mode=!strcmp(argv[4],"first-readline-intern-reentry")?1:(!strcmp(argv[4],"first-print-binding-reentry")?2:0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1], fixture_namespace_presence());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),0);api->gc_register_root_provider(roots);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),0);api->gc_register_root_provider(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;fixture_string->make=make;
     selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected_presence_slot=exported;selected.import_fn=imported;selected.send=send;
     other=selected;other.nil_obj=api->true_obj;other_presence_slot=forbidden_exported;other.send=forbidden_send;

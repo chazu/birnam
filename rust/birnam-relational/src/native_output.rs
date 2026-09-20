@@ -29,7 +29,7 @@ impl StoreFixture {
     }
 }
 unsafe extern "C" fn store_send(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { &*(*API.get().unwrap() as *const IdApi) };
+    let api = unsafe { &*(API.get().unwrap().0 as *const IdApi) };
     let fixture = unsafe { &mut **receiver.cast::<*mut StoreFixture>() };
     let callback = unsafe { *args.add(count - 1) };
     unsafe { fixture.unchanged() };
@@ -48,11 +48,11 @@ unsafe extern "C" fn store_send(receiver: Oop, args: *const Oop, count: usize) -
     api.nilObj
 }
 unsafe extern "C" fn vector_size(receiver: Oop, _: *const Oop, _: usize) -> Oop {
-    let _api = unsafe { &*(*API.get().unwrap() as *const IdApi) };
+    let _api = unsafe { &*(API.get().unwrap().0 as *const IdApi) };
     unsafe { (birnam_abi::integer::make)(*receiver.cast::<usize>() as i64) }
 }
 unsafe extern "C" fn vector_at(receiver: Oop, args: *const Oop, _: usize) -> Oop {
-    let _api = unsafe { &*(*API.get().unwrap() as *const IdApi) };
+    let _api = unsafe { &*(API.get().unwrap().0 as *const IdApi) };
     unsafe {
         *receiver
             .cast::<Oop>()
@@ -99,20 +99,21 @@ fn exported_output_contract() {
             }};
         }
         let presence = entry!(floor, c"birnam_namespace_presence_provider_v1", birnam_abi::namespace_presence::ProviderV1)();
+        let imports = entry!(floor, c"birnam_namespace_import_provider_v1", birnam_abi::namespace_import::ProviderV1)();
         let api_pointer = api as *const _ as *mut IdApi;
         let float_image = load("libbirnam_float.dylib");
-        let floats = entry!(float_image, c"birnam_float_prepare_v2", birnam_abi::float::FloatPrepareV2)(api_pointer, presence);
+        let floats = entry!(float_image, c"birnam_float_prepare_v3", birnam_abi::float::FloatPrepareV3)(api_pointer, presence, imports);
         assert_eq!(birnam_abi::float::attach(floats), 1);
         assert_eq!(entry!(floor, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
         let integer_image = load("libbirnam_integer.dylib");
         assert_eq!(entry!(integer_image, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
-        entry!(integer_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence);
+        entry!(integer_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence, imports);
         let integers = entry!(integer_image, c"birnam_integer_provider_v1", unsafe extern "C" fn() -> *mut birnam_abi::integer::IntegerApiV1)();
         assert_eq!(birnam_abi::integer::attach(integers), 1);
         assert_eq!(entry!(floor, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
         assert_eq!(entry!(float_image, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
-        entry!(float_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence);
-        module_init(api as *const _ as *mut _, ptr::null_mut(), presence);
+        entry!(float_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence, imports);
+        module_init(api as *const _ as *mut _, ptr::null_mut(), presence, imports);
         let integer = |n| (birnam_abi::integer::make)(n);
         let null = ptr::null_mut();
         let attribute = integer(7);
@@ -184,7 +185,7 @@ fn exported_output_contract() {
         (api.setLayout)(vector_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
         (api.method)(vector_vt, (api.intern)(c"size".as_ptr()), vector_size);
         (api.method)(vector_vt, (api.intern)(c"at:".as_ptr()), vector_at);
-        let logic = (api.import)(c"LogicVar".as_ptr());
+        let logic = birnam_abi::namespace_import::import(imports, c"LogicVar".as_ptr());
         let named = (api.intern)(c"named:".as_ptr());
         let x = (api.send)(logic, named, [(api.intern)(c"x".as_ptr())].as_ptr(), 1);
         let y = (api.send)(logic, named, [(api.intern)(c"y".as_ptr())].as_ptr(), 1);

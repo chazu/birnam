@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -11,7 +11,7 @@ static void mount(const char *path, IdApi *selected) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    init(selected,NULL,fixture_namespace_presence());
+    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports());
 }
 static Oop send0(Oop receiver, const char *name) {
     return api->send(receiver,api->intern(name),NULL,0);
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     int baseline=argc==6;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1], fixture_namespace_presence());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     mount(argv[2],api); /* object-model for Collection in the baseline/later check */
     Oop nil_vt=api->vtable_of(api->nil_obj);

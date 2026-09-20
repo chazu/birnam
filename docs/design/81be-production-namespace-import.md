@@ -1,8 +1,8 @@
 # 81BE — Namespace owns import and its native handoff
 
 > **Status:** Partial implementation checkpoint, following Error Value handoff in
-> 81BD. Saved and pushed at the user's request; the full workspace does not yet
-> compile. This is not a completed extraction.
+> 81BD. The Rust workspace now compiles; current native C fixtures and the wider
+> ABI/image migration remain unfinished. This is not a completed extraction.
 
 Move canonical C-name import into Namespace and remove IdApi.import. Namespace
 creates one mutable import descriptor per Runtime, using selected lookup/find,
@@ -53,27 +53,45 @@ The first consumer group threads the capability through Integer, Float, Word,
 Prelude, the six System/Block installers, and direct Native Loader initialization.
 Error Value wrappers and ForeignAddress helpers now require explicit imports;
 the temporary production import-slot loan is removed. Collection, StringBuilder,
-Error, Lang, Store, PEG, and Artifact have partial caller migration. Range,
+Error, Lang, Store, PEG, and Artifact transport explicit imports. Range,
 Vector, and Map preparation moves to v3 to receive the incoming capability.
 
-Debug `cargo check` passed for ABI/Namespace and the first consumer group.
-The workspace check failed on remaining Store and Tcc ForeignAddress callers
-and Tcc's removed import-field access. These are unfinished migration work,
-not baseline failures. No runtime or image validation has been performed for
-this checkpoint.
+The remaining Rust consumers now carry matching incoming or saved imports:
+Store, Tcc, Alien, Codegen, Image, Isolate, Relational, and host startup/project/
+interaction helpers. Isolate's worker driver and OOP codec native bridges move
+to v2 and receive the caller's import capability explicitly. Rust initializer
+calls, test constructors, and the numeric semantics declaration fixture have
+been migrated. IdApi v10's manifest indices and fingerprint now agree with the
+independent ABI unit test.
+
+Current independent C headers now describe IdApi v10, Namespace v7, and the v3
+installer/collection preparation APIs. Shared fixture support transports an
+explicit import capability. Individual C callers are still being migrated;
+some continue to reference the removed import field or old call signatures.
+
+Checkpoint validation:
+
+- Debug `cargo check --workspace --all-targets --offline --locked` passed.
+- ABI, Namespace, and Id library tests passed: 284 passed, 16 ignored. Coverage
+  includes import ordering, mutable descriptors, callback reentry, copied
+  capabilities, independent moved runtimes, and service destruction ownership.
+- Loaded Namespace output matched completed 81BD commit `22de2f58` for the
+  ordered binding and independent-state oracles. All six import-boundary cases
+  matched exit status and exact output, including diagnostics and GC callbacks.
+- The Namespace script passed its storage/provider and presence checks, then
+  stopped compiling `namespace-publication-boundary.c` because that fixture
+  still uses `IdApi.import_fn`. This is unfinished migration work.
+- Fresh-prefix dynamic startup, source-free compiled callers, saved native Code
+  images, and baked executables have not yet been validated for 81BE.
 
 Remaining work before completing 81BE:
 
-- Finish Store's ForeignAddress call and migrate Tcc, Alien, Codegen, Image,
-  Isolate, Relational, and host startup/interaction helpers. Preserve each
-  caller's incoming or saved API/capability choice, including initialization
-  reentry and adapters that carry their own API.
-- Migrate direct Rust initializer calls, test constructors, native C fixtures,
-  current C headers, generated bridges, provider/dependency manifests, and
-  numeric/Block declaration fixtures to the new signatures and versions.
-- Add independent import-service and handoff coverage, compare native traces
-  against completed 81BD commit `22de2f58`, and finish ABI/factory admission
-  and diagnostic checks.
+- Finish individual native C fixtures, generated bridges, provider/dependency
+  manifests, and numeric/Block declaration fixtures, preserving each caller's
+  incoming or saved API/capability choice during initialization and reentry.
+- Complete independent consumer handoff coverage and native trace comparisons
+  against completed 81BD commit `22de2f58`, including ABI/factory admission and
+  pure declaration checks.
 - Run focused debug checks and fresh-prefix dynamic startup, source-free,
   saved-image, and baked-image validation; then update current ABI and user
   documentation with the verified result.

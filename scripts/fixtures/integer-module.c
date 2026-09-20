@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
@@ -24,7 +24,7 @@ static void mount(const char *path) {
         assert(attach(&copied) == 0); /* no silent remount onto another table */
     }
     fixture_attach_integer(api, image);
-    init(api,NULL,fixture_namespace_presence());
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
 }
 static Method lookup(Oop behavior, const char *name) {
     Oop selector = api->intern(name);
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     assert(cloned != lower && api->vtable_of(cloned) == api->object_vt);
     assert(api->send(lower, api->intern("=="), &lower, 1) == api->true_obj);
     assert(!api->import_fn("Integer"));
-    fixture_mount_integer(api, argv[1], fixture_namespace_presence());
+    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     assert(lookup(fixture_integer->behavior, "+"));
     mount(argv[3]); /* Errors are independently mounted, without Prelude. */
     const int64_t inputs[] = {INT64_MIN, INT64_MIN + 1, -17, -1, 0, 1, 17,

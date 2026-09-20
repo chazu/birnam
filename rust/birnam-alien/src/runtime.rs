@@ -28,7 +28,7 @@ const RUST_ALIEN_IDENTITY: &[u8] = b"rust-alien-r5-loader\0";
 const ALIEN_VT_NAME: &[u8] = b"AlienVt\0";
 const ALIEN_NAME: &[u8] = b"Alien\0";
 
-static API: OnceLock<(usize, usize)> = OnceLock::new();
+static API: OnceLock<(usize, usize, usize)> = OnceLock::new();
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static REGISTRY: OnceLock<Mutex<LibraryRegistry>> = OnceLock::new();
 static CALLBACKS: OnceLock<Mutex<Vec<CallbackEntry>>> = OnceLock::new();
@@ -122,7 +122,7 @@ unsafe fn symbol_name(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
 }
 
 unsafe fn store_entity(api: &IdApi, name: &[u8]) -> Option<(Oop, Oop)> {
-    let store = unsafe { (api.import)(c"Store".as_ptr()) };
+    let store = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Store".as_ptr()) };
     if store.is_null() || store == api.nilObj {
         return None;
     }
@@ -280,12 +280,12 @@ unsafe fn record_alien_wrap(api: &IdApi, arguments: &[Oop]) {
 }
 
 unsafe fn is_error_object(api: &IdApi, value: Oop) -> bool {
-    let error_vt = unsafe { (api.import)(c"ErrorVt".as_ptr()) };
+    let error_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"ErrorVt".as_ptr()) };
     !error_vt.is_null() && unsafe { (api.vtableOf)(value) } == error_vt
 }
 
 unsafe fn make_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
-    let factory = unsafe { (api.import)(c"Error".as_ptr()) };
+    let factory = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Error".as_ptr()) };
     if factory.is_null() {
         return api.nilObj;
     }
@@ -360,11 +360,11 @@ unsafe fn ensure_callback_roots(api: &IdApi) {
 }
 
 unsafe fn address_value(api: &IdApi, value: Oop) -> Option<usize> {
-    unsafe { foreign_address::value(api, value) }.map(|(address, _kind)| address)
+    unsafe { foreign_address::value(api, execution_imports(), value) }.map(|(address, _kind)| address)
 }
 
 unsafe fn resolve_buffer_address(api: &IdApi, receiver: Oop, offset: Oop) -> Result<usize, Oop> {
-    let Some((base, _kind)) = (unsafe { foreign_address::value(api, receiver) }) else {
+    let Some((base, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), receiver) }) else {
         return Err(unsafe {
             make_error(
                 api,
@@ -420,7 +420,7 @@ unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usi
     // escape; this is the frozen zero-initialized buffer contract.
     unsafe { ptr::write_bytes(pointer.cast::<u8>(), 0, size as usize) };
     let Some(address) =
-        (unsafe { foreign_address::allocate(api, execution_presence(), pointer as usize, KIND_ALIEN_MALLOC) })
+        (unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), pointer as usize, KIND_ALIEN_MALLOC) })
     else {
         unsafe { free(pointer) };
         return unsafe {
@@ -437,7 +437,7 @@ unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usi
 
 unsafe extern "C" fn alien_free(receiver: Oop, _args: *const Oop, _count: usize) -> Oop {
     let api = unsafe { api_ref() };
-    let Some((address, kind)) = (unsafe { foreign_address::value(api, receiver) }) else {
+    let Some((address, kind)) = (unsafe { foreign_address::value(api, execution_imports(), receiver) }) else {
         return unsafe { make_error(api, b"typeMismatch\0", b"free needs a ForeignAddress") };
     };
     if kind != KIND_ALIEN_MALLOC {
@@ -452,7 +452,7 @@ unsafe extern "C" fn alien_free(receiver: Oop, _args: *const Oop, _count: usize)
     if address == 0 {
         return unsafe { make_error(api, b"alreadyFreed\0", b"the address was already freed") };
     }
-    unsafe { foreign_address::clear(api, receiver) };
+    unsafe { foreign_address::clear(api, execution_imports(), receiver) };
     unsafe { free(address as *mut c_void) };
     api.nilObj
 }
@@ -466,7 +466,7 @@ unsafe extern "C" fn foreign_address_is_null(
     if count != 0 {
         return api.nilObj;
     }
-    match unsafe { foreign_address::value(api, receiver) } {
+    match unsafe { foreign_address::value(api, execution_imports(), receiver) } {
         Some((0, _kind)) => api.trueObj,
         Some((_address, _kind)) => api.falseObj,
         None => api.nilObj,
@@ -476,13 +476,13 @@ unsafe extern "C" fn foreign_address_is_null(
 unsafe extern "C" fn foreign_address_equal(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     let (Some((left, _left_kind)), Some(other)) =
-        (unsafe { foreign_address::value(api, receiver) }, unsafe {
+        (unsafe { foreign_address::value(api, execution_imports(), receiver) }, unsafe {
             argument(args, count)
         })
     else {
         return api.nilObj;
     };
-    match unsafe { foreign_address::value(api, other) } {
+    match unsafe { foreign_address::value(api, execution_imports(), other) } {
         Some((right, _right_kind)) if left == right => api.trueObj,
         _ => api.falseObj,
     }
@@ -497,7 +497,7 @@ unsafe extern "C" fn foreign_address_print_string(
     if count != 0 {
         return api.nilObj;
     }
-    let Some((address, _kind)) = (unsafe { foreign_address::value(api, receiver) }) else {
+    let Some((address, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), receiver) }) else {
         return api.nilObj;
     };
     let text = format!("ForeignAddress(0x{address:x})");
@@ -562,7 +562,7 @@ unsafe extern "C" fn alien_peek_pointer(receiver: Oop, args: *const Oop, count: 
         Err(error) => return error,
     };
     let value = unsafe { ptr::read_unaligned(address as *const usize) };
-    unsafe { foreign_address::allocate(api, execution_presence(), value, KIND_BORROWED) }.unwrap_or(api.nilObj)
+    unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), value, KIND_BORROWED) }.unwrap_or(api.nilObj)
 }
 
 unsafe extern "C" fn alien_peek_double(receiver: Oop, args: *const Oop, count: usize) -> Oop {
@@ -783,7 +783,7 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
             return make_error(api, b"badSignature\0", error.to_string().as_bytes());
         },
     };
-    if !signature.aggregates.is_empty() && unsafe { (api.import)(c"Vector".as_ptr()) }.is_null() {
+    if !signature.aggregates.is_empty() && unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) }.is_null() {
         return unsafe {
             make_error(
                 api,
@@ -808,7 +808,7 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
             return make_error(api, b"badSignature\0", error.to_string().as_bytes());
         },
     };
-    let tcc = unsafe { (api.import)(c"Tcc".as_ptr()) };
+    let tcc = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Tcc".as_ptr()) };
     if tcc.is_null() {
         return unsafe { make_error(api, b"moduleNotLoaded\0", b"Tcc is not loaded") };
     }
@@ -839,7 +839,7 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
     let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
     let function_name_object =
         unsafe { (birnam_abi::string::make)(function_name.as_ptr(), function_name.len()) };
-    let Some(address_object) = (unsafe { foreign_address::allocate(api, execution_presence(), address, KIND_BORROWED) })
+    let Some(address_object) = (unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), address, KIND_BORROWED) })
     else {
         return unsafe { make_error(api, b"outOfMemory\0", b"could not box the symbol address") };
     };
@@ -862,10 +862,10 @@ unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usiz
         };
     }
     if !signature.aggregates.is_empty() {
-        let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
+        let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) };
         let vector_name = unsafe { (birnam_abi::string::make)(c"__vecFactory".as_ptr().cast(), 12) };
         let Some(vector_address) =
-            (unsafe { foreign_address::allocate(api, execution_presence(), vector as usize, KIND_BORROWED) })
+            (unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), vector as usize, KIND_BORROWED) })
         else {
             return unsafe {
                 make_error(api, b"outOfMemory\0", b"could not box the Vector address")
@@ -954,7 +954,7 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
     ) {
         return unsafe { make_error(api, b"badSignature\0", b"a callback cannot return a string") };
     }
-    if !signature.aggregates.is_empty() && unsafe { (api.import)(c"Vector".as_ptr()) }.is_null() {
+    if !signature.aggregates.is_empty() && unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) }.is_null() {
         return unsafe {
             make_error(
                 api,
@@ -969,7 +969,7 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
             return make_error(api, b"badSignature\0", error.to_string().as_bytes());
         },
     };
-    let tcc = unsafe { (api.import)(c"Tcc".as_ptr()) };
+    let tcc = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Tcc".as_ptr()) };
     if tcc.is_null() {
         return unsafe { make_error(api, b"moduleNotLoaded\0", b"Tcc is not loaded") };
     }
@@ -997,7 +997,7 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
     let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
     let block_name = unsafe { (birnam_abi::string::make)(c"__cbBlock".as_ptr().cast(), 9) };
     let Some(block_address) =
-        (unsafe { foreign_address::allocate(api, execution_presence(), block as usize, KIND_BORROWED) })
+        (unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), block as usize, KIND_BORROWED) })
     else {
         return unsafe { make_error(api, b"outOfMemory\0", b"could not box the callback block") };
     };
@@ -1014,10 +1014,10 @@ unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: 
         return unsafe { make_error(api, b"compileFailed\0", b"callback block binding failed") };
     }
     if !signature.aggregates.is_empty() {
-        let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
+        let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) };
         let vector_name = unsafe { (birnam_abi::string::make)(c"__vecFactory".as_ptr().cast(), 12) };
         let Some(vector_address) =
-            (unsafe { foreign_address::allocate(api, execution_presence(), vector as usize, KIND_BORROWED) })
+            (unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), vector as usize, KIND_BORROWED) })
         else {
             return unsafe {
                 make_error(api, b"outOfMemory\0", b"could not box the Vector address")
@@ -1110,11 +1110,11 @@ unsafe extern "C" fn alien_release_callback(
             0,
         )
     };
-    unsafe { foreign_address::clear(api, value) };
+    unsafe { foreign_address::clear(api, execution_imports(), value) };
     api.trueObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -1123,20 +1123,20 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         Some(existing) if existing.0 != address => abort("IdApi was replaced"),
         Some(_) => {}
         None => {
-            let _ = API.set((address, presence as usize));
+            let _ = API.set((address, presence as usize, imports as usize));
         }
     }
     let api = unsafe { &*api_pointer };
     let Some((foreign_address_vt, _foreign_address)) =
-        (unsafe { foreign_address::ensure_family(api, presence) })
+        (unsafe { foreign_address::ensure_family(api, presence, imports) })
     else {
         abort("ForeignAddress exports were incomplete");
     };
     unsafe { ensure_callback_roots(api) };
     let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ALIEN_NAME.as_ptr().cast()) } != 0;
     let (alien_vt, alien_obj) = if reloading {
-        let alien_vt = unsafe { (api.import)(ALIEN_VT_NAME.as_ptr().cast()) };
-        let alien_obj = unsafe { (api.import)(ALIEN_NAME.as_ptr().cast()) };
+        let alien_vt = unsafe { birnam_abi::namespace_import::import(imports, ALIEN_VT_NAME.as_ptr().cast()) };
+        let alien_obj = unsafe { birnam_abi::namespace_import::import(imports, ALIEN_NAME.as_ptr().cast()) };
         (alien_vt, alien_obj)
     } else {
         let alien_vt = unsafe { (api.proto)(api.object_vt) };
@@ -1279,8 +1279,10 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presen
     let _ = state;
     // SAFETY: the host supplies the process-owned IdApi table and retains it
     // for the module lifetime.
-    unsafe { bring_up(api, presence) };
+    unsafe { bring_up(api, presence, imports) };
     ptr::null_mut()
 }
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { API.get().expect("module not initialized").1 as *const birnam_abi::namespace_presence::ApiV1 }
+
+fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { API.get().expect("module not initialized").2 as *const birnam_abi::namespace_import::ApiV1 }

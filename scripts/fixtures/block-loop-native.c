@@ -1,5 +1,5 @@
 /* Image smoke guard: called only after explicitly reloading Prelude. */
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>

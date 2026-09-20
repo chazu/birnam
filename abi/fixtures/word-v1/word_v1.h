@@ -1,5 +1,6 @@
 #ifndef BIRNAM_WORD_V1_H
 #define BIRNAM_WORD_V1_H
+#include "../namespace-import-v1/namespace_import_v1.h"
 #include <stddef.h>
 #include <stdint.h>
 /* Independent C mirror of Word's live operations and immutable bits codec. */
@@ -23,6 +24,7 @@ typedef int (*WordDependencyV1)(WordApiV1 *);
 typedef WordApiV1 *(*WordProviderV1)(void);
 typedef WordApiV1 *(*WordPrepareV1)(IdApi *);
 typedef WordApiV1 *(*WordPrepareV2)(IdApi *,const NamespacePresenceV1 *);
+typedef WordApiV1 *(*WordPrepareV3)(IdApi *,const NamespacePresenceV1 *,const NamespaceImportV1 *);
 _Static_assert(sizeof(WordStorageV1) == 48, "Word storage extent");
 _Static_assert(sizeof(WordApiV1) == 72, "Word operations extent");
 _Static_assert(offsetof(WordApiV1, make) == 40, "Word constructor offset");

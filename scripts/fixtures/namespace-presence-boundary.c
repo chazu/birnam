@@ -2,7 +2,7 @@
 #ifdef FIXTURE_IDAPI_V8
 #include "idapi_v8.h"
 #else
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"

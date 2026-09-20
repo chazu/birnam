@@ -572,15 +572,17 @@ fn codec_error_name(error: CodecError) -> &'static [u8] {
 
 struct OopEncoder<'a> {
     api: &'a IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     bytes: Vec<u8>,
     nodes: usize,
     active: Vec<usize>,
 }
 
 impl<'a> OopEncoder<'a> {
-    fn new(api: &'a IdApi) -> Self {
+    fn new(api: &'a IdApi, imports: *const birnam_abi::namespace_import::ApiV1) -> Self {
         Self {
             api,
+            imports,
             bytes: Vec::new(),
             nodes: 0,
             active: Vec::new(),
@@ -688,8 +690,8 @@ impl<'a> OopEncoder<'a> {
             return self.sized(bytes);
         }
 
-        let vector_vt = unsafe { (self.api.import)(c"VectorVt".as_ptr()) };
-        let map_vt = unsafe { (self.api.import)(c"MapVt".as_ptr()) };
+        let vector_vt = unsafe { birnam_abi::namespace_import::import(self.imports, c"VectorVt".as_ptr()) };
+        let map_vt = unsafe { birnam_abi::namespace_import::import(self.imports, c"MapVt".as_ptr()) };
         if vtable != vector_vt && vtable != map_vt {
             return Err(CodecError::NonTransferable);
         }
@@ -782,15 +784,17 @@ impl<'a> OopEncoder<'a> {
 
 struct OopDecoder<'a> {
     api: &'a IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     bytes: &'a [u8],
     position: usize,
     nodes: usize,
 }
 
 impl<'a> OopDecoder<'a> {
-    fn new(api: &'a IdApi, bytes: &'a [u8]) -> Self {
+    fn new(api: &'a IdApi, imports: *const birnam_abi::namespace_import::ApiV1, bytes: &'a [u8]) -> Self {
         Self {
             api,
+            imports,
             bytes,
             position: 0,
             nodes: 0,
@@ -886,7 +890,7 @@ impl<'a> OopDecoder<'a> {
             return Err(CodecError::ContainerTooLarge);
         }
         let vector = unsafe {
-            let global = (self.api.import)(c"Vector".as_ptr());
+            let global = birnam_abi::namespace_import::import(self.imports, c"Vector".as_ptr());
             let selector = (self.api.intern)(c"new".as_ptr());
             (self.api.send)(global, selector, ptr::null(), 0)
         };
@@ -922,7 +926,7 @@ impl<'a> OopDecoder<'a> {
             return Err(CodecError::ContainerTooLarge);
         }
         let map = unsafe {
-            let global = (self.api.import)(c"Map".as_ptr());
+            let global = birnam_abi::namespace_import::import(self.imports, c"Map".as_ptr());
             let selector = (self.api.intern)(c"new".as_ptr());
             (self.api.send)(global, selector, ptr::null(), 0)
         };
@@ -951,11 +955,11 @@ impl<'a> OopDecoder<'a> {
     }
 }
 
-fn decode_oop_value(api: &IdApi, bytes: &[u8]) -> Result<Oop, CodecError> {
+fn decode_oop_value(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1, bytes: &[u8]) -> Result<Oop, CodecError> {
     if bytes.len() > MAX_FRAME {
         return Err(CodecError::FrameTooLarge);
     }
-    let mut decoder = OopDecoder::new(api, bytes);
+    let mut decoder = OopDecoder::new(api, imports, bytes);
     let value = decoder.value(0)?;
     if decoder.position != bytes.len() {
         return Err(CodecError::TrailingBytes);
@@ -963,18 +967,19 @@ fn decode_oop_value(api: &IdApi, bytes: &[u8]) -> Result<Oop, CodecError> {
     Ok(value)
 }
 
-fn encode_oop_value(api: &IdApi, value: Oop) -> Result<Vec<u8>, CodecError> {
-    let mut encoder = OopEncoder::new(api);
+fn encode_oop_value(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1, value: Oop) -> Result<Vec<u8>, CodecError> {
+    let mut encoder = OopEncoder::new(api, imports);
     encoder.value(value, 0)?;
     Ok(encoder.bytes)
 }
 
 fn decode_oop_error_record(
     api: &IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     schema: &[u8],
     bytes: &[u8],
 ) -> Result<(Oop, Oop), CodecError> {
-    let mut decoder = OopDecoder::new(api, bytes);
+    let mut decoder = OopDecoder::new(api, imports, bytes);
     if decoder.byte()? != TAG_RECORD {
         return Err(CodecError::InvalidRecord);
     }
@@ -1079,6 +1084,7 @@ struct Failure {
 
 struct Runtime {
     api: usize,
+    imports: usize,
     isolate_vt: usize,
     isolate_obj: usize,
     handle_vt: usize,
@@ -1420,7 +1426,7 @@ fn make_failure_from_record(
         .chain(std::iter::once(0))
         .collect::<Vec<_>>();
     let class_o = unsafe { (api.intern)(class_z.as_ptr().cast()) };
-    match decode_oop_error_record(api, schema, payload) {
+    match decode_oop_error_record(api, execution_imports(), schema, payload) {
         Ok((kind, message)) => {
             make_failure_objects(api, class_o, kind, message, api.nilObj, api.nilObj)
         }
@@ -1666,7 +1672,7 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
         );
     }
     let timeout = (unsafe { (birnam_abi::integer::value)(args[1]) } as u64).min(u32::MAX as u64) as u32;
-    let argument = match encode_oop_value(api, args[0]) {
+    let argument = match encode_oop_value(api, execution_imports(), args[0]) {
         Ok(argument) => argument,
         Err(error) => {
             return make_failure(api, b"encode", b"nonTransferable", codec_error_name(error));
@@ -1773,7 +1779,7 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
         );
     }
     match reply.header.kind {
-        FrameKind::ReplyOk => match decode_oop_value(api, &reply.payload) {
+        FrameKind::ReplyOk => match decode_oop_value(api, execution_imports(), &reply.payload) {
             Ok(value) => {
                 entry.state = Lifecycle::Ready;
                 value
@@ -1785,7 +1791,7 @@ unsafe extern "C" fn handle_request(self_oop: Oop, args: *const Oop, count: usiz
             }
         },
         FrameKind::ReplyError => {
-            match decode_oop_error_record(api, APPLICATION_ERROR_SCHEMA, &reply.payload) {
+            match decode_oop_error_record(api, execution_imports(), APPLICATION_ERROR_SCHEMA, &reply.payload) {
                 Ok((kind, message)) => {
                     entry.state = Lifecycle::Ready;
                     let request = unsafe { (birnam_abi::integer::make)(request_id as i64) };
@@ -1960,16 +1966,16 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: 
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, c"Isolate".as_ptr()) } != 0;
         let (isolate_vt, isolate_obj, handle_vt, failure_vt) = if reloading {
             (
-                unsafe { (api_ref.import)(c"IsolateVt".as_ptr()) },
-                unsafe { (api_ref.import)(c"Isolate".as_ptr()) },
-                unsafe { (api_ref.import)(c"IsolateHandleVt".as_ptr()) },
-                unsafe { (api_ref.import)(c"IsolateFailureVt".as_ptr()) },
+                unsafe { birnam_abi::namespace_import::import(imports, c"IsolateVt".as_ptr()) },
+                unsafe { birnam_abi::namespace_import::import(imports, c"Isolate".as_ptr()) },
+                unsafe { birnam_abi::namespace_import::import(imports, c"IsolateHandleVt".as_ptr()) },
+                unsafe { birnam_abi::namespace_import::import(imports, c"IsolateFailureVt".as_ptr()) },
             )
         } else {
             let isolate_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
             let isolate_obj = unsafe { (api_ref.alloc)(isolate_vt, 0) };
             let handle_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
-            let error_vt = unsafe { (api_ref.import)(c"ErrorVt".as_ptr()) };
+            let error_vt = unsafe { birnam_abi::namespace_import::import(imports, c"ErrorVt".as_ptr()) };
             let failure_vt = if error_vt.is_null() {
                 unsafe { (api_ref.proto)(api_ref.object_vt) }
             } else {
@@ -1979,6 +1985,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: 
         };
         Runtime {
             api: api as usize,
+            imports: imports as usize,
             isolate_vt: isolate_vt as usize,
             isolate_obj: isolate_obj as usize,
             handle_vt: handle_vt as usize,
@@ -2106,8 +2113,9 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: 
 /// borrowed for this call. `fd` must be a live inherited channel descriptor;
 /// ownership remains with the caller and is not closed here.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_isolate_worker_driver(
+pub unsafe extern "C" fn birnam_isolate_worker_driver_v2(
     api: *mut IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     fd: c_int,
     receiver: Oop,
     selector: Oop,
@@ -2166,7 +2174,7 @@ pub unsafe extern "C" fn birnam_isolate_worker_driver(
                 } else {
                     frame.payload.clone()
                 };
-                let argument = match decode_oop_value(api, &payload) {
+                let argument = match decode_oop_value(api, imports, &payload) {
                     Ok(value) => value,
                     Err(error) => {
                         let payload = match error_record(
@@ -2193,7 +2201,7 @@ pub unsafe extern "C" fn birnam_isolate_worker_driver(
                     if service::begin(fd, frame.header.request_id).is_err() {
                         return 1;
                     }
-                    let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+                    let globals = unsafe { birnam_abi::namespace_import::import(imports, c"Globals".as_ptr()) };
                     let name = unsafe { (api.intern)(c"TaskService".as_ptr()) };
                     let policy =
                         unsafe { (api.send)(globals, (api.intern)(c"at:".as_ptr()), &name, 1) };
@@ -2237,7 +2245,7 @@ pub unsafe extern "C" fn birnam_isolate_worker_driver(
                         return 1;
                     }
                 } else {
-                    let mut encoder = OopEncoder::new(api);
+                    let mut encoder = OopEncoder::new(api, imports);
                     let (kind, payload) = match encoder.value(result, 0) {
                         Ok(()) => (FrameKind::ReplyOk, encoder.bytes),
                         Err(error) => {
@@ -2436,8 +2444,9 @@ pub unsafe extern "C" fn birnam_isolate_rust_decode_header(
 /// live floor OOP for the duration of the call. `out` must point to at least
 /// `out_cap` writable bytes and `out_len` must point to writable `usize`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_isolate_rust_encode_oop(
+pub unsafe extern "C" fn birnam_isolate_rust_encode_oop_v2(
     api: *mut IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     value: Oop,
     out: *mut u8,
     out_cap: usize,
@@ -2449,7 +2458,7 @@ pub unsafe extern "C" fn birnam_isolate_rust_encode_oop(
     // SAFETY: the caller promises a live IdApi table for this synchronous
     // conversion; the null check above establishes a valid reference.
     let api = unsafe { &*api };
-    let mut encoder = OopEncoder::new(api);
+    let mut encoder = OopEncoder::new(api, imports);
     let bytes = match encoder.value(value, 0) {
         Ok(()) => encoder.bytes,
         Err(error) => return error_code(error),
@@ -2476,8 +2485,9 @@ pub unsafe extern "C" fn birnam_isolate_rust_encode_oop(
 /// storage for one OOP. All referenced floor objects and function pointers
 /// must remain valid for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_isolate_rust_decode_oop(
+pub unsafe extern "C" fn birnam_isolate_rust_decode_oop_v2(
     api: *mut IdApi,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     bytes: *const u8,
     len: usize,
     out: *mut Oop,
@@ -2494,7 +2504,7 @@ pub unsafe extern "C" fn birnam_isolate_rust_decode_oop(
     // SAFETY: the caller promises writable OOP storage; initialize it before
     // decoding so failures cannot expose stale caller data.
     unsafe { *out = ptr::null_mut() };
-    let value = match decode_oop_value(api, bytes) {
+    let value = match decode_oop_value(api, imports, bytes) {
         Ok(value) => value,
         Err(error) => return error_code(error),
     };
@@ -2613,8 +2623,9 @@ mod tests {
         let (mut host, worker) = UnixStream::pair().expect("socketpair");
         let worker_fd = worker.into_raw_fd();
         let join = thread::spawn(move || unsafe {
-            birnam_isolate_worker_driver(
+            birnam_isolate_worker_driver_v2(
                 ptr::null_mut(),
+                ptr::null(),
                 worker_fd as c_int,
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -2741,3 +2752,5 @@ birnam_abi::integer_dependency!();
 birnam_abi::float_dependency!();
 
 birnam_abi::string_dependency!();
+
+fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("Rust Isolate module_init missing").imports as *const birnam_abi::namespace_import::ApiV1 }

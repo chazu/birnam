@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -136,8 +136,8 @@ int main(int argc,char **argv) {
     missing_prototype=!strcmp(argv[4],"missing-prototype"); rebound_prototype=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1], fixture_namespace_presence());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports());
     if(adopting || ignored_exports) seed();
     if(ignored_exports) { api->export_obj("Vector",NULL); behavior=prototype=NULL; }
     Oop adopted_behavior=behavior,adopted_prototype=prototype;

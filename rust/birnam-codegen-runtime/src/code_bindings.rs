@@ -357,7 +357,7 @@ pub(super) unsafe extern "C" fn rust_codegen_portable_image_bindings(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let vector = unsafe { (api.import)(VECTOR_NAME.as_ptr().cast()) };
+    let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_NAME.as_ptr().cast()) };
     if vector.is_null() || vector == api.nilObj {
         return api.nilObj;
     }

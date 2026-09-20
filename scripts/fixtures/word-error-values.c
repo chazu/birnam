@@ -1,7 +1,7 @@
 /* Seed otherwise unconstructible nonzero Words through the public native API.
    Save unexported clones so the image encodes values, not external export names.
    The fixture library can then be removed before image boot. */
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "word_v1.h"
 #include <assert.h>
 #include <dlfcn.h>

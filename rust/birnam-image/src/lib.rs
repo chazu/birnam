@@ -521,6 +521,7 @@ mod runtime {
     #[derive(Clone, Copy)]
     struct Runtime {
         api: usize,
+        imports: usize,
         report_obj: usize,
         report: &'static Mutex<SaveReport>,
     }
@@ -675,7 +676,7 @@ mod runtime {
     }
 
     unsafe fn portable_binding_snapshot(api: &IdApi) -> Option<Vec<PortableBindingSnapshot>> {
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
@@ -766,7 +767,7 @@ mod runtime {
         object: Oop,
         prototype_name: &[u8],
     ) -> bool {
-        let prototype = unsafe { (api.import)(prototype_name.as_ptr().cast()) };
+        let prototype = unsafe { birnam_abi::namespace_import::import(execution_imports(), prototype_name.as_ptr().cast()) };
         if prototype.is_null() || prototype == api.nilObj || object == prototype {
             return false;
         }
@@ -1218,6 +1219,8 @@ mod runtime {
         unsafe { &*(runtime().api as *const IdApi) }
     }
 
+    fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { runtime().imports as *const birnam_abi::namespace_import::ApiV1 }
+
     unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
         // SAFETY: all current selectors are static NUL-terminated byte strings.
         unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
@@ -1256,7 +1259,7 @@ mod runtime {
     }
 
     unsafe fn image_rejection_error(api: &IdApi, kind: ImageRejectionKind) -> Oop {
-        let error = unsafe { (api.import)(c"Error".as_ptr()) };
+        let error = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Error".as_ptr()) };
         if error.is_null() || error == api.nilObj {
             return api.nilObj;
         }
@@ -1304,8 +1307,8 @@ mod runtime {
     }
 
     unsafe fn portable_program_view_api(api: &IdApi) -> Option<&'static PortableProgramViewApiV1> {
-        let object = unsafe { (api.import)(PORTABLE_PROGRAM_VIEW_API_NAME.as_ptr().cast()) };
-        let vtable = unsafe { (api.import)(PORTABLE_PROGRAM_VIEW_API_VTABLE_NAME.as_ptr().cast()) };
+        let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), PORTABLE_PROGRAM_VIEW_API_NAME.as_ptr().cast()) };
+        let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), PORTABLE_PROGRAM_VIEW_API_VTABLE_NAME.as_ptr().cast()) };
         if object.is_null()
             || object == api.nilObj
             || vtable.is_null()
@@ -1322,8 +1325,8 @@ mod runtime {
     }
 
     unsafe fn portable_code_api_v3(api: &IdApi) -> Option<&'static PortableCodeApiV3> {
-        let object = unsafe { (api.import)(PORTABLE_CODE_API_V3_NAME.as_ptr().cast()) };
-        let vtable = unsafe { (api.import)(PORTABLE_CODE_API_V3_VTABLE_NAME.as_ptr().cast()) };
+        let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), PORTABLE_CODE_API_V3_NAME.as_ptr().cast()) };
+        let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), PORTABLE_CODE_API_V3_VTABLE_NAME.as_ptr().cast()) };
         if object.is_null()
             || object == api.nilObj
             || vtable.is_null()
@@ -1340,8 +1343,8 @@ mod runtime {
     }
 
     unsafe fn portable_code_api_v2(api: &IdApi) -> Option<&'static PortableCodeApiV2> {
-        let object = unsafe { (api.import)(PORTABLE_CODE_API_V2_NAME.as_ptr().cast()) };
-        let vtable = unsafe { (api.import)(PORTABLE_CODE_API_V2_VTABLE_NAME.as_ptr().cast()) };
+        let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), PORTABLE_CODE_API_V2_NAME.as_ptr().cast()) };
+        let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), PORTABLE_CODE_API_V2_VTABLE_NAME.as_ptr().cast()) };
         if object.is_null()
             || object == api.nilObj
             || vtable.is_null()
@@ -1511,7 +1514,7 @@ mod runtime {
     unsafe fn writer_codegen_authority(api: &IdApi) -> Option<Oop> {
         let requested = std::env::var("BIRNAM_RUST_IMAGE_WRITER_AUTHORITY").ok();
         if requested.as_deref() == Some("rust") {
-            let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+            let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
             if codegen.is_null()
                 || codegen == api.nilObj
                 || !unsafe {
@@ -1529,7 +1532,7 @@ mod runtime {
         if requested.is_some() {
             return None;
         }
-        let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Codegen".as_ptr()) };
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
@@ -1538,7 +1541,7 @@ mod runtime {
             // close the initial dispatch generation before asking Codegen for its
             // digest. Explicit Rust Image fixtures do not set the canonical marker
             // and therefore retain their diagnostic-only no-publication contract.
-            let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+            let globals = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Globals".as_ptr()) };
             if !globals.is_null() && globals != api.nilObj {
                 let key = unsafe { intern(api, b"DispatchGeneration\0") };
                 let generations = [key];
@@ -1600,7 +1603,7 @@ mod runtime {
         api: &IdApi,
         records: &PortableSaveRecords,
     ) -> Option<Vec<u8>> {
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
@@ -1761,11 +1764,11 @@ mod runtime {
         Some(objects)
     }
 
-    unsafe fn import_bytes(api: &IdApi, name: &[u8]) -> Option<Oop> {
+    unsafe fn import_bytes(_api: &IdApi, name: &[u8]) -> Option<Oop> {
         let mut terminated = Vec::with_capacity(name.len().checked_add(1)?);
         terminated.extend_from_slice(name);
         terminated.push(0);
-        let object = unsafe { (api.import)(terminated.as_ptr().cast()) };
+        let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), terminated.as_ptr().cast()) };
         (!object.is_null()).then_some(object)
     }
 
@@ -1864,7 +1867,7 @@ mod runtime {
             }
         }
 
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
@@ -1952,7 +1955,7 @@ mod runtime {
                 argument: api.nilObj,
             });
         }
-        let store = unsafe { (api.import)(c"Store".as_ptr()) };
+        let store = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Store".as_ptr()) };
         if store.is_null() || store == api.nilObj {
             return None;
         }
@@ -2072,7 +2075,7 @@ mod runtime {
 
     unsafe fn prepare_v8_bindings(api: &IdApi, bytes: &[u8], relocations: &[Oop]) -> Option<usize> {
         let inventory = birnam_artifact::code_binding_inventory::inspect(bytes).ok()?;
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
@@ -2109,7 +2112,7 @@ mod runtime {
 
     unsafe fn install_v8_bindings(api: &IdApi, bytes: &[u8], relocations: &[Oop]) -> Option<usize> {
         let inventory = birnam_artifact::code_binding_inventory::inspect(bytes).ok()?;
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
@@ -2142,7 +2145,7 @@ mod runtime {
         decoded: &v8::DecodedImage<'_>,
         rebuild: bool,
     ) -> Option<(Oop, bool)> {
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null() || codegen == api.nilObj {
             return None;
         }
@@ -2196,6 +2199,7 @@ mod runtime {
         };
         struct StageGuard<'a> {
             api: &'a IdApi,
+            imports: *const birnam_abi::namespace_import::ApiV1,
             armed: bool,
         }
         impl Drop for StageGuard<'_> {
@@ -2203,13 +2207,13 @@ mod runtime {
                 if !self.armed {
                     return;
                 }
-                let codegen = unsafe { (self.api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+                let codegen = unsafe { birnam_abi::namespace_import::import(self.imports, RUST_CODEGEN_NAME.as_ptr().cast()) };
                 if !codegen.is_null() && codegen != self.api.nilObj {
                     let _ = unsafe { send0(self.api, codegen, CANCEL_PORTABLE_IMAGE_UNIT) };
                 }
             }
         }
-        let mut stage = StageGuard { api, armed: true };
+        let mut stage = StageGuard { api, imports: execution_imports(), armed: true };
         let Some(relocations) = (unsafe { materialize_v8_heaps(api, &decoded, owner) }) else {
             return api.nilObj;
         };
@@ -2220,7 +2224,7 @@ mod runtime {
         if unsafe { prepare_v8_bindings(api, decoded.bindings, &relocations) }.is_none() {
             return api.nilObj;
         }
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null()
             || codegen == api.nilObj
             || unsafe { send0(api, codegen, FINISH_PORTABLE_IMAGE_UNIT) } != api.trueObj
@@ -2313,7 +2317,7 @@ mod runtime {
             .and_then(|bytes| bytes.try_into().ok())
             .map(u64::from_le_bytes)
             .and_then(|checksum| composition_identity(&[checksum]));
-        let codegen = unsafe { (api.import)(RUST_CODEGEN_NAME.as_ptr().cast()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(execution_imports(), RUST_CODEGEN_NAME.as_ptr().cast()) };
         if codegen.is_null()
             || codegen == api.nilObj
             || unsafe { send0(api, codegen, RUST_CODEGEN_BEGIN_IMAGE_RECOVERY) } != api.trueObj
@@ -2348,7 +2352,7 @@ mod runtime {
         if let Ok(mut records) = PORTABLE_SAVE_RECORDS.lock() {
             *records = None;
         }
-        let store = unsafe { (api.import)(c"Store".as_ptr()) };
+        let store = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Store".as_ptr()) };
         if store.is_null() || store == api.nilObj {
             return FactPreflight {
                 kept: 0,
@@ -2378,7 +2382,7 @@ mod runtime {
             };
         }
         let portable_bindings = unsafe { portable_binding_snapshot(api) };
-        let collector_vt = unsafe { (api.import)(COLLECTOR_VT_NAME.as_ptr().cast()) };
+        let collector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), COLLECTOR_VT_NAME.as_ptr().cast()) };
         if collector_vt.is_null() {
             return FactPreflight {
                 kept: 0,
@@ -3008,7 +3012,7 @@ mod runtime {
             if collection.heap.image_rejection.is_some() || encoded {
                 collection.rejected = collection.rejected.saturating_add(1);
             } else {
-                let store = unsafe { (api.import)(c"Store".as_ptr()) };
+                let store = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Store".as_ptr()) };
                 match if store.is_null() || store == api.nilObj {
                     DeferredFactClass::Reject
                 } else {
@@ -3033,14 +3037,14 @@ mod runtime {
         api.nilObj
     }
 
-    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
         if api.is_null() {
             abort("module_init received a null IdApi");
         }
         let api_ref = unsafe { &*api };
         let report_vt =
             if unsafe { birnam_abi::namespace_presence::contains(presence, IMAGE_REPORT_VT_NAME.as_ptr().cast()) } != 0 {
-                unsafe { (api_ref.import)(IMAGE_REPORT_VT_NAME.as_ptr().cast()) }
+                unsafe { birnam_abi::namespace_import::import(imports, IMAGE_REPORT_VT_NAME.as_ptr().cast()) }
             } else {
                 let vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
                 unsafe { (api_ref.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
@@ -3048,7 +3052,7 @@ mod runtime {
             };
         let report_obj = if unsafe { birnam_abi::namespace_presence::contains(presence, IMAGE_REPORT_NAME.as_ptr().cast()) } != 0
         {
-            unsafe { (api_ref.import)(IMAGE_REPORT_NAME.as_ptr().cast()) }
+            unsafe { birnam_abi::namespace_import::import(imports, IMAGE_REPORT_NAME.as_ptr().cast()) }
         } else {
             let object = unsafe { (api_ref.alloc)(report_vt, 0) };
             unsafe {
@@ -3098,7 +3102,7 @@ mod runtime {
                 collector_collect,
             );
             let _ = (api_ref.exportObj)(COLLECTOR_VT_NAME.as_ptr().cast(), collector_vt);
-            let system_vt = (api_ref.import)(c"SystemVt".as_ptr());
+            let system_vt = birnam_abi::namespace_import::import(imports, c"SystemVt".as_ptr());
             if !system_vt.is_null() {
                 (api_ref.method)(
                     system_vt,
@@ -3135,6 +3139,7 @@ mod runtime {
         }
         let _ = RUNTIME.set(Runtime {
             api: api as usize,
+            imports: imports as usize,
             report_obj: report_obj as usize,
             report: &SAVE_REPORT,
         });
@@ -3174,7 +3179,7 @@ mod runtime {
     pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
         let _ = state;
         if RUNTIME.get().is_none() {
-            unsafe { bring_up(api, presence) };
+            unsafe { bring_up(api, presence, imports) };
         }
         ptr::null_mut()
     }

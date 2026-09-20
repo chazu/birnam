@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -62,8 +62,8 @@ static int exported(const char *name) { int result=fixture_namespace_contains(na
 static Oop intern(const char *name) { if(phase==0 && candidate) { prototype=candidate; candidate=NULL; partial(3); } if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V9_SLOT_RAW && kinds[1]==IDAPI_V9_SLOT_RAW && rest==IDAPI_V9_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V9_SLOT_OOP,IDAPI_V9_SLOT_RAW}; assert(count==2 && rest==IDAPI_V9_SLOT_RAW && !memcmp(kinds,expected,2)); }
+    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V10_SLOT_RAW && kinds[1]==IDAPI_V10_SLOT_RAW && rest==IDAPI_V10_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V10_SLOT_OOP,IDAPI_V10_SLOT_RAW}; assert(count==2 && rest==IDAPI_V10_SLOT_RAW && !memcmp(kinds,expected,2)); }
     api->set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
@@ -153,8 +153,8 @@ int main(int argc,char **argv) {
     assert(argc==5); adopting=strcmp(argv[4],"normal") && strcmp(argv[4],"map-only-exports");
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1], fixture_namespace_presence());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports());
     if(adopting || !strcmp(argv[4],"map-only-exports")) seed(!adopting);
     selected=*api; selected.proto=proto; selected.alloc=allocate; selected.import_fn=import; selected_presence_slot=exported;
     selected.intern=intern; selected.set_layout=layout; selected.method=method; selected.send=send; selected.export_obj=publish;

@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -43,41 +43,42 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(api->export_obj("NamespaceSecond",value)==value);
     assert(api->export_obj("NamespaceOnly",value)==value);
     assert(count_exports()==before+added && contains(first) && contains(second) && contains(only));
-    assert(api->import_fn("NamespaceSecond")==value && fixture_namespace_contains("NamespaceOnly"));
+    assert(fixture_namespace_import("NamespaceSecond")==value && fixture_namespace_contains("NamespaceOnly"));
     assert(!strcmp(name_of(value),"NamespaceFirst"));
     api->export_obj("NamespaceFirst",api->nil_obj);
-    assert(fixture_namespace_contains("NamespaceFirst") && api->import_fn("NamespaceFirst")==api->nil_obj);
+    assert(fixture_namespace_contains("NamespaceFirst") && fixture_namespace_import("NamespaceFirst")==api->nil_obj);
     assert(!strcmp(name_of(value),"NamespaceSecond"));
     api->gc_collect();
-    assert(api->import_fn("NamespaceSecond")==value && api->vtable_of(value));
-    Oop globals=api->import_fn("Globals"),missing=api->send(globals,api->intern("at:"),&only,1);
+    assert(fixture_namespace_import("NamespaceSecond")==value && api->vtable_of(value));
+    Oop globals=fixture_namespace_import("Globals"),missing=api->send(globals,api->intern("at:"),&only,1);
     assert(missing==api->nil_obj); /* Raw publication does not bind Globals. */
     api->export_obj("NamespaceFirst",NULL);api->export_obj("NamespaceSecond",NULL);api->export_obj("NamespaceOnly",NULL);
-    assert(!api->import_fn("NamespaceFirst") && !fixture_namespace_contains("NamespaceFirst"));
+    assert(!fixture_namespace_import("NamespaceFirst") && !fixture_namespace_contains("NamespaceFirst"));
     assert(count_exports()==before+added && contains(first) && contains(second) && contains(only));
     assert(!name_of(value));
     return value;
 }
-void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence) {
+void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports) {
     fixture_presence=(NamespacePresenceV1 *)presence;
+    fixture_imports=(NamespaceImportV1 *)imports;
     assert(selected && !state);if(api)assert(api==selected);else api=selected;
-    Dl_info info;assert(dladdr((void *)api->import_fn,&info) && info.dli_fname);
+    Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
     void *floor=api->dlopen_fn(info.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(floor);
     NamespaceNamesProviderV1 provide=(NamespaceNamesProviderV1)api->dlsym_fn(floor,"birnam_namespace_names_provider_v1");assert(provide);names=provide();assert(names);
     const char *slash=strrchr(info.dli_fname,'/');assert(slash);char path[PATH_MAX];
     int length=snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-info.dli_fname),info.dli_fname);
     assert(length>0 && (size_t)length<sizeof(path));
     void *namespace=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(namespace);
-    NamespaceProviderV6 factory=(NamespaceProviderV6)api->dlsym_fn(namespace,"birnam_namespace_provider_v6");assert(factory);
-    const NamespaceApiV6 *operations=factory();assert(operations && operations->version==6 && operations->byte_size==sizeof(*operations));
+    NamespaceProviderV7 factory=(NamespaceProviderV7)api->dlsym_fn(namespace,"birnam_namespace_provider_v7");assert(factory);
+    const NamespaceApiV7 *operations=factory();assert(operations && operations->version==7 && operations->byte_size==sizeof(*operations));
     assert(dladdr((void *)operations->lookup,&info) && strstr(info.dli_fname,"libbirnam_namespace.dylib"));
     assert(dladdr((void *)operations->publish,&info) && strstr(info.dli_fname,"libbirnam_namespace.dylib"));
     fixture_namespace_floor=floor;count_exports=fixture_namespace_count;name_at=fixture_namespace_name_at;
-    api->method(api->import_fn("SystemVt"),api->intern("namespaceExercise:"),exercise);
-    api->method(api->import_fn("SystemVt"),api->intern("namespaceObserveNames"),observe_names);
-    api->method(api->import_fn("SystemVt"),api->intern("namespaceRename:"),rename_names);
-    api->method(api->import_fn("SystemVt"),api->intern("namespaceHide:"),hide_names);
-    api->method(api->import_fn("SystemVt"),api->intern("namespaceRestoreNames"),restore_names);
+    api->method(fixture_namespace_import("SystemVt"),api->intern("namespaceExercise:"),exercise);
+    api->method(fixture_namespace_import("SystemVt"),api->intern("namespaceObserveNames"),observe_names);
+    api->method(fixture_namespace_import("SystemVt"),api->intern("namespaceRename:"),rename_names);
+    api->method(fixture_namespace_import("SystemVt"),api->intern("namespaceHide:"),hide_names);
+    api->method(fixture_namespace_import("SystemVt"),api->intern("namespaceRestoreNames"),restore_names);
     return NULL;
 }
 int birnam_symbol_borrow_v1(void) { return 1; }

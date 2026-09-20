@@ -28,7 +28,7 @@ fn native_bridge_and_address_fence() {
         assert_eq!(PROJECT_BRIDGE_RUNTIME.load(Ordering::Acquire), address);
         runtime.install_project_bridge().unwrap();
         let api = runtime.stack.api();
-        let project = global_named(api, "Project").unwrap();
+        let project = global_named(api, runtime.stack.imports(), "Project").unwrap();
         let uri = b"file:///tmp/birnam%20bridge/example.birnam";
         let argument = (birnam_abi::string::make)(uri.as_ptr(), uri.len());
         let result = (api.send)(project, (api.intern)(c"pathForUri:".as_ptr()), &argument, 1);

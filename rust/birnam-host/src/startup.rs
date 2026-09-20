@@ -432,7 +432,7 @@ pub unsafe fn activate_preflighted_artifact(
     entry: &ArtifactEntry,
 ) -> Result<(), ArtifactActivationError> {
     let api = runtime.stack.api();
-    let Some(module_manager) = (unsafe { global_named(api, "Module") }) else {
+    let Some(module_manager) = (unsafe { global_named(api, runtime.stack.imports(), "Module") }) else {
         return Err(ArtifactActivationError::MissingModuleManager);
     };
     let identity = CString::new(entry.identity.as_slice())
@@ -456,7 +456,7 @@ pub unsafe fn activate_preflighted_artifact(
             1,
         )
     };
-    let alien = unsafe { (api.import)(c"Alien".as_ptr()) };
+    let alien = unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"Alien".as_ptr()) };
     if alien != api.nilObj {
         let selector = unsafe { (api.intern)(c"libraryDir:".as_ptr()) };
         unsafe { (api.send)(alien, selector, [directory_value].as_ptr(), 1) };
@@ -522,7 +522,7 @@ pub unsafe fn eval_script(
         });
     }
     let api = runtime.stack.api();
-    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    let codegen = unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"Codegen".as_ptr()) };
     if codegen == api.nilObj {
         return Err(ScriptError::MissingCodegen);
     }
@@ -568,7 +568,7 @@ pub unsafe fn compile_module(
         });
     }
     let api = runtime.stack.api();
-    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    let codegen = unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"Codegen".as_ptr()) };
     if codegen == api.nilObj {
         return Err(CompileModuleError::MissingCodegen);
     }
@@ -678,7 +678,7 @@ pub unsafe fn load_image(
     // SAFETY: the retained floor table outlives this synchronous load and the
     // owner thread remains exclusive for the whole operation.
     let api = unsafe { &*api_ptr };
-    let system = unsafe { (api.import)(c"System".as_ptr()) };
+    let system = unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"System".as_ptr()) };
     if system == api.nilObj {
         return Err(ImageError::MissingSystem);
     }
@@ -687,7 +687,7 @@ pub unsafe fn load_image(
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
-    unsafe { finish_image_load(api, runtime.stack.presence(), system, status) }
+    unsafe { finish_image_load(api, runtime.stack.presence(), runtime.stack.imports(), system, status) }
 }
 
 /// Load complete image bytes through the ordinary Birnam `System` send surface.
@@ -708,7 +708,7 @@ pub unsafe fn load_image_bytes(
     // SAFETY: the retained floor table outlives this synchronous load and the
     // owner thread remains exclusive for the whole operation.
     let api = unsafe { &*api_ptr };
-    let system = unsafe { (api.import)(c"System".as_ptr()) };
+    let system = unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"System".as_ptr()) };
     if system == api.nilObj {
         return Err(ImageError::MissingSystem);
     }
@@ -716,11 +716,11 @@ pub unsafe fn load_image_bytes(
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImageBytes:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [image_value, rebuild_value].as_ptr(), 2) };
-    unsafe { finish_image_load(api, runtime.stack.presence(), system, status) }
+    unsafe { finish_image_load(api, runtime.stack.presence(), runtime.stack.imports(), system, status) }
 }
 
 unsafe fn finish_image_load(
-    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1,
     system: birnam_abi::Oop,
     status: birnam_abi::Oop,
 ) -> Result<ImageLoadOutcome, ImageError> {
@@ -733,7 +733,7 @@ unsafe fn finish_image_load(
         // hooks used by source recovery before exposing the image to the REPL.
         // Without this, image-resident methods that call an Alien wrapper keep
         // the stale process from the saving runtime and silently read zeros.
-        let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+        let codegen = unsafe { birnam_abi::namespace_import::import(imports, c"Codegen".as_ptr()) };
         if codegen != api.nilObj {
             let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
             let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
@@ -748,7 +748,7 @@ unsafe fn finish_image_load(
             if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, presence, rebuilt) {
                 return Err(ImageError::LoadRejected);
             }
-            let config_surface_missing = unsafe { global_named(api, "Config") }
+            let config_surface_missing = unsafe { global_named(api, imports, "Config") }
                 .map(|config| unsafe {
                     let loads = (api.intern)(c"loads".as_ptr());
                     !receiver_has_selector(api, config, loads)
@@ -761,7 +761,7 @@ unsafe fn finish_image_load(
             unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
             let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
             unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
-            if !unsafe { reconcile_image_composition(api, presence, system) } {
+            if !unsafe { reconcile_image_composition(api, presence, imports, system) } {
                 return Err(ImageError::LoadRejected);
             }
             let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
@@ -794,7 +794,7 @@ unsafe fn finish_image_load(
         return Err(ImageError::UnexpectedStatus);
     }
 
-    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    let codegen = unsafe { birnam_abi::namespace_import::import(imports, c"Codegen".as_ptr()) };
     if codegen != api.nilObj {
         // `System loadImage:rebuild:` closes the image module's internal
         // recovery phase before returning. Rust Codegen deliberately requires
@@ -814,7 +814,7 @@ unsafe fn finish_image_load(
         if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, presence, rebuilt) {
             return Err(ImageError::LoadRejected);
         }
-        let config_surface_missing = unsafe { global_named(api, "Config") }
+        let config_surface_missing = unsafe { global_named(api, imports, "Config") }
             .map(|config| unsafe {
                 let loads = (api.intern)(c"loads".as_ptr());
                 !receiver_has_selector(api, config, loads)
@@ -831,7 +831,7 @@ unsafe fn finish_image_load(
         // before the REPL evaluates its first expression.
         let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
         unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
-        if !unsafe { reconcile_image_composition(api, presence, system) } {
+        if !unsafe { reconcile_image_composition(api, presence, imports, system) } {
             return Err(ImageError::LoadRejected);
         }
         let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
@@ -865,13 +865,13 @@ unsafe fn finish_image_load(
 /// portable facts are both live, but before the recovery transaction exposes a
 /// user entry point. Data-only images have no composition identity and need no
 /// lifecycle reconciliation.
-unsafe fn reconcile_image_composition(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, system: birnam_abi::Oop) -> bool {
+unsafe fn reconcile_image_composition(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, system: birnam_abi::Oop) -> bool {
     let identity_selector = unsafe { (api.intern)(c"imageCompositionIdentity".as_ptr()) };
     let identity = unsafe { (api.send)(system, identity_selector, std::ptr::null(), 0) };
     if identity.is_null() || identity == api.nilObj {
         return true;
     }
-    let Some(compiled_unit) = (unsafe { global_named(api, "CompiledUnit") }) else {
+    let Some(compiled_unit) = (unsafe { global_named(api, imports, "CompiledUnit") }) else {
         return false;
     };
     let reconcile = unsafe { (api.intern)(c"reconcileImageComposition:".as_ptr()) };
@@ -1299,7 +1299,7 @@ impl PhaseHooks {
 
 
 type IsolateDriverFn =
-    unsafe extern "C" fn(*mut IdApi, c_int, birnam_abi::Oop, birnam_abi::Oop) -> c_int;
+    unsafe extern "C" fn(*mut IdApi, *const birnam_abi::namespace_import::ApiV1, c_int, birnam_abi::Oop, birnam_abi::Oop) -> c_int;
 
 type IsolateBootErrorFn = unsafe extern "C" fn(*mut IdApi, c_int, *const c_char, *const u8, usize);
 
@@ -1326,11 +1326,12 @@ impl IsolateHooks {
     pub unsafe fn driver(
         &self,
         api: *mut IdApi,
+        imports: *const birnam_abi::namespace_import::ApiV1,
         fd: c_int,
         receiver: birnam_abi::Oop,
         selector: birnam_abi::Oop,
     ) -> c_int {
-        unsafe { (self.driver)(api, fd, receiver, selector) }
+        unsafe { (self.driver)(api, imports, fd, receiver, selector) }
     }
 
     /// # Safety
@@ -1401,7 +1402,7 @@ impl HostRuntime {
     /// The runtime must remain on the selected floor's owner thread for the
     /// synchronous manager send.
     pub unsafe fn load_runtime_module(&self, name: &str) -> Result<(), RuntimeModuleError> {
-        let Some(module_manager) = (unsafe { global_named(self.stack.api(), "Module") }) else {
+        let Some(module_manager) = (unsafe { global_named(self.stack.api(), self.stack.imports(), "Module") }) else {
             return Err(RuntimeModuleError::MissingModuleManager);
         };
         let name = CString::new(name).map_err(|_| RuntimeModuleError::EmbeddedNul)?;
@@ -1449,7 +1450,7 @@ impl HostRuntime {
                 path: PathBuf::from(path.to_string_lossy().trim_end_matches('\0')),
             });
         }
-        if let Some(module_manager) = unsafe { global_named(self.stack.api(), "Module") } {
+        if let Some(module_manager) = unsafe { global_named(self.stack.api(), self.stack.imports(), "Module") } {
             let mark = unsafe { (self.stack.api().intern)(c"markLoaded:".as_ptr()) };
             let symbol = unsafe { (self.stack.api().intern)(name.as_ptr()) };
             // The canonical host treats this as bookkeeping only: a host
@@ -1668,10 +1669,10 @@ pub(super) unsafe fn error_diagnostic(api: &IdApi, presence: *const birnam_abi::
 }
 
 pub(super) unsafe fn native_os_string_vector(
-    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1,
     args: &[OsString],
 ) -> Result<birnam_abi::Oop, CliError> {
-    let vector_class = unsafe { (api.import)(c"Vector".as_ptr()) };
+    let vector_class = unsafe { birnam_abi::namespace_import::import(imports, c"Vector".as_ptr()) };
     if vector_class == api.nilObj {
         return Err(CliError::MissingVector);
     }
@@ -1817,13 +1818,13 @@ unsafe fn intern_name(api: &IdApi, name: &str) -> Option<birnam_abi::Oop> {
     Some(unsafe { (api.intern)(name.as_ptr()) })
 }
 
-pub(super) unsafe fn global_named(api: &IdApi, name: &str) -> Option<birnam_abi::Oop> {
+pub(super) unsafe fn global_named(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1, name: &str) -> Option<birnam_abi::Oop> {
     let imported_name = CString::new(name).ok()?;
-    let imported = unsafe { (api.import)(imported_name.as_ptr()) };
+    let imported = unsafe { birnam_abi::namespace_import::import(imports, imported_name.as_ptr()) };
     if !imported.is_null() && imported != api.nilObj {
         return Some(imported);
     }
-    let globals = unsafe { (api.import)(c"Globals".as_ptr()) };
+    let globals = unsafe { birnam_abi::namespace_import::import(imports, c"Globals".as_ptr()) };
     if globals.is_null() || globals == api.nilObj {
         return None;
     }
@@ -1992,7 +1993,7 @@ unsafe fn order_from_manager(
 /// `api` and `codegen` must be the live selected-floor API and Codegen object,
 /// and remain valid for the synchronous sends performed during bootstrap.
 pub unsafe fn bootstrap_self_hosted(
-    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1,
+    api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1,
     codegen: birnam_abi::Oop,
     resources: &Resources,
     force_source: bool,
@@ -2010,8 +2011,8 @@ pub unsafe fn bootstrap_self_hosted(
         outcome: manager_outcome,
     });
 
-    let module_manager = unsafe { global_named(api, "Module") };
-    let vector = unsafe { (api.import)(c"Vector".as_ptr()) };
+    let module_manager = unsafe { global_named(api, imports, "Module") };
+    let vector = unsafe { birnam_abi::namespace_import::import(imports, c"Vector".as_ptr()) };
     if let (Some(module_manager), true) = (module_manager, vector != api.nilObj) {
         unsafe { refresh_module_manager(api, module_manager, resources) };
         let named_selector = unsafe { (api.intern)(c"named:requires:".as_ptr()) };
@@ -2809,9 +2810,9 @@ fn resolve_isolate_hooks(
         // the static symbol name remains live for this synchronous lookup.
         unsafe { (api.dlsym)(handle.as_ptr(), name.as_ptr().cast()) }
     };
-    let Some(driver) = NonNull::new(lookup(c"birnam_isolate_worker_driver")) else {
+    let Some(driver) = NonNull::new(lookup(c"birnam_isolate_worker_driver_v2")) else {
         return Err(IsolateHookError::MissingSymbol(
-            "birnam_isolate_worker_driver",
+            "birnam_isolate_worker_driver_v2",
         ));
     };
     let Some(boot_error) = NonNull::new(lookup(c"birnam_isolate_worker_boot_error")) else {
@@ -2907,17 +2908,17 @@ pub unsafe fn start(
     let isolate =
         resolve_isolate_hooks(&stack, &resources).map_err(RuntimeStartError::IsolateHooks)?;
     let api = stack.api();
-    let store = unsafe { (api.import)(c"Store".as_ptr()) };
+    let store = unsafe { birnam_abi::namespace_import::import(stack.imports(), c"Store".as_ptr()) };
     if store != api.nilObj {
         let selector = unsafe { (api.intern)(c"backfillMirror".as_ptr()) };
         unsafe { (api.send)(store, selector, std::ptr::null(), 0) };
     }
-    let codegen = unsafe { (api.import)(c"Codegen".as_ptr()) };
+    let codegen = unsafe { birnam_abi::namespace_import::import(stack.imports(), c"Codegen".as_ptr()) };
     if codegen == api.nilObj {
         return Err(RuntimeStartError::MissingCodegen);
     }
     let self_hosted = unsafe {
-        bootstrap_self_hosted(api, stack.presence(),
+        bootstrap_self_hosted(api, stack.presence(), stack.imports(),
             codegen,
             &resources,
             policy.force_source,

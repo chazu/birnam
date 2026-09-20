@@ -6320,6 +6320,34 @@ mod tests {
     }
 
     #[test]
+    fn namespace_import_follows_independent_moved_runtime_state() {
+        let runtimes = vec![build_bootstrap(), build_bootstrap()];
+        let first = runtimes[0].runtime.namespace_import();
+        let second = runtimes[1].runtime.namespace_import();
+        assert_ne!(first, second);
+        let name = c"independent-import";
+        for bootstrap in &runtimes {
+            let runtime = &bootstrap.runtime;
+            runtime.enter(|| {
+                let imports = runtime.namespace_import();
+                let before = unsafe { (*runtime.state.get()).symbols.count() };
+                assert_eq!(unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr()) }, core::ptr::null_mut());
+                assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before + 1);
+                for value in [runtime.canonical().nil, runtime.canonical().object_prototype, core::ptr::null_mut()] {
+                    runtime.export(name.to_bytes(), value).unwrap();
+                    assert_eq!(unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr()) }, value);
+                }
+                let canonical = runtime.canonical_namespace_import();
+                unsafe { (*imports).context = core::ptr::null_mut(); (*imports).import = None; }
+                assert_eq!(runtime.canonical_namespace_import().context, canonical.context);
+                assert_eq!(unsafe { birnam_abi::namespace_import::import(&canonical, name.as_ptr()) }, core::ptr::null_mut());
+                // Destruction must still use the original owned address.
+            });
+        }
+        assert_ne!(runtimes[0].runtime.intern(name.to_bytes()).unwrap(), runtimes[1].runtime.intern(name.to_bytes()).unwrap());
+    }
+
+    #[test]
     fn namespace_presence_follows_independent_moved_runtime_state() {
         let runtimes = vec![build_bootstrap(), build_bootstrap()];
         let first = runtimes[0].runtime.namespace_presence();

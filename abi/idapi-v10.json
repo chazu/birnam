@@ -164,7 +164,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),usize)->nullable(ptr<void>)"
       },
       {
-        "index": 10,
+        "index": 9,
         "name": "exportObj",
         "offset": 72,
         "size": 8,
@@ -174,7 +174,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](cstr<const u8>,nullable(ptr<void>))->nullable(ptr<void>)"
       },
       {
-        "index": 11,
+        "index": 10,
         "name": "send",
         "offset": 80,
         "size": 8,
@@ -184,7 +184,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),nullable(ptr<void>),many<const nullable(ptr<void>)>,usize)->nullable(ptr<void>)"
       },
       {
-        "index": 12,
+        "index": 11,
         "name": "nilObj",
         "offset": 88,
         "size": 8,
@@ -194,7 +194,7 @@
         "signature": "nullable(ptr<void>)"
       },
       {
-        "index": 13,
+        "index": 12,
         "name": "trueObj",
         "offset": 96,
         "size": 8,
@@ -204,7 +204,7 @@
         "signature": "nullable(ptr<void>)"
       },
       {
-        "index": 14,
+        "index": 13,
         "name": "falseObj",
         "offset": 104,
         "size": 8,
@@ -214,7 +214,7 @@
         "signature": "nullable(ptr<void>)"
       },
       {
-        "index": 15,
+        "index": 14,
         "name": "symbolName",
         "offset": 112,
         "size": 8,
@@ -224,7 +224,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->cstr<const u8>"
       },
       {
-        "index": 16,
+        "index": 15,
         "name": "vtableOf",
         "offset": 120,
         "size": 8,
@@ -234,7 +234,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->nullable(ptr<void>)"
       },
       {
-        "index": 17,
+        "index": 16,
         "name": "gcSetStackBottom",
         "offset": 128,
         "size": 8,
@@ -244,7 +244,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](usize)->void"
       },
       {
-        "index": 18,
+        "index": 17,
         "name": "gcRegisterRootProvider",
         "offset": 136,
         "size": 8,
@@ -254,7 +254,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](fnptr[aarch64_aapcs_darwin](fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void)->void)->void"
       },
       {
-        "index": 19,
+        "index": 18,
         "name": "gcCollect",
         "offset": 144,
         "size": 8,
@@ -264,7 +264,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin]()->usize"
       },
       {
-        "index": 20,
+        "index": 19,
         "name": "gcLiveCount",
         "offset": 152,
         "size": 8,
@@ -274,7 +274,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin]()->usize"
       },
       {
-        "index": 21,
+        "index": 20,
         "name": "setTraceHook",
         "offset": 160,
         "size": 8,
@@ -284,7 +284,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void)->void)->void"
       },
       {
-        "index": 22,
+        "index": 21,
         "name": "gcSetAuto",
         "offset": 168,
         "size": 8,
@@ -294,7 +294,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](c_int)->void"
       },
       {
-        "index": 23,
+        "index": 22,
         "name": "setFinalizer",
         "offset": 176,
         "size": 8,
@@ -304,7 +304,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->void)->void"
       },
       {
-        "index": 24,
+        "index": 23,
         "name": "setLayout",
         "offset": 184,
         "size": 8,
@@ -314,7 +314,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),nullable(many<const u8>),usize,u8)->void"
       },
       {
-        "index": 25,
+        "index": 24,
         "name": "gcSetPrecise",
         "offset": 192,
         "size": 8,
@@ -324,7 +324,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](c_int)->void"
       },
       {
-        "index": 26,
+        "index": 25,
         "name": "objectPayloadSize",
         "offset": 200,
         "size": 8,
@@ -334,7 +334,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>))->usize"
       },
       {
-        "index": 27,
+        "index": 26,
         "name": "slotKind",
         "offset": 208,
         "size": 8,
@@ -344,7 +344,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),usize)->u8"
       },
       {
-        "index": 28,
+        "index": 27,
         "name": "setMethodOverwriteHook",
         "offset": 216,
         "size": 8,
@@ -354,7 +354,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](nullable(fnptr[aarch64_aapcs_darwin](nullable(ptr<void>),nullable(ptr<void>))->void))->void"
       },
       {
-        "index": 29,
+        "index": 28,
         "name": "vtableCount",
         "offset": 224,
         "size": 8,
@@ -364,7 +364,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin]()->usize"
       },
       {
-        "index": 30,
+        "index": 29,
         "name": "vtableAt",
         "offset": 232,
         "size": 8,
@@ -374,7 +374,7 @@
         "signature": "fnptr[aarch64_aapcs_darwin](usize)->nullable(ptr<void>)"
       },
       {
-        "index": 31,
+        "index": 30,
         "name": "vtableSelectorAt",
         "offset": 240,
         "size": 8,
@@ -420,6 +420,6 @@
   "fingerprint": {
     "algorithm": "sha256",
     "canonicalization": "json-sorted-keys-no-whitespace",
-    "value": "99ddcd275016e20a2f9c12d222bb4e5213f7ce9ce53d5aa4a6d694531db91a27"
+    "value": "b0005f93b397d1cdb22b2b260c3d624c48222199ce391d447c8c65172431adef"
   }
 }

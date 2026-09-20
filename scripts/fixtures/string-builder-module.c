@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "collect-support.h"
@@ -32,7 +32,7 @@ static void mount_trace(const char *floor_path, void *floor) {
     const char *slash=strrchr(floor_path,'/'); assert(slash); char path[PATH_MAX];
     snprintf(path,sizeof(path),"%.*s/libbirnam_trace.dylib",(int)(slash-floor_path),floor_path);
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
     const TraceLiveApiV1 *provided=((TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"))();
     actual_trace=provided->trace;
     TraceLiveApiV1 watched={1,sizeof(watched),traced};
@@ -42,7 +42,7 @@ static void mount_trace(const char *floor_path, void *floor) {
 static void mount(const char *path, IdApi *selected) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports());
 }
 static Oop send0(Oop receiver,const char *name) { return api->send(receiver,api->intern(name),NULL,0); }
 static Oop send(Oop receiver,const char *name,Oop argument) { return api->send(receiver,api->intern(name),&argument,1); }
@@ -128,7 +128,7 @@ int main(int argc,char **argv) {
     int adopted=strstr(argv[6],"adopted")!=NULL, present=strstr(argv[6],"present")!=NULL;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1], fixture_namespace_presence()); mount(argv[2],api); mount(argv[3],api);
+    mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports()); mount(argv[2],api); mount(argv[3],api);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     if(present) seed_collections();
     Oop adopted_type=NULL, adopted_prototype=NULL;
@@ -149,7 +149,7 @@ int main(int argc,char **argv) {
     else assert(api->import_fn("StringBuilder")==prototype && api->import_fn("StringBuilderVt")==behavior);
     assert(vtable_parent(api,behavior)==api->object_vt);
     if(!present) assert(vtable_owner(api,behavior)==prototype);
-    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V9_SLOT_RAW);
+    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V10_SLOT_RAW);
     print_selector=api->intern("printString"); roots(record_mark); assert(marked==3);
     Method create=lookup("new"), clone=lookup("clone"), append=lookup("add:"), add_byte=lookup("addByte:");
     assert(create==clone && create && append && add_byte && lookup("asString")==lookup("printString"));

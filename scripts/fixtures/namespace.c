@@ -1,12 +1,12 @@
 #define _DARWIN_C_SOURCE
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include <stdlib.h>
 
-static const NamespaceApiV6 *storage;
-static NamespaceApiV6 observed;
+static const NamespaceApiV7 *storage;
+static NamespaceApiV7 observed;
 static size_t creates, binds, finds, reverses, views, counts, names_at, lookups, publications;
 static Oop altered_bind_symbol, altered_bind_result;
 static void *floor_context;
@@ -62,6 +62,7 @@ static Oop mirror_of(IdApi *api,Oop symbol) {
     return NULL;
 }
 static Oop forbidden_intern(const char *name) { (void)name;abort(); }
+static Oop forbidden_import(void *context,const char *name) { (void)context;(void)name;abort(); }
 static Oop forbidden_alloc(Oop type,size_t size) { (void)type;(void)size;abort(); }
 static void forbidden_method(Oop type,Oop selector,Method method) { (void)type;(void)selector;(void)method;abort(); }
 static void forbidden_roots(RootProvider roots) { (void)roots;abort(); }
@@ -125,7 +126,7 @@ int main(int argc,char **argv) {
     assert(argc==2 || argc==3);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_namespace_floor=floor;
-    NamespaceDependencyV6 attach=(NamespaceDependencyV6)dlsym(floor,"birnam_namespace_dependency_v6");
+    NamespaceDependencyV7 attach=(NamespaceDependencyV7)dlsym(floor,"birnam_namespace_dependency_v7");
     assert(argc==2 || attach);
     void *namespace_image=NULL,*extra=NULL;ModuleInitFn reload=NULL;
     if(attach) {
@@ -133,14 +134,14 @@ int main(int argc,char **argv) {
         snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-argv[1]),argv[1]);
         namespace_image=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(namespace_image);
         extra=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(extra);
-        NamespaceProviderV6 provide=(NamespaceProviderV6)dlsym(namespace_image,"birnam_namespace_provider_v6");assert(provide);
+        NamespaceProviderV7 provide=(NamespaceProviderV7)dlsym(namespace_image,"birnam_namespace_provider_v7");assert(provide);
         storage=provide();assert(storage && storage==provide());
-        assert(storage->version==6 && storage->byte_size==sizeof(*storage));
+        assert(storage->version==7 && storage->byte_size==sizeof(*storage));
         storage_oracle();lookup_oracle();publication_oracle();
-        assert(!attach(NULL));NamespaceApiV6 bad=*storage;bad.version++;assert(!attach(&bad));
+        assert(!attach(NULL));NamespaceApiV7 bad=*storage;bad.version++;assert(!attach(&bad));
         bad=*storage;bad.byte_size--;assert(!attach(&bad));
 #define REJECT(field) bad=*storage;bad.field=NULL;assert(!attach(&bad))
-        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);REJECT(create_enumeration);REJECT(destroy_enumeration);REJECT(lookup);REJECT(create_presence);REJECT(destroy_presence);REJECT(publish);
+        REJECT(create);REJECT(destroy);REJECT(bind);REJECT(find);REJECT(reverse);REJECT(count);REJECT(name_at);REJECT(bindings);REJECT(create_names);REJECT(destroy_names);REJECT(create_enumeration);REJECT(destroy_enumeration);REJECT(lookup);REJECT(create_presence);REJECT(destroy_presence);REJECT(publish);REJECT(create_import);REJECT(destroy_import);
 #undef REJECT
         observed=*storage;observed.create=create;observed.bind=bind;observed.find=find;observed.reverse=reverse;observed.bindings=bindings;observed.count=selected_count;observed.name_at=selected_name_at;observed.lookup=selected_lookup;
         observed.publish=selected_publish;
@@ -150,6 +151,7 @@ int main(int argc,char **argv) {
     IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init");assert(initialize);
     IdApi *api=initialize();assert(api);api->gc_set_auto(0);
     Dl_info owner;assert(dladdr((void *)fixture_namespace_presence()->contains,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));
+    assert(dladdr((void *)fixture_namespace_imports()->import,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));
     if(attach)assert(creates==1 && binds>0 && publications==binds && floor_context);
     fixture_mount_trace(api,argv[1]);
     size_t (*count)(void)=fixture_namespace_count;
@@ -159,24 +161,24 @@ int main(int argc,char **argv) {
     assert(count && name_at && symbol_count && compaction && compaction(1,0,0)==1);
     size_t base=count();Oop *original=calloc(base,sizeof(Oop));assert(original);
     for(size_t i=0;i<base;i++)original[i]=name_at(i);
-    size_t symbols=symbol_count();assert(!api->import_fn("namespace-absent-probe"));assert(symbol_count()==symbols+1);
+    size_t symbols=symbol_count();assert(!fixture_namespace_import("namespace-absent-probe"));assert(symbol_count()==symbols+1);
     assert(!fixture_namespace_contains("namespace-second-absent"));assert(symbol_count()==symbols+2);
     /* Canonical presence/import use the primitive interner, never live slots. */
     Oop (*original_intern)(const char *)=api->intern;
-    Oop (*original_import)(const char *)=api->import_fn;
-    api->intern=forbidden_intern;api->import_fn=forbidden_intern;
+    NamespaceImportV1 original_import=*fixture_namespace_imports();
+    api->intern=forbidden_intern;fixture_namespace_imports()->import=forbidden_import;
     assert(!fixture_namespace_contains("namespace-canonical-presence"));
-    assert(!original_import("namespace-canonical-import"));
+    assert(!namespace_import_v1(&original_import,"namespace-canonical-import"));
     assert(symbol_count()==symbols+4);
-    api->intern=original_intern;api->import_fn=original_import;
+    api->intern=original_intern;*fixture_namespace_imports()=original_import;
     /* Bind's result is returned; the weak mirror still receives the input. */
     altered_bind_symbol=api->intern("Object");altered_bind_result=api->false_obj;
-    Oop original_object=api->import_fn("Object");
+    Oop original_object=fixture_namespace_import("Object");
     api->intern=forbidden_intern;
     assert(api->export_obj("Object",original_object)==api->false_obj);
-    assert(api->import_fn("Object")==original_object && mirror_of(api,altered_bind_symbol)==original_object);
+    assert(fixture_namespace_import("Object")==original_object && mirror_of(api,altered_bind_symbol)==original_object);
     assert(api->export_obj("Object",NULL)==api->false_obj);
-    assert(!api->import_fn("Object") && !mirror_of(api,altered_bind_symbol));
+    assert(!fixture_namespace_import("Object") && !mirror_of(api,altered_bind_symbol));
     assert(api->export_obj("Object",original_object)==api->false_obj);
     api->intern=original_intern;altered_bind_symbol=NULL;
     assert(count()==base);
@@ -191,7 +193,7 @@ int main(int argc,char **argv) {
         assert(count()==base+used);
         for(size_t i=0;i<used;i++) {
             size_t which=order[i];assert(name_at(base+i)==keys[which]);
-            assert(api->import_fn(names[which])==current[which]);
+            assert(fixture_namespace_import(names[which])==current[which]);
             assert(fixture_namespace_contains(names[which])==(current[which]!=NULL));
         }
         for(size_t i=0;i<16;i++) {
@@ -213,15 +215,15 @@ int main(int argc,char **argv) {
     api->gc_set_precise(1);collect_now(api);
     assert(api->vtable_of(retained)==api->object_vt && !api->vtable_of(discarded));
     assert(api->vtable_of(root_name)==api->symbol_vt && api->vtable_of(null_name)==api->symbol_vt);
-    assert(api->import_fn("namespace-second-alias")==retained && !fixture_namespace_contains("namespace-first-alias"));
+    assert(fixture_namespace_import("namespace-second-alias")==retained && !fixture_namespace_contains("namespace-first-alias"));
     if(reload) {
         IdApi probe=*api;probe.intern=forbidden_intern;probe.alloc=forbidden_alloc;probe.method=forbidden_method;probe.gc_register_root_provider=forbidden_roots;
-        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence()));assert(!reload(api,NULL,fixture_namespace_presence()));
+        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports()));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports()));
         assert(count()==before && binds==was_binds && creates==1);
-        assert(api->import_fn("namespace-second-alias")==retained);
+        assert(fixture_namespace_import("namespace-second-alias")==retained);
         assert(finds && reverses && views && counts && names_at && lookups && publications==binds);
         // Descriptor/code remain mapped after relinquishing this extra open.
-        assert(dlclose(extra)==0);assert(api->import_fn("namespace-second-alias")==retained);
+        assert(dlclose(extra)==0);assert(fixture_namespace_import("namespace-second-alias")==retained);
     }
     printf("namespace: %zu initial exports; 2048 ordered binding cases, absent-name interning, null bindings, aliases, enumeration and precise GC passed\n",base);
     if(argc==3)printf("namespace provider: 4096 independent-state cases, all admission fields, selected context, rooted view and reload passed\n");

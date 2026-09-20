@@ -1,4 +1,4 @@
-#include "idapi_v9.h"
+#include "idapi_v10.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include "../../abi/fixtures/storage-v1/storage_v1.h"
