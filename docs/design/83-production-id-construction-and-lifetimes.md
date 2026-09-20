@@ -454,8 +454,9 @@ The split preserves object layout and payload-byte accounting. Native metadata
 now uses a three-word allocation record and a separate two-word GC record in
 two maps, replacing the combined four-word record in one map. That overhead is
 outside payload-byte accounting. The adoption unit test exercises nonempty
-allocation handoff; production still constructs Heap immediately, so this does
-not yet prove staged collector activation or early module-root adoption.
+allocation handoff. Production now builds `InitialObjects` with Id allocation
+first, then adopts those objects into Heap and Behaviors. This does not yet
+prove staged collector activation or early module-root adoption.
 
 Allocation validation passes in debug: Host 86, Id 299 and Storage 7 unit tests;
 a fresh installation of 53 native libraries and 28 authored modules; the loaded
@@ -490,6 +491,24 @@ workload, and layout image workload. The latter verifies callback-time layout
 replacement, nested collection, rejection during encoding and successful image
 saving after restoration. Installed Id and Object Model export checks confirm
 the removed dictionary factories and dependency entries are absent.
+
+Production `build_bootstrap` now constructs the primordial Object/Symbol/behavior
+graph through `InitialObjects` before creating Heap or behavior metadata. Upper
+construction adopts those exact addresses and allocation identities, then adds
+Namespace, Nil/Boolean and the remaining runtime. The initial `lookup`,
+`doesNotUnderstand:` and `Symbol` names are consequently the first three interned
+names; the old aggregate constructor interned the latter two later. Method and
+behavior enumeration order is unchanged. Initial behaviors and Object retain the
+existing permanence policy; initial Symbols remain collectable and use the normal
+runtime roots. The host still prepares upper services before entering `id_init`,
+and primitive method installation still happens in Runtime: this is the actual
+production graph handoff, not completed independent Id initialization.
+
+The graph handoff passes the 301-test Id debug suite, including a check that
+adoption and first collection preserve addresses, identities and interned names.
+The fresh 53-native/28-authored installation passes the allocation-identity
+source, source-free compiled and mapped/rebuilt/baked image workload, including
+finalization, active Frames, live behavior replacement, aliases and reload.
 
 These changes establish the lifetime mechanism, **not independent Id**. Its
 registration owner, turn state and temporary private retirement queue export

@@ -124,6 +124,15 @@ impl Heap {
         }
     }
 
+    /// Retain the primordial behaviors and Object prototype under the current
+    /// production permanence policy. Symbol objects remain ordinary collectables.
+    pub(crate) fn retain_initial_objects(&mut self, objects: &[Oop]) {
+        for object in objects {
+            let record = self.blocks.get_mut(&object.addr()).expect("initial object is not allocated");
+            record.metadata |= 2;
+        }
+    }
+
     #[cfg(test)]
     fn set_deferred_identity_for_test(&mut self, value: u64) { self.next_deferred_id.set(value); }
 

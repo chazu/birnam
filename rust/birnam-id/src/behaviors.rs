@@ -27,7 +27,16 @@ impl core::ops::DerefMut for Behaviors {
 }
 impl Behaviors {
     pub(crate) fn new() -> Self {
-        Self { dictionaries: Vtables::new(), metadata: AddressMap::default(), layouts: crate::payload_layout::Service::new(), hooks: crate::trace_hooks::Service::new() }
+        Self::adopt(Vtables::new())
+    }
+
+    /// Add upper metadata without replacing existing behavior objects or keys.
+    pub(crate) fn adopt(dictionaries: Vtables) -> Self {
+        let layouts = crate::payload_layout::Service::new();
+        let metadata = dictionaries.ordered.iter().map(|object| (object.addr(), Metadata {
+            owner: core::ptr::null_mut(), trace_hook: birnam_abi::trace_hooks::SlotV1::EMPTY, layout: layouts.empty(),
+        })).collect();
+        Self { dictionaries, metadata, layouts, hooks: crate::trace_hooks::Service::new() }
     }
     pub(crate) fn create(&mut self, heap: &mut Heap, parent: Oop, metavtable: Oop) -> Oop {
         self.create_with_permanence(heap, parent, metavtable, Permanence::Permanent)

@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Construct the initial Id object graph before Heap and behavior metadata in
+  production bootstrap (Design 83). Adopt the same allocations and identities;
+  retain the existing permanence and collection rules. Initial Symbol enumeration
+  now starts with `lookup`, `doesNotUnderstand:` and `Symbol`. Host preparation
+  and primitive method installation still await the full loading cutover.
+
 - Make Id's behavior dictionaries and Symbol implementation independent of GC
   services (Design 82/83). Keep layout, hook and private-owner metadata above the
   40-byte dictionary payload. Return dictionary indexing and mutation counts to

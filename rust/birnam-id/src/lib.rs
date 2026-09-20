@@ -26,6 +26,7 @@ mod trace_hooks;
 mod finalizers;
 mod heap;
 mod object_memory;
+mod initial_objects;
 mod loader;
 #[cfg(feature = "ffi-test-hooks")]
 mod membership_bench;

@@ -336,17 +336,15 @@ fn static_selector(symbols: &mut Symbols, heap: &mut Heap, symbol_vtable: Oop, n
 
 /// Build the complete R2 identity graph without publishing an `IdApi` table.
 pub(crate) fn build_bootstrap() -> Bootstrap {
-    let mut heap = Heap::new();
-    let mut vtables = Behaviors::new();
+    let crate::initial_objects::InitialObjects {
+        memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
+        lookup, does_not_understand, object_prototype, symbol_prototype,
+    } = crate::initial_objects::InitialObjects::new();
+    // Only completed Id objects cross this boundary. No allocation is copied.
+    let mut heap = Heap::adopt(memory);
+    heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
+    let mut vtables = Behaviors::adopt(dictionaries);
 
-    let vtable_vt = vtables.create(&mut heap, core::ptr::null_mut(), core::ptr::null_mut());
-    boundary::require_invariant(
-        heap.set_vtable(vtable_vt, vtable_vt),
-        "metavtable was not registered",
-    );
-    let object_vt = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
-    vtables.set_parent(vtable_vt, object_vt);
-    let symbol_vt = vtables.create(&mut heap, object_vt, vtable_vt);
     let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
     let environment = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
     let nil_vt = vtables.create(&mut heap, object_vt, vtable_vt);
@@ -356,19 +354,13 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     let true_object = allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
     let false_object = allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
 
-    let mut symbols = Symbols::new();
     let selectors = BootstrapSelectors {
-        lookup: static_selector(&mut symbols, &mut heap, symbol_vt, b"lookup"),
+        lookup,
         add_method: static_selector(&mut symbols, &mut heap, symbol_vt, b"addMethod"),
         remove_method: static_selector(&mut symbols, &mut heap, symbol_vt, b"removeMethod:"),
         allocate: static_selector(&mut symbols, &mut heap, symbol_vt, b"allocate"),
         delegated: static_selector(&mut symbols, &mut heap, symbol_vt, b"delegated"),
-        does_not_understand: static_selector(
-            &mut symbols,
-            &mut heap,
-            symbol_vt,
-            b"doesNotUnderstand:",
-        ),
+        does_not_understand,
         clone: static_selector(&mut symbols, &mut heap, symbol_vt, b"clone"),
         new: static_selector(&mut symbols, &mut heap, symbol_vt, b"new"),
         identical: static_selector(&mut symbols, &mut heap, symbol_vt, b"=="),
@@ -441,11 +433,6 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
             );
         }
     });
-
-    let object_prototype = runtime.allocate_empty(object_vt, Permanence::Permanent);
-    let symbol_prototype = runtime
-        .intern(b"Symbol")
-        .unwrap_or_else(|_| boundary::fatal_invariant("static prototype name contains NUL"));
 
     for (vtable, owner) in [
         (object_vt, object_prototype),
@@ -869,17 +856,18 @@ mod tests {
             assert_eq!(runtime.payload_size(expected), Some(40));
         }
 
+        // Initial Id names exist before the upper runtime installs methods.
         let selector_names: [&[u8]; 25] = [
             b"lookup",
+            b"doesNotUnderstand:",
+            b"Symbol",
             b"addMethod",
             b"removeMethod:",
             b"allocate",
             b"delegated",
-            b"doesNotUnderstand:",
             b"clone",
             b"new",
             b"==",
-            b"Symbol",
             b"prepareBehaviorMutationOf:",
             b"reassociateBehaviorOf:with:",
             b"ownerOf:",
