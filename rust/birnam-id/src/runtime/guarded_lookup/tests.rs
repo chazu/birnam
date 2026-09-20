@@ -225,24 +225,41 @@ fn native_registration_invalidates_lookup_guard_without_dictionary_change() {
         .unregister_unpublished_stackless_resumable(registration)
         .unwrap();
     assert!(runtime.guarded_default_lookup_eligible(child));
+}
+
+unsafe extern "C" fn lookup_adapter(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+    LOOKUPS.set(LOOKUPS.get() + 1);
+    with_active(|runtime| unsafe {
+        runtime.enter_registered_resumable_or_fatal(lookup_adapter, receiver, args, count)
+    })
+}
+
+#[test]
+fn native_lookup_enters_the_selected_resumable_adapter_once() {
+    let bootstrap = build_bootstrap();
+    let runtime = &bootstrap.runtime;
+    runtime.publish_canonical_exports();
+    runtime.install_execution_objects();
+    let child = runtime.create_vtable(runtime.globals().object_vt);
+    let receiver = runtime.allocate_instance(child, 0);
+    let selector = runtime.intern(b"registeredLookupProbe").unwrap();
+    runtime.add_method(child, selector, one);
     runtime
-        .register_stackless_resumable(SemanticRegistrationV1::new(method, descriptor(), 1, 0, 1))
+        .register_stackless_resumable(SemanticRegistrationV1::new(lookup_adapter, descriptor(), 1, 0, 1))
         .unwrap();
-    runtime.add_method(
-        runtime.globals().object_vt,
-        runtime.intern(b"publishedLookupCarrier").unwrap(),
-        method,
-    );
+    let meta = runtime.create_vtable(runtime.globals().vtable_vt);
+    runtime.add_method(meta, runtime.globals().lookup, lookup_adapter);
+    unsafe {
+        let state = &mut *runtime.state.get();
+        assert!(state.heap.set_vtable(child, meta));
+        state.vtables.note_mutation();
+    }
+    LOOKUPS.set(0);
     let result = runtime.enter(|| runtime.send_slice(receiver, selector, &[]));
+    assert_eq!(runtime.integer_value(result), 2);
+    assert_eq!(LOOKUPS.get(), 1, "Id must invoke the selected adapter exactly once");
     assert_eq!(
-        runtime.integer_value(result),
-        2,
-        "ordinary lookup must invoke the registered carrier"
-    );
-    assert_eq!(
-        runtime
-            .stackless_registration_diagnostics()
-            .active_frame_pins,
+        runtime.stackless_registration_diagnostics().active_frame_pins,
         0
     );
 }

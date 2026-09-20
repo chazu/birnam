@@ -11,6 +11,7 @@ mod boundary;
 #[cfg(feature = "dev-guarded-slots")]
 mod dev_slot_access;
 mod dispatch;
+mod id_dispatch;
 mod env;
 mod execution;
 mod gc;

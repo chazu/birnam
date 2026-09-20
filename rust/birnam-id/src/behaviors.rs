@@ -26,6 +26,11 @@ impl core::ops::DerefMut for Behaviors {
     fn deref_mut(&mut self) -> &mut Vtables { &mut self.dictionaries }
 }
 impl Behaviors {
+    /// # Safety
+    /// The caller keeps the containing Behaviors live for the entire Id scope.
+    pub(crate) unsafe fn dictionaries_ptr(this: *mut Self) -> *mut Vtables {
+        unsafe { core::ptr::addr_of_mut!((*this).dictionaries) }
+    }
     pub(crate) fn new() -> Self {
         Self::adopt(Vtables::new())
     }

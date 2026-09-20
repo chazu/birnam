@@ -32,6 +32,17 @@ impl InitialObjects {
         let lookup = symbols.intern(&mut memory, symbol_vt, b"lookup").unwrap();
         let does_not_understand = symbols.intern(&mut memory, symbol_vt, b"doesNotUnderstand:").unwrap();
         let symbol_prototype = symbols.intern(&mut memory, symbol_vt, b"Symbol").unwrap();
+        let add_method = symbols.intern(&mut memory, symbol_vt, b"addMethod").unwrap();
+        let remove_method = symbols.intern(&mut memory, symbol_vt, b"removeMethod:").unwrap();
+        dictionaries.add_method(vtable_vt, lookup, crate::id_dispatch::vtable_lookup_method);
+        dictionaries.add_method(vtable_vt, add_method, crate::id_dispatch::vtable_add_method);
+        // The first two bindings terminate the metacircular construction. Use
+        // Id's own message path for the next binding, before any Runtime exists.
+        unsafe { crate::id_dispatch::enter(&mut dictionaries, vtable_vt, lookup, does_not_understand, || {
+            crate::id_dispatch::send(vtable_vt, add_method, &[
+                remove_method, crate::raw::MethodAddress::from_method(crate::id_dispatch::vtable_remove_method).as_oop(),
+            ]).expect("Id primitive installation was unbound");
+        }) };
         Self { memory, dictionaries, symbols, vtable_vt, object_vt, symbol_vt,
             lookup, does_not_understand, object_prototype, symbol_prototype }
     }
@@ -54,7 +65,7 @@ mod tests {
         heap.retain_initial_objects(&[initial.vtable_vt, initial.object_vt, initial.symbol_vt, initial.object_prototype]);
         let behaviors = Behaviors::adopt(initial.dictionaries);
         let mut symbols = initial.symbols;
-        let roots = [initial.lookup, initial.does_not_understand, initial.symbol_prototype];
+        let roots: Vec<_> = (0..symbols.count()).map(|index| symbols.at(index)).collect();
         crate::gc::trace_conservative_for_test(&mut heap, &roots);
         assert!(heap.dead_collectable_addresses().is_empty());
         assert_eq!(symbols.remove_objects(&heap.dead_collectable_addresses()), 0);
@@ -69,12 +80,15 @@ mod tests {
         assert_eq!(heap.vtable_of(initial.vtable_vt), Some(initial.vtable_vt));
         assert_eq!(heap.permanence_of(initial.lookup), Some(Permanence::Collectable));
         heap.clear_marks();
-        assert_eq!(symbols.remove_objects(&heap.dead_collectable_addresses()), 3);
-        let dead = heap.detach_dead_collectable(initial.lookup.addr()).unwrap();
+        let dictionary_roots = behaviors.permanent_strong_edges(&heap);
+        crate::gc::trace_conservative_for_test(&mut heap, &dictionary_roots);
+        assert_eq!(symbols.remove_objects(&heap.dead_collectable_addresses()), 2);
+        let dead = heap.detach_dead_collectable(initial.does_not_understand.addr()).unwrap();
         dead.reclaim();
-        assert!(symbols.existing(b"lookup").is_none());
-        let replacement = heap.intern_symbol(&mut symbols, initial.symbol_vt, b"lookup").unwrap();
+        assert!(symbols.existing(b"doesNotUnderstand:").is_none());
+        assert_eq!(symbols.existing(b"lookup"), Some(initial.lookup));
+        let replacement = heap.intern_symbol(&mut symbols, initial.symbol_vt, b"doesNotUnderstand:").unwrap();
         let allocation = heap.storage_allocations().into_iter().find(|entry| entry.object == replacement).unwrap();
-        assert_eq!(allocation.identity, 8);
+        assert_eq!(allocation.identity, 10);
     }
 }

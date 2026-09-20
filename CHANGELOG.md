@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Run production Id lookup and metacircular binding without Runtime or Execution
+  policy (Design 83). Install its initial mutation methods through Id's own send
+  before upper construction. Resumable lookup uses an explicit native adapter;
+  Execution registration alone no longer substitutes for a primitive's native
+  body during lookup. Typed native loading and upper ownership remain in progress.
+
 - Construct the initial Id object graph before Heap and behavior metadata in
   production bootstrap (Design 83). Adopt the same allocations and identities;
   retain the existing permanence and collection rules. Initial Symbol enumeration

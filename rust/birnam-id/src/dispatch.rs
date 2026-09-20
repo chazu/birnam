@@ -41,19 +41,8 @@ impl Runtime {
             return self.cached_default_lookup(receiver_vtable, selector);
         }
 
-        let lookup_args = [selector];
-        // SAFETY: the one-element buffer is live for the synchronous send.
-        let encoded_method = unsafe {
-            self.send_abi(
-                receiver_vtable,
-                globals.lookup,
-                lookup_args.as_ptr(),
-                lookup_args.len(),
-            )
-        };
-        // SAFETY: the lookup primitive returns only null or an address copied
-        // from the runtime method dictionary.
-        unsafe { MethodAddress::from_oop(encoded_method) }
+        unsafe { crate::id_dispatch::bind(receiver, selector) }
+            .unwrap_or_else(|_| boundary::fatal_invariant("doesNotUnderstand: is unbound"))
     }
 
     /// Send while preserving the raw C argument-buffer contract.
@@ -175,23 +164,7 @@ impl Runtime {
     }
 }
 
-pub(crate) unsafe extern "C" fn vtable_lookup_method(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    if count == 0 || args.is_null() {
-        boundary::fatal_invariant("vtable lookup requires one selector");
-    }
-    // SAFETY: the Method ABI promises at least count entries and count > 0.
-    let selector = unsafe { args.read() };
-    with_active(|runtime| {
-        // SAFETY: with_active proves owner-thread dynamic authority.
-        unsafe { runtime.lookup_method_active(receiver, selector) }
-            .map(MethodAddress::as_oop)
-            .unwrap_or(core::ptr::null_mut())
-    })
-}
+pub(crate) use crate::id_dispatch::vtable_lookup_method;
 
 unsafe extern "C" fn vtable_add_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     if count < 2 || args.is_null() {
@@ -380,21 +353,16 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     );
     runtime.install_internal_dictionaries(symbol_list, environment);
 
-    boundary::require_invariant(
-        runtime.add_method(vtable_vt, selectors.lookup, vtable_lookup_method)
-            == crate::vtable::AddMethod::Added,
-        "bootstrap lookup binding was not new",
-    );
-    boundary::require_invariant(
-        runtime.add_method(vtable_vt, selectors.add_method, vtable_add_method)
-            == crate::vtable::AddMethod::Added,
-        "bootstrap addMethod binding was not new",
-    );
-    boundary::require_invariant(
-        runtime.add_method(vtable_vt, selectors.remove_method, vtable_remove_method)
-            == crate::vtable::AddMethod::Added,
-        "bootstrap removeMethod: binding was not new",
-    );
+    for (selector, previous, replacement) in [
+        (selectors.add_method, crate::id_dispatch::vtable_add_method as crate::abi::Method, vtable_add_method as crate::abi::Method),
+        (selectors.remove_method, crate::id_dispatch::vtable_remove_method as crate::abi::Method, vtable_remove_method as crate::abi::Method),
+    ] {
+        boundary::require_invariant(
+            runtime.add_method(vtable_vt, selector, replacement)
+                == crate::vtable::AddMethod::Overwrote(MethodAddress::from_method(previous)),
+            "upper mutation implementation did not replace the Id primitive",
+        );
+    }
 
     runtime.enter(|| {
         for (vtable, selector, method) in [

@@ -4320,7 +4320,13 @@ impl Runtime {
                 active,
                 previous: current,
             };
-            let result = operation();
+            let (dictionaries, globals) = unsafe {
+                let state = self.state.get();
+                (Behaviors::dictionaries_ptr(core::ptr::addr_of_mut!((*state).vtables)), (*state).globals)
+            };
+            // Id receives only its own dictionary registry and real selectors.
+            let result = unsafe { crate::id_dispatch::enter(dictionaries,
+                globals.vtable_vt, globals.lookup, globals.does_not_understand, operation) };
             drop(guard);
             result
         })

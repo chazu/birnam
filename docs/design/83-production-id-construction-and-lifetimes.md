@@ -501,14 +501,32 @@ names; the old aggregate constructor interned the latter two later. Method and
 behavior enumeration order is unchanged. Initial behaviors and Object retain the
 existing permanence policy; initial Symbols remain collectable and use the normal
 runtime roots. The host still prepares upper services before entering `id_init`,
-and primitive method installation still happens in Runtime: this is the actual
-production graph handoff, not completed independent Id initialization.
+so this graph handoff alone does not establish independent Id initialization.
 
 The graph handoff passes the 301-test Id debug suite, including a check that
 adoption and first collection preserve addresses, identities and interned names.
 The fresh 53-native/28-authored installation passes the allocation-identity
 source, source-free compiled and mapped/rebuilt/baked image workload, including
 finalization, active Frames, live behavior replacement, aliases and reload.
+
+The production lookup primitive and metacircular bind/native-invoke path now
+operate on Id dictionaries without Runtime, GC or Execution. Initial Id installs
+`lookup` and `addMethod` directly, then installs `removeMethod:` through its own
+message send. Upper construction replaces the two mutation primitives with its
+observation/Execution-aware versions. The Id entry scope carries only its live
+dictionaries and primordial selectors; no future service slot is involved.
+Native lookup calls the selected function itself. A resumable lookup must supply
+a native adapter entering its exact registration, as generated methods do;
+attaching Execution metadata to an unrelated primitive address does not replace
+that primitive's behavior during Id lookup. Machine classification remains above
+Id. The debug suite passes 303 tests, including the actual initial graph sending
+before Runtime exists, guard invalidation and a resumable lookup adapter invoked
+once with all Frame pins released. Method arguments/results still use the legacy
+Oop ABI; the typed native bridge is part of the remaining loading cutover.
+A fresh 53-native/28-authored debug installation also passes the allocation
+identity source/compiled/mapped/rebuilt/baked image workload and both portable
+resumable and CodeBinding lifecycle checks (including self-removal and retirement
+after the outer turn).
 
 These changes establish the lifetime mechanism, **not independent Id**. Its
 registration owner, turn state and temporary private retirement queue export
