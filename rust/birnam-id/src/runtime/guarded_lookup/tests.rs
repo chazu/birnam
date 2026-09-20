@@ -97,7 +97,7 @@ fn run(case: Case, enabled: bool) -> (i64, usize, Vec<usize>) {
             );
         }
         Case::PrivateMeta => {
-            // Vtables already own their dictionaries; ensurePrivateVtable
+            // Behaviors already own their dictionaries; ensurePrivateVtable
             // returns them unchanged. Model the bootstrap/image header path.
             let meta = runtime.create_vtable(runtime.globals().vtable_vt);
             unsafe {

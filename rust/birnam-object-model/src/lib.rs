@@ -5,10 +5,6 @@ use core::ffi::{c_char, c_void};
 use std::sync::OnceLock;
 
 pub mod enumeration;
-mod mutation_epoch;
-mod key_index;
-pub use key_index::birnam_key_index_factory_v1;
-pub use mutation_epoch::birnam_mutation_epoch_factory_v1;
 
 /// Rust adapter for the existing Id operations; no new native table or state.
 /// The production adapter uses IdApi and ordinary seed messages. Floor unit

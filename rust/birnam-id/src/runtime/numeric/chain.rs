@@ -132,7 +132,7 @@ impl CompiledChain {
                         let value = initial.iter().find_map(|&(index, value)| {
                             (index == *slot as usize).then_some(value)
                         })?;
-                        if Vtables::checked_vtable_of(&state.heap, value) != runtime.integer_behavior()
+                        if Behaviors::checked_vtable_of(&state.heap, value) != runtime.integer_behavior()
                             || !state.heap.payload_size(value).is_some_and(|size| size >= runtime.integer_storage().payload_size)
                         {
                             return None;
@@ -290,7 +290,7 @@ impl Ticket {
         {
             let state = unsafe { &*runtime.state.get() };
             let vt = runtime.integer_behavior();
-            if Vtables::checked_vtable_of(&state.heap, vt) != state.globals.vtable_vt {
+            if Behaviors::checked_vtable_of(&state.heap, vt) != state.globals.vtable_vt {
                 return false;
             }
             for (send, binding) in self.chain.template.sends().iter().zip(&self.chain.bindings) {
@@ -388,7 +388,7 @@ impl Runtime {
                     Input::Literal { value, .. } => *value,
                     Input::Frame(slot) => {
                         let oop = arena.read_oop(frame, *slot as usize).ok()?;
-                        if Vtables::checked_vtable_of(&state.heap, oop) != self.integer_behavior()
+                        if Behaviors::checked_vtable_of(&state.heap, oop) != self.integer_behavior()
                             || !state.heap.payload_size(oop).is_some_and(|size| size >= self.integer_storage().payload_size)
                         {
                             return None;

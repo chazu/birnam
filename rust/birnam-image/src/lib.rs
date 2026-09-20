@@ -17,7 +17,7 @@ pub mod support {
     } else {
         0
     };
-    const RUNTIME_ABI_VERSION: u32 = 5;
+    const RUNTIME_ABI_VERSION: u32 = 6;
     const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
         b"birnam_send",
         b"birnam_intern",
@@ -228,7 +228,7 @@ pub mod support {
 
     #[test]
     fn exact_entry_runtime_abi_matches_the_install_receipt() {
-        assert_eq!(runtime_abi_hash(), 0xb587_f81e_cfb0_8b15);
+        assert_eq!(runtime_abi_hash(), 0x5582a42725e647a6);
     }
 
     #[cfg(any(feature = "module", test))]

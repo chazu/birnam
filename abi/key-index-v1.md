@@ -1,5 +1,9 @@
 # Key Index v1
 
+> **Superseded by Design 82/83:** dictionary indexing and mutation counts are
+> internal to Id again. The factory and pre-Id attachment described below have
+> been removed. This document preserves the historical extraction contract.
+
 Design [81BX](../docs/design/81bx-production-vtable-key-index.md) moves the
 derived Vtable address-to-position map into `libbirnam_object_model`. Id keeps
 ordered keys/values/weak flags, threshold 16, linear scanning, complete rebuilds,
@@ -46,9 +50,7 @@ Native Loader v12 and image v8 remain unchanged. The index is not serialized;
 ordinary dictionary replay reconstructs it during recovery.
 
 The independent C declaration is [key_index_v1.h](fixtures/key-index-v1/key_index_v1.h).
-Run `mise run key-index` for module, ABI, Vtable witnesses, loaded dictionary
-ownership and host admission checks. `scripts/key-index-test.sh PREFIX` uses
-installed libraries. `scripts/key-index-image-smoke.sh PREFIX` checks dynamic
-startup, source-free compiled callers, mapped/rebuilt native Code images and
-baked execution, including a saved 24-method portable dictionary, live mutation, active Frame slots,
-aliases, GC and reload. Validation is debug only.
+Run `mise run key-index` for the current dictionary/runtime regression tests and
+Object Model export audit. Factory admission and factory-spy fixtures are removed.
+`scripts/key-index-image-smoke.sh PREFIX` retains the production source, compiled
+and mapped/rebuilt/baked image workload. Validation is debug only.

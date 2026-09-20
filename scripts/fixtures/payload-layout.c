@@ -19,11 +19,6 @@ static IdApi *api;
 static Oop parent,child,object;
 static const char *mode;
 static unsigned observed;
-typedef struct {
-    size_t size,tally; Oop *keys,*values; Oop parent; TraceHook hook;
-    const uint8_t *kinds; size_t count; uint8_t rest,is_set; Oop owner;
-} RawVtable;
-_Static_assert(sizeof(RawVtable)==80 && offsetof(RawVtable,kinds)==48 && offsetof(RawVtable,owner)==72,"raw vtable mirror");
 static void access_layout(void) {
     if(strstr(mode,"slot")) (void)SLOT(parent,0);
     else SET(parent,NULL,0,0);
@@ -90,18 +85,18 @@ int main(int argc,char **argv) {
     if(!strcmp(mode,"null-prefix")) { SET(parent,NULL,1,0);abort(); }
     if(!strcmp(mode,"null-prefix-invalid")) { SET(NULL,NULL,1,0);abort(); }
     assert(SLOT(parent,0)==255 && SLOT(child,SIZE_MAX)==255);
-    RawVtable *raw=parent;assert(!raw->kinds && !raw->count && !raw->is_set);
     uint8_t input[]={1,0,2,9,255};SET(parent,input,5,9);input[0]=0;
-    assert(raw->kinds!=input && raw->count==5 && raw->is_set && raw->rest==9);
     assert(SLOT(parent,0)==1 && SLOT(parent,2)==2 && SLOT(parent,3)==9 && SLOT(parent,4)==255 && SLOT(parent,SIZE_MAX)==9);
     assert(SLOT(child,0)==255);
-    const uint8_t *old=raw->kinds;SET(parent,old,5,1);assert(raw->kinds!=old && SLOT(parent,0)==1 && SLOT(parent,5)==1);
-    old=raw->kinds;api->method(parent,api->intern("payloadLayoutMirrorProbe"),answer);assert(raw->kinds==old && raw->count==5);
+    uint8_t replacement[]={1,0,2,9,255};SET(parent,replacement,5,1);
+    assert(SLOT(parent,0)==1 && SLOT(parent,5)==1);
+    api->method(parent,api->intern("payloadLayoutProbe"),answer);
+    assert(SLOT(parent,0)==1 && SLOT(parent,2)==2 && SLOT(parent,5)==1);
     assert(inspect(&request)==0 && observed==1);
     for(unsigned kind=0;kind<256;kind++) {
         SET(parent,(const uint8_t *)(uintptr_t)1,0,(uint8_t)kind);
-        assert(!raw->kinds && !raw->count && raw->is_set && SLOT(parent,0)==kind && SLOT(parent,SIZE_MAX)==kind);
+        assert(SLOT(parent,0)==kind && SLOT(parent,SIZE_MAX)==kind);
     }
-    puts("unset, copied prefix, arbitrary tail, exact membership, borrowed replacement and storage observation agree");
+    puts("unset, copied prefix, arbitrary tail, exact membership, replacement and storage observation agree");
     return 0;
 }

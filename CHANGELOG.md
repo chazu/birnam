@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Make Id's behavior dictionaries and Symbol implementation independent of GC
+  services (Design 82/83). Keep layout, hook and private-owner metadata above the
+  40-byte dictionary payload. Return dictionary indexing and mutation counts to
+  Id and remove both pre-Id factories. Advance image runtime ABI to 6; the image
+  format and IdApi table shape are unchanged. Upper Runtime relocation and the
+  staged production loader remain in progress.
+
 - Separate Id object allocation from Heap's GC bookkeeping (Design 82/83).
   Return the allocation identity counter to Id and remove its Storage factory
   and pre-Id preparation. Preserve object layout and identities across adoption

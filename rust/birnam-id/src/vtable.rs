@@ -1,62 +1,45 @@
 //! Raw vtable objects, ordered method dictionaries, and exact membership.
-#![allow(dead_code)] // R2.2 precedes runtime/bootstrap wiring.
+#![allow(dead_code)] // Direct allocation entry is used by the construction cutover.
 
 use core::mem::offset_of;
 use core::ptr::NonNull;
 
-use crate::abi::{Method, Oop, TraceHook};
-#[cfg(test)]
-use crate::abi::SLOT_UNKNOWN;
+use crate::abi::{Method, Oop};
 use crate::boundary;
-use crate::heap::{Heap, Permanence};
+use crate::object_memory::ObjectMemory;
 use crate::raw::{AddressMap, MethodAddress};
 
 /// The payload shape retained for vtable objects themselves.
 #[allow(non_snake_case)]
 #[repr(C)]
-struct RawVtable {
-    size: usize,
-    tally: usize,
-    keys: *mut Oop,
-    values: *mut Oop,
-    parent: Oop,
-    trace_hook: Option<TraceHook>,
-    layout_kinds: *const u8,
-    layout_n: usize,
-    layout_rest: u8,
-    layout_set: u8,
-    owner: Oop,
+pub(crate) struct RawVtable {
+    pub(crate) size: usize,
+    pub(crate) tally: usize,
+    pub(crate) keys: *mut Oop,
+    pub(crate) values: *mut Oop,
+    pub(crate) parent: Oop,
 }
 
 const _: () = {
-    assert!(size_of::<RawVtable>() == 80);
+    assert!(size_of::<RawVtable>() == 40);
     assert!(align_of::<RawVtable>() == 8);
     assert!(offset_of!(RawVtable, size) == 0);
     assert!(offset_of!(RawVtable, tally) == 8);
     assert!(offset_of!(RawVtable, keys) == 16);
     assert!(offset_of!(RawVtable, values) == 24);
     assert!(offset_of!(RawVtable, parent) == 32);
-    assert!(offset_of!(RawVtable, trace_hook) == 40);
-    assert!(offset_of!(RawVtable, layout_kinds) == 48);
-    assert!(offset_of!(RawVtable, layout_n) == 56);
-    assert!(offset_of!(RawVtable, layout_rest) == 64);
-    assert!(offset_of!(RawVtable, layout_set) == 65);
-    assert!(offset_of!(RawVtable, owner) == 72);
 };
 
-struct VtableRecord {
-    raw: NonNull<RawVtable>,
-    logical_capacity: usize,
-    keys: Vec<Oop>,
-    values: Vec<Oop>,
-    weak_keys: Vec<bool>,
+pub(crate) struct VtableRecord {
+    pub(crate) raw: NonNull<RawVtable>,
+    pub(crate) logical_capacity: usize,
+    pub(crate) keys: Vec<Oop>,
+    pub(crate) values: Vec<Oop>,
+    pub(crate) weak_keys: Vec<bool>,
     // Derived identity lookup only. Ordered vectors retain raw-view and GC
     // authority; these integer addresses never add roots or cache dispatch.
-    key_indices: crate::key_index::Index,
-    parent: Oop,
-    owner: Oop,
-    trace_hook: birnam_abi::trace_hooks::SlotV1,
-    layout: crate::payload_layout::Owned,
+    pub(crate) key_indices: AddressMap<usize>,
+    pub(crate) parent: Oop,
 }
 
 /// Dictionaries at or below this size answer lookups by scanning the ordered
@@ -69,11 +52,11 @@ const KEY_INDEX_THRESHOLD: usize = 16;
 impl VtableRecord {
     // Invariant: `key_indices` is either empty (scan the ordered keys) or a
     // complete map of every key to its position. It is never partially stale.
-    fn key_index(&self, key: Oop) -> Option<usize> {
+    pub(crate) fn key_index(&self, key: Oop) -> Option<usize> {
         if self.key_indices.is_empty() {
             return self.keys.iter().position(|candidate| *candidate == key);
         }
-        self.key_indices.get(key.addr())
+        self.key_indices.get(&key.addr()).copied()
     }
 
     fn rebuild_key_indices(&mut self) {
@@ -112,13 +95,7 @@ impl VtableRecord {
             self.values.as_mut_ptr()
         };
         raw.parent = self.parent;
-        raw.trace_hook = self.trace_hook.hook;
-        let layout = self.layout.view();
-        raw.layout_kinds = layout.kinds;
-        raw.layout_n = layout.count;
-        raw.layout_rest = layout.rest;
-        raw.layout_set = layout.is_set;
-        raw.owner = self.owner;
+
     }
 
     fn grow_dictionary(&mut self) {
@@ -145,15 +122,13 @@ pub(crate) enum AddMethod {
 
 /// Ordered registry of every vtable in one runtime.
 pub(crate) struct Vtables {
-    ordered: Vec<Oop>,
+    pub(crate) ordered: Vec<Oop>,
     by_address: AddressMap<VtableRecord>,
     // Monotonic count of dictionary, parent and registry mutations. Design 74A
     // §3.2: a reader that cached a verification against one epoch re-verifies
     // when the epoch moved. Over-counting is harmless; never skip a mutator.
-    mutation_epoch: crate::mutation_epoch::Service,
-    // Records release their carriers before this capability is destroyed.
-    layouts: crate::payload_layout::Service,
-    hooks: crate::trace_hooks::Service,
+    mutation_epoch: u64,
+
 }
 
 impl Vtables {
@@ -161,53 +136,37 @@ impl Vtables {
         Self {
             ordered: Vec::new(),
             by_address: AddressMap::default(),
-            mutation_epoch: crate::mutation_epoch::Service::new(),
-            layouts: crate::payload_layout::Service::new(),
-            hooks: crate::trace_hooks::Service::new(),
+            mutation_epoch: 0,
         }
     }
-
     pub(crate) fn mutation_epoch(&self) -> u64 {
-        self.mutation_epoch.get()
+        self.mutation_epoch
     }
-
     #[cfg(test)]
     pub(crate) fn exhaust_mutation_epoch_for_test(&mut self) {
-        self.mutation_epoch.set(u64::MAX);
+        self.mutation_epoch = u64::MAX;
     }
-
     pub(crate) fn note_mutation(&mut self) {
-        self.mutation_epoch.set(self.mutation_epoch.get().saturating_add(1));
+        self.mutation_epoch = self.mutation_epoch.saturating_add(1);
+    }
+    pub(crate) const PAYLOAD_SIZE: usize = size_of::<RawVtable>();
+
+    /// Construct a behavior using Id allocation alone.
+    pub(crate) fn create(&mut self, memory: &mut ObjectMemory, parent: Oop, metavtable: Oop) -> Oop {
+        let object = memory.allocate(Self::PAYLOAD_SIZE);
+        assert!(memory.set_vtable(object, metavtable));
+        // SAFETY: the fresh allocation has the exact behavior payload extent.
+        unsafe { self.register(object, parent) };
+        object
     }
 
-    pub(crate) fn create(&mut self, heap: &mut Heap, parent: Oop, metavtable: Oop) -> Oop {
-        self.create_with_permanence(heap, parent, metavtable, Permanence::Permanent)
-    }
-
-    pub(crate) fn create_collectable(
-        &mut self,
-        heap: &mut Heap,
-        parent: Oop,
-        metavtable: Oop,
-    ) -> Oop {
-        self.create_with_permanence(heap, parent, metavtable, Permanence::Collectable)
-    }
-
-    fn create_with_permanence(
-        &mut self,
-        heap: &mut Heap,
-        parent: Oop,
-        metavtable: Oop,
-        permanence: Permanence,
-    ) -> Oop {
+    /// Register a fresh behavior allocation supplied by the caller.
+    /// # Safety
+    /// `object` must retain at least PAYLOAD_SIZE aligned bytes until retirement.
+    pub(crate) unsafe fn register(&mut self, object: Oop, parent: Oop) {
         boundary::require_invariant(
             parent.is_null() || self.is_registered(parent),
             "vtable parent is not registered",
-        );
-        let object = heap.allocate(size_of::<RawVtable>(), permanence);
-        boundary::require_invariant(
-            heap.set_vtable(object, metavtable),
-            "new vtable block was not registered",
         );
         let raw = NonNull::new(object.cast::<RawVtable>())
             .unwrap_or_else(|| boundary::fatal_invariant("new vtable payload is null"));
@@ -220,12 +179,6 @@ impl Vtables {
                 keys: core::ptr::null_mut(),
                 values: core::ptr::null_mut(),
                 parent,
-                trace_hook: None,
-                layout_kinds: core::ptr::null(),
-                layout_n: 0,
-                layout_rest: 0,
-                layout_set: 0,
-                owner: core::ptr::null_mut(),
             });
         }
 
@@ -237,26 +190,19 @@ impl Vtables {
                 keys: Vec::new(),
                 values: Vec::new(),
                 weak_keys: Vec::new(),
-                key_indices: crate::key_index::Index::new(),
+                key_indices: AddressMap::default(),
                 parent,
-                owner: core::ptr::null_mut(),
-                trace_hook: birnam_abi::trace_hooks::SlotV1::EMPTY,
-                layout: self.layouts.empty(),
             },
         );
         boundary::require_invariant(previous.is_none(), "duplicate vtable address");
         self.ordered.push(object);
-        object
     }
-
     pub(crate) fn is_registered(&self, candidate: Oop) -> bool {
         !candidate.is_null() && self.by_address.contains_key(&candidate.addr())
     }
-
     pub(crate) fn is_registered_address(&self, address: usize) -> bool {
         self.by_address.contains_key(&address)
     }
-
     pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {
         let Some(record) = self.by_address.get(&vtable.addr()) else {
             return Vec::new();
@@ -264,9 +210,6 @@ impl Vtables {
         let mut edges = Vec::with_capacity(record.keys.len().saturating_add(2));
         if !record.parent.is_null() {
             edges.push(record.parent);
-        }
-        if !record.owner.is_null() {
-            edges.push(record.owner);
         }
         edges.extend(
             record
@@ -278,140 +221,37 @@ impl Vtables {
         );
         edges
     }
-
-    pub(crate) fn permanent_strong_edges(&self, heap: &Heap) -> Vec<Oop> {
-        self.ordered
-            .iter()
-            .copied()
-            .filter(|vtable| heap.permanence_of(*vtable) == Some(Permanence::Permanent))
-            .flat_map(|vtable| self.strong_edges(vtable))
-            .collect()
-    }
-
-    pub(crate) fn has_permanent_binding(&self, heap: &Heap, methods: &[MethodAddress]) -> bool {
-        self.ordered.iter().copied().any(|vtable| {
-            heap.permanence_of(vtable) == Some(Permanence::Permanent)
-                && self
-                    .record(vtable)
-                    .values
-                    .iter()
-                    .filter_map(|value| unsafe { MethodAddress::from_oop(*value) })
-                    .any(|method| methods.contains(&method))
-        })
-    }
-
-    pub(crate) fn dead_collectable_bindings(&self, heap: &Heap) -> Vec<(Oop, Vec<MethodAddress>)> {
-        self.ordered
-            .iter()
-            .copied()
-            .filter(|vtable| {
-                heap.permanence_of(*vtable) == Some(Permanence::Collectable)
-                    && heap.is_marked(*vtable) == Some(false)
-            })
-            .map(|vtable| {
-                let methods = self
-                    .record(vtable)
-                    .values
-                    .iter()
-                    .filter_map(|value| unsafe { MethodAddress::from_oop(*value) })
-                    .collect();
-                (vtable, methods)
-            })
-            .collect()
-    }
-
-    pub(crate) fn remove_dead_collectable(&mut self, heap: &Heap) -> Vec<Oop> {
-        let dead = self
-            .ordered
-            .iter()
-            .copied()
-            .filter(|vtable| {
-                heap.permanence_of(*vtable) == Some(Permanence::Collectable)
-                    && heap.is_marked(*vtable) == Some(false)
-            })
-            .collect::<Vec<_>>();
-        for vtable in &dead {
-            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| {
-                boundary::fatal_invariant("dead vtable registry record disappeared")
-            });
-        }
-        self.ordered.retain(|vtable| !dead.contains(vtable));
-        if !dead.is_empty() {
-            self.note_mutation();
-        }
-        dead
-    }
-
-    /// Remove weak dictionary entries whose collectable key did not survive
-    /// the mark phase. This must run before either the Symbol registry or Heap
-    /// detaches the corresponding storage.
-    pub(crate) fn remove_dead_weak_bindings(&mut self, heap: &Heap) -> usize {
-        let mut removed = 0usize;
-        for record in self.by_address.values_mut() {
-            let original_length = record.keys.len();
-            let mut index = 0usize;
-            while index < record.keys.len() {
-                let key = record.keys[index];
-                let dead = record.weak_keys[index]
-                    && heap.permanence_of(key) == Some(Permanence::Collectable)
-                    && heap.is_marked(key) == Some(false);
-                if dead {
-                    record.keys.remove(index);
-                    record.values.remove(index);
-                    record.weak_keys.remove(index);
-                    removed = removed.saturating_add(1);
-                } else {
-                    index += 1;
-                }
-            }
-            if record.keys.len() != original_length {
-                record.rebuild_key_indices();
-            }
-            record.sync_raw_view();
-        }
-        if removed != 0 {
-            self.note_mutation();
-        }
-        removed
-    }
-
-    fn record(&self, vtable: Oop) -> &VtableRecord {
+    pub(crate) fn record(&self, vtable: Oop) -> &VtableRecord {
         self.by_address
             .get(&vtable.addr())
             .unwrap_or_else(|| boundary::fatal_invariant("vtable is not registered"))
     }
-
-    fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {
+    pub(crate) fn record_mut(&mut self, vtable: Oop) -> &mut VtableRecord {
         self.by_address
             .get_mut(&vtable.addr())
             .unwrap_or_else(|| boundary::fatal_invariant("vtable is not registered"))
     }
-
     pub(crate) fn count(&self) -> usize {
         self.ordered.len()
     }
-
     pub(crate) fn view(&self) -> birnam_abi::vtable_enumeration::ViewV1 {
         birnam_abi::vtable_enumeration::ViewV1 {
             entries: self.ordered.as_ptr(),
             count: self.ordered.len(),
         }
     }
-
     pub(crate) fn at(&self, index: usize) -> Oop {
         self.ordered
             .get(index)
             .copied()
             .unwrap_or(core::ptr::null_mut())
     }
-
     pub(crate) fn parent_of(&self, vtable: Oop) -> Oop {
         self.by_address
             .get(&vtable.addr())
             .map(|record| record.parent)
             .unwrap_or(core::ptr::null_mut())
     }
-
     pub(crate) fn set_parent(&mut self, vtable: Oop, parent: Oop) {
         boundary::require_invariant(
             parent.is_null() || self.is_registered(parent),
@@ -422,95 +262,9 @@ impl Vtables {
         record.sync_raw_view();
         self.note_mutation();
     }
-
-    pub(crate) fn owner_of(&self, candidate: Oop) -> Oop {
-        self.by_address
-            .get(&candidate.addr())
-            .map(|record| record.owner)
-            .unwrap_or(core::ptr::null_mut())
-    }
-
-    pub(crate) fn set_owner(&mut self, vtable: Oop, owner: Oop) {
-        let record = self.record_mut(vtable);
-        record.owner = owner;
-        record.sync_raw_view();
-    }
-
-    pub(crate) fn set_trace_hook(&mut self, vtable: Oop, hook: TraceHook) {
-        let slot = self.hooks.slot(hook);
-        self.replace_trace_hook(vtable, slot);
-    }
-
-    pub(crate) fn replace_trace_hook(&mut self, vtable: Oop, slot: birnam_abi::trace_hooks::SlotV1) {
-        let record = self.record_mut(vtable);
-        record.trace_hook = slot;
-        record.sync_raw_view();
-    }
-
-    pub(crate) fn trace_hooks_api(&self) -> *mut birnam_abi::trace_hooks::ApiV1 {
-        self.hooks.api()
-    }
-
-    pub(crate) fn trace_hook(&self, vtable: Oop) -> Option<TraceHook> {
-        use birnam_abi::trace_hooks::{EntryV1, SourceV1};
-        unsafe extern "C" fn read(context: *const core::ffi::c_void, vtable: Oop, output: *mut EntryV1) -> core::ffi::c_int {
-            let registry = unsafe { &*context.cast::<Vtables>() };
-            let Some(record) = registry.by_address.get(&vtable.addr()) else { return 0; };
-            unsafe { output.write(EntryV1 { parent: record.parent, slot: record.trace_hook }) };
-            1
-        }
-        // Canonical selection uses only synchronous, immutable registry facts.
-        // The borrow ends before a caller invokes the returned hook.
-        let source = SourceV1 { context: core::ptr::from_ref(self).cast(), budget: self.by_address.len(), read };
-        self.hooks.resolve(&source, vtable)
-    }
-
-    pub(crate) fn set_layout(&mut self, vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
-        // Keep copying before the exact membership lookup, including when the
-        // supplied bytes are the current record's own borrowed prefix.
-        let owned = self.layouts.copy(kinds, count, rest);
-        let record = self.record_mut(vtable);
-        record.layout = owned;
-        record.sync_raw_view();
-    }
-
-    pub(crate) fn replace_layout(&mut self, vtable: Oop, owned: birnam_abi::payload_layout::OwnedV1) {
-        let owned = self.layouts.adopt(owned);
-        let record = self.record_mut(vtable);
-        record.layout = owned;
-        record.sync_raw_view();
-    }
-
-    pub(crate) fn layout_view(&self, vtable: Oop) -> birnam_abi::payload_layout::ViewV1 {
-        self.record(vtable).layout.view()
-    }
-
-    pub(crate) fn layout_api(&self) -> *mut birnam_abi::payload_layout::ApiV1 {
-        self.layouts.api()
-    }
-
-    pub(crate) fn slot_kind(&self, vtable: Oop, word: usize) -> u8 {
-        self.layouts.slot_kind(self.record(vtable).layout.view(), word)
-    }
-
-    /// Inspect the current exact-vtable layout with one registry lookup.
-    /// Explicit prefix kinds and the repeated tail both apply to this extent.
-    pub(crate) fn all_oop_layout(&self, vtable: Oop, words: usize) -> bool {
-        self.by_address.get(&vtable.addr()).is_some_and(|record| {
-            self.layouts.all_oop(record.layout.view(), words)
-        })
-    }
-
-    pub(crate) fn has_layout(&self, vtable: Oop) -> bool {
-        self.by_address
-            .get(&vtable.addr())
-            .is_some_and(|record| self.layouts.has_layout(record.layout.view()))
-    }
-
     pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {
         self.record(vtable).logical_capacity
     }
-
     pub(crate) fn selector_at(&self, vtable: Oop, index: usize) -> Oop {
         self.record(vtable)
             .keys
@@ -518,12 +272,10 @@ impl Vtables {
             .copied()
             .unwrap_or(core::ptr::null_mut())
     }
-
     pub(crate) fn selector_view(&self, vtable: Oop) -> birnam_abi::vtable_enumeration::ViewV1 {
         let keys = &self.record(vtable).keys;
         birnam_abi::vtable_enumeration::ViewV1 { entries: keys.as_ptr(), count: keys.len() }
     }
-
     pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         let record = self.record(vtable);
         record
@@ -532,10 +284,6 @@ impl Vtables {
             // internal dictionaries are enumerated but never dispatched.
             .and_then(|index| unsafe { MethodAddress::from_oop(record.values[index]) })
     }
-
-    /// Resolve one dictionary, returning its delegation edge on a miss.
-    /// The caller may continue without reading this dictionary a second time.
-    #[inline]
     pub(crate) fn lookup_head(
         &self,
         vtable: Oop,
@@ -548,7 +296,6 @@ impl Vtables {
         }
         Err(record.parent)
     }
-
     pub(crate) fn lookup(&self, mut vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         while !vtable.is_null() {
             let record = self.record(vtable);
@@ -561,7 +308,6 @@ impl Vtables {
         }
         None
     }
-
     pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         let method = MethodAddress::from_method(method);
         self.note_mutation();
@@ -583,10 +329,6 @@ impl Vtables {
         record.sync_raw_view();
         AddMethod::Added
     }
-
-    /// Synchronize an opaque key/value pair used by the floor's internal symbol
-    /// and export dictionaries. These registered vtables are observable through
-    /// MOP enumeration but are never dispatch families.
     pub(crate) fn add_weak_opaque_binding(&mut self, vtable: Oop, key: Oop, value: Oop) {
         self.note_mutation();
         let record = self.record_mut(vtable);
@@ -605,7 +347,6 @@ impl Vtables {
         record.index_appended_key();
         record.sync_raw_view();
     }
-
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         self.note_mutation();
         let record = self.record_mut(vtable);
@@ -619,592 +360,75 @@ impl Vtables {
         unsafe { MethodAddress::from_oop(removed) }
             .or_else(|| boundary::fatal_invariant("method binding held null data"))
     }
-
-    /// Checked reflection path: arbitrary carrier values never reach a header
-    /// dereference unless exact heap membership succeeds first.
-    pub(crate) fn checked_vtable_of(heap: &Heap, object: Oop) -> Oop {
-        heap.vtable_of(object).unwrap_or(core::ptr::null_mut())
-    }
-
-    /// Dispatch path for a receiver already proven valid by language/runtime
-    /// construction. It deliberately performs no membership lookup.
-    ///
-    /// # Safety
-    ///
-    /// `object` must be the exact non-null payload address of a live block.
     pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {
         // SAFETY: forwarded caller precondition.
-        unsafe { Heap::vtable_of_valid_object(object) }
+        unsafe { ObjectMemory::vtable_of_valid_object(object) }
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use core::ffi::c_void;
-
-    unsafe extern "C" fn answer_1(_: Oop, _: *const Oop, _: usize) -> Oop {
-        1usize as Oop
-    }
-    unsafe extern "C" fn answer_2(_: Oop, _: *const Oop, _: usize) -> Oop {
-        2usize as Oop
-    }
-    unsafe extern "C" fn answer_3(_: Oop, _: *const Oop, _: usize) -> Oop {
-        3usize as Oop
-    }
-    unsafe extern "C" fn trace_hook(_: Oop, _: crate::abi::MarkFn) {}
-
-    fn call(method: MethodAddress) -> usize {
-        // SAFETY: test methods accept the ABI's null/zero argument form.
-        unsafe { (method.to_method())(core::ptr::null_mut(), core::ptr::null(), 0) }.addr()
-    }
-
-    fn new_hierarchy() -> (Heap, Vtables, Oop, Oop, Oop) {
-        let mut heap = Heap::new();
-        let mut vtables = Vtables::new();
-        let meta = vtables.create(&mut heap, core::ptr::null_mut(), core::ptr::null_mut());
-        assert!(heap.set_vtable(meta, meta));
-        let parent = vtables.create(&mut heap, core::ptr::null_mut(), meta);
-        let child = vtables.create(&mut heap, parent, meta);
-        (heap, vtables, meta, parent, child)
-    }
-
-    #[test]
-    fn raw_vtable_layout_and_creation_order_are_stable() {
-        let (heap, vtables, meta, parent, child) = new_hierarchy();
-        assert_eq!(vtables.count(), 3);
-        assert_eq!(vtables.at(0), meta);
-        assert_eq!(vtables.at(1), parent);
-        assert_eq!(vtables.at(2), child);
-        assert!(vtables.at(3).is_null());
-        assert_eq!(vtables.parent_of(meta), core::ptr::null_mut());
-        assert_eq!(vtables.parent_of(child), parent);
-        assert_eq!(Vtables::checked_vtable_of(&heap, meta), meta);
-        assert_eq!(Vtables::checked_vtable_of(&heap, child), meta);
-    }
-
-    #[test]
-    fn dictionary_grows_overwrites_and_enumerates_in_insertion_order() {
-        let (_heap, mut vtables, _meta, parent, _child) = new_hierarchy();
-        let mut selectors = [0usize; 20];
-
-        assert_eq!(vtables.dictionary_capacity(parent), 0);
-        for (index, selector) in selectors.iter_mut().enumerate() {
-            let selector_oop = core::ptr::from_mut(selector).cast::<c_void>();
-            assert_eq!(
-                vtables.add_method(parent, selector_oop, answer_1),
-                AddMethod::Added
-            );
-            let expected_capacity = match index + 1 {
-                1..=4 => 4,
-                5..=8 => 8,
-                9..=16 => 16,
-                _ => 32,
-            };
-            assert_eq!(vtables.dictionary_capacity(parent), expected_capacity);
+    /// Retire dictionary records before the caller releases their allocations.
+    pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {
+        for vtable in dead {
+            self.by_address.remove(&vtable.addr()).unwrap_or_else(|| boundary::fatal_invariant("dead vtable registry record disappeared"));
         }
-
-        let overwritten = vtables.add_method(
-            parent,
-            core::ptr::from_mut(&mut selectors[7]).cast(),
-            answer_2,
-        );
-        assert!(matches!(overwritten, AddMethod::Overwrote(previous) if call(previous) == 1));
-        assert_eq!(
-            call(
-                vtables
-                    .direct_lookup(parent, vtables.selector_at(parent, 7))
-                    .unwrap()
-            ),
-            2
-        );
-        for (index, selector) in selectors.iter_mut().enumerate() {
-            assert_eq!(
-                vtables.selector_at(parent, index),
-                core::ptr::from_mut(selector).cast()
-            );
-        }
-        assert!(vtables.selector_at(parent, selectors.len()).is_null());
+        self.ordered.retain(|vtable| !dead.contains(vtable));
+        if !dead.is_empty() { self.note_mutation(); }
     }
-
-    #[test]
-    fn indexed_mutations_preserve_order_and_current_inherited_resolution() {
-        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
-        let mut storage = [0usize; 64];
-        let selectors: Vec<Oop> = storage
-            .iter_mut()
-            .map(|v| core::ptr::from_mut(v).cast())
-            .collect();
-        for &selector in &selectors {
-            vtables.add_method(parent, selector, answer_3);
-        }
-        let mut expected: Vec<(Oop, usize)> = Vec::new();
-        let mut random = 17u64;
-        for _ in 0..1024 {
-            random = random.wrapping_mul(6364136223846793005).wrapping_add(1);
-            let selector = selectors[(random >> 32) as usize % selectors.len()];
-            let position = expected.iter().position(|(key, _)| *key == selector);
-            if random & 3 == 0 {
-                let removed = position.map(|index| expected.remove(index).1);
-                assert_eq!(vtables.remove_method(child, selector).map(call), removed);
-            } else {
-                let value = if random & 4 == 0 { 1 } else { 2 };
-                vtables.add_method(
-                    child,
-                    selector,
-                    if value == 1 { answer_1 } else { answer_2 },
-                );
-                if let Some(index) = position {
-                    expected[index].1 = value;
+    pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = MethodAddress> + '_ {
+        self.record(vtable).values.iter().filter_map(|value| unsafe { MethodAddress::from_oop(*value) })
+    }
+    pub(crate) fn remove_weak_keys(&mut self, dead: &[usize]) -> usize {
+        let dead: AddressMap<()> = dead.iter().map(|address| (*address, ())).collect();
+        let mut removed = 0usize;
+        for record in self.by_address.values_mut() {
+            let original_length = record.keys.len();
+            let mut index = 0usize;
+            while index < record.keys.len() {
+                let key = record.keys[index];
+                let dead = record.weak_keys[index] && dead.contains_key(&key.addr());
+                if dead {
+                    record.keys.remove(index);
+                    record.values.remove(index);
+                    record.weak_keys.remove(index);
+                    removed = removed.saturating_add(1);
                 } else {
-                    expected.push((selector, value));
+                    index += 1;
                 }
             }
-            for &key in &selectors {
-                let direct = expected
-                    .iter()
-                    .find(|(selector, _)| *selector == key)
-                    .map(|(_, value)| *value);
-                assert_eq!(vtables.direct_lookup(child, key).map(call), direct);
-                assert_eq!(
-                    vtables.lookup(child, key).map(call),
-                    Some(direct.unwrap_or(3))
-                );
+            if record.keys.len() != original_length {
+                record.rebuild_key_indices();
             }
-            for (index, (key, _)) in expected.iter().enumerate() {
-                assert_eq!(vtables.selector_at(child, index), *key);
-            }
-            assert!(vtables.selector_at(child, expected.len()).is_null());
+            record.sync_raw_view();
         }
-    }
-
-    #[test]
-    fn weak_index_compaction_preserves_middle_survivors_and_reinsertion() {
-        let (mut heap, mut vtables, _meta, parent, _child) = new_hierarchy();
-        let keys: Vec<_> = (0..9)
-            .map(|_| heap.allocate(0, Permanence::Collectable))
-            .collect();
-        for &key in &keys {
-            vtables.add_weak_opaque_binding(parent, key, key);
+        if removed != 0 {
+            self.note_mutation();
         }
-        heap.clear_marks();
-        for index in [1, 4, 7] {
-            heap.mark_collectable_address(keys[index].addr());
-        }
-        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 6);
-        for (index, &key) in keys.iter().enumerate() {
-            assert_eq!(
-                vtables.record(parent).key_index(key).is_some(),
-                [1, 4, 7].contains(&index)
-            );
-        }
-        for (position, index) in [1, 4, 7].into_iter().enumerate() {
-            assert_eq!(vtables.selector_at(parent, position), keys[index]);
-        }
-        vtables.add_weak_opaque_binding(parent, keys[4], keys[1]);
-        assert_eq!(vtables.record(parent).values[1], keys[1]);
-        vtables.add_weak_opaque_binding(parent, keys[0], keys[0]);
-        assert_eq!(vtables.selector_at(parent, 3), keys[0]);
-        heap.clear_marks();
-        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 4);
-        assert!(vtables.record(parent).key_indices.is_empty());
-        vtables.add_weak_opaque_binding(parent, keys[7], keys[7]);
-        assert_eq!(vtables.record(parent).key_index(keys[7]), Some(0));
-    }
-
-    #[test]
-    fn weak_opaque_keys_are_visible_but_neither_traced_nor_retained_after_marking() {
-        let (mut heap, mut vtables, _meta, parent, child) = new_hierarchy();
-        let weak_key = heap.allocate(0, Permanence::Collectable);
-        let strong_key = heap.allocate(0, Permanence::Collectable);
-        assert!(heap.set_vtable(weak_key, parent));
-        assert!(heap.set_vtable(strong_key, parent));
-
-        vtables.add_weak_opaque_binding(parent, weak_key, core::ptr::null_mut());
-        assert_eq!(
-            vtables.add_method(child, strong_key, answer_1),
-            AddMethod::Added
-        );
-        assert_eq!(vtables.selector_at(parent, 0), weak_key);
-        assert!(!vtables.strong_edges(parent).contains(&weak_key));
-        assert!(vtables.strong_edges(child).contains(&strong_key));
-
-        heap.clear_marks();
-        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 1);
-        assert!(vtables.selector_at(parent, 0).is_null());
-        assert_eq!(vtables.selector_at(child, 0), strong_key);
-    }
-
-    #[test]
-    fn deep_delegation_and_large_dictionary_preserve_lookup_and_order() {
-        let (mut heap, mut vtables, meta, root, _child) = new_hierarchy();
-        let count = if cfg!(miri) { 128 } else { 4096 };
-        let mut inherited_selector = Box::new(0usize);
-        let inherited_selector_oop = core::ptr::from_mut(inherited_selector.as_mut()).cast();
-        assert_eq!(
-            vtables.add_method(root, inherited_selector_oop, answer_3),
-            AddMethod::Added
-        );
-
-        let mut leaf = root;
-        for _ in 0..count {
-            leaf = vtables.create(&mut heap, leaf, meta);
-        }
-        assert_eq!(
-            call(vtables.lookup(leaf, inherited_selector_oop).unwrap()),
-            3
-        );
-
-        let mut selector_owners: Vec<Box<usize>> = (0..count).map(Box::new).collect();
-        let selectors: Vec<Oop> = selector_owners
-            .iter_mut()
-            .map(|owner| core::ptr::from_mut(owner.as_mut()).cast())
-            .collect();
-        for selector in selectors.iter().copied() {
-            assert_eq!(
-                vtables.add_method(leaf, selector, answer_1),
-                AddMethod::Added
-            );
-        }
-        assert_eq!(vtables.dictionary_capacity(leaf), count);
-        for (index, selector) in selectors.iter().copied().enumerate() {
-            assert_eq!(vtables.selector_at(leaf, index), selector);
-            assert_eq!(call(vtables.direct_lookup(leaf, selector).unwrap()), 1);
-        }
-
-        for index in [0, count / 4 - 1, count / 2 - 1, count - 1] {
-            assert!(matches!(
-                vtables.add_method(leaf, selectors[index], answer_2),
-                AddMethod::Overwrote(previous) if call(previous) == 1
-            ));
-            assert_eq!(vtables.selector_at(leaf, index), selectors[index]);
-            assert_eq!(call(vtables.lookup(leaf, selectors[index]).unwrap()), 2);
-        }
-
-        let removed_index = count / 2 - 1;
-        let removed = selectors[removed_index];
-        assert_eq!(call(vtables.remove_method(leaf, removed).unwrap()), 2);
-        assert!(vtables.direct_lookup(leaf, removed).is_none());
-        assert_eq!(
-            vtables.selector_at(leaf, removed_index),
-            selectors[removed_index + 1]
-        );
-        assert!(vtables.selector_at(leaf, selectors.len() - 1).is_null());
-    }
-
-    #[test]
-    fn exact_removal_reveals_parent_and_preserves_remaining_order() {
-        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
-        let mut selector = 0usize;
-        let mut other = 0usize;
-        let selector: Oop = core::ptr::from_mut(&mut selector).cast();
-        let other: Oop = core::ptr::from_mut(&mut other).cast();
-
-        assert_eq!(
-            vtables.add_method(parent, selector, answer_1),
-            AddMethod::Added
-        );
-        assert_eq!(
-            vtables.add_method(child, selector, answer_2),
-            AddMethod::Added
-        );
-        assert_eq!(vtables.add_method(child, other, answer_3), AddMethod::Added);
-        assert_eq!(call(vtables.lookup(child, selector).unwrap()), 2);
-
-        assert_eq!(call(vtables.remove_method(child, selector).unwrap()), 2);
-        assert_eq!(call(vtables.lookup(child, selector).unwrap()), 1);
-        assert_eq!(vtables.selector_at(child, 0), other);
-        assert!(vtables.selector_at(child, 1).is_null());
-        assert_eq!(vtables.remove_method(child, selector), None);
-
-        assert!(matches!(
-            vtables.add_method(parent, selector, answer_3),
-            AddMethod::Overwrote(_)
-        ));
-        assert_eq!(call(vtables.lookup(child, selector).unwrap()), 3);
-    }
-
-    #[test]
-    fn trace_hook_and_runtime_owned_layout_metadata_replace_in_place() {
-        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
-        static FIRST: [u8; 3] = [crate::abi::SLOT_OOP, crate::abi::SLOT_RAW, 9];
-        static SECOND: [u8; 1] = [crate::abi::SLOT_CODE];
-
-        assert_eq!(vtables.slot_kind(parent, 0), SLOT_UNKNOWN);
-        vtables.set_trace_hook(parent, trace_hook);
-        vtables.set_layout(parent, FIRST.as_ptr(), FIRST.len(), crate::abi::SLOT_RAW);
-        // SAFETY: the registered record and its raw view remain live in this
-        // vtable harness.
-        let first_pointer = unsafe { vtables.record(parent).raw.as_ref().layout_kinds };
-        assert_ne!(first_pointer, FIRST.as_ptr());
-        assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_OOP);
-        assert!(vtables.trace_hook(child).is_some());
-        assert_eq!(vtables.slot_kind(parent, 1), crate::abi::SLOT_RAW);
-        assert_eq!(vtables.slot_kind(parent, 2), 9);
-        assert_eq!(vtables.slot_kind(parent, 3), crate::abi::SLOT_RAW);
-
-        vtables.set_layout(parent, SECOND.as_ptr(), SECOND.len(), crate::abi::SLOT_OOP);
-        // SAFETY: the registered record and its replacement raw view remain
-        // live in this vtable harness.
-        let second_pointer = unsafe { vtables.record(parent).raw.as_ref().layout_kinds };
-        assert_ne!(second_pointer, SECOND.as_ptr());
-        assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_CODE);
-        assert_eq!(vtables.slot_kind(parent, 1), crate::abi::SLOT_OOP);
-        assert_eq!(vtables.slot_kind(child, 0), SLOT_UNKNOWN);
-    }
-
-    #[test]
-    fn trace_hooks_keep_exact_mirror_epoch_live_parents_and_bounded_cycles() {
-        unsafe extern "C" fn nearer(_: Oop, _: crate::abi::MarkFn) { panic!("selection invoked hook"); }
-        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
-        let address = |hook: Option<TraceHook>| hook.map(|hook| hook as usize);
-        let first = Some(trace_hook as *const () as usize);
-        let second = Some(nearer as *const () as usize);
-        let epoch = vtables.mutation_epoch();
-        assert!(vtables.trace_hook(child).is_none());
-        vtables.set_trace_hook(parent, trace_hook);
-        assert_eq!(vtables.mutation_epoch(), epoch);
-        assert_eq!(address(vtables.trace_hook(child)), first);
-        assert_eq!(address(unsafe { vtables.record(parent).raw.as_ref().trace_hook }), first);
-        assert!(unsafe { vtables.record(child).raw.as_ref().trace_hook }.is_none());
-        vtables.set_trace_hook(parent, nearer);
-        assert_eq!(vtables.mutation_epoch(), epoch);
-        assert_eq!(address(vtables.trace_hook(child)), second);
-        vtables.set_owner(parent, child);
-        vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_RAW);
-        assert_eq!(address(unsafe { vtables.record(parent).raw.as_ref().trace_hook }), second);
-        vtables.set_parent(child, child);
-        assert!(vtables.trace_hook(child).is_none());
-        vtables.set_parent(child, parent);
-        assert_eq!(address(vtables.trace_hook(child)), second);
-        vtables.set_trace_hook(child, trace_hook);
-        assert_eq!(address(vtables.trace_hook(child)), first);
-        assert!(vtables.trace_hook(core::ptr::null_mut()).is_none());
-        assert!(vtables.trace_hook(core::ptr::without_provenance_mut(1)).is_none());
-        // Internal damaged links retain absence and count-bound behavior.
-        vtables.record_mut(parent).trace_hook = birnam_abi::trace_hooks::SlotV1::EMPTY;
-        vtables.record_mut(child).trace_hook = birnam_abi::trace_hooks::SlotV1::EMPTY;
-        vtables.record_mut(parent).parent = child;
-        assert!(vtables.trace_hook(child).is_none());
-        vtables.record_mut(parent).parent = core::ptr::without_provenance_mut(1);
-        assert!(vtables.trace_hook(child).is_none());
-    }
-
-    #[test]
-    fn all_oop_layout_checks_current_prefix_tail_and_exact_vtable() {
-        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
-        assert!(!vtables.all_oop_layout(parent, 1));
-        assert!(!vtables.all_oop_layout(core::ptr::null_mut(), 1));
-        let mixed = [crate::abi::SLOT_OOP, crate::abi::SLOT_RAW];
-        vtables.set_layout(parent, mixed.as_ptr(), mixed.len(), crate::abi::SLOT_OOP);
-        assert!(vtables.all_oop_layout(parent, 1));
-        assert!(!vtables.all_oop_layout(parent, 2));
-        assert!(!vtables.all_oop_layout(parent, 128));
-        assert!(!vtables.all_oop_layout(child, 1));
-        vtables.set_layout(parent, mixed.as_ptr(), 1, crate::abi::SLOT_RAW);
-        assert!(vtables.all_oop_layout(parent, 1));
-        assert!(!vtables.all_oop_layout(parent, 2));
-        vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_OOP);
-        assert!(vtables.all_oop_layout(parent, 128));
-        vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_UNKNOWN);
-        assert!(!vtables.all_oop_layout(parent, 1));
-    }
-
-    #[test]
-    fn payload_layout_keeps_raw_mirror_and_epoch_when_replacing_borrowed_input() {
-        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
-        let epoch = vtables.mutation_epoch();
-        let input = [crate::abi::SLOT_OOP, 9, crate::abi::SLOT_CODE];
-        vtables.set_layout(parent, input.as_ptr(), input.len(), crate::abi::SLOT_RAW);
-        let first = vtables.layout_view(parent);
-        assert_ne!(first.kinds, input.as_ptr());
-        assert_eq!(vtables.mutation_epoch(), epoch);
-        vtables.set_owner(parent, child);
-        vtables.set_trace_hook(parent, trace_hook);
-        assert_eq!(vtables.layout_view(parent).kinds, first.kinds);
-        assert_eq!(unsafe { vtables.record(parent).raw.as_ref().layout_kinds }, first.kinds);
-        vtables.set_layout(parent, first.kinds, first.count, crate::abi::SLOT_OOP);
-        let second = vtables.layout_view(parent);
-        assert_ne!(second.kinds, first.kinds);
-        assert_eq!(vtables.mutation_epoch(), epoch);
-        assert_eq!(vtables.slot_kind(parent, 1), 9);
-        assert_eq!(vtables.slot_kind(parent, usize::MAX), crate::abi::SLOT_OOP);
-        assert!(!vtables.has_layout(child));
-        vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_RAW);
-        let raw = unsafe { vtables.record(parent).raw.as_ref() };
-        assert!(raw.layout_kinds.is_null());
-        assert_eq!((raw.layout_n, raw.layout_rest, raw.layout_set), (0, 0, 1));
-        assert!(vtables.all_oop_layout(parent, 0));
-        assert_eq!(vtables.mutation_epoch(), epoch);
-    }
-
-    #[test]
-    fn selector_equality_is_pointer_identity_not_pointed_to_value() {
-        let (_heap, mut vtables, _meta, parent, _child) = new_hierarchy();
-        let mut first = 7u64;
-        let mut second = 7u64;
-        let first: Oop = core::ptr::from_mut(&mut first).cast();
-        let second: Oop = core::ptr::from_mut(&mut second).cast();
-        assert_eq!(
-            vtables.add_method(parent, first, answer_1),
-            AddMethod::Added
-        );
-        assert!(vtables.direct_lookup(parent, second).is_none());
-        assert_eq!(call(vtables.direct_lookup(parent, first).unwrap()), 1);
-    }
-
-    #[test]
-    fn checked_membership_rejects_methods_and_foreign_addresses() {
-        let (mut heap, mut vtables, _meta, parent, _child) = new_hierarchy();
-        let object = heap.allocate(0, Permanence::Collectable);
-        assert!(heap.set_vtable(object, parent));
-        vtables.set_owner(parent, object);
-
-        let method_address = MethodAddress::from_method(answer_1).as_oop();
-        let foreign_words = [0usize; 2];
-        let candidates = [
-            core::ptr::null_mut(),
-            method_address,
-            core::ptr::addr_of!(foreign_words).cast_mut().cast(),
-            0x1000usize as Oop,
-            0x1001usize as Oop,
-        ];
-        for candidate in candidates {
-            assert!(Vtables::checked_vtable_of(&heap, candidate).is_null());
-            assert!(vtables.owner_of(candidate).is_null());
-        }
-
-        assert_eq!(Vtables::checked_vtable_of(&heap, object), parent);
-        assert_eq!(vtables.owner_of(parent), object);
-        // SAFETY: object is an exact live member here.
-        assert_eq!(unsafe { Vtables::dispatch_vtable_of(object) }, parent);
-
-        assert!(heap.reclaim_for_test(object));
-        assert!(Vtables::checked_vtable_of(&heap, object).is_null());
-    }
-
-    #[test]
-    fn parent_repointing_and_empty_tables_are_total() {
-        let (_heap, mut vtables, meta, parent, child) = new_hierarchy();
-        let mut missing = 0usize;
-        let missing: Oop = core::ptr::from_mut(&mut missing).cast();
-        assert!(vtables.direct_lookup(child, missing).is_none());
-        assert!(vtables.lookup(child, missing).is_none());
-        assert!(vtables.selector_at(child, 0).is_null());
-
-        vtables.set_parent(child, meta);
-        assert_eq!(vtables.parent_of(child), meta);
-        vtables.set_parent(child, parent);
-        assert_eq!(vtables.parent_of(child), parent);
-    }
-    #[test]
-    #[ignore = "diagnostic scaling probe; host-gated timing acceptance is separate"]
-    fn method_lookup_scaling() {
-        use std::hint::black_box;
-        use std::time::Instant;
-        for count in [4, 32, 256, 4096] {
-            let (_heap, mut vtables, _meta, parent, _child) = new_hierarchy();
-            let mut owners: Vec<_> = (0..=count).map(Box::new).collect();
-            let keys: Vec<Oop> = owners
-                .iter_mut()
-                .map(|value| core::ptr::from_mut(value.as_mut()).cast())
-                .collect();
-            for &key in &keys[..count] {
-                vtables.add_method(parent, key, answer_1);
-            }
-            for (kind, key) in [("hit", keys[count - 1]), ("miss", keys[count])] {
-                for indexed in [false, true] {
-                    let started = Instant::now();
-                    for _ in 0..100_000 {
-                        let key = black_box(key);
-                        let result = if indexed {
-                            vtables.direct_lookup(parent, key)
-                        } else {
-                            let record = vtables.record(parent);
-                            record
-                                .keys
-                                .iter()
-                                .position(|candidate| *candidate == key)
-                                .and_then(|index| unsafe {
-                                    MethodAddress::from_oop(record.values[index])
-                                })
-                        };
-                        black_box(result);
-                    }
-                    eprintln!(
-                        "method count={count} kind={kind} indexed={indexed} ns={}",
-                        started.elapsed().as_nanos() / 100_000
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn every_dictionary_mutator_moves_the_mutation_epoch() {
-        let (mut heap, mut vtables, meta, parent, child) = new_hierarchy();
-        let mut storage = [0usize; 3];
-        let keys: Vec<Oop> = storage
-            .iter_mut()
-            .map(|v| core::ptr::from_mut(v).cast())
-            .collect();
-        let expect_moved = |vtables: &Vtables, last: &mut u64, what: &str| {
-            assert!(
-                vtables.mutation_epoch() > *last,
-                "{what} did not move the epoch"
-            );
-            *last = vtables.mutation_epoch();
-        };
-        let mut last = vtables.mutation_epoch();
-
-        assert_eq!(
-            vtables.add_method(parent, keys[0], answer_1),
-            AddMethod::Added
-        );
-        expect_moved(&vtables, &mut last, "add_method (added)");
-        assert!(matches!(
-            vtables.add_method(parent, keys[0], answer_2),
-            AddMethod::Overwrote(_)
-        ));
-        expect_moved(&vtables, &mut last, "add_method (overwrote)");
-        assert!(vtables.remove_method(parent, keys[0]).is_some());
-        expect_moved(&vtables, &mut last, "remove_method");
-        vtables.set_parent(child, core::ptr::null_mut());
-        expect_moved(&vtables, &mut last, "set_parent");
-        vtables.set_parent(child, parent);
-        expect_moved(&vtables, &mut last, "set_parent (restore)");
-
-        let weak = heap.allocate(0, Permanence::Collectable);
-        vtables.add_weak_opaque_binding(parent, weak, weak);
-        expect_moved(&vtables, &mut last, "add_weak_opaque_binding");
-        heap.clear_marks();
-        assert!(heap.mark_collectable_address(weak.addr()));
-        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 0);
-        assert_eq!(
-            vtables.mutation_epoch(),
-            last,
-            "a sweep that removed nothing is not a mutation"
-        );
-        heap.clear_marks();
-        assert_eq!(vtables.remove_dead_weak_bindings(&heap), 1);
-        expect_moved(&vtables, &mut last, "remove_dead_weak_bindings");
-
-        let collectable = vtables.create_collectable(&mut heap, parent, meta);
-        assert!(vtables.is_registered(collectable));
-        heap.clear_marks();
-        assert_eq!(vtables.remove_dead_collectable(&heap), vec![collectable]);
-        expect_moved(&vtables, &mut last, "remove_dead_collectable");
-        assert!(vtables.remove_dead_collectable(&heap).is_empty());
-        assert_eq!(
-            vtables.mutation_epoch(),
-            last,
-            "an empty vtable sweep is not a mutation"
-        );
+        removed
     }
 }
 
 #[cfg(test)]
-mod mutation_epoch_tests;
-
-#[cfg(test)]
-mod key_index_tests;
+mod core_tests {
+    use super::*;
+    #[test]
+    fn behavior_graph_and_dictionary_need_only_id_allocation() {
+        let mut memory = ObjectMemory::new();
+        let mut tables = Vtables::new();
+        let meta = tables.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
+        assert!(memory.set_vtable(meta, meta));
+        let parent = tables.create(&mut memory, core::ptr::null_mut(), meta);
+        let child = tables.create(&mut memory, parent, meta);
+        assert_eq!(memory.get(child.addr()).map(|allocation| allocation.requested_size()), Some(40));
+        unsafe extern "C" fn identity(receiver: Oop, _: *const Oop, _: usize) -> Oop { receiver }
+        let mut symbols = crate::symbol::Symbols::new();
+        let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);
+        let keys: Vec<_> = (0..24).map(|index| symbols.intern(&mut memory, symbol_behavior, format!("key-{index}").as_bytes()).unwrap()).collect();
+        assert_eq!(symbols.intern(&mut memory, symbol_behavior, b"key-7").unwrap(), keys[7]);
+        for &key in &keys { tables.add_method(parent, key, identity); }
+        for &key in &keys { assert_eq!(tables.lookup(child, key), Some(MethodAddress::from_method(identity))); }
+        tables.remove_method(parent, keys[7]);
+        assert!(tables.lookup(child, keys[7]).is_none());
+        tables.remove_objects(&[child]);
+        assert!(!tables.is_registered(child));
+        assert!(memory.detach(child.addr()).is_some());
+        assert_eq!(tables.count(), 3);
+    }
+}

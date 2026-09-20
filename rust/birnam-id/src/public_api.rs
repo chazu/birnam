@@ -880,20 +880,6 @@ pub unsafe extern "C" fn birnam_guard_verdict_dependency_v1(factory: *const birn
 /// # Safety
 /// Prepare before Id initialization; descriptor and code stay pinned.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_mutation_epoch_dependency_v1(factory: *const birnam_abi::mutation_epoch::FactoryV1) -> c_int {
-    unsafe { birnam_abi::mutation_epoch::attach(factory) }
-}
-
-/// # Safety
-/// Prepare before Id initialization; descriptor and code stay pinned.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_key_index_dependency_v1(factory: *const birnam_abi::key_index::FactoryV1) -> c_int {
-    unsafe { birnam_abi::key_index::attach(factory) }
-}
-
-/// # Safety
-/// Prepare before Id initialization; descriptor and code stay pinned.
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_deferred_identity_dependency_v1(factory: *const birnam_abi::deferred_identity::FactoryV1) -> c_int {
     unsafe { birnam_abi::deferred_identity::attach(factory) }
 }

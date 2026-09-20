@@ -570,7 +570,7 @@ unsafe extern "C" fn caller_step(machine: Oop, args: *const Oop, count: usize) -
             )
         };
         let leaf = operands.arguments[1];
-        let leaf_vtable = unsafe { Vtables::checked_vtable_of(&(*runtime.state.get()).heap, leaf) };
+        let leaf_vtable = unsafe { Behaviors::checked_vtable_of(&(*runtime.state.get()).heap, leaf) };
         if !runtime.guarded_default_lookup_eligible(leaf_vtable) {
             return action;
         }

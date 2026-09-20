@@ -34,8 +34,9 @@ observation and collection. Canonical operations and destruction do not consult
 the public descriptor, so its instrumentation cannot redirect internal behavior.
 
 All descriptors, contexts and code outlive retaining consumers and owned
-carriers. The floor controls record retirement and synchronizes the unchanged
-80-byte raw vtable mirror. This contract adds no roots, mutation-epoch change,
+carriers. The runtime controls record retirement in separate per-behavior metadata.
+Design 83 removes the raw payload mirror. This contract adds no roots or
+mutation-epoch change,
 collection policy or image format. Native consumers must rebuild for IdApi v17.
 
 The [independent C header](fixtures/payload-layout-v1/payload_layout_v1.h) and

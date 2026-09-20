@@ -1,20 +1,20 @@
 //! The same exact-value witness runs against the original u64 and native owner.
 use super::*;
+use crate::vtable::AddMethod;
 unsafe extern "C" fn one(_: Oop, _: *const Oop, _: usize) -> Oop { core::ptr::without_provenance_mut(1) }
 unsafe extern "C" fn two(_: Oop, _: *const Oop, _: usize) -> Oop { core::ptr::without_provenance_mut(2) }
 unsafe extern "C" fn trace(_: Oop, _: crate::abi::MarkFn) {}
-fn hierarchy() -> (Heap, Vtables, Oop, Oop, Oop) {
-    let mut heap=Heap::new();let mut tables=Vtables::new();
+fn hierarchy() -> (Heap, Behaviors, Oop, Oop, Oop) {
+    let mut heap=Heap::new();let mut tables=Behaviors::new();
     let meta=tables.create(&mut heap,core::ptr::null_mut(),core::ptr::null_mut());assert!(heap.set_vtable(meta,meta));
     let parent=tables.create(&mut heap,core::ptr::null_mut(),meta);
     let child=tables.create(&mut heap,parent,meta);(heap,tables,meta,parent,child)
 }
-fn snapshot(tables: &Vtables, parent: Oop, expected: u64, label: &str) {
+fn snapshot(tables: &Behaviors, parent: Oop, expected: u64, label: &str) {
     assert_eq!(tables.mutation_epoch(),expected);
-    let record=tables.record(parent);let raw=unsafe { record.raw.as_ref() };
+    let record=tables.dictionaries.record(parent);let raw=unsafe { record.raw.as_ref() };
     assert_eq!(raw.tally,record.keys.len());assert_eq!(raw.size,record.logical_capacity);
-    assert_eq!(raw.parent,record.parent);assert_eq!(raw.owner,record.owner);
-    assert_eq!(raw.layout_n,record.layout.view().count);
+    assert_eq!(raw.parent,record.parent);
     if raw.tally!=0 {
         assert_eq!(unsafe { core::slice::from_raw_parts(raw.keys,raw.tally) },record.keys);
         assert_eq!(unsafe { core::slice::from_raw_parts(raw.values,raw.tally) },record.values);

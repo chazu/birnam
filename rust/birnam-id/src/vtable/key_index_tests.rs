@@ -1,17 +1,18 @@
 //! Identical witness on the original map and extracted owner; oracle is linear.
 use super::*;
+use crate::vtable::AddMethod;
 unsafe extern "C" fn one(_: Oop, _: *const Oop, _: usize) -> Oop { core::ptr::without_provenance_mut(1) }
 unsafe extern "C" fn two(_: Oop, _: *const Oop, _: usize) -> Oop { core::ptr::without_provenance_mut(2) }
-fn hierarchy() -> (Heap, Vtables, Oop, Oop, Oop) {
-    let mut heap=Heap::new();let mut tables=Vtables::new();
+fn hierarchy() -> (Heap, Behaviors, Oop, Oop, Oop) {
+    let mut heap=Heap::new();let mut tables=Behaviors::new();
     let meta=tables.create(&mut heap,core::ptr::null_mut(),core::ptr::null_mut());assert!(heap.set_vtable(meta,meta));
     let parent=tables.create(&mut heap,core::ptr::null_mut(),meta);
     let child=tables.create(&mut heap,parent,meta);(heap,tables,meta,parent,child)
 }
-fn snapshot(tables: &Vtables, table: Oop, keys: &[Oop], expected: &[(usize,Oop)], weak: bool, epoch: u64, capacity: usize, label: &str) {
-    let record=tables.record(table);let raw=unsafe { record.raw.as_ref() };
+fn snapshot(tables: &Behaviors, table: Oop, keys: &[Oop], expected: &[(usize,Oop)], weak: bool, epoch: u64, capacity: usize, label: &str) {
+    let record=tables.dictionaries.record(table);let raw=unsafe { record.raw.as_ref() };
     assert_eq!(tables.mutation_epoch(),epoch);assert_eq!(raw.tally,expected.len());assert_eq!(raw.size,capacity);
-    assert_eq!(record.logical_capacity,capacity);assert_eq!(raw.parent,record.parent);assert_eq!(raw.owner,record.owner);
+    assert_eq!(record.logical_capacity,capacity);assert_eq!(raw.parent,record.parent);
     assert_eq!(record.key_indices.is_empty(),expected.len()<=16);
     assert_eq!(record.keys,expected.iter().map(|(i,_)| keys[*i]).collect::<Vec<_>>());
     assert_eq!(record.values,expected.iter().map(|(_,v)| *v).collect::<Vec<_>>());

@@ -23,7 +23,8 @@ use crate::registration::{
     ABORT_V1, DescriptorAdmission, PREPARE_V1, ResumableRegistrationEnvelope, StagedUnit,
 };
 use crate::symbol::{EmbeddedNul, Symbols};
-use crate::vtable::{AddMethod, Vtables};
+use crate::vtable::AddMethod;
+use crate::behaviors::Behaviors;
 
 #[cfg(all(test, target_os = "macos"))]
 mod architectural_fit_experiment;
@@ -138,7 +139,7 @@ struct RuntimeState {
     // Ordered authorities are dropped before the raw heap owner at harness
     // teardown. No destructor dereferences a heap payload.
     symbols: Symbols,
-    vtables: Vtables,
+    vtables: Behaviors,
     heap: Heap,
     globals: DispatchGlobals,
     canonical: Option<CanonicalObjects>,
@@ -407,7 +408,7 @@ impl Runtime {
 
     pub(crate) fn new(
         heap: Heap,
-        vtables: Vtables,
+        vtables: Behaviors,
         symbols: Symbols,
         globals: DispatchGlobals,
     ) -> Self {
@@ -769,7 +770,7 @@ impl Runtime {
         let Some(objects) = state.execution.objects() else {
             return false;
         };
-        if Vtables::checked_vtable_of(&state.heap, machine) != objects.machine_vtable {
+        if Behaviors::checked_vtable_of(&state.heap, machine) != objects.machine_vtable {
             return false;
         }
         // Native registration can change invocation classification without a
@@ -814,8 +815,8 @@ impl Runtime {
             MethodAddress::from_method(crate::dispatch::vtable_lookup_method as crate::abi::Method);
         state.vtables.direct_lookup(machine_vt, objects.oop_at) == Some(canonical_read)
             && state.vtables.direct_lookup(machine_vt, objects.oop_at_put) == Some(canonical_write)
-            && Vtables::checked_vtable_of(&state.heap, machine_vt) == globals.vtable_vt
-            && Vtables::checked_vtable_of(&state.heap, globals.vtable_vt) == globals.vtable_vt
+            && Behaviors::checked_vtable_of(&state.heap, machine_vt) == globals.vtable_vt
+            && Behaviors::checked_vtable_of(&state.heap, globals.vtable_vt) == globals.vtable_vt
             && state
                 .vtables
                 .direct_lookup(globals.vtable_vt, globals.lookup)
@@ -4282,7 +4283,7 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: dispatch callers guarantee a live floor receiver. No runtime
         // collection borrow is needed for the header fast path.
-        unsafe { Vtables::dispatch_vtable_of(receiver) }
+        unsafe { Behaviors::dispatch_vtable_of(receiver) }
     }
 
     /// Read a dispatch header after `enter` established owner-thread authority.
@@ -4292,7 +4293,7 @@ impl Runtime {
     /// The runtime must be active and `receiver` must be an exact live object.
     pub(crate) unsafe fn vtable_for_valid_receiver_active(&self, receiver: Oop) -> Oop {
         // SAFETY: the caller supplies the live receiver precondition.
-        unsafe { Vtables::dispatch_vtable_of(receiver) }
+        unsafe { Behaviors::dispatch_vtable_of(receiver) }
     }
 
     /// Copy dispatch globals after `enter` established owner-thread authority.
@@ -4486,7 +4487,7 @@ impl Runtime {
         // SAFETY: owner-thread inspection; no callback, allocation or mutation.
         let state = unsafe { &*self.state.get() };
         let meta = state.globals.vtable_vt;
-        if Vtables::checked_vtable_of(&state.heap, meta) != meta {
+        if Behaviors::checked_vtable_of(&state.heap, meta) != meta {
             return None;
         }
         for (selector, method) in [
@@ -4533,7 +4534,7 @@ impl Runtime {
     pub(crate) fn checked_vtable_of(&self, object: Oop) -> Oop {
         self.assert_owner();
         // SAFETY: owner-thread serialization; checked lookup copies the header.
-        unsafe { Vtables::checked_vtable_of(&(*self.state.get()).heap, object) }
+        unsafe { Behaviors::checked_vtable_of(&(*self.state.get()).heap, object) }
     }
 
     /// Perform the same exact-membership vtable lookup after `enter` has already
@@ -4541,7 +4542,7 @@ impl Runtime {
     pub(crate) unsafe fn checked_vtable_of_active(&self, object: Oop) -> Oop {
         // SAFETY: the active-runtime guard proves owner-thread serialization;
         // checked_vtable_of still validates exact heap membership before reading.
-        unsafe { Vtables::checked_vtable_of(&(*self.state.get()).heap, object) }
+        unsafe { Behaviors::checked_vtable_of(&(*self.state.get()).heap, object) }
     }
 
     pub(crate) fn payload_size(&self, object: Oop) -> Option<usize> {
@@ -4916,9 +4917,7 @@ fn intern_in_state(state: &mut RuntimeState, bytes: &[u8]) -> Result<Oop, Embedd
         }
     }
     let before = state.symbols.count();
-    let symbol = state
-        .symbols
-        .intern(&mut state.heap, state.globals.symbol_vt, bytes)?;
+    let symbol = state.heap.intern_symbol(&mut state.symbols, state.globals.symbol_vt, bytes)?;
     if state.symbols.count() != before
         && let Some((symbols, _)) = state.internal_dictionaries
     {
@@ -6969,8 +6968,8 @@ mod tests {
         unsafe extern "C" fn release(owned: OwnedV1) {
             let (heap, vtable, prefix) = RETIRING.get();
             if prefix != 0 && owned.view.kinds.addr() == prefix {
-                // The collector borrows Vtables here, not this separate Heap.
-                assert_eq!(unsafe { (*heap).payload_size(vtable) }, Some(80));
+                // The collector borrows Behaviors here, not this separate Heap.
+                assert_eq!(unsafe { (*heap).payload_size(vtable) }, Some(40));
             }
             if owned.view.count != 0 {
                 EVENTS.with_borrow_mut(|events| events.push(Some(owned.view.kinds.addr())));

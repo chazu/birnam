@@ -147,6 +147,11 @@ impl Heap {
 
     pub(crate) fn allocate(&mut self, payload_size: usize, permanence: Permanence) -> Oop {
         let object = self.memory.allocate(payload_size);
+        self.track_allocation(object, permanence);
+        object
+    }
+
+    fn track_allocation(&mut self, object: Oop, permanence: Permanence) {
         let total_size = self.memory.get(object.addr()).unwrap().total_size;
         let previous = self.blocks.insert(object.addr(), BlockLifetime {
             metadata: if permanence == Permanence::Permanent { 2 } else { 0 },
@@ -154,6 +159,18 @@ impl Heap {
         });
         boundary::require_invariant(previous.is_none(), "allocator reused a live payload address");
         boundary::require_invariant(self.budget.charge(total_size), "GC allocation byte counter overflow");
+    }
+
+    pub(crate) fn intern_symbol(&mut self, symbols: &mut crate::symbol::Symbols, behavior: Oop, bytes: &[u8]) -> Result<Oop, crate::symbol::EmbeddedNul> {
+        let object = symbols.intern(&mut self.memory, behavior, bytes)?;
+        if !self.blocks.contains_key(&object.addr()) { self.track_allocation(object, Permanence::Collectable); }
+        Ok(object)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn intern_symbol_hashed(&mut self, symbols: &mut crate::symbol::Symbols, behavior: Oop, bytes: &[u8], hash: u64) -> Oop {
+        let object = symbols.intern_hashed(&mut self.memory, behavior, bytes, hash);
+        if !self.blocks.contains_key(&object.addr()) { self.track_allocation(object, Permanence::Collectable); }
         object
     }
 

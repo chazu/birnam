@@ -9,7 +9,7 @@ use crate::raw::MethodAddress;
 use crate::runtime::{CanonicalObjects, DispatchGlobals, Runtime, with_active};
 use crate::symbol::Symbols;
 use crate::values::allocate_empty;
-use crate::vtable::Vtables;
+use crate::behaviors::Behaviors;
 
 const MAX_DNU_ARGS: usize = 16;
 
@@ -330,15 +330,14 @@ pub(crate) struct Bootstrap {
 }
 
 fn static_selector(symbols: &mut Symbols, heap: &mut Heap, symbol_vtable: Oop, name: &[u8]) -> Oop {
-    symbols
-        .intern(heap, symbol_vtable, name)
+    heap.intern_symbol(symbols, symbol_vtable, name)
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"))
 }
 
 /// Build the complete R2 identity graph without publishing an `IdApi` table.
 pub(crate) fn build_bootstrap() -> Bootstrap {
     let mut heap = Heap::new();
-    let mut vtables = Vtables::new();
+    let mut vtables = Behaviors::new();
 
     let vtable_vt = vtables.create(&mut heap, core::ptr::null_mut(), core::ptr::null_mut());
     boundary::require_invariant(
@@ -524,17 +523,15 @@ pub(crate) struct DispatchHarness {
 
 pub(crate) fn build_harness() -> DispatchHarness {
     let mut heap = Heap::new();
-    let mut vtables = Vtables::new();
+    let mut vtables = Behaviors::new();
     let meta = vtables.create(&mut heap, core::ptr::null_mut(), core::ptr::null_mut());
     boundary::require_invariant(heap.set_vtable(meta, meta), "metavtable was not registered");
     let object_vtable = vtables.create(&mut heap, core::ptr::null_mut(), meta);
     let symbol_vtable = vtables.create(&mut heap, object_vtable, meta);
     let mut symbols = Symbols::new();
-    let lookup = symbols
-        .intern(&mut heap, symbol_vtable, b"lookup")
+    let lookup = heap.intern_symbol(&mut symbols, symbol_vtable, b"lookup")
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
-    let does_not_understand = symbols
-        .intern(&mut heap, symbol_vtable, b"doesNotUnderstand:")
+    let does_not_understand = heap.intern_symbol(&mut symbols, symbol_vtable, b"doesNotUnderstand:")
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
 
     let runtime = Runtime::new(
@@ -869,7 +866,7 @@ mod tests {
             assert_eq!(runtime.vtable_parent(expected), expected_parents[index]);
             assert_eq!(runtime.checked_vtable_of(expected), globals.vtable_vt);
             assert_eq!(runtime.permanence_of(expected), Some(if expected == runtime.string_behavior() || expected == runtime.integer_behavior() || expected == runtime.float_behavior() || expected == runtime.word_behavior() { Permanence::Collectable } else { Permanence::Permanent }));
-            assert_eq!(runtime.payload_size(expected), Some(80));
+            assert_eq!(runtime.payload_size(expected), Some(40));
         }
 
         let selector_names: [&[u8]; 25] = [

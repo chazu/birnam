@@ -1,5 +1,9 @@
 # 81BW — Vtable mutation-epoch ownership
 
+> **Superseded by Design 82/83:** dictionary indexing and mutation counts are
+> internal to Id again. The factory and pre-Id attachment described below have
+> been removed. This document preserves the historical extraction contract.
+
 > **Status:** Completed production extraction after 81BV (`1856504b`).
 > Debug validation only; mutation policy and public formats are unchanged.
 

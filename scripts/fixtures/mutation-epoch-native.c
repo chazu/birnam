@@ -1,6 +1,5 @@
 #define _DARWIN_C_SOURCE
 #include "idapi_v20.h"
-#include "../../abi/fixtures/mutation-epoch-v1/mutation_epoch_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -67,13 +66,6 @@ __attribute__((visibility("default")))
 void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *selected_settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizers) {
     (void)prior;(void)presence;(void)exports;(void)vtables;(void)observation;(void)layouts;(void)hooks;(void)finalizers;
     if(api)assert(api==selected);api=selected;settings=selected_settings;
-    Dl_info owner;assert(dladdr((void *)api->dlsym_fn,&owner));
-    const char *slash=strrchr(owner.dli_fname,'/');assert(slash);char path[PATH_MAX];
-    int length=snprintf(path,sizeof(path),"%.*s/libbirnam_object_model.dylib",(int)(slash-owner.dli_fname),owner.dli_fname);
-    assert(length>0 && (size_t)length<sizeof(path));void *image=dlopen(path,RTLD_NOW|RTLD_NOLOAD);assert(image);
-    MutationEpochFactoryProviderV1 provide=(MutationEpochFactoryProviderV1)dlsym(image,"birnam_mutation_epoch_factory_v1");assert(provide);
-    const MutationEpochFactoryV1 *factory=provide();assert(factory && factory->version==1 && factory->byte_size==sizeof(*factory));
-    assert(dladdr((void *)factory->read,&owner) && strstr(owner.dli_fname,"libbirnam_object_model.dylib"));
     machine_vt=api->vtable_of(namespace_import_v1(imports,"Machine"));
     lookup_selector=api->intern("lookup");read_selector=api->intern("oopAt:");write_selector=api->intern("oopAt:put:");
     canonical_lookup=(Method)api->send(api->vtable_vt,lookup_selector,&lookup_selector,1);

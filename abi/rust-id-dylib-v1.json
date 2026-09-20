@@ -46,7 +46,6 @@
     "birnam_namespace_name_at_v1",
     "birnam_namespace_names_provider_v1",
     "birnam_namespace_presence_provider_v1",
-    "birnam_mutation_epoch_dependency_v1",
     "birnam_native_allocation_provider_v1",
     "birnam_native_mark_dependency_v1",
     "birnam_native_stack_dependency_v2",
@@ -66,7 +65,6 @@
     "birnam_vtable_enumeration_provider_v2",
     "birnam_word_dependency_v1",
     "id_init",
-    "birnam_key_index_dependency_v1",
     "birnam_deferred_identity_dependency_v1",
     "birnam_deferred_index_dependency_v1"
   ]

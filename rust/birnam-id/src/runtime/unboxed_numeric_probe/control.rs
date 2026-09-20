@@ -26,7 +26,7 @@ fn integer_slots(r: &Runtime, machine: Oop) -> Vec<(usize, usize, i64)> {
     (0..arena.descriptor(frame).unwrap().slot_count())
         .filter_map(|slot| {
             let value = arena.read_oop(frame, slot).unwrap();
-            (Vtables::checked_vtable_of(&state.heap, value) == r.integer_behavior())
+            (Behaviors::checked_vtable_of(&state.heap, value) == r.integer_behavior())
                 .then(|| (slot, value.addr(), r.integer_value(value)))
         })
         .collect()

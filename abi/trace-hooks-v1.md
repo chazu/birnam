@@ -17,8 +17,9 @@ and exact-record replacement callbacks. Creation copies it without invoking it.
 The 32-byte public capability contains version, extent, context and `set`.
 Id publishes it through `birnam_trace_hooks_provider_v1`; native initializers
 receive it as argument eleven, paired with their execution API. Registration
-admits before exact membership lookup, replaces the hook and synchronizes the raw
-mirror. It adds no clear operation, root or mutation-epoch change.
+admits before exact membership lookup, replaces the hook in separate per-behavior metadata. Design 83 removes the raw
+payload mirror. Registration adds no clear operation, root or mutation-epoch
+change.
 
 An eight-byte inline slot contains the optional hook. An entry copies a parent
 and slot into 16 bytes. A 24-byte synchronous source carries context, the copied

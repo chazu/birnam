@@ -1,5 +1,9 @@
 # Mutation Epoch v1
 
+> **Superseded by Design 82/83:** dictionary indexing and mutation counts are
+> internal to Id again. The factory and pre-Id attachment described below have
+> been removed. This document preserves the historical extraction contract.
+
 Design [81BW](../docs/design/81bw-production-vtable-mutation-epoch.md) moves each
 Vtables registry's epoch storage into `libbirnam_object_model`. Id retains the
 saturating increment, every mutation call site, and all lookup/native-tier
@@ -43,9 +47,7 @@ retain their existing behavior during image recovery.
 
 The independent C declaration is
 [mutation_epoch_v1.h](fixtures/mutation-epoch-v1/mutation_epoch_v1.h).
-Run `mise run mutation-epoch` for module, ABI, exact Runtime/Vtable witnesses,
-loaded-owner and host admission checks. `scripts/mutation-epoch-test.sh PREFIX`
-selects installed libraries. `scripts/mutation-epoch-image-smoke.sh PREFIX`
-checks startup, source-free compiled callers, mapped/rebuilt native Code images
-and baked execution through live dictionary, parent and behavior changes,
-active Frame slot guards, custom lookup, aliases, GC and reload.
+Run `mise run mutation-epoch` for the current dictionary/runtime regression tests and
+Object Model export audit. Factory admission and factory-spy fixtures are removed.
+`scripts/mutation-epoch-image-smoke.sh PREFIX` retains the production source, compiled
+and mapped/rebuilt/baked image workload. Validation is debug only.

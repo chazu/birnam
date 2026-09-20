@@ -97,7 +97,7 @@ unsafe extern "C" fn retire_metadata(context: *mut c_void) {
             .retain(|entry| !dead_vtables.contains(&entry.vtable));
         if state.symbol_compaction_enabled {
             state.vtables.remove_dead_weak_bindings(&state.heap);
-            state.symbols.remove_dead_collectable(&state.heap);
+            state.symbols.remove_objects(&state.heap.dead_collectable_addresses());
         }
     }
 }

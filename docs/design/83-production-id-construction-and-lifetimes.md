@@ -412,7 +412,8 @@ establish it before declaring Id decoupled.
 
 The production emitter now enters the exact registered adapter rather than
 resending its selector. JIT symbol binding and native TCC exports use the same
-entry; image runtime ABI 5 (`b587f81ecfb08b15`) admits that required import.
+entry; current image runtime ABI 6 (`5582a42725e647a6`) retains that required
+import, first admitted by ABI 5.
 Machine's missing-send path now proceeds directly to fresh DNU lookup rather
 than repeating the original lookup. A paired native/Machine regression verifies
 one original lookup and preservation of the forwarded argument.
@@ -462,6 +463,33 @@ identity/finalization fixture; source, source-free compiled, mapped/rebuilt/bake
 image checks; and deferred-index loaded execution with forced recovery. The
 installed Storage exports match its manifest; installed Id matches its bare
 manifest plus the two published wrapper exports.
+
+Id's `Vtables` and `Symbols` now use only object allocation and their own
+indexes. `Behaviors` composes the dictionaries with GC layouts, trace hooks and
+private-owner metadata; Heap adds accounting when Symbol creation allocates.
+GC chooses dead objects, and Id retires their weak dictionary/name records before
+allocation release. No stored provider or GC callback is needed by these core
+implementations. The key index and mutation counter are local again; their
+factories and two more host preparations are removed. Seventeen of the original
+twenty pre-Id preparations remain until the upper construction cutover.
+
+The behavior payload is now the five-word dictionary view (40 bytes): capacity,
+tally, keys, values and parent. Layout, hook and private-owner fields no longer
+occupy its payload. Existing language-facing metadata operations still use the
+separate upper records. The key-index threshold, ordered mutation transcript and
+epoch saturation are preserved. Image runtime ABI 6 (`5582a42725e647a6`) separates
+this representation from older native images; image format 8 and IdApi v20's
+table shape are unchanged. The aggregate production Runtime still composes these
+parts inside the Id crate pending the loading/ownership cutover.
+
+This boundary passes 300 Id, 86 Host, 12 Image and 4 Object Model debug unit
+checks, including construction of the actual dictionary/Symbol implementations
+using only Id allocation. A fresh 53-native/28-authored installation passes the
+loaded layout fixture, dictionary source/compiled/mapped/rebuilt/baked image
+workload, and layout image workload. The latter verifies callback-time layout
+replacement, nested collection, rejection during encoding and successful image
+saving after restoration. Installed Id and Object Model export checks confirm
+the removed dictionary factories and dependency entries are absent.
 
 These changes establish the lifetime mechanism, **not independent Id**. Its
 registration owner, turn state and temporary private retirement queue export

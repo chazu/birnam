@@ -88,7 +88,7 @@ impl Runtime {
             let state = unsafe { &*self.state.get() };
             let _canonical = state.canonical?;
             for value in [receiver, argument] {
-                if Vtables::checked_vtable_of(&state.heap, value) != self.integer_behavior()
+                if Behaviors::checked_vtable_of(&state.heap, value) != self.integer_behavior()
                     || !state.heap.payload_size(value).is_some_and(|size| size >= self.integer_storage().payload_size)
                 {
                     return None;

@@ -1,6 +1,6 @@
 //! Non-effectful eligibility for the existing canonical lookup primitive.
 
-use super::{Method, MethodAddress, Oop, Runtime, Vtables};
+use super::{Method, MethodAddress, Oop, Runtime, Behaviors};
 
 #[cfg(test)]
 thread_local! {
@@ -19,7 +19,7 @@ impl Runtime {
         let state = unsafe { &*self.state.get() };
         let globals = state.globals;
         if !state.execution.has_managed_turn()
-            || Vtables::checked_vtable_of(&state.heap, receiver_vtable) != globals.vtable_vt
+            || Behaviors::checked_vtable_of(&state.heap, receiver_vtable) != globals.vtable_vt
         {
             return false;
         }
@@ -29,7 +29,7 @@ impl Runtime {
         let verified = if epoch != u64::MAX && verified_epoch == epoch {
             verified
         } else {
-            let verified = Vtables::checked_vtable_of(&state.heap, globals.vtable_vt)
+            let verified = Behaviors::checked_vtable_of(&state.heap, globals.vtable_vt)
                 == globals.vtable_vt
                 && state
                     .vtables

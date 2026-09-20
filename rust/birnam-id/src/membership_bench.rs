@@ -7,7 +7,7 @@ use std::time::Instant;
 use crate::abi::Oop;
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
-use crate::vtable::Vtables;
+use crate::behaviors::Behaviors;
 
 pub(crate) const CASE_COUNT: usize = 10;
 pub(crate) const POPULATION_COUNT: usize = 3;
@@ -92,34 +92,34 @@ unsafe extern "C" fn foreign_method(_: Oop, _: *const Oop, _: usize) -> Oop {
     core::ptr::null_mut()
 }
 
-fn run_operation(case: Case, heap: &Heap, vtables: &Vtables, probes: &Probes) -> usize {
+fn run_operation(case: Case, heap: &Heap, vtables: &Behaviors, probes: &Probes) -> usize {
     let mut result = 0usize;
     for iteration in 0..ITERATIONS {
         let probe = iteration & (PROBE_COUNT - 1);
         result = result.wrapping_add(match case {
             Case::ObjectMembership => usize::from(heap.contains(black_box(probes.objects[probe]))),
             Case::VtableOf => {
-                Vtables::checked_vtable_of(heap, black_box(probes.objects[probe])).addr()
+                Behaviors::checked_vtable_of(heap, black_box(probes.objects[probe])).addr()
             }
             Case::VtableOfMethod => {
-                Vtables::checked_vtable_of(heap, black_box(probes.method)).addr()
+                Behaviors::checked_vtable_of(heap, black_box(probes.method)).addr()
             }
             Case::VtableOfForeign => {
-                Vtables::checked_vtable_of(heap, black_box(probes.foreign[probe])).addr()
+                Behaviors::checked_vtable_of(heap, black_box(probes.foreign[probe])).addr()
             }
             Case::VtableOwner => vtables.owner_of(black_box(probes.vtables[probe])).addr(),
             Case::VtableOwnerMethod => vtables.owner_of(black_box(probes.method)).addr(),
             Case::VtableOwnerForeign => vtables.owner_of(black_box(probes.foreign[probe])).addr(),
             Case::IsSmallInt => usize::from(
-                Vtables::checked_vtable_of(heap, black_box(probes.integers[probe]))
+                Behaviors::checked_vtable_of(heap, black_box(probes.integers[probe]))
                     == probes.smallint_vt,
             ),
             Case::IsFloat => usize::from(
-                Vtables::checked_vtable_of(heap, black_box(probes.floats[probe]))
+                Behaviors::checked_vtable_of(heap, black_box(probes.floats[probe]))
                     == probes.float_vt,
             ),
             Case::IsWord => usize::from(
-                Vtables::checked_vtable_of(heap, black_box(probes.words[probe])) == probes.word_vt,
+                Behaviors::checked_vtable_of(heap, black_box(probes.words[probe])) == probes.word_vt,
             ),
         });
     }
@@ -144,7 +144,7 @@ fn median(mut values: [u64; REPETITIONS]) -> u64 {
     values[REPETITIONS / 2]
 }
 
-fn measure(case: Case, heap: &Heap, vtables: &Vtables, probes: &Probes) -> BenchSample {
+fn measure(case: Case, heap: &Heap, vtables: &Behaviors, probes: &Probes) -> BenchSample {
     let mut raw = [0u64; REPETITIONS];
     let mut loop_only = [0u64; REPETITIONS];
     let mut net = [0u64; REPETITIONS];
@@ -181,7 +181,7 @@ fn scaling_exponent(first: BenchSample, last: BenchSample) -> f64 {
 
 pub(crate) fn run() -> BenchReport {
     let mut heap = Heap::new();
-    let mut vtables = Vtables::new();
+    let mut vtables = Behaviors::new();
     let meta = vtables.create(&mut heap, core::ptr::null_mut(), core::ptr::null_mut());
     boundary_set_vtable(&mut heap, meta, meta);
     let root = vtables.create(&mut heap, core::ptr::null_mut(), meta);

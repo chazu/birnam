@@ -7,6 +7,10 @@
 > a clean exact-current cut: no v7 reader or writer remains, and old images or
 > native image artifacts are not compatibility inputs.
 
+> **Current runtime admission:** Design 83 advances the runtime ABI to 6
+> (`5582a42725e647a6`) for the 40-byte behavior payload, following ABI 5
+> for exact-entry adapters. Image format 8 is unchanged.
+
 ## 1. Problem
 
 Image-v7 encoded Integer, Float, and String values inline at reference sites.
@@ -142,8 +146,8 @@ ordinary `proto`, `alloc`, layout, ancestry, and export operations.
 These additions defined Runtime ABI v4 with exact hash
 `0xcdb641f978540d45`. [Design 83](83-production-id-construction-and-lifetimes.md)
 subsequently advances the runtime ABI to v5 (`0xb587f81ecfb08b15`) for exact-entry
-resumable adapters. Current image-v8 headers carry the v5 hash; the image format
-version itself remains 8.
+resumable adapters, then v6 (`0x5582a42725e647a6`) for the smaller behavior
+payload. Current image-v8 headers carry the v6 hash; the image format remains 8.
 
 ## 6. Acceptance
 

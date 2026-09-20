@@ -816,7 +816,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             "id_api_descriptor_version": birnam_abi::ABI_DESCRIPTOR_V1.descriptor_version,
             "id_api_schema_version": birnam_abi::ABI_DESCRIPTOR_V1.schema_version,
             "id_api_fingerprint": hex::encode(birnam_abi::ABI_DESCRIPTOR_V1.fingerprint),
-            "runtime_abi_hash": "b587f81ecfb08b15",
+            "runtime_abi_hash": "5582a42725e647a6",
             "portable_code_api_versions": [1, 2, 3],
             "portable_program_view_api_version": 1,
         },
