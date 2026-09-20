@@ -579,6 +579,7 @@ fn run<const TRACE: bool, const EVENT: bool>(
         unloads.clone(),
     );
     let api = FixtureApi {
+        enter: crate::registration::birnam_enter_resumable_v1,
         send: send::<TRACE, EVENT>,
         intern: plain_intern,
         integer: integer::<EVENT>,

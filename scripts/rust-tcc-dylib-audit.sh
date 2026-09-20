@@ -15,6 +15,7 @@ birnam_alloc
 birnam_blockVt
 birnam_cstr
 birnam_ensurePrivateVtable
+birnam_enter_resumable_v1
 birnam_false
 birnam_floatValue
 birnam_foreignAddressValue

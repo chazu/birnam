@@ -17,7 +17,7 @@ pub mod support {
     } else {
         0
     };
-    const RUNTIME_ABI_VERSION: u32 = 4;
+    const RUNTIME_ABI_VERSION: u32 = 5;
     const RUNTIME_SHIM_NAMES: &[&[u8]] = &[
         b"birnam_send",
         b"birnam_intern",
@@ -211,6 +211,12 @@ pub mod support {
             hash = hash.wrapping_mul(0x100000001b3);
         }
         hash = hash_registration_abi_tuple_v1(hash).0;
+        // Exact-entry adapters require this symbol before any generated code
+        // can run. Reject earlier image runtimes at admission.
+        for byte in b"birnam_enter_resumable_v1" {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
         let mut version = RUNTIME_ABI_VERSION;
         for _ in 0..4 {
             hash ^= u64::from((version & 0xff) as u8);
@@ -218,6 +224,11 @@ pub mod support {
             version >>= 8;
         }
         hash
+    }
+
+    #[test]
+    fn exact_entry_runtime_abi_matches_the_install_receipt() {
+        assert_eq!(runtime_abi_hash(), 0xb587_f81e_cfb0_8b15);
     }
 
     #[cfg(any(feature = "module", test))]

@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Begin Design 83 production migration: generated resumable adapters enter the
+  exact implementation selected by lookup, preserving that answer across binding
+  replacement. Wire JIT and native artifact callers to the same entry. Advance
+  the image runtime ABI to 5 for the required entry symbol. Id still owns the
+  upper runtime until the remaining ownership and bootstrap cutover lands.
+
 - Address the adversarial review of minimal Id in Design 83 and revise Design 82:
   specify upper Execution turns instead of per-send execution protection in Id,
   define native loading results and failure lifetime, break construction cycles

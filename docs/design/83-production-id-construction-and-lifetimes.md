@@ -1,6 +1,7 @@
 # 83 — Production Id construction and lifetimes
 
-> **Status:** Implementation design, 2026-09-20; no runtime cutover implemented.
+> **Status:** Production migration in progress, 2026-09-20. Exact-entry adapters
+> are implemented; the minimal Id and upper ownership cutover remains open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -103,7 +104,7 @@ Methods installed for generated code have an ordinary native adapter. That
 adapter enters **its exact registered implementation**, not a new lookup of the
 original selector. The current emitter in
 [`resumable_c::emit_entry_thunk`](../../rust/birnam-codegen/src/resumable_c.rs)
-resends the selector; retaining it with bare Id would recurse indefinitely.
+formerly resent the selector; retaining that behavior with bare Id would recurse indefinitely.
 Migrate the adapter and its registration owner together.
 
 Machine's existing stackless path stays in upper Execution: ask Id to resolve

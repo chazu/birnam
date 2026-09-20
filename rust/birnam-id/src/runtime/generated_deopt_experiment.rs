@@ -112,6 +112,7 @@ struct FixtureApi {
     value: unsafe extern "C" fn(Oop) -> c_long,
     nil: unsafe extern "C" fn() -> Oop,
     global: unsafe extern "C" fn(*const c_char) -> Oop,
+    enter: unsafe extern "C" fn(Method, Oop, *const Oop, usize) -> Oop,
 }
 
 static API: FixtureApi = FixtureApi {
@@ -121,6 +122,7 @@ static API: FixtureApi = FixtureApi {
     value: shim_value,
     nil: shim_nil,
     global: shim_global,
+    enter: crate::registration::birnam_enter_resumable_v1,
 };
 
 unsafe extern "C" fn shim_send(receiver: Oop, selector: Oop, args: *mut Oop, count: c_long) -> Oop {

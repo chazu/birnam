@@ -747,6 +747,23 @@ pub unsafe extern "C" fn birnam_register_resumable_v2(
     .unwrap_or(REJECTED_V1)
 }
 
+/// Enter an already resolved native adapter without looking up its selector again.
+///
+/// # Safety
+/// The caller holds the adapter's code owner and an active runtime entry. The
+/// argument buffer follows the ordinary Method ABI for this synchronous call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_enter_resumable_v1(
+    method: Method,
+    receiver: Oop,
+    arguments: *const Oop,
+    count: usize,
+) -> Oop {
+    crate::runtime::with_active(|runtime| unsafe {
+        runtime.enter_registered_resumable_or_fatal(method, receiver, arguments, count)
+    })
+}
+
 /// Host-to-floor staging seam. This symbol is not imported by generated code
 /// and therefore is not part of Runtime ABI v3; it brackets the sole generated
 /// publication symbol with already-admitted mapped-unit context.

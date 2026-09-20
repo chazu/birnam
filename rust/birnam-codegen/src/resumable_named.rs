@@ -194,7 +194,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn named_adapter_retains_second_lookup_and_distinct_entry_carrier() {
+    fn named_adapter_retains_exact_entry_and_late_bound_implementation_call() {
         let authority = SelectionSpec {
             source_revision: [0x31; 32],
             root_kind: RootKind::MethodOperation,
@@ -223,7 +223,8 @@ mod tests {
         assert_eq!(call.selector, b"value:value:value:");
 
         let c = String::from_utf8(compiled.c_source).unwrap();
-        assert!(c.contains("birnam_intern(\"at:put:\")"));
+        assert!(!c.contains("birnam_intern(\"at:put:\")"));
+        assert!(c.contains("birnam_enter_resumable_v1((void*)&__birnam_resumable_thunk_7"));
         assert!(c.contains("birnam_intern(\"value:value:value:\")"));
         assert!(c.contains("e.implementation_oop=implementation"));
         assert!(c.contains("e.manifest_entry_index=2U"));

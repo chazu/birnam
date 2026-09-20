@@ -8494,6 +8494,65 @@ mod tests {
     }
 
     #[test]
+    fn generated_adapter_invokes_the_selected_entry_after_binding_replacement() {
+        use birnam_native_compiler::Unit;
+        use core::ffi::c_void;
+        use std::ffi::CString;
+
+        // Compile the production adapter with no send/intern imports. An adapter
+        // that silently redoes lookup cannot even link against this contract.
+        let mut source = birnam_codegen::resumable_c::emit_entry_thunk(83, b"selected:");
+        source.extend_from_slice(b"void* entry_address(void){return (void*)&__birnam_resumable_thunk_83;}\n");
+        let source = CString::new(source).unwrap();
+        let unit = unsafe {
+            Unit::compile(&source, &[(
+                c"birnam_enter_resumable_v1",
+                crate::registration::birnam_enter_resumable_v1 as *const c_void,
+            )])
+        }.expect("production adapter links through exact entry only");
+        let address: unsafe extern "C" fn() -> *mut c_void = unsafe {
+            core::mem::transmute(unit.symbol(c"entry_address").unwrap().as_ptr())
+        };
+        let method: Method = unsafe { core::mem::transmute(address()) };
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        RETURN_PROBE_SELECTOR.set(runtime.intern(b"returnAt:").unwrap());
+        CALL_PROBE_FORCED_GC.set(false);
+        let selector = runtime.intern(b"selected:").unwrap();
+        let receiver = runtime.canonical().object_prototype;
+        let expected = runtime.make_integer(83);
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+            identity: DescriptorIdentity { implementation: 83, generation: 1, source_map: 83 },
+            program_counter_count: 1,
+            driver_argument_count: 0,
+            call_sites: Vec::new(),
+            step_method: call_child_step,
+            entry_argument_count: 1,
+            edges: vec![],
+            ..probe_spec(2, 1)
+        }).unwrap();
+        runtime.register_stackless_resumable(SemanticRegistrationV1::new(
+            method, descriptor, 1, 0, 1,
+        )).unwrap();
+        runtime.add_method(runtime.globals().object_vt, selector, method);
+        unsafe extern "C" fn replacement(_: Oop, _: *const Oop, _: usize) -> Oop {
+            crate::runtime::with_active(|runtime| runtime.canonical().nil)
+        }
+        runtime.enter(|| {
+            let _read = runtime.enter_dispatch_read();
+            let selected = unsafe { runtime.bind_active(receiver, selector) }.unwrap();
+            runtime.add_method(runtime.globals().object_vt, selector, replacement);
+            let args = [expected];
+            let answer = unsafe { selected.to_method()(receiver, args.as_ptr(), args.len()) };
+            assert_eq!(answer, expected, "the captured adapter retains the exact selected method");
+            assert_eq!(runtime.send_slice(receiver, selector, &args), runtime.canonical().nil,
+                "the next send observes replacement");
+        });
+    }
+
+    #[test]
     fn registered_ordinary_send_bypasses_thunk_and_direct_fallback_still_works() {
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;

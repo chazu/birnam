@@ -1651,6 +1651,18 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
     if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
         return false;
     }
+    let Some(enter) = (unsafe { floor_symbol(api, b"birnam_enter_resumable_v1\0") })
+    else {
+        return false;
+    };
+    let symbol = b"birnam_enter_resumable_v1";
+    let name = unsafe { (birnam_abi::string::make)(symbol.as_ptr(), symbol.len()) };
+    let Some(address) = (unsafe { borrowed_address(api, enter) }) else {
+        return false;
+    };
+    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
+        return false;
+    }
     let Some(registration) = (unsafe { floor_symbol(api, b"birnam_register_resumable_v1\0") })
     else {
         return false;

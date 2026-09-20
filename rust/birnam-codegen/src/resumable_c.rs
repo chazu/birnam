@@ -54,16 +54,16 @@ pub enum BlockLiteralDisposition {
 /// vtable. Internal linkage prevents a concurrently mapped unit's same
 /// manifest-local symbol index from interposing this carrier.
 ///
-/// Normal dispatch classifies this address and enters the registered
-/// resumable without invoking the carrier. A raw Method invocation falls back
-/// through ordinary `birnam_send`, where the same resolver classifies it.
-pub fn emit_entry_thunk(symbol_index: u32, selector: &[u8]) -> Vec<u8> {
+/// The adapter invokes its exact registration. Re-sending the original selector
+/// would perform lookup twice and recurse when Id no longer classifies entries.
+pub fn emit_entry_thunk(symbol_index: u32, _selector: &[u8]) -> Vec<u8> {
     let mut output = Emitter::with_capacity(256);
+    output.push(b"extern void* birnam_enter_resumable_v1(void*,void*,void* const*,unsigned long);\n");
     output.push(b"static void* __birnam_resumable_thunk_");
     decimal(&mut output, symbol_index);
-    output.push(b"(void* receiver, void* const* args, unsigned long n){\nreturn birnam_send(receiver,birnam_intern(\"");
-    output.push_c_string_body(selector);
-    output.push(b"\"),(void**)args,(long)n);\n}\n");
+    output.push(b"(void* receiver, void* const* args, unsigned long n){\nreturn birnam_enter_resumable_v1((void*)&__birnam_resumable_thunk_");
+    decimal(&mut output, symbol_index);
+    output.push(b",receiver,args,n);\n}\n");
     output.finish()
 }
 
@@ -1061,10 +1061,10 @@ mod tests {
     }
 
     #[test]
-    fn entry_thunk_reenters_through_the_same_late_bound_selector() {
+    fn entry_thunk_enters_its_exact_registration_without_second_lookup() {
         assert_eq!(
             String::from_utf8(emit_entry_thunk(12, b"value:value:")).unwrap(),
-            "static void* __birnam_resumable_thunk_12(void* receiver, void* const* args, unsigned long n){\nreturn birnam_send(receiver,birnam_intern(\"value:value:\"),(void**)args,(long)n);\n}\n"
+            "extern void* birnam_enter_resumable_v1(void*,void*,void* const*,unsigned long);\nstatic void* __birnam_resumable_thunk_12(void* receiver, void* const* args, unsigned long n){\nreturn birnam_enter_resumable_v1((void*)&__birnam_resumable_thunk_12,receiver,args,n);\n}\n"
         );
     }
 

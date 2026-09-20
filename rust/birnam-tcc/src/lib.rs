@@ -977,6 +977,30 @@ pub unsafe extern "C" fn rt_register_resumable_v2(envelope: *mut c_void) -> u32 
     unsafe { register(envelope) }
 }
 
+/// Generated adapters retain the exact method selected by lookup. This bridge
+/// follows the registration owner while the runtime is being separated from Id.
+#[unsafe(export_name = "birnam_enter_resumable_v1")]
+pub unsafe extern "C" fn rt_enter_resumable_v1(
+    method: Method,
+    receiver: Oop,
+    args: *const Oop,
+    count: usize,
+) -> Oop {
+    static ADDRESS: OnceLock<usize> = OnceLock::new();
+    let runtime = RUNTIME.get().unwrap_or_else(|| abort("TCC runtime was not initialized"));
+    let address = floor_symbol_address(
+        unsafe { api_ref(runtime) },
+        c"birnam_enter_resumable_v1",
+        &ADDRESS,
+    );
+    if address == 0 {
+        abort("exact resumable entry unavailable");
+    }
+    let enter: unsafe extern "C" fn(Method, Oop, *const Oop, usize) -> Oop =
+        unsafe { core::mem::transmute(address) };
+    unsafe { enter(method, receiver, args, count) }
+}
+
 #[unsafe(export_name = "birnam_intern")]
 pub unsafe extern "C" fn rt_intern(name: *const c_char) -> Oop {
     let runtime = RUNTIME
@@ -1247,6 +1271,10 @@ static RUNTIME_SYMBOLS: &[RuntimeSymbol] = &[
     RuntimeSymbol {
         name: b"birnam_send\0",
         address: rt_send as *const c_void,
+    },
+    RuntimeSymbol {
+        name: b"birnam_enter_resumable_v1\0",
+        address: rt_enter_resumable_v1 as *const c_void,
     },
     RuntimeSymbol {
         name: b"birnam_intern\0",

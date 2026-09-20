@@ -8,6 +8,7 @@ typedef struct {
     long (*value)(void*);
     void* (*nil)(void);
     void* (*global)(const char*);
+    void* (*enter)(Method, void*, void* const*, unsigned long);
 } FixtureApi;
 static FixtureApi api;
 void fixture_init(const FixtureApi* supplied) { api = *supplied; }
@@ -17,4 +18,7 @@ static void* birnam_mkSmallInt(long n) { return api.integer(n); }
 static long birnam_smallIntValue(void* o) { return api.value(o); }
 static void* birnam_nil(void) { return api.nil(); }
 static void* birnam_global(const char* s) { return api.global(s); }
+void* birnam_enter_resumable_v1(void* method, void* receiver, void* const* args, unsigned long n) {
+    return api.enter((Method)method, receiver, args, n);
+}
 #define MKV(n) birnam_mkSmallInt(n)
