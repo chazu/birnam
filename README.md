@@ -860,6 +860,11 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [separate dependency](abi/guard-verdict-v1.md). Guard evaluation stays in Id.
   Run `mise run guard-verdict`; use `scripts/guard-verdict-image-smoke.sh PREFIX`
   for startup and compiled-image checks with active Frame reads and writes.
+- [Mutation Epoch](docs/design/81bw-production-vtable-mutation-epoch.md) moves each
+  Vtables registry's epoch cell into Object Model through an
+  [explicit dependency](abi/mutation-epoch-v1.md). Id retains increment policy.
+  Run `mise run mutation-epoch`; use `scripts/mutation-epoch-image-smoke.sh PREFIX`
+  for startup and compiled-image checks through live mutation and slot guards.
 - [Root Registry](docs/design/81bj-production-root-provider-registry.md) owns
   ordered native root-provider registration and copied snapshots through an
   [explicit capability](abi/root-registry-v1.md). Collector phases and storage

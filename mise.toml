@@ -107,6 +107,10 @@ run = "scripts/dispatch-cache-test.sh"
 description = "Check guard-verdict ownership, lookup and Machine-slot invariants, and host admission (debug)"
 run = "scripts/guard-verdict-test.sh"
 
+[tasks.mutation-epoch]
+description = "Check Vtable epoch ownership, exact mutation counts, live dispatch and host admission (debug)"
+run = "scripts/mutation-epoch-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"

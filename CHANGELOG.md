@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move each Vtables registry's mutation-epoch cell into Object Model (81BW).
+  Keep saturation, mutation counts and lookup/native-tier readers in Id. Startup
+  and compiled-image checks preserve live dictionary and behavior changes,
+  active Frame slot guards, aliases and GC. Public formats are unchanged.
+
 - Move per-Runtime lookup and Machine-slot guard-verdict cells into Dispatch
   Cache (81BV). Keep eligibility evaluation, mutation checks and fallback in Id,
   with independent owners and unchanged GC behavior. Startup and compiled-image

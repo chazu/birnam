@@ -869,3 +869,10 @@ pub unsafe extern "C" fn birnam_dispatch_cache_dependency_v1(factory: *const bir
 pub unsafe extern "C" fn birnam_guard_verdict_dependency_v1(factory: *const birnam_abi::guard_verdict::FactoryV1) -> c_int {
     unsafe { birnam_abi::guard_verdict::attach(factory) }
 }
+
+/// # Safety
+/// Prepare before Id initialization; descriptor and code stay pinned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_mutation_epoch_dependency_v1(factory: *const birnam_abi::mutation_epoch::FactoryV1) -> c_int {
+    unsafe { birnam_abi::mutation_epoch::attach(factory) }
+}

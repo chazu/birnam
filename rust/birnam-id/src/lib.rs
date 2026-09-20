@@ -19,6 +19,7 @@ mod native_stack;
 mod allocation_budget;
 mod collection_phase;
 mod guard_verdict;
+mod mutation_epoch;
 mod storage_observation;
 mod payload_layout;
 mod trace_hooks;

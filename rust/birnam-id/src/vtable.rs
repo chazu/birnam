@@ -150,7 +150,7 @@ pub(crate) struct Vtables {
     // Monotonic count of dictionary, parent and registry mutations. Design 74A
     // §3.2: a reader that cached a verification against one epoch re-verifies
     // when the epoch moved. Over-counting is harmless; never skip a mutator.
-    mutation_epoch: u64,
+    mutation_epoch: crate::mutation_epoch::Service,
     // Records release their carriers before this capability is destroyed.
     layouts: crate::payload_layout::Service,
     hooks: crate::trace_hooks::Service,
@@ -161,23 +161,23 @@ impl Vtables {
         Self {
             ordered: Vec::new(),
             by_address: AddressMap::default(),
-            mutation_epoch: 0,
+            mutation_epoch: crate::mutation_epoch::Service::new(),
             layouts: crate::payload_layout::Service::new(),
             hooks: crate::trace_hooks::Service::new(),
         }
     }
 
     pub(crate) fn mutation_epoch(&self) -> u64 {
-        self.mutation_epoch
+        self.mutation_epoch.get()
     }
 
     #[cfg(test)]
     pub(crate) fn exhaust_mutation_epoch_for_test(&mut self) {
-        self.mutation_epoch = u64::MAX;
+        self.mutation_epoch.set(u64::MAX);
     }
 
     pub(crate) fn note_mutation(&mut self) {
-        self.mutation_epoch = self.mutation_epoch.saturating_add(1);
+        self.mutation_epoch.set(self.mutation_epoch.get().saturating_add(1));
     }
 
     pub(crate) fn create(&mut self, heap: &mut Heap, parent: Oop, metavtable: Oop) -> Oop {
@@ -1202,3 +1202,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod mutation_epoch_tests;

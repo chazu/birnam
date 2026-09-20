@@ -40,6 +40,7 @@ pub mod allocation_budget;
 pub mod collection_phase;
 pub mod dispatch_cache;
 pub mod guard_verdict;
+pub mod mutation_epoch;
 pub mod storage_observation;
 pub mod text_view;
 pub mod error_value;

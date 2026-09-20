@@ -1,7 +1,7 @@
 # 81BW — Vtable mutation-epoch ownership
 
-> **Status:** Audited next extraction after completed 81BV (`1856504b`).
-> Production migration pending. Preserve behavior; debug validation only.
+> **Status:** Completed production extraction after 81BV (`1856504b`).
+> Debug validation only; mutation policy and public formats are unchanged.
 
 Move the single `Vtables::mutation_epoch` storage cell into the existing Object
 Model module. Keep `Vtables::note_mutation`, its saturating increment, every
@@ -74,8 +74,8 @@ Id initialization, immediately after the existing Vtable Enumeration factory
 from the same library. Validate version, exact size and all operations inertly;
 accept repeat attachment of the same descriptor and reject retargeting.
 Preserve all other preparation and ordinary Siphon initializer order. Update
-both C/Rust fixture loaders and the export inventory. Object Model currently
-exports `birnam_object_model_rust_identity`, `birnam_symbol_borrow_v1`,
+both C/Rust fixture loaders and the export inventory. Before this extraction,
+Object Model exported `birnam_object_model_rust_identity`, `birnam_symbol_borrow_v1`,
 `birnam_vtable_enumeration_factory_v2` and `module_init`; freeze those four in
 its new native export manifest and add only the epoch factory. The pre-Id
 factory must work before Object Model's ordinary `ACCESS` initialization and
@@ -130,3 +130,80 @@ Check the complete library/export/linkage inventory and final source/artifact
 receipts. Add the ABI reference, focused task, README links and changelog;
 commit the completed extraction before selecting another boundary. No release
 validation is required.
+
+## Implementation and evidence
+
+Object Model now owns one opaque epoch cell per Vtables registry. The Id
+adapter changes only the field type, initialization, accessor, private test
+assignment and the read/store expression surrounding the same saturating
+increment. Reversing those five substitutions reproduces the baseline Vtables
+source exactly. Every mutation/reader site, Runtime reassociation, guarded lookup
+and slot path, inherited cache adapter, native-tier module and existing Object
+Model body remain unchanged (apart from test module declarations).
+
+The host and both fixture loaders prepare the new factory after Vtable
+Enumeration and before Id. Earlier host-admission fixtures now acknowledge that
+dependency so their original failure gates remain reachable. The independent C
+header pins the 48-byte layout. The ABI reference, native export manifest,
+`mise run mutation-epoch`, installed-image smoke script and README links describe
+the owner without adding any language methods.
+
+Debug validation:
+
+- Core ABI, Object Model, Dispatch Cache, host and Id suites: 399 passed,
+  16 ignored. The workspace also passes the all-targets debug check.
+- The same new two-test witness runs against the original `u64` and extracted
+  owner. All 20 exact epoch/raw-view transcript lines match byte for byte.
+  Coverage includes moved and independent registries, creation without an
+  epoch bump, overwrite, missing/present removal, same-parent
+  assignment, owner/layout/hook non-mutations, empty and multi-entry sweeps,
+  saturation with continued live mutation, reassociation results, and cell
+  destruction after Heap teardown.
+- Existing Vtable, 81BV tuple-state, enabled/disabled lookup and Machine-slot,
+  inherited-cache and native-tier tests pass. The original six Runtime guard
+  tests also pass in the preserved baseline source tree.
+- The C observer captures the actual loaded registry's owner. Preparation
+  creates no owner; Id initialization creates exactly one cell at zero. Every
+  observed production write is the exact saturating successor. Method changes,
+  absent removal, identical/replaced parent and identical/replaced behavior each
+  advance once; warm inherited lookup reads the same owner without writing.
+  This probe passes for workspace and installed libraries.
+- All 12 new host admission cases pass for workspace and installed libraries.
+  A missing shared library still fails at Vtable Enumeration. Invalid epoch
+  descriptors and missing/rejected Id dependencies fail before initialization.
+- Dynamic Siphon startup, source-free compiled callers, mapped/rebuilt native
+  Code images and baked execution pass. The consumer checks canonical and
+  overridden lookup, active Frame reads/writes, parent and behavior replacement,
+  absent removal, aliases, GC and reload. Source files and the saver module are
+  removed before recovery. The actual host asserts `Mapped` for ordinary and
+  baked loads and `SourceRecovery` for explicit rebuild before running main.
+- The actual old/new image-backed host workers match all 12 wire values and
+  orderly shutdown byte for byte. The external debug harness leaves the
+  production handshake deadline unchanged.
+- Guard-verdict, inherited-cache, allocation-budget, collection-phase and
+  storage-observation regressions pass, including their 12, 13, 14, 12 and 14
+  host admission cases. The Relational native-output fixture passes through the
+  updated Rust namespace loader and real installed floor.
+
+## Final inventory and receipts
+
+The inventory remains 81 libraries: 53 native and 28 compiled modules. All 38
+native export manifests match, including the new Object Model inventory. The
+only export additions are its epoch factory and Id's dependency. Both libraries
+link only system libraries. Object Model's existing Cargo output-path install
+name is byte-for-byte unchanged from the baseline; this extraction does not
+convert it to `@rpath`. The public admission contract matches exactly: IdApi
+v20, twelve-argument ModuleInit, Native Loader v12 and image v8.
+
+Preserved 81BV baseline: 503 source inputs and 542 installed artifacts.
+
+- Source: `083463fdb66a21ce8c7079ebc5e1bdcc877b3e534e65152dc68e0969606424fd`
+- Artifacts: `1827409f949d7224cde88d88902ec02ef54d8140b3b5daab610f6f9e688f3f4d`
+
+Final debug installation: 508 source inputs and 547 installed artifacts,
+all checked against current source or installed file contents.
+
+- Source: `b8a6643e7ff150c63d6797c31535c2012944569f3b52670db4139bd973c6df66`
+- Artifacts: `cf1573d39419f32b053518bf0153df0f24cba1330a5549517bea9af6c275c68e`
+
+No release validation was run.

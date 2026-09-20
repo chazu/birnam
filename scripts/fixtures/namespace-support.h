@@ -2,6 +2,7 @@
 #define FIXTURE_NAMESPACE_SUPPORT_H
 #include "../../abi/fixtures/namespace-v8/namespace_v8.h"
 #include "vtable-enumeration-support.h"
+#include "mutation-epoch-support.h"
 #include "method-observation-support.h"
 #include "root-registry-support.h"
 #include "gc-settings-support.h"
@@ -82,6 +83,7 @@ static inline void fixture_prepare_namespace(void *floor, const char *floor_path
     const NamespaceApiV8 *api=provide(); assert(api && attach(api)==1);
     /* Both handles remain pinned for the process-owned floor. */
     fixture_prepare_vtable_enumeration(floor,floor_path);
+    fixture_prepare_mutation_epoch(floor,floor_path);
     fixture_prepare_method_observation(floor,floor_path);
     fixture_prepare_root_registry(floor,floor_path);
     fixture_prepare_gc_settings(floor,floor_path);
