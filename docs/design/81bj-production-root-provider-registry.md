@@ -1,7 +1,21 @@
 # 81BJ — Native root-provider registry
 
-> **Status:** Initial boundary audit against completed 81BI (`868f62ed`).
-> No implementation or new ABI is selected yet.
+> **Status:** Implementation checkpoint against completed 81BI (`868f62ed`).
+> Caller selection audited; service and ABI scaffolding are present. Production
+> integration and behavioral validation are pending.
+
+The checkpoint includes the standalone `birnam-root-registry` crate, its ABI
+descriptors, and a draft Id service bridge. The bridge is not declared in Id's
+module tree and still needs its floor callbacks and Runtime ownership wiring.
+Production continues to use the existing registry in Id. The IdApi v15 and
+initializer/prepare contract changes below describe the selected next steps;
+they are not yet installed. Caller migration, host loading, ABI manifests,
+installation inventories, and independent behavioral/image checks remain open.
+
+Checkpoint validation: `cargo check -p birnam-abi -p birnam-root-registry
+-p birnam-id --all-targets --locked --offline` passes in the debug profile.
+This checks the compiled scaffolding and existing Id targets; the undeclared
+bridge and production integration are not covered by that result.
 
 [81D](81d-id-api-partition.md) places root-provider registration with collector
 integration. [81O](81o-production-live-gc-traversal.md) and
@@ -74,7 +88,7 @@ In particular:
 - Portable Code registers through its first saved execution API. Tcc, Codegen
   and Artifact also use saved execution selections at their registration points.
   Do not mechanically replace these with incoming selections.
-- Alien and Relational have helper/lazy paths as well as initializer state.
+- Alien and Relational have helper paths as well as initializer state.
   Preserve each caller's existing once mechanism and its reentry behavior;
   changing Once, OnceLock or atomic flags is outside this extraction.
 
@@ -84,21 +98,71 @@ C fixtures, compiled native consumers, export inventories and installation must
 migrate together. No API-address registry, temporary callback-slot loan or
 aggregate compatibility facade should substitute for explicit selection.
 
-## Boundary still to resolve
+## Audited caller selections
 
-A separately loaded service can own each Runtime's list and provide public
-registration plus immutable internal append/snapshot operations. Public
-registration must retain the existing admission order, while direct Runtime
-registration and storage-observation snapshots must preserve their different
-admission contexts. Owned internal operations must not be redirected by mutable
-public capability instrumentation. Do not use a movable Runtime address as the
-service context.
+The 22 production registration expressions preserve these selections. Existing
+once and phase guards stay at their current call points.
 
-Specify an inert pre-Id factory, failure/overflow propagation, synchronous
-snapshot output ownership and teardown before selecting layouts. Do not expose
-Rust Vec ownership across the ABI, borrow the live vector through a callback,
-add a new provider lifetime manager, or make the registry part of the tracer's
-mutable worklist. Its canonical factory and native code remain pinned.
+| Caller | Selection and point |
+|---|---|
+| String storage | Incoming prepare API, after instance publication, before population |
+| Float and Word | Incoming prepare API, after instance publication, before population |
+| Integer | Incoming initial module API, after Runtime/instance publication, before population |
+| String protocol | Incoming module API; Once after first storage publication, before Runtime selectors |
+| String Builder | Incoming module API; Once before family construction/adoption |
+| Range, Vector, Map | Incoming prepare API; Once before family construction/adoption |
+| Collection | Incoming API; Once after first Runtime initialization, before layouts |
+| Store | Incoming API; atomic flag after root publication, before overwrite registration |
+| PEG | Incoming API, conditional on live namespace presence after method installation |
+| Error | Incoming API; OnceLock after method installation, before publication |
+| Image | Incoming API; existing bring-up guards and OnceLock after Runtime publication |
+| Isolate | Incoming API; OnceLock after Runtime initialization, before layouts/methods |
+| Alien | Incoming bring-up API in its helper; preserve Once and its current point |
+| Relational | Incoming module API after bring-up; preserve helper's OnceLock |
+| Lang | First saved execution API; OnceLock before grammar construction |
+| Tcc | First saved execution API; OnceLock before layouts and method installation |
+| Codegen | First saved execution API; OnceLock before method installation |
+| Artifact | First saved execution API; OnceLock after method installation |
+| Portable Code | First saved execution API; Once after Runtime publication |
+
+The three collection-family prepare paths are additional early contracts, not
+ordinary initializer calls. String preparation becomes v3; Float/Word preparation
+and Range/Vector/Map construction become v5. Native Loader installation becomes
+v8. All native initializers gain the eighth matching root-registration capability.
+IdApi v15 removes the registration field and obsolete RootProvider layout entry:
+25 fields, 200 bytes, six remaining type entries. Provider/MarkFn signatures,
+traversal/storage contracts and image encoding stay unchanged.
+
+## Selected ownership contract
+
+A separately loaded Root Registry service owns each Runtime's ordered Vec and
+its capacity law. Its mutable public 32-byte capability has version/extent,
+context and register. Registration copies a 40-byte floor descriptor with owner
+admission and nonreturning overflow reporting, invokes admission before append,
+and preserves the old fatal diagnostic. The copied floor retains no movable
+Runtime address. The immutable 48-byte factory creates/destroys the service and
+provides canonical append and snapshot operations at its original owned address.
+
+Public descriptor instrumentation cannot redirect Id's direct registration,
+snapshot or destruction. Id performs its existing admission before internal
+append; the factory reports capacity failure for Id's existing invariant path.
+Public admission still selects the process Runtime (active Runtime in unit
+fixtures); direct independent Runtime use does not acquire that requirement.
+Canonical append and snapshot invoke no floor/provider callbacks.
+
+A snapshot is an owned C-layout value: count plus 32 optional function-pointer
+slots, 264 bytes. Only its first count entries are populated. This copies the
+existing bounded list atomically with respect to owner-thread operations, without
+passing Rust Vec ownership or a live borrowed buffer across the ABI. Id can copy
+its populated entries into the same local scratch Vec used by existing consumers.
+No state borrow crosses provider or mark invocation. Diagnostic snapshotting
+bypasses ordinary admission exactly as its current internal clone does.
+
+The host pins and attaches an inert factory before Id initialization. Ordinary
+module mounting publishes no language objects or methods. Creation and factory
+admission do not call the floor; same-pointer attachment repeats and retargeting
+rejects. Destruction invokes no providers and does not release their code.
+Stack capture, collection settings and physical root ownership remain unchanged.
 
 ## Required evidence
 

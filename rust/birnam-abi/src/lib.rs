@@ -29,6 +29,7 @@ pub mod namespace_export;
 pub mod namespace_enumeration;
 pub mod vtable_enumeration;
 pub mod method_observation;
+pub mod root_registry;
 pub mod text_view;
 pub mod error_value;
 pub mod range;
