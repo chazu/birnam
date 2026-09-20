@@ -73,6 +73,7 @@ void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presenc
     const NamespaceApiV7 *operations=factory();assert(operations && operations->version==7 && operations->byte_size==sizeof(*operations));
     assert(dladdr((void *)operations->lookup,&info) && strstr(info.dli_fname,"libbirnam_namespace.dylib"));
     assert(dladdr((void *)operations->publish,&info) && strstr(info.dli_fname,"libbirnam_namespace.dylib"));
+    assert(dladdr((void *)imports->import,&info) && strstr(info.dli_fname,"libbirnam_namespace.dylib"));
     fixture_namespace_floor=floor;count_exports=fixture_namespace_count;name_at=fixture_namespace_name_at;
     api->method(fixture_namespace_import("SystemVt"),api->intern("namespaceExercise:"),exercise);
     api->method(fixture_namespace_import("SystemVt"),api->intern("namespaceObserveNames"),observe_names);

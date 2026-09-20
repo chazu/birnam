@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     api->export_obj("nil",ordinary);
     mount(argv[3],&nil_api);
     assert(lookup(nil_vt,"isNil")==methods[2] && api->vtable_of(api->nil_obj)==nil_vt);
-    assert(api->import_fn("nil")==ordinary); api->export_obj("nil",api->nil_obj);
+    assert(fixture_namespace_import("nil")==ordinary); api->export_obj("nil",api->nil_obj);
     api->method(nil_vt,api->intern("isNil"),identity);
     api->method(api->object_vt,api->intern("notNil"),identity);
     if(!baseline) {

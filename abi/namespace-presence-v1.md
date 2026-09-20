@@ -30,7 +30,7 @@ interned. Empty and non-UTF8 names work. A raw null binding is absent; a nil obj
 binding is present. The default never invokes replaced public import/intern
 slots. Neither restricted interning nor raw lookup sends, collects or reenters.
 
-IdApi v9 has no presence slot and there is no callback-slot bridge or API-address
+IdApi v10 has no presence slot and there is no callback-slot bridge or API-address
 registry in production. The floor retains the original function/context pair
 separately for pure numeric admission; live replacement withdraws admission
 without invoking the replacement. Owned services are destroyed by descriptor

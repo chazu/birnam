@@ -6,9 +6,9 @@
 #ifndef EXPECT_BLOCK_LOOP_LIBRARY
 #define EXPECT_BLOCK_LOOP_LIBRARY "libbirnam_block_loop.dylib"
 #endif
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports) {
     (void)presence;
-    (void)state;assert(api);Oop type=api->import_fn("BlockVt");assert(type);
+    (void)state;assert(api);Oop type=namespace_import_v1(imports,"BlockVt");assert(type);
     const char *names[]={"whileTrue:","whileFalse:"};
     for(size_t i=0;i<2;i++) {
         Oop selector=api->intern(names[i]);Method method=(Method)api->send(type,api->intern("lookup"),&selector,1);

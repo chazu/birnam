@@ -5,9 +5,9 @@
 #ifndef EXPECT_SOURCE_LOADER_LIBRARY
 #define EXPECT_SOURCE_LOADER_LIBRARY "libbirnam_source_loader.dylib"
 #endif
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports) {
     (void)presence;
-    assert(api && !state);Oop type=api->import_fn("SystemVt"),selector=api->intern("load:");
+    assert(api && !state);Oop type=namespace_import_v1(imports,"SystemVt"),selector=api->intern("load:");
     Method method=(Method)api->send(type,api->intern("lookup"),&selector,1);Dl_info owner;
     assert(method && dladdr((const void *)method,&owner));const char *base=strrchr(owner.dli_fname,'/');
     assert(base && !strcmp(base+1,EXPECT_SOURCE_LOADER_LIBRARY));return NULL;

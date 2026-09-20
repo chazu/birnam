@@ -11,10 +11,7 @@
 
 static IdApi *floor_api, watched;
 static const ErrorValueApiV3 *errors;
-static Oop import_slot(void *context,const char *name) { return (*(Oop (**)(const char *))context)(name); }
-static NamespaceImportV1 import_loan(const IdApi *api) {
-    return (NamespaceImportV1){1,sizeof(NamespaceImportV1),(void *)&api->import_fn,import_slot};
-}
+static NamespaceImportV1 watched_imports;
 static StringApiV1 *strings;
 static uintptr_t identities[8];
 #define ID(n) ((Oop)&identities[n])
@@ -37,7 +34,8 @@ static Oop intern(const char *name) {
     if(!strcmp(name,"kind:message:")) { event('s');return ID(1); }
     assert(!strcmp(name,"kind"));event('i');if(mode==1)replace();return ID(2);
 }
-static Oop imported(const char *name) {
+static Oop imported(void *context,const char *name) {
+    assert(context==&watched_imports);
     event('r');if(!strcmp(name,"ErrorVt"))return ID(3);assert(!strcmp(name,"Error"));return ID(4);
 }
 static Oop vtable(Oop value) { assert(value==ID(5));event('v');return ID(3); }
@@ -52,24 +50,24 @@ static Oop make(void *context,const uint8_t *bytes,size_t length) {
         nested=1;
         NamespacePresenceV1 other={1,sizeof(other),&right,contains};
         IdApi other_api=watched;other_api.nil_obj=ID(0);
-        NamespaceImportV1 imports=import_loan(&other_api);
+        NamespaceImportV1 imports=watched_imports;
         assert(errors->from_bytes(&other_api,&other,&imports,(const uint8_t *)"kind",5,bytes,length)==ID(0));
         nested=0;
     }
     return ID(6);
 }
 static Oop construct(const NamespacePresenceV1 *presence) {
-    NamespaceImportV1 imports=import_loan(&watched);
+    NamespaceImportV1 imports=watched_imports;
     return errors->from_bytes(&watched,presence,&imports,(const uint8_t *)"kind",5,(const uint8_t *)"msg",3);
 }
 static Oop exercise(Oop self,const Oop *args,size_t count) {
     (void)self;(void)args;assert(count==0);
     watched=*floor_api;watched.intern=intern;
-    watched.import_fn=imported;watched.vtable_of=vtable;watched.send=send;
+    watched_imports=(NamespaceImportV1){1,sizeof(watched_imports),&watched_imports,imported};watched.vtable_of=vtable;watched.send=send;
     StringApiV1 original=*strings;strings->context=&mode;strings->make=make;
     left=(struct Choice){'A',1};right=(struct Choice){'B',0};
     NamespacePresenceV1 presence={1,sizeof(presence),&left,contains};active_presence=&presence;
-    NamespaceImportV1 imports=import_loan(&watched);
+    NamespaceImportV1 imports=watched_imports;
     mode=nested=0;used=0;events[0]=0;
     assert(!errors->is_error(&watched,NULL,NULL,NULL));expect("");
     assert(errors->is_error(&watched,&presence,&imports,ID(5))==1);expect("Arv");
@@ -95,7 +93,7 @@ static void *open_sibling(const char *floor_path,const char *name) {
     int length=snprintf(path,sizeof(path),"%.*s/%s",(int)(slash-floor_path),floor_path,name);
     assert(length>0 && (size_t)length<sizeof(path));void *image=floor_api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);return image;
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports) {
     (void)presence;
     assert(api && !state);if(floor_api)assert(floor_api==api);else floor_api=api;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
@@ -107,7 +105,7 @@ void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
     assert(string_provider);strings=string_provider();assert(strings);
     assert(dladdr((void *)errors->is_error,&info) && strstr(info.dli_fname,"/libbirnam_error_value.dylib"));
     assert(dladdr((void *)errors->from_bytes,&info) && strstr(info.dli_fname,"/libbirnam_error_value.dylib"));
-    api->method(api->import_fn("SystemVt"),api->intern("errorValuePresenceProbe"),exercise);
+    api->method(namespace_import_v1(imports,"SystemVt"),api->intern("errorValuePresenceProbe"),exercise);
     return NULL;
 }
 int birnam_symbol_borrow_v1(void) { return 1; }

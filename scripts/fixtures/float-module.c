@@ -55,7 +55,7 @@ static void expect_float(Oop object, double expected) {
     else assert(memcmp(&actual,&expected,sizeof(actual))==0);
 }
 static void expect_error(Oop object, const char *kind) {
-    assert(api->vtable_of(object)==api->import_fn("ErrorVt"));
+    assert(api->vtable_of(object)==fixture_namespace_import("ErrorVt"));
     assert(send0(object,"kind")==api->intern(kind));
 }
 static Oop identity(Oop self, const Oop *args, size_t count) {
@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
     mount(argv[2],&float_api); /* Reinitialization reinstalls methods, as before extraction. */
     assert(lookup("+")==add && fixture_float->prototype==prototype && fixture_float->behavior==behavior);
     expect_float(send(two,"+",half),2.5);
-    assert(api->import_fn("Float")==api->nil_obj); api->export_obj("Float",prototype);
+    assert(fixture_namespace_import("Float")==api->nil_obj); api->export_obj("Float",prototype);
     api->method(behavior,api->intern("+"),identity);
     mount(argv[4],api); /* Later Prelude must preserve the currently selected Float method. */
     assert(lookup("+")==identity && send(two,"+",half)==half);

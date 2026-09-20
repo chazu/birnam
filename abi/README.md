@@ -1,14 +1,17 @@
 # ABI evidence
 
-`idapi-v9.json` describes the current arm64 macOS IdApi: 32 fields, 256 bytes.
-Design 81BB removes `isExported` into the explicit [Namespace presence capability](namespace-presence-v1.md).
-Native initialization now takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *)`;
-all native modules must be rebuilt for this signature and IdApi v9.
-The selected floor exports `birnam_namespace_presence_provider_v1` after `id_init`.
-The host and Native Loader pass that execution selection explicitly.
-Modules retaining an API must retain its associated live presence descriptor for
-the same lifetime; initial/reload registration uses the capability supplied with
-that registration API. Presence is never recovered from an API-address registry.
+`idapi-v10.json` describes the current arm64 macOS IdApi: 31 fields, 248 bytes.
+Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
+following 81BB's [presence capability](namespace-presence-v1.md).
+Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *)`.
+All native modules must be rebuilt for this signature and IdApi v10.
+After `id_init`, the selected floor exposes `birnam_namespace_presence_provider_v1`
+and `birnam_namespace_import_provider_v1`. The host and Native Loader pass these
+selections explicitly. Modules capture matching live capabilities when they save
+their execution API; incoming registration/adoption uses the incoming selection
+at its original call points. There is no API-address registry or production
+callback-slot loan. Code, contexts and descriptors must remain valid for every
+retained API use. Image encoding and language behavior are unchanged.
 
 Design 81AX moves `exportedNameOf` to the explicit [Namespace names capability](namespace-names-v1.md).
 Design 81X removes three String fields into an explicit [String dependency](string-v1.md).
@@ -17,23 +20,23 @@ Design 81R removes the four Float fields into an explicit [Float dependency](flo
 Design 81J removes `ensurePrivateVtable`; 81K removes owner/parent getters and
 setters. 81L removes the four Integer fields into an explicit
 [Integer dependency](integer-v1.md). Object-model consumers use ordinary Vtable
-messages. Existing v1-v8 native consumers
+messages. Existing v1-v9 native consumers
 must be rebuilt.
 Backward compatibility is not a requirement for this refactor.
 
 The Rust mirror has compile-time offsets and exports a diagnostic descriptor.
-The descriptor's format version remains 1, while its IdApi schema version is 9.
-Its fingerprint matches the independent v9 manifest. The v9 fingerprint algorithm
+The descriptor's format version remains 1, while its IdApi schema version is 10.
+Its fingerprint matches the independent v10 manifest. The v10 fingerprint algorithm
 is SHA-256 over compact, key-sorted UTF-8 JSON, excluding the `fingerprint` member.
 The workspace tests verify that fingerprint and every compiled field offset.
 
-`fixtures/idapi-v9/idapi_v9.h` is the current independent C header. The routine
-native gate compiles the v9 client/module and checks the table and separately
+`fixtures/idapi-v10/idapi_v10.h` is the current independent C header. The routine
+native gate compiles the v10 client/module and checks the table and separately
 loaded String, Integer, Float, Word and object-model implementations. Other active foreign fixtures use this header.
 
 `idapi-v1.json` and `fixtures/idapi-v1` preserve the historical 54-field ABI and
-its frozen binary evidence. They are not changed to match v9. Their old opt-in
-compatibility script applies only to a v1 floor; running that client against v9
+its frozen binary evidence. They are not changed to match v10. Their old opt-in
+compatibility script applies only to a v1 floor; running that client against v10
 is unsupported. The archived v4 image remains historical evidence as before.
 
 The Cargo workspace and `scripts/rust-install.sh` remain the build authority.
@@ -41,10 +44,10 @@ ABI manifests and fixtures are build/test evidence, not runtime dependencies.
 The installed native inventory now includes the separate Integer and object-model dylibs.
 
 `idapi-v2.json` and `fixtures/idapi-v2` preserve the 81J checkpoint.
-The current optional Block-construction declaration is [v3](native-block-construction-v3.md).
+The current optional Block-construction declaration is [v4](native-block-construction-v4.md).
 
 `idapi-v3.json` and `fixtures/idapi-v3` preserve the 81K checkpoint.
-The current optional numeric declaration is [v3](native-numeric-semantics-v3.md).
+The current optional numeric declaration is [v4](native-numeric-semantics-v4.md).
 
 [Storage observation v1](storage-v1.md) adds a protected host entry and a separate
 stateless description validator. It leaves IdApi v4 and its fingerprint unchanged.
@@ -108,9 +111,9 @@ image handling; compiled entries can construct builders and capture their String
 
 The [Range module](../docs/design/81ac-production-range-vector-methods.md) owns
 its representation, construction and all eight Range methods plus Integer `to:`.
-Its [current construction dependency](range-v2.md) preserves installation order
+Its [current construction dependency](range-v3.md) preserves installation order
 and a direct native Vector comma callback. Vector storage is mounted separately
-through [Vector v2](vector-v2.md). The [export inventory](rust-range-dylib-v1.json)
+through [Vector v3](vector-v3.md). The [export inventory](rust-range-dylib-v1.json)
 adds no IdApi or image fields. Earlier Range interfaces remain historical evidence.
 
 [Collection value policy](collection-value-v1.md) supplies Vector comparison and
@@ -118,12 +121,12 @@ Map key hashing through one immutable native dependency. It owns no objects and
 uses the caller's selected IdApi and live Integer/Float/String callbacks. Its
 [export inventory](rust-collection-value-dylib-v1.json) adds no IdApi fields.
 
-[Vector v2](vector-v2.md) also owns all native Vector methods and sorting roots.
+[Vector v3](vector-v3.md) also owns all native Vector methods and sorting roots.
 Map iteration uses its native bodies, and Range retains its native comma Method.
 The [Vector export inventory](rust-vector-dylib-v1.json) records its explicit
 Integer, String and collection-value dependencies.
 
-[Map v2](map-v2.md) owns canonical objects, HAMT storage, methods, traversal
+[Map v3](map-v3.md) owns canonical objects, HAMT storage, methods, traversal
 and printing. Collection installs it through the ordered construction boundary. The [Map export inventory](rust-map-dylib-v1.json) adds no IdApi fields.
 
 [String collection v1](string-collection-v1.md) installs String split: through a
@@ -156,45 +159,45 @@ Native Loader and Source Loader. Each call receives explicit presence and
 [export inventory](rust-error-value-dylib-v1.json) adds no IdApi fields, objects,
 roots or retained runtime selection.
 
-[System input v2](system-input-v2.md) owns readLine and stdin buffering. Prelude
+[System input v3](system-input-v3.md) owns readLine and stdin buffering. Prelude
 supplies its original execution table at the existing registration slot. The
 [export inventory](rust-system-input-dylib-v1.json) adds no IdApi fields, objects,
 roots or representation changes.
 
-[Environment v2](environment-v2.md) owns System getEnv: and live environment
+[Environment v3](environment-v3.md) owns System getEnv: and live environment
 lookup. Prelude supplies its first execution table at the original registration
 slot. The [export inventory](rust-environment-dylib-v1.json) adds no IdApi fields,
 objects, roots or representation changes.
 
-[File IO v2](file-io-v2.md) owns System file reads and writes through a 24-byte
+[File IO v3](file-io-v3.md) owns System file reads and writes through a 24-byte
 installer at their original Prelude binding positions. The
 [export inventory](rust-file-io-dylib-v1.json) adds no IdApi fields, object
 representation or image encoding.
 
-[Block Loop v2](block-loop-v2.md) owns the native whileTrue:/whileFalse: methods
+[Block Loop v3](block-loop-v3.md) owns the native whileTrue:/whileFalse: methods
 through a 24-byte installer. Prelude retains Block identity/layout and authored
 stackless control still replaces the methods later. The
 [export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
 encoding.
 
-[Native Loader v2](native-loader-v2.md) owns System loadModule: through a 24-byte
+[Native Loader v3](native-loader-v3.md) owns System loadModule: through a 24-byte
 installer, preserving the existing direct path without host dependency admission.
 The [export inventory](rust-native-loader-dylib-v1.json) adds no IdApi fields,
 objects or image encoding.
 
-[Source Loader v2](source-loader-v2.md) owns System load: through a 24-byte
+[Source Loader v3](source-loader-v3.md) owns System load: through a 24-byte
 installer. Integer, String, Text View and Error Value attachments move with their
 last Prelude consumers. The [export inventory](rust-source-loader-dylib-v1.json)
 adds no IdApi fields, objects or image encoding.
 
-[Namespace v6](namespace-v6.md) supplies a 144-byte immutable storage/service factory,
+[Namespace v7](namespace-v7.md) supplies a 160-byte immutable storage/service factory,
 prepared explicitly before Id initialization. It owns ordered bindings and
 independent contexts; Id consumes a borrowed binding view for roots. The
 [export inventory](rust-namespace-dylib-v1.json) adds no IdApi fields or image
 encoding. Current native hosts must attach this prerequisite before id_init.
 
 `idapi-v7.json` and `fixtures/idapi-v7` preserve the 81X checkpoint. Current
-Namespace [storage v6](namespace-v6.md) creates the per-runtime names service;
+Namespace [storage v7](namespace-v7.md) creates the per-runtime names service;
 its four consumers attach the [names capability](namespace-names-v1.md) explicitly.
 
 [Namespace enumeration v1](namespace-enumeration-v1.md) replaces the private Id
@@ -203,7 +206,10 @@ floor. Reflect retains live discovery and its original operation order.
 Image encoding remains unchanged.
 
 `idapi-v8.json` and `fixtures/idapi-v8` preserve the 81AX-81BA checkpoint.
-Namespace [factory v6](namespace-v6.md) owns canonical interned lookup, publication and the
-live presence service. The restricted interner remains in Id; missing names
-are still interned before the selected raw find. IdApi v9 retains the public
-import slot; isExported has moved into the explicit presence capability.
+Namespace [factory v7](namespace-v7.md) owns canonical interned lookup, publication and the
+live presence/import services. The restricted interner remains in Id; missing
+names are still interned before the selected raw find. Both operations now use
+explicit capabilities. `idapi-v9.json` and `fixtures/idapi-v9` preserve 81BB-81BD.
+
+[Isolate OOP bridges v2](isolate-oop-v2.md) receive the incoming API and import
+capability explicitly; wire encoding and worker lifecycle are unchanged.

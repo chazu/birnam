@@ -17,6 +17,7 @@ typedef unsigned (*Admission)(const void *, Oop, Oop, size_t, Oop, const uint8_t
 
 static IdApi *api;
 static unsigned allocations;
+static Oop forbidden_import(void *context,const char *name) { (void)context;(void)name;assert(!"Block admission invoked import");return NULL; }
 static NamespaceNamesApiV1 original_names, selected_names;
 static unsigned name_calls;
 static const char *counted_name(void *context,Oop value) {
@@ -73,6 +74,7 @@ int main(int argc, char **argv) {
     api->method(probe_vt, probe_selector, run_probe);
     probe = api->alloc(probe_vt, 0);
     IdApi module_api = *api;
+    NamespaceImportV1 module_imports=*fixture_namespace_imports(),original_imports=module_imports;
     void *portable = NULL;
     for (int i = 2; i <= 5; ++i) {
         if (argc == 8 && i == 2) continue;
@@ -81,20 +83,21 @@ int main(int argc, char **argv) {
         ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(module, "module_init");
         assert(init);
         fixture_attach_integer(api, module);
-        init(i == 5 ? &module_api : api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+        init(i == 5 ? &module_api : api,NULL,fixture_namespace_presence(),i == 5 ? &module_imports : fixture_namespace_imports());
         if (i == 5) portable = module;
     }
-    Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v3");
+    Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v4");
     assert(query);
-    PortableV1 *v1 = api->import_fn("_BirnamPortableCodeApiV1");
-    PortableV2 *v2 = api->import_fn("_BirnamPortableCodeApiV2");
+    PortableV1 *v1 = fixture_namespace_import("_BirnamPortableCodeApiV1");
+    PortableV2 *v2 = fixture_namespace_import("_BirnamPortableCodeApiV2");
     assert(v1 && v1->version == 1 && v1->size == sizeof(*v1));
     assert(v2 && v2->version == 2 && v2->size == sizeof(*v2));
     uintptr_t context[] = {
-        (uintptr_t)api->alloc, (uintptr_t)api->import_fn, (uintptr_t)api->object_payload_size,
+        (uintptr_t)api->alloc, (uintptr_t)fixture_namespace_imports()->import, (uintptr_t)api->object_payload_size,
         (uintptr_t)api->vtable_of, (uintptr_t)api->send, (uintptr_t)api->vtable_selector_at,
         (uintptr_t)api->symbol_name, (uintptr_t)api->intern, (uintptr_t)api->symbol_vt,
         (uintptr_t)fixture_namespace_names()->name_of, (uintptr_t)fixture_namespace_names()->context, (uintptr_t)api->vtable_vt,
+        (uintptr_t)fixture_namespace_imports()->context,
     };
     FILE *file = fopen(argv[6], "rb");
     assert(file && fseek(file, 0, SEEK_END) == 0);
@@ -116,7 +119,7 @@ int main(int argc, char **argv) {
         puts("native-block-construction: absent Block family declines without allocation");
         return 0;
     }
-    Oop family = api->import_fn("BlockVt");
+    Oop family = fixture_namespace_import("BlockVt");
     Oop vt = api->proto(family);
     Oop selector = api->intern("value:");
     api->method(vt, selector, value);
@@ -166,6 +169,17 @@ int main(int argc, char **argv) {
     selected_names.name_of=counted_name;
     assert(ASK(v1->construct, vt, code, 2, NULL)==0 && name_calls==0);
     selected_names=original_names;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==1);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==1);
+    module_imports.import=forbidden_import;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==0);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==0);
+    module_imports=original_imports;module_imports.context=&module_imports;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==0);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==0);
+    module_imports.import=forbidden_import;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==0);
+    module_imports=original_imports;
     assert(ASK(v1->construct, vt, code, 2, NULL)==1);
     assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==1);
     module_api.alloc = counted_alloc;

@@ -146,7 +146,7 @@ int main(int argc,char **argv) {
     if(adopted) assert(behavior==adopted_type && prototype==adopted_prototype);
     else assert(api->object_payload_size(prototype)==24);
     if(present && !adopted) assert(!fixture_namespace_contains("StringBuilder") && !fixture_namespace_contains("StringBuilderVt"));
-    else assert(api->import_fn("StringBuilder")==prototype && api->import_fn("StringBuilderVt")==behavior);
+    else assert(fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     assert(vtable_parent(api,behavior)==api->object_vt);
     if(!present) assert(vtable_owner(api,behavior)==prototype);
     for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V10_SLOT_RAW);
@@ -213,10 +213,10 @@ int main(int argc,char **argv) {
     /* Vector present: own reinitialization reinstalls methods but not exports. */
     api->export_obj("Vector",api->true_obj); api->export_obj("StringBuilder",api->nil_obj); api->export_obj("StringBuilderVt",api->nil_obj);
     unsigned before=publications; mount(argv[4],&builder_api); assert(lookup("size")==size && publications==before);
-    assert(api->import_fn("StringBuilder")==api->nil_obj && api->import_fn("StringBuilderVt")==api->nil_obj);
+    assert(fixture_namespace_import("StringBuilder")==api->nil_obj && fixture_namespace_import("StringBuilderVt")==api->nil_obj);
     api->gc_collect(); expect_size(builder,length); marked=0; roots(record_mark); assert(marked==3 && registrations==1);
     /* Vector absent: cached canonical identities are republished, as before. */
     api->export_obj("Vector",NULL); mount(argv[4],&builder_api);
-    assert(publications==before+1 && api->import_fn("StringBuilder")==prototype && api->import_fn("StringBuilderVt")==behavior);
+    assert(publications==before+1 && fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     printf("string-builder: %zu byte/growth cases, empty clone/new, inherited receivers, live callbacks, conversion reentry, cleanup, roots and Vector-guarded reinitialization passed mode=%s%s\n",checked,argv[6],baseline?" baseline":"");
 }

@@ -8,6 +8,8 @@ typedef struct { size_t count,shift; Oop root,tail; size_t tail_len; } Payload;
 _Static_assert(sizeof(Payload)==40 && offsetof(Payload,root)==16 && offsetof(Payload,tail)==24,"Vector payload");
 static FixturePresenceSlot selected_presence_slot;
 static NamespacePresenceV1 selected_presence=FIXTURE_PRESENCE(selected_presence_slot);
+static FixtureImportSlot selected_import_slot;
+static NamespaceImportV1 selected_imports=FIXTURE_IMPORT(selected_import_slot);
 
 static IdApi *api, selected;
 static Oop node_type, behavior, prototype, candidate, identities[256];
@@ -53,7 +55,7 @@ static Oop import(const char *name) {
     if(!strcmp(name,"Vector")) partial(2);
     if(!strcmp(name,"RangeVt")) partial(missing?2:3);
     if(capture) printf("import %s\n",name);
-    Oop result=api->import_fn(name);
+    Oop result=fixture_namespace_import(name);
     if(!strcmp(name,"VectorNode")) node_type=result;
     if(!strcmp(name,"VectorVt")) behavior=result;
     if(!strcmp(name,"Vector")) prototype=result;
@@ -113,8 +115,8 @@ static Oop publish(const char *name,Oop value) {
 }
 static void validate_dependency(void *image, int attached) {
     if(fixture_vector_v2) {
-    VectorDependencyV2 attach=(VectorDependencyV2)api->dlsym_fn(image,"birnam_vector_dependency_v2"); assert(attach && attach(NULL)==0);
-    VectorApiV2 bad=*fixture_vector_v2; bad.version++; assert(attach(&bad)==0); bad=*fixture_vector_v2; bad.byte_size--; assert(attach(&bad)==0);
+    VectorDependencyV3 attach=(VectorDependencyV3)api->dlsym_fn(image,"birnam_vector_dependency_v3"); assert(attach && attach(NULL)==0);
+    VectorApiV3 bad=*fixture_vector_v2; bad.version++; assert(attach(&bad)==0); bad=*fixture_vector_v2; bad.byte_size--; assert(attach(&bad)==0);
 #define MISSING(field) bad=*fixture_vector_v2; bad.field=NULL; assert(attach(&bad)==0)
     MISSING(prepare); MISSING(finish_prototype); MISSING(set_layout); MISSING(set_owner); MISSING(publish);
     MISSING(empty); MISSING(push); MISSING(behavior); MISSING(install); MISSING(for_each); MISSING(inject);
@@ -130,7 +132,7 @@ static void validate_dependency(void *image, int attached) {
     if(attached) { bad=*fixture_vector_v1; assert(attach(&bad)==0 && attach(fixture_vector_v1)==1); }
     }
 }
-static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     if(modern && strstr(path,"collection") && !collection) {
         fixture_prepare_vector(api);
@@ -141,7 +143,7 @@ static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *prese
     if(modern && strstr(path,"collection")) {
         validate_dependency(image,1);
     }
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap);
     if(strstr(path,"collection")) collection=image;
 }
 static void seed(void) {
@@ -185,13 +187,13 @@ int main(int argc,char **argv) {
     if(adopting || ignored) seed();
     if(ignored) { api->export_obj("Vector",NULL); node_type=behavior=prototype=NULL; }
     Oop old_node=node_type,old_behavior=behavior,old_prototype=prototype;
-    selected=*api; selected.proto=proto; selected.import_fn=import; selected_presence_slot=adoption_exported;
+    selected=*api; selected.proto=proto; selected_import_slot=import; selected_presence_slot=adoption_exported;
     selected.intern=intern; selected.alloc=allocate; selected.method=method; selected.send=send;
     selected.export_obj=publish; selected.set_layout=layout; selected.set_finalizer=finalize; selected.gc_register_root_provider=roots;
-    capture=1; mount(argv[3],&selected,&selected_presence); capture=0; phase=1;
+    capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports); capture=0; phase=1;
     if(candidate) { prototype=candidate; candidate=NULL; }
     if(adopting) assert(node_type==old_node && behavior==old_behavior && (!old_prototype || prototype==old_prototype));
-    else assert(api->import_fn("Vector")==prototype && vtable_parent(api,behavior)==api->import_fn("CollectionVt"));
+    else assert(fixture_namespace_import("Vector")==prototype && vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
     assert(prototype && !finalizers); partial(3); if(modern) assert(partial_checks>=3 && fixture_vector->behavior()==behavior);
     if(!rebound) assert(((Payload *)prototype)->count==0 && ((Payload *)prototype)->shift==5 && ((Payload *)prototype)->tail_len==0);
     else assert(prototype==api->nil_obj);
@@ -233,23 +235,23 @@ int main(int argc,char **argv) {
     Oop joined=send1(range,",",reversed); assert(((Payload *)joined)->count==6);
     Oop separator=fixture_string_make((const uint8_t *)",",1);
     Oop split=send1(fixture_string_make((const uint8_t *)"a,b",3),"split:",separator); assert(((Payload *)split)->count==2);
-    Oop map=send0(api->import_fn("Map"),"new");
+    Oop map=send0(fixture_namespace_import("Map"),"new");
     Oop pair[]={fixture_integer_make(7),fixture_integer_make(8)};
     map=api->send(map,api->intern("at:put:"),pair,2);
     assert(((Payload *)send0(map,"keys"))->count==1 && ((Payload *)send0(map,"values"))->count==1);
     for(size_t i=0;i<5;i++) api->method(behavior,api->intern(names[i]),previous[i]);
     api->export_obj("VectorVt",api->nil_obj); api->export_obj("Vector",api->nil_obj); api->export_obj("VectorNode",api->nil_obj);
-    IdApi other=selected; other.alloc=forbidden_allocator;
-    capture=1; mount(argv[3],&other,&selected_presence); capture=0;
-    assert(api->import_fn("Vector")==api->nil_obj);
+    IdApi other=selected;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot); other.alloc=forbidden_allocator;
+    capture=1; mount(argv[3],&other,&selected_presence,&other_imports); capture=0;
+    assert(fixture_namespace_import("Vector")==api->nil_obj);
     selected.alloc=second_allocator; live_allocations=0;
     Oop fresh=empty(); assert(live_allocations==3 && api->vtable_of(fresh)==behavior);
     fresh=push(fresh,api->true_obj); assert(live_allocations==5 && ((Payload *)fresh)->count==1);
     selected.alloc=allocate;
     api->gc_set_precise(1); api->gc_collect(); partial(3);
-    vector=api->import_fn("VectorStorageRoot"); assert(vector==api->import_fn("VectorStorageAlias")); verify(vector,32801);
+    vector=fixture_namespace_import("VectorStorageRoot"); assert(vector==fixture_namespace_import("VectorStorageAlias")); verify(vector,32801);
     for(size_t j=0;j<4;j++) verify(versions[j],retained[j]);
-    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence); capture=0;
-    assert(api->import_fn("VectorVt")==behavior && api->import_fn("Vector")==prototype && api->import_fn("VectorNode")==node_type && !finalizers);
+    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports); capture=0;
+    assert(fixture_namespace_import("VectorVt")==behavior && fixture_namespace_import("Vector")==prototype && fixture_namespace_import("VectorNode")==node_type && !finalizers);
     printf("vector-storage: construction, persistence through 32801, native consumers, allocation order, roots, live callbacks and reload passed mode=%s\n",argv[4]);
 }

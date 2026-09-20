@@ -10,7 +10,7 @@ thread_local! {
 }
 
 unsafe extern "C" fn observing_string_cleanup(object: Oop) {
-    with_active(|r| {
+    let cleanup = with_active(|r| {
         let heap = unsafe { &(*r.state.get()).heap };
         let remaining = heap.dead_collectable_addresses();
         let remaining_bytes = remaining
@@ -30,9 +30,10 @@ unsafe extern "C" fn observing_string_cleanup(object: Oop) {
             !unsafe { &(*r.state.get()).heap }.has_dead_allocations(),
             "observing cleanup must see settled allocations"
         );
+        r.string_finalizer()
     });
     CLEANUP_CALLBACKS.set(CLEANUP_CALLBACKS.get() + 1);
-    unsafe { crate::public_api::string_finalizer(object) };
+    unsafe { cleanup(object) };
 }
 
 /// Real source factories; all assertions run outside any performance claim.
@@ -77,7 +78,7 @@ pub(super) unsafe extern "C" fn sequence(_: Oop, args: *const Oop, count: usize)
                 if mode == 2 {
                     observing_string_cleanup
                 } else {
-                    crate::public_api::string_finalizer
+                    r.string_finalizer()
                 },
             )
         });

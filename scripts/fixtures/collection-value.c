@@ -76,9 +76,9 @@ static int equal(Sample a,Sample b) {
 }
 static void add(Sample sample) { assert(used<48); samples[used++]=sample; }
 static Oop collision(Oop key,uint32_t hash) {
-    Collision *node=api->alloc(api->import_fn("MapNode"),sizeof(Collision));
+    Collision *node=api->alloc(fixture_namespace_import("MapNode"),sizeof(Collision));
     *node=(Collision){1,1,hash,0,key,api->true_obj};
-    Map *map=api->alloc(api->import_fn("MapVt"),sizeof(Map)); *map=(Map){node,1}; return map;
+    Map *map=api->alloc(fixture_namespace_import("MapVt"),sizeof(Map)); *map=(Map){node,1}; return map;
 }
 static void validate(void *collection,int attached) {
     CollectionValueDependencyV1 attach=(CollectionValueDependencyV1)api->dlsym_fn(collection,"birnam_collection_value_dependency_v1");
@@ -125,7 +125,7 @@ int main(int argc,char **argv) {
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.vtable_of=vt; selected.symbol_name=sn; selected.send=send; selected.gc_register_root_provider=roots; mount(argv[3],&selected);
     api->gc_register_root_provider(mark_roots);
-    index_of=lookup(fixture_vector->behavior(),"indexOf:"); Oop map_type=api->import_fn("MapVt");
+    index_of=lookup(fixture_vector->behavior(),"indexOf:"); Oop map_type=fixture_namespace_import("MapVt");
     map_at=lookup(map_type,"at:"); map_put=lookup(map_type,"at:put:"); map_new=lookup(map_type,"new");
     add((Sample){.object=NULL}); add((Sample){.object=api->nil_obj}); add((Sample){.object=api->true_obj}); add((Sample){.object=api->false_obj});
     add((Sample){.object=api->alloc(api->object_vt,0)}); add((Sample){.object=api->alloc(api->object_vt,0)});
@@ -173,7 +173,7 @@ int main(int argc,char **argv) {
     }
     selected.symbol_vt=api->symbol_vt; selected.symbol_name=sn;
     /* Real Map updates preserve old versions, equal keys, and unequal same-hash keys. */
-    active_map=map_new(api->import_fn("Map"),NULL,0); const size_t keys[]={8,15,6,26,29};
+    active_map=map_new(fixture_namespace_import("Map"),NULL,0); const size_t keys[]={8,15,6,26,29};
     for(size_t i=0;i<5;i++) { Oop args[]={samples[keys[i]].object,fixture_integer_make((int64_t)i)}; active_map=map_put(active_map,args,2); }
     assert(((Map *)active_map)->count==5); old_map=active_map;
     Oop args[]={samples[27].object,fixture_integer_make(99)}; active_map=map_put(active_map,args,2);

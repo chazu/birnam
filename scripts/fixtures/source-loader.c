@@ -8,9 +8,13 @@
 
 static FixturePresenceSlot selected_presence_slot;
 static NamespacePresenceV1 selected_presence=FIXTURE_PRESENCE(selected_presence_slot);
+static FixtureImportSlot selected_import_slot;
+static NamespaceImportV1 selected_imports=FIXTURE_IMPORT(selected_import_slot);
 
 static FixturePresenceSlot other_presence_slot;
 static NamespacePresenceV1 other_presence=FIXTURE_PRESENCE(other_presence_slot);
+static FixtureImportSlot other_import_slot;
+static NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot);
 
 static IdApi *api,selected,other;
 static ModuleInitFn prelude_init;
@@ -42,7 +46,7 @@ static void roots(MarkFn mark) {
 }
 static void registered(RootProvider provider) { registrations++;api->gc_register_root_provider(provider); }
 static Oop allocate(Oop type,size_t size) { allocations++;if(capture) printf("alloc %zu\n",size);return api->alloc(type,size); }
-static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence); }
+static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports); }
 static Oop intern(const char *name) {
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(reentry_mode==1 && !strcmp(name,"load:")) reenter();
@@ -56,7 +60,7 @@ static int exported(const char *name) {
     if(!strcmp(name,"Error")) return error_present;if(!strcmp(name,"ErrorVt")) return type_present;if(!strcmp(name,"Codegen")) return codegen_present;return module_present;
 }
 static Oop imported(const char *name) {
-    if(strcmp(name,"Error") && strcmp(name,"ErrorVt") && strcmp(name,"Codegen") && strcmp(name,"Module")) return api->import_fn(name);
+    if(strcmp(name,"Error") && strcmp(name,"ErrorVt") && strcmp(name,"Codegen") && strcmp(name,"Module")) return fixture_namespace_import(name);
     imports++;if(capture) printf("import %s\n",name);if(collect) api->gc_collect();
     if(!strcmp(name,"Error")) return factory_export;if(!strcmp(name,"ErrorVt")) return error_type;if(!strcmp(name,"Codegen")) return codegen_export;return module_export;
 }
@@ -164,17 +168,17 @@ static void method(Oop type,Oop selector,Method implementation) {
     api->method(type,selector,implementation);
 }
 static void validate(void *image,int attached) {
-    SourceLoaderDependencyV2 attach=(SourceLoaderDependencyV2)api->dlsym_fn(image,"birnam_source_loader_dependency_v2");if(!attach) return;
-    SourceLoaderApiV2 bad=*fixture_source_loader;assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_source_loader;bad.byte_size--;assert(!attach(&bad));bad=*fixture_source_loader;bad.install=NULL;assert(!attach(&bad));
+    SourceLoaderDependencyV3 attach=(SourceLoaderDependencyV3)api->dlsym_fn(image,"birnam_source_loader_dependency_v3");if(!attach) return;
+    SourceLoaderApiV3 bad=*fixture_source_loader;assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_source_loader;bad.byte_size--;assert(!attach(&bad));bad=*fixture_source_loader;bad.install=NULL;assert(!attach(&bad));
     if(attached) { bad=*fixture_source_loader;assert(!attach(&bad) && attach(fixture_source_loader)==1); }
 }
-static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,int prelude) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    if(prelude && api->dlsym_fn(image,"birnam_source_loader_dependency_v2") && !fixture_source_loader) {
+    if(prelude && api->dlsym_fn(image,"birnam_source_loader_dependency_v3") && !fixture_source_loader) {
         IdApi watched=*api;watched.alloc=allocate;watched.method=method;watched.gc_register_root_provider=registered;
         size_t before=allocations;fixture_prepare_source_loader(&watched);assert(!bindings && !registrations && allocations==before && !fixture_namespace_contains("System"));validate(image,0);
     }
-    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence);
+    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap);
 }
 static Oop failure(void) { return invoke(loader,NULL,&bad_path,1); }
 static Oop replacement(Oop self,const Oop *args,size_t count) { (void)self;(void)args;(void)count;return alias; }
@@ -183,7 +187,7 @@ int main(int argc,char **argv) {
     assert(mkdtemp(directory));snprintf(first_path,sizeof(first_path),"%s/a-src",directory);snprintf(second_path,sizeof(second_path),"%s/b-src",directory);path_length=strlen(first_path);strcpy(path_buffer,first_path);assert(strlen(second_path)==path_length);
     write_source((const uint8_t *)"source",6);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),0);api->gc_register_root_provider(roots);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0);api->gc_register_root_provider(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;original_integer_make=fixture_integer->make;integer_context=fixture_integer->context;
     fixture_string->make=make;fixture_string->bytes=bytes;fixture_integer->make=make_integer;
     path_name=text((const uint8_t *)first_path,path_length);bad_path=text((const uint8_t *)"\xff",1);diagnostic=text((const uint8_t *)"A\xff",2);alias=api->alloc(api->object_vt,0);second=api->alloc(api->object_vt,0);
@@ -192,10 +196,10 @@ int main(int argc,char **argv) {
     Oop module_type=api->proto(api->object_vt);module=api->alloc(module_type,0);api->method(module_type,api->intern("markLoaded:"),mark_loaded);
     Oop factory_type=api->proto(api->object_vt);factory=api->alloc(factory_type,0);second_factory=api->alloc(factory_type,0);factory_export=factory;answer=alias;api->method(factory_type,api->intern("kind:message:"),construct);
     error_type=api->proto(api->object_vt);error_value=api->alloc(error_type,0);inherited_error=api->alloc(api->proto(error_type),0);api->method(error_type,api->intern("printString"),print_error);defaults();
-    selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected.vtable_of=vtable;selected_presence_slot=exported;selected.import_fn=imported;selected.send=send;
-    other=selected;other.nil_obj=api->true_obj;other.vtable_of=forbidden_vtable;other_presence_slot=forbidden_exported;other.send=forbidden_send;
-    begin("initial registration");mount(argv[3],&selected,&selected_presence,1);end();assert(bindings==(reentered?2u:1u) && !registrations);
-    system_type=api->import_fn("SystemVt");system_object=api->import_fn("System");loader=lookup(system_type,api->intern("load:"));Dl_info owner;assert(loader && dladdr((const void *)loader,&owner));assert(strstr(owner.dli_fname,fixture_source_loader?"/libbirnam_source_loader.dylib":"_prelude.dylib"));
+    selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected.vtable_of=vtable;selected_presence_slot=exported;selected_import_slot=imported;selected.send=send;
+    other=selected;other_import_slot=selected_import_slot;other.nil_obj=api->true_obj;other.vtable_of=forbidden_vtable;other_presence_slot=forbidden_exported;other.send=forbidden_send;
+    begin("initial registration");mount(argv[3],&selected,&selected_presence,&selected_imports,1);end();assert(bindings==(reentered?2u:1u) && !registrations);
+    system_type=fixture_namespace_import("SystemVt");system_object=fixture_namespace_import("System");loader=lookup(system_type,api->intern("load:"));Dl_info owner;assert(loader && dladdr((const void *)loader,&owner));assert(strstr(owner.dli_fname,fixture_source_loader?"/libbirnam_source_loader.dylib":"_prelude.dylib"));
     begin("wrong arity and null carriers skip all callbacks");for(size_t n=0;n<=3;n++) if(n!=1) assert(invoke(loader,NULL,(Oop *)(uintptr_t)1,n)==api->nil_obj);assert(invoke(loader,NULL,NULL,1)==api->nil_obj);end();assert(!interns && !vt_calls && !makes && !sends);
     begin("null and inherited paths have no printing fallback");input=NULL;assert(invoke(loader,NULL,&input,1)==api->nil_obj);input=api->alloc(api->proto(fixture_string->behavior),16);assert(invoke(loader,NULL,&input,1)==api->nil_obj);end();assert(!sends && !makes);
     begin("absent view versus empty path");byte_mode=1;assert(invoke(loader,NULL,&path_name,1)==api->nil_obj);byte_mode=2;assert(invoke(loader,NULL,&path_name,1)==answer);byte_mode=0;end();assert(makes==1 && !source_makes && !rev_calls);
@@ -245,12 +249,12 @@ int main(int argc,char **argv) {
     begin("fresh Error factory method and custom lookup");api->method(factory_type,api->intern("kind:message:"),construct_second);assert(failure()==second);api->method(factory_type,api->intern("kind:message:"),construct);
     Oop meta=api->proto(api->vtable_vt);api->method(meta,api->intern("lookup"),factory_lookup);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){factory_type,meta},2);assert(failure()==answer && failure()==second && lookups==2);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){factory_type,api->vtable_vt},2);end();
     api->method(system_type,api->intern("load:"),replacement);begin("copied Method survives replacement");assert(invoke(loader,NULL,&path_name,1)==alias);end();
-    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence);end();assert(lookup(system_type,api->intern("load:"))==loader);
-    if(fixture_source_loader) { IdApi registration=other;registration.intern=forbidden_intern;fixture_source_loader->install(&registration,&other,&other_presence,system_type,api->intern("load:")); }
+    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports);end();assert(lookup(system_type,api->intern("load:"))==loader);
+    if(fixture_source_loader) { IdApi registration=other;registration.intern=forbidden_intern;fixture_source_loader->install(&registration,&other,&other_presence,&other_imports,system_type,api->intern("load:")); }
     begin("original execution after direct installation");assert(invoke(loader,NULL,&path_name,1)==alias && failure()==answer);end();
     selectors[0]=api->intern("source-loader-test-0");selectors[1]=api->intern("source-loader-test-1");alternate=api->proto(api->object_vt);expected_target=system_type;map_selectors=change_snapshot=1;map_generation=0;
-    begin("earlier binding preserves behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence);end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==loader);
-    expected_target=alternate;begin("next installation adopts current selection");prelude_init(&other,NULL,&other_presence);end();assert(seen_selector==selectors[1] && seen_target==alternate);
+    begin("earlier binding preserves behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports);end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==loader);
+    expected_target=alternate;begin("next installation adopts current selection");prelude_init(&other,NULL,&other_presence,&other_imports);end();assert(seen_selector==selectors[1] && seen_target==alternate);
     api->export_obj("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(invoke(loader,NULL,&path_name,1)==alias && failure()==answer);
     fixture_string->make=original_make;fixture_string->bytes=original_bytes;fixture_string->context=string_context;fixture_integer->make=original_integer_make;fixture_integer->context=integer_context;

@@ -13,6 +13,8 @@ typedef struct { uint64_t version, size; Admit admit; New construct; } V1;
 typedef struct { uint64_t version, size; OwnedNew construct; } V2;
 typedef Oop (*Attempt)(Oop, const void *, uint32_t, Oop, Oop, const Oop *, size_t, Oop, uint32_t, uint32_t *);
 static IdApi *api;
+static FixtureImportSlot copied_import_slot;
+static NamespaceImportV1 copied_imports=FIXTURE_IMPORT(copied_import_slot);
 static char events[64];
 static size_t event_count;
 static Oop vt, code, owner, captures[2], answer;
@@ -29,7 +31,7 @@ static Oop construct_owned(Oop table, Oop object, const Oop *values, size_t coun
 static Oop import(const char *name) {
     record(strstr(name, "Vt") ? 'T' : 'I');
     if (mode == 1 && !strstr(name, "Vt")) return NULL;
-    return api->import_fn(name);
+    return fixture_namespace_import(name);
 }
 static Oop vtable(Oop value) { record('V'); return mode == 2 ? api->nil_obj : api->vtable_of(value); }
 static size_t size(Oop value) { record('S'); return mode == 3 ? 0 : api->object_payload_size(value); }
@@ -47,7 +49,7 @@ int main(int argc, char **argv) {
     ModuleInitFn tcc_init = (ModuleInitFn)dlsym(tcc, "module_init"); assert(tcc_init); fixture_attach_integer(api, tcc); tcc_init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
     void *codegen = dlopen(argv[3], RTLD_NOW | RTLD_LOCAL); assert(codegen);
     ModuleInitFn init = (ModuleInitFn)dlsym(codegen, "module_init"); assert(init);
-    IdApi copied = *api; fixture_attach_integer(api, codegen); init(&copied,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    IdApi copied = *api; copied_import_slot=fixture_namespace_import; fixture_attach_integer(api, codegen); init(&copied,NULL,fixture_namespace_presence(),&copied_imports);
     Attempt attempt = (Attempt)dlsym(codegen, "birnam_portable_block_or_inline_v1"); assert(attempt);
     New baseline = (New)dlsym(codegen, "birnam_portable_block_new_v1"); assert(baseline);
     OwnedNew owned_baseline = (OwnedNew)dlsym(codegen, "birnam_portable_materialized_block_new_v2"); assert(owned_baseline);
@@ -59,7 +61,7 @@ int main(int argc, char **argv) {
     api->export_obj("_BirnamPortableCodeApiV2", v2); api->export_obj("_BirnamPortableCodeApiV2Vt", v2vt);
     vt = api->proto(api->object_vt); code = api->alloc(api->object_vt, 0);
     owner = api->alloc(api->object_vt, 0); captures[0] = captures[1] = api->true_obj;
-    copied.import_fn = import; copied.vtable_of = vtable; copied.object_payload_size = size;
+    copied_import_slot = import; copied.vtable_of = vtable; copied.object_payload_size = size;
     copied.dlopen_fn = open_library; copied.dlsym_fn = symbol;
     for (unsigned owned = 0; owned <= 1; ++owned) {
         for (mode = 0; mode <= 4; ++mode) {

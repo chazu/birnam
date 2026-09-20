@@ -113,7 +113,7 @@ int main(int argc,char **argv) {
     selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected.vtable_of=vtable;selected.send=send;
     other=selected;other.nil_obj=api->true_obj;other.vtable_of=forbidden_vtable;other.send=forbidden_send;
     begin("initial registration");mount(argv[3],&selected,1);end();assert(bindings==(reentered?4u:2u) && !registrations);
-    system_type=api->import_fn("SystemVt");system_object=api->import_fn("System");alias=api->alloc(api->object_vt,0);
+    system_type=fixture_namespace_import("SystemVt");system_object=fixture_namespace_import("System");alias=api->alloc(api->object_vt,0);
     for(size_t i=0;i<2;i++) {
         outputs[i]=lookup(system_type,names[i]);Dl_info owner;assert(outputs[i] && dladdr((const void *)outputs[i],&owner));
         assert(strstr(owner.dli_fname,fixture_system_output?"/libbirnam_system_output.dylib":"_prelude.dylib"));

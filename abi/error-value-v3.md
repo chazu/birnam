@@ -26,7 +26,7 @@ import, selector and send callback order stays unchanged.
 
 Neither operation reads IdApi.import or retains the capabilities. Earlier kind,
 String or presence callbacks can replace import's function/context. Nested calls
-can select independent APIs and capabilities. The native wrappers synchronously
-lend the selected caller's existing import slot pending native handoff migration;
-that loan reads the slot only when invoked. Existing reentry, GC, live dispatch,
+can select independent APIs and capabilities. Native wrappers forward the selected
+caller's explicit live import capability directly. IdApi v10 has no import slot.
+There is no production slot loan or API-address lookup. Existing reentry, GC, live dispatch,
 negative presence flags, arguments, results and image encoding are unchanged.

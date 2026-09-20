@@ -93,7 +93,7 @@ int main(int argc,char **argv) {
     fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.alloc=allocate; mount(argv[3],&selected); api->gc_register_root_provider(roots);
-    type=api->import_fn("MapVt"); node_type=api->import_fn("MapNode"); prototype=api->import_fn("Map");
+    type=fixture_namespace_import("MapVt"); node_type=fixture_namespace_import("MapNode"); prototype=fixture_namespace_import("Map");
     new_method=lookup(type,"new"); put_method=lookup(type,"at:put:"); at_method=lookup(type,"at:");
     Method methods[]={new_method,put_method,at_method};
     for(size_t i=0;i<3;i++) { Dl_info owner; assert(dladdr((const void *)methods[i],&owner) && strstr(owner.dli_fname,fixture_map_v2?"/libbirnam_map.dylib":"_collection.dylib")); }

@@ -22,6 +22,7 @@ static size_t (*real_count)(void);
 static Oop (*real_name)(size_t);
 #endif
 static IdApi *api,saved;
+static NamespaceImportV1 *imports,saved_imports;
 static Oop reflect,rows[5];
 static Method enumerate;
 static int mode,generation,nested;
@@ -105,12 +106,13 @@ static void *lookup(void *handle,const char *name) {
     }
     return saved.dlsym_fn(handle,name);
 }
-static Oop import_name(const char *name) {
+static Oop import_name(void *context,const char *name) {
+    assert(context==&saved_imports);
     if(!strcmp(name,"Vector")) {
         event("vector;");if(mode==3)return NULL;if(mode==4)return api->nil_obj;
         if(mode==7)generation=1;
     }
-    return saved.import_fn(name);
+    return namespace_import_v1(&saved_imports,name);
 }
 static void auto_gc(int enabled) {
     event(enabled?"gc-on;":"gc-off;");if(!enabled && mode==8)generation=1;
@@ -118,9 +120,9 @@ static void auto_gc(int enabled) {
 }
 static void start(int selected_mode) {
     mode=selected_mode;generation=0;nested=0;used=0;trace[0]=0;
-    saved=*api;api->dlsym_fn=lookup;api->import_fn=import_name;api->gc_set_auto=auto_gc;
+    saved=*api;saved_imports=*imports;api->dlsym_fn=lookup;imports->context=&saved_imports;imports->import=import_name;api->gc_set_auto=auto_gc;
 }
-static void stop(void) { api->dlsym_fn=saved.dlsym_fn;api->import_fn=saved.import_fn;api->gc_set_auto=saved.gc_set_auto; }
+static void stop(void) { api->dlsym_fn=saved.dlsym_fn;*imports=saved_imports;api->gc_set_auto=saved.gc_set_auto; }
 static Oop exercise(Oop self,const Oop *args,size_t count) {
     (void)self;(void)args;assert(count==0);
     for(int selected_mode=0;selected_mode<=11;selected_mode++) {
@@ -151,7 +153,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
             if(selected_mode==6 || selected_mode==7 || selected_mode==8 || selected_mode==10) {
                 printf("enumeration mode %d first: %s\n",selected_mode,trace);
                 /* Retain updated lookup choice, reset only the event stream. */
-                used=0;trace[0]=0;saved=*api;api->dlsym_fn=lookup;api->import_fn=import_name;api->gc_set_auto=auto_gc;
+                used=0;trace[0]=0;saved=*api;saved_imports=*imports;api->dlsym_fn=lookup;imports->context=&saved_imports;imports->import=import_name;api->gc_set_auto=auto_gc;
                 vector=enumerate(reflect,NULL,0);stop();verify_fake(vector,1,1);
                 assert(strstr(trace,"gc-off;C1;N1:0;N1:1;gc-on;"));
             }
@@ -181,9 +183,9 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     return api->true_obj;
 }
 static void roots(void (*mark)(Oop)) { for(size_t i=0;i<5;i++)if(rows[i])mark(rows[i]); }
-void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence) {
+void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports) {
     (void)presence;
-    assert(selected && !state);if(api){assert(api==selected);return NULL;}api=selected;
+    assert(selected && !state);if(api){assert(api==selected && imports==selected_imports);return NULL;}api=selected;imports=(NamespaceImportV1 *)selected_imports;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
     void *floor=api->dlopen_fn(info.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(floor);
 #if ENUMERATION_V1
@@ -195,10 +197,10 @@ void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presenc
 #else
     real_count=(size_t(*)(void))api->dlsym_fn(floor,COUNT_NAME);real_name=(Oop(*)(size_t))api->dlsym_fn(floor,NAME_AT_NAME);assert(real_count && real_name);
 #endif
-    reflect=api->import_fn("RustReflectAdapter");assert(reflect);
+    reflect=namespace_import_v1(imports,"RustReflectAdapter");assert(reflect);
     Oop selector=api->intern("allGlobalNames"),raw=api->send(api->vtable_of(reflect),api->intern("lookup"),&selector,1);assert(raw);memcpy(&enumerate,&raw,sizeof(enumerate));
     rows[0]=rows[2]=api->intern("enumeration-alpha");rows[1]=rows[4]=NULL;rows[3]=api->intern("enumeration-beta");api->gc_register_root_provider(roots);
-    api->method(api->import_fn("SystemVt"),api->intern("namespaceEnumerationProbe"),exercise);
+    api->method(namespace_import_v1(imports,"SystemVt"),api->intern("namespaceEnumerationProbe"),exercise);
     return NULL;
 }
 int birnam_symbol_borrow_v1(void) { return 1; }

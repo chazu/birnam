@@ -16,13 +16,13 @@ static Oop count_loads(Oop self,const Oop *args,size_t count) {
     return first_api->intern(value);
 }
 /* The direct System loader must not perform host dependency admission. */
-int birnam_native_loader_dependency_v2(const void *provider) {
+int birnam_native_loader_dependency_v3(const void *provider) {
     (void)provider;assert(!"direct loader attached dependencies");return 0;
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports) {
     (void)presence;
     assert(api && !state);if(first_api) assert(api==first_api);else first_api=api;
-    Oop type=api->import_fn("SystemVt"),selector=api->intern("loadModule:");
+    Oop type=namespace_import_v1(imports,"SystemVt"),selector=api->intern("loadModule:");
     Method method=(Method)api->send(type,api->intern("lookup"),&selector,1);Dl_info owner;
     assert(method && dladdr((const void *)method,&owner));const char *base=strrchr(owner.dli_fname,'/');
     assert(base && !strcmp(base+1,EXPECT_NATIVE_LOADER_LIBRARY));

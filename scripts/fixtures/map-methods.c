@@ -111,7 +111,7 @@ int main(int argc,char **argv) {
     fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.alloc=allocate; selected.send=send; selected.gc_register_root_provider=register_roots; mount(argv[3],&selected);
-    type=api->import_fn("MapVt"); node_type=api->import_fn("MapNode");
+    type=fixture_namespace_import("MapVt"); node_type=fixture_namespace_import("MapNode");
     for(size_t i=0;i<13;i++) {
         methods[i]=lookup(type,names[i]); assert(methods[i]); Dl_info owner; assert(dladdr((const void *)methods[i],&owner));
         assert(strstr(owner.dli_fname,fixture_map_v2?"/libbirnam_map.dylib":"_collection.dylib"));

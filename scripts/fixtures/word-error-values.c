@@ -6,8 +6,8 @@
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdlib.h>
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
-    (void)presence;
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports) {
+    (void)presence;(void)imports;
     assert(api && !state);
     const char *path=getenv("BIRNAM_WORD_ERROR_DYLIB");assert(path);
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);

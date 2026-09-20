@@ -7,6 +7,8 @@
 typedef struct { const char *name,*kind,*message; } Spec;
 static FixturePresenceSlot selected_presence_slot;
 static NamespacePresenceV1 selected_presence=FIXTURE_PRESENCE(selected_presence_slot);
+static FixtureImportSlot selected_import_slot;
+static NamespaceImportV1 selected_imports=FIXTURE_IMPORT(selected_import_slot);
 
 static const Spec specs[]={
  {"+","typeMismatch","Integer arithmetic needs a number"},{"-","typeMismatch","Integer arithmetic needs a number"},
@@ -45,7 +47,7 @@ static int exported(const char *name) {
     exports++;if(capture) printf("exported %s\n",name);if(collect) api->gc_collect();return !strcmp(name,"Error")?present:type_present;
 }
 static Oop imported(const char *name) {
-    if(strcmp(name,"Error") && strcmp(name,"ErrorVt")) return api->import_fn(name);
+    if(strcmp(name,"Error") && strcmp(name,"ErrorVt")) return fixture_namespace_import(name);
     imports++;if(capture) printf("import %s\n",name);if(collect) api->gc_collect();return !strcmp(name,"Error")?factory_export:error_type;
 }
 static Oop vtable(Oop value) {
@@ -116,14 +118,14 @@ int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);fixture_mount_trace(api,argv[1]);
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));api->gc_register_root_provider(roots);
-    selected=*api;selected_presence_slot=exported;selected.import_fn=imported;selected.vtable_of=vtable;selected.intern=intern;selected.send=send;selected.method=method;
+    selected=*api;selected_presence_slot=exported;selected_import_slot=imported;selected.vtable_of=vtable;selected.intern=intern;selected.send=send;selected.method=method;
     fixture_prepare_string(api,argv[1]);fixture_prepare_word(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());fixture_prepare_float(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     original_make=fixture_string->make;string_context=fixture_string->context;fixture_string->make=make;
     Oop block_type=api->proto(api->object_vt);block=api->alloc(block_type,0);api->method(block_type,api->intern("value:"),block_call);
     void *image=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL);assert(image);
     integer_provider=(IntegerProviderV1)api->dlsym_fn(image,"birnam_integer_provider_v1");assert(integer_provider);
     integer_init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(integer_init);
-    begin("all affected methods run during registration");fixture_mount_integer(&selected,argv[1], &selected_presence);end();assert(bindings==10);
+    begin("all affected methods run during registration");fixture_mount_integer(&selected,argv[1], &selected_presence,&selected_imports);end();assert(bindings==10);
     mount(argv[2]);
     answer=api->alloc(api->object_vt,0);second=api->alloc(api->object_vt,0);error_type=api->proto(api->object_vt);other_type=api->proto(error_type);
     Oop type=api->proto(api->object_vt);factory=api->alloc(type,0);alternate=api->alloc(type,0);factory_export=factory;api->method(type,api->intern("kind:message:"),construct);
@@ -171,7 +173,7 @@ int main(int argc,char **argv) {
     begin("iteration rechecks export after block callback");publish_type=1;assert(run_loop(zero,left)==block_result && iterations==1);end();
     begin("iteration accepts numeric Error alias and retains max endpoint");block_result=one;error_type=fixture_integer->behavior;assert(run_loop(zero,left)==one && iterations==1);error_type=saved_type;block_result=NULL;assert(run_loop(high,high)==high && iterations==1 && visited[0]==INT64_MAX);assert(run_loop(left,zero)==left && !iterations);end();
     Oop behavior=fixture_integer->behavior,prototype=fixture_integer->prototype;api->method(behavior,api->intern("+"),construct_second);
-    begin("copied method survives replacement and reload does not reinstall");assert(overflow()==answer);integer_init(&selected,NULL,&selected_presence);end();assert(fixture_integer->behavior==behavior && fixture_integer->prototype==prototype && bindings==10 && lookup("+")==construct_second);
+    begin("copied method survives replacement and reload does not reinstall");assert(overflow()==answer);integer_init(&selected,NULL,&selected_presence,&selected_imports);end();assert(fixture_integer->behavior==behavior && fixture_integer->prototype==prototype && bindings==10 && lookup("+")==construct_second);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(overflow()==answer);
     fixture_string->make=original_make;fixture_string->context=string_context;fixture_integer->read=original_read;
     printf("integer-error-value: %zu failure/recognition/construction cases, registration calls, iteration, precedence, live callbacks, lookup, reentry, GC and reload passed\n",cases);

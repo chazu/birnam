@@ -9,9 +9,13 @@
 
 static FixturePresenceSlot selected_presence_slot;
 static NamespacePresenceV1 selected_presence=FIXTURE_PRESENCE(selected_presence_slot);
+static FixtureImportSlot selected_import_slot;
+static NamespaceImportV1 selected_imports=FIXTURE_IMPORT(selected_import_slot);
 
 static FixturePresenceSlot other_presence_slot;
 static NamespacePresenceV1 other_presence=FIXTURE_PRESENCE(other_presence_slot);
+static FixtureImportSlot other_import_slot;
+static NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot);
 
 static IdApi *api,selected,other;
 static ModuleInitFn prelude_init;
@@ -37,7 +41,7 @@ static void roots(MarkFn mark) {
 }
 static void registered(RootProvider provider) { registrations++;api->gc_register_root_provider(provider); }
 static Oop allocate(Oop type,size_t size) { allocations++;if(capture) printf("alloc %zu\n",size);return api->alloc(type,size); }
-static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence); }
+static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports); }
 static Oop intern(const char *name) {
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(reentry_mode==1 && !strcmp(name,"readFile:")) reenter();
@@ -58,7 +62,7 @@ static int exported(const char *name) {
     exports++;if(capture) puts("exported Error");if(collect) api->gc_collect();return present;
 }
 static Oop imported(const char *name) {
-    if(strcmp(name,"Error")) return api->import_fn(name);
+    if(strcmp(name,"Error")) return fixture_namespace_import(name);
     imports++;if(capture) puts("import Error");if(collect) api->gc_collect();return factory_export;
 }
 static Oop send(Oop self,Oop selector,const Oop *args,size_t count) { sends++;if(capture) printf("send %s %zu\n",api->symbol_name(selector),count);if(collect) api->gc_collect();return api->send(self,selector,args,count); }
@@ -136,21 +140,21 @@ static void method(Oop type,Oop selector,Method implementation) {
 static void begin(const char *name) { printf("case %s\n",name);capture=1;vt_calls=byte_calls=interns=makes=exports=imports=sends=calls=0; }
 static void end(void) { capture=0;printf("done vtable=%zu bytes=%zu intern=%zu make=%zu export=%zu import=%zu send=%zu calls=%zu\n",vt_calls,byte_calls,interns,makes,exports,imports,sends,calls); }
 static void validate(void *image,int attached) {
-    FileIoDependencyV2 attach=(FileIoDependencyV2)api->dlsym_fn(image,"birnam_file_io_dependency_v2");if(!attach) return;
-    FileIoApiV2 bad=*fixture_file_io;
+    FileIoDependencyV3 attach=(FileIoDependencyV3)api->dlsym_fn(image,"birnam_file_io_dependency_v3");if(!attach) return;
+    FileIoApiV3 bad=*fixture_file_io;
     assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_file_io;
     bad.byte_size--;assert(!attach(&bad));bad=*fixture_file_io;bad.install=NULL;assert(!attach(&bad));
     if(attached) { bad=*fixture_file_io;assert(!attach(&bad) && attach(fixture_file_io)==1); }
 }
-static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,int prelude) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    if(prelude && api->dlsym_fn(image,"birnam_file_io_dependency_v2") && !fixture_file_io) {
+    if(prelude && api->dlsym_fn(image,"birnam_file_io_dependency_v3") && !fixture_file_io) {
         IdApi watched=*api;watched.alloc=allocate;watched.method=method;watched.gc_register_root_provider=registered;
         size_t before=allocations;fixture_prepare_file_io(&watched);
         assert(!bindings && !registrations && allocations==before && !fixture_namespace_contains("System"));validate(image,0);
     }
     fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
-    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence);
+    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap);
 }
 static Oop construct(Oop self,const Oop *args,size_t count) {
     assert(args && count==2 && args[0]==api->intern("ioError"));calls++;seen_factory=self;
@@ -166,13 +170,13 @@ int main(int argc,char **argv) {
     assert(mkdtemp(directory));snprintf(first_path,sizeof(first_path),"%s/first",directory);snprintf(second_path,sizeof(second_path),"%s/other",directory);
     strcpy(lookup_buffer,first_path);path_extent=strlen(first_path);assert(strlen(second_path)==path_extent);write_bytes(first_path,(const uint8_t *)"ready",5);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),0);api->gc_register_root_provider(roots);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0);api->gc_register_root_provider(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;fixture_string->make=make;fixture_string->bytes=bytes;
     path_name=text((const uint8_t *)first_path,path_extent);bad_name=text((const uint8_t *)"\xff",1);contents=text((const uint8_t *)"ready",5);
-    selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected.vtable_of=vtable;selected_presence_slot=exported;selected.import_fn=imported;selected.send=send;
-    other=selected;other.nil_obj=api->true_obj;other.vtable_of=forbidden_vtable;other_presence_slot=forbidden_exported;other.send=forbidden_send;
-    begin("initial registration");mount(argv[3],&selected,&selected_presence,1);end();assert(bindings==(reentered?4u:2u) && !registrations);
-    system_type=api->import_fn("SystemVt");system_object=api->import_fn("System");alias=api->alloc(api->object_vt,0);
+    selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected.vtable_of=vtable;selected_presence_slot=exported;selected_import_slot=imported;selected.send=send;
+    other=selected;other_import_slot=selected_import_slot;other.nil_obj=api->true_obj;other.vtable_of=forbidden_vtable;other_presence_slot=forbidden_exported;other.send=forbidden_send;
+    begin("initial registration");mount(argv[3],&selected,&selected_presence,&selected_imports,1);end();assert(bindings==(reentered?4u:2u) && !registrations);
+    system_type=fixture_namespace_import("SystemVt");system_object=fixture_namespace_import("System");alias=api->alloc(api->object_vt,0);
     for(size_t i=0;i<2;i++) {
         operations[i]=lookup(system_type,api->intern(names[i]));Dl_info owner;assert(operations[i] && dladdr((const void *)operations[i],&owner));
         assert(strstr(owner.dli_fname,fixture_file_io?"/libbirnam_file_io.dylib":"_prelude.dylib"));
@@ -235,14 +239,14 @@ int main(int argc,char **argv) {
     write_bytes(first_path,(const uint8_t *)"ready",5);contents=text((const uint8_t *)"ready",5);
     for(size_t i=0;i<2;i++) api->method(system_type,api->intern(names[i]),replacement);
     begin("copied methods survive public replacement");expect_bytes(operations[0](NULL,&path_name,1),(const uint8_t *)"ready",5);assert(write_file(alias,path_name,contents)==alias);end();
-    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence);end();for(size_t i=0;i<2;i++) assert(lookup(system_type,api->intern(names[i]))==operations[i]);
-    if(fixture_file_io) { IdApi registration=other;registration.intern=forbidden_intern;fixture_file_io->install(&registration,&other,&other_presence,system_type,api->intern(names[0]),api->intern(names[1])); }
+    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports);end();for(size_t i=0;i<2;i++) assert(lookup(system_type,api->intern(names[i]))==operations[i]);
+    if(fixture_file_io) { IdApi registration=other;registration.intern=forbidden_intern;fixture_file_io->install(&registration,&other,&other_presence,&other_imports,system_type,api->intern(names[0]),api->intern(names[1])); }
     begin("retained execution after reload");assert(failure()==answer);end();
     for(size_t g=0;g<2;g++) for(size_t i=0;i<2;i++) { char name[40];snprintf(name,sizeof(name),"file-io-test-%zu-%zu",g,i);selectors[g][i]=api->intern(name); }
     alternate=api->proto(api->object_vt);expected_target=system_type;map_selectors=change_snapshot=1;map_generation=0;
-    begin("first binding preserves second selector and behavior snapshot");prelude_init(&selected,NULL,&selected_presence);end();
+    begin("first binding preserves second selector and behavior snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports);end();
     for(size_t i=0;i<2;i++) assert(seen_selectors[i]==selectors[0][i] && seen_targets[i]==system_type && lookup(system_type,selectors[0][i])==operations[i]);
-    expected_target=alternate;begin("next installation adopts current behavior and selectors");prelude_init(&other,NULL,&other_presence);end();for(size_t i=0;i<2;i++) assert(seen_selectors[i]==selectors[1][i] && seen_targets[i]==alternate);
+    expected_target=alternate;begin("next installation adopts current behavior and selectors");prelude_init(&other,NULL,&other_presence,&other_imports);end();for(size_t i=0;i<2;i++) assert(seen_selectors[i]==selectors[1][i] && seen_targets[i]==alternate);
     api->export_obj("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);expect_bytes(operations[0](alias,&path_name,1),(const uint8_t *)"ready",5);assert(write_file(alias,path_name,contents)==alias && failure()==answer);
     fixture_string->make=original_make;fixture_string->bytes=original_bytes;fixture_string->context=string_context;

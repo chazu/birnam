@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Move canonical C-name import into Namespace (Design 81BE).
+  IdApi v10 has 31 fields / 248 bytes; native initializers carry an explicit live
+  import capability as their fourth argument. Namespace factory becomes v7,
+  construction/installers v3, and numeric/Block declarations v4. Preserve incoming
+  and saved API selections, callback order, reentry and imported result identity.
+  Native consumers require rebuilding; language behavior and image encoding are unchanged.
+
 - Pass the selected caller's live import capability explicitly to Error Value
   (Design 81BD). Error Value ABI is v3; preserve late import selection, nested
   calls and imported result snapshots. IdApi v9 and image encoding are unchanged.

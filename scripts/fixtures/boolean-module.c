@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
     api->export_obj("Boolean",api->nil_obj);
     mount(argv[3],&boolean_api);
     assert(lookup(true_vt,"not")==not && api->vtable_of(api->false_obj)==false_vt);
-    assert(api->import_fn("Boolean")==api->nil_obj); api->export_obj("Boolean",api->true_obj);
+    assert(fixture_namespace_import("Boolean")==api->nil_obj); api->export_obj("Boolean",api->true_obj);
     api->method(true_vt,api->intern("not"),identity);
     if(!baseline) {
         mount(argv[4],api); /* Later Prelude must preserve Boolean replacements. */

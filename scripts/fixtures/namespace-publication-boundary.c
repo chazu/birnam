@@ -28,6 +28,6 @@ int main(int argc,char **argv) {
     fixture_mount_trace(api,argv[1]);
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     api->gc_register_root_provider(roots);(void)api->gc_collect();assert(root_calls);
-    assert(api->import_fn("namespace-root-publication")==api->nil_obj);
+    assert(fixture_namespace_import("namespace-root-publication")==api->nil_obj);
     puts("publication remains callable during root collection");return 0;
 }

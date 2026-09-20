@@ -46,13 +46,13 @@ int main(int argc, char **argv) {
     assert(initialize);
     api = initialize();
     api->gc_set_auto(0);
-    assert(!api->import_fn("Integer"));
-    assert(!api->import_fn("IntegerVt"));
+    assert(!fixture_namespace_import("Integer"));
+    assert(!fixture_namespace_import("IntegerVt"));
     Oop lower = api->alloc(api->object_vt, 0);
     Oop cloned = api->send(lower, api->intern("clone"), NULL, 0);
     assert(cloned != lower && api->vtable_of(cloned) == api->object_vt);
     assert(api->send(lower, api->intern("=="), &lower, 1) == api->true_obj);
-    assert(!api->import_fn("Integer"));
+    assert(!fixture_namespace_import("Integer"));
     fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports());
     assert(lookup(fixture_integer->behavior, "+"));
     mount(argv[3]); /* Errors are independently mounted, without Prelude. */
@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
                 }
                 Oop value = send(a, operators[op], b);
                 if (zero_divide || answer < INT64_MIN || answer > INT64_MAX) {
-                    assert(api->vtable_of(value) == api->import_fn("ErrorVt"));
+                    assert(api->vtable_of(value) == fixture_namespace_import("ErrorVt"));
                     Oop kind = api->send(value, api->intern("kind"), NULL, 0);
                     assert(kind == api->intern(zero_divide ? "zeroDivide" : "overflow"));
                     assert(send(a, operators[op], value) == value);

@@ -112,8 +112,8 @@ int main(int argc,char **argv) {
         methods[i]=lookup(type,names[i]); assert(methods[i]);
         Dl_info owner; assert(dladdr((const void *)methods[i],&owner));
         assert(strstr(owner.dli_fname,fixture_vector_v2?"/libbirnam_vector.dylib":"_collection.dylib"));
-        Oop arg=api->nil_obj; assert(methods[i](api->import_fn("Vector"),&arg,arities[i]+1)==api->nil_obj);
-        if(arities[i]) assert(methods[i](api->import_fn("Vector"),NULL,arities[i])==api->nil_obj);
+        Oop arg=api->nil_obj; assert(methods[i](fixture_namespace_import("Vector"),&arg,arities[i]+1)==api->nil_obj);
+        if(arities[i]) assert(methods[i](fixture_namespace_import("Vector"),NULL,arities[i])==api->nil_obj);
     }
     assert(methods[11]==methods[12]);
     block_type=api->proto(api->object_vt); block=api->alloc(block_type,0); key_type=api->proto(api->object_vt);
@@ -157,7 +157,7 @@ int main(int argc,char **argv) {
     api->method(block_type,api->intern("value:value:"),null_sum); visits=0;
     assert(methods[4](input,arguments,2)==api->nil_obj && visits==1);
     /* Direct Map iteration and retained Methods ignore public Vector replacements. */
-    Oop map=api->import_fn("Map"),pair[]={fixture_integer_make(1),fixture_integer_make(7)};
+    Oop map=fixture_namespace_import("Map"),pair[]={fixture_integer_make(1),fixture_integer_make(7)};
     map=api->send(map,api->intern("at:put:"),pair,2);
     pair[0]=fixture_integer_make(2); pair[1]=fixture_integer_make(8); map=api->send(map,api->intern("at:put:"),pair,2);
     api->method(type,api->intern("do:"),forbidden); api->method(type,api->intern("inject:into:"),forbidden);

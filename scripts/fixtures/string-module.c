@@ -222,12 +222,12 @@ int main(int argc, char **argv) {
     api->method(fixture_string->behavior,api->intern("clone"),identity);
     api->method(fixture_string->behavior,api->intern("new"),identity);
     Method size=lookup("size"); api->method(fixture_string->behavior,api->intern("size"),identity);
-    Oop prototype=api->import_fn("String"); api->export_obj("String",api->nil_obj);
+    Oop prototype=fixture_namespace_import("String"); api->export_obj("String",api->nil_obj);
     mount(argv[3],&string_api); assert(registrations==2 && lookup("size")==size);
     assert(lookup("clone")==identity && lookup("new")==identity);
     api->method(fixture_string->behavior,api->intern("clone"),clone);
     api->method(fixture_string->behavior,api->intern("new"),create);
-    assert(api->import_fn("String")==api->nil_obj); api->export_obj("String",prototype);
+    assert(fixture_namespace_import("String")==api->nil_obj); api->export_obj("String",prototype);
     api->method(fixture_string->behavior,api->intern("size"),identity);
     if(!baseline) { mount(argv[4],api); assert(lookup("size")==identity && send0(kept,"size")==kept); }
     api->method(fixture_string->behavior,api->intern("size"),size);

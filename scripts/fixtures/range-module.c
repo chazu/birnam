@@ -120,8 +120,8 @@ int main(int argc,char **argv) {
     selected.export_obj=publish; selected.gc_register_root_provider=roots;
     mount(argv[3],&selected);
     assert(bindings==8 && publications==1 && collections==8 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
-    assert(api->import_fn("Range")==prototype && api->import_fn("RangeVt")==behavior);
-    assert(vtable_parent(api,behavior)==api->import_fn("CollectionVt"));
+    assert(fixture_namespace_import("Range")==prototype && fixture_namespace_import("RangeVt")==behavior);
+    assert(vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
     for(size_t i=0;i<3;i++) assert(api->slot_kind(behavior,i)==IDAPI_V10_SLOT_RAW);
     if(!baseline) {
         assert(range_roots); range_roots(record_mark); assert(marks==3);
@@ -212,12 +212,12 @@ int main(int argc,char **argv) {
     }
     api->export_obj("Range",api->nil_obj); api->export_obj("RangeVt",api->nil_obj);
     mount(argv[3],&selected); assert(bindings==16 && publications==1 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
-    assert(api->import_fn("Range")==api->nil_obj && api->import_fn("RangeVt")==api->nil_obj);
+    assert(fixture_namespace_import("Range")==api->nil_obj && fixture_namespace_import("RangeVt")==api->nil_obj);
     for(unsigned i=0;i<8;i++) assert(lookup(behavior,order[i])==implementations[i]);
     api->gc_set_precise(1); api->gc_collect(); integer_result(send0(r,"size"),3);
     if(!baseline) { marks=0; range_roots(record_mark); assert(marks==3); }
     api->export_obj("Vector",NULL); mount(argv[3],&selected);
-    assert(bindings==24 && publications==2 && api->import_fn("Range")==prototype && api->import_fn("RangeVt")==behavior);
+    assert(bindings==24 && publications==2 && fixture_namespace_import("Range")==prototype && fixture_namespace_import("RangeVt")==behavior);
     Oop reversed=send0(r,"reversed"); integer_result(send1(reversed,"at:",fixture_integer_make(0)),3);
     Oop combined=send1(r,",",reversed); integer_result(send0(combined,"size"),6);
     printf("range-module: %u boundary/index cases, ordered installation, publication reentry, native iteration, live callbacks, GC, roots and reinitialization passed%s\n",checked,baseline?" (Collection baseline)":(methods_baseline?" (methods baseline)":""));

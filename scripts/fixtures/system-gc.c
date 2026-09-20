@@ -112,7 +112,7 @@ int main(int argc,char **argv) {
     selected.gc_collect=gc;selected.gc_live_count=live;selected.gc_set_auto=auto_gc;selected.gc_set_precise=precise_gc;
     other=selected;other.nil_obj=api->true_obj;other.gc_collect=other.gc_live_count=forbidden_query;other.gc_set_auto=other.gc_set_precise=forbidden_setter;
     begin("initial registration");mount(argv[3],&selected,1);end();assert(bindings==(reentered?8u:4u) && !registrations);
-    system_type=api->import_fn("SystemVt");system_object=api->import_fn("System");assert(system_type && system_object);
+    system_type=fixture_namespace_import("SystemVt");system_object=fixture_namespace_import("System");assert(system_type && system_object);
     for(size_t i=0;i<4;i++) {
         controls[i]=lookup(system_type,names[i]);Dl_info owner;assert(controls[i] && dladdr((const void *)controls[i],&owner));
         assert(strstr(owner.dli_fname,fixture_system_gc?"/libbirnam_system_gc.dylib":"_prelude.dylib"));

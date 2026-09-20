@@ -8,6 +8,8 @@
 typedef struct { int64_t start,end; } Payload;
 static FixturePresenceSlot selected_presence_slot;
 static NamespacePresenceV1 selected_presence=FIXTURE_PRESENCE(selected_presence_slot);
+static FixtureImportSlot selected_import_slot;
+static NamespaceImportV1 selected_imports=FIXTURE_IMPORT(selected_import_slot);
 
 static IdApi *api, selected;
 static Oop behavior, prototype, range_candidate, identities[256];
@@ -49,7 +51,7 @@ static Oop proto(Oop parent) {
 static Oop import(const char *name) {
     if(!strcmp(name,"Range")) partial(1);
     if(capture) printf("import %s\n",name);
-    Oop result=api->import_fn(name);
+    Oop result=fixture_namespace_import(name);
     if(!strcmp(name,"RangeVt")) behavior=result;
     if(!strcmp(name,"Range")) prototype=result;
     if(capture) printf("import result=%d\n",id(result));
@@ -116,9 +118,9 @@ static int64_t read_integer(void *context,Oop object) {
     }
     return original_read(context,object);
 }
-static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap);
 }
 static void seed(void) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"}; Oop types[6];
@@ -141,13 +143,13 @@ int main(int argc,char **argv) {
     if(adopting || ignored_exports) seed();
     if(ignored_exports) { api->export_obj("Vector",NULL); behavior=prototype=NULL; }
     Oop adopted_behavior=behavior,adopted_prototype=prototype;
-    selected=*api; selected.proto=proto; selected.import_fn=import; selected_presence_slot=exported;
+    selected=*api; selected.proto=proto; selected_import_slot=import; selected_presence_slot=exported;
     selected.intern=intern; selected.alloc=allocate; selected.method=method; selected.send=send;
     selected.export_obj=publish; selected.set_layout=layout; selected.set_finalizer=finalize; selected.gc_register_root_provider=roots;
-    capture=1; mount(argv[3],&selected,&selected_presence); capture=0; phase=1;
+    capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports); capture=0; phase=1;
     if(range_candidate) { prototype=range_candidate; range_candidate=NULL; }
     if(adopting) assert(behavior==adopted_behavior && (!adopted_prototype || prototype==adopted_prototype));
-    else assert(api->import_fn("RangeVt")==behavior && api->import_fn("Range")==prototype && vtable_parent(api,behavior)==api->import_fn("CollectionVt"));
+    else assert(fixture_namespace_import("RangeVt")==behavior && fixture_namespace_import("Range")==prototype && vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
     assert(prototype && api->object_payload_size(prototype)==(size_t)(rebound_prototype?0:16));
     if(!adopting || missing_prototype) assert(((Payload *)prototype)->start==0 && ((Payload *)prototype)->end==0);
     else if(rebound_prototype) assert(prototype==api->nil_obj);
@@ -174,14 +176,14 @@ int main(int argc,char **argv) {
     if(fixture_range) { RangeBoundsV1 bounds=fixture_range->bounds(created); assert(bounds.start==-17 && bounds.end==23); }
     api->export_obj("RangeVt",api->nil_obj); api->export_obj("Range",api->nil_obj);
     /* Selection comes from the first table, including after a different reload table. */
-    IdApi other=selected; other.nil_obj=created;
-    capture=1; mount(argv[3],&other,&selected_presence); capture=0;
+    IdApi other=selected;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot); other.nil_obj=created;
+    capture=1; mount(argv[3],&other,&selected_presence,&other_imports); capture=0;
     assert(to(end,NULL,0)==api->nil_obj && lookup(fixture_integer->behavior,"to:")==to);
-    assert(api->import_fn("Range")==api->nil_obj && api->import_fn("RangeVt")==api->nil_obj);
+    assert(fixture_namespace_import("Range")==api->nil_obj && fixture_namespace_import("RangeVt")==api->nil_obj);
     api->gc_set_precise(1); api->gc_collect();
     Oop rebuilt=to(first_integer,&last_integer,1); assert(api->vtable_of(rebuilt)==behavior);
     if(modern) { family_marks=selector_marks=0; owner_roots(mark); assert(family_marks==2 && selector_marks==3); }
-    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence); capture=0;
-    assert(api->import_fn("RangeVt")==behavior && api->import_fn("Range")==prototype && !finalizers);
+    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports); capture=0;
+    assert(fixture_namespace_import("RangeVt")==behavior && fixture_namespace_import("Range")==prototype && !finalizers);
     printf("range-storage: construction, adoption, callbacks, roots, clone and reload passed mode=%s\n",argv[4]);
 }

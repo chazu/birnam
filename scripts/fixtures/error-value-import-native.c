@@ -33,7 +33,6 @@ static Oop imported(void *context,const char *name) {
     if(mode==5)replace();if(mode==9)watched.nil_obj=ID(0);return result;
 }
 static Oop changed_import(void *context,const char *name) { assert(context==&right);return imported(context,name); }
-static Oop forbidden_import(const char *name) { (void)name;abort(); }
 static Oop intern(const char *name) {
     if(!strcmp(name,"kind:message:")) { event('s');if(mode==6)replace();return ID(1); }
     assert(!strcmp(name,"kind"));event('i');if(mode==1)replace();return ID(2);
@@ -61,7 +60,7 @@ static Oop construct(const NamespacePresenceV1 *presence,const NamespaceImportV1
 }
 static Oop exercise(Oop self,const Oop *args,size_t count) {
     (void)self;(void)args;assert(count==0);
-    watched=*floor_api;watched.intern=intern;watched.import_fn=forbidden_import;watched.vtable_of=vtable;watched.send=send;
+    watched=*floor_api;watched.intern=intern;watched.vtable_of=vtable;watched.send=send;
     StringApiV1 original=*strings;strings->context=&mode;strings->make=make;
     left=(struct Choice){'r',ID(4),ID(3)};right=(struct Choice){'R',ID(8),ID(10)};
     NamespaceImportV1 imports={1,sizeof(imports),&left,imported};active_import=&imports;
@@ -98,7 +97,7 @@ static void *open_sibling(const char *floor_path,const char *name) {
     int length=snprintf(path,sizeof(path),"%.*s/%s",(int)(slash-floor_path),floor_path,name);
     assert(length>0 && (size_t)length<sizeof(path));void *image=floor_api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);return image;
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports) {
     (void)presence;assert(api && !state);if(floor_api)assert(floor_api==api);else floor_api=api;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
     void *image=open_sibling(info.dli_fname,"libbirnam_error_value.dylib");
@@ -108,6 +107,6 @@ void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
     StringProviderV1 string_provider=(StringProviderV1)api->dlsym_fn(image,"birnam_string_provider_v1");assert(string_provider);strings=string_provider();assert(strings);
     assert(dladdr((void *)errors->is_error,&info) && strstr(info.dli_fname,"/libbirnam_error_value.dylib"));
     assert(dladdr((void *)errors->from_bytes,&info) && strstr(info.dli_fname,"/libbirnam_error_value.dylib"));
-    api->method(api->import_fn("SystemVt"),api->intern("errorValueImportProbe"),exercise);return NULL;
+    api->method(namespace_import_v1(imports,"SystemVt"),api->intern("errorValueImportProbe"),exercise);return NULL;
 }
 int birnam_symbol_borrow_v1(void) { return 1; }

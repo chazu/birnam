@@ -21,7 +21,7 @@ module state. No Word optimizer declaration or allocator-context guard is added.
 TCC keeps its generated-code symbol names and unsigned conversion policy; Image
 keeps inherited-family recognition and its current boxed Word bytes.
 
-The host pins Word's library and calls `birnam_word_prepare_v2(IdApi*, const NamespacePresenceV1*)` before
+The host pins Word's library and calls `birnam_word_prepare_v3(IdApi*, const NamespacePresenceV1*, const NamespaceImportV1*)` before
 Float preparation and Integer initialization. Partial roots are registered before
 either identity is allocated. The provider returns null until the primitive table
 is complete. Attach the table to the host and combined runtime before ordinary
@@ -48,7 +48,7 @@ Run `mise run word` and `scripts/word-image-smoke.sh PREFIX` against a debug pre
 For the shared overflow policy, use `mise run word-error-value` and
 `scripts/word-error-value-image-smoke.sh PREFIX`.
 
-The operations descriptor remains v1. Preparation v2 captures the live presence
-descriptor with the first API, before preparation callbacks. Activation and later
+The operations descriptor remains v1. Preparation v3 captures the live presence and import
+descriptors with the first API, before preparation callbacks. Activation and later
 registration keep that execution selection; they do not replace it with a later
-initializer's presence argument. This descriptor and code must remain pinned.
+initializer's capabilities. These descriptors, contexts and code must remain pinned.

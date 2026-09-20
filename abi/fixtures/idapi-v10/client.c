@@ -177,8 +177,8 @@ int main(int argc, char **argv) {
     if (api->vtable_count() < 2 || api->vtable_at(api->vtable_count()) != NULL)
         fail("vtable registry ABI failed");
 
-    api->set_layout(vtable, NULL, 0, IDAPI_V9_SLOT_RAW);
-    if (api->slot_kind(vtable, 0) != IDAPI_V9_SLOT_RAW ||
+    api->set_layout(vtable, NULL, 0, IDAPI_V10_SLOT_RAW);
+    if (api->slot_kind(vtable, 0) != IDAPI_V10_SLOT_RAW ||
         api->object_payload_size(object) != 0)
         fail("layout/image introspection ABI failed");
     api->set_trace_hook(vtable, trace_hook);

@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
             assert(fixture_is_integer(value) && fixture_integer_value(value)==(int64_t)inputs[i]);
             assert(send0(word,"asInteger")!=value);
         } else {
-            assert(api->vtable_of(value)==api->import_fn("ErrorVt"));
+            assert(api->vtable_of(value)==fixture_namespace_import("ErrorVt"));
             assert(send0(value,"kind")==api->intern("overflow"));
         }
         for(size_t j=0;j<sizeof(inputs)/sizeof(*inputs);j++) {
@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
     api->export_obj("Word",api->nil_obj);
     mount(argv[2],&word_api); /* Existing reinitialization reinstalls methods only. */
     assert(lookup("=")==equal && fixture_word->prototype==prototype && fixture_word->behavior==behavior);
-    assert(api->import_fn("Word")==api->nil_obj); api->export_obj("Word",prototype);
+    assert(fixture_namespace_import("Word")==api->nil_obj); api->export_obj("Word",prototype);
     api->method(behavior,api->intern("="),right);
     mount(argv[4],api); /* Prelude preserves the installed Word replacement. */
     assert(lookup("=")==right && send(seven,"=",high)==high);
