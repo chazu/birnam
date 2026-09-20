@@ -11,7 +11,7 @@ fn counts(heap: &Heap) -> (usize, usize, usize) {
     (heap.allocation_count(), heap.allocated_bytes(), heap.bytes_since_collection())
 }
 fn report(name: &str, heap: &Heap) {
-    let mut physical = heap.blocks.values().map(|b| (b.identity(), b.total_size, b.metadata)).collect::<Vec<_>>();
+    let mut physical = heap.block_views().map(|b| (b.identity(), b.total_size, b.geometry | b.lifetime.metadata)).collect::<Vec<_>>();
     physical.sort_unstable();
     let handles = heap.deferred_allocations.iter().map(|(id, index)| (id.0, index)).collect::<Vec<_>>();
     println!("deferred-identity {name}: counts={:?} physical={physical:?} clones={handles:?} numeric={}", counts(heap), heap.numeric_allocations.len());
@@ -60,7 +60,7 @@ fn mixed_journals_recover_exact_bits_once_without_recharging() {
     heap.settle_dead_allocations();
     assert_eq!(counts(&heap), charged);
     assert!(heap.materialize_recorded_clone(next).is_none());
-    assert_eq!(heap.next_allocation_identity.get(), 7);
+    assert_eq!(heap.memory.last_identity(), 7);
     report("settled", &heap);
 }
 
@@ -97,7 +97,7 @@ fn capacity_invalid_indices_and_stale_batches_preserve_issuance() {
     heap.reset_allocation_bytes();
     let next = heap.record_numeric_result(batch, 0).unwrap();
     assert_eq!(next.0, 2050);
-    assert_eq!(heap.next_allocation_identity.get(), 2);
+    assert_eq!(heap.memory.last_identity(), 2);
     report("capacity-and-stale", &heap);
 }
 

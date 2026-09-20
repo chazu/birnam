@@ -1,10 +1,9 @@
-//! Raw aligned object blocks and their exact-address registry.
-//!
-//! R2.1 lands this private mechanism before runtime bootstrap wires it in.
+//! Upper allocation accounting, collection metadata and deferred allocations.
+//! ObjectMemory supplies object allocation independently of this GC bookkeeping.
 #![allow(dead_code)]
 
-use std::alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error};
-use std::ptr::NonNull;
+use crate::object_memory::{Allocation, ObjectMemory, vtable_slot_from_payload};
+pub(crate) use crate::object_memory::{BLOCK_ALIGNMENT, VTABLE_HEADER_SIZE, PAYLOAD_ALIGNMENT, PayloadWords};
 
 use crate::abi::{Finalizer, Oop};
 use birnam_abi::finalizers::SlotV1;
@@ -15,89 +14,48 @@ use crate::raw::AddressMap;
 pub(crate) type LayoutProbe =
     unsafe extern "C" fn(*mut u8, Oop, usize, usize, Oop) -> core::ffi::c_int;
 
-pub(crate) const BLOCK_ALIGNMENT: usize = 16;
-pub(crate) const VTABLE_HEADER_SIZE: usize = size_of::<Oop>();
-pub(crate) const PAYLOAD_ALIGNMENT: usize = align_of::<Oop>();
-const _: () = assert!(PAYLOAD_ALIGNMENT == 8);
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Permanence {
     Collectable,
     Permanent,
 }
 
-struct Block {
-    /// Provenance-carrying allocation base returned by `alloc_zeroed`.
-    base: NonNull<u8>,
-    total_size: usize,
-    // bit 0: mark; bit 1: permanence; bits 2..5: padding; bits 5..64:
-    // never-reused allocation identity. Preserve the four-word registry bound.
+// Collection policy is owned separately from physical storage. These records
+// can be installed when Lifetime adopts an already populated Id allocation set.
+struct BlockLifetime {
     metadata: u64,
     finalizer: SlotV1,
 }
 
-impl Block {
-    fn identity(&self) -> u64 {
-        self.metadata >> 5
-    }
-    fn requested_size(&self) -> usize {
-        self.total_size - VTABLE_HEADER_SIZE - ((self.metadata >> 2) & 7) as usize
-    }
+impl BlockLifetime {
     fn permanence(&self) -> Permanence {
-        if self.metadata & 2 == 0 {
-            Permanence::Collectable
-        } else {
-            Permanence::Permanent
-        }
+        if self.metadata & 2 == 0 { Permanence::Collectable } else { Permanence::Permanent }
     }
-    fn marked(&self) -> bool {
-        self.metadata & 1 != 0
-    }
+    fn marked(&self) -> bool { self.metadata & 1 != 0 }
     fn set_marked(&mut self, marked: bool) {
         self.metadata = (self.metadata & !1) | u64::from(marked);
     }
-    fn payload(&self) -> NonNull<u8> {
-        // SAFETY: a registered or detached Block retains its allocation base
-        // until reclaim. Derivation preserves provenance without storing a
-        // second pointer in every heap-registry entry.
-        unsafe { payload_from_base(self.base) }
-    }
 }
 
-/// One unreachable allocation detached from the registry before foreign code
-/// runs. Its payload remains live until `reclaim` consumes it.
+/// A short-lived joined view, never an owner or a callback-bearing Id record.
+struct Block<'a> {
+    allocation: &'a Allocation,
+    lifetime: &'a BlockLifetime,
+}
+impl core::ops::Deref for Block<'_> {
+    type Target = Allocation;
+    fn deref(&self) -> &Allocation { self.allocation }
+}
+impl Block<'_> {
+    fn permanence(&self) -> Permanence { self.lifetime.permanence() }
+    fn marked(&self) -> bool { self.lifetime.marked() }
+}
+
+/// An allocation detached for collection, with its finalizer.
+/// The collector invokes the finalizer; releasing storage never does.
 pub(crate) struct DetachedBlock {
-    block: Block,
-}
-
-/// Copied coordinates for scanning one live object's pointer-sized payload
-/// words without allocating a per-object snapshot.
-///
-/// This deliberately carries no Rust borrow of `Heap`: the collector must
-/// mutate mark metadata while reading the separately allocated object payload.
-#[derive(Clone, Copy)]
-pub(crate) struct PayloadWords {
-    pointer: *const usize,
-    length: usize,
-}
-
-impl PayloadWords {
-    pub(crate) fn len(self) -> usize {
-        self.length
-    }
-
-    /// Read one word from the described live payload.
-    ///
-    /// # Safety
-    ///
-    /// The originating block must remain registered and its payload must not
-    /// be mutated for the duration of the scan. `index` must be below `len`.
-    pub(crate) unsafe fn read(self, index: usize) -> usize {
-        debug_assert!(index < self.length);
-        // SAFETY: forwarded caller contract keeps the live aligned allocation
-        // stable and bounds index to this payload range.
-        unsafe { self.pointer.add(index).read() }
-    }
+    block: Allocation,
+    finalizer: SlotV1,
 }
 
 impl DetachedBlock {
@@ -106,7 +64,7 @@ impl DetachedBlock {
     }
 
     pub(crate) fn finalizer(&self) -> Option<Finalizer> {
-        self.block.finalizer.callback
+        self.finalizer.callback
     }
 
     pub(crate) fn reclaim(self) {
@@ -114,52 +72,19 @@ impl DetachedBlock {
     }
 }
 
-impl Drop for DetachedBlock {
-    fn drop(&mut self) {
-        let layout = Layout::from_size_align(self.block.total_size, BLOCK_ALIGNMENT)
-            .unwrap_or_else(|_| boundary::fatal_invariant("stored block layout became invalid"));
-        // SAFETY: detaching transferred this still-live allocation out of the
-        // Heap registry. DetachedBlock is its sole owner and drops exactly once
-        // with the same layout used by allocate.
-        unsafe { dealloc(self.block.base.as_ptr(), layout) };
-    }
-}
-
-/// Convert an owned block base to its payload address.
-///
-/// # Safety
-///
-/// `base` must identify a live allocation of at least `VTABLE_HEADER_SIZE`
-/// bytes with the floor's block layout.
-unsafe fn payload_from_base(base: NonNull<u8>) -> NonNull<u8> {
-    // SAFETY: guaranteed by the caller; one-past is valid for zero payload.
-    unsafe { NonNull::new_unchecked(base.as_ptr().add(VTABLE_HEADER_SIZE)) }
-}
-
-/// Recover the preceding vtable word from a validated payload address.
-///
-/// # Safety
-///
-/// `payload` must be the exact payload start of a live floor allocation.
-unsafe fn vtable_slot_from_payload(payload: NonNull<u8>) -> *mut Oop {
-    // SAFETY: guaranteed by the caller; the header is one word immediately
-    // before every exact floor payload address.
-    unsafe { payload.as_ptr().sub(VTABLE_HEADER_SIZE).cast() }
-}
-
-/// Single-runtime owner of raw object blocks.
+/// GC bookkeeping and deferred allocation for one runtime.
 ///
 /// Registry keys are exact payload addresses. Hash iteration order is never
 /// exposed as language behavior.
 pub(crate) struct Heap {
-    blocks: AddressMap<Block>,
+    blocks: AddressMap<BlockLifetime>,
+    memory: ObjectMemory,
     budget: crate::allocation_budget::Service,
     dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
     deferred_allocations: dead_allocations::deferred_index::Index,
     numeric_allocations: Vec<dead_allocations::numeric::Entry>,
     counted_frame_indices: Option<Box<dead_allocations::frame_indices::CountedFrameIndices>>,
     next_deferred_id: crate::deferred_identity::Service,
-    next_allocation_identity: crate::allocation_identity::Service,
     // Retaining records precede the service in field drop order.
     finalizers: crate::finalizers::Service,
 }
@@ -172,15 +97,29 @@ pub(crate) use dead_allocations::{DeadAllocation, DeferredAllocation, MAX_DEAD_P
 
 impl Heap {
     pub(crate) fn new() -> Self {
+        Self::adopt(ObjectMemory::new())
+    }
+
+    /// Adopt the existing Id allocations without copying payloads or resetting
+    /// identities. The caller retains early roots until the collector is ready.
+    /// Construction does not collect or run finalizers.
+    pub(crate) fn adopt(memory: ObjectMemory) -> Self {
+        let blocks = memory.iter().map(|(address, _)| (address, BlockLifetime {
+            metadata: 0, finalizer: SlotV1::EMPTY,
+        })).collect();
+        let mut budget = crate::allocation_budget::Service::new();
+        for (_, allocation) in memory.iter() {
+            boundary::require_invariant(budget.charge(allocation.total_size), "GC allocation byte counter overflow");
+        }
         Self {
-            blocks: AddressMap::default(),
-            budget: crate::allocation_budget::Service::new(),
+            blocks,
+            memory,
+            budget,
             dead_allocations: Vec::new(),
             numeric_allocations: Vec::new(),
             counted_frame_indices: None,
             deferred_allocations: dead_allocations::deferred_index::Index::new(),
             next_deferred_id: crate::deferred_identity::Service::new(),
-            next_allocation_identity: crate::allocation_identity::Service::new(),
             finalizers: crate::finalizers::Service::new(),
         }
     }
@@ -189,61 +128,39 @@ impl Heap {
     fn set_deferred_identity_for_test(&mut self, value: u64) { self.next_deferred_id.set(value); }
 
     #[cfg(test)]
-    fn set_allocation_identity_for_test(&mut self, value: u64) { self.next_allocation_identity.set(value); }
+    fn set_allocation_identity_for_test(&mut self, value: u64) { self.memory.set_last_identity(value); }
 
     pub(crate) fn allocation_total_size(payload_size: usize) -> Option<usize> {
-        VTABLE_HEADER_SIZE
-            .checked_add(payload_size)?
-            .checked_add(PAYLOAD_ALIGNMENT - 1)
-            .map(|size| size & !(PAYLOAD_ALIGNMENT - 1))
+        ObjectMemory::allocation_total_size(payload_size)
+    }
+
+    fn block(&self, address: usize) -> Option<Block<'_>> {
+        Some(Block { allocation: self.memory.get(address)?, lifetime: self.blocks.get(&address)? })
+    }
+
+    fn block_views(&self) -> impl Iterator<Item = Block<'_>> {
+        self.memory.iter().map(|(address, allocation)| Block {
+            allocation,
+            lifetime: self.blocks.get(&address).expect("Id allocation has no Lifetime record"),
+        })
     }
 
     pub(crate) fn allocate(&mut self, payload_size: usize, permanence: Permanence) -> Oop {
-        let total_size = Self::allocation_total_size(payload_size)
-            .unwrap_or_else(|| boundary::fatal_invariant("object allocation size overflow"));
-        let layout = Layout::from_size_align(total_size, BLOCK_ALIGNMENT)
-            .unwrap_or_else(|_| boundary::fatal_invariant("invalid object allocation layout"));
-
-        // SAFETY: layout has nonzero size (the header is one word) and a valid
-        // power-of-two alignment. The returned allocation is owned by this Heap.
-        let base = unsafe { alloc_zeroed(layout) };
-        let base = NonNull::new(base).unwrap_or_else(|| handle_alloc_error(layout));
-        // SAFETY: total_size is at least VTABLE_HEADER_SIZE and base owns the
-        // newly allocated floor block.
-        let payload = unsafe { payload_from_base(base) };
-        let payload_address = payload.as_ptr().addr();
-
-        self.next_allocation_identity.set(self.next_allocation_identity.get()
-            .checked_add(1)
-            .filter(|identity| *identity <= u64::MAX >> 5)
-            .unwrap_or_else(|| boundary::fatal_invariant("allocation identity exhausted")));
-        let previous = self.blocks.insert(
-            payload_address,
-            Block {
-                base,
-                total_size,
-                metadata: (self.next_allocation_identity.get() << 5)
-                    | (((total_size - VTABLE_HEADER_SIZE - payload_size) as u64) << 2)
-                    | if permanence == Permanence::Permanent {
-                        2
-                    } else {
-                        0
-                    },
-                finalizer: SlotV1::EMPTY,
-            },
-        );
-        boundary::require_invariant(
-            previous.is_none(),
-            "allocator reused a live payload address",
-        );
+        let object = self.memory.allocate(payload_size);
+        let total_size = self.memory.get(object.addr()).unwrap().total_size;
+        let previous = self.blocks.insert(object.addr(), BlockLifetime {
+            metadata: if permanence == Permanence::Permanent { 2 } else { 0 },
+            finalizer: SlotV1::EMPTY,
+        });
+        boundary::require_invariant(previous.is_none(), "allocator reused a live payload address");
         boundary::require_invariant(self.budget.charge(total_size), "GC allocation byte counter overflow");
-        payload.as_ptr().cast()
+        object
     }
 
     /// Read-only inventory; neither materializes journals nor changes marks.
     pub(crate) fn storage_allocations(&self) -> Vec<crate::abi::storage::AllocationV1> {
         use crate::abi::storage::{AllocationV1, HAS_FINALIZER, PERMANENT};
-        let mut result: Vec<_> = self.blocks.values().map(|block| AllocationV1 {
+        let mut result: Vec<_> = self.block_views().map(|block| AllocationV1 {
             object: block.payload().as_ptr().cast(),
             identity: block.identity(),
             requested_size: block.requested_size(),
@@ -251,7 +168,7 @@ impl Heap {
             allocation_bytes: block.total_size,
             behavior: unsafe { vtable_slot_from_payload(block.payload()).read() },
             flags: if block.permanence() == Permanence::Permanent { PERMANENT } else { 0 }
-                | if block.finalizer.callback.is_some() { HAS_FINALIZER } else { 0 },
+                | if block.lifetime.finalizer.callback.is_some() { HAS_FINALIZER } else { 0 },
             trace_hook: None,
         }).collect();
         result.sort_unstable_by_key(|entry| entry.identity);
@@ -259,15 +176,15 @@ impl Heap {
     }
 
     pub(crate) fn contains(&self, object: Oop) -> bool {
-        !object.is_null() && self.blocks.contains_key(&object.addr())
+        self.memory.get(object.addr()).is_some()
     }
 
     pub(crate) fn allocation_count(&self) -> usize {
-        self.blocks.len() + self.dead_allocation_count()
+        self.memory.len() + self.dead_allocation_count()
     }
 
     pub(crate) fn allocated_bytes(&self) -> usize {
-        let physical = self.blocks.values().fold(0usize, |total, block| {
+        let physical = self.block_views().fold(0usize, |total, block| {
             total.saturating_add(block.total_size)
         });
         self.dead_allocations.iter().fold(
@@ -287,29 +204,25 @@ impl Heap {
     }
 
     pub(crate) fn base_address(&self, object: Oop) -> Option<usize> {
-        self.blocks
-            .get(&object.addr())
+        self.memory.get(object.addr())
             .map(|block| block.base.as_ptr().addr())
     }
 
     pub(crate) fn payload_address(&self, object: Oop) -> Option<usize> {
-        self.blocks
-            .get(&object.addr())
+        self.memory.get(object.addr())
             .map(|block| block.payload().as_ptr().addr())
     }
 
     /// Recover a live payload pointer without reconstructing it from its
     /// integer membership key and losing allocation provenance.
     pub(crate) fn object_at_address(&self, address: usize) -> Option<Oop> {
-        self.blocks
-            .get(&address)
+        self.memory.get(address)
             .map(|block| block.payload().as_ptr().cast())
     }
 
     /// Report the padded payload extent, matching `objectPayloadSize`.
     pub(crate) fn payload_size(&self, object: Oop) -> Option<usize> {
-        self.blocks
-            .get(&object.addr())
+        self.memory.get(object.addr())
             .map(|block| block.total_size - VTABLE_HEADER_SIZE)
     }
 
@@ -322,8 +235,7 @@ impl Heap {
     /// Vtable headers of permanent objects are strong floor edges even though
     /// permanent payloads do not participate in the mark worklist.
     pub(crate) fn permanent_vtables(&self) -> Vec<Oop> {
-        self.blocks
-            .values()
+        self.block_views()
             .filter(|block| block.permanence() == Permanence::Permanent)
             .map(|block| {
                 // SAFETY: every registered block owns one initialized vtable
@@ -356,47 +268,15 @@ impl Heap {
     /// marking must mutate registry metadata while the separate payload
     /// allocation remains stable.
     pub(crate) fn payload_words(&self, address: usize) -> Option<PayloadWords> {
-        let block = self.blocks.get(&address)?;
-        let payload_size = block.total_size - VTABLE_HEADER_SIZE;
-        debug_assert_eq!(payload_size % size_of::<usize>(), 0);
-        Some(PayloadWords {
-            pointer: block.payload().as_ptr().cast_const().cast(),
-            length: payload_size / size_of::<usize>(),
-        })
+        self.memory.payload_words(address)
     }
 
     pub(crate) fn read_payload_word(&self, object: Oop, index: usize) -> Option<usize> {
-        let words = self.payload_words(object.addr())?;
-        if index >= words.len() {
-            return None;
-        }
-        // SAFETY: exact membership keeps the block live, and the bounds check
-        // above confines the read to its pointer-sized payload.
-        Some(unsafe { words.read(index) })
+        self.memory.read_payload_word(object, index)
     }
 
     pub(crate) fn write_payload_word(&mut self, object: Oop, index: usize, value: usize) -> bool {
-        let Some(block) = self.blocks.get(&object.addr()) else {
-            return false;
-        };
-        let payload_size = block.total_size - VTABLE_HEADER_SIZE;
-        let Some(offset) = index.checked_mul(size_of::<usize>()) else {
-            return false;
-        };
-        if offset >= payload_size {
-            return false;
-        }
-        // SAFETY: exact registry membership retains allocation provenance;
-        // offset was checked to name one complete aligned payload word.
-        unsafe {
-            block
-                .payload()
-                .as_ptr()
-                .add(offset)
-                .cast::<usize>()
-                .write(value)
-        };
-        true
+        self.memory.write_payload_word(object, index, value)
     }
 
     pub(crate) fn clear_marks(&mut self) {
@@ -427,7 +307,10 @@ impl Heap {
             .blocks
             .remove(&address)
             .unwrap_or_else(|| boundary::fatal_invariant("dead GC block disappeared"));
-        Some(DetachedBlock { block })
+        Some(DetachedBlock {
+            block: self.memory.detach(address).expect("dead Id allocation disappeared"),
+            finalizer: block.finalizer,
+        })
     }
 
     pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {
@@ -460,19 +343,7 @@ impl Heap {
     }
 
     pub(crate) fn set_vtable(&mut self, object: Oop, vtable: Oop) -> bool {
-        if !self.blocks.contains_key(&object.addr()) {
-            return false;
-        }
-        // SAFETY: exact registry membership proves this non-null address is the
-        // payload start of the live floor allocation owned by this Heap.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
-        // SAFETY: exact registry membership proves that payload is the start of
-        // the live floor allocation owned by this Heap.
-        let slot = unsafe { vtable_slot_from_payload(payload) };
-        debug_assert_eq!(slot.addr(), object.addr() - VTABLE_HEADER_SIZE);
-        // SAFETY: slot addresses the live, pointer-aligned header word.
-        unsafe { slot.write(vtable) };
-        true
+        self.memory.set_vtable(object, vtable)
     }
 
     /// Shallow-copy one exact live object's padded payload into a fresh
@@ -480,7 +351,7 @@ impl Heap {
     /// not copied; resource-owning families must override clone and install fresh
     /// ownership metadata.
     pub(crate) fn clone_collectable(&mut self, object: Oop) -> Option<Oop> {
-        let source = self.blocks.get(&object.addr())?;
+        let source = self.memory.get(object.addr())?;
         let payload_size = source.total_size - VTABLE_HEADER_SIZE;
         // Copy out before mutating the registry: allocation can grow the map.
         // SAFETY: exact membership proves the source payload is live for its
@@ -505,17 +376,7 @@ impl Heap {
     }
 
     pub(crate) fn vtable_of(&self, object: Oop) -> Option<Oop> {
-        self.blocks.get(&object.addr())?;
-        // SAFETY: exact registry membership proves this non-null address is the
-        // payload start of the live floor allocation owned by this Heap.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
-        // SAFETY: exact registry membership proves that payload is the start of
-        // the live floor allocation owned by this Heap.
-        let slot = unsafe { vtable_slot_from_payload(payload) };
-        debug_assert_eq!(slot.addr(), object.addr() - VTABLE_HEADER_SIZE);
-        // SAFETY: slot addresses the initialized header word. alloc_zeroed
-        // makes an unset header null.
-        Some(unsafe { slot.read() })
+        self.memory.vtable_of(object)
     }
 
     /// Read the header on the dispatch hot path after the caller has already
@@ -525,12 +386,7 @@ impl Heap {
     ///
     /// `object` must be the exact non-null payload address of a live block.
     pub(crate) unsafe fn vtable_of_valid_object(object: Oop) -> Oop {
-        // SAFETY: the caller provides exact live-object provenance.
-        let payload = unsafe { NonNull::new_unchecked(object.cast::<u8>()) };
-        // SAFETY: the same provenance establishes the preceding header word.
-        let slot = unsafe { vtable_slot_from_payload(payload) };
-        // SAFETY: the live block's header is initialized (possibly to null).
-        unsafe { slot.read() }
+        unsafe { ObjectMemory::vtable_of_valid_object(object) }
     }
 
     #[cfg(test)]
@@ -540,21 +396,6 @@ impl Heap {
         };
         detached.reclaim();
         true
-    }
-}
-
-impl Drop for Heap {
-    fn drop(&mut self) {
-        // Harness/runtime-owner teardown only: this is not language GC and does
-        // not invoke finalizers. The process-lifetime runtime does not drop
-        // while Birnam objects remain observable.
-        for block in self.blocks.values() {
-            let layout = Layout::from_size_align(block.total_size, BLOCK_ALIGNMENT)
-                .expect("stored block layout must remain valid");
-            // SAFETY: each stored base was returned by alloc_zeroed with this exact
-            // layout, remains live, and is deallocated exactly once here.
-            unsafe { dealloc(block.base.as_ptr(), layout) };
-        }
     }
 }
 
@@ -650,9 +491,9 @@ mod tests {
 
     #[test]
     fn blocks_have_exact_base_header_and_payload_geometry() {
-        // Metadata stays within four words despite preserving finalizers and
-        // exact membership, requested extents and allocation identities.
-        assert!(size_of::<Block>() <= 4 * size_of::<usize>());
+        // Object allocation has no collection/finalizer fields. Lifetime
+        // metadata is separate; the old combined four-word bound no longer applies.
+        assert_eq!(size_of::<Allocation>(), 3 * size_of::<usize>());
         let mut heap = Heap::new();
         let sizes = [0, 1, 7, 8, 9, 15, 16, 17, 63, 64, 65, 255, 256, 4095];
 

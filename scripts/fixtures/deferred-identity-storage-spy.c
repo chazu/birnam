@@ -45,9 +45,7 @@ uint64_t deferred_identity_fixture_writes_v1(void) {
 const void *birnam_deferred_index_factory_v1(void) {
     return ((const void *(*)(void))symbol("birnam_deferred_index_factory_v1"))();
 }
-const void *birnam_allocation_identity_factory_v1(void) {
-    return ((const void *(*)(void))symbol("birnam_allocation_identity_factory_v1"))();
-}
+
 const void *birnam_storage_observation_factory_v1(void) {
     return ((const void *(*)(void))symbol("birnam_storage_observation_factory_v1"))();
 }

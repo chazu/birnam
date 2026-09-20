@@ -1,43 +1,22 @@
-/* Observe the actual loaded Heap cell and its published block identities. */
+/* Observe identities issued by the actual production Id allocator. */
 #define _DARWIN_C_SOURCE
 #include "../../abi/fixtures/idapi-v20/storage_v1.h"
-#include "../../abi/fixtures/allocation-identity-v1/allocation_identity_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>
-static const AllocationIdentityFactoryV1 *factory;
-static AllocationIdentityFactoryV1 watched;
-static void *owner;
-static unsigned creates,reads,writes;
-static void *create(void) { assert(!creates++);owner=factory->create();assert(owner && !factory->read(owner));return owner; }
-static uint64_t read(const void *context) { assert(context==owner);reads++;return factory->read(context); }
-static void write(void *context,uint64_t identity) {
-    assert(context==owner);uint64_t before=factory->read(context);
-    assert(before<(UINT64_MAX>>5) && identity==before+1);writes++;factory->write(context,identity);
-}
-static const AllocationIdentityFactoryV1 *provide(void) { return &watched; }
-static void *capture_dlsym(void *image,const char *name) {
-    void *symbol=dlsym(image,name);
-    if(!strcmp(name,"birnam_allocation_identity_factory_v1")) {
-        assert(symbol);factory=((AllocationIdentityFactoryProviderV1)symbol)();watched=*factory;
-        watched.create=create;watched.read=read;watched.write=write;return (void *)provide;
-    }
-    return symbol;
-}
-#define dlsym capture_dlsym
 #include "namespace-support.h"
-#undef dlsym
 #include "trace-support.h"
 static IdApi *api;
 static Oop retained[16],final_owner;
 static uint64_t identities[16],final_identity;
+static Oop next_object;
 static unsigned cleaned;
 static void roots(MarkFn mark) { for(unsigned i=0;i<16;i++)mark(retained[i]); }
 static void cleanup(Oop object) { assert(object==final_owner && !api->vtable_of(object));assert(*(uint64_t *)object==0xa110ca7e);cleaned++; }
 __attribute__((noinline)) static void allocate_final_owner(void) {
     final_owner=api->alloc(api->object_vt,8);*(uint64_t *)final_owner=0xa110ca7e;
-    final_identity=factory->read(owner);fixture_set_finalizer(final_owner,cleanup);
+    fixture_set_finalizer(final_owner,cleanup);
 }
 __attribute__((noinline)) static void collect_after_return(void) {
     volatile uintptr_t scratch[8192];for(size_t i=0;i<8192;i++)scratch[i]=0;
@@ -47,47 +26,37 @@ static int visitor(void *context,const StorageViewV1 *view) {
     int after=*(int *)context;unsigned found=0;uint64_t previous=0;
     for(size_t i=0;i<view->allocation_count;i++) {
         const StorageAllocationV1 *entry=&view->allocations[i];assert(entry->identity>previous);previous=entry->identity;
-        assert(entry->identity<=factory->read(owner));
+        assert(entry->identity <= (UINT64_MAX>>5));
+        if(entry->object==next_object) { assert(after==2 && entry->identity==final_identity+1);found++; }
         for(unsigned j=0;j<16;j++)if(entry->object==retained[j]) {
+            if(!identities[j]) identities[j]=entry->identity;
             assert(entry->identity==identities[j] && entry->requested_size==j);
+            if(j) assert(identities[j]==identities[j-1]+1);
             assert(entry->padded_size==((j+7u)&~7u) && entry->allocation_bytes==8+entry->padded_size);
             assert(entry->behavior==api->object_vt);found++;
         }
-        if(entry->identity==final_identity) { assert(!after && entry->object==final_owner && (entry->flags & STORAGE_HAS_FINALIZER));found++; }
+        if(after) assert(entry->identity!=final_identity);
+        if(!after && entry->object==final_owner) { assert(entry->flags & STORAGE_HAS_FINALIZER);final_identity=entry->identity;assert(final_identity==identities[15]+1);found++; }
     }
-    assert(found==(after?16:17));return STORAGE_OK;
+    assert(found==(after==1?16:17));return STORAGE_OK;
 }
 int main(int argc,char **argv) {
     assert(argc==3);void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
-    fixture_prepare_namespace(floor,argv[1]);assert(!creates && !reads && !writes);
-    api=((IdInitFn)dlsym(floor,"id_init"))();assert(api && creates==1 && writes && reads);
-    assert(factory->read(owner)==writes);fixture_set_auto(0);
-    Dl_info library;assert(dladdr((void *)factory->read,&library) && strstr(library.dli_fname,"libbirnam_storage.dylib"));
-    if(!strcmp(argv[2],"bound") || !strcmp(argv[2],"overflow")) {
-        factory->write(owner,!strcmp(argv[2],"bound")?(UINT64_MAX>>5):UINT64_MAX);
-        api->alloc(api->object_vt,0);assert(!"exhaustion returned");
-    }
-    if(!strcmp(argv[2],"last")) {
-        factory->write(owner,(UINT64_MAX>>5)-1);unsigned before=writes;
-        assert(api->alloc(api->object_vt,3));assert(writes==before+1 && factory->read(owner)==UINT64_MAX>>5);
-        puts("allocation-identity loaded: exact last permitted identity");return 0;
-    }
+    assert(!dlsym(floor,"birnam_allocation_identity_dependency_v1"));
+    fixture_prepare_namespace(floor,argv[1]);
+    api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);fixture_set_auto(0);
     assert(!strcmp(argv[2],"normal"));
     fixture_set_precise(1);fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_register_root(roots);
     uintptr_t anchor=0;native_stack_set_v1(fixture_native_stack(),(uintptr_t)&anchor);
-    for(unsigned i=0;i<16;i++) {
-        uint64_t before=factory->read(owner);unsigned write_count=writes;
-        retained[i]=api->alloc(api->object_vt,i);identities[i]=factory->read(owner);
-        assert(identities[i]==before+1 && writes==write_count+1);
-    }
-    puts("allocation-identity loaded: inert attachment, one Heap owner, exact bootstrap and allocation successors");
+    for(unsigned i=0;i<16;i++) retained[i]=api->alloc(api->object_vt,i);
     allocate_final_owner();
     StorageObserveV1 observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1");assert(observe);
-    int after=0;StorageRequestV1 request={1,sizeof(request),&after,visitor};uint64_t before=factory->read(owner);
-    assert(observe(&request)==STORAGE_OK && factory->read(owner)==before);
-    collect_after_return();assert(cleaned==1 && factory->read(owner)==before);after=1;
-    assert(observe(&request)==STORAGE_OK && factory->read(owner)==before);
-    api->gc_collect();assert(cleaned==1 && factory->read(owner)==before);
-    assert(api->alloc(api->object_vt,0));assert(factory->read(owner)==before+1);
-    puts("allocation-identity loaded: exact storage identities, padding, retained aliases and finalization survive GC without resetting issuance");
+    int after=0;StorageRequestV1 request={1,sizeof(request),&after,visitor};
+    assert(observe(&request)==STORAGE_OK);
+    collect_after_return();assert(cleaned==1);after=1;
+    assert(observe(&request)==STORAGE_OK);
+    api->gc_collect();assert(cleaned==1);
+    next_object=api->alloc(api->object_vt,0);after=2;
+    assert(observe(&request)==STORAGE_OK);
+    puts("allocation-identity loaded: Id-owned issuance, exact storage identities, padding, retained aliases and finalization survive GC without resetting identities");
 }

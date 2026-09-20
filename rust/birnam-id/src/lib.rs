@@ -20,7 +20,6 @@ mod allocation_budget;
 mod collection_phase;
 mod guard_verdict;
 mod mutation_epoch;
-mod allocation_identity;
 mod deferred_identity;
 mod key_index;
 mod storage_observation;
@@ -28,6 +27,7 @@ mod payload_layout;
 mod trace_hooks;
 mod finalizers;
 mod heap;
+mod object_memory;
 mod loader;
 #[cfg(feature = "ffi-test-hooks")]
 mod membership_bench;

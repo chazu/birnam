@@ -67,7 +67,6 @@
     "birnam_word_dependency_v1",
     "id_init",
     "birnam_key_index_dependency_v1",
-    "birnam_allocation_identity_dependency_v1",
     "birnam_deferred_identity_dependency_v1",
     "birnam_deferred_index_dependency_v1"
   ]

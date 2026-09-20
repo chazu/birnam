@@ -1,5 +1,9 @@
 # Allocation Identity v1
 
+> **Superseded by Design 82/83:** allocation identity is again internal to Id.
+> The Storage factory and pre-Id attachment described below have been removed.
+> This document preserves the historical extraction contract.
+
 Design [81BY](../docs/design/81by-production-allocation-identity.md) moves the
 per-Heap next-allocation identity cell into `libbirnam_storage`. Id retains raw
 allocation, checked increment, the 59-bit limit, packed block metadata, registry
@@ -44,11 +48,8 @@ ordinary Heap construction and allocation replay keep issuing identities.
 
 The independent C declaration is
 [allocation_identity_v1.h](fixtures/allocation-identity-v1/allocation_identity_v1.h).
-Run `mise run allocation-identity` for module, ABI, Heap witnesses, actual loaded
-owner/storage reports and host admission checks, including both fatal limits.
-`scripts/allocation-identity-test.sh PREFIX` selects installed libraries.
-`scripts/allocation-identity-image-smoke.sh PREFIX` checks dynamic startup,
-source-free compiled callers, mapped/rebuilt native Code images and baked
-execution with exact block identities inspected at the idle host boundary,
-finalization, large dictionaries, live
-behavior, active Frame slots, aliases, GC and reload. Validation is debug only.
+Run `mise run allocation-identity` for the current allocation regression checks:
+Id identity/geometry tests and installed object-storage observations. Factory
+admission tests and the loaded external-counter forcing fixture are removed;
+Id unit tests retain exhaustion coverage. The image smoke checks source,
+compiled and mapped/rebuilt/baked paths. Validation is debug only.

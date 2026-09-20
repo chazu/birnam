@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Separate Id object allocation from Heap's GC bookkeeping (Design 82/83).
+  Return the allocation identity counter to Id and remove its Storage factory
+  and pre-Id preparation. Preserve object layout and identities across adoption
+  of existing allocations. The separate native allocation/GC maps add metadata
+  overhead; staged collector activation and independent Id remain in progress.
+
 - Preserve one effectful lookup per missing Machine send: resolve
   `doesNotUnderstand:` directly after the original miss, using the same
   forwarding path as native sends.

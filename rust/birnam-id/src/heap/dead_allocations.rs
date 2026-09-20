@@ -136,7 +136,7 @@ impl Heap {
         if !self.admits_dead_allocations(1) {
             return None;
         }
-        let block = self.blocks.get(&prototype.addr())?;
+        let block = self.block(prototype.addr())?;
         let payload_size = block.total_size - VTABLE_HEADER_SIZE;
         if payload_size > MAX_DEAD_PAYLOAD_BYTES {
             return None;
@@ -305,7 +305,7 @@ impl Heap {
 
     #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn physical_allocation_count(&self) -> usize {
-        self.blocks.len()
+        self.memory.len()
     }
 
     /// Owned journal storage, excluding allocator bookkeeping. Shared snapshots

@@ -23,7 +23,7 @@ fn check(heap: &Heap, handles: &[(u64, u64)]) {
     assert_eq!(actual, expected);
 }
 fn report(name: &str, heap: &Heap) {
-    let physical = heap.next_allocation_identity.get();
+    let physical = heap.memory.last_identity();
     println!("deferred-index {name}: counts={:?} capacity={} native={} physical={physical} next={} rows={:?}", counts(heap), heap.deferred_allocations.capacity(), heap.dead_allocation_storage_bytes(), heap.next_deferred_id.get(), heap.deferred_index_rows_for_test());
 }
 

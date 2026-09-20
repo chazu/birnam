@@ -1,6 +1,5 @@
 #define _DARWIN_C_SOURCE
 #include "storage_v1.h"
-#include "../../abi/fixtures/allocation-identity-v1/allocation_identity_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -123,12 +122,7 @@ void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presenc
     Dl_info owner;assert(dladdr((void *)api->dlsym_fn,&owner));
     void *floor=dlopen(owner.dli_fname,RTLD_NOW|RTLD_NOLOAD);assert(floor);
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1");assert(observe);
-    const char *slash=strrchr(owner.dli_fname,'/');assert(slash);char path[PATH_MAX];
-    int length=snprintf(path,sizeof(path),"%.*s/libbirnam_storage.dylib",(int)(slash-owner.dli_fname),owner.dli_fname);
-    assert(length>0 && (size_t)length<sizeof(path));void *image=dlopen(path,RTLD_NOW|RTLD_NOLOAD);assert(image);
-    AllocationIdentityFactoryProviderV1 provide=(AllocationIdentityFactoryProviderV1)dlsym(image,"birnam_allocation_identity_factory_v1");assert(provide);
-    const AllocationIdentityFactoryV1 *factory=provide();assert(factory && factory->version==1 && factory->byte_size==sizeof(*factory));
-    assert(dladdr((void *)factory->read,&owner) && strstr(owner.dli_fname,"libbirnam_storage.dylib"));
+    assert(!dlsym(floor,"birnam_allocation_identity_dependency_v1"));
     machine_vt=api->vtable_of(namespace_import_v1(imports,"Machine"));
     lookup_selector=api->intern("lookup");read_selector=api->intern("oopAt:");write_selector=api->intern("oopAt:put:");
     canonical_lookup=(Method)api->send(api->vtable_vt,lookup_selector,&lookup_selector,1);

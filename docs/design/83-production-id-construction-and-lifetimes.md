@@ -350,7 +350,7 @@ Activation itself runs trusted bootstrap code, not application callbacks.
 
 After activation, each new module uses Lifetime to establish roots and payload
 descriptions before publication. Collection cannot call language code while it
-holds Id's physical-storage borrow. Separate snapshot/preparation, marking and
+borrows Id's allocation records. Separate snapshot/preparation, marking and
 metadata retirement from foreign callbacks and storage release. Id retires its
 own Symbol/behavior indexes before address reuse; upper owners retire their own
 metadata. Existing finalizer and deferred-materialization semantics remain
@@ -441,11 +441,33 @@ callback registry before exposing their address. Its explicit unsafe release
 contract remains the native caller's responsibility; nested callback sends use
 the active turn.
 
+Object allocation now uses `ObjectMemory` inside Id without GC services. It
+contains addresses, extents and identities; `Heap` supplies marks, finalizers,
+budget accounting and deferred allocation separately. The allocation identity
+counter is back inside Id, and its Storage factory, Id dependency export and
+host preparation are removed. `Heap::adopt` accepts existing allocations without
+copying objects or resetting identities. This is an internal implementation
+boundary, not a new module or service.
+
+The split preserves object layout and payload-byte accounting. Native metadata
+now uses a three-word allocation record and a separate two-word GC record in
+two maps, replacing the combined four-word record in one map. That overhead is
+outside payload-byte accounting. The adoption unit test exercises nonempty
+allocation handoff; production still constructs Heap immediately, so this does
+not yet prove staged collector activation or early module-root adoption.
+
+Allocation validation passes in debug: Host 86, Id 299 and Storage 7 unit tests;
+a fresh installation of 53 native libraries and 28 authored modules; the loaded
+identity/finalization fixture; source, source-free compiled, mapped/rebuilt/baked
+image checks; and deferred-index loaded execution with forced recovery. The
+installed Storage exports match its manifest; installed Id matches its bare
+manifest plus the two published wrapper exports.
+
 These changes establish the lifetime mechanism, **not independent Id**. Its
 registration owner, turn state and temporary private retirement queue export
 still reside in the existing Runtime inside `birnam-id`. Move these together
 to upper Execution during the ownership cutover and migrate their consumers;
 do not retain Id forwarding exports as the final architecture. The typed loader,
-base/extension construction entries, collector adoption and removal of the
+base/extension construction entries, staged collector activation and removal of the
 pre-Id preparation path remain unimplemented. No architectural acceptance is
 claimed from the regression results above.

@@ -127,7 +127,7 @@ not whether another module happens to call it frequently.
 
 | Responsibility retained in Id | Boundary |
 |---|---|
-| Physical object storage and identity | Allocation extent, exact membership, stable identity, behavior association and safe storage release. No deferred-value journal, collection policy or language value representation. |
+| Object allocation and identity | Allocation extent, exact membership, stable identity, behavior association and safe storage release. No deferred-value journal, collection policy or language value representation. |
 | Initial object/behavior graph | Enough construction to establish Object, Symbol, default behavior objects and their metacircular associations. No Nil/Boolean singletons, environment or Machine objects. |
 | Symbols | Byte-oriented canonical names and interning. No dependency on String or a general export namespace. |
 | Default behavior storage and primitive mutation | The dictionaries and representation operations that actually implement Id, including their consistency bookkeeping. No Store log, executable-generation registry or future consumer's callback slot. |
@@ -137,7 +137,7 @@ not whether another module happens to call it frequently.
 
 Internal counters and dictionary indexes are implementation details, not
 automatically separate runtime layers. If Id needs one to implement itself,
-keep it in Id. In particular, a physical allocation identity counter must not
+keep it in Id. In particular, an allocation identity counter must not
 require loading Storage first. Preserve the existing dictionary indexing
 algorithm where appropriate; removing an inverted dependency does not require
 discarding its performance properties.
@@ -218,8 +218,8 @@ new production ABI. The semantic carrier is now specified in 83 section 3.
 ### Allocation before and after GC
 
 Id allocates the initial universe without a collector. A later collector must
-operate on those same allocations and identities. There must be one physical
-object storage authority, not an immortal bootstrap arena beside a later heap.
+operate on those same allocations and identities. The collector must use the existing allocations, without creating an immortal
+bootstrap arena beside a later heap.
 
 Move GC policy out of allocation while preserving automatic collection and
 object/lifetime semantics when the complete system is mounted. Audit instance

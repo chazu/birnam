@@ -66,7 +66,7 @@ const DeferredIndexFactoryV1 *birnam_deferred_index_factory_v1(void) {
 /* Fixture-only counters. No row, owner or observer authority is published by Id. */
 void deferred_index_fixture_counts_v1(uint64_t *out) { all_rows();out[0]=pushes;out[1]=removes;out[2]=writes; }
 const void *birnam_deferred_identity_factory_v1(void) { return ((const void *(*)(void))symbol("birnam_deferred_identity_factory_v1"))(); }
-const void *birnam_allocation_identity_factory_v1(void) { return ((const void *(*)(void))symbol("birnam_allocation_identity_factory_v1"))(); }
+
 const void *birnam_storage_observation_factory_v1(void) { return ((const void *(*)(void))symbol("birnam_storage_observation_factory_v1"))(); }
 int birnam_storage_describe_v1(const StorageViewV1 *view,const StorageDescribeRequestV1 *request) { return ((StorageDescribeV1)symbol("birnam_storage_describe_v1"))(view,request); }
 void *module_init(IdApi *api,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *roots,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizers) {

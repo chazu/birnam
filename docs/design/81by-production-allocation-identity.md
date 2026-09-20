@@ -1,5 +1,9 @@
 # 81BY — Heap allocation-identity storage
 
+> **Superseded by Design 82/83:** allocation identity is again internal to Id.
+> The Storage factory and pre-Id attachment described below have been removed.
+> This document preserves the historical extraction contract.
+
 > **Status:** Completed production extraction after 81BX (`d20a499a`).
 > Debug validation only; identity issuance and allocation behavior stay in Id.
 

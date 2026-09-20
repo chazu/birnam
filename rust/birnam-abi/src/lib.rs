@@ -41,7 +41,6 @@ pub mod collection_phase;
 pub mod dispatch_cache;
 pub mod guard_verdict;
 pub mod mutation_epoch;
-pub mod allocation_identity;
 pub mod deferred_identity;
 pub mod deferred_index;
 pub mod key_index;

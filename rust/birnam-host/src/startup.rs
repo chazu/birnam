@@ -905,7 +905,6 @@ pub enum FloorError {
     DispatchCache { path: PathBuf, reason: &'static str },
     GuardVerdict { path: PathBuf, reason: &'static str },
     MutationEpoch { path: PathBuf, reason: &'static str },
-    AllocationIdentity { path: PathBuf, reason: &'static str },
     DeferredIdentity { path: PathBuf, reason: &'static str },
     DeferredIndex { path: PathBuf, reason: &'static str },
     KeyIndex { path: PathBuf, reason: &'static str },
@@ -959,7 +958,6 @@ impl fmt::Debug for FloorError {
             Self::DispatchCache { path, reason } => write!(formatter, "Dispatch cache preparation failed: {} ({reason})", path.display()),
             Self::GuardVerdict { path, reason } => write!(formatter, "Guard verdict preparation failed: {} ({reason})", path.display()),
             Self::MutationEpoch { path, reason } => write!(formatter, "Mutation epoch preparation failed: {} ({reason})", path.display()),
-            Self::AllocationIdentity { path, reason } => write!(formatter, "Allocation identity preparation failed: {} ({reason})", path.display()),
             Self::DeferredIdentity { path, reason } => write!(formatter, "Deferred identity preparation failed: {} ({reason})", path.display()),
             Self::DeferredIndex { path, reason } => write!(formatter, "Deferred index preparation failed: {} ({reason})", path.display()),
             Self::KeyIndex { path, reason } => write!(formatter, "Key index preparation failed: {} ({reason})", path.display()),
@@ -982,7 +980,6 @@ pub struct LoadedFloor {
     _namespace: NonNull<std::ffi::c_void>,
     _object_model: NonNull<std::ffi::c_void>,
     _mutation_epoch: NonNull<std::ffi::c_void>,
-    _allocation_identity: NonNull<std::ffi::c_void>,
     _deferred_identity: NonNull<std::ffi::c_void>,
     _deferred_index: NonNull<std::ffi::c_void>,
     _key_index: NonNull<std::ffi::c_void>,
@@ -3249,13 +3246,6 @@ pub fn load_floor(
             return Err(error);
         }
     };
-    let allocation_identity_image = match unsafe { prepare_allocation_identity(handle, &storage_observation_path) } {
-        Ok(image) => image,
-        Err(error) => {
-            unsafe { system_dlclose(handle.as_ptr()) };
-            return Err(error);
-        }
-    };
     let deferred_identity_image = match unsafe { prepare_deferred_identity(handle, &storage_observation_path) } {
         Ok(image) => image,
         Err(error) => {
@@ -3439,7 +3429,6 @@ pub fn load_floor(
         method_observation: NonNull::new(observation).unwrap(),
         _object_model: object_model,
         _mutation_epoch: mutation_epoch_image,
-        _allocation_identity: allocation_identity_image,
         _deferred_identity: deferred_identity_image,
         _deferred_index: deferred_index_image,
         _key_index: key_index_image,
@@ -3978,39 +3967,6 @@ unsafe fn prepare_mutation_epoch(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::mutation_epoch::valid(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::mutation_epoch::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_allocation_identity(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::AllocationIdentity {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_allocation_identity_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_allocation_identity_factory_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::allocation_identity::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::allocation_identity::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::allocation_identity::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();
