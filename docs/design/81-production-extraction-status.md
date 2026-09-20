@@ -3,6 +3,9 @@
 > **Status:** Preparatory Rust extraction phase closed at 81CA, 2026-09-20.
 > Final runtime extraction: `ad9557fb`; reviewed source checkpoint: `e928780c`.
 > 81CB is deferred. No further per-field extraction is queued.
+> **Subsequent direction:** [Design 82](82-minimal-production-id.md) records the
+> architectural failure in this phase and makes production Id decoupling the
+> next project. The earlier recommendation to rewrite Integer first is withdrawn.
 
 ## Assessment
 
@@ -72,9 +75,17 @@ production features implicitly promised by this closeout.
 
 ## Remaining work, at useful granularity
 
-Future work should choose one outcome below and define its completion before
-coding. Small commits are still useful within it; each field does not need its
-own module, design document and full installation campaign.
+**First decouple production Id.** [Design 82](82-minimal-production-id.md) defines
+the required dependency direction, genuine bootstrap seams, production migration
+and completion tests. Id must initialize without upper modules, then load them
+through its message protocol. The extracted services currently remain Id's
+construction dependencies; a smaller IdApi did not fix that inversion.
+
+The broader workstreams remain below. Their ownership corrections belong within
+Design 82; their Birnam implementations follow it. They are not competing
+next-project choices. Small commits are useful within a complete responsibility;
+each field does not need its own module, design document and full installation
+campaign.
 
 1. **First complete production Birnam replacement.** Use one already extracted
    value family, starting with Integer, to audit which existing authoring/entry
@@ -83,9 +94,9 @@ own module, design document and full installation campaign.
    removed from normal execution and retained only for independent bootstrap.
    If required facilities
    are missing, identify those explicitly; do not count forwarding wrappers as
-   replacement. This is the recommended next project, not started here.
-2. **Allocation and materialization ownership.** If deeper runtime preparation
-   is needed, address physical allocation, snapshot/journal lifecycle, charging,
+   replacement. This follows production Id decoupling; it is not the next project.
+2. **Allocation and materialization ownership.** As part of Design 82,
+   address physical allocation, snapshot/journal lifecycle, charging,
    GC/retirement and recovery as one ownership design. Reconsider 81CB's buffer
    inside that work, together with the remaining numeric and counted-index
    storage. Success means an independently usable owner, not more raw containers.
@@ -95,8 +106,9 @@ own module, design document and full installation campaign.
    Cells, finalizers and live replacement intact.
 4. **Compiler and construction loop.** Move canonical parsing/lowering/emission
    into Birnam and prove self-compilation, shipped-module builds and image/source
-   recovery on the intended substrate. A platform-only Siphon and removal of C /
-   libtcc are distinct later milestones; preserve a cold bootstrap throughout.
+   recovery on the intended substrate. Siphon decoupling belongs to Design 82;
+   removal of C / libtcc remains a later decision. Preserve a cold bootstrap
+   throughout.
 
 Do not resume the old infinite extraction sequence from an earlier document's
 "next candidate" paragraph. Before another native boundary, name the Birnam

@@ -1,5 +1,9 @@
 # 81E — Can the upper layers be implemented through the seed?
 
+> **Current direction:** [Design 82](82-minimal-production-id.md) carries these
+> integration obligations into the production decoupling. No further isolated
+> seed experiments are planned; acceptance must exercise the shipped Id.
+
 > **Status:** Source-level dependency audit and proposed contracts, 2026-09-18.
 > Runtime source checked at `162b68fe`. [81F](81f-isolated-id-seed-proof.md) now
 > executes the first bounded Rust seed/object-model witness; [81G](81g-integer-module-proof.md)

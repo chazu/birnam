@@ -18,7 +18,20 @@ Commit `.beads/issues.jsonl` with related work; the SQLite database is local.
 Before changing issues, `br where` must resolve this repository's `.beads/`,
 not the unrelated home-directory Maggie tracker.
 
-## Self-hosting exploration — 2026-09-17
+## Current runtime direction — 2026-09-20
+
+[Design 82 — Minimal production Id](../design/82-minimal-production-id.md) is the
+current architectural decision. The 81-series extractions reduced IdApi while
+leaving Id dependent on the extracted services. Correct production ownership and
+startup before rewriting another value module. No more isolated seed experiments
+or automatic per-field extraction sequence. The design records the failure,
+remaining integration contracts, migration packages and architectural acceptance
+tests; implementation has not begun at this documentation checkpoint.
+
+## Self-hosting history — 2026-09-17 onward
+
+The entries below record earlier work and proposals. Their next-step language is
+historical; it does not override Design 82 or reopen the closed extraction phase.
 
 [Design 81](../design/81-toward-a-birnam-implementation.md) records the proposed
 major workstreams toward a Birnam implementation. Its companion

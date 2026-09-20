@@ -6,6 +6,9 @@
 > The Birnam runtime/compiler replacement and platform-only Siphon are still
 > future work. The proposals below do not authorize another automatic sequence
 > of per-field extractions.
+> [Design 82](82-minimal-production-id.md) now specifies the production correction:
+> make Id independent of the extracted services before starting another Birnam
+> replacement. It records the failed approach and the required acceptance tests.
 >
 > [81A](81a-current-bootstrap-and-runtime-layers.md) records current construction;
 > [81C](81c-thin-id-runtime-layers.md) describes the target runtime layers.

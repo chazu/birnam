@@ -752,6 +752,10 @@ artifact required. The Rust host owns the complete runtime and build closure.
   current profiles and the proposed optimization sequence.
 - [The image](docs/design/40-the-image.md) defines persistence and mapped-code
   behavior.
+- [Minimal production Id](docs/design/82-minimal-production-id.md) records why
+  the Rust extractions failed to decouple Id, the required Siphon/Id boundary,
+  and the production migration and acceptance criteria. This is the current
+  runtime refactoring direction.
 - [Production extraction status](docs/design/81-production-extraction-status.md)
   summarizes the completed Rust modularization through 81CA, current ownership,
   validation, and the remaining Birnam implementation work. This phase is closed;

@@ -1,5 +1,9 @@
 # 81C — Thin layers above Id
 
+> **Current direction:** [Design 82](82-minimal-production-id.md) makes these
+> ownership boundaries a production requirement, diagnoses the inverted
+> dependencies left by 81J–81CA, and defines the migration and completion tests.
+
 > **Status:** Proposed decomposition, 2026-09-17. Records the user's direction
 > to replace thinner layers with Birnam and the clarification that Id is the
 > first semantic layer. This does not implement the complete split.

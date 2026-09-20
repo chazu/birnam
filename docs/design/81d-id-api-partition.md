@@ -5,6 +5,10 @@
 > [current status](81-production-extraction-status.md) and
 > [IdApi v20](../../abi/idapi-v20.json) supersede its current-state counts.
 > Proposed destinations remain subject to semantic and caller review.
+> [Design 82](82-minimal-production-id.md) supersedes the extraction strategy and
+> loading boundary: primitive native module loading is an Id message protocol;
+> higher module policy stays above it. Removing table fields is not evidence of
+> decoupling while Id still requires the extracted implementations.
 
 [81](81-toward-a-birnam-implementation.md) owns the self-hosting roadmap;
 [81A](81a-current-bootstrap-and-runtime-layers.md) describes today's system;

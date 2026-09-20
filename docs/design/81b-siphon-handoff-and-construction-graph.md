@@ -1,5 +1,10 @@
 # 81B — Siphon handoff and construction graph
 
+> **Superseded handoff proposal:** [Design 82](82-minimal-production-id.md) requires
+> Siphon to use an ad-hoc Id loading API for the first load, followed by the real
+> Id message API for subsequent modules. The separate Id-entry ABI and fixed C
+> launcher proposal below are historical, not the current implementation plan.
+
 > **Status:** Proposal, 2026-09-17. Step 1 of
 > [81 — Toward a Birnam implementation](81-toward-a-birnam-implementation.md).
 > Source observations checked against `8ab8d2a2`; no runtime implementation,

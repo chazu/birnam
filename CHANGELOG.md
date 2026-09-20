@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Record Design 82 before production Id decoupling: diagnose the inverted
+  dependencies left by the Rust extractions, specify the ad-hoc-to-real Id
+  loading protocol, and require independent production Id startup as acceptance.
+  Supersede the further-extraction and Integer-first recommendations. Runtime
+  code and ABI are unchanged at this design checkpoint.
+
 - Close the preparatory Design 81 Rust extraction phase at 81CA. Defer the
   snapshot-buffer proposal (81CB) and remove its uncommitted prototype, preserving
   the existing runtime and ABI. Consolidate production ownership and remaining
