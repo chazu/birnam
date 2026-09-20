@@ -87,6 +87,10 @@ run = "scripts/native-mark-test.sh"
 description = "Check native stack anchor, word scanning and collection (debug)"
 run = "scripts/native-stack-test.sh"
 
+[tasks.allocation-budget]
+description = "Check allocation-budget ownership, actual Heap charges and host admission"
+run = "scripts/allocation-budget-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"

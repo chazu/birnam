@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Extract per-Heap allocation-byte budget ownership into Allocation Budget
+  (81BR). Preserve charge and refusal order, overflow diagnostics, deferred
+  materialization, collection timing and reset. The Siphon prepares the new
+  dependency before Id initialization; IdApi v20 and image v8 remain unchanged.
+
 - Move native stack word scanning into Native Stack (81BQ) through its v2
   implementation factory. Preserve physical capture in Id, incremental word
   reads, exact sink failures and existing public anchor assignment. IdApi v20,

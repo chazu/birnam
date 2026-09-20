@@ -1,8 +1,8 @@
 # 81BR — Allocation-byte budget ownership
 
-> **Status:** Implementation checkpoint after completed 81BQ (`d833d6bb`).
-> Module, heap callers and startup/build wiring implemented; integration proof
-> and completion documentation pending. Preserve behavior; debug validation only.
+> **Status:** Implemented and verified after completed 81BQ (`d833d6bb`).
+> Dynamic Siphon startup and compiled/image consumers verified with debug builds.
+> No new language behavior; public IdApi and image encoding unchanged.
 
 [81D](81d-id-api-partition.md) separates collector policy from Id's storage
 mechanisms. GC Settings already owns automatic/precise policy, Native Stack owns
@@ -143,7 +143,70 @@ Debug checkpoint evidence:
   The witness's initial expected totals were corrected to account for the
   existing eight-byte header; no production layout was changed.
 
-Still pending: the repeatable Allocation Budget gate and ABI reference,
+At that checkpoint, still pending: the repeatable Allocation Budget gate and ABI reference,
 dynamic runtime and host-admission checks, installed compiled/image/worker
 comparisons, final manifests and artifact receipts, and completion documentation.
 Release validation remains waived.
+
+## Completed implementation and evidence
+
+The checkpoint's remaining work is complete. The
+[v1 contract](../../abi/allocation-budget-v1.md), independent C declaration,
+`mise run allocation-budget`, installed image smoke, README links and changelog
+now accompany the implementation. Final production review confirms that only
+the counter owner and its operations moved: caller charge/refusal order,
+materialization and reset placement are unchanged. Collect's production
+coordinator and source-probe root handling are byte-for-byte unchanged from
+`d833d6bb`.
+
+Debug evidence:
+
+- The 292 core tests and twelve-row independent old/new Heap witness above
+  passed. Workspace build and `cargo check --workspace --all-targets --offline
+  --locked` passed. The additional `ffi-test-hooks` nested-source-probe test
+  passed, preserving the outer native interval after an inner anchor reset.
+- The focused gate passed module, ABI and Heap checks, plus a C fixture that
+  captures the actual bootstrap Heap owner at factory creation. Admission
+  creates no owner; Id initialization creates exactly one. Its loaded charge
+  operation accounts for padded allocation bytes. Suppressed collection retains
+  charges; restoring readiness waits for the next allocation, which collects
+  before charging. Root callbacks observe the previous charge, and collection
+  resets at its original completion point. Actual public allocation overflow
+  retains the exact abort diagnostic. The observer adds no production getter or
+  callback and never re-enters Id from a budget operation.
+- All fourteen actual host-admission cases passed: valid startup, missing
+  library/provider, null/version/size/six-operation rejection, missing floor
+  dependency and rejected attachment. Invalid descriptors are rejected before
+  Id initialization or operation invocation.
+- Five old/new actual runtime transcripts and exit statuses matched, using the
+  archived pre-extraction C fixture and its installed stack independently.
+  These cover zero-anchor accumulation, automatic threshold crossing, callback
+  and finalizer-time reset, nested suppression, roots, owner-thread rejection
+  and storage-observation rejection.
+- The new Allocation Budget image smoke passed dynamic startup, source-free
+  compiled callers, mapped and rebuilt saved native Code images, and baked
+  execution. It checks already-loaded operation ownership, independent native
+  budgets, overflow/preview refusal, arithmetic loops, automatic collection,
+  roots, object aliases and native-module reload. The existing Finalizers image
+  smoke passed all of those execution paths for native cleanup and detachment.
+- Old/new actual image-backed workers passed twelve exact wire-v1 value round
+  trips and orderly stop; the complete transcripts matched byte for byte.
+  The external harness allowed debug startup time without changing production
+  handshake deadlines.
+- Debug installation contains 52 native libraries plus 28 compiled modules.
+  All 80 installed export sets match the old stack plus Allocation Budget and
+  Id's one new dependency export. All 36 native export manifests match. Id and
+  Allocation Budget link only system libraries; the new install name is
+  `@rpath/libbirnam_allocation_budget.dylib`.
+- All 485 final source inputs and 523 installed artifacts match the installer
+  receipts. Source digest:
+  `5902f38291df49602cd06152f403a12c0458a4ce08e5e7a85523b921007ac1ff`.
+  Artifact digest:
+  `46dbcc291764eaa0117e584b29d446a950c8d724fb1a0525cb68e624e1095254`.
+  Old/new installed admission contracts are identical, including IdApi v20,
+  its fingerprint, runtime ABI hash and image v8. Native initialization remains
+  twelve arguments and Native Loader remains v12.
+
+Local evidence is recorded in `.cargo-target/81br-*` logs and prefix markers.
+The repeatable gates are `scripts/allocation-budget-test.sh [PREFIX]` and
+`scripts/allocation-budget-image-smoke.sh PREFIX`. No release validation was run.

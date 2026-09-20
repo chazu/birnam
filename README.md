@@ -836,6 +836,10 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [GC Settings](docs/design/81bk-production-gc-settings.md) owns automatic and
   precise collection flags and the existing collection threshold predicate through
   an [explicit capability](abi/gc-settings-v1.md). Run `mise run gc-settings`.
+- [Allocation Budget](docs/design/81br-production-allocation-budget.md) owns each
+  Heap's allocation charges through an [explicit dependency](abi/allocation-budget-v1.md).
+  Run `mise run allocation-budget`; use `scripts/allocation-budget-image-smoke.sh PREFIX`
+  for installed startup and compiled-image checks.
 - [Root Registry](docs/design/81bj-production-root-provider-registry.md) owns
   ordered native root-provider registration and copied snapshots through an
   [explicit capability](abi/root-registry-v1.md). Collector phases and storage
