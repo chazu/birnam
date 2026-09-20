@@ -12,6 +12,9 @@
 > compatibility facade is dropped.
 > 81D now proposes a Piumarta-grounded boundary with Symbol/interning in Id;
 > exact interface contracts and semantic gaps remain to be resolved.
+> For the production outcome through 81CA and current remaining work, see the
+> [phase closeout](81-production-extraction-status.md). Historical next-step
+> recommendations below do not constitute the current work queue.
 
 ## 1. Proposed boundary
 

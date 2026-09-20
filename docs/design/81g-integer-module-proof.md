@@ -5,6 +5,9 @@
 > Values. Both the seed implementation and its ABI source remain byte-for-byte
 > unchanged. Production runtime extraction and Birnam primitive authoring remain
 > separate work.
+> For the production outcome through 81CA and current remaining work, see the
+> [phase closeout](81-production-extraction-status.md). Historical next-step
+> recommendations below do not constitute the current work queue.
 
 [81H](81h-storage-observation-and-tracing.md) extends this checkpoint with
 observation/providers and a tracing module. This document's unchanged-seed claim

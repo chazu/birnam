@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Close the preparatory Design 81 Rust extraction phase at 81CA. Defer the
+  snapshot-buffer proposal (81CB) and remove its uncommitted prototype, preserving
+  the existing runtime and ABI. Consolidate production ownership and remaining
+  Birnam implementation work, refresh bootstrap and IdApi documentation, and
+  archive superseded local baseline copies while removing disposable build caches.
+
+
 - Move lazy deferred-clone index storage into Storage (81CA). Id retains
   ordered handle lookup, numeric fallback, displaced-index repair, journal
   charging and materialization. Empty indices remain unallocated and clear

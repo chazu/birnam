@@ -8,6 +8,9 @@
 > adds ordinary reclamation and index retirement. Production runtime
 > extraction and Birnam primitive authoring remain unproved. This refines
 > [81D](81d-id-api-partition.md), not a claim that all boundaries are executable.
+> For the production outcome through 81CA and current remaining work, see the
+> [phase closeout](81-production-extraction-status.md). Historical next-step
+> recommendations below do not constitute the current work queue.
 
 [81J](81j-private-behavior-extraction.md) constrains current implementation work
 to extracting existing production behavior. The broader integration obligations

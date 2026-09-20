@@ -7,6 +7,9 @@
 > message protocol for observing storage and a scoped observation phase.
 > This records the 81H checkpoint; [81I](81i-ordinary-storage-reclamation.md) extends
 > the workspace with ordinary reclamation and a prepared tracer entry.
+> For the production outcome through 81CA and current remaining work, see the
+> [phase closeout](81-production-extraction-status.md). Historical next-step
+> recommendations below do not constitute the current work queue.
 
 Production promotion follows in [81M](81m-production-storage-observation.md)
 (storage observation/description validation) and

@@ -1,31 +1,23 @@
 # 81A — Current bootstrap and runtime layers
 
-> **Status:** Source-verified inventory begun 2026-09-17 at `f4d7c0773bfc`;
-> native loading updated through 81Q on 2026-09-18.
-> Companion to [81 — Toward a Birnam implementation](81-toward-a-birnam-implementation.md).
-> This describes the checked-out production paths, not a newly run bootstrap or
-> a verification of the currently installed executable. Historical Zig stage
-> descriptions are not evidence of the current implementation.
+> **Status:** Production inventory refreshed through 81CA (`ad9557fb`) on
+> 2026-09-20, with source and retained debug-install receipts checked at
+> `e928780c`. See the [phase closeout](81-production-extraction-status.md).
+> Stage describes how a product is built; it does not describe its implementation
+> language. The installed host and native runtime/compiler are still Rust.
 
-**2026-09-18 update:** [81L](81l-production-integer-extraction.md) places Integer
-representation, construction and behavior in `libbirnam_integer.dylib`.
-[81M](81m-production-storage-observation.md) adds the stateless storage-description
-validator immediately after Id. [81N](81n-production-storage-tracer.md)'s scoped
-graph tracer follows it, then the 81P collection coordinator, then Integer and
-[81Q](81q-production-float-methods.md)'s Float methods.
-[81J](81j-private-behavior-extraction.md)'s object-model library follows Float,
-before Artifact. The native inventory
-contains 21 libraries. IdApi v4 has
-45 fields / 360 bytes after 81J, [81K](81k-owner-and-parent-protocols.md), and 81L.
-The remaining Machine and optimizer components acquire Integer explicitly.
-This is still a Rust implementation; build stage and implementation language
-remain distinct. Focused validation passes; release validation was explicitly waived.
+The install contains 53 canonical native Birnam libraries and 28 libraries
+compiled from Birnam source: 81 `libbirnam_*.dylib` files in total. Optional
+wrapped C libraries are counted separately. IdApi v20 has 18 fields / 144 bytes;
+ordinary native initialization receives twelve arguments, and images use v8.
+The original 21-library/v4 snapshot is preserved in Git history.
 
-[81O](81o-production-live-gc-traversal.md) mounts the live traversal capability
-before Integer. The loaded tracer owns the automatic collector's worklist;
-[81P](81p-production-collection-coordinator.md) moves collection coordination
-into `libbirnam_collect`. Source policy adapters, metadata owner operations and
-physical reclamation remain in Id.
+Extraction moved value families, namespaces, GC services and several backing
+stores into loaded Rust modules. Id retains physical allocation, dispatch,
+metadata retirement, Frames/Machines, native-tier decisions and executable
+lifetime integration. Those remaining responsibilities have not been rewritten
+in Birnam. Debug startup and compiled-image validation are recorded in the
+closeout; release validation was explicitly waived.
 
 ## 1. Stage means build stage, not runtime layer
 
@@ -47,8 +39,8 @@ Retained source and source fallback are intended; their presence is not a defect
 
 [81C](81c-thin-id-runtime-layers.md) proposes splitting the current libid into
 thinner replaceable layers, starting with Id as the first semantic layer. The
-following inventory describes the remaining combined floor and the extracted
-private-behavior and Integer layers.
+following inventory describes the remaining combined floor and its extracted
+production dependencies.
 
 Separately, either that executable's source-fallback startup or an installed
 startup builds a layered object environment. Later modules install or replace
@@ -78,8 +70,8 @@ entered through [`scripts/rust-install.sh`](../../scripts/rust-install.sh).
    A cold install uses fresh target directories; `--build-cache` explicitly
    permits development reuse. Both Cargo invocations use `--offline --locked`,
    so the declared toolchains and dependency sources must already be available.
-2. The driver builds the Cargo workspace, then copies `birnam` and 17 canonical
-   native dylibs into a staging prefix. Those are the floor plus the 16 rungs in
+2. The driver builds the Cargo workspace, then copies `birnam` and 53 canonical
+   native dylibs into a staging prefix. Those are the floor plus 52 rungs in
    section 3. Optional existing linenoise/termbox2 dylibs are copied too.
 3. For each of the 28 `STAGE1_MODULES`, the driver launches a fresh staged
    `birnam --compile-module SOURCE OUTPUT` process. It clears the environment
@@ -116,38 +108,47 @@ the other twenty is packaging, not automatic runtime activation.
 
 [`startup.rs`](../../rust/birnam-host/src/startup.rs) owns this sequence through
 `start`, `load_selected_floor`, `SCRIPT_MODULES`, and `load_script_modules`.
-The table's native module stems receive `.dylib` in the installed library tree.
+Library mapping and semantic initialization are separate steps:
 
-| Order | Component / installed stem | Authored in | Responsibility |
-|---|---|---|---|
-| Before 0 | `bin/birnam` host | Rust | Command routing, resource discovery, startup, execution boundaries, project and image orchestration |
-| 0 | `libbirnam_id` | Rust, with native compiler/C support | Object/vtable bootstrap, dispatch, allocation, symbols, primitive values, raw import/export namespace, GC source adapters/retirement/reclamation, Frames/Machines, checked control and native tiers |
-| 1 | `libbirnam_storage` | Rust | Validates prepared payload descriptions over protected Id storage facts |
-| 2 | `libbirnam_trace` | Rust | Production GC worklist/traversal and scoped described-graph reachability |
-| 3 | `libbirnam_collect` | Rust | Collection phase order, conditional settlement, retirement ordering, finalization and reclamation driver |
-| 4 | `libbirnam_integer` | Rust | Canonical Integer objects, representation, native primitives and methods; numeric implementation declarations |
-| 5 | `libbirnam_float` | Rust | Float arithmetic, comparison, conversion and printing methods; representation still in Id |
-| 6 | `libbirnam_object_model` | Rust | Existing private-behavior selection/reuse and construction, through Id primitives and seed messages |
-| 7 | `libbirnam_id_artifact` | Rust | Pointer-free compiled-artifact inspection exposed to Birnam |
-| 8 | `libbirnam_store` | Rust | Fact/history/index substrate, db/Cell/Globals protocols and object-model mirror |
-| 9 | `libbirnam_id_peg` | Rust | PEG matching, pattern objects and CST representation |
-| 10 | `libbirnam_id_lang` | Rust | Birnam grammar construction through PEG messages and Lang facade |
-| 11 | `libbirnam_id_tcc` | Rust + C libtcc | C compilation, native units and generated-code runtime shims |
-| 12 | `libbirnam_id_codegen` | Rust | Codegen/Reflect, lowering and emission, materialization, candidate/generation mechanisms |
-| 13 | `libbirnam_id_prelude` | Rust | Word primitives, System operations, Block and Boolean control primitives |
-| 14 | `libbirnam_id_collection` | Rust | Collection representations and primitive String/Vector/Map/Range operations |
-| 15 | `libbirnam_id_error` | Rust | Error representation/factories and error-valued doesNotUnderstand behavior |
-| 16 | `libbirnam_portable_code` | Rust | Reified CodeObject/CodeProgram/CodeLexicalBinding/CodeStatement/CodeNode payloads and protocols |
-| 17 | `libbirnam_id_isolate` | Rust | Process workers, copied-value transport and bounded asynchronous request operations |
-| 18 | `libbirnam_id_relational` | Rust | Relational evaluator and Birnam adapters |
-| 19 | `libbirnam_id_alien` | Rust, emitting C wrappers | FFI, foreign addresses, library/wrapper management |
-| 20 | `libbirnam_id_image` | Rust | Image codec, heap/code recovery and System image methods |
+1. The host opens the selected Id library and prepares its explicit dependencies
+   before calling `id_init`: Namespace; Object Model's enumeration, mutation epoch
+   and key index; Method Observation; Root Registry; GC Settings; Payload Layout;
+   Trace Hooks; Finalizers; Native Stack; Native Mark; Allocation Budget;
+   Collect's phase state; Storage's observation, physical/deferred identity and
+   deferred-index services; Dispatch Cache and Guard Verdicts.
+2. `id_init` constructs the object system and execution objects using those
+   dependencies. This is Rust initialization, with no Birnam source parser
+   constructing the primordial graph.
+3. The host initializes the following 52 native rungs in `SCRIPT_MODULES` order.
+   Each name below has the installed prefix `libbirnam_` and suffix `.dylib`.
+   These are Rust-authored libraries; Tcc/native compilation also uses C libtcc.
 
-The host first uses the platform loader for the selected floor, calls `id_init`,
-and retains its `IdApi`. Floor initialization constructs the object system and
-installs execution objects; it does not parse Birnam source to do so. Higher
-rungs are loaded through this selected IdApi and initialized with `module_init`.
-The floor and successful native rung handles are retained for process lifetime.
+```text
+namespace, storage, trace, collect, error_value,
+integer, float, word, object_model, method_observation,
+root_registry, gc_settings, payload_layout, trace_hooks, finalizers,
+native_stack, native_mark, allocation_budget, dispatch_cache, id_artifact,
+store, id_peg, id_lang, id_tcc, id_codegen,
+boolean, printing, system_gc, text_view, system_output,
+system_input, environment, file_io, block_loop, native_loader,
+source_loader, id_prelude, nil, string, string_builder,
+collection_value, vector, range, map, string_collection,
+id_collection, id_error, portable_code, id_isolate, id_relational,
+id_alien, id_image
+```
+
+Error Value preparation establishes the String, Word and Float construction
+capabilities needed early; mapping a dependency before its normal `module_init`
+does not reorder the semantic initializer list. Trace and Collect mount their
+services during rung loading. Prelude and Collection retain installation and
+integration duties while extracted value and System modules own their methods
+and storage. The [subsystem reference](81-production-extraction-status.md#subsystems-and-contracts)
+records that division; the loader source is authoritative for exact calls.
+
+Successful dependency and rung handles remain pinned for process lifetime.
+IdApi v20, followed by explicit capability arguments through Finalizers, is the
+current twelve-argument `module_init` contract. There is no proposed 81CB
+snapshot-buffer factory in this startup path.
 
 The host also connects Store compensation to Codegen, resolves isolate hooks,
 and sends `Store backfillMirror` after loading the rungs. It then obtains the
@@ -242,7 +243,7 @@ that mechanism. The important startup transitions are:
 | Native Error initialization | Floor Object DNU | Rust Error rung installs error-valued Object `doesNotUnderstand:` and Error's own DNU behavior |
 | `stdlib` loads | Native primitive protocols / absent derived methods | Birnam derived methods are added, including synchronous higher-order collection and Object error-control methods; primitive representations stay Rust |
 | `compiledUnit` loads | Rust Codegen candidate/generation operations | Birnam lifecycle/policy objects are added over them; Rust compiler and registry machinery remain |
-| `stacklessControl` loads | Rust Prelude Boolean branches and Block loops, plus Integer-module `to:do:` | Resumable Birnam definitions replace these method entries; Integer `timesRepeat:` also supersedes its stdlib definition |
+| `stacklessControl` loads | Rust Boolean branches and Block Loop methods, plus Integer-module `to:do:` | Resumable Birnam definitions replace these method entries; Integer `timesRepeat:` also supersedes its stdlib definition |
 | `stacklessControl` loads | Rust Vector/Range/Map callback iteration; synchronous Birnam String iteration | Resumable Birnam `do:` / `inject:into:` and Map `keysAndValuesDo:` take over; storage, indexing and Map key/value projection remain native |
 | `stacklessControl` loads | Synchronous stdlib Collection `collect:`, `select:`, `reject:`, `count:`, `detect:`, `detect:ifNone:` | Resumable Birnam versions replace them so nested callbacks share selected control |
 | `stacklessControl` loads | Synchronous stdlib Object `on:do:` / `ensure:` | Resumable Birnam definitions replace them |
@@ -332,8 +333,9 @@ transport. This is not a thread backend or migration to a different compiler.
 
 This inventory was traced through the installer arrays, command handlers,
 startup/load policies, native initializers, Birnam method definitions, and image
-recovery paths. No installed-state, clean-bootstrap, performance, or runtime
-acceptance is claimed by this documentation change.
+recovery paths. Current debug installed-state and runtime checks are recorded in
+the [closeout receipt](../measurements/81-production-closeout.json). No fresh
+cold-bootstrap, release or performance acceptance is claimed by this refresh.
 
 Primary source entry points:
 

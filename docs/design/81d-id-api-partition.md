@@ -1,10 +1,10 @@
 # 81D — Restructuring IdApi around the Id object model
 
-> **Status:** Architectural position, 2026-09-18. Proposed boundaries grounded in
-> Piumarta and Warth's object model and the current Birnam source at `162b68fe`.
-> This rewrites the earlier provisional inventory; no production runtime
-> refactor or ABI change has been implemented. Exact signatures and migration
-> details still need field-level review. Backward compatibility is not a requirement.
+> **Status:** Historical architectural position and original v1 field inventory
+> (2026-09-18, `162b68fe`). Production extraction has since reached 81CA;
+> [current status](81-production-extraction-status.md) and
+> [IdApi v20](../../abi/idapi-v20.json) supersede its current-state counts.
+> Proposed destinations remain subject to semantic and caller review.
 
 [81](81-toward-a-birnam-implementation.md) owns the self-hosting roadmap;
 [81A](81a-current-bootstrap-and-runtime-layers.md) describes today's system;
@@ -15,8 +15,8 @@ in the foundation rather than deferring them to a general naming layer.
 
 [81E](81e-seed-sufficiency-audit.md) records the upper-layer integration
 obligations. [81F](81f-isolated-id-seed-proof.md) executes a bounded standalone
-Rust seed/private-behavior witness; the production extraction below remains
-future work.
+Rust seed/private-behavior witness. The table below preserves the starting
+partition, while 81J–81CA record implemented production boundaries.
 
 [81J](81j-private-behavior-extraction.md) starts the production refactor: private
 behavior convenience moves into a loaded object-model library and IdApi v2 drops
@@ -146,11 +146,12 @@ It does not begin by extracting the optimizer. Consumers receive the specific
 objects/capabilities they use; there is no replacement aggregate compatibility
 facade under a different name.
 
-## 4. Mapping all 54 current fields
+## 4. Historical mapping of all 54 v1 fields
 
-The [Rust declaration](../../rust/birnam-abi/src/lib.rs) and
-[ABI manifest](../../abi/idapi-v1.json) describe 54 fields: 44 function pointers
-and 10 object pointers, occupying 432 bytes on the currently supported ABI.
+The original [v1 ABI manifest](../../abi/idapi-v1.json) records 54 fields:
+44 function pointers and 10 object pointers, occupying 432 bytes. The current
+[Rust declaration](../../rust/birnam-abi/src/lib.rs) implements v20, with 18
+fields / 144 bytes; do not use this historical table as a removal checklist.
 The following mapping records each exactly once. These are recommended semantic
 owners and migration directions, not finalized replacement signatures.
 

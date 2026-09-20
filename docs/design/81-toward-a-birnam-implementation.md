@@ -1,16 +1,18 @@
 # 81 — Toward a Birnam implementation
 
-> **Status:** Exploration, 2026-09-17. Records the proposed direction after
-> stackless execution and the current concurrency increments. This is not an
-> implementation authorization or a claim that the remaining runtime can already
-> be translated without performance or semantic changes.
+> **Status:** Long-term roadmap. The preparatory Rust extraction phase through
+> 81CA is closed as of 2026-09-20; 81CB is deferred. See the
+> [current status and stopping point](81-production-extraction-status.md).
+> The Birnam runtime/compiler replacement and platform-only Siphon are still
+> future work. The proposals below do not authorize another automatic sequence
+> of per-field extractions.
 >
-> The source-verified starting point is [81A — Current bootstrap and runtime
-> layers](81a-current-bootstrap-and-runtime-layers.md). Related contracts:
-> [44 — Toward self-hosting](44-toward-self-hosting.md),
-> [60B — Machine and Frames](60b-stackless-machine-and-frames.md),
-> [80 — Concurrency](80-concurrency-domains-and-structured-tasks.md), and
-> [79C — Materialization ownership](79c-materialization-ownership.md).
+> [81A](81a-current-bootstrap-and-runtime-layers.md) records current construction;
+> [81C](81c-thin-id-runtime-layers.md) describes the target runtime layers.
+> Related contracts: [44](44-toward-self-hosting.md),
+> [60B](60b-stackless-machine-and-frames.md),
+> [80](80-concurrency-domains-and-structured-tasks.md), and
+> [79C](79c-materialization-ownership.md).
 
 ## 1. Objective
 

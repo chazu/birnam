@@ -20,3 +20,8 @@ migration affects the working tree; it does not rewrite Git history.
 
 For current commands see [validation](../validation.md), and for current
 optimization decisions see [74AK](../design/74ak-bounded-qualification-and-defaults.md).
+
+The [Design 81 closeout receipt](81-production-closeout.json) records the final
+debug checks, current installation digests and disposition of local scratch
+artifacts for the [closed production extraction phase](../design/81-production-extraction-status.md).
+It is a compact current receipt, not part of the historical measurement archive.

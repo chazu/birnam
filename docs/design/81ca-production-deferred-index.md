@@ -2,6 +2,8 @@
 
 > **Status:** Completed production extraction after 81BZ (`29880f1a`).
 > Debug validation only; handle lookup, journal ordering and recovery stay in Id.
+> This is the final runtime extraction of the [closed preparatory phase](81-production-extraction-status.md).
+> 81CB is deferred; no successor extraction is queued.
 
 Move only `Heap::deferred_allocations`, the vector of deferred-handle/dead-journal
 index pairs, into Storage. Leave the clone payload journal, numeric journal,

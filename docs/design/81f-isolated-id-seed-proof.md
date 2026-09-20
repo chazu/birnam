@@ -5,6 +5,9 @@
 > passes in debug and release. This is a new isolated implementation, not an
 > extraction of production `birnam-id`, a replacement installed runtime, or a
 > Birnam primitive-authoring proof.
+> For the production outcome through 81CA and current remaining work, see the
+> [phase closeout](81-production-extraction-status.md). Historical next-step
+> recommendations below do not constitute the current work queue.
 
 [81G](81g-integer-module-proof.md) extends the executable experiment with an
 independently loaded Integer module and leaves the seed/ABI sources unchanged.

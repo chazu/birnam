@@ -2,7 +2,9 @@
 
 > **Status:** Proposed decomposition, 2026-09-17. Records the user's direction
 > to replace thinner layers with Birnam and the clarification that Id is the
-> first semantic layer. This does not implement the split.
+> first semantic layer. This does not implement the complete split.
+> [Production status](81-production-extraction-status.md) records the closed
+> Rust extraction phase through 81CA and the remaining subsystem work.
 > Updated direction: extract from Id upward and minimize IdApi without retaining
 > backward compatibility; [81D](81d-id-api-partition.md) now proposes the boundary
 > against Piumarta and Warth's object model, retaining Symbol/interning in Id.
@@ -147,8 +149,9 @@ layers; do not retain the old table as a compatibility facade. Id-owned operatio
 also need justification as direct entries rather than ordinary messages.
 [81D](81d-id-api-partition.md) partitions the original 54 fields and identifies
 the construction/storage/provider decisions still needed. [81J](81j-private-behavior-extraction.md)
-begins production extraction by removing `ensurePrivateVtable`; the current v3
-table has 49 fields after [81K](81k-owner-and-parent-protocols.md). Do not publish
+began production extraction by removing `ensurePrivateVtable`. After 81J–81CA,
+the current [v20 table](../../abi/idapi-v20.json) has 18 fields / 144 bytes;
+[the status page](81-production-extraction-status.md) maps the extracted owners. Do not publish
 dummy callbacks to disguise a missing service.
 
 [81E](81e-seed-sufficiency-audit.md) audits the proposed services against the
@@ -175,8 +178,9 @@ handoff and lifetime proof; separate modules do not make that automatically safe
 
 The main consolidation point is `RuntimeState`/`Runtime` in
 [`runtime.rs`](../../rust/birnam-id/src/runtime.rs): symbols, values, vtables,
-heap, exports, execution, registration state, caches and native tiers are currently
-owned together. Existing files provide useful extraction starting points:
+heap, exports, execution, registration state, caches and native tiers remain
+coordinated there, with several backing services now separately owned.
+The table identifies remaining integration points, not an untouched monolith:
 
 | Responsibility | Current source starting points |
 |---|---|
@@ -196,11 +200,12 @@ and generation policy. These are consumers of the mechanisms, not redundant
 implementations of them. The native loop/iteration methods replaced by
 `stackless-control.birnam` mostly come from Prelude/Collection, not libid itself.
 
-## 5. Bottom-up extraction and construction
+## 5. Target dependency order (future work)
 
-**Extract the Rust implementation from Id upward, and construct the target from
-Id upward.** This replaces the earlier recommendation to remove optimization
-first. Establishing the smallest replaceable Id boundary is the priority.
+**Construct the target from Id upward.** The preparatory extraction phase is
+closed at 81CA. The sequence below describes eventual subsystem boundaries; it
+is not a requirement to wrap every remaining field before writing Birnam.
+The dependency order starts at Id, rather than optimization.
 
 1. Partition IdApi, minimize its construction/dispatch contract, and move unrelated
    services to their actual owners. Update consumers rather than preserving the

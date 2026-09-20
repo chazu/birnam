@@ -50,6 +50,13 @@ Optimization implementation and default decisions are recorded in
 changes no language semantics or optimization defaults. Old experimental tools
 remain explicitly opt-in; their continued existence is not an acceptance gate.
 
+The Design 81 preparatory extraction phase is closed at 81CA. Its
+[closeout recipe and evidence](design/81-production-extraction-status.md#validation-and-evidence)
+cover the unchanged production boundary with core debug tests, independent native
+admission and loaded startup/compiled-image checks. Release validation was waived
+for this work. The per-contract tasks below remain regression tools, not a queue
+of further extractions.
+
 The production storage-observation boundary has a focused debug check:
 `mise run storage-observation`. It builds only Id, Integer and the stateless
 storage-description library, then runs the independent C fixture. Rust checks

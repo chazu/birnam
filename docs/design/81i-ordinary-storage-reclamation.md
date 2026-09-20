@@ -4,6 +4,9 @@
 > Builds on the 81H checkpoint `c4d49b23`. A separately loaded collector retires
 > unreachable ordinary objects and their upper-module metadata, then Id releases
 > their storage. The original native SeedApi carrier remains byte-for-byte unchanged.
+> For the production outcome through 81CA and current remaining work, see the
+> [phase closeout](81-production-extraction-status.md). Historical next-step
+> recommendations below do not constitute the current work queue.
 
 ## 1. Result and scope
 

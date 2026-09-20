@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-20",
+  "decision": "Close preparatory Rust extraction at 81CA; defer 81CB and stop the automatic extraction sequence.",
+  "source_checkpoint": "e928780caee13d446fcc44fd729e85fca732c2cf",
+  "last_runtime_extraction": "ad9557fb",
+  "runtime_abi_scripts_build_configuration_unchanged": true,
+  "scope": "Debug validation of the existing production boundary; no new functionality, release acceptance, performance claim or claim of a Birnam runtime/compiler replacement.",
+  "inventory": {
+    "canonical_native_libraries": 53,
+    "compiled_birnam_libraries": 28,
+    "birnam_libraries_total": 81,
+    "native_export_manifests": 38,
+    "id_api_version": 20,
+    "id_api_fields": 18,
+    "id_api_bytes": 144,
+    "module_init_arguments": 12,
+    "native_loader_version": 12,
+    "image_version": 8
+  },
+  "install_receipt": {
+    "source_manifest_files": 524,
+    "source_manifest_sha256": "49dd52d2a257f131c119bd0ddf2f07cb839876cd0e52dc5dbfd53e364883c601",
+    "staged_manifest_files": 563,
+    "staged_manifest_sha256": "c838d01f5048689391755766266457d10118b2707ffe7e59e8f7dd8f5cfb5d9c",
+    "admission_contract": {
+      "artifact_generation_abi": "birnam-artifact-generation-v1",
+      "candidate_envelope_abi": 4,
+      "candidate_manifest_version": 4,
+      "id_api_descriptor_version": 1,
+      "id_api_fingerprint": "7ebc7988670b94c1c553d1521957ddec6160206154a607fa0a91edc412eb9706",
+      "id_api_schema_version": 20,
+      "image_version": 8,
+      "portable_code_api_versions": [
+        1,
+        2,
+        3
+      ],
+      "portable_program_view_api_version": 1,
+      "runtime_abi_hash": "cdb641f978540d45",
+      "target": "aarch64-macos"
+    }
+  },
+  "validation": [
+    {
+      "command": "mise exec -- cargo test --offline --locked -p birnam-abi -p birnam-dispatch-cache -p birnam-host -p birnam-id -p birnam-object-model -p birnam-storage --lib",
+      "result": "passed",
+      "passed": 428,
+      "failed": 0,
+      "ignored": 16,
+      "log_sha256": "9896b07194cb374febc7c4366f96d01b2209188ae16f7ec7e4b7d45f8e5fadb9"
+    },
+    {
+      "command": "scripts/deferred-index-test.sh \"$prefix\"",
+      "result": "passed",
+      "coverage": "Storage/ABI/Heap/native-tier tests, debug workspace build, independent C row owner, 16 host admission cases, Storage exports/install name",
+      "log_sha256": "0681e0059cc54a0019fbefd22a82660d2a1b23cfe6e3273fd04cd0b3725c3aae"
+    },
+    {
+      "command": "scripts/deferred-index-loaded-smoke.sh \"$prefix\"",
+      "result": "passed",
+      "coverage": "Seven source/compiled/source-free cases with disabled/enabled/forced recovery, real forwarded index rows and unchanged numeric behavior",
+      "clone_counts": {
+        "disabled": [
+          0,
+          0,
+          0
+        ],
+        "enabled": [
+          386,
+          193,
+          0
+        ],
+        "forced_recovery": [
+          386,
+          386,
+          0
+        ]
+      },
+      "counter_order": [
+        "pushes",
+        "removes",
+        "writes"
+      ],
+      "numeric_counts": [
+        0,
+        0,
+        0
+      ],
+      "log_sha256": "f1ba6cd6f2c4b06325366e6fabcdcafb3d1f6d07e98ca23918a68d1db2df65db"
+    },
+    {
+      "command": "scripts/deferred-index-image-smoke.sh \"$prefix\"",
+      "result": "passed",
+      "coverage": "Dynamic startup, source-free compiled caller, mapped/rebuilt/baked images, real host and forwarding probe, live mutation, shared Cells/aliasing, GC/finalization and BUSY observation boundary",
+      "log_sha256": "26b2b7ec1a7694cdf709f0586f1a24652b2e8f0114cfaf2f347eacc2c03671d8"
+    },
+    {
+      "command": "Source/install SHA-256 comparison and nm/otool inventory audit against manifests and retained 81BZ install",
+      "result": "passed",
+      "coverage": "All 524 source inputs and 563 artifacts; all 81 Birnam libraries and 38 manifests; Id/Storage system-only links; unchanged public admission contracts",
+      "log_sha256": "86eb9e3d6c1219e1e1835130e03ef9b0cf7d7a0895abebb0dc1ef1ed7945b75d"
+    }
+  ],
+  "historical_evidence": {
+    "worker_comparison": "81CA records a byte-for-byte image-backed worker comparison with 81BZ, 12 values and orderly stop; not rerun by this documentation-only closeout.",
+    "reference": "../design/81ca-production-deferred-index.md#implementation-and-evidence"
+  },
+  "cleanup": {
+    "uncommitted_81cb_prototype": "Removed; no factory, startup dependency, ABI export or new fixture shipped.",
+    "archived_baseline_directories": 29,
+    "local_archive": {
+      "path": ".cargo-target/81-archive/superseded-baseline-sources.tar.gz",
+      "bytes": 431390683,
+      "sha256": "e6062963ca9a8ee17857f55b1b67252ee9fac160322a53557c7ccbbeb5bb176e",
+      "verified_files": 47214
+    },
+    "allocated_bytes_removed": 8655897789,
+    "archive_adjusted_bytes_removed": 8224507106,
+    "local_cleanup_ledger": ".cargo-target/81-closeout-cleanup.json",
+    "ledger_sha256": "30ac775f8258b2197e89cf5f3fa11cd97b4945ae2f9a821c4e55d0f63f8b7963",
+    "retained": [
+      "Current target/ build cache",
+      "Installer cache and latest debug install",
+      "Most recent differential baseline source and install",
+      "Existing regression fixtures and historical ABI/seed oracles",
+      "Historical validation logs; verified local archive of superseded baseline witnesses"
+    ],
+    "note": "The archive and detailed ledger are local scratch evidence, not prerequisites for ordinary tests. Historical implementation and reproducible fixtures remain tracked in Git."
+  },
+  "documentation": {
+    "local_markdown_links_checked": 317,
+    "missing_paths_or_anchors": 0
+  }
+}

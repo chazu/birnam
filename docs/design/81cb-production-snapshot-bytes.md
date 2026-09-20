@@ -1,7 +1,15 @@
 # 81CB — Large deferred-snapshot byte ownership
 
-> **Status:** Audited next extraction after 81CA (`ad9557fb`).
-> Debug validation only; snapshot policy, Rc sharing and payload meaning stay in Id.
+> **Status:** Deferred at the production extraction closeout. No implementation
+> is shipped. 81CA (`ad9557fb`) remains the final runtime extraction in this phase.
+
+The uncommitted prototype was removed on 2026-09-20. This boundary would add
+three ABI operations and another startup dependency while leaving snapshot
+preparation, sharing, journals and recovery in Id. That does not justify an
+independent extraction round. Reconsider the buffer only as part of a coherent
+allocation/materialization ownership change with a concrete Birnam consumer.
+The audit below is retained as design evidence, not a queued next task. See the
+[phase closeout](81-production-extraction-status.md).
 
 Move only the backing allocation of `Payload::Heap(Vec<u8>)` in deferred clone
 snapshots into Storage. Keep `Payload::Inline`, `DeadAllocation`, Rc sharing,
