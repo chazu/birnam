@@ -247,3 +247,8 @@ capability explicitly; wire encoding and worker lifecycle are unchanged.
 `idapi-v19.json` and `fixtures/idapi-v19` preserve the 81BN checkpoint.
 [Native Stack v1](native-stack-v1.md) owns the native root anchor and removes
 `gcSetStackBottom` from IdApi v20 without moving register capture or scanning.
+
+Native Mark v1 (81BP) owns native mark scopes and emission policy while Id keeps
+per-floor/thread selection and Rust unwinding. See [the contract](native-mark-v1.md)
+and [implementation manifest](rust-native-mark-dylib-v1.json). IdApi v20,
+Native Loader v12, twelve-argument initialization and image v8 remain unchanged.

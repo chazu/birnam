@@ -899,6 +899,7 @@ pub enum FloorError {
     PayloadLayout { path: PathBuf, reason: &'static str },
     TraceHooks { path: PathBuf, reason: &'static str },
     Finalizers { path: PathBuf, reason: &'static str },
+    NativeMark { path: PathBuf, reason: &'static str },
     NativeStack { path: PathBuf, reason: &'static str },
     VtableEnumeration { path: PathBuf, reason: &'static str },
     Namespace { path: PathBuf, reason: &'static str },
@@ -941,6 +942,7 @@ impl fmt::Debug for FloorError {
             Self::TraceHooks { path, reason } => write!(formatter, "Trace hooks preparation failed: {} ({reason})", path.display()),
             Self::Finalizers { path, reason } => write!(formatter, "Finalizers preparation failed: {} ({reason})", path.display()),
             Self::NativeStack { path, reason } => write!(formatter, "Native stack preparation failed: {} ({reason})", path.display()),
+            Self::NativeMark { path, reason } => write!(formatter, "Native mark preparation failed: {} ({reason})", path.display()),
             Self::VtableEnumeration { path, reason } => write!(formatter, "Vtable enumeration preparation failed: {} ({reason})", path.display()),
             Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
@@ -970,6 +972,7 @@ pub struct LoadedFloor {
     _finalizers: NonNull<std::ffi::c_void>,
     finalizers: NonNull<birnam_abi::finalizers::ApiV1>,
     _native_stack: NonNull<std::ffi::c_void>,
+    _native_mark: NonNull<std::ffi::c_void>,
     native_stack: NonNull<birnam_abi::native_stack::ApiV1>,
     _method_observation: NonNull<std::ffi::c_void>,
     method_observation: NonNull<birnam_abi::method_observation::ApiV1>,
@@ -1110,6 +1113,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_trace_hooks",
     "libbirnam_finalizers",
     "libbirnam_native_stack",
+    "libbirnam_native_mark",
     "libbirnam_id_artifact",
     "libbirnam_store",
     "libbirnam_id_peg",
@@ -3062,6 +3066,7 @@ pub fn load_floor(
     let trace_hooks_path = path.with_file_name("libbirnam_trace_hooks.dylib");
     let finalizers_path = path.with_file_name("libbirnam_finalizers.dylib");
     let native_stack_path = path.with_file_name("libbirnam_native_stack.dylib");
+    let native_mark_path = path.with_file_name("libbirnam_native_mark.dylib");
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -3159,6 +3164,13 @@ pub fn load_floor(
         }
     };
     let native_stack_image = match unsafe { prepare_native_stack(handle, &native_stack_path) } {
+        Ok(image) => image,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
+    let native_mark_image = match unsafe { prepare_native_mark(handle, &native_mark_path) } {
         Ok(image) => image,
         Err(error) => {
             unsafe { system_dlclose(handle.as_ptr()) };
@@ -3309,6 +3321,7 @@ pub fn load_floor(
         _finalizers: finalizers_image,
         finalizers: NonNull::new(finalizers).unwrap(),
         _native_stack: native_stack_image,
+        _native_mark: native_mark_image,
         native_stack: NonNull::new(native_stack).unwrap(),
         _method_observation: observation_image,
         method_observation: NonNull::new(observation).unwrap(),
@@ -3617,6 +3630,39 @@ unsafe fn prepare_native_stack(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::native_stack::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::native_stack::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
+}
+
+unsafe fn prepare_native_mark(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::NativeMark {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_native_mark_dependency_v1".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_native_mark_provider_v1".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::native_mark::ProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::native_mark::valid(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::native_mark::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

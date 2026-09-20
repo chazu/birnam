@@ -35,6 +35,7 @@ pub mod payload_layout;
 pub mod trace_hooks;
 pub mod finalizers;
 pub mod native_stack;
+pub mod native_mark;
 pub mod text_view;
 pub mod error_value;
 pub mod range;

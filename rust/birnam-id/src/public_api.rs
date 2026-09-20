@@ -831,3 +831,8 @@ pub unsafe extern "C" fn birnam_native_stack_dependency_v1(factory: *const birna
 pub unsafe extern "C" fn birnam_native_stack_provider_v1() -> *mut birnam_abi::native_stack::ApiV1 {
     runtime().native_stack()
 }
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_native_mark_dependency_v1(api: *const birnam_abi::native_mark::ApiV1) -> c_int {
+    unsafe { birnam_abi::native_mark::attach(api) }
+}

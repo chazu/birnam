@@ -818,6 +818,10 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Trace Hooks](docs/design/81bm-production-trace-hooks.md) owns native hook registration
   and bounded inherited selection through an [explicit capability](abi/trace-hooks-v1.md).
   Run `mise run trace-hooks`.
+- [Native Mark](docs/design/81bp-production-native-mark-callback.md) owns synchronous
+  native mark scopes through an [explicit dependency](abi/native-mark-v1.md).
+  Run `mise run native-mark`; use `scripts/native-mark-image-smoke.sh PREFIX`
+  for installed startup and compiled-image checks.
 - [Native Stack](docs/design/81bo-production-native-stack-anchor.md) owns the host's
   native root anchor through an [explicit capability](abi/native-stack-v1.md).
   Run `mise run native-stack`; use `scripts/native-stack-image-smoke.sh PREFIX`

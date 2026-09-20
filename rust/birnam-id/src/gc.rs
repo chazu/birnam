@@ -1,8 +1,8 @@
 //! Root discovery, marking, sweeping, and finalization for the Rust floor.
 
-use core::cell::Cell;
-
-use crate::abi::{MarkFn, Oop};
+use crate::abi::MarkFn;
+#[cfg(test)]
+use crate::abi::Oop;
 use crate::boundary;
 #[cfg(test)]
 use crate::heap::Heap;
@@ -75,32 +75,47 @@ pub(crate) fn emit_candidate(sink: &SinkV1, candidate: usize) {
     boundary::require_invariant(status == OK, "GC tracer rejected a candidate");
 }
 
+// The TLS key remains local to each loaded floor; the module owns the state.
+struct NativeMarkOwner {
+    context: core::ptr::NonNull<core::ffi::c_void>,
+    api: birnam_abi::native_mark::ApiV1,
+}
+impl NativeMarkOwner {
+    fn new() -> Self {
+        #[cfg(test)]
+        let api = unsafe { *birnam_native_mark::birnam_native_mark_provider_v1() };
+        #[cfg(not(test))]
+        let api = unsafe { birnam_abi::native_mark::operations() };
+        let context = core::ptr::NonNull::new(unsafe { api.create.unwrap()() })
+            .expect("native mark scope creation failed");
+        Self { context, api }
+    }
+}
+impl Drop for NativeMarkOwner {
+    fn drop(&mut self) { unsafe { self.api.destroy.unwrap()(self.context.as_ptr()) }; }
+}
 thread_local! {
-    static ACTIVE_MARK_SINK: Cell<Option<SinkV1>> = const { Cell::new(None) };
+    static NATIVE_MARK: NativeMarkOwner = NativeMarkOwner::new();
 }
-struct ActiveMarkGuard;
+struct ActiveMarkGuard {
+    context: *mut core::ffi::c_void,
+    end: unsafe extern "C" fn(*mut core::ffi::c_void),
+}
 impl Drop for ActiveMarkGuard {
-    fn drop(&mut self) {
-        ACTIVE_MARK_SINK.set(None);
-    }
+    fn drop(&mut self) { unsafe { (self.end)(self.context) }; }
 }
-unsafe extern "C" fn mark_from_foreign(object: Oop) {
-    let sink = ACTIVE_MARK_SINK
-        .get()
-        .unwrap_or_else(|| boundary::fatal_invariant("GC mark callback escaped its invocation"));
-    if !object.is_null() {
-        emit_candidate(&sink, object.addr());
-    }
+unsafe extern "C" fn mark_from_foreign(object: crate::abi::Oop) {
+    // A callback has no context argument. This floor-local shim selects only
+    // its own thread's module-owned scope, even with multiple loaded floors.
+    let (context, mark) = NATIVE_MARK.with(|owner| (owner.context.as_ptr(), owner.api.mark.unwrap()));
+    unsafe { mark(context, object) };
 }
 
-/// Adapt the legacy synchronous MarkFn without owning a queue or heap borrow.
+/// The module owns scope state; retain the floor's callback identity and unwind.
 pub(crate) fn invoke_with_mark_callback(sink: &SinkV1, operation: impl FnOnce(MarkFn)) {
-    boundary::require_invariant(
-        ACTIVE_MARK_SINK.get().is_none(),
-        "GC mark callback reentered",
-    );
-    ACTIVE_MARK_SINK.set(Some(*sink));
-    let _guard = ActiveMarkGuard;
+    let (context, api) = NATIVE_MARK.with(|owner| (owner.context.as_ptr(), owner.api));
+    unsafe { api.begin.unwrap()(context, sink) };
+    let _guard = ActiveMarkGuard { context, end: api.end.unwrap() };
     operation(mark_from_foreign);
 }
 
@@ -263,5 +278,49 @@ mod tests {
         assert_eq!(heap.is_marked(owner), Some(false));
         heap.clear_marks();
         assert_eq!(heap.is_marked(owner), Some(false));
+    }
+}
+
+#[cfg(test)]
+mod native_mark_tests {
+    use super::*;
+    #[test]
+    fn floor_callback_selects_thread_local_scopes_and_later_sinks() {
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let handles: Vec<_> = (7..9).map(|value| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                unsafe extern "C" fn emit(context: *mut core::ffi::c_void, value: usize) -> i32 {
+                    unsafe { &mut *context.cast::<Vec<usize>>() }.push(value); OK
+                }
+                let mut values = Vec::<usize>::new();
+                let sink = SinkV1 { context: (&raw mut values).cast(), emit };
+                let mut saved = None;
+                invoke_with_mark_callback(&sink, |mark| {
+                    saved = Some(mark); barrier.wait(); unsafe { mark(value as Oop) }; barrier.wait();
+                });
+                invoke_with_mark_callback(&sink, |_| unsafe { saved.unwrap()((value + 10) as Oop) });
+                assert_eq!(values, [value, value + 10]);
+            })
+        }).collect();
+        for handle in handles { handle.join().unwrap(); }
+    }
+    #[test]
+    fn scope_resets_after_rust_closure_unwind() {
+        unsafe extern "C" fn emit(context: *mut core::ffi::c_void, value: usize) -> i32 {
+            unsafe { &mut *context.cast::<Vec<usize>>() }.push(value);
+            OK
+        }
+        let mut values = Vec::<usize>::new();
+        let sink = SinkV1 { context: (&raw mut values).cast(), emit };
+        let result = std::panic::catch_unwind(|| {
+            invoke_with_mark_callback(&sink, |mark| {
+                unsafe { mark(17usize as Oop) };
+                panic!("ordinary Rust closure unwind");
+            });
+        });
+        assert!(result.is_err());
+        invoke_with_mark_callback(&sink, |mark| unsafe { mark(19usize as Oop) });
+        assert_eq!(values, [17, 19]);
     }
 }

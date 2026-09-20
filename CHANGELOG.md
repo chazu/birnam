@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Extract native mark-callback scope ownership into Native Mark (81BP), preserving
+  per-floor/thread selection, provider and hook ordering, emission reentry,
+  unwind cleanup and fail-stop diagnostics. IdApi v20 and image v8 are unchanged.
+
 - Extract native stack-anchor ownership into Native Stack (81BO). IdApi v20
   has 18 fields / 144 bytes. The host sets the anchor through an explicit
   capability; native initialization keeps twelve arguments. Preserve register
