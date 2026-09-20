@@ -6,7 +6,7 @@
     "birnam_error_value_dependency_v2",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
-    "birnam_system_input_provider_v1",
+    "birnam_system_input_provider_v2",
     "module_init"
   ]
 }

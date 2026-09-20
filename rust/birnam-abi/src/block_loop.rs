@@ -44,6 +44,8 @@ pub unsafe fn attach(api: *const ApiV2) -> c_int {
 /// At Block's original while registration slots. Both tables stay pinned;
 /// execution is Prelude's original selection. Behavior/selectors are the already
 /// selected values from this installation, used synchronously without retention.
+/// The live presence descriptor and its selected context/code stay pinned for
+/// the same lifetime as the retained execution API.
 pub unsafe fn install(
     registration: *const IdApi,
     execution: *const IdApi,

@@ -23,11 +23,20 @@ pub type FindV1 = unsafe extern "C" fn(*const c_void, Oop) -> Oop;
 /// Intern once, then use the selected raw find. Zero leaves output untouched;
 /// one writes the binding, which may itself be null. All pointers are borrowed.
 pub type LookupV1 = unsafe extern "C" fn(
-    *const c_void, FindV1, *mut c_void, InternV1, *const u8, usize, *mut Oop,
+    *const c_void,
+    FindV1,
+    *mut c_void,
+    InternV1,
+    *const u8,
+    usize,
+    *mut Oop,
 ) -> c_int;
 
 pub type CreatePresenceV1 = unsafe extern "C" fn(
-    *const c_void, Option<FindV1>, Option<LookupV1>, *const crate::namespace_presence::FloorV1,
+    *const c_void,
+    Option<FindV1>,
+    Option<LookupV1>,
+    *const crate::namespace_presence::FloorV1,
 ) -> *mut crate::namespace_presence::ApiV1;
 
 pub type CreateEnumerationV1 = unsafe extern "C" fn(

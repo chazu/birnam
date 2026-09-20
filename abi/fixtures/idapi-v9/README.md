@@ -1,7 +1,8 @@
 # Current IdApi v9 source fixtures
 
-Design 81AX removes reverse export-name lookup into Namespace's explicit names
-capability. The table has 33 fields and occupies 264 bytes on arm64 macOS.
+Design 81BB removes isExported into Namespace's explicit presence capability.
+The table has 32 fields and occupies 256 bytes on arm64 macOS. ModuleInitFn
+receives the selected presence descriptor as its third argument.
 
 `idapi_v9.h` is the independent C declaration. `client.c` and `module.c`
 retain native API coverage and check the separately loaded String and numeric families,
@@ -11,4 +12,4 @@ through the initialized Names capability. It prepares String, Word and Float, mo
 then attaches Integer to both modules. Fixtures needing Float/Word methods
 activate their `module_init` afterward. No committed binary is regenerated.
 
-The v1-v7 directories remain historical evidence for their respective floors.
+The v1-v8 directories remain historical evidence for their respective floors.

@@ -115,7 +115,7 @@ static Oop forbidden(Oop self,const Oop *args,size_t count) { (void)self; (void)
 int main(int argc,char **argv) {
     assert(argc==5); first_reentry=!strcmp(argv[4],"first-install-reentry");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1]);
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1], fixture_namespace_presence());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     original_make=fixture_string->make; original_bytes=fixture_string->bytes;
     selected=*api; selected.alloc=allocate; selected.vtable_of=vtable; selected.send=send; selected.method=method; selected.gc_register_root_provider=registered;

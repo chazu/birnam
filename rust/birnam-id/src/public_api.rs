@@ -636,17 +636,18 @@ pub(crate) fn namespace_enumeration_access() -> birnam_abi::namespace_enumeratio
 }
 
 pub(crate) fn namespace_presence_access() -> birnam_abi::namespace_presence::FloorV1 {
-    unsafe extern "C" fn intern(_: *mut c_void, bytes: *const u8, length: usize) -> Oop {
-        let bytes = unsafe { birnam_abi::borrowed_slice(bytes, length) }.expect("invalid Namespace interner bytes");
+    unsafe extern "C" fn access(_: *mut c_void) -> *mut c_void {
         #[cfg(not(test))]
-        let value = runtime().intern(bytes);
+        { runtime().namespace_interner_context() }
         #[cfg(test)]
-        let value = crate::runtime::with_active(|runtime| runtime.intern(bytes));
-        value.unwrap_or(core::ptr::null_mut())
+        { crate::runtime::with_active(|runtime| runtime.namespace_interner_context()) }
     }
-    birnam_abi::namespace_presence::FloorV1 { version: 1,
+    birnam_abi::namespace_presence::FloorV1 {
+        version: 1,
         byte_size: size_of::<birnam_abi::namespace_presence::FloorV1>(),
-        context: core::ptr::null_mut(), intern: Some(intern), }
+        context: core::ptr::null_mut(), access: Some(access),
+        intern: Some(crate::runtime::namespace_intern),
+    }
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_namespace_presence_provider_v1() -> *mut birnam_abi::namespace_presence::ApiV1 {

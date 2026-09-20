@@ -26,7 +26,7 @@ no native numeric optimization declaration or allocator-context guard.
 
 ## Mounting and lifetime
 
-The host pins Float's library and calls `birnam_float_prepare_v1(IdApi*)` before
+The host pins Float's library and calls `birnam_float_prepare_v2(IdApi*, const NamespacePresenceV1*)` before
 initializing Integer. Preparation registers partially initialized roots before
 allocating, then returns a complete primitive table. The provider returns null
 until preparation completes. Attach that table to the host, combined runtime
@@ -60,3 +60,8 @@ debug prefix for the focused native and compiled-image checks.
 
 For the shared policy migration, run `mise run float-error-value` and
 `scripts/float-error-value-image-smoke.sh PREFIX`.
+
+The operations descriptor remains v1. Preparation v2 captures the live presence
+descriptor with the first API, before preparation callbacks. Activation and later
+registration keep that execution selection; they do not replace it with a later
+initializer's presence argument. This descriptor and code must remain pinned.

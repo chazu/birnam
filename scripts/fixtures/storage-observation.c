@@ -158,7 +158,7 @@ int main(int argc, char **argv) {
     ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence());
     StorageRequestV1 bare_request={1,sizeof(bare_request),NULL,bare};
     assert(observe(&bare_request)==STORAGE_OK);
-    fixture_mount_integer(api, argv[1]);
+    fixture_mount_integer(api, argv[1], fixture_namespace_presence());
     integers=fixture_integer;
     storage_selector=api->intern("withStorageView:"); lookup_selector=api->intern("lookup");
     owner_selector=api->intern("ownerOf:put:"); parent_selector=api->intern("parentOf:put:");

@@ -706,7 +706,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
-- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v8.
+- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v9.
 - `rust/birnam-namespace/` — per-runtime raw export bindings, reverse aliases and enumeration; its factory is prepared before Id initialization.
 - `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for native System, Block and numeric methods.
 - `rust/birnam-source-loader/` — System source reading, staging, evaluation and diagnostics.
@@ -788,33 +788,35 @@ artifact required. The Rust host owns the complete runtime and build closure.
   preserves each caller's live selection. Run `mise run error-value` and
   `scripts/error-presence-image-smoke.sh PREFIX` for the native handoff image check.
 - [Namespace state](docs/design/81aw-production-namespace-state.md) owns raw
-  Symbol/value bindings through an [opaque storage contract](abi/namespace-v4.md).
+  Symbol/value bindings through an [opaque storage contract](abi/namespace-v5.md).
   [Namespace names](docs/design/81ax-production-namespace-names.md) owns reverse
-  export lookup through a [live capability](abi/namespace-names-v1.md); IdApi v8
-  has 33 fields / 264 bytes. Run `mise run namespace-names`.
+  export lookup through a [live capability](abi/namespace-names-v1.md); IdApi v9
+  has 32 fields / 256 bytes. Native initializers receive the explicit
+  [presence capability](abi/namespace-presence-v1.md) as their third argument. Run `mise run namespace-names`.
   [Enumeration](docs/design/81ay-production-namespace-enumeration.md) moves
   count/name-at behind Namespace descriptors while preserving Reflect discovery.
   [Interned lookup](docs/design/81az-production-namespace-lookup.md) moves the
-  canonical intern-then-find policy into Namespace; live import/presence slots
-  still await migration. The host prepares factory v4 before Id; Globals remains
-  separate. Run `mise run namespace`.
+  canonical intern-then-find policy into Namespace.
+  [Presence](docs/design/81bb-production-namespace-presence.md) moves isExported
+  into an explicit capability; public import remains in IdApi. The host prepares
+  factory v5 before Id; Globals remains separate. Run `mise run namespace`.
 - [Source Loader](docs/design/81av-production-source-loader.md) owns load:
-  through an [explicit installer](abi/source-loader-v1.md), leaving Prelude
+  through an [explicit installer](abi/source-loader-v2.md), leaving Prelude
   responsible for identity, layout and installation. Run `mise run source-loader`.
 - [Native Loader](docs/design/81au-production-native-loader.md) owns loadModule:
-  through an [explicit installer](abi/native-loader-v1.md), preserving direct
+  through an [explicit installer](abi/native-loader-v2.md), preserving direct
   loading and initialization callbacks. Run `mise run native-loader`.
 - [Block Loop](docs/design/81at-production-block-loop.md) owns the native while
-  methods through an [explicit installer](abi/block-loop-v1.md), preserving
+  methods through an [explicit installer](abi/block-loop-v2.md), preserving
   fresh dispatch and their later stackless replacement. Run `mise run block-loop`.
 - [File IO](docs/design/81as-production-file-io.md) owns readFile: and
-  writeFile:contents: through an [explicit installer](abi/file-io-v1.md),
+  writeFile:contents: through an [explicit installer](abi/file-io-v2.md),
   preserving binary data, borrowed paths and errors. Run `mise run file-io`.
 - [Environment](docs/design/81ar-production-environment.md) owns getEnv: through an
-  [explicit installer](abi/environment-v1.md), preserving live lookup, Unicode
+  [explicit installer](abi/environment-v2.md), preserving live lookup, Unicode
   handling, missing values and callback order. Run `mise run environment`.
 - [System input](docs/design/81aq-production-system-input.md) owns readLine through an
-  [explicit installer](abi/system-input-v1.md), preserving binary bytes, buffering,
+  [explicit installer](abi/system-input-v2.md), preserving binary bytes, buffering,
   EOF, errors and callback locking. Run `mise run system-input`.
 - [System output](docs/design/81al-production-system-output.md) owns print:/println:
   through an [explicit installer](abi/system-output-v1.md), preserving byte output,

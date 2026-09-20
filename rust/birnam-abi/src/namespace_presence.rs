@@ -36,13 +36,21 @@ pub struct FloorV1 {
     pub version: u32,
     pub byte_size: usize,
     pub context: *mut c_void,
+    pub access: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
     pub intern: Option<crate::namespace::InternV1>,
 }
+const _: () = {
+    assert!(size_of::<FloorV1>() == 40);
+    assert!(core::mem::offset_of!(FloorV1, access) == 24);
+    assert!(core::mem::offset_of!(FloorV1, intern) == 32);
+};
 pub type ProviderV1 = unsafe extern "C" fn() -> *mut ApiV1;
 /// # Safety
 /// Readable descriptor and owner-thread access; this calls no operation.
 pub unsafe fn valid(api: *const ApiV1) -> bool {
-    if api.is_null() { return false; }
+    if api.is_null() {
+        return false;
+    }
     let api = unsafe { *api };
     api.version == 1 && api.byte_size == size_of::<ApiV1>() && api.contains.is_some()
 }
@@ -61,13 +69,24 @@ mod tests {
     #[test]
     fn selection_is_live_and_validation_does_not_invoke_it() {
         assert!(!unsafe { valid(ptr::null()) });
-        let mut api = ApiV1 { version: 1, byte_size: size_of::<ApiV1>(), context: 3usize as *mut c_void, contains: Some(selected) };
+        let mut api = ApiV1 {
+            version: 1,
+            byte_size: size_of::<ApiV1>(),
+            context: 3usize as *mut c_void,
+            contains: Some(selected),
+        };
         assert!(unsafe { valid(&api) });
         assert_eq!(unsafe { contains(&api, c"Error".as_ptr()) }, 3);
-        api.context = 7usize as *mut c_void; api.contains = Some(changed);
+        api.context = 7usize as *mut c_void;
+        api.contains = Some(changed);
         assert_eq!(unsafe { contains(&api, c"Error".as_ptr()) }, -7);
-        api.version = 2; assert!(!unsafe { valid(&api) });
-        api.version = 1; api.byte_size -= 1; assert!(!unsafe { valid(&api) });
-        api.byte_size += 1; api.contains = None; assert!(!unsafe { valid(&api) });
+        api.version = 2;
+        assert!(!unsafe { valid(&api) });
+        api.version = 1;
+        api.byte_size -= 1;
+        assert!(!unsafe { valid(&api) });
+        api.byte_size += 1;
+        api.contains = None;
+        assert!(!unsafe { valid(&api) });
     }
 }

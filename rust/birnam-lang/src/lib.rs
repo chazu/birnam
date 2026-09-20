@@ -19,6 +19,7 @@ const GRAMMAR_NAME: &[u8] = b"BirnamGrammar\0";
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    presence: usize,
     peg: usize,
     lang_vt: usize,
     lang: usize,
@@ -734,12 +735,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
         Runtime {
             api: api_pointer as usize,
+            presence: presence as usize,
             peg: peg as usize,
             lang_vt: lang_vt as usize,
             lang: lang as usize,
         }
     });
     let api = unsafe { runtime_api(&runtime) };
+    let presence = runtime.presence as *const birnam_abi::namespace_presence::ApiV1;
     ROOT_REGISTERED.get_or_init(|| unsafe {
         (api.gcRegisterRootProvider)(mark_runtime_roots);
     });

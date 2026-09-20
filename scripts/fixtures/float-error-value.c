@@ -95,7 +95,7 @@ int main(int argc,char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);fixture_mount_trace(api,argv[1]);
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));api->gc_register_root_provider(roots);
     selected=*api;selected_presence_slot=exported;selected.import_fn=imported;selected.vtable_of=vtable;selected.intern=intern;selected.send=send;selected.method=method;
-    fixture_prepare_float(&selected,argv[1], &selected_presence);fixture_mount_integer(api,argv[1]);mount(argv[2]);
+    fixture_prepare_float(&selected,argv[1], &selected_presence);fixture_mount_integer(api,argv[1], fixture_namespace_presence());mount(argv[2]);
     original_make=fixture_string->make;string_context=fixture_string->context;fixture_string->make=make;
     original_read=fixture_float->read;fixture_float->read=read_float;
     left=fixture_float_make(2.0);high=fixture_float_make(INFINITY);negative=fixture_float_make(-1.0);zero=fixture_float_make(0.0);right=api->true_obj;

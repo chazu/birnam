@@ -130,6 +130,9 @@ pub type TraceHook = unsafe extern "C" fn(Oop, MarkFn);
 pub type Finalizer = unsafe extern "C" fn(Oop);
 pub type MethodOverwriteHook = unsafe extern "C" fn(Oop, Oop);
 pub type IdInitFn = unsafe extern "C" fn() -> *mut IdApi;
+/// Native initialization receives the presence capability associated with `api`.
+/// Both live selections and their code/context must outlive any retained module
+/// execution state; callers do not transfer ownership.
 pub type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void, *const namespace_presence::ApiV1) -> *mut c_void;
 
 /// Borrow a foreign read-only buffer while enforcing the ABI's null/count and

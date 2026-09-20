@@ -93,7 +93,7 @@ static void mount(const char *path,IdApi *table,int prelude) {
 int main(int argc,char **argv) {
     assert(argc==4);trace=fdopen(dup(STDOUT_FILENO),"w");assert(trace);setvbuf(trace,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1]);uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1], fixture_namespace_presence());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0);
     selected=*api;selected.vtable_of=vtable;selected.intern=intern;selected.send=send;mount(argv[3],&selected,1);api->gc_register_root_provider(roots);
     Oop system_type=api->import_fn("SystemVt");system_object=api->import_fn("System");
     print_method=lookup(system_type,"print:");println_method=lookup(system_type,"println:");read_file=lookup(system_type,"readFile:");write_file=lookup(system_type,"writeFile:contents:");get_env=lookup(system_type,"getEnv:");load_source=lookup(system_type,"load:");load_module=lookup(system_type,"loadModule:");

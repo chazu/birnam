@@ -466,7 +466,7 @@ def main():
         # manifest instead of claiming that this table matches the 74T baseline.
         run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v9")
         receipt["current_id_api"] = {
-            "schema_version": 8, "change": "Design 81AX Namespace names dependency",
+            "schema_version": 9, "change": "Design 81BB explicit Namespace presence",
             "files_sha256": {name: sha(ROOT / name) for name in CURRENT_IDAPI},
         }
         for profile in ("debug", "release"):

@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
     fixture_prepare_float(&float_api,argv[1], fixture_namespace_presence());
     assert(preparation_collections==1);
     float_api.alloc=api->alloc;
-    fixture_mount_integer(api,argv[1]);
+    fixture_mount_integer(api,argv[1], fixture_namespace_presence());
     assert(!lookup("+"));
     float_api.send=reenter_publication;
     mount(argv[2],&float_api); /* Float methods work before Prelude, Error or Codegen. */

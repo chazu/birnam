@@ -1,6 +1,7 @@
 #include "idapi_v9.h"
 #include "namespace-support.h"
 #include "integer-support.h"
+static int forbidden_presence(void *context,const char *name) { (void)context;(void)name;assert(!"numeric admission invoked presence");return 0; }
 static unsigned boxes;
 static Oop (*original_make)(void *, int64_t);
 static Oop counted_box(void *context, int64_t value) { ++boxes; return original_make(context, value); }
@@ -10,6 +11,7 @@ int main(int argc, char **argv) {
     IdInitFn initialize = (IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")); assert(initialize);
     IdApi *floor_api = initialize();
     IdApi module_api = *floor_api;
+    NamespacePresenceV1 module_presence=*fixture_namespace_presence();
     void *integer = floor_api->dlopen_fn(argv[2], RTLD_NOW | RTLD_LOCAL); assert(integer);
     ModuleInitFn init = (ModuleInitFn)floor_api->dlsym_fn(integer, "module_init"); assert(init);
     fixture_prepare_float(floor_api, argv[1], fixture_namespace_presence());
@@ -17,7 +19,7 @@ int main(int argc, char **argv) {
     assert(strlen(argv[1])<sizeof(fixture_floor_path));
     strcpy(fixture_floor_path,argv[1]);
     fixture_attach_integer(floor_api, integer);
-    init(&module_api,NULL,fixture_namespace_presence());
+    init(&module_api,NULL,&module_presence);
     IntegerProviderV1 provide = (IntegerProviderV1)floor_api->dlsym_fn(integer, "birnam_integer_provider_v1"); assert(provide);
     fixture_integer = provide(); assert(fixture_integer);
     fixture_attach_integer(floor_api, floor);
@@ -38,6 +40,16 @@ int main(int argc, char **argv) {
     };
     assert(query((void *)add, vt, functions) == 1);
     assert(query((void *)add, fixture_float->behavior, functions) == 0);
+    NamespacePresenceV1 original_presence=module_presence;
+    module_presence.contains=forbidden_presence;
+    assert(query((void *)add, vt, functions) == 0);
+    module_presence=original_presence;
+    uintptr_t independent_context=0;
+    module_presence.context=&independent_context;
+    assert(query((void *)add, vt, functions) == 0);
+    module_presence=original_presence;
+    assert(query((void *)add, vt, functions) == 1);
+    assert(!floor_api->dlsym_fn(integer,"birnam_native_numeric_semantics_v2"));
     Oop seven = fixture_integer_make(7);
     fixture_integer->make = counted_box;
     assert(query((void *)add, vt, functions) == 0);

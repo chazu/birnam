@@ -1021,6 +1021,10 @@ impl Runtime {
         self.assert_owner();
         unsafe { (*self.state.get()).environment.enumeration() }
     }
+    pub(crate) fn namespace_interner_context(&self) -> *mut core::ffi::c_void {
+        self.assert_owner();
+        self.state.get().cast()
+    }
     pub(crate) fn namespace_presence(&self) -> *mut birnam_abi::namespace_presence::ApiV1 {
         self.assert_owner();
         unsafe { (*self.state.get()).environment.presence() }
@@ -4715,7 +4719,7 @@ fn note_block_vtable_replaced(state: &mut RuntimeState, vtable: Oop, method: Met
 
 /// Namespace borrows this primitive only during the owner-checked import call.
 /// It must not collect, send, reenter, or keep the transient RuntimeState pointer.
-unsafe extern "C" fn namespace_intern(context: *mut core::ffi::c_void, bytes: *const u8, length: usize) -> Oop {
+pub(crate) unsafe extern "C" fn namespace_intern(context: *mut core::ffi::c_void, bytes: *const u8, length: usize) -> Oop {
     let bytes = unsafe { birnam_abi::borrowed_slice(bytes, length) }
         .expect("Namespace interner received invalid bytes");
     unsafe { intern_in_state(&mut *context.cast::<RuntimeState>(), bytes) }
@@ -6245,6 +6249,29 @@ mod tests {
             assert_eq!(runtime.import(name), Ok(runtime.canonical().nil));
         }
         assert_ne!(runtimes[0].runtime.intern(name).unwrap(), runtimes[1].runtime.intern(name).unwrap());
+    }
+
+    #[test]
+    fn namespace_presence_follows_independent_moved_runtime_state() {
+        let runtimes = vec![build_bootstrap(), build_bootstrap()];
+        let first = runtimes[0].runtime.namespace_presence();
+        let second = runtimes[1].runtime.namespace_presence();
+        assert_ne!(first, second);
+        let name = c"independent-presence";
+        for bootstrap in &runtimes {
+            let runtime = &bootstrap.runtime;
+            runtime.enter(|| {
+                let presence = runtime.namespace_presence();
+                let before = unsafe { (*runtime.state.get()).symbols.count() };
+                assert_eq!(unsafe { birnam_abi::namespace_presence::contains(presence, name.as_ptr()) }, 0);
+                assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before + 1);
+                runtime.export(name.to_bytes(), runtime.canonical().nil).unwrap();
+                assert_eq!(unsafe { birnam_abi::namespace_presence::contains(presence, name.as_ptr()) }, 1);
+                assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before + 1);
+                runtime.export(name.to_bytes(), core::ptr::null_mut()).unwrap();
+                assert_eq!(unsafe { birnam_abi::namespace_presence::contains(presence, name.as_ptr()) }, 0);
+            });
+        }
     }
 
     #[test]

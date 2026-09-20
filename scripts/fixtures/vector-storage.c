@@ -180,7 +180,7 @@ int main(int argc,char **argv) {
     int ignored=!strcmp(argv[4],"vector-only-exports"); adopting=strcmp(argv[4],"normal")!=0 && !ignored;
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api);
-    api->gc_set_auto(0); fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1]);
+    api->gc_set_auto(0); fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1], fixture_namespace_presence());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence());
     if(adopting || ignored) seed();
     if(ignored) { api->export_obj("Vector",NULL); node_type=behavior=prototype=NULL; }

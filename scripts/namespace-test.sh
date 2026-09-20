@@ -7,3 +7,22 @@ scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-namespace.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v9 -Iscripts/fixtures scripts/fixtures/namespace.c -o "$scratch/namespace"
 "$scratch/namespace" "$namespace_target/debug/libbirnam_id.dylib" provider
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v9 -Iscripts/fixtures scripts/fixtures/namespace-presence-boundary.c -o "$scratch/presence-boundary"
+python3 - "$scratch/presence-boundary" "$namespace_target/debug/libbirnam_id.dylib" <<'PY'
+import subprocess, sys
+cases = {
+    'null': 'IdApi.import name is null',
+    'owner': 'Rust floor entered from a non-owner thread',
+    'null-owner': 'IdApi.import name is null',
+    'observation': 'Id access during storage observation',
+    'null-observation': 'IdApi.import name is null',
+}
+for mode, diagnostic in cases.items():
+    result = subprocess.run([sys.argv[1], sys.argv[2], mode], capture_output=True, text=True)
+    assert result.returncode < 0, (mode, result)
+    assert result.stderr == 'birnam-id invariant failed: ' + diagnostic + '\n', (mode, result.stderr)
+result = subprocess.run([sys.argv[1], sys.argv[2], 'collection'], capture_output=True, text=True)
+assert result.returncode == 0 and not result.stderr, result
+assert result.stdout == 'presence remains callable during root collection\n', result.stdout
+print('namespace presence: null/owner/observation precedence and collection callbacks passed')
+PY

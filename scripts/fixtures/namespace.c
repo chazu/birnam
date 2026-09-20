@@ -1,3 +1,4 @@
+#define _DARWIN_C_SOURCE
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
 #include "idapi_v9.h"
 #include "namespace-support.h"
@@ -106,6 +107,7 @@ int main(int argc,char **argv) {
     }
     IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init");assert(initialize);
     IdApi *api=initialize();assert(api);api->gc_set_auto(0);
+    Dl_info owner;assert(dladdr((void *)fixture_namespace_presence()->contains,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));
     if(attach)assert(creates==1 && binds>0 && floor_context);
     fixture_mount_trace(api,argv[1]);
     size_t (*count)(void)=fixture_namespace_count;

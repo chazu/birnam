@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Move canonical export presence into Namespace (Design 81BB). IdApi v9 has
+  32 fields / 256 bytes; native initializers receive an explicit live presence
+  capability. Update Float/Word preparation, System/Block installers and numeric
+  admission while preserving copied API selections, callback order and reload.
+  Native consumers must be rebuilt. Image encoding and language behavior are unchanged.
+
 - Pass each caller's live namespace presence capability explicitly to Error Value
   (Design 81BA). Native Error Value ABI is v2; preserve late callback selection,
   reentry and copied API contexts. IdApi fields and language behavior are unchanged.

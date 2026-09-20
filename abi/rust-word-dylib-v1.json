@@ -7,7 +7,7 @@
     "birnam_integer_dependency_v1",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
-    "birnam_word_prepare_v1",
+    "birnam_word_prepare_v2",
     "birnam_word_provider_v1",
     "module_init"
   ]

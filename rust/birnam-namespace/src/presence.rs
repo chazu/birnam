@@ -17,19 +17,40 @@ fn fatal(message: &str) -> ! {
     std::process::abort()
 }
 unsafe extern "C" fn contains(context: *mut c_void, name: *const c_char) -> c_int {
-    if name.is_null() { fatal("IdApi.import name is null"); }
+    if name.is_null() {
+        fatal("IdApi.import name is null");
+    }
     let bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
     let (lookup, namespace, find, floor) = {
         let service = unsafe { &*context.cast::<Presence>() };
-        (service.lookup, service.namespace, service.find, service.floor)
+        (
+            service.lookup,
+            service.namespace,
+            service.find,
+            service.floor,
+        )
     };
+    // Preserve floor owner/phase admission before the selected lookup. The
+    // transient interner context is never retained by this service.
+    let interner = unsafe { floor.access.unwrap()(floor.context) };
     let mut value = ptr::null_mut();
     let status = unsafe {
-        (lookup)(namespace, find, floor.context,
-                         floor.intern.unwrap(), bytes.as_ptr(), bytes.len(), &mut value)
+        (lookup)(
+            namespace,
+            find,
+            interner,
+            floor.intern.unwrap(),
+            bytes.as_ptr(),
+            bytes.len(),
+            &mut value,
+        )
     };
-    if status == 0 { fatal("IdApi.import name contains embedded NUL"); }
-    assert_eq!(status, 1, "Namespace lookup returned invalid status");
+    if status == 0 {
+        fatal("IdApi.import name contains embedded NUL");
+    }
+    if status != 1 {
+        fatal("Namespace lookup returned invalid status");
+    }
     c_int::from(!value.is_null())
 }
 pub(crate) unsafe extern "C" fn create(
@@ -42,12 +63,24 @@ pub(crate) unsafe extern "C" fn create(
         return ptr::null_mut();
     }
     let floor = unsafe { *floor };
-    if floor.version != 1 || floor.byte_size != size_of::<FloorV1>() || floor.intern.is_none() {
+    if floor.version != 1
+        || floor.byte_size != size_of::<FloorV1>()
+        || floor.access.is_none()
+        || floor.intern.is_none()
+    {
         return ptr::null_mut();
     }
     let mut service = Box::new(Presence {
-        api: ApiV1 { version: 1, byte_size: size_of::<ApiV1>(), context: ptr::null_mut(), contains: Some(contains) },
-        namespace, find: find.unwrap(), lookup: lookup.unwrap(), floor,
+        api: ApiV1 {
+            version: 1,
+            byte_size: size_of::<ApiV1>(),
+            context: ptr::null_mut(),
+            contains: Some(contains),
+        },
+        namespace,
+        find: find.unwrap(),
+        lookup: lookup.unwrap(),
+        floor,
     });
     service.api.context = ptr::from_mut(service.as_mut()).cast();
     Box::into_raw(service).cast()
@@ -68,12 +101,19 @@ mod tests {
         value: Oop,
         replace: *mut ApiV1,
     }
+    unsafe extern "C" fn access(context: *mut c_void) -> *mut c_void {
+        unsafe { (*context.cast::<Probe>()).events.push("access") };
+        context
+    }
     unsafe extern "C" fn intern(context: *mut c_void, bytes: *const u8, length: usize) -> Oop {
         let probe = unsafe { &mut *context.cast::<Probe>() };
         probe.events.push("intern");
         probe.name = unsafe { core::slice::from_raw_parts(bytes, length) }.to_vec();
         if !probe.replace.is_null() {
-            unsafe { (*probe.replace).context = ptr::null_mut(); (*probe.replace).contains = Some(replaced); }
+            unsafe {
+                (*probe.replace).context = ptr::null_mut();
+                (*probe.replace).contains = Some(replaced);
+            }
         }
         ptr::dangling_mut()
     }
@@ -84,14 +124,26 @@ mod tests {
         probe.value
     }
     unsafe extern "C" fn replaced(context: *mut c_void, _: *const c_char) -> c_int {
-        assert!(context.is_null()); -7
+        assert!(context.is_null());
+        -7
     }
     fn probe(value: Oop) -> Probe {
-        Probe { events: Vec::new(), name: Vec::new(), value, replace: ptr::null_mut() }
+        Probe {
+            events: Vec::new(),
+            name: Vec::new(),
+            value,
+            replace: ptr::null_mut(),
+        }
     }
     unsafe fn service(probe: &mut Probe) -> *mut ApiV1 {
         let context = ptr::from_mut(probe).cast();
-        let floor = FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context, intern: Some(intern) };
+        let floor = FloorV1 {
+            version: 1,
+            byte_size: size_of::<FloorV1>(),
+            context,
+            access: Some(access),
+            intern: Some(intern),
+        };
         unsafe { create(context, Some(find), Some(crate::lookup::lookup), &floor) }
     }
     #[test]
@@ -105,23 +157,38 @@ mod tests {
             assert_eq!(unsafe { namespace_presence::contains(first_api, name) }, 0);
             assert_eq!(unsafe { namespace_presence::contains(second_api, name) }, 1);
         }
-        assert_eq!(first.events, ["intern", "find", "intern", "find"]);
+        assert_eq!(
+            first.events,
+            ["access", "intern", "find", "access", "intern", "find"]
+        );
         assert_eq!(second.events, first.events);
         assert_eq!(first.name, b"raw\xff");
         // State remains independent when one binding changes.
         first.value = 3usize as Oop;
-        assert_eq!(unsafe { namespace_presence::contains(first_api, c"new".as_ptr()) }, 1);
+        assert_eq!(
+            unsafe { namespace_presence::contains(first_api, c"new".as_ptr()) },
+            1
+        );
         assert_eq!(second.name, b"raw\xff");
-        unsafe { destroy(first_api); destroy(second_api); }
+        unsafe {
+            destroy(first_api);
+            destroy(second_api);
+        }
     }
     #[test]
     fn active_call_keeps_selection_and_destroy_ignores_replaced_context() {
         let mut probe = probe(2usize as Oop);
         let api = unsafe { service(&mut probe) };
         probe.replace = api;
-        assert_eq!(unsafe { namespace_presence::contains(api, c"outer".as_ptr()) }, 1);
-        assert_eq!(probe.events, ["intern", "find"]);
-        assert_eq!(unsafe { namespace_presence::contains(api, c"next".as_ptr()) }, -7);
+        assert_eq!(
+            unsafe { namespace_presence::contains(api, c"outer".as_ptr()) },
+            1
+        );
+        assert_eq!(probe.events, ["access", "intern", "find"]);
+        assert_eq!(
+            unsafe { namespace_presence::contains(api, c"next".as_ptr()) },
+            -7
+        );
         // The public context no longer points at the owned service.
         unsafe { destroy(api) };
     }
@@ -129,17 +196,37 @@ mod tests {
     fn invalid_creation_is_inert() {
         let mut probe = probe(ptr::null_mut());
         let context = ptr::from_mut(&mut probe).cast();
-        let mut floor = FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context, intern: Some(intern) };
-        let attempt = |storage, find, lookup, floor| unsafe { create(storage, find, lookup, floor) };
+        let mut floor = FloorV1 {
+            version: 1,
+            byte_size: size_of::<FloorV1>(),
+            context,
+            access: Some(access),
+            intern: Some(intern),
+        };
+        let attempt =
+            |storage, find, lookup, floor| unsafe { create(storage, find, lookup, floor) };
         assert!(attempt(ptr::null(), Some(find), Some(crate::lookup::lookup), &floor).is_null());
         assert!(attempt(context, None, Some(crate::lookup::lookup), &floor).is_null());
         assert!(attempt(context, Some(find), None, &floor).is_null());
-        assert!(attempt(context, Some(find), Some(crate::lookup::lookup), ptr::null()).is_null());
+        assert!(
+            attempt(
+                context,
+                Some(find),
+                Some(crate::lookup::lookup),
+                ptr::null()
+            )
+            .is_null()
+        );
         floor.version = 2;
         assert!(attempt(context, Some(find), Some(crate::lookup::lookup), &floor).is_null());
-        floor.version = 1; floor.byte_size -= 1;
+        floor.version = 1;
+        floor.byte_size -= 1;
         assert!(attempt(context, Some(find), Some(crate::lookup::lookup), &floor).is_null());
-        floor.byte_size += 1; floor.intern = None;
+        floor.byte_size += 1;
+        floor.intern = None;
+        assert!(attempt(context, Some(find), Some(crate::lookup::lookup), &floor).is_null());
+        floor.intern = Some(intern);
+        floor.access = None;
         assert!(attempt(context, Some(find), Some(crate::lookup::lookup), &floor).is_null());
         assert!(probe.events.is_empty());
     }

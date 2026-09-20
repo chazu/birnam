@@ -344,13 +344,13 @@ static inline void fixture_prepare_string_collection(IdApi *api) {
     StringCollectionProviderV1 provide=(StringCollectionProviderV1)api->dlsym_fn(image,"birnam_string_collection_provider_v1"); assert(provide && !provide());
     init(api,NULL,fixture_namespace_presence()); fixture_string_collection=provide(); assert(fixture_string_collection);
 }
-static inline void fixture_mount_integer(IdApi *api, const char *floor_path) {
+static inline void fixture_mount_integer(IdApi *api, const char *floor_path, const NamespacePresenceV1 *presence) {
     assert(strlen(floor_path)<sizeof(fixture_floor_path));
     strcpy(fixture_floor_path,floor_path);
     fixture_prepare_string(api, floor_path);
     assert(!fixture_integer);
-    fixture_prepare_word(api, floor_path, fixture_namespace_presence());
-    fixture_prepare_float(api, floor_path, fixture_namespace_presence());
+    fixture_prepare_word(api, floor_path, presence);
+    fixture_prepare_float(api, floor_path, presence);
     const char *slash = strrchr(floor_path, '/'); assert(slash);
     char path[PATH_MAX];
     int length = snprintf(path, sizeof(path), "%.*s/libbirnam_integer.dylib", (int)(slash-floor_path), floor_path);
@@ -360,7 +360,7 @@ static inline void fixture_mount_integer(IdApi *api, const char *floor_path) {
     assert(image);
     ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(image, "module_init"); assert(init);
     fixture_attach_integer(api, image);
-    init(api,NULL,fixture_namespace_presence());
+    init(api,NULL,presence);
     IntegerProviderV1 provide = (IntegerProviderV1)api->dlsym_fn(image, "birnam_integer_provider_v1"); assert(provide);
     fixture_integer = provide(); assert(fixture_integer);
     assert(fixture_integer->version == 1 && fixture_integer->byte_size == sizeof(IntegerApiV1));

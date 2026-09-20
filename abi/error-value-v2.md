@@ -26,7 +26,7 @@ factory snapshot. An absent/null factory returns the selected API's current nil.
 All v1 callback order, reentry, GC, argument/result and borrowed-buffer contracts
 remain unchanged. Neither operation reads IdApi.isExported or retains presence.
 
-The Rust call-site adapters currently lend each caller's live isExported slot;
-they do not snapshot its callback. IdApi v8, numeric admission identities, module
-initializers, Error representation, language protocols and image encoding are
-unchanged. The remaining direct consumers and slot removal are later work.
+Native consumers now receive their live presence descriptor explicitly during
+initialization or preparation (81BB). The wrappers pass that pointer through;
+there is no IdApi slot loan. Earlier kind/String callbacks can replace its
+function or context before Error Value performs the presence call.

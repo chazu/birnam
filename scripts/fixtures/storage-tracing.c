@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
     void *storage=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(storage);
     describe=(StorageDescribeV1)api->dlsym_fn(storage,"birnam_storage_describe_v1"); assert(describe);
     ((ModuleInitFn)api->dlsym_fn(storage,"module_init"))(api,NULL,fixture_namespace_presence());
-    fixture_mount_integer(api, argv[1]);
+    fixture_mount_integer(api, argv[1], fixture_namespace_presence());
     IntegerApiV1 *integer=fixture_integer;
     pair_vt=api->proto(api->object_vt);
     for(size_t i=0; i<8; i++) if(i!=5) nodes[i]=api->alloc(pair_vt,(i==0||i==1||i==3||i==4)?2*sizeof(Oop):0);

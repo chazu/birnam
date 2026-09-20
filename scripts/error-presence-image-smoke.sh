@@ -6,7 +6,9 @@ bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-error-presence-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'error presence image root: %s\n' "$scratch"; fi
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v9 scripts/fixtures/error-value-presence-native.c -o "$scratch/error-value-presence-native.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v9 scripts/fixtures/namespace-presence-reload-native.c -o "$scratch/namespace-presence-reload-native.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
+[System loadModule: "$scratch/namespace-presence-reload-native.dylib"];
 [System loadModule: "$scratch/error-value-presence-native.dylib"];
 [System println: [[System errorValuePresenceProbe] printString]];
 [System println: [[System errorValuePresenceProbe] printString]];
@@ -22,17 +24,20 @@ rm "$scratch/probe.birnam"
 cmp "$scratch/startup.out" "$scratch/compiled.out"
 test ! -s "$scratch/compiled.err"
 cat >"$scratch/save.birnam" <<BIRNAM
+[System loadModule: "$scratch/namespace-presence-reload-native.dylib"];
 [System loadModule: "$scratch/error-value-presence-native.dylib"];
 let value := [Object clone];
 let alias := value;
 [System errorValuePresenceProbe];
 let main := [|
-  [System loadModule: "$scratch/error-value-presence-native.dylib"];
+  [System loadModule: "$scratch/namespace-presence-reload-native.dylib"];
+[System loadModule: "$scratch/error-value-presence-native.dylib"];
   [System preciseGc: true];
   [System gc];
   [System println: [[value == alias] printString]];
   [System println: [[System errorValuePresenceProbe] printString]];
-  [System loadModule: "$scratch/error-value-presence-native.dylib"];
+  [System loadModule: "$scratch/namespace-presence-reload-native.dylib"];
+[System loadModule: "$scratch/error-value-presence-native.dylib"];
   [System println: [[System errorValuePresenceProbe] printString]];
   [System println: "error-presence-image-ok"]
 ];
@@ -59,4 +64,4 @@ grep -Fq '/libbirnam_error_value.dylib' "$scratch/image.err"
 BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
 grep -Fq '/libbirnam_error_value.dylib' "$scratch/baked.err"
-printf 'error-presence-image-smoke: startup, source-free compiled caller, v8 native Code image and baked executable preserve explicit per-call presence, late callback/context changes, independent nested selection and null short circuit\n'
+printf 'error-presence-image-smoke: startup, source-free compiled caller, v8 native Code image and baked executable preserve explicit per-call presence, late callback/context changes, independent nested selection, null short circuit and saved-API reload presence\n'

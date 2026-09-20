@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
     word_api=*api; word_api.alloc=collecting_alloc;
     fixture_prepare_word(&word_api,argv[1], fixture_namespace_presence());
     assert(preparation_collections==1); word_api.alloc=api->alloc;
-    fixture_mount_integer(api,argv[1]);
+    fixture_mount_integer(api,argv[1], fixture_namespace_presence());
     assert(!lookup("asInteger"));
     word_api.send=reenter_publication;
     mount(argv[2],&word_api);

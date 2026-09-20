@@ -2,6 +2,7 @@
 
 typedef struct {
     IdApi *api;
+    const NamespacePresenceV1 *presence;
     unsigned calls;
 } FixtureState;
 
@@ -9,13 +10,14 @@ static FixtureState state;
 
 __attribute__((visibility("default")))
 void *module_init(IdApi *api, void *prior_state,const NamespacePresenceV1 *presence) {
-    (void)presence;
+    if (!presence) return NULL;
     if (prior_state == NULL) {
         state.api = api;
+        state.presence = presence;
         state.calls = 1;
         return &state;
     }
-    if (prior_state != &state || state.api != api) return NULL;
+    if (prior_state != &state || state.api != api || state.presence != presence) return NULL;
     state.calls += 1;
     return &state;
 }

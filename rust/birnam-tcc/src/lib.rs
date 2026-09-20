@@ -1394,6 +1394,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
     });
     let api = unsafe { api_ref(&runtime) };
+    let presence = runtime.presence as *const birnam_abi::namespace_presence::ApiV1;
     ROOT_REGISTERED.get_or_init(|| unsafe {
         (api.gcRegisterRootProvider)(mark_runtime_roots);
     });

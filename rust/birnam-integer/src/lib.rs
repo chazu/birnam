@@ -27,7 +27,7 @@ pub extern "C" fn birnam_integer_provider_v1() -> *mut birnam_abi::integer::Inte
 }
 
 /// Optional native implementation declaration, independent of selector names.
-/// See abi/native-numeric-semantics-v1.md. This pure query never enters Id.
+/// See abi/native-numeric-semantics-v3.md. This pure query never enters Id.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_native_numeric_semantics_v3(
     method: *const c_void,

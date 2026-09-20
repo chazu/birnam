@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
     fixture_prepare_string(&string_api,argv[1]);
     assert(preparation_collections==3);
     string_api.set_layout=api->set_layout; string_api.method=api->method;
-    fixture_mount_integer(api,argv[1]); mount(argv[2],api);
+    fixture_mount_integer(api,argv[1], fixture_namespace_presence()); mount(argv[2],api);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     assert(!lookup("size"));
     string_api.send=reenter_publication;

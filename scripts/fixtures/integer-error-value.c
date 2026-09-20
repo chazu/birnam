@@ -123,7 +123,7 @@ int main(int argc,char **argv) {
     void *image=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL);assert(image);
     integer_provider=(IntegerProviderV1)api->dlsym_fn(image,"birnam_integer_provider_v1");assert(integer_provider);
     integer_init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(integer_init);
-    begin("all affected methods run during registration");fixture_mount_integer(&selected,argv[1]);end();assert(bindings==10);
+    begin("all affected methods run during registration");fixture_mount_integer(&selected,argv[1], &selected_presence);end();assert(bindings==10);
     mount(argv[2]);
     answer=api->alloc(api->object_vt,0);second=api->alloc(api->object_vt,0);error_type=api->proto(api->object_vt);other_type=api->proto(error_type);
     Oop type=api->proto(api->object_vt);factory=api->alloc(type,0);alternate=api->alloc(type,0);factory_export=factory;api->method(type,api->intern("kind:message:"),construct);
