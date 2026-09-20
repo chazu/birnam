@@ -253,7 +253,7 @@ unsafe extern "C" fn string_builder_as_string(
 
 /// Initialize this native family using its existing adoption/publication rules.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -294,7 +294,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, pr
         runtime
     });
     unsafe {
-        (api.setLayout)(
+        birnam_abi::payload_layout::set(layouts,
             runtime.string_builder_vt as Oop,
             STRING_BUILDER_LAYOUT.as_ptr(),
             STRING_BUILDER_LAYOUT.len(),

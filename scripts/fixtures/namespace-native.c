@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #include "namespace-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -58,7 +58,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(!name_of(value));
     return value;
 }
-void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings) { (void)settings; (void)root_registry; (void)observation; (void)vtables;
+void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts) { (void)layouts; (void)settings; (void)root_registry; (void)observation; (void)vtables;
     fixture_exports=(NamespaceExportV1 *)exports;
     fixture_presence=(NamespacePresenceV1 *)presence;
     fixture_imports=(NamespaceImportV1 *)imports;

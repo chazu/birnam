@@ -13,6 +13,7 @@ const RUST_PRELUDE_IDENTITY: &[u8] = b"rust-prelude-n7.1-core\0";
 struct Runtime {
     api: usize,
     settings: usize,
+    layouts: usize,
     vtables: usize,
     observation: usize,
     roots: usize,
@@ -85,7 +86,7 @@ unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::name
             api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, system_vt, load,
         );
         birnam_abi::native_loader::install(
-            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, runtime().exports as *const birnam_abi::namespace_export::ApiV1, runtime().vtables as *const birnam_abi::vtable_enumeration::ApiV2, runtime().observation as *const birnam_abi::method_observation::ApiV1, runtime().roots as *const birnam_abi::root_registry::ApiV1, runtime().settings as *const birnam_abi::gc_settings::ApiV1, system_vt, load_module,
+            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, runtime().exports as *const birnam_abi::namespace_export::ApiV1, runtime().vtables as *const birnam_abi::vtable_enumeration::ApiV2, runtime().observation as *const birnam_abi::method_observation::ApiV1, runtime().roots as *const birnam_abi::root_registry::ApiV1, runtime().settings as *const birnam_abi::gc_settings::ApiV1, runtime().layouts as *const birnam_abi::payload_layout::ApiV1, system_vt, load_module,
         );
         birnam_abi::system_input::install(
             api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, system_vt, read_line,
@@ -98,7 +99,7 @@ unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::name
     let _ = system_object;
 }
 
-unsafe fn install_block_protocol(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn install_block_protocol(api: &IdApi, layouts: *const birnam_abi::payload_layout::ApiV1, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     let (block_vt, block_proto) = if unsafe { birnam_abi::namespace_presence::contains(presence, c"Block".as_ptr()) } != 0 {
         let block_vt = unsafe { birnam_abi::namespace_import::import(imports, c"BlockVt".as_ptr()) };
         let block_proto = unsafe { birnam_abi::namespace_import::import(imports, c"Block".as_ptr()) };
@@ -107,7 +108,7 @@ unsafe fn install_block_protocol(api: &IdApi, presence: *const birnam_abi::names
         let block_vt = unsafe { (api.proto)(api.object_vt) };
         // SAFETY: a Block payload consists only of captured Oops, and this
         // first native loop rung does not inspect the payload itself.
-        unsafe { (api.setLayout)(block_vt, ptr::null(), 0, birnam_abi::SLOT_OOP) };
+        unsafe { birnam_abi::payload_layout::set(layouts, block_vt, ptr::null(), 0, birnam_abi::SLOT_OOP) };
         let block_proto = unsafe { (api.alloc)(block_vt, 0) };
         unsafe { birnam_abi::set_vtable_owner(api, block_vt, block_proto) };
         unsafe { birnam_abi::namespace_export::export(exports, c"Block".as_ptr(), block_proto) };
@@ -125,7 +126,7 @@ unsafe fn install_block_protocol(api: &IdApi, presence: *const birnam_abi::names
     }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -133,6 +134,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     let _ = RUNTIME.get_or_init(|| Runtime {
         api: api_pointer as usize,
         settings: settings as usize,
+        layouts: layouts as usize,
             vtables: vtables as usize,
             observation: observation as usize,
             roots: roots as usize,
@@ -141,7 +143,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         exports: exports as usize,
     });
     unsafe { birnam_abi::printing::install(api_pointer, runtime().api as *const IdApi) };
-    unsafe { install_block_protocol(api, presence, imports, exports) };
+    unsafe { install_block_protocol(api, layouts, presence, imports, exports) };
     unsafe { install_system_protocol(api, presence, imports, exports) };
 }
 
@@ -159,10 +161,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust prelude against the selected floor's IdApi.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
     // SAFETY: bring_up enforces the null boundary and only retains the
     // process-owned IdApi address.
-    unsafe { bring_up(api, presence, imports, exports, vtables, observation, roots, settings) };
+    unsafe { bring_up(api, presence, imports, exports, vtables, observation, roots, settings, layouts) };
     ptr::null_mut()
 }
 

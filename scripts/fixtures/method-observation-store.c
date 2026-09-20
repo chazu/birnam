@@ -3,7 +3,7 @@
 #define CONTEXT
 #define CONTEXT_CHECK(expected) ((void)(expected))
 #else
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #define CONTEXT void *context,
 #define CONTEXT_CHECK(expected) assert(context==(expected))
 #endif
@@ -23,7 +23,7 @@ static void init(IdApi *table,const RootRegistryV1 *root_registry) {
 #ifndef FIXTURE_IDAPI_V13
         ,table==&first?&first_observation:&second_observation,root_registry
 #endif
-    ,fixture_gc_settings());
+    ,fixture_gc_settings(),fixture_payload_layout());
 }
 static void root_registration(RootProvider provider) {
     assert(!registered++ && methods);puts("root registration after methods");fixture_register_root(provider);

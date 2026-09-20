@@ -120,7 +120,7 @@ static void check_dispatch(void) {
 static void check_collection(void) {
     Oop vtable = api->proto(api->object_vt);
     const uint8_t kinds[] = {IDAPI_V1_SLOT_OOP};
-    api->set_layout(vtable, kinds, 1, IDAPI_V1_SLOT_RAW);
+    fixture_set_layout(vtable, kinds, 1, IDAPI_V1_SLOT_RAW);
     watched = api->alloc(vtable, sizeof(Oop));
     *(Oop *)watched = api->true_obj;
     fixture_register_root(mutate_root);

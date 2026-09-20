@@ -1,7 +1,7 @@
 #ifdef FIXTURE_IDAPI_V11
 #include "idapi_v11.h"
 #else
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"

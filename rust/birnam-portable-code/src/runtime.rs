@@ -17,6 +17,7 @@ pub(crate) struct Globals {
 
 pub(crate) struct Runtime {
     api: usize,
+    layouts: usize,
     roots: usize,
     imports: usize,
     exports: usize,
@@ -51,8 +52,8 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
     });
 }
 
-pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1) -> &'static Runtime {
-    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, roots: roots as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
+pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> &'static Runtime {
+    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, layouts: layouts as usize, roots: roots as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
     ROOTS_REGISTERED.call_once(|| unsafe {
         birnam_abi::root_registry::register(runtime.roots as *const birnam_abi::root_registry::ApiV1, mark_roots);
     });
@@ -124,7 +125,7 @@ impl Runtime {
     }
 
     pub(crate) fn set_layout(&self, vtable: Oop, layout: *const u8, count: usize, rest: u8) {
-        unsafe { (self.api().setLayout)(vtable, layout, count, rest) };
+        unsafe { birnam_abi::payload_layout::set(self.layouts as *const birnam_abi::payload_layout::ApiV1, vtable, layout, count, rest) };
     }
 
     pub(crate) fn set_trace_hook(&self, vtable: Oop, hook: TraceHook) {

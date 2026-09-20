@@ -98,6 +98,7 @@ impl StoreState {
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    layouts: usize,
     vtables: usize,
     imports: usize,
     store_vt: usize,
@@ -2111,7 +2112,7 @@ unsafe fn register_methods(runtime: &Runtime) {
     // The Store payload is raw except for Oops held in its external Vec; the
     // trace hook marks those facts whenever the exported Store object is live.
     unsafe {
-        (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        birnam_abi::payload_layout::set(runtime.layouts as *const birnam_abi::payload_layout::ApiV1, vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
         (api.setTraceHook)(vt, trace_store);
     }
 }
@@ -2133,7 +2134,7 @@ unsafe fn register_cell_methods(runtime: &Runtime) {
     unsafe {
         // All three CellState words are object references. RAW preserved stale
         // native addresses in images instead of relocating store/entity/attr.
-        (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
+        birnam_abi::payload_layout::set(runtime.layouts as *const birnam_abi::payload_layout::ApiV1, vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
         (api.setTraceHook)(vt, trace_cell);
     }
 }
@@ -2153,10 +2154,10 @@ unsafe fn register_globals_methods(runtime: &Runtime) {
         let selector = unsafe { intern(api, selector) };
         unsafe { (api.method)(vt, selector, *method) };
     }
-    unsafe { (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+    unsafe { birnam_abi::payload_layout::set(runtime.layouts as *const birnam_abi::payload_layout::ApiV1, vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -2207,6 +2208,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
         Runtime {
             api: api_pointer as usize,
+            layouts: layouts as usize,
             vtables: vtables as usize,
             imports: imports as usize,
             store_vt: oop_address(store_vt),
@@ -2273,10 +2275,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// null to request the documented fatal boundary. `_state` is an opaque host
 /// token and is not retained by this rung.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
     // SAFETY: forwarded host contract; bring_up performs the null check and
     // retains only the process-owned table address.
-    unsafe { bring_up(api, presence, imports, exports, vtables, observation, roots) };
+    unsafe { bring_up(api, presence, imports, exports, vtables, observation, roots, layouts) };
     ptr::null_mut()
 }
 
@@ -2320,6 +2322,7 @@ mod tests {
     pub(super) fn test_runtime(compaction_transitions: u64, fact_bytes_limit: usize) -> Runtime {
         Runtime {
             api: 0,
+            layouts: 0,
             vtables: 0,
             imports: 0,
             store_vt: 0,

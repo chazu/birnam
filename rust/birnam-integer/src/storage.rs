@@ -45,6 +45,7 @@ struct Roots {
 pub struct Instance {
     api: *mut IdApi,
     exports: *const birnam_abi::namespace_export::ApiV1,
+    layouts: *const birnam_abi::payload_layout::ApiV1,
     roots: UnsafeCell<Roots>,
     operations: UnsafeCell<IntegerApiV1>,
 }
@@ -53,11 +54,12 @@ impl Instance {
     /// Allocate native state before registering its partially initialized roots.
     /// # Safety
     /// The API lives until this instance and all installed consumers are gone.
-    pub unsafe fn empty(api: *mut IdApi, exports: *const birnam_abi::namespace_export::ApiV1) -> Box<Self> {
+    pub unsafe fn empty(api: *mut IdApi, exports: *const birnam_abi::namespace_export::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> Box<Self> {
         assert!(!api.is_null());
         let result = Box::new(Self {
             api,
             exports,
+            layouts,
             roots: UnsafeCell::new(Roots::default()),
             operations: UnsafeCell::new(IntegerApiV1 {
                 version: 1,
@@ -89,7 +91,7 @@ impl Instance {
                 (*api).proto,
                 (*api).alloc,
                 *self.exports,
-                (*api).setLayout,
+                *self.layouts,
                 (*api).object_vt,
             )
         };
@@ -98,7 +100,7 @@ impl Instance {
         unsafe {
             (*self.roots.get()).behavior = behavior;
         }
-        unsafe { layout(behavior, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+        unsafe { layout.set.unwrap()(layout.context, behavior, ptr::null(), 0, birnam_abi::SLOT_RAW) };
         let prototype = unsafe { alloc(behavior, STORAGE.payload_size) };
         assert!(!prototype.is_null());
         unsafe { initialize(prototype.cast(), 0) };

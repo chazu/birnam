@@ -4,7 +4,9 @@
 use core::mem::offset_of;
 use core::ptr::NonNull;
 
-use crate::abi::{Method, Oop, SLOT_UNKNOWN, TraceHook};
+use crate::abi::{Method, Oop, TraceHook};
+#[cfg(test)]
+use crate::abi::SLOT_UNKNOWN;
 use crate::boundary;
 use crate::heap::{Heap, Permanence};
 use crate::raw::{AddressMap, MethodAddress};
@@ -54,9 +56,7 @@ struct VtableRecord {
     parent: Oop,
     owner: Oop,
     trace_hook: Option<TraceHook>,
-    layout_kinds: Box<[u8]>,
-    layout_rest: u8,
-    layout_set: bool,
+    layout: crate::payload_layout::Owned,
 }
 
 /// Dictionaries at or below this size answer lookups by scanning the ordered
@@ -113,14 +113,11 @@ impl VtableRecord {
         };
         raw.parent = self.parent;
         raw.trace_hook = self.trace_hook;
-        raw.layout_kinds = if self.layout_kinds.is_empty() {
-            core::ptr::null()
-        } else {
-            self.layout_kinds.as_ptr()
-        };
-        raw.layout_n = self.layout_kinds.len();
-        raw.layout_rest = self.layout_rest;
-        raw.layout_set = u8::from(self.layout_set);
+        let layout = self.layout.view();
+        raw.layout_kinds = layout.kinds;
+        raw.layout_n = layout.count;
+        raw.layout_rest = layout.rest;
+        raw.layout_set = layout.is_set;
         raw.owner = self.owner;
     }
 
@@ -154,6 +151,8 @@ pub(crate) struct Vtables {
     // §3.2: a reader that cached a verification against one epoch re-verifies
     // when the epoch moved. Over-counting is harmless; never skip a mutator.
     mutation_epoch: u64,
+    // Records release their carriers before this capability is destroyed.
+    layouts: crate::payload_layout::Service,
 }
 
 impl Vtables {
@@ -162,6 +161,7 @@ impl Vtables {
             ordered: Vec::new(),
             by_address: AddressMap::default(),
             mutation_epoch: 0,
+            layouts: crate::payload_layout::Service::new(),
         }
     }
 
@@ -239,9 +239,7 @@ impl Vtables {
                 parent,
                 owner: core::ptr::null_mut(),
                 trace_hook: None,
-                layout_kinds: Box::new([]),
-                layout_rest: 0,
-                layout_set: false,
+                layout: self.layouts.empty(),
             },
         );
         boundary::require_invariant(previous.is_none(), "duplicate vtable address");
@@ -457,55 +455,45 @@ impl Vtables {
     }
 
     pub(crate) fn set_layout(&mut self, vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
-        boundary::require_invariant(
-            count == 0 || !kinds.is_null(),
-            "setLayout kinds is null with nonzero count",
-        );
-        let owned = if count == 0 {
-            Box::new([])
-        } else {
-            // SAFETY: the caller supplies `count` readable bytes for this
-            // synchronous setter. The Runtime copies them before returning so
-            // the vtable never borrows storage from a reclaimable mapping.
-            unsafe { core::slice::from_raw_parts(kinds, count) }
-                .to_vec()
-                .into_boxed_slice()
-        };
+        // Keep copying before the exact membership lookup, including when the
+        // supplied bytes are the current record's own borrowed prefix.
+        let owned = self.layouts.copy(kinds, count, rest);
         let record = self.record_mut(vtable);
-        record.layout_kinds = owned;
-        record.layout_rest = rest;
-        record.layout_set = true;
+        record.layout = owned;
         record.sync_raw_view();
     }
 
+    pub(crate) fn replace_layout(&mut self, vtable: Oop, owned: birnam_abi::payload_layout::OwnedV1) {
+        let owned = self.layouts.adopt(owned);
+        let record = self.record_mut(vtable);
+        record.layout = owned;
+        record.sync_raw_view();
+    }
+
+    pub(crate) fn layout_view(&self, vtable: Oop) -> birnam_abi::payload_layout::ViewV1 {
+        self.record(vtable).layout.view()
+    }
+
+    pub(crate) fn layout_api(&self) -> *mut birnam_abi::payload_layout::ApiV1 {
+        self.layouts.api()
+    }
+
     pub(crate) fn slot_kind(&self, vtable: Oop, word: usize) -> u8 {
-        let record = self.record(vtable);
-        if !record.layout_set {
-            return SLOT_UNKNOWN;
-        }
-        if word >= record.layout_kinds.len() {
-            return record.layout_rest;
-        }
-        record.layout_kinds[word]
+        self.layouts.slot_kind(self.record(vtable).layout.view(), word)
     }
 
     /// Inspect the current exact-vtable layout with one registry lookup.
     /// Explicit prefix kinds and the repeated tail both apply to this extent.
     pub(crate) fn all_oop_layout(&self, vtable: Oop, words: usize) -> bool {
         self.by_address.get(&vtable.addr()).is_some_and(|record| {
-            record.layout_set
-                && record.layout_kinds[..words.min(record.layout_kinds.len())]
-                    .iter()
-                    .all(|&kind| kind == crate::abi::SLOT_OOP)
-                && (words <= record.layout_kinds.len()
-                    || record.layout_rest == crate::abi::SLOT_OOP)
+            self.layouts.all_oop(record.layout.view(), words)
         })
     }
 
     pub(crate) fn has_layout(&self, vtable: Oop) -> bool {
         self.by_address
             .get(&vtable.addr())
-            .is_some_and(|record| record.layout_set)
+            .is_some_and(|record| self.layouts.has_layout(record.layout.view()))
     }
 
     pub(crate) fn dictionary_capacity(&self, vtable: Oop) -> usize {
@@ -972,6 +960,34 @@ mod tests {
         assert!(vtables.all_oop_layout(parent, 128));
         vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_UNKNOWN);
         assert!(!vtables.all_oop_layout(parent, 1));
+    }
+
+    #[test]
+    fn payload_layout_keeps_raw_mirror_and_epoch_when_replacing_borrowed_input() {
+        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
+        let epoch = vtables.mutation_epoch();
+        let input = [crate::abi::SLOT_OOP, 9, crate::abi::SLOT_CODE];
+        vtables.set_layout(parent, input.as_ptr(), input.len(), crate::abi::SLOT_RAW);
+        let first = vtables.layout_view(parent);
+        assert_ne!(first.kinds, input.as_ptr());
+        assert_eq!(vtables.mutation_epoch(), epoch);
+        vtables.set_owner(parent, child);
+        vtables.set_trace_hook(parent, trace_hook);
+        assert_eq!(vtables.layout_view(parent).kinds, first.kinds);
+        assert_eq!(unsafe { vtables.record(parent).raw.as_ref().layout_kinds }, first.kinds);
+        vtables.set_layout(parent, first.kinds, first.count, crate::abi::SLOT_OOP);
+        let second = vtables.layout_view(parent);
+        assert_ne!(second.kinds, first.kinds);
+        assert_eq!(vtables.mutation_epoch(), epoch);
+        assert_eq!(vtables.slot_kind(parent, 1), 9);
+        assert_eq!(vtables.slot_kind(parent, usize::MAX), crate::abi::SLOT_OOP);
+        assert!(!vtables.has_layout(child));
+        vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_RAW);
+        let raw = unsafe { vtables.record(parent).raw.as_ref() };
+        assert!(raw.layout_kinds.is_null());
+        assert_eq!((raw.layout_n, raw.layout_rest, raw.layout_set), (0, 0, 1));
+        assert!(vtables.all_oop_layout(parent, 0));
+        assert_eq!(vtables.mutation_epoch(), epoch);
     }
 
     #[test]

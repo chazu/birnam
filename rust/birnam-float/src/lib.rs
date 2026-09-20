@@ -37,11 +37,11 @@ pub unsafe extern "C" fn birnam_float_provider_v1() -> *mut birnam_abi::float::F
     unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_float_prepare_v5(
+pub unsafe extern "C" fn birnam_float_prepare_v6(
     api: *mut IdApi,
     presence: *const birnam_abi::namespace_presence::ApiV1,
     imports: *const birnam_abi::namespace_import::ApiV1,
-    exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) -> *mut birnam_abi::float::FloatApiV1 {
+    exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut birnam_abi::float::FloatApiV1 {
     if api.is_null() {
         abort("preparation received a null IdApi");
     }
@@ -56,7 +56,7 @@ pub unsafe extern "C" fn birnam_float_prepare_v5(
         return unsafe { birnam_float_provider_v1() };
     }
     PHASE.store(1, Ordering::Release);
-    let instance = Box::into_raw(unsafe { storage::Instance::empty(api, presence, imports, exports) });
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api, presence, imports, exports, layouts) });
     INSTANCE.store(instance, Ordering::Release);
     unsafe {
         birnam_abi::root_registry::register(roots, float_roots);
@@ -360,8 +360,8 @@ unsafe extern "C" fn float_print_string(self_object: Oop, _args: *const Oop, cou
 
 /// Install the existing Float protocol on this module's canonical behavior.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
-    let operations = unsafe { birnam_float_prepare_v5(api_pointer, presence, imports, exports, roots) };
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
+    let operations = unsafe { birnam_float_prepare_v6(api_pointer, presence, imports, exports, roots, layouts) };
     let previous = PHASE.swap(3, Ordering::AcqRel);
     if previous != 2 && previous != 4 {
         abort("recursive Float activation");

@@ -5,8 +5,8 @@
 #define SET_AUTO(value) api->gc_set_auto(value)
 #define SET_PRECISE(value) api->gc_set_precise(value)
 #else
-#include "idapi_v16.h"
-#include "../../abi/fixtures/idapi-v16/storage_v1.h"
+#include "idapi_v17.h"
+#include "../../abi/fixtures/idapi-v17/storage_v1.h"
 static GcSettingsV1 *settings;
 #define SET_AUTO(value) gc_settings_auto_v1(settings,value)
 #define SET_PRECISE(value) gc_settings_precise_v1(settings,value)
@@ -67,7 +67,7 @@ static void factory_probe(const char *floor_path) {
     assert(dladdr((void *)settings->set_precise,&owner));
     assert(strstr(owner.dli_fname,"libbirnam_gc_settings.dylib"));
     ModuleInitFn initialize=(ModuleInitFn)dlsym(image,"module_init");assert(initialize);
-    assert(!initialize(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),settings));
+    assert(!initialize(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),settings,fixture_payload_layout()));
 }
 #endif
 

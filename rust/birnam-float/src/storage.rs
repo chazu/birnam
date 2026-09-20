@@ -47,6 +47,7 @@ pub struct Instance {
     presence: *const birnam_abi::namespace_presence::ApiV1,
     imports: *const birnam_abi::namespace_import::ApiV1,
     exports: *const birnam_abi::namespace_export::ApiV1,
+    layouts: *const birnam_abi::payload_layout::ApiV1,
     roots: UnsafeCell<Roots>,
     operations: UnsafeCell<FloatApiV1>,
 }
@@ -55,13 +56,14 @@ impl Instance {
     /// Allocate native state before registering its partially initialized roots.
     /// # Safety
     /// The API lives until this instance and all installed consumers are gone.
-    pub unsafe fn empty(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> Box<Self> {
+    pub unsafe fn empty(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> Box<Self> {
         assert!(!api.is_null());
         let result = Box::new(Self {
             api,
             presence,
             imports,
             exports,
+            layouts,
             roots: UnsafeCell::new(Roots::default()),
             operations: UnsafeCell::new(FloatApiV1 {
                 version: 1,
@@ -91,7 +93,7 @@ impl Instance {
             (
                 (*api).proto,
                 (*api).alloc,
-                (*api).setLayout,
+                *self.layouts,
                 (*api).object_vt,
             )
         };
@@ -100,7 +102,7 @@ impl Instance {
         unsafe {
             (*self.roots.get()).behavior = behavior;
         }
-        unsafe { layout(behavior, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+        unsafe { layout.set.unwrap()(layout.context, behavior, ptr::null(), 0, birnam_abi::SLOT_RAW) };
         let prototype = unsafe { alloc(behavior, STORAGE.payload_size) };
         assert!(!prototype.is_null());
         unsafe { initialize(prototype.cast(), 0) };

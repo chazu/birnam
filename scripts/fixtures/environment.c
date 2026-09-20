@@ -1,4 +1,4 @@
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -39,7 +39,7 @@ static void roots(MarkFn mark) {
 }
 static void registered(RootProvider provider) { registrations++;fixture_register_root(provider); }
 static Oop allocate(Oop type,size_t size) { allocations++;if(capture) printf("alloc %zu\n",size);return api->alloc(type,size); }
-static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings()); }
+static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings(),fixture_payload_layout()); }
 static Oop intern(const char *name) {
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(reentry_mode==1 && !strcmp(name,"getEnv:")) reenter();
@@ -125,7 +125,7 @@ static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *prese
         assert(!bindings && !registrations && allocations==before && !fixture_namespace_contains("System"));validate(image,0);
     }
     fixture_attach_integer(api,image,fixture_root_registry());ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
-    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
+    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout());
 }
 static Oop construct(Oop self,const Oop *args,size_t count) {
     assert(args && count==2 && args[0]==api->intern("ioError"));calls++;seen_factory=self;
@@ -180,12 +180,12 @@ int main(int argc,char **argv) {
     begin("fresh factory replacement and custom lookup");assert(failure()==answer);api->method(type,api->intern("kind:message:"),construct_second);assert(failure()==second);
     Oop meta=api->proto(api->vtable_vt);api->method(meta,api->intern("lookup"),custom_lookup);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){type,meta},2);assert(failure()==answer && failure()==second && lookups==2);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){type,api->vtable_vt},2);api->method(type,api->intern("kind:message:"),construct);end();
     assert(!setenv(key,"ready",1));api->method(system_type,api->intern("getEnv:"),replacement);begin("copied method survives replacement");expect_bytes(env_method(NULL,&env_name,1),(const uint8_t *)"ready",5);end();
-    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings());end();assert(lookup(system_type,api->intern("getEnv:"))==env_method);
+    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings(),fixture_payload_layout());end();assert(lookup(system_type,api->intern("getEnv:"))==env_method);
     if(fixture_environment) { IdApi registration=other;registration.intern=forbidden_intern;fixture_environment->install(&registration,&other,&other_presence,&other_imports,system_type,api->intern("getEnv:")); }
     begin("retained execution after reload");assert(failure()==answer);end();
     selectors[0]=api->intern("environment-test-0");selectors[1]=api->intern("environment-test-1");alternate=api->proto(api->object_vt);expected_target=system_type;map_selectors=change_snapshot=1;map_generation=0;
-    begin("earlier registration keeps behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings());end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==env_method);
-    expected_target=alternate;begin("next installation adopts current behavior and selector");prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings());end();assert(seen_selector==selectors[1] && seen_target==alternate);
+    begin("earlier registration keeps behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings(),fixture_payload_layout());end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==env_method);
+    expected_target=alternate;begin("next installation adopts current behavior and selector");prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,fixture_gc_settings(),fixture_payload_layout());end();assert(seen_selector==selectors[1] && seen_target==alternate);
     fixture_namespace_export("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
     fixture_set_precise(1);api->gc_collect();fixture_set_precise(0);expect_bytes(env_method(alias,&env_name,1),(const uint8_t *)"ready",5);assert(failure()==answer);
     fixture_string->make=original_make;fixture_string->bytes=original_bytes;fixture_string->context=string_context;assert(!unsetenv(key));

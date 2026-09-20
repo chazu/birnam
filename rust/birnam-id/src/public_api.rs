@@ -199,16 +199,8 @@ unsafe extern "C" fn api_set_finalizer(object: Oop, finalizer: Finalizer) {
     runtime().set_finalizer(object, finalizer);
 }
 
-unsafe extern "C" fn api_set_layout(vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
-    runtime().set_layout(vtable, kinds, count, rest);
-}
-
 unsafe extern "C" fn api_object_payload_size(object: Oop) -> usize {
     runtime().payload_size(object).unwrap_or(0)
-}
-
-unsafe extern "C" fn api_slot_kind(vtable: Oop, word: usize) -> u8 {
-    runtime().slot_kind(vtable, word)
 }
 
 fn table_for(bootstrap: &Bootstrap) -> IdApi {
@@ -235,9 +227,7 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         gcLiveCount: api_gc_live_count,
         setTraceHook: api_set_trace_hook,
         setFinalizer: api_set_finalizer,
-        setLayout: api_set_layout,
         objectPayloadSize: api_object_payload_size,
-        slotKind: api_slot_kind,
     }
 }
 
@@ -483,9 +473,6 @@ pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
     unsafe extern "C" fn intern(name: *const c_char) -> Oop {
         with_active(|r| r.intern(unsafe { CStr::from_ptr(name) }.to_bytes()).unwrap())
     }
-    unsafe extern "C" fn layout(vt: Oop, kinds: *const u8, count: usize, rest: u8) {
-        with_active(|r| r.set_layout(vt, kinds, count, rest));
-    }
     unsafe extern "C" fn send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
         with_active(|r| unsafe { r.send_abi(receiver, selector, args, count) })
     }
@@ -495,7 +482,7 @@ pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
     }
     api.method = method;
     api.proto = proto; api.intern = intern;
-    api.setLayout = layout; api.send = send;
+    api.send = send;
     // alloc and vtableOf already route through the active runtime. Every
     // callback used by Instance is local to this test's owner-thread entry.
     api
@@ -740,4 +727,38 @@ pub unsafe extern "C" fn birnam_gc_settings_dependency_v1(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_gc_settings_provider_v1() -> *mut birnam_abi::gc_settings::ApiV1 {
     runtime().gc_settings()
+}
+
+pub(crate) fn payload_layout_access() -> birnam_abi::payload_layout::FloorV1 {
+    use birnam_abi::payload_layout::{FloorV1, OwnedV1, ViewV1};
+    unsafe extern "C" fn admit(_: *mut c_void) {
+        #[cfg(not(test))]
+        { runtime().admit_payload_layout(); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|r| r.admit_payload_layout()); }
+    }
+    unsafe extern "C" fn replace(_: *mut c_void, vtable: Oop, owned: OwnedV1) {
+        #[cfg(not(test))]
+        { runtime().replace_payload_layout(vtable, owned); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|r| r.replace_payload_layout(vtable, owned)); }
+    }
+    unsafe extern "C" fn view(_: *mut c_void, vtable: Oop) -> ViewV1 {
+        #[cfg(not(test))]
+        { runtime().payload_layout_view(vtable) }
+        #[cfg(test)]
+        { crate::runtime::with_active(|r| r.payload_layout_view(vtable)) }
+    }
+    FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: core::ptr::null_mut(),
+        admit: Some(admit), replace: Some(replace), view: Some(view) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_payload_layout_dependency_v1(
+    factory: *const birnam_abi::payload_layout::FactoryV1,
+) -> c_int {
+    unsafe { birnam_abi::payload_layout::attach(factory) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_payload_layout_provider_v1() -> *mut birnam_abi::payload_layout::ApiV1 {
+    runtime().payload_layout()
 }

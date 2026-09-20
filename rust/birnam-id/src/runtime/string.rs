@@ -195,6 +195,7 @@ impl Runtime {
             birnam_string::storage::Instance::empty(
                 api.as_mut(),
                 self.namespace_export(),
+                self.payload_layout(),
                 allocation,
                 crate::public_api::string_finalizer,
                 crate::public_api::test_string_cleanup_owner,

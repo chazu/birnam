@@ -1,5 +1,5 @@
 /* Check every real consumer before dependency attachment or initialization. */
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/error-value-v3/error_value_v3.h"
 int main(int argc,char **argv) {
@@ -11,7 +11,7 @@ int main(int argc,char **argv) {
     void *provider=dlopen(argv[2],RTLD_NOW|RTLD_LOCAL);assert(provider);
     ErrorValueProviderV3 provide=(ErrorValueProviderV3)dlsym(provider,"birnam_error_value_provider_v3");
     ModuleInitFn init=(ModuleInitFn)dlsym(provider,"module_init");assert(provide && init && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings());const ErrorValueApiV3 *operations=provide();assert(operations && operations==provide());
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout());const ErrorValueApiV3 *operations=provide();assert(operations && operations==provide());
     assert(operations->version==3 && operations->byte_size==sizeof(*operations));
     assert(!dlsym(provider,"birnam_error_value_provider_v2"));
     for(int i=3;i<argc;i++) {

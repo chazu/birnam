@@ -10,7 +10,7 @@ if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then
 else
   printf 'source loader image smoke root: %s\n' "$scratch"
 fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v16 \
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v17 \
   -DEXPECT_SOURCE_LOADER_LIBRARY='"libbirnam_source_loader.dylib"' \
   scripts/fixtures/source-loader-native.c -o "$scratch/native-guard.dylib"
 write_target() {

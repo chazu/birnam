@@ -5,7 +5,7 @@ prefix=${1:?usage: namespace-image-smoke.sh PREFIX}
 bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-namespace-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'namespace image root: %s\n' "$scratch"; fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v16 scripts/fixtures/namespace-native.c -o "$scratch/namespace-native.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v17 scripts/fixtures/namespace-native.c -o "$scratch/namespace-native.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/namespace-native.dylib"];
 let value := [Object clone];

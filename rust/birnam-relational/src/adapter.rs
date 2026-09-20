@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 const RUST_RELATIONAL_IDENTITY: &[u8] = b"rust-relational-r4.5-project\0";
-static API: OnceLock<(usize, usize)> = OnceLock::new();
+static API: OnceLock<(usize, usize, usize)> = OnceLock::new();
 static ACTIVE_PROBE_BLOCK: AtomicUsize = AtomicUsize::new(0);
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static ENTITY_VT: OnceLock<usize> = OnceLock::new();
@@ -27,7 +27,7 @@ fn abort(message: &str) -> ! {
     std::process::abort();
 }
 
-unsafe fn bring_up(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn bring_up(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
     if api.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -36,7 +36,7 @@ unsafe fn bring_up(api: *mut IdApi, imports: *const birnam_abi::namespace_import
         Some(existing) if existing.0 != address => abort("IdApi was replaced"),
         Some(_) => {}
         None => {
-            let _ = API.set((address, imports as usize));
+            let _ = API.set((address, imports as usize, layouts as usize));
         }
     }
 }
@@ -250,7 +250,7 @@ unsafe extern "C" fn rust_logicvar_print_string(
     unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
 }
 
-unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn ensure_relational_contract(api: &IdApi, layouts: *const birnam_abi::payload_layout::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     let logicvar_vt = unsafe { birnam_abi::namespace_import::import(imports, c"LogicVarVt".as_ptr()) };
     let logicvar_vt = if logicvar_vt.is_null() {
         let created = unsafe { (api.proto)(api.object_vt) };
@@ -317,7 +317,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::na
     let _ = REL_COLLECTOR_VT.set(collector_vt as usize);
 
     unsafe {
-        (api.setLayout)(logicvar_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
+        birnam_abi::payload_layout::set(layouts, logicvar_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
         (api.method)(
             factory_vt,
             (api.intern)(c"named:".as_ptr()),
@@ -1304,7 +1304,7 @@ unsafe fn collect_window(
     // SAFETY: the callback object has one raw payload slot holding a stack
     // collector address and never exposes a Rust reference to the floor.
     unsafe {
-        (api.setLayout)(callback_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        birnam_abi::payload_layout::set(execution_layouts(), callback_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
         (api.method)(callback_vt, callback_selector, collect_live_triple);
     }
     let mut collector = ProbeCollector {
@@ -1383,7 +1383,7 @@ unsafe fn collect_project_facts_window_with_rules(
     // SAFETY: the callback object has one raw payload slot holding a stack
     // collector address and never exposes a Rust reference to the floor.
     unsafe {
-        (api.setLayout)(callback_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+        birnam_abi::payload_layout::set(execution_layouts(), callback_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
         (api.method)(callback_vt, callback_selector, collect_project_triple);
     }
     let mut collector = ProjectCollector {
@@ -2331,12 +2331,12 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` must be the process-owned IdApi table supplied by the host, and the
 /// host must keep that table and its floor dylib alive for the module lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
     // SAFETY: forwarded frozen host initialization contract.
-    unsafe { bring_up(api, imports) };
+    unsafe { bring_up(api, imports, layouts) };
     // Publish the complete shared relational object contract before exposing
     // the Store as `db`; this is safe to repeat across reloads.
-    unsafe { ensure_relational_contract(&*api, imports, exports) };
+    unsafe { ensure_relational_contract(&*api, layouts, imports, exports) };
     // SAFETY: module_init received the process-owned IdApi used to install the
     // Store-facing entity constructor.
     unsafe { install_entity_method(&*api, imports, exports) };
@@ -3244,3 +3244,5 @@ unsafe fn project_rule_store_live(
 mod native_output;
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { API.get().expect("module not initialized").1 as *const birnam_abi::namespace_import::ApiV1 }
+
+fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { API.get().expect("module not initialized").2 as *const birnam_abi::payload_layout::ApiV1 }

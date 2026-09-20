@@ -522,6 +522,7 @@ mod runtime {
     struct Runtime {
         api: usize,
         settings: usize,
+    layouts: usize,
         vtables: usize,
         imports: usize,
         report_obj: usize,
@@ -872,7 +873,7 @@ mod runtime {
             }
             let words = payload_size / core::mem::size_of::<usize>();
             for index in 0..words {
-                let kind = unsafe { (api.slotKind)(vtable, index) };
+                let kind = unsafe { birnam_abi::payload_layout::slot_kind(execution_layouts(), vtable, index) };
                 if kind != birnam_abi::SLOT_RAW
                     && kind != birnam_abi::SLOT_OOP
                     && kind != birnam_abi::SLOT_CODE
@@ -894,7 +895,7 @@ mod runtime {
                 return Some(id);
             }
             for index in 0..words {
-                if unsafe { (api.slotKind)(vtable, index) } != birnam_abi::SLOT_OOP {
+                if unsafe { birnam_abi::payload_layout::slot_kind(execution_layouts(), vtable, index) } != birnam_abi::SLOT_OOP {
                     continue;
                 }
                 let address =
@@ -990,7 +991,7 @@ mod runtime {
                 let words = payload_size / size_of::<usize>();
                 payload.extend_from_slice(&u32::try_from(words).ok()?.to_le_bytes());
                 for index in 0..words {
-                    let kind = unsafe { (api.slotKind)(layout_vtable, index) };
+                    let kind = unsafe { birnam_abi::payload_layout::slot_kind(execution_layouts(), layout_vtable, index) };
                     if kind == birnam_abi::SLOT_CODE {
                         self.rejected_slots = self.rejected_slots.saturating_add(1);
                         return None;
@@ -1222,6 +1223,7 @@ mod runtime {
     }
 
     fn execution_settings() -> *const birnam_abi::gc_settings::ApiV1 { runtime().settings as *const birnam_abi::gc_settings::ApiV1 }
+    fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { runtime().layouts as *const birnam_abi::payload_layout::ApiV1 }
 
     fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { runtime().imports as *const birnam_abi::namespace_import::ApiV1 }
 
@@ -1917,7 +1919,7 @@ mod runtime {
             let vtable = unsafe { (api.vtableOf)(receiver) };
             for (word, field) in object.fields.iter().copied().enumerate() {
                 let address = unsafe { receiver.cast::<usize>().add(word) };
-                match unsafe { (api.slotKind)(vtable, word) } {
+                match unsafe { birnam_abi::payload_layout::slot_kind(execution_layouts(), vtable, word) } {
                     birnam_abi::SLOT_OOP => {
                         let value = unsafe { materialize_v8_value(api, field, &relocations) }?;
                         unsafe { address.write(value as usize) };
@@ -3041,7 +3043,7 @@ mod runtime {
         api.nilObj
     }
 
-    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) {
+    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
         if api.is_null() {
             abort("module_init received a null IdApi");
         }
@@ -3051,7 +3053,7 @@ mod runtime {
                 unsafe { birnam_abi::namespace_import::import(imports, IMAGE_REPORT_VT_NAME.as_ptr().cast()) }
             } else {
                 let vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
-                unsafe { (api_ref.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+                unsafe { birnam_abi::payload_layout::set(layouts, vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
                 vt
             };
         let report_obj = if unsafe { birnam_abi::namespace_presence::contains(presence, IMAGE_REPORT_NAME.as_ptr().cast()) } != 0
@@ -3144,6 +3146,7 @@ mod runtime {
         let _ = RUNTIME.set(Runtime {
             api: api as usize,
             settings: settings as usize,
+            layouts: layouts as usize,
             vtables: vtables as usize,
             imports: imports as usize,
             report_obj: report_obj as usize,
@@ -3182,10 +3185,10 @@ mod runtime {
 
     /// Initialize the Rust Image shell against the process floor.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
         let _ = state;
         if RUNTIME.get().is_none() {
-            unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings) };
+            unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts) };
         }
         ptr::null_mut()
     }

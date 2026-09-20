@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Extract exact-vtable payload descriptions into Payload Layout (81BL), preserving
+  copied prefixes, arbitrary slot codes, noninheritance and record retirement.
+  IdApi v17 has 21 fields / 168 bytes; native initialization gains an explicit
+  tenth capability. Native Loader v10 and early value preparation carry the
+  matching selection. Native consumers require rebuilding; image encoding is
+  unchanged.
+
 - Extract automatic and precise GC settings and the 16 MiB collection predicate
   into GC Settings (81BK). IdApi v16 has 23 fields / 184 bytes; nine-argument
   initialization, Native Loader v9 and System GC installation v2 carry explicit

@@ -91,7 +91,7 @@ unsafe extern "C" fn b_hook(_: Oop, mark: MarkFn) {
         // This runs after root enumeration but before A is popped. Its current
         // payload policy and hook must be read at A's turn, not snapshotted early.
         let kind = SLOT_OOP;
-        runtime.set_layout(objects[5], &kind, 1, crate::abi::SLOT_RAW);
+        unsafe { birnam_abi::payload_layout::set(runtime.payload_layout(), objects[5], &kind, 1, crate::abi::SLOT_RAW) };
         runtime.set_trace_hook(objects[5], new_hook);
     });
     unsafe {

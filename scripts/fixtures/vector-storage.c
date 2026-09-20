@@ -1,4 +1,4 @@
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -68,9 +68,9 @@ static int exported(const char *name) { int result=fixture_namespace_contains(na
 static Oop intern(const char *name) { if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==0 && rest==IDAPI_V16_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V16_SLOT_RAW,IDAPI_V16_SLOT_RAW,IDAPI_V16_SLOT_OOP,IDAPI_V16_SLOT_OOP,IDAPI_V16_SLOT_RAW}; assert(count==5 && rest==IDAPI_V16_SLOT_RAW && !memcmp(kinds,expected,5)); }
-    api->set_layout(type,kinds,count,rest);
+    if(type==node_type) assert(count==0 && rest==IDAPI_V17_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V17_SLOT_RAW,IDAPI_V17_SLOT_RAW,IDAPI_V17_SLOT_OOP,IDAPI_V17_SLOT_OOP,IDAPI_V17_SLOT_RAW}; assert(count==5 && rest==IDAPI_V17_SLOT_RAW && !memcmp(kinds,expected,5)); }
+    fixture_set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
     if(capture) printf("method %d %s\n",id(type),api->symbol_name(selector));
@@ -118,8 +118,8 @@ static Oop publish(void *context,const char *name,Oop value) {
 }
 static void validate_dependency(void *image, int attached) {
     if(fixture_vector_v2) {
-    VectorDependencyV5 attach=(VectorDependencyV5)api->dlsym_fn(image,"birnam_vector_dependency_v5"); assert(attach && attach(NULL)==0);
-    VectorApiV5 bad=*fixture_vector_v2; bad.version++; assert(attach(&bad)==0); bad=*fixture_vector_v2; bad.byte_size--; assert(attach(&bad)==0);
+    VectorDependencyV6 attach=(VectorDependencyV6)api->dlsym_fn(image,"birnam_vector_dependency_v6"); assert(attach && attach(NULL)==0);
+    VectorApiV6 bad=*fixture_vector_v2; bad.version++; assert(attach(&bad)==0); bad=*fixture_vector_v2; bad.byte_size--; assert(attach(&bad)==0);
 #define MISSING(field) bad=*fixture_vector_v2; bad.field=NULL; assert(attach(&bad)==0)
     MISSING(prepare); MISSING(finish_prototype); MISSING(set_layout); MISSING(set_owner); MISSING(publish);
     MISSING(empty); MISSING(push); MISSING(behavior); MISSING(install); MISSING(for_each); MISSING(inject);
@@ -135,7 +135,7 @@ static void validate_dependency(void *image, int attached) {
     if(attached) { bad=*fixture_vector_v1; assert(attach(&bad)==0 && attach(fixture_vector_v1)==1); }
     }
 }
-static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const RootRegistryV1 *root_registry) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const RootRegistryV1 *root_registry,const PayloadLayoutV1 *layouts) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     if(modern && strstr(path,"collection") && !collection) {
         fixture_prepare_vector(api,fixture_root_registry());
@@ -146,7 +146,7 @@ static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *prese
     if(modern && strstr(path,"collection")) {
         validate_dependency(image,1);
     }
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts);
     if(strstr(path,"collection")) collection=image;
 }
 static void seed(void) {
@@ -186,14 +186,14 @@ int main(int argc,char **argv) {
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api);
     fixture_set_auto(0); fixture_mount_trace(api,argv[1],fixture_root_registry()); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry(),fixture_payload_layout());
     if(adopting || ignored) seed();
     if(ignored) { fixture_namespace_export("Vector",NULL); node_type=behavior=prototype=NULL; }
     Oop old_node=node_type,old_behavior=behavior,old_prototype=prototype;
     selected=*api; selected.proto=proto; selected_import_slot=import; selected_presence_slot=adoption_exported;
     selected.intern=intern; selected.alloc=allocate; selected.method=method; selected.send=send;
-    NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; selected.set_layout=layout; selected.set_finalizer=finalize; selected_root_slot=roots;
-    capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots); capture=0; phase=1;
+    NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; FixtureLayoutSlots layout_slots={layout,fixture_slot_kind}; PayloadLayoutV1 selected_layouts=FIXTURE_LAYOUTS(layout_slots); selected.set_finalizer=finalize; selected_root_slot=roots;
+    capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots,&selected_layouts); capture=0; phase=1;
     if(candidate) { prototype=candidate; candidate=NULL; }
     if(adopting) assert(node_type==old_node && behavior==old_behavior && (!old_prototype || prototype==old_prototype));
     else assert(fixture_namespace_import("Vector")==prototype && vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
@@ -245,7 +245,7 @@ int main(int argc,char **argv) {
     for(size_t i=0;i<5;i++) api->method(behavior,api->intern(names[i]),previous[i]);
     fixture_namespace_export("VectorVt",api->nil_obj); fixture_namespace_export("Vector",api->nil_obj); fixture_namespace_export("VectorNode",api->nil_obj);
     IdApi other=selected;NamespaceExportV1 other_exports=selected_exports;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot); other.alloc=forbidden_allocator;
-    capture=1; mount(argv[3],&other,&selected_presence,&other_imports,&other_exports,&selected_roots); capture=0;
+    capture=1; mount(argv[3],&other,&selected_presence,&other_imports,&other_exports,&selected_roots,&selected_layouts); capture=0;
     assert(fixture_namespace_import("Vector")==api->nil_obj);
     selected.alloc=second_allocator; live_allocations=0;
     Oop fresh=empty(); assert(live_allocations==3 && api->vtable_of(fresh)==behavior);
@@ -254,7 +254,7 @@ int main(int argc,char **argv) {
     fixture_set_precise(1); api->gc_collect(); partial(3);
     vector=fixture_namespace_import("VectorStorageRoot"); assert(vector==fixture_namespace_import("VectorStorageAlias")); verify(vector,32801);
     for(size_t j=0;j<4;j++) verify(versions[j],retained[j]);
-    fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots); capture=0;
+    fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots,&selected_layouts); capture=0;
     assert(fixture_namespace_import("VectorVt")==behavior && fixture_namespace_import("Vector")==prototype && fixture_namespace_import("VectorNode")==node_type && !finalizers);
     printf("vector-storage: construction, persistence through 32801, native consumers, allocation order, roots, live callbacks and reload passed mode=%s\n",argv[4]);
 }

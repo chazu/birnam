@@ -1,4 +1,4 @@
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -107,11 +107,11 @@ static void mount(const char *path,IdApi *table,const RootRegistryV1 *root_regis
         void *value=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(value); fixture_attach_integer(api,value,fixture_root_registry());
         CollectionValueProviderV1 provide=(CollectionValueProviderV1)api->dlsym_fn(value,"birnam_collection_value_provider_v1"); assert(provide && !provide());
         ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(value,"module_init"); assert(init); unsigned before=roots_registered;
-        init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings()); assert(roots_registered==before); fixture_collection_value=provide(); assert(fixture_collection_value); validate(image,0);
+        init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); assert(roots_registered==before); fixture_collection_value=provide(); assert(fixture_collection_value); validate(image,0);
     }
     fixture_attach_integer(api,image,fixture_root_registry());
     if(strstr(path,"collection") && fixture_collection_value) validate(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout());
 }
 static void begin(const char *name) { capture=1; sends=0; printf("case %s\n",name); }
 static void end(void) { capture=0; assert(!sends); checks++; }

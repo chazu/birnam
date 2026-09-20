@@ -2,12 +2,12 @@
 #ifdef FIXTURE_IDAPI_V13
 #include "idapi_v13.h"
 #else
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/idapi-v16/storage_v1.h"
+#include "../../abi/fixtures/idapi-v17/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static Oop roots[5],target,expected;

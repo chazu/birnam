@@ -233,6 +233,7 @@ const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 struct Runtime {
     api: usize,
     settings: usize,
+    layouts: usize,
     roots: usize,
     vtables: usize,
     exports: usize,
@@ -1672,7 +1673,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
 }
 
 unsafe fn borrowed_address(api: &IdApi, address: usize) -> Option<Oop> {
-    unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), execution_exports(), address, KIND_BORROWED) }
+    unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), address, KIND_BORROWED) }
 }
 
 unsafe fn foreign_address_value(api: &IdApi, object: Oop) -> Option<usize> {
@@ -6199,7 +6200,7 @@ unsafe fn compile_synchronous_materialization(
     let entry: Method = unsafe { core::mem::transmute(address) };
     unsafe {
         (api.method)(vtable, selector, entry);
-        (api.setLayout)(vtable, ptr::null(), 0, SLOT_OOP);
+        birnam_abi::payload_layout::set(execution_layouts(), vtable, ptr::null(), 0, SLOT_OOP);
     }
     if unsafe { send0(api, unit, DISPOSABLE_SELECTOR) } == api.nilObj {
         remove_materialization(unit);
@@ -12965,7 +12966,7 @@ unsafe extern "C" fn rust_reflect_collect_fact(
     unsafe { api(runtime()) }.nilObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -13043,9 +13044,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             abort("RustCodegen adapter exports were incomplete");
         }
         unsafe {
-            (host_api.setLayout)(adapter_collector_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
-            (host_api.setLayout)(discard_receipt_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
-            (host_api.setLayout)(portable_mapped_unit_vt, ptr::null(), 0, SLOT_RAW);
+            birnam_abi::payload_layout::set(layouts, adapter_collector_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
+            birnam_abi::payload_layout::set(layouts, discard_receipt_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
+            birnam_abi::payload_layout::set(layouts, portable_mapped_unit_vt, ptr::null(), 0, SLOT_RAW);
         }
         let tcc = unsafe { birnam_abi::namespace_import::import(imports, TCC_NAME.as_ptr().cast()) };
         if tcc.is_null() {
@@ -13056,6 +13057,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         Runtime {
             api: api_pointer as usize,
             settings: settings as usize,
+            layouts: layouts as usize,
             roots: roots as usize,
             vtables: vtables as usize,
             exports: exports as usize,
@@ -13798,8 +13800,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts) };
     ptr::null_mut()
 }
 
@@ -14702,6 +14704,7 @@ birnam_abi::namespace_names_dependency!();
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
 
 fn execution_settings() -> *const birnam_abi::gc_settings::ApiV1 { runtime().settings as *const birnam_abi::gc_settings::ApiV1 }
+fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { runtime().layouts as *const birnam_abi::payload_layout::ApiV1 }
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
 

@@ -4605,6 +4605,23 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.slot_kind(vtable, word) }
     }
 
+    pub(crate) fn payload_layout(&self) -> *mut birnam_abi::payload_layout::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).vtables.layout_api() }
+    }
+
+    pub(crate) fn admit_payload_layout(&self) { self.assert_owner(); }
+
+    // The public capability has already admitted access; these floor operations
+    // neither call out nor repeat admission. No view survives replacement.
+    pub(crate) fn replace_payload_layout(&self, vtable: Oop, owned: birnam_abi::payload_layout::OwnedV1) {
+        unsafe { (&mut *self.state.get()).vtables.replace_layout(vtable, owned) };
+    }
+
+    pub(crate) fn payload_layout_view(&self, vtable: Oop) -> birnam_abi::payload_layout::ViewV1 {
+        unsafe { (*self.state.get()).vtables.layout_view(vtable) }
+    }
+
     #[cfg(test)]
     pub(crate) fn permanence_of(&self, object: Oop) -> Option<Permanence> {
         // SAFETY: test calls remain owner-thread and copy only the class.
@@ -6845,6 +6862,32 @@ mod tests {
         let metadata = unsafe { &(*second.runtime.state.get()).metadata };
         assert!(metadata.precise());
         assert!(!metadata.auto_requested());
+    }
+
+    #[test]
+    fn payload_layout_follows_exact_records_across_runtime_moves_and_public_instrumentation() {
+        let first = build_bootstrap();
+        let second = build_bootstrap();
+        let a = first.runtime.create_vtable(first.runtime.globals().object_vt);
+        let b = second.runtime.create_vtable(second.runtime.globals().object_vt);
+        first.runtime.set_layout(a, [SLOT_OOP, 9].as_ptr(), 2, crate::abi::SLOT_RAW);
+        second.runtime.set_layout(b, core::ptr::null(), 0, crate::abi::SLOT_CODE);
+        let api = first.runtime.payload_layout();
+        let mut runtimes = vec![first, second];
+        assert_eq!(runtimes[0].runtime.payload_layout(), api);
+        assert_ne!(runtimes[1].runtime.payload_layout(), api);
+        unsafe { (*api).context = core::ptr::null_mut(); (*api).set = None; (*api).slot_kind = None; }
+        assert_eq!(runtimes[0].runtime.slot_kind(a, 1), 9);
+        runtimes[0].runtime.set_layout(a, core::ptr::null(), 0, SLOT_OOP);
+        assert_eq!(runtimes[0].runtime.slot_kind(a, usize::MAX), SLOT_OOP);
+        assert_eq!(runtimes[1].runtime.slot_kind(b, 1), crate::abi::SLOT_CODE);
+        let remaining = runtimes.pop().unwrap();
+        drop(runtimes);
+        remaining.runtime.enter(|| unsafe {
+            let selected = remaining.runtime.payload_layout();
+            birnam_abi::payload_layout::set(selected, b, [9].as_ptr(), 1, crate::abi::SLOT_RAW);
+            assert_eq!(birnam_abi::payload_layout::slot_kind(selected, b, 0), 9);
+        });
     }
 
     #[test]

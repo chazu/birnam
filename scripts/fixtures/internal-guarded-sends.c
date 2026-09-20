@@ -12,7 +12,7 @@ static Oop forwarding_lookup(Oop receiver, const Oop *args, size_t count) {
 
 unsigned int birnam_symbol_borrow_v1(void) { return 1; }
 
-void *module_init(IdApi *api, void *prior,const NamespacePresenceV1 *presence) {
+void *module_init(IdApi *api, void *prior,const NamespacePresenceV1 *presence,const PayloadLayoutV1 *layouts) { (void)layouts;
     (void)presence;
     (void)prior;
     Oop lookup = api->intern("lookup");

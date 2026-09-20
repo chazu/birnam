@@ -48,6 +48,7 @@ struct Roots {
 pub struct Instance {
     api: *mut IdApi,
     exports: *const birnam_abi::namespace_export::ApiV1,
+    layouts: *const birnam_abi::payload_layout::ApiV1,
     allocation: NativeAllocationV1,
     roots: UnsafeCell<Roots>,
     owners: UnsafeCell<Owners>,
@@ -60,6 +61,7 @@ impl Instance {
     pub unsafe fn empty(
         api: *mut IdApi,
         exports: *const birnam_abi::namespace_export::ApiV1,
+    layouts: *const birnam_abi::payload_layout::ApiV1,
         allocation: NativeAllocationV1,
         cleanup: Finalizer,
         cleanup_owner: unsafe extern "C" fn(Finalizer) -> *mut c_void,
@@ -70,6 +72,7 @@ impl Instance {
         let result = Box::new(Self {
             api,
             exports,
+            layouts,
             allocation,
             roots: UnsafeCell::new(Roots::default()),
             owners: UnsafeCell::new(Owners::default()),
@@ -111,7 +114,7 @@ impl Instance {
         unsafe {
             (*self.roots.get()).behavior = behavior;
         }
-        unsafe { ((*api).setLayout)(behavior, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+        unsafe { birnam_abi::payload_layout::set(self.layouts, behavior, ptr::null(), 0, birnam_abi::SLOT_RAW) };
         let prototype = unsafe {
             construct(
                 (*self.operations.get()).context,

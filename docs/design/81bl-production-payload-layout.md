@@ -1,7 +1,8 @@
 # 81BL — Native payload-layout descriptions
 
-> **Status:** Audited against completed 81BK (`d7638dea`). Implementation and
-> installed startup/image evidence pending. Debug validation only.
+> **Status:** Implementation checkpoint against completed 81BK (`d7638dea`).
+> Focused tests and installed startup/compiled/image/baked checks pass. Broader
+> regression evidence remains pending below. Debug validation only.
 
 [81D](81d-id-api-partition.md) places descriptions of user payloads above Id,
 shared by GC and Image. Extract the existing owned byte prefix, repeated tail
@@ -11,7 +12,7 @@ inheritance rule, language method, collection policy or image encoding.
 
 ## Existing laws and ownership
 
-`vtable.rs::VtableRecord` currently owns a boxed byte prefix, a tail byte and a
+Before extraction, `vtable.rs::VtableRecord` owns a boxed byte prefix, a tail byte and a
 presence bit. An unset record owns no allocation. A set record with an empty
 prefix is distinct from an unset record and also needs no byte allocation.
 
@@ -80,11 +81,12 @@ The factory and code stay pinned until all carriers and consumers are gone.
 | Integer, Float and Word construction | Snapshot the selected layout operation with the existing API callbacks before `proto`; register partial roots and preserve family adoption/publication ordering |
 | String preparation | Read the selected capability at the existing post-`proto` setter point; preserve native allocation and cleanup ownership |
 | Range, Vector and Map layout stages | Pass the incoming layout capability explicitly to the stage; retain node/family ordering, adoption behavior and original incoming API selection |
-| Store, Prelude, PEG, Error, String Builder, Isolate | Match the API selected by the existing construction call; do not substitute an earlier saved execution API |
+| Store and PEG | Save with the same Runtime used by their existing registration helpers |
+| Prelude, Error, String Builder and Isolate | Incoming capability for incoming construction API |
 | Artifact | Propagate selection through its construction helper and saved Runtime as required by each existing API use |
 | Codegen | Incoming capability for bring-up layouts; first saved execution capability for lazy Block construction |
 | TCC and Portable Code | Save the capability with the same execution API for later construction; preserve incoming bring-up selection |
-| Relational | Preserve the first saved execution selection for later LogicVar/callback families; explicitly migrate its independent native-output fixture |
+| Relational | Incoming capability for LogicVar construction; first saved execution selection for later callback families; explicitly migrate its independent native-output fixture |
 | ForeignAddress helper and Alien/TCC callers | Pass the matching layout capability through family creation/allocation, preserving live presence/import/export calls |
 | Image | Incoming capability for report-family creation; saved execution capability for all four existing slot-query sites |
 | Native Loader | Forward the capability saved with the first execution API on every repeated initializer call |
@@ -97,7 +99,7 @@ discarded-clone and unboxed-numeric checks retain their current read points,
 short-circuiting and extent arithmetic. No layout snapshot is cached across a
 callback or used to skip a later live read.
 
-IdApi v17 will remove `setLayout` and `slotKind`: 21 fields, 168 bytes. Native
+IdApi v17 removes `setLayout` and `slotKind`: 21 fields, 168 bytes. Native
 initialization gains a tenth argument; Native Loader becomes v10. Early String
 preparation becomes v4; Float/Word preparation and Range/Vector/Map installation
 become v6 where their preparation or layout stage gains the explicit capability.
@@ -129,3 +131,41 @@ source-free compiled execution, saved v8 native-Code image recovery and baked
 execution. Run affected ABI/admission, stdlib, GC, recovery and image-backed
 worker checks. Record the exact source/artifact relationship and remaining gates
 before marking this extraction complete; do not run release validation.
+
+## Implementation checkpoint evidence
+
+The module, floor attachment, explicit caller migration, startup/install wiring,
+current ABI manifests and independent C fixtures are implemented. Historical ABI
+fixtures remain unchanged. The following debug checks pass:
+
+- Workspace build and all-target check; affected all-feature checks.
+- 279 focused Rust tests (13 ABI, 261 Id, 5 Payload Layout), with 15 existing
+  timing tests ignored; 73 current C fixture syntax checks and the v17 C client.
+- Nine exact old/new stdout, stderr and exit-status comparisons against archived
+  `d7638dea` source and its installed v16 floor, including diagnostic precedence.
+- Nineteen existing native-consumer transcripts and 27 early value/layout
+  consumer transcripts match the historical implementation; error-presence
+  admission and copied numeric API context checks also pass.
+- Twenty-one host factory/capability admission cases pass against both the debug
+  build and the fresh installed prefix. The installed v17 C client also passes.
+- Fresh debug installation contains 47 native libraries and 28 authored modules.
+  All 2013 source-file hashes remained unchanged through installation and were
+  rechecked before this evidence-only documentation update.
+- The installed Payload Layout smoke verifies function ownership at startup,
+  source-free compiled execution, v8 native-Code image recovery and baked
+  execution, including copied prefixes, callback-time layout replacement during
+  collection, nested collection, aliases and repeated native loading.
+- Installed stdlib: 145 passed, zero failed. `git diff --check` passes.
+
+Local receipts are under `.cargo-target/81bl-*`, including `source-hashes.json`,
+`install.log`, `integrated-tests.log`, `layout-oracle.json`, `native-audit.log`,
+`layout-consumers.log`, `installed-host-validation.log`, `installed-idapi.log`,
+`installed-stdlib.log` and `payload-layout-image.log`. The installed prefix is
+recorded in `.cargo-target/81bl-prefix-path`; these are local evidence, not
+checked-in artifacts.
+
+Remaining before closing the full extraction audit: rerun the native-consumer
+comparisons against the installed prefix, adjacent image/recovery suites,
+image-backed worker wire comparison and final export/dependency inventory.
+Dedicated image-encoding callback instrumentation and release-count evidence at
+record retirement are also still pending. No release validation was run.

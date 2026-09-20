@@ -1,4 +1,4 @@
-#include "idapi_v16.h"
+#include "idapi_v17.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -36,7 +36,7 @@ static int control_index(Oop selector) {
     for(size_t i=0;i<4;i++) if(selector==api->intern(names[i]) || (selectors[0][i] && (selector==selectors[0][i] || selector==selectors[1][i]))) return (int)i;
     return -1;
 }
-static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,&other_settings); }
+static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,&other_settings,fixture_payload_layout()); }
 static Oop intern(const char *name) {
     if(capture) printf("intern %s\n",name);
     if(reentry_mode==1 && !strcmp(name,"gc")) reenter();
@@ -101,24 +101,24 @@ static void validate(void *image,int attached) {
     bad.byte_size--;assert(!attach(&bad));bad=*fixture_system_gc;bad.install=NULL;assert(!attach(&bad));
     if(attached) { bad=*fixture_system_gc;assert(!attach(&bad) && attach(fixture_system_gc)==1); }
 }
-static void mount(const char *path,IdApi *table,int prelude,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings) {
+static void mount(const char *path,IdApi *table,int prelude,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
     if(prelude && api->dlsym_fn(image,"birnam_system_gc_dependency_v2") && !fixture_system_gc) {
         IdApi watched=*api;watched.alloc=allocate;watched.method=method;watched_root_slot=registered;
         fixture_prepare_system_gc(&watched,&watched_roots);assert(!bindings && !registrations && !fixture_namespace_contains("System"));validate(image,0);
     }
     fixture_attach_integer(api,image,fixture_root_registry());ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
-    if(prelude) { validate(image,1);prelude_init=init; } init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,settings);
+    if(prelude) { validate(image,1);prelude_init=init; } init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,settings,layouts);
 }
 int main(int argc,char **argv) {
     assert(argc==5);reentry_mode=!strcmp(argv[4],"first-gc-intern-reentry")?1:(!strcmp(argv[4],"first-readline-binding-reentry")?2:0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);fixture_set_auto(0);
     fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_root_registry());
-    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0,fixture_root_registry(),fixture_gc_settings());fixture_register_root(roots);
+    uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0,fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout());fixture_register_root(roots);
     selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected_root_slot=registered;
     selected.gc_collect=gc;selected.gc_live_count=live;selected_settings_slots.automatic=auto_gc;selected_settings_slots.precise=precise_gc;
     other=selected;other.nil_obj=api->true_obj;other.gc_collect=other.gc_live_count=forbidden_query;other_settings_slots.automatic=other_settings_slots.precise=forbidden_setter;
-    begin("initial registration");mount(argv[3],&selected,1,&selected_roots,&selected_settings);end();assert(bindings==(reentered?8u:4u) && !registrations);
+    begin("initial registration");mount(argv[3],&selected,1,&selected_roots,&selected_settings,fixture_payload_layout());end();assert(bindings==(reentered?8u:4u) && !registrations);
     system_type=fixture_namespace_import("SystemVt");system_object=fixture_namespace_import("System");assert(system_type && system_object);
     for(size_t i=0;i<4;i++) {
         controls[i]=lookup(system_type,names[i]);Dl_info owner;assert(controls[i] && dladdr((const void *)controls[i],&owner));
@@ -160,14 +160,14 @@ int main(int argc,char **argv) {
     nested=make_nested=collect=1;begin("nested controls and callback GC");query_value=31;result=controls[0](subject,NULL,0);end();collect=0;assert(fixture_integer_value(result)==31 && queries==2 && constructions==2 && last_auto==1);
     for(size_t i=0;i<4;i++) api->method(system_type,api->intern(names[i]),replacement);
     begin("copied methods survive public replacement");query_value=17;result=controls[1](subject,NULL,0);assert(fixture_integer_value(result)==17);assert(controls[3](alias,&selected.false_obj,1)==alias);end();
-    begin("reload retains original execution table");prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,&other_settings);end();for(size_t i=0;i<4;i++) assert(lookup(system_type,names[i])==controls[i]);
+    begin("reload retains original execution table");prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,&other_settings,fixture_payload_layout());end();for(size_t i=0;i<4;i++) assert(lookup(system_type,names[i])==controls[i]);
     if(fixture_system_gc) fixture_system_gc->install(&other,&other,&other_settings,system_type,api->intern(names[0]),api->intern(names[1]),api->intern(names[2]),api->intern(names[3]));
     begin("retained execution after reload");query_value=31;result=controls[0](subject,NULL,0);assert(fixture_integer_value(result)==31);end();
     for(size_t g=0;g<2;g++) for(size_t i=0;i<4;i++) { char name[40];snprintf(name,sizeof(name),"gc-test-%zu-%zu",g,i);selectors[g][i]=api->intern(name); }
     alternate=api->proto(api->object_vt);expected_target=system_type;map_selectors=change_snapshot=1;map_generation=0;
-    begin("selected selectors and behavior precede earlier binding callback");prelude_init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,&selected_settings);end();
+    begin("selected selectors and behavior precede earlier binding callback");prelude_init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,&selected_settings,fixture_payload_layout());end();
     for(size_t i=0;i<4;i++) { assert(seen_selectors[i]==selectors[0][i] && seen_targets[i]==system_type);assert((Method)send1(system_type,"lookup",selectors[0][i])==controls[i]); }
-    expected_target=alternate;begin("next installation adopts current behavior and selectors");prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,&other_settings);end();
+    expected_target=alternate;begin("next installation adopts current behavior and selectors");prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&selected_roots,&other_settings,fixture_payload_layout());end();
     for(size_t i=0;i<4;i++) assert(seen_selectors[i]==selectors[1][i] && seen_targets[i]==alternate);
     fixture_namespace_export("SystemVt",system_type);map_selectors=0;expected_target=NULL;
     assert(!registrations);fixture_set_precise(1);api->gc_collect();fixture_set_precise(0);assert(fixture_integer_value(result)==31);

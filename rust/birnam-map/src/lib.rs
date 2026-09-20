@@ -1,6 +1,6 @@
 //! Map canonical identities, HAMT storage, methods, traversal and printing.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::map::{ApiV5, BehaviorsV1};
+use birnam_abi::map::{ApiV6, BehaviorsV1};
 use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -113,16 +113,15 @@ unsafe extern "C" fn finish_prototype(api_pointer: *mut IdApi) {
         IDENTITY_ROOTS[1].store(prototype as usize, Ordering::Release);
     }
 }
-unsafe extern "C" fn set_layout(api_pointer: *mut IdApi) {
-    let api = unsafe { &*api_pointer };
+unsafe extern "C" fn set_layout(_api_pointer: *mut IdApi, layouts: *const birnam_abi::payload_layout::ApiV1) {
     unsafe {
-        (api.setLayout)(
+        birnam_abi::payload_layout::set(layouts,
             family().map_node_vt as Oop,
             HNODE_LAYOUT.as_ptr(),
             HNODE_LAYOUT.len(),
             birnam_abi::SLOT_OOP,
         );
-        (api.setLayout)(
+        birnam_abi::payload_layout::set(layouts,
             family().map_vt as Oop,
             MAP_LAYOUT.as_ptr(),
             MAP_LAYOUT.len(),
@@ -867,9 +866,9 @@ unsafe extern "C" fn install(api_pointer: *mut IdApi, value: Oop, value2: Oop, p
         );
     }
 }
-static API: ApiV5 = ApiV5 {
-    version: 5,
-    byte_size: size_of::<ApiV5>(),
+static API: ApiV6 = ApiV6 {
+    version: 6,
+    byte_size: size_of::<ApiV6>(),
     prepare: Some(prepare),
     finish_prototype: Some(finish_prototype),
     set_layout: Some(set_layout),
@@ -877,7 +876,7 @@ static API: ApiV5 = ApiV5 {
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
     if api.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -885,7 +884,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence:
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_map_provider_v5() -> *const ApiV5 {
+pub extern "C" fn birnam_map_provider_v6() -> *const ApiV6 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {

@@ -38,6 +38,7 @@ struct DescriptorObject {
 
 struct Runtime {
     api: usize,
+    layouts: usize,
     roots: usize,
     exports: usize,
     imports: usize,
@@ -573,7 +574,7 @@ fn register_methods(state: &Runtime) {
     // SAFETY: the vtable and selector/method pointers are process-owned and
     // registration is synchronous through the frozen ABI.
     unsafe {
-        (api.setLayout)(
+        birnam_abi::payload_layout::set(state.layouts as *const birnam_abi::payload_layout::ApiV1,
             as_oop(state.descriptor_vt),
             layout.as_ptr(),
             layout.len(),
@@ -687,7 +688,7 @@ fn register_methods(state: &Runtime) {
     }
 }
 
-pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) {
+pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -709,6 +710,7 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi
         };
         Runtime {
             api: api_pointer as usize,
+            layouts: layouts as usize,
             roots: roots as usize,
             exports: exports as usize,
             imports: imports as usize,
@@ -750,10 +752,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(
     api_pointer: *mut abi::IdApi,
-    _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+    _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
     // SAFETY: the host owns the IdApi pointer and calls this entrypoint before
     // dispatching any artifact protocol method.
-    unsafe { bring_up(api_pointer, presence, imports, exports, roots) };
+    unsafe { bring_up(api_pointer, presence, imports, exports, roots, layouts) };
     core::ptr::null_mut()
 }
 

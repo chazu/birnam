@@ -198,7 +198,7 @@ unsafe extern "C" fn object_dnu(_self_object: Oop, args: *const Oop, count: usiz
     unsafe { make_error(api, kind, message) }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -230,7 +230,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
     });
     unsafe {
-        (api.setLayout)(
+        birnam_abi::payload_layout::set(layouts,
             runtime.error_vt as Oop,
             ptr::null(),
             0,
@@ -298,9 +298,9 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
     let _ = state;
-    unsafe { bring_up(api, presence, imports, exports, roots) };
+    unsafe { bring_up(api, presence, imports, exports, roots, layouts) };
     ptr::null_mut()
 }
 

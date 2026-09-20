@@ -206,6 +206,7 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    layouts: usize,
     roots: usize,
     vtables: usize,
     exports: usize,
@@ -769,7 +770,7 @@ unsafe extern "C" fn m_symbol(self_object: Oop, args: *const Oop, count: usize) 
     if symbol.is_null() {
         api.nilObj
     } else {
-        unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), execution_exports(), symbol as usize, KIND_BORROWED) }
+        unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), symbol as usize, KIND_BORROWED) }
             .unwrap_or(api.nilObj)
     }
 }
@@ -1036,7 +1037,7 @@ pub unsafe extern "C" fn rt_mk_foreign_address(value: usize) -> Oop {
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     let api = unsafe { api_ref(runtime) };
-    unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), execution_exports(), value, KIND_BORROWED) }.unwrap_or(api.nilObj)
+    unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), value, KIND_BORROWED) }.unwrap_or(api.nilObj)
 }
 
 #[unsafe(export_name = "birnam_foreignAddressValue")]
@@ -1208,7 +1209,7 @@ pub unsafe extern "C" fn rt_layout_all_oops(vtable: Oop) {
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).setLayout)(vtable, ptr::null(), 0, SLOT_OOP) };
+    unsafe { birnam_abi::payload_layout::set(runtime.layouts as *const birnam_abi::payload_layout::ApiV1, vtable, ptr::null(), 0, SLOT_OOP) };
 }
 
 struct RuntimeSymbol {
@@ -1364,12 +1365,12 @@ unsafe extern "C" fn m_bind_runtime(self_object: Oop, _args: *const Oop, _count:
     self_object
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
-    if unsafe { foreign_address::ensure_family(api, presence, imports, exports) }.is_none() {
+    if unsafe { foreign_address::ensure_family(api, layouts, presence, imports, exports) }.is_none() {
         abort("ForeignAddress exports were incomplete");
     }
     let runtime = *RUNTIME.get_or_init(|| {
@@ -1391,6 +1392,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
         Runtime {
             api: api_pointer as usize,
+            layouts: layouts as usize,
             roots: roots as usize,
             vtables: vtables as usize,
             exports: exports as usize,
@@ -1411,7 +1413,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     // The payload remains raw; the trace hook follows only this Unit's native
     // cache, without making that cache a process-wide GC root.
     unsafe {
-        (api.setLayout)(unit_vt, ptr::null(), 0, SLOT_RAW);
+        birnam_abi::payload_layout::set(layouts, unit_vt, ptr::null(), 0, SLOT_RAW);
         (api.setTraceHook)(unit_vt, unit_cache::trace);
     }
     let tcc_vt = runtime.tcc_vt as Oop;
@@ -1496,8 +1498,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` must be the live host IdApi table or null for the documented fatal
 /// boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, vtables, roots) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports, vtables, roots, layouts) };
     ptr::null_mut()
 }
 
@@ -1546,5 +1548,6 @@ fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIM
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
 
 fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { RUNTIME.get().expect("module not initialized").exports as *const birnam_abi::namespace_export::ApiV1 }
+fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { RUNTIME.get().expect("module not initialized").layouts as *const birnam_abi::payload_layout::ApiV1 }
 
 fn execution_vtables() -> *const birnam_abi::vtable_enumeration::ApiV2 { RUNTIME.get().expect("module not initialized").vtables as *const _ }

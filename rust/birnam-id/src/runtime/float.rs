@@ -96,7 +96,7 @@ impl Runtime {
 
     #[cfg(test)]
     pub(crate) fn mount_test_float(&self, mut api: Box<birnam_abi::IdApi>) {
-        let instance = unsafe { birnam_float::storage::Instance::empty(api.as_mut(), self.namespace_presence(), self.namespace_import(), self.namespace_export()) };
+        let instance = unsafe { birnam_float::storage::Instance::empty(api.as_mut(), self.namespace_presence(), self.namespace_import(), self.namespace_export(), self.payload_layout()) };
         let pointer = core::ptr::from_ref(instance.as_ref());
         unsafe {
             *self.test_float.get() = Some(TestOwner {

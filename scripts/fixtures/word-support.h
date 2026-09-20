@@ -1,6 +1,6 @@
 #ifndef FIXTURE_WORD_SUPPORT_H
 #define FIXTURE_WORD_SUPPORT_H
-#include "../../abi/fixtures/word-prepare-v5/word_prepare_v5.h"
+#include "../../abi/fixtures/word-prepare-v6/word_prepare_v6.h"
 #include "string-support.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -36,8 +36,8 @@ static inline void fixture_prepare_word(IdApi *api, const char *floor_path, cons
     fixture_word_image = api->dlopen_fn(path, RTLD_NOW | RTLD_LOCAL);
     if (!fixture_word_image) fprintf(stderr, "%s\n", dlerror());
     assert(fixture_word_image);
-    WordPrepareV5 prepare = (WordPrepareV5)api->dlsym_fn(fixture_word_image, "birnam_word_prepare_v5"); assert(prepare);
-    fixture_word = prepare(api,presence,imports,exports,root_registry); assert(fixture_word);
+    WordPrepareV6 prepare = (WordPrepareV6)api->dlsym_fn(fixture_word_image, "birnam_word_prepare_v6"); assert(prepare);
+    fixture_word = prepare(api,presence,imports,exports,root_registry,fixture_payload_layout()); assert(fixture_word);
     assert(fixture_word->version == 1 && fixture_word->byte_size == sizeof(WordApiV1));
     void *floor = api->dlopen_fn(floor_path, RTLD_NOW | RTLD_LOCAL); assert(floor);
     fixture_attach_word(api, floor);
