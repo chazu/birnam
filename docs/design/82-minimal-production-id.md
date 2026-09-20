@@ -5,6 +5,10 @@
 > Runtime observations are against the 81CA implementation at `e928780c`;
 > `53404cce` closed that extraction phase without changing runtime code.
 > This document does not claim that production Id is already minimal.
+> **Review revision:** [Design 83](83-production-id-construction-and-lifetimes.md)
+> supplies the concrete protocols missing from the first draft, including a
+> simpler dispatch-lifetime policy. Its managed-turn checkpoints supersede this
+> draft's assumption that the existing per-send protection must be preserved.
 >
 > This supersedes the next-project recommendation in the
 > [81 closeout](81-production-extraction-status.md), the separate first-entry
@@ -105,10 +109,11 @@ future language objects. Their ABI must distinguish them from traced object
 references and define their borrow duration.
 
 The first handoff and later loads must share the loading protocol; they must
-not become unrelated special-purpose loaders. This decides the architecture,
-not an as-yet-unimplemented C struct layout. The native carrier must contain
-only what is needed to enter the message protocol and identify its initial
-receiver/selectors. It must not accumulate every upper module's capabilities.
+not become unrelated special-purpose loaders. [83 section 3](83-production-id-construction-and-lifetimes.md#3-the-common-native-loading-protocol)
+defines the native operands, result/failure contract and image lifetime; the
+C layout is still to be implemented. The native carrier contains only what is
+needed to enter the message protocol and identify its initial receiver/selectors.
+It must not accumulate every upper module's capabilities.
 
 Siphon may obtain the installed Id path and a generic continuation from its
 process/install inputs. It must not choose the order of the language's modules.
@@ -156,7 +161,8 @@ These are ownership groups, not a demand for another library per row or per
 field. Module granularity follows complete responsibilities and dependencies.
 Their final order is a dependency graph, not an invented linear list. Existing
 cycles must be removed by separating construction from later extension, not by
-reserving empty cells for future services.
+reserving empty cells for future services. [83 section 4](83-production-id-construction-and-lifetimes.md#4-construction-with-no-dormant-dependencies)
+specifies the target base/extension graph and what counts as available behavior.
 
 ## 5. No forward declarations of future semantics
 
@@ -188,9 +194,11 @@ not silently become the normal path that bypasses installed upper behavior.
 
 ## 6. The actual bootstrap and integration seams
 
-These are the difficult parts to solve, not reasons to keep the full Runtime
-inside Id. The ownership decisions above are firm; exact production protocols
-for the following transitions still need to be implemented and verified.
+These are the actual integration obligations, not reasons to keep the full
+Runtime inside Id. The initial draft left their replacement mechanisms open;
+the adversarial review correctly identified that as insufficient to start the
+decoupling. Design 83 now supplies the protocol decisions. Implementation and
+production evidence are still required.
 
 ### Metacircular construction and native operands
 
@@ -205,7 +213,7 @@ expressed as String or Integer objects. Specify the native operand carrier and
 method lifetime as part of the production ABI. Today's pointer-encoded sizes
 and method addresses are not evidence that every argument is a language object.
 The experimental carrier is prior evidence only; it is not automatically the
-new production ABI.
+new production ABI. The semantic carrier is now specified in 83 section 3.
 
 ### Allocation before and after GC
 
@@ -213,13 +221,18 @@ Id allocates the initial universe without a collector. A later collector must
 operate on those same allocations and identities. There must be one physical
 object storage authority, not an immortal bootstrap arena beside a later heap.
 
-Move GC policy out of allocation while preserving the original collection
-opportunities when the complete system is mounted. Audit instance allocation,
-cloning, Symbol creation and behavior creation; wrapping only one public
+Move GC policy out of allocation while preserving automatic collection and
+object/lifetime semantics when the complete system is mounted. Audit instance
+allocation, cloning, Symbol creation and behavior creation; wrapping only one public
 allocation function leaves bypasses. Observation must retain its scoped,
 non-reentrant rules. Retire weak Symbols, behavior indexes and other relevant
 metadata before an address can be reused. Collector policy owns the transaction;
 Id owns the integrity of its storage and indexes.
+
+One heap alone does not prove safe adoption. [83 section 5](83-production-id-construction-and-lifetimes.md#5-collector-activation-is-an-explicit-transition)
+specifies pre-GC ownership records above Id, the activation transaction and its
+failure behavior. It also distinguishes diagnostic storage observation from the
+complete storage/root facts needed by the collector.
 
 ### Dispatch and executable lifetime
 
@@ -227,19 +240,24 @@ Today's `send_abi` enters an Execution-owned read scope **before effectful
 lookup**, and `resolve_stackless_target` classifies the exact returned method
 without looking it up again. Read-scope exit can drain pending retirements.
 
-The upper execution layer must preserve that protection and ordering without
-Id constructing ExecutionState or reserving an execution callback. Simply
-installing a trampoline that acquires ownership after lookup is insufficient.
-Likewise, pinning all replaceable generated code forever would erase the
-existing retirement contract.
+The safety requirement is that effectful lookup and invocation cannot invalidate
+an already selected callable. The existing read-scope machinery is not itself a
+language requirement. [83 section 2](83-production-id-construction-and-lifetimes.md#2-dispatch-id-binds-execution-owns-turns)
+chooses a simpler mechanism: fixed Id bind/native invoke, upper Execution turns,
+and retirement only at outer checkpoints after returning to pinned code.
 
-The production dispatch design must name the entry path that owns the scope,
-how native and resumable lookup implementations reenter it, how the exact
-lookup answer remains callable, and what happens on scope exit. If this uses a
-replaceable send protocol, specify how its own dispatch terminates and how its
-implementation remains live. Saying "use message sends" does not settle that
-recursion or lifetime problem. **This contract must be resolved before the
-dispatch cutover; this document does not pretend it has already been proved.**
+Id contains no execution callback or turn counter. Ordinary Birnam and safe FFI
+entry wrappers establish the turn; trusted raw native callers have an explicit
+entry/borrow contract. Generated adapters enter the exact selected implementation
+instead of resending its selector. Frames, Continuations and owned callables
+retain code across turns. Queuing all logical and physical retirement during a
+turn protects effectful lookup without a per-send lease.
+
+This deliberately changes cleanup timing and supersedes the first draft's
+requirement to retain read-scope exit behavior. It preserves safe language
+execution and fresh lookup. It does not try to defend against arbitrary native
+ABI violations or guarantee semantic correctness after incompatible protocol
+replacement. Those boundaries are explicit in 83 section 1.
 
 ### Method mutation and representation consumers
 
@@ -280,9 +298,9 @@ Use three substantial work packages, with buildable commits inside them:
 1. **Make Id self-contained and put runtime policy above it.** Separate the
    actual storage/Symbol/behavior/dispatch owner from `RuntimeState`; move upper
    state and lifecycle together. Reunite any necessary Id-owned backing storage.
-   Resolve the dispatch, allocation and mutation contracts in section 6 against
-   their production callers. A renamed or relocated full Runtime does not meet
-   this package's acceptance.
+   Implement the dispatch, allocation and mutation contracts in Design 83
+   against their production callers. A renamed or relocated full Runtime does
+   not meet this package's acceptance.
 2. **Cut over construction and module loading.** Replace pre-Id preparation and
    the aggregate initializer with the ad-hoc-to-real Id loading protocol.
    Migrate the existing module initializers and move the module sequence into
@@ -316,9 +334,9 @@ is missing; do not clone the old per-extraction fixture matrix.
 |---|---|
 | Id has no upper prerequisites | Initialize the actual installed Id with every upper Birnam library unavailable. Inspect normal Cargo dependencies, native imports, dynamic loading and initializer behavior; a symbol-list check alone is insufficient. |
 | The first load uses the specified protocol | Exercise the real Siphon handoff. No twenty-service preparation, semantic module list, hidden compiler or alternate test-only Id path. |
-| Real Id loads the next module | Through a message send, load an actual production module using only Id and explicitly available predecessors. An ad-hoc fixture or a renamed full runtime is not the result. |
+| Construction uses only predecessors | Real Id loads actual production modules through messages. Check the meaningful construction prefixes and advertised error paths with successors absent, as specified in 83. Id plus one successor alone is insufficient. |
 | Later behavior is effective | Replace lookup, allocation and mutation behavior through the supported protocols and exercise native as well as compiled clients. Detect cached/direct bypasses. |
-| Identity and lifetime survive layering | Preserve live replacement, alias identity, lookup effects, GC across early allocations, weak Symbol/behavior retirement, finalization, acquired executable lifetime and BUSY observation boundaries. |
+| Identity and lifetime survive layering | Preserve live replacement, alias identity, lookup effects, GC across early allocations, weak Symbol/behavior retirement, finalization, owned executable lifetime and BUSY observation boundaries. Exercise 83's activation and outer-checkpoint cases, including reentry and outward-result rooting. |
 | The complete shipped paths work | Existing debug core, loaded-source/compiled, mapped/rebuilt/baked image and relevant worker coverage, using the same Id artifact as the independent startup check. |
 | The old architecture is gone | No unused pre-Id factories, aggregate compatibility table, private forwarding facade or installer dependency that reconstructs it. Documentation and diagram agree with executed startup. |
 

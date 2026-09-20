@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Address the adversarial review of minimal Id in Design 83 and revise Design 82:
+  specify upper Execution turns instead of per-send execution protection in Id,
+  define native loading results and failure lifetime, break construction cycles
+  with explicit later extensions, and define safe collector activation over
+  early module roots. Record the trusted-native safety boundary. These are design
+  changes; the production implementation is unchanged.
+
 - Record Design 82 before production Id decoupling: diagnose the inverted
   dependencies left by the Rust extractions, specify the ad-hoc-to-real Id
   loading protocol, and require independent production Id startup as acceptance.

@@ -6,6 +6,8 @@
 > **Subsequent direction:** [Design 82](82-minimal-production-id.md) records the
 > architectural failure in this phase and makes production Id decoupling the
 > next project. The earlier recommendation to rewrite Integer first is withdrawn.
+> [Design 83](83-production-id-construction-and-lifetimes.md) supplies the reviewed
+> construction and lifetime protocols for that correction.
 
 ## Assessment
 

@@ -756,6 +756,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
   the Rust extractions failed to decouple Id, the required Siphon/Id boundary,
   and the production migration and acceptance criteria. This is the current
   runtime refactoring direction.
+- [Production construction and lifetimes](docs/design/83-production-id-construction-and-lifetimes.md)
+  addresses the adversarial review: simpler dispatch ownership, native loading
+  results, base/extension load order and safe collector activation.
 - [Production extraction status](docs/design/81-production-extraction-status.md)
   summarizes the completed Rust modularization through 81CA, current ownership,
   validation, and the remaining Birnam implementation work. This phase is closed;

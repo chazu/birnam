@@ -28,6 +28,15 @@ or automatic per-field extraction sequence. The design records the failure,
 remaining integration contracts, migration packages and architectural acceptance
 tests; implementation has not begun at this documentation checkpoint.
 
+[Design 83](../design/83-production-id-construction-and-lifetimes.md) addresses
+the adversarial review of 82. Use fixed Id bind/invoke with upper Execution turns
+and outer retirement checkpoints; do not reproduce per-send execution machinery
+inside Id. The design also specifies native loading results, complete base/extension
+construction stages and the pre-GC root/metadata handoff. Its safety boundary
+protects ordinary Birnam execution while treating native ABI obligations as the
+native author's responsibility. Both documents describe targets, not implemented
+runtime changes.
+
 ## Self-hosting history — 2026-09-17 onward
 
 The entries below record earlier work and proposals. Their next-step language is
