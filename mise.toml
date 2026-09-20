@@ -99,6 +99,10 @@ run = "scripts/collection-phase-test.sh"
 description = "Check Runtime observation scope ownership, guard ordering and host admission (debug)"
 run = "scripts/storage-observation-scope-test.sh"
 
+[tasks.dispatch-cache]
+description = "Check inherited-lookup cache ownership, live dispatch and host admission (debug)"
+run = "scripts/dispatch-cache-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"

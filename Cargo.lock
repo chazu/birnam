@@ -94,6 +94,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-dispatch-cache"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-environment"
 version = "0.0.0"
 dependencies = [
@@ -163,6 +170,7 @@ dependencies = [
  "birnam-artifact",
  "birnam-codegen",
  "birnam-collect",
+ "birnam-dispatch-cache",
  "birnam-finalizers",
  "birnam-float",
  "birnam-gc-settings",

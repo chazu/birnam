@@ -13,6 +13,7 @@ birnam-native-compiler = { path = "../birnam-native-compiler" }
 sha2.workspace = true
 
 [dev-dependencies]
+birnam-dispatch-cache = { path = "../birnam-dispatch-cache" }
 birnam-storage = { path = "../birnam-storage" }
 birnam-namespace = { path = "../birnam-namespace" }
 birnam-string = { path = "../birnam-string" }

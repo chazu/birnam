@@ -34,6 +34,7 @@ members = [
     "rust/birnam-native-stack",
     "rust/birnam-native-mark",
     "rust/birnam-allocation-budget",
+    "rust/birnam-dispatch-cache",
     "rust/birnam-image",
     "rust/birnam-host",
     "rust/birnam-isolate",

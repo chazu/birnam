@@ -4,38 +4,44 @@
 //! still run for every send, including when registration changes without a
 //! dictionary mutation. No cache borrow survives a callback.
 use super::{CollectionPhase, MethodAddress, Oop, Runtime};
+#[cfg(test)]
 use core::cell::Cell;
+use core::{ffi::c_void, ptr::NonNull};
+use birnam_abi::dispatch_cache::FactoryV1;
 
-const SLOTS: usize = 64;
-
-#[derive(Clone, Copy)]
-struct Entry {
-    epoch: u64,
-    selector: usize,
-    shape: usize,
-    method: Option<MethodAddress>,
+pub(super) struct Cache {
+    context: NonNull<c_void>,
+    factory: FactoryV1,
 }
-
-const EMPTY: Entry = Entry {
-    epoch: u64::MAX,
-    selector: 0,
-    shape: 0,
-    method: None,
-};
-
-pub(super) struct Cache([Cell<Entry>; SLOTS]);
 
 impl Default for Cache {
     fn default() -> Self {
-        Self(core::array::from_fn(|_| Cell::new(EMPTY)))
+        #[cfg(test)]
+        let factory = unsafe { *birnam_dispatch_cache::birnam_dispatch_cache_factory_v1() };
+        #[cfg(not(test))]
+        let factory = unsafe { birnam_abi::dispatch_cache::operations() };
+        let context = NonNull::new(unsafe { factory.create.unwrap()() })
+            .expect("dispatch cache creation failed");
+        Self { context, factory }
     }
 }
 
 impl Cache {
     pub(super) fn clear(&self) {
-        for entry in &self.0 {
-            entry.set(EMPTY);
-        }
+        unsafe { self.factory.clear.unwrap()(self.context.as_ptr()) };
+    }
+    fn lookup(&self, epoch: u64, shape: usize, selector: usize) -> Option<MethodAddress> {
+        let method = unsafe { self.factory.lookup.unwrap()(self.context.as_ptr(), epoch, shape, selector) };
+        // The owner copies only inert Method pointers originally stored by Id.
+        unsafe { MethodAddress::from_oop(method) }
+    }
+    fn insert(&self, epoch: u64, shape: usize, selector: usize, method: MethodAddress) {
+        unsafe { self.factory.insert.unwrap()(self.context.as_ptr(), epoch, shape, selector, method.as_oop()) };
+    }
+}
+impl Drop for Cache {
+    fn drop(&mut self) {
+        unsafe { self.factory.destroy.unwrap()(self.context.as_ptr()) };
     }
 }
 
@@ -65,26 +71,18 @@ impl Runtime {
             return state.vtables.lookup(parent, selector);
         }
         // Address bits are used only as keys, never dereferenced from metadata.
-        // Selector allocation alignment would otherwise concentrate collisions.
         let key = selector.addr();
-        let slot = &self.dispatch_cache.0[((key >> 4) ^ (key >> 10)) & (SLOTS - 1)];
-        let entry = slot.get();
-        if entry.epoch == epoch && entry.selector == key && entry.shape == shape.addr() {
+        if let Some(method) = self.dispatch_cache.lookup(epoch, shape.addr(), key) {
             #[cfg(test)]
             HITS.set(HITS.get() + 1);
-            return entry.method;
+            return Some(method);
         }
         #[cfg(test)]
         MISSES.set(MISSES.get() + 1);
         let method = state.vtables.lookup(parent, selector);
         // Missing methods follow normal DNU resolution each time.
-        if method.is_some() {
-            slot.set(Entry {
-                epoch,
-                selector: key,
-                shape: shape.addr(),
-                method,
-            });
+        if let Some(method) = method {
+            self.dispatch_cache.insert(epoch, shape.addr(), key, method);
         }
         method
     }
@@ -92,3 +90,6 @@ impl Runtime {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod ownership_tests;

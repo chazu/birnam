@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-storage_observation-host-') as d
   cases.append((name,'invalid descriptor',f'static unsigned long f[8]={{{fields}}};void *birnam_storage_observation_factory_v1(void){{return f;}}'))
  cases += [('valid','ok',None)]
  for name,expected,source in cases:
-  case=root/name;case.mkdir();link(case,['id','namespace','object_model','method_observation','root_registry','gc_settings','payload_layout','trace_hooks','finalizers','native_stack','native_mark','allocation_budget','collect'])
+  case=root/name;case.mkdir();link(case,['id','dispatch_cache','namespace','object_model','method_observation','root_registry','gc_settings','payload_layout','trace_hooks','finalizers','native_stack','native_mark','allocation_budget','collect'])
   if source is not None:compile(case/'libbirnam_storage.dylib',source)
   elif name=='valid':link(case,['storage'])
   run(case,expected)

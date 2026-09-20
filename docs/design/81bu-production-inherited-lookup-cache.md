@@ -1,7 +1,7 @@
 # 81BU — Inherited-lookup cache ownership
 
-> **Status:** Audited next extraction after completed 81BT (`d0e6ec30`).
-> Production migration pending. Preserve behavior; debug validation only.
+> **Status:** Completed production extraction after 81BT (`d0e6ec30`).
+> Debug validation only; no lookup, acquisition or image-format change.
 
 Move the bounded inherited dictionary-answer cache in
 `runtime/dispatch_cache.rs` into a new `birnam-dispatch-cache` module. Keep
@@ -129,9 +129,11 @@ without requiring a dictionary mutation. Do not substitute module arithmetic
 or pointer round trips for actual Runtime dispatch tests.
 
 A loaded-factory observer must verify actual Runtime creation, target-specific
-lookup/insertion and GC clearing in the existing order. It must observe direct,
-phase and saturated-epoch bypass, not merely exercise a standalone table. Test
-inert host admission and missing/invalid dependencies before Id initialization.
+lookup/insertion, direct/phase bypass and GC clearing in the existing order,
+not merely exercise a standalone table. Saturated-epoch bypass is exercised
+through the Runtime witness using the existing test-only epoch-exhaustion
+setter; do not add a production export for forcing saturation. Test inert host
+admission and missing/invalid dependencies before Id initialization.
 
 Verify the new library during real Siphon startup and source-free compiled
 callers, mapped/rebuilt saved native Code images and baked execution. These
@@ -141,3 +143,79 @@ boundary. Compare actual image-backed worker transcripts, inspect all old/new
 exports and linkage, and verify final source/artifact receipts. Add the ABI
 reference, focused task, README links and changelog. Commit completed 81BU
 before selecting another extraction. Do not run release validation.
+
+## Completed implementation and evidence
+
+`birnam-dispatch-cache` owns the 64-entry table and its matching, replacement
+and clearing operations. Id's adapter retains Method pointers as pointers and
+keeps dictionary reads, phase/epoch bypass and hit/miss accounting in place.
+The default table cannot produce a present empty entry: Id inserts only a
+`Some(MethodAddress)`, and saturated epochs still bypass before probing.
+
+The host pins the factory before Id initialization and loads the ordinary
+module after Allocation Budget. The workspace, installer, native manifest,
+C/Rust fixture preparation and 38 focused build prerequisites include it.
+The new library uses the standard `@rpath` install name. The existing Siphon
+initializer order is otherwise byte-for-byte unchanged. Runtime guard logic,
+the tracing/invalidation site, guarded canonical lookup and Method pointer
+conversion implementations are unchanged.
+
+Debug evidence:
+
+- ABI, Dispatch Cache, host and Id library tests passed: 386 tests, 16 ignored.
+  Workspace build and all-target workspace check passed. Existing enabled/
+  disabled dispatch, guarded lookup and guarded Machine-slot tests remain in
+  the Id suite, including changed registration without dictionary mutation.
+- The new ownership witness passed against archived 81BT source augmented only
+  with the same test. All twelve old/new transcript lines match: direct bypass,
+  warm inherited entries, colliding repeated misses without negative caching,
+  positive collision replacement, both phase bypasses, method/parent mutation,
+  GC repopulation, saturated epochs, independent/moved owners and destruction.
+  Neither run retained Frame pins or acquired entries.
+- Native table tests fill and clear all 64 slots, distinguish epoch/shape/key
+  mismatches, replace collisions, cover sentinel values and prove independent
+  owner lifetime. The Runtime GC test checks the warmed entry at its original
+  pre-collection epoch, so epoch invalidation alone cannot satisfy clearing.
+- The loaded-factory observer confirms no context at inert attachment and one
+  actual Runtime owner after Id initialization. It observes target-specific
+  miss/insert/hit calls, direct bypass, Marking/Finalizing bypass, warm mutation
+  and collection clearing after native admission but before providers. A root
+  callback performs ordinary dispatch without probing the cache, and the next
+  post-collection send repopulates it.
+- All thirteen host admission cases pass, including the installed final prefix:
+  missing library/provider, null descriptor, version/size/five-operation
+  rejection, missing/rejected floor attachment and successful initialization.
+- The CLI image smoke passes dynamic Siphon startup, source-free compiled
+  callers, mapped/rebuilt saved native Code images and baked execution. Its
+  native consumer exercises inherited sends, warm method/parent mutation,
+  shadow removal, custom lookup effects, automatic collection, native roots,
+  aliases and reload. An independent reader requires a v8 native Code record;
+  the saver source and dylib are absent during image execution.
+- A real-host consumer additionally requires `Mapped` for normal and baked
+  loading and `SourceRecovery` for explicit rebuilding, then runs image main
+  and compares its complete transcript. These checks passed against the final
+  installed artifacts; identical output alone is not used to infer mapping.
+- Actual old/new image-backed workers pass twelve exact wire-v1 round trips and
+  orderly stop with byte-for-byte equal complete transcripts. The external
+  debug harness leaves production handshake deadlines unchanged.
+- Independent storage-observation, storage-tracing and live-tracing C fixtures
+  produce equal old/new transcripts, preserving extents, identity, description
+  validation, coverage, reentry, native roots, LIFO admission and failure before
+  sweep. Storage Observation Scope, Collection Phase and Allocation Budget
+  regression gates pass, including their 14/12/14 host admission cases.
+- Installation contains 53 native libraries and the same 28 compiled modules.
+  All 80 earlier libraries retain their exports except Id's declared dependency;
+  the new module's three exports and all 37 native manifests match. Id and
+  Dispatch Cache link only system libraries. Old/new installed admission
+  contracts match, including IdApi v20, runtime ABI and image v8. Native
+  initialization remains twelve arguments and Native Loader remains v12.
+- All 499 source inputs and 538 installed artifacts match their receipts.
+  Source digest:
+  `8bbc5941659800904004f0faa5a576f7d18401e7d332b1bbcdb9b3ae6243d017`.
+  Artifact digest:
+  `ef646caede66c54ba432f9c39da650a0e27b40188d87bd148b5d2a8768d4d831`.
+
+The [v1 reference](../../abi/dispatch-cache-v1.md), independent C declaration,
+`mise run dispatch-cache`, image smoke, README links and changelog accompany
+the extraction. Local evidence and prefix markers are `.cargo-target/81bu-*`.
+No release or dispatch performance qualification was run.

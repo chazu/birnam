@@ -63,13 +63,12 @@ fn dispatch_specialization_observes_warm_mutations_gc_and_lookup() {
         let anchor = 0usize;
         r.gc_set_stack_bottom((&anchor as *const usize).addr());
         r.gc_set_precise(true);
+        let epoch = unsafe { (*r.state.get()).vtables.mutation_epoch() };
+        assert_eq!(r.dispatch_cache.lookup(epoch, child.addr(), selector.addr()).is_some(), enabled);
         r.enter(|| r.gc_collect());
-        assert!(
-            r.dispatch_cache
-                .0
-                .iter()
-                .all(|slot| slot.get().method.is_none())
-        );
+        // The module checks clearing every slot; here verify the warmed entry
+        // was actually invalidated by Runtime's collection path.
+        assert!(r.dispatch_cache.lookup(epoch, child.addr(), selector.addr()).is_none());
         assert_eq!(drive(), receiver);
         r.add_method(r.globals().vtable_vt, r.globals().lookup, observing_lookup);
         LOOKUPS.set(0);

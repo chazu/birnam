@@ -850,6 +850,11 @@ artifact required. The Rust host owns the complete runtime and build closure.
   Run `mise run storage-observation-scope`; use
   `scripts/storage-observation-scope-image-smoke.sh PREFIX` for installed startup,
   compiled-image and protected host-observation checks.
+- [Dispatch Cache](docs/design/81bu-production-inherited-lookup-cache.md) owns
+  each Runtime's inherited dictionary-answer table through an
+  [explicit dependency](abi/dispatch-cache-v1.md). Run `mise run dispatch-cache`;
+  use `scripts/dispatch-cache-image-smoke.sh PREFIX` for installed startup and
+  compiled-image checks with warm mutation and custom lookup effects.
 - [Root Registry](docs/design/81bj-production-root-provider-registry.md) owns
   ordered native root-provider registration and copied snapshots through an
   [explicit capability](abi/root-registry-v1.md). Collector phases and storage

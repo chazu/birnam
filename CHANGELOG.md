@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Extract the per-Runtime inherited-lookup table into Dispatch Cache (81BU).
+  Preserve direct lookup, collision handling, live mutation, GC invalidation and
+  fresh target classification. The Siphon loads the new native module; IdApi,
+  native initialization and image formats are unchanged.
+
 - Move per-Runtime storage-observation epoch and admission flags into Storage
   (81BT). Preserve runtime identity, permission consumption, live dispatch,
   visitor failure and guard cleanup. The host prepares the factory before Id;
