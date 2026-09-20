@@ -232,6 +232,7 @@ const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    finalizers: usize,
     settings: usize,
     layouts: usize,
     roots: usize,
@@ -7039,7 +7040,7 @@ unsafe extern "C" fn rust_codegen_finish_portable_image_unit(
             }
         }
         PortableImageCarrierKind::Mapped => unsafe {
-            (api.setFinalizer)(owner, portable_mapped_unit_finalize)
+            birnam_abi::finalizers::set(runtime().finalizers as *const birnam_abi::finalizers::ApiV1, owner, portable_mapped_unit_finalize)
         },
     }
     stage.committed = true;
@@ -12966,7 +12967,7 @@ unsafe extern "C" fn rust_reflect_collect_fact(
     unsafe { api(runtime()) }.nilObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -13055,7 +13056,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let globals = unsafe { birnam_abi::namespace_import::import(imports, GLOBALS_NAME.as_ptr().cast()) };
         let store = unsafe { birnam_abi::namespace_import::import(imports, STORE_NAME.as_ptr().cast()) };
         Runtime {
-            api: api_pointer as usize,
+            api: api_pointer as usize, finalizers: finalizers as usize,
             settings: settings as usize,
             layouts: layouts as usize,
             roots: roots as usize,
@@ -13800,10 +13801,13 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts, finalizers) };
     ptr::null_mut()
 }
+
+#[cfg(test)]
+mod finalizer_tests;
 
 #[cfg(test)]
 mod tests {

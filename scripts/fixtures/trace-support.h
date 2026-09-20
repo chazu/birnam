@@ -15,7 +15,7 @@ static inline void fixture_mount_trace(IdApi *api, const char *floor_path,const 
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);
     if(!image) fprintf(stderr,"%s\n",dlerror());
     assert(image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
     TraceLiveProviderV1 provide=(TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"); assert(provide);
     void *floor=api->dlopen_fn(floor_path,RTLD_NOW|RTLD_LOCAL); assert(floor);
     TraceLiveDependencyV1 attach=(TraceLiveDependencyV1)api->dlsym_fn(floor,"birnam_trace_dependency_v1"); assert(attach);

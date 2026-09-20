@@ -4,7 +4,7 @@
 #define CONTEXT
 #define CHECK_CONTEXT(expected) ((void)(expected))
 #else
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #define Enumeration VtableEnumerationV2
 #define CONTEXT void *context,
 #define CHECK_CONTEXT(expected) assert(context==(expected))
@@ -15,7 +15,7 @@
 #ifdef FIXTURE_IDAPI_V12
 #define OBSERVATION_ARGUMENT
 #else
-#define OBSERVATION_ARGUMENT ,fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()
+#define OBSERVATION_ARGUMENT ,fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers()
 #endif
 static IdApi *api,selected,other;
 static Enumeration enumeration,alternate;

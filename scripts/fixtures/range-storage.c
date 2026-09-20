@@ -1,5 +1,7 @@
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #include "namespace-support.h"
+static FixtureFinalizerSlot selected_finalizer_slot;
+static FinalizersV1 selected_finalizers=FIXTURE_FINALIZERS(selected_finalizer_slot);
 #include "integer-support.h"
 #include "trace-support.h"
 #include <inttypes.h>
@@ -77,7 +79,7 @@ static Oop send(Oop receiver,Oop selector,const Oop *args,size_t count) {
     if(capture) { printf("send %d %s",id(receiver),api->symbol_name(selector)); for(size_t i=0;i<count;i++) printf(" %d",id(args[i])); putchar('\n'); }
     return api->send(receiver,selector,args,count);
 }
-static void finalize(Oop object,Finalizer callback) { finalizers++; api->set_finalizer(object,callback); }
+static void finalize(Oop object,Finalizer callback) { finalizers++; fixture_set_finalizer(object,callback); }
 static Oop allocate(Oop type,size_t size) {
     if(phase==0 && type!=behavior && range_candidate) { prototype=range_candidate; partial(2); range_candidate=NULL; }
     if(capture) printf("alloc %d %zu\n",id(type),size);
@@ -123,7 +125,7 @@ static int64_t read_integer(void *context,Oop object) {
 }
 static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const RootRegistryV1 *root_registry,const PayloadLayoutV1 *layouts) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks(),(table==&selected?&selected_finalizers:fixture_finalizers()));
 }
 static void seed(void) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"}; Oop types[6];
@@ -148,7 +150,7 @@ int main(int argc,char **argv) {
     Oop adopted_behavior=behavior,adopted_prototype=prototype;
     selected=*api; selected.proto=proto; selected_import_slot=import; selected_presence_slot=exported;
     selected.intern=intern; selected.alloc=allocate; selected.method=method; selected.send=send;
-    NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; FixtureLayoutSlots layout_slots={layout,fixture_slot_kind}; PayloadLayoutV1 selected_layouts=FIXTURE_LAYOUTS(layout_slots); selected.set_finalizer=finalize; selected_root_slot=roots;
+    NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish}; FixtureLayoutSlots layout_slots={layout,fixture_slot_kind}; PayloadLayoutV1 selected_layouts=FIXTURE_LAYOUTS(layout_slots); selected_finalizer_slot=finalize; selected_root_slot=roots;
     capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots,&selected_layouts); capture=0; phase=1;
     if(range_candidate) { prototype=range_candidate; range_candidate=NULL; }
     if(adopting) assert(behavior==adopted_behavior && (!adopted_prototype || prototype==adopted_prototype));

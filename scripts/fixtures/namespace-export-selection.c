@@ -3,7 +3,7 @@
 #ifdef FIXTURE_IDAPI_V10
 #include "idapi_v10.h"
 #else
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #endif
 #include "namespace-support.h"
 #include "integer-support.h"
@@ -110,7 +110,7 @@ int main(int argc,char **argv) {
 #ifdef FIXTURE_IDAPI_V10
         init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports());
 #else
-        init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+        init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
 #endif
     }
     assert(publications==2 && !during_construction);

@@ -1,5 +1,7 @@
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #include "namespace-support.h"
+static FixtureFinalizerSlot builder_finalizer_slot;
+static FinalizersV1 builder_finalizers=FIXTURE_FINALIZERS(builder_finalizer_slot);
 #include "integer-support.h"
 #include "collect-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
@@ -34,7 +36,7 @@ static void mount_trace(const char *floor_path, void *floor) {
     const char *slash=strrchr(floor_path,'/'); assert(slash); char path[PATH_MAX];
     snprintf(path,sizeof(path),"%.*s/libbirnam_trace.dylib",(int)(slash-floor_path),floor_path);
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
     const TraceLiveApiV1 *provided=((TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"))();
     actual_trace=provided->trace;
     TraceLiveApiV1 watched={1,sizeof(watched),traced};
@@ -44,7 +46,7 @@ static void mount_trace(const char *floor_path, void *floor) {
 static void mount(const char *path, IdApi *selected,const NamespaceExportV1 *exports,const RootRegistryV1 *root_registry,const PayloadLayoutV1 *layouts) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks(),(selected==&builder_api?&builder_finalizers:fixture_finalizers()));
 }
 static Oop send0(Oop receiver,const char *name) { return api->send(receiver,api->intern(name),NULL,0); }
 static Oop send(Oop receiver,const char *name,Oop argument) { return api->send(receiver,api->intern(name),&argument,1); }
@@ -73,7 +75,7 @@ static void finalizer(Oop object,Finalizer method) {
     Builder *b=object; assert(!b->bytes && !b->length && !b->capacity);
     cleanup=method;
     if(initializing && !prototype) prototype=object;
-    api->set_finalizer(object,method);
+    fixture_set_finalizer(object,method);
 }
 static Oop intern(const char *name) {
     if(initializing && force_preparation_gc) { collections++; api->gc_collect(); }
@@ -140,7 +142,7 @@ int main(int argc,char **argv) {
         memset(adopted_prototype,0,sizeof(Builder)); prototype=adopted_prototype;
         fixture_namespace_export("StringBuilderVt",adopted_type); fixture_namespace_export("StringBuilder",adopted_prototype);
     }
-    builder_api=*api; builder_api.alloc=allocate; builder_api.set_finalizer=finalizer;
+    builder_api=*api; builder_api.alloc=allocate; builder_finalizer_slot=finalizer;
     builder_api.intern=intern; FixtureLayoutSlots layout_slots={layout,fixture_slot_kind}; PayloadLayoutV1 selected_layouts=FIXTURE_LAYOUTS(layout_slots); NamespaceExportV1 builder_exports={1,sizeof(NamespaceExportV1),NULL,publish};
     builder_api_root_slot=register_roots;
     initializing=1; force_preparation_gc=!baseline; mount(argv[4],&builder_api,&builder_exports,&builder_api_roots,&selected_layouts); initializing=0;
@@ -152,7 +154,7 @@ int main(int argc,char **argv) {
     else assert(fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     assert(vtable_parent(api,behavior)==api->object_vt);
     if(!present) assert(vtable_owner(api,behavior)==prototype);
-    for(size_t i=0;i<4;i++) assert(fixture_slot_kind(behavior,i)==IDAPI_V18_SLOT_RAW);
+    for(size_t i=0;i<4;i++) assert(fixture_slot_kind(behavior,i)==IDAPI_V19_SLOT_RAW);
     print_selector=api->intern("printString"); roots(record_mark); assert(marked==3);
     Method create=lookup("new"), clone=lookup("clone"), append=lookup("add:"), add_byte=lookup("addByte:");
     assert(create==clone && create && append && add_byte && lookup("asString")==lookup("printString"));
@@ -207,7 +209,7 @@ int main(int argc,char **argv) {
     original_integer=fixture_integer->make; fixture_integer->make=counted_integer; expect_size(reentrant_builder,8);
     assert(integer_calls==1); fixture_integer->make=original_integer;
     send(reentrant_builder,"addByte:",fixture_integer_make('?')); expect_bytes(copied,(const uint8_t *)"one!two!",8);
-    victim=send0(prototype,"new"); send(victim,"add:",text("dead")); api->set_finalizer(victim,observed_cleanup);
+    victim=send0(prototype,"new"); send(victim,"add:",text("dead")); fixture_set_finalizer(victim,observed_cleanup);
     fixture_set_precise(1); api->gc_collect(); assert(finalized==1); victim=NULL; api->gc_collect(); assert(finalized==1);
     /* Match the ordinary next rung and preserve a replacement through it. */
     Method size=lookup("size"); api->method(behavior,api->intern("size"),identity);

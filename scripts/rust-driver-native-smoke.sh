@@ -15,12 +15,12 @@ fi
 
 test -x "$prefix/bin/birnam"
 test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_id_*.dylib' | wc -l | tr -d ' ')" = 12
-test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 75
+test "$(find "$prefix/lib" -maxdepth 1 -type f -name 'libbirnam_*.dylib' | wc -l | tr -d ' ')" = 77
 
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures \
-  abi/fixtures/idapi-v18/client.c -o "$prefix_parent/idapi-client"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures \
+  abi/fixtures/idapi-v19/client.c -o "$prefix_parent/idapi-client"
 cc -std=c11 -Wall -Wextra -Werror -fvisibility=hidden -dynamiclib \
-  abi/fixtures/idapi-v18/module.c -o "$prefix_parent/idapi-module.dylib"
+  abi/fixtures/idapi-v19/module.c -o "$prefix_parent/idapi-module.dylib"
 "$prefix_parent/idapi-client" "$prefix/lib/libbirnam_id.dylib" "$prefix_parent/idapi-module.dylib"
 
 run_root="$prefix_parent/run"
@@ -45,7 +45,7 @@ bash scripts/task-control-smoke.sh "$prefix"
 bash scripts/multicore-smoke.sh "$prefix"
 bash scripts/worker-service-smoke.sh "$prefix"
 bash scripts/closure-elision-smoke.sh "$prefix"
-cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 scripts/fixtures/closure-api-context.c -o "$prefix_parent/closure-api-context"
+cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 scripts/fixtures/closure-api-context.c -o "$prefix_parent/closure-api-context"
 "$prefix_parent/closure-api-context" "$prefix/lib/libbirnam_id.dylib" \
   "$prefix/lib/libbirnam_id_tcc.dylib" "$prefix/lib/libbirnam_id_codegen.dylib"
 "$prefix/bin/birnam" scripts/fixtures/projection-recovery.birnam >"$prefix_parent/projection.out"
@@ -60,40 +60,40 @@ cat "$prefix_parent/native-regions.out"
 "$prefix/bin/birnam" scripts/fixtures/numeric-specialization.birnam >"$prefix_parent/numeric-specialization.out"
 grep -Fxq "numeric-specialization: arithmetic, mixed values, errors, identity and retirement passed" "$prefix_parent/numeric-specialization.out"
 cat "$prefix_parent/numeric-specialization.out"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 scripts/fixtures/integer-module.c -o "$prefix_parent/integer-module"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 scripts/fixtures/integer-module.c -o "$prefix_parent/integer-module"
 "$prefix_parent/integer-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_integer.dylib" \
   "$prefix/lib/libbirnam_id_error.dylib" "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_prelude.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/float-module.c -o "$prefix_parent/float-module"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/float-module.c -o "$prefix_parent/float-module"
 "$prefix_parent/float-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_float.dylib" \
   "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_error.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/word-module.c -o "$prefix_parent/word-module"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/word-module.c -o "$prefix_parent/word-module"
 "$prefix_parent/word-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_word.dylib" \
   "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_error.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/boolean-module.c -o "$prefix_parent/boolean-module"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/boolean-module.c -o "$prefix_parent/boolean-module"
 "$prefix_parent/boolean-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" \
   "$prefix/lib/libbirnam_boolean.dylib" "$prefix/lib/libbirnam_id_prelude.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/nil-module.c -o "$prefix_parent/nil-module"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/nil-module.c -o "$prefix_parent/nil-module"
 "$prefix_parent/nil-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" \
   "$prefix/lib/libbirnam_nil.dylib" "$prefix/lib/libbirnam_id_collection.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/string-module.c -o "$prefix_parent/string-module"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/string-module.c -o "$prefix_parent/string-module"
 "$prefix_parent/string-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" \
   "$prefix/lib/libbirnam_string.dylib" "$prefix/lib/libbirnam_id_collection.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/string-builder-module.c -o "$prefix_parent/string-builder-module"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/string-builder-module.c -o "$prefix_parent/string-builder-module"
 for mode in normal adopted present adopted-present; do
   "$prefix_parent/string-builder-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" \
     "$prefix/lib/libbirnam_string.dylib" "$prefix/lib/libbirnam_string_builder.dylib" \
     "$prefix/lib/libbirnam_id_collection.dylib" "$mode"
 done
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/range-module.c -o "$prefix_parent/range-module"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/range-module.c -o "$prefix_parent/range-module"
 "$prefix_parent/range-module" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_collection.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/range-storage.c -o "$prefix_parent/range-storage"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 -Iscripts/fixtures scripts/fixtures/range-storage.c -o "$prefix_parent/range-storage"
 for mode in normal adopted missing-prototype rebound-prototype range-only-exports; do
   "$prefix_parent/range-storage" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_object_model.dylib" "$prefix/lib/libbirnam_id_collection.dylib" "$mode" >"$prefix_parent/range-$mode.log"
   tail -1 "$prefix_parent/range-$mode.log"
 done
-cc -Iabi/fixtures/idapi-v18 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
+cc -Iabi/fixtures/idapi-v19 scripts/fixtures/native-numeric-api-context.c -o "$prefix_parent/numeric-api-context"
 "$prefix_parent/numeric-api-context" "$prefix/lib/libbirnam_id.dylib" "$prefix/lib/libbirnam_integer.dylib"
-cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"
+cc -Wall -Wextra -Werror -Iabi/fixtures/idapi-v19 scripts/fixtures/native-block-construction.c -o "$prefix_parent/block-construction"
 "$prefix_parent/block-construction" "$prefix/lib/libbirnam_id.dylib" \
   "$prefix/lib/libbirnam_id_prelude.dylib" "$prefix/lib/libbirnam_id_collection.dylib" \
   "$prefix/lib/libbirnam_id_error.dylib" "$prefix/lib/libbirnam_portable_code.dylib" \

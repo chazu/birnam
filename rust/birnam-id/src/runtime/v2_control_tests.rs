@@ -150,6 +150,12 @@ fn compiler_frames_suspend_and_capture_through_ordinary_machine_sends() {
         let r = &bootstrap.runtime;
         r.publish_canonical_exports();
         r.install_execution_objects();
+        // 81BN: Machine and captured Continuation cleanup use the canonical
+        // constructor even when the public registration descriptor is unusable.
+        unsafe {
+            (*r.finalizers()).context = core::ptr::null_mut();
+            (*r.finalizers()).set = None;
+        }
         let program = Program::compile(false);
         let descriptor = program.descriptor(601601, program.step);
         let objects = unsafe { (*r.state.get()).execution.objects().unwrap() };
@@ -176,6 +182,8 @@ fn compiler_frames_suspend_and_capture_through_ordinary_machine_sends() {
                 (program.layout.entry_argument_start as usize + 1, input),
             ]).unwrap();
             let _paused_root = ScopedOopRootGuard::new(r, paused);
+            assert_eq!(r.has_finalizer(machine), Some(true));
+            assert_eq!(r.has_finalizer(paused), Some(true));
             r.gc_collect_from_native_range(0, 0);
             assert_eq!(r.integer_value(input), 14, "predecessor roots survive while awaiting the Call result");
             let supplied = r.make_integer(22);

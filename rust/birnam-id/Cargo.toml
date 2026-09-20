@@ -26,6 +26,7 @@ birnam-root-registry = { path = "../birnam-root-registry" }
 birnam-gc-settings = { path = "../birnam-gc-settings" }
 birnam-payload-layout = { path = "../birnam-payload-layout" }
 birnam-trace-hooks = { path = "../birnam-trace-hooks" }
+birnam-finalizers = { path = "../birnam-finalizers" }
 birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization", "dev-frame-read-reuse"] }
 
 [features]

@@ -5,8 +5,8 @@
 #define ROOTS_ARGUMENT
 #define REGISTER(provider) api->gc_register_root_provider(provider)
 #else
-#include "idapi_v18.h"
-#include "../../abi/fixtures/idapi-v18/storage_v1.h"
+#include "idapi_v19.h"
+#include "../../abi/fixtures/idapi-v19/storage_v1.h"
 #define ROOTS_ARGUMENT ,fixture_root_registry()
 #define REGISTER(provider) fixture_register_root(provider)
 #endif
@@ -62,7 +62,7 @@ static void factory_probe(const char *floor_path) {
     Dl_info owner;assert(dladdr((void *)fixture_root_registry()->register_root,&owner));
     assert(strstr(owner.dli_fname,"libbirnam_root_registry.dylib"));
     ModuleInitFn initialize=(ModuleInitFn)dlsym(image,"module_init");assert(initialize);
-    initialize(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+    initialize(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
 }
 #endif
 int main(int argc,char **argv) {

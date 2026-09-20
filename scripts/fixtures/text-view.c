@@ -1,4 +1,4 @@
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -88,7 +88,7 @@ static void validate(void *image,int attached) {
 static void mount(const char *path,IdApi *table,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
     if(prelude && api->dlsym_fn(image,"birnam_text_view_dependency_v1")) { fixture_prepare_text_view(api,fixture_root_registry());assert(!fixture_namespace_contains("System"));validate(image,0); }
-    fixture_attach_integer(api,image,fixture_root_registry());ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+    fixture_attach_integer(api,image,fixture_root_registry());ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
 }
 int main(int argc,char **argv) {
     assert(argc==4);trace=fdopen(dup(STDOUT_FILENO),"w");assert(trace);setvbuf(trace,NULL,_IONBF,0);
@@ -149,7 +149,7 @@ int main(int argc,char **argv) {
     path_view=0;selected.dlopen_fn=open_module;selected.dlsym_fn=find_module;
     for(module_mode=0;module_mode<3;module_mode++) { begin("module path conversion and loader result");assert(load_module(system_object,&path_object,1)==(module_mode?api->nil_obj:system_object));end(); }assert(init_calls==1);
     selected.dlopen_fn=api->dlopen_fn;selected.dlsym_fn=api->dlsym_fn;
-    IdApi other=selected;other.nil_obj=api->true_obj;prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());input=text("reload");
+    IdApi other=selected;other.nil_obj=api->true_obj;prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());input=text("reload");
     begin("reinstalled consumer keeps original execution callbacks");expect_output(print_method,input,(const uint8_t *)"reload",6,0,system_object);end();
     fixture_set_precise(1);api->gc_collect();fixture_set_precise(0);expect_string(input,(const uint8_t *)"reload",6);
     fixture_string->bytes=original_bytes;fixture_string->make=original_make;assert(!unlink(first_path) && !rmdir(directory));

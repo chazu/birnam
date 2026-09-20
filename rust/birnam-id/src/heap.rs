@@ -7,6 +7,7 @@ use std::alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error};
 use std::ptr::NonNull;
 
 use crate::abi::{Finalizer, Oop};
+use birnam_abi::finalizers::SlotV1;
 use crate::boundary;
 use crate::raw::AddressMap;
 
@@ -32,7 +33,7 @@ struct Block {
     // bit 0: mark; bit 1: permanence; bits 2..5: padding; bits 5..64:
     // never-reused allocation identity. Preserve the four-word registry bound.
     metadata: u64,
-    finalizer: Option<Finalizer>,
+    finalizer: SlotV1,
 }
 
 impl Block {
@@ -105,7 +106,7 @@ impl DetachedBlock {
     }
 
     pub(crate) fn finalizer(&self) -> Option<Finalizer> {
-        self.block.finalizer
+        self.block.finalizer.callback
     }
 
     pub(crate) fn reclaim(self) {
@@ -159,6 +160,8 @@ pub(crate) struct Heap {
     counted_frame_indices: Option<Box<dead_allocations::frame_indices::CountedFrameIndices>>,
     next_deferred_id: u64,
     next_allocation_identity: u64,
+    // Retaining records precede the service in field drop order.
+    finalizers: crate::finalizers::Service,
 }
 
 mod dead_allocations;
@@ -178,6 +181,7 @@ impl Heap {
             deferred_allocations: Vec::new(),
             next_deferred_id: 0,
             next_allocation_identity: 0,
+            finalizers: crate::finalizers::Service::new(),
         }
     }
 
@@ -219,7 +223,7 @@ impl Heap {
                     } else {
                         0
                     },
-                finalizer: None,
+                finalizer: SlotV1::EMPTY,
             },
         );
         boundary::require_invariant(
@@ -244,7 +248,7 @@ impl Heap {
             allocation_bytes: block.total_size,
             behavior: unsafe { vtable_slot_from_payload(block.payload()).read() },
             flags: if block.permanence() == Permanence::Permanent { PERMANENT } else { 0 }
-                | if block.finalizer.is_some() { HAS_FINALIZER } else { 0 },
+                | if block.finalizer.callback.is_some() { HAS_FINALIZER } else { 0 },
             trace_hook: None,
         }).collect();
         result.sort_unstable_by_key(|entry| entry.identity);
@@ -426,18 +430,30 @@ impl Heap {
     pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {
         self.blocks
             .get(&object.addr())
-            .map(|block| block.finalizer.is_some())
+            .map(|block| block.finalizer.callback.is_some())
     }
 
     pub(crate) fn set_finalizer(&mut self, object: Oop, finalizer: Finalizer) -> bool {
         let Some(block) = self.blocks.get_mut(&object.addr()) else {
             return false;
         };
-        if block.permanence() == Permanence::Permanent {
+        let slot = self.finalizers.slot(block.permanence(), finalizer);
+        if slot.callback.is_none() {
             return false;
         }
-        block.finalizer = Some(finalizer);
+        block.finalizer = slot;
         true
+    }
+
+    pub(crate) fn finalizers_api(&self) -> *mut birnam_abi::finalizers::ApiV1 {
+        self.finalizers.api()
+    }
+
+    /// Apply an accepted attachment to the record whose fact was just read.
+    pub(crate) fn replace_finalizer(&mut self, object: Oop, slot: SlotV1) {
+        let block = self.blocks.get_mut(&object.addr())
+            .unwrap_or_else(|| boundary::fatal_invariant("finalizer record disappeared"));
+        block.finalizer = slot;
     }
 
     pub(crate) fn set_vtable(&mut self, object: Oop, vtable: Oop) -> bool {

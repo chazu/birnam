@@ -1,5 +1,7 @@
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #include "namespace-support.h"
+static FixtureFinalizerSlot string_finalizer_slot;
+static FinalizersV1 string_finalizers=FIXTURE_FINALIZERS(string_finalizer_slot);
 #include "integer-support.h"
 #include "trace-support.h"
 #include <math.h>
@@ -51,7 +53,7 @@ static Oop forwarded(Oop receiver, Oop selector, const Oop *args, size_t count) 
 static void mount(const char *path, IdApi *selected,const RootRegistryV1 *root_registry,const PayloadLayoutV1 *layouts) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks(),(selected==&string_api?&string_finalizers:fixture_finalizers()));
 }
 static Oop raw(const uint8_t *bytes, size_t length) { return fixture_string_make(bytes,length); }
 static Oop text(const char *value) { return raw((const uint8_t *)value,strlen(value)); }
@@ -90,7 +92,7 @@ int main(int argc, char **argv) {
     fixture_mount_trace(api,argv[1],fixture_root_registry());
     string_api=*api; string_api_root_slot=register_roots;
     FixtureLayoutSlots layout_slots={collecting_layout,fixture_slot_kind}; PayloadLayoutV1 selected_layouts=FIXTURE_LAYOUTS(layout_slots); string_api.method=collecting_method;
-    string_api.alloc=forbidden_alloc; string_api.set_finalizer=forbidden_finalizer;
+    string_api.alloc=forbidden_alloc; string_finalizer_slot=forbidden_finalizer;
     fixture_prepare_string_with_layout(&string_api,argv[1],fixture_namespace_exports(),&string_api_roots,&selected_layouts);
     assert(preparation_collections==3);
     layout_slots.set=fixture_set_layout; string_api.method=api->method;
@@ -112,18 +114,18 @@ int main(int argc, char **argv) {
     assert(storage->cleanup_owner(storage->cleanup)==fixture_string->context && !storage->cleanup_owner(inert_cleanup));
     size_t absent_length=123; assert(!storage->borrow(fixture_string->context,api->true_obj,&absent_length));
     assert(!storage->release(fixture_string->context,api->true_obj));
-    assert(fixture_slot_kind(fixture_string->behavior,0)==IDAPI_V18_SLOT_RAW);
+    assert(fixture_slot_kind(fixture_string->behavior,0)==IDAPI_V19_SLOT_RAW);
     Oop owner=text("owned"); size_t owned_length=0; const uint8_t *owned=fixture_string_bytes(owner,&owned_length);
     assert(api->object_payload_size(owner)==16 && owned_length==5);
     uintptr_t *words=(uintptr_t *)owner; assert(words[0]==(uintptr_t)owned && words[1]==5);
     words[0]=0; words[1]=SIZE_MAX; expect_text(owner,"owned");
-    api->set_finalizer(owner,inert_cleanup);
+    fixture_set_finalizer(owner,inert_cleanup);
     Method clone=lookup("clone"), create=lookup("new");
     assert(clone && clone==create && clone(NULL,NULL,99)==NULL);
     Oop copied=clone(owner,NULL,99); expect_text(copied,"owned");
     assert(copied!=owner && fixture_string_bytes(copied,&owned_length)!=owned);
     /* Restore cleanup after proving clone did not rely on raw payload words. */
-    api->set_finalizer(owner,storage->cleanup);
+    fixture_set_finalizer(owner,storage->cleanup);
     print_selector=api->intern("printString"); provider(record_mark); assert(marked_selector==1);
     if(!baseline) assert(!fixture_namespace_contains("Array") && !lookup("split:"));
     static const uint8_t binary[]={0,'a',0xff}, utf8[]={0xc3,0xa9,0xff};

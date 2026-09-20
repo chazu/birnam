@@ -5,7 +5,7 @@ prefix=${1:?usage: vtable-enumeration-image-smoke.sh PREFIX}
 bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-vtable-enumeration-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'vtable-enumeration image root: %s\n' "$scratch"; fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v18 scripts/fixtures/vtable-enumeration-native.c -o "$scratch/vtable-enumeration-native.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v19 scripts/fixtures/vtable-enumeration-native.c -o "$scratch/vtable-enumeration-native.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/vtable-enumeration-native.dylib"];
 let value := [Object clone];

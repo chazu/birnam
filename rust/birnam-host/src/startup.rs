@@ -898,6 +898,7 @@ pub enum FloorError {
     GcSettings { path: PathBuf, reason: &'static str },
     PayloadLayout { path: PathBuf, reason: &'static str },
     TraceHooks { path: PathBuf, reason: &'static str },
+    Finalizers { path: PathBuf, reason: &'static str },
     VtableEnumeration { path: PathBuf, reason: &'static str },
     Namespace { path: PathBuf, reason: &'static str },
     NullApi,
@@ -937,6 +938,7 @@ impl fmt::Debug for FloorError {
             Self::GcSettings { path, reason } => write!(formatter, "GC settings preparation failed: {} ({reason})", path.display()),
             Self::PayloadLayout { path, reason } => write!(formatter, "Payload layout preparation failed: {} ({reason})", path.display()),
             Self::TraceHooks { path, reason } => write!(formatter, "Trace hooks preparation failed: {} ({reason})", path.display()),
+            Self::Finalizers { path, reason } => write!(formatter, "Finalizers preparation failed: {} ({reason})", path.display()),
             Self::VtableEnumeration { path, reason } => write!(formatter, "Vtable enumeration preparation failed: {} ({reason})", path.display()),
             Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
@@ -963,6 +965,8 @@ pub struct LoadedFloor {
     payload_layout: NonNull<birnam_abi::payload_layout::ApiV1>,
     _trace_hooks: NonNull<std::ffi::c_void>,
     trace_hooks: NonNull<birnam_abi::trace_hooks::ApiV1>,
+    _finalizers: NonNull<std::ffi::c_void>,
+    finalizers: NonNull<birnam_abi::finalizers::ApiV1>,
     _method_observation: NonNull<std::ffi::c_void>,
     method_observation: NonNull<birnam_abi::method_observation::ApiV1>,
     vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV2>,
@@ -1100,6 +1104,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_gc_settings",
     "libbirnam_payload_layout",
     "libbirnam_trace_hooks",
+    "libbirnam_finalizers",
     "libbirnam_id_artifact",
     "libbirnam_store",
     "libbirnam_id_peg",
@@ -2117,7 +2122,7 @@ pub struct LoadedStack {
     environment: *const birnam_abi::environment::ApiV3,
     file_io: *const birnam_abi::file_io::ApiV3,
     block_loop: *const birnam_abi::block_loop::ApiV3,
-    native_loader: *const birnam_abi::native_loader::ApiV11,
+    native_loader: *const birnam_abi::native_loader::ApiV12,
     source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2135,6 +2140,7 @@ impl LoadedStack {
     pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.floor.gc_settings() }
     pub fn payload_layout(&self) -> *const birnam_abi::payload_layout::ApiV1 { self.floor.payload_layout() }
     pub fn trace_hooks(&self) -> *const birnam_abi::trace_hooks::ApiV1 { self.floor.trace_hooks() }
+    pub fn finalizers(&self) -> *const birnam_abi::finalizers::ApiV1 { self.floor.finalizers() }
 
     pub fn new(floor: LoadedFloor) -> Self {
         let control = unsafe {
@@ -2443,9 +2449,9 @@ impl LoadedStack {
                 return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v11".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v12".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::native_loader::DependencyV11 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::native_loader::DependencyV12 = unsafe { std::mem::transmute(dependency) };
             if self.native_loader.is_null() || unsafe { attach(self.native_loader) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
             }
@@ -2521,6 +2527,7 @@ impl LoadedStack {
                 self.floor.gc_settings(),
                 self.floor.payload_layout(),
                 self.floor.trace_hooks(),
+                self.floor.finalizers(),
             )
         };
         let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v6".as_ptr()) };
@@ -2613,9 +2620,9 @@ impl LoadedStack {
             }
             self.block_loop = provided;
         }
-        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v11".as_ptr()) };
+        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v12".as_ptr()) };
         if !native_loader_provider.is_null() {
-            let provide: birnam_abi::native_loader::ProviderV11 = unsafe { std::mem::transmute(native_loader_provider) };
+            let provide: birnam_abi::native_loader::ProviderV12 = unsafe { std::mem::transmute(native_loader_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::native_loader::attach(provided) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
@@ -3006,6 +3013,7 @@ impl LoadedFloor {
     pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.gc_settings.as_ptr() }
     pub fn payload_layout(&self) -> *const birnam_abi::payload_layout::ApiV1 { self.payload_layout.as_ptr() }
     pub fn trace_hooks(&self) -> *const birnam_abi::trace_hooks::ApiV1 { self.trace_hooks.as_ptr() }
+    pub fn finalizers(&self) -> *const birnam_abi::finalizers::ApiV1 { self.finalizers.as_ptr() }
 
     pub fn api(&self) -> &IdApi {
         // SAFETY: `id_init` returned a process-owned, non-null table and the
@@ -3046,6 +3054,7 @@ pub fn load_floor(
     let gc_settings_path = path.with_file_name("libbirnam_gc_settings.dylib");
     let payload_layout_path = path.with_file_name("libbirnam_payload_layout.dylib");
     let trace_hooks_path = path.with_file_name("libbirnam_trace_hooks.dylib");
+    let finalizers_path = path.with_file_name("libbirnam_finalizers.dylib");
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -3129,6 +3138,13 @@ pub fn load_floor(
         }
     };
     let trace_hooks_image = match unsafe { prepare_trace_hooks(handle, &trace_hooks_path) } {
+        Ok(image) => image,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
+    let finalizers_image = match unsafe { prepare_finalizers(handle, &finalizers_path) } {
         Ok(image) => image,
         Err(error) => {
             unsafe { system_dlclose(handle.as_ptr()) };
@@ -3249,6 +3265,15 @@ pub fn load_floor(
     if !unsafe { birnam_abi::trace_hooks::valid(trace_hooks) } {
         return Err(FloorError::TraceHooks { path: trace_hooks_path, reason: "invalid capability" });
     }
+    let finalizers_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_finalizers_provider_v1".as_ptr()) };
+    if finalizers_provider.is_null() {
+        return Err(FloorError::Finalizers { path: finalizers_path, reason: "missing capability" });
+    }
+    let provide: birnam_abi::finalizers::ProviderV1 = unsafe { std::mem::transmute(finalizers_provider) };
+    let finalizers = unsafe { provide() };
+    if !unsafe { birnam_abi::finalizers::valid(finalizers) } {
+        return Err(FloorError::Finalizers { path: finalizers_path, reason: "invalid capability" });
+    }
     Ok(LoadedFloor {
         _root_registry: root_registry_image,
         root_registry: NonNull::new(root_registry).unwrap(),
@@ -3258,6 +3283,8 @@ pub fn load_floor(
         payload_layout: NonNull::new(payload_layout).unwrap(),
         _trace_hooks: trace_hooks_image,
         trace_hooks: NonNull::new(trace_hooks).unwrap(),
+        _finalizers: finalizers_image,
+        finalizers: NonNull::new(finalizers).unwrap(),
         _method_observation: observation_image,
         method_observation: NonNull::new(observation).unwrap(),
         _object_model: object_model,
@@ -3499,6 +3526,39 @@ unsafe fn prepare_trace_hooks(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::trace_hooks::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::trace_hooks::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
+}
+
+unsafe fn prepare_finalizers(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::Finalizers {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_finalizers_dependency_v1".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_finalizers_factory_v1".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::finalizers::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::finalizers::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::finalizers::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

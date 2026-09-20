@@ -4,7 +4,7 @@ use core::ffi::{c_char, c_int, c_void};
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::abi::{Finalizer, IdApi, Method, Oop};
+use crate::abi::{IdApi, Method, Oop};
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
 use crate::runtime::{Runtime, with_active_if_present};
@@ -140,7 +140,7 @@ pub(crate) fn test_dispatch_reentry(method: Method) -> usize {
 /// its private byte owner without reading Id state or invoking another callback.
 /// The caller must additionally prove that this Runtime owns the object's bytes.
 #[cfg(test)]
-pub(crate) fn string_cleanup_matches_runtime(active: &Runtime, finalizer: Finalizer) -> bool {
+pub(crate) fn string_cleanup_matches_runtime(active: &Runtime, finalizer: crate::abi::Finalizer) -> bool {
     active.string_cleanup_matches_runtime(finalizer)
 }
 #[cfg(test)]
@@ -148,7 +148,7 @@ pub(crate) unsafe extern "C" fn string_finalizer(object: Oop) {
     runtime().release_string(object);
 }
 #[cfg(test)]
-pub(crate) unsafe extern "C" fn test_string_cleanup_owner(finalizer: Finalizer) -> *mut c_void {
+pub(crate) unsafe extern "C" fn test_string_cleanup_owner(finalizer: crate::abi::Finalizer) -> *mut c_void {
     let pointer = PUBLIC_RUNTIME.load(Ordering::Acquire);
     if finalizer as usize != string_finalizer as *const () as usize || pointer.is_null() { return core::ptr::null_mut(); }
     unsafe { (*pointer).string_context() }
@@ -191,9 +191,6 @@ unsafe extern "C" fn api_gc_live_count() -> usize {
     runtime().gc_live_count()
 }
 
-unsafe extern "C" fn api_set_finalizer(object: Oop, finalizer: Finalizer) {
-    runtime().set_finalizer(object, finalizer);
-}
 
 unsafe extern "C" fn api_object_payload_size(object: Oop) -> usize {
     runtime().payload_size(object).unwrap_or(0)
@@ -221,7 +218,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         gcSetStackBottom: api_gc_set_stack_bottom,
         gcCollect: api_gc_collect,
         gcLiveCount: api_gc_live_count,
-        setFinalizer: api_set_finalizer,
         objectPayloadSize: api_object_payload_size,
     }
 }
@@ -782,4 +778,39 @@ pub unsafe extern "C" fn birnam_trace_hooks_dependency_v1(factory: *const birnam
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_trace_hooks_provider_v1() -> *mut birnam_abi::trace_hooks::ApiV1 {
     runtime().trace_hooks()
+}
+
+pub(crate) fn finalizers_access() -> birnam_abi::finalizers::FloorV1 {
+    use birnam_abi::finalizers::{FloorV1, SlotV1};
+    unsafe extern "C" fn admit(_: *mut c_void) {
+        #[cfg(not(test))]
+        { runtime().admit_finalizers(); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|r| r.admit_finalizers()); }
+    }
+    unsafe extern "C" fn read_permanent(_: *mut c_void, object: Oop, output: *mut c_int) -> c_int {
+        #[cfg(not(test))]
+        let fact = runtime().finalizer_permanence(object);
+        #[cfg(test)]
+        let fact = crate::runtime::with_active(|r| r.finalizer_permanence(object));
+        let Some(permanence) = fact else { return 0; };
+        unsafe { output.write(c_int::from(permanence == crate::heap::Permanence::Permanent)) };
+        1
+    }
+    unsafe extern "C" fn replace(_: *mut c_void, object: Oop, slot: SlotV1) {
+        #[cfg(not(test))]
+        { runtime().replace_finalizer(object, slot); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|r| r.replace_finalizer(object, slot)); }
+    }
+    FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: core::ptr::null_mut(),
+        admit: Some(admit), read_permanent: Some(read_permanent), replace: Some(replace) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_finalizers_dependency_v1(factory: *const birnam_abi::finalizers::FactoryV1) -> c_int {
+    unsafe { birnam_abi::finalizers::attach(factory) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_finalizers_provider_v1() -> *mut birnam_abi::finalizers::ApiV1 {
+    runtime().finalizers()
 }

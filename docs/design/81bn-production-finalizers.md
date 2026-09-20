@@ -1,6 +1,9 @@
 # 81BN — Native finalizer registration
 
-> **Status:** Audited against completed 81BM (`67373979`). Implementation pending.
+> **Status:** Implementation and ABI/caller migration in progress against
+> completed 81BM (`67373979`). This is a progress checkpoint, requested for
+> commit and push; finalizer-focused image validation and final review remain
+> before declaring the extraction complete. Debug evidence is recorded below.
 > Debug validation only.
 
 [81D](81d-id-api-partition.md) places finalizer registration in the reclamation
@@ -127,3 +130,70 @@ mapped and rebuilt owners, baked execution and worker replies. Check dynamic
 symbol ownership, system-only links, export deltas, the current ABI manifest and
 source/artifact agreement. Commit this extraction only after these checks pass;
 then select the next responsibility. Do not run release gates.
+
+## Implementation progress
+
+The working implementation supplies the 40-byte Finalizers factory, copied
+48-byte floor descriptor, 32-byte public capability and eight-byte inline slot.
+Id retains exact facts and attachment storage; canonical construction calls the
+factory. Collect's detach/call/reclaim code is unchanged. IdApi v19 removes only
+`setFinalizer` (19 fields / 152 bytes, `objectPayloadSize` at offset 144), and
+Native Loader v12 carries the twelfth initializer argument. The seven native
+callers retain the capability alongside their existing saved API. Historical
+contracts remain frozen.
+
+Initial debug evidence:
+
+- Workspace all-target check and workspace build pass. The ABI, Finalizers and
+  Id Rust suites pass 285 tests (15 existing Id diagnostic tests remain ignored).
+  New checks cover canonical policy/layout, copied floor and reentry, live public
+  context/function selection, moved and independent Runtimes, teardown without
+  callbacks, weak allocation lifetime, detached-current rejection and live
+  replacement on later dead objects. Real Machine, Continuation and String
+  construction succeeds with public registration disabled or forbidden.
+- The independent C probe matches archived 81BM for collectable replacement,
+  permanent/null/interior/foreign rejection, cloning, presence, identity and
+  allocation count. Owner-thread and storage-observation failures match exact
+  exit status and diagnostics even for a null target. The cached capability is
+  used for these calls, so its setter admission is exercised directly.
+- The existing loaded Collect oracle matches the baseline for ordered
+  replacement, nested collection and fail-stop behavior. Nineteen native and
+  27 value/storage transcripts also match, including Native Loader reentry and
+  real String/StringBuilder cleanup checks.
+- Dedicated old/new C transcripts match for PEG/CST, StringBuilder, TCC,
+  Portable Code, Alien and Isolate across initial registration and repeated
+  initialization with distinct saved/incoming selections. Changing the saved
+  callback and context remains observable. Actual cleanup runs once after
+  detachment, with initialized native payloads; a second collection does not
+  repeat cleanup. Alien rejects a different API with the same diagnostic, and
+  Isolate preserves worker termination after failed handle allocation.
+- The Codegen Runtime suite passes 22 tests (four existing process-isolation
+  tests remain ignored). Its new mapped-owner commit-seam test verifies saved
+  selection, live callback/context changes, failure ordering and registration
+  before committed-state publication. This uses a controlled staged owner;
+  actual mapped and rebuilt artifacts are exercised by the image smoke below.
+- All 77 current C fixtures pass strict syntax checks. The current independent
+  C client/module passes against the installed prefix and receives all twelve
+  capabilities on repeated initialization. Sixteen host factory/capability
+  admission cases pass.
+- A fresh debug prefix contains 49 native libraries and 28 compiled modules.
+  All 77 export sets match the baseline plus declared changes; 33 applicable
+  native manifests match. Id and Finalizers link only system libraries, and
+  the public setter and canonical constructor belong to Finalizers. All 2,059
+  captured source hashes stayed unchanged throughout installation.
+- The adjacent Trace Hooks installed smoke passes dynamic startup, source-free
+  compiled calling, native Code image reload and baked execution with v19/v12.
+- The portable image v8 smoke passes boxed identity, nested source-free meaning,
+  CodeBinding recovery, mapped and rebuilt entry, baked execution, resave and
+  recovery-boundary admission.
+- Actual image-backed host workers match the baseline byte for byte for ready,
+  12 wire-value round trips and orderly stop after removing the image source.
+  The external debug harness waits for startup without changing the production
+  Isolate handshake deadline.
+
+Remaining before completion: wire the new caller fixtures into the focused
+Finalizers gate, add finalizer-focused installed image coverage, and finish the
+boundary/evidence review, including source/artifact agreement after the final
+changes. The source-hash and 77-fixture counts above describe the earlier build;
+the subsequent caller fixtures and Codegen test are additional checkpoint work.
+This checkpoint does not claim completion of the extraction.

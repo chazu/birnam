@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v18/idapi_v18.h"
+#include "../../abi/fixtures/idapi-v19/idapi_v19.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include "collect-support.h"
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     fixture_mount_collect(api,argv[1],fixture_root_registry());
     must_abort_collection(); /* no in-Id fallback */
     void *image=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
     TraceLiveProviderV1 provide=(TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"); assert(provide);
     const TraceLiveApiV1 *implementation=provide(); assert(implementation);
     actual_trace=implementation->trace; assert(actual_trace);
@@ -127,7 +127,7 @@ int main(int argc, char **argv) {
     assert(trace_calls==before+1 && provider_calls==trace_calls && edge_calls>0);
     fixture_set_auto(0);
     failure_victim=api->alloc(api->object_vt,0);
-    api->set_finalizer(failure_victim,failure_finalizer);
+    fixture_set_finalizer(failure_victim,failure_finalizer);
     fail_trace=1; must_abort_collection(); /* failure cannot fall through to sweep */
     fail_trace=0;
     (void)api->gc_collect(); assert(trace_calls==before+2);

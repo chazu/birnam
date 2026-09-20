@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -44,7 +44,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(found==1);rooted=NULL;
     return args[0];
 }
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks) { (void)hooks; (void)layouts; (void)settings; (void)root_registry; (void)observation;
+void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizer_cap) { (void)finalizer_cap; (void)hooks; (void)layouts; (void)settings; (void)root_registry; (void)observation;
     (void)presence;(void)exports;assert(selected && !prior && vtables && !observing);
     if(api)assert(api==selected && enumeration==vtables);else { api=selected;enumeration=(VtableEnumerationV2 *)vtables; }
     assert(enumeration->version==2 && enumeration->byte_size==sizeof(*enumeration));

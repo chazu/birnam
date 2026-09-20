@@ -154,6 +154,7 @@ impl PatternState {
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    finalizers: usize,
     layouts: usize,
     hooks: usize,
     imports: usize,
@@ -343,7 +344,7 @@ unsafe fn new_pattern(kind: Kind) -> Oop {
     }
     // SAFETY: the IdApi allocation has exactly the requested payload size.
     unsafe { ptr::write(object.cast::<PatternState>(), PatternState::new(kind)) };
-    unsafe { (api.setFinalizer)(object, finalize_pattern) };
+    unsafe { birnam_abi::finalizers::set(runtime.finalizers as *const birnam_abi::finalizers::ApiV1, object, finalize_pattern) };
     object
 }
 
@@ -356,7 +357,7 @@ unsafe fn new_grammar() -> Oop {
     }
     // SAFETY: the IdApi allocation has exactly the requested payload size.
     unsafe { ptr::write(object.cast::<GrammarState>(), GrammarState::new()) };
-    unsafe { (api.setFinalizer)(object, finalize_grammar) };
+    unsafe { birnam_abi::finalizers::set(runtime.finalizers as *const birnam_abi::finalizers::ApiV1, object, finalize_grammar) };
     object
 }
 
@@ -677,7 +678,7 @@ unsafe fn temp_to_cst(matcher: &Matcher, node_index: usize) -> Oop {
         );
     }
     scratch_push(object);
-    unsafe { (api.setFinalizer)(object, finalize_cst) };
+    unsafe { birnam_abi::finalizers::set(runtime.finalizers as *const birnam_abi::finalizers::ApiV1, object, finalize_cst) };
     let mut children = Vec::with_capacity(child_indices.len());
     for child in child_indices {
         children.push(unsafe { temp_to_cst(matcher, child) });
@@ -1204,7 +1205,7 @@ unsafe fn register_methods(runtime: &Runtime) {
     }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -1234,7 +1235,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             abort("PEG exports were incomplete");
         }
         Runtime {
-            api: api_pointer as usize,
+            api: api_pointer as usize, finalizers: finalizers as usize,
             layouts: layouts as usize,
             hooks: hooks as usize,
             imports: imports as usize,
@@ -1278,8 +1279,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` is the live host IdApi table or null for the documented fatal boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, roots, layouts, hooks) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports, roots, layouts, hooks, finalizers) };
     ptr::null_mut()
 }
 

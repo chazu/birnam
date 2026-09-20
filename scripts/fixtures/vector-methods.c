@@ -1,4 +1,4 @@
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -58,7 +58,7 @@ static Oop make_key(Oop self,const Oop *args,size_t count) {
     if(fail_key && key_calls[depth]==1) return NULL;
     if(replace_key && !key_calls[depth]) api->method(block_type,api->intern("value:"),alternate_key);
     Oop key=api->alloc(key_type,sizeof(Key));
-    *(Key *)key=(Key){value%3,value}; api->set_finalizer(key,finalize); key_count++;
+    *(Key *)key=(Key){value%3,value}; fixture_set_finalizer(key,finalize); key_count++;
     key_calls[depth]++; extra_roots+=2;
     return key;
 }
@@ -101,7 +101,7 @@ static Oop sum(Oop self,const Oop *args,size_t count) {
 static Oop null_sum(Oop self,const Oop *args,size_t count) { (void)self; (void)args; assert(count==2); visits++; return NULL; }
 static void mount(const char *path,IdApi *table,const RootRegistryV1 *root_registry) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
 }
 int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
@@ -119,7 +119,7 @@ int main(int argc,char **argv) {
     }
     assert(methods[11]==methods[12]);
     block_type=api->proto(api->object_vt); block=api->alloc(block_type,0); key_type=api->proto(api->object_vt);
-    fixture_set_layout(key_type,NULL,0,IDAPI_V18_SLOT_RAW); api->method(key_type,api->intern("<"),less);
+    fixture_set_layout(key_type,NULL,0,IDAPI_V19_SLOT_RAW); api->method(key_type,api->intern("<"),less);
     fixture_namespace_export("VectorTestBlock",block); fixture_namespace_export("VectorTestKeys",key_type);
     const int64_t values[]={5,2,4,1,3,0},inner[]={12,11,10};
     input=vector(values,6); nested=vector(inner,3);

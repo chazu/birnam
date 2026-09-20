@@ -275,8 +275,8 @@ mod tests {
         unsafe extern "C" fn forbidden_alloc(_: Oop, _: usize) -> Oop {
             panic!("String used replaceable alloc");
         }
-        unsafe extern "C" fn forbidden_finalizer(_: Oop, _: crate::abi::Finalizer) {
-            panic!("String used replaceable setFinalizer");
+        unsafe extern "C" fn forbidden_finalizer(_: *mut core::ffi::c_void, _: Oop, _: crate::abi::Finalizer) {
+            panic!("String used replaceable finalizers capability");
         }
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;
@@ -289,7 +289,8 @@ mod tests {
         };
         unsafe {
             (*api).alloc = forbidden_alloc;
-            (*api).setFinalizer = forbidden_finalizer;
+            (*runtime.finalizers()).context = core::ptr::null_mut();
+            (*runtime.finalizers()).set = Some(forbidden_finalizer);
         }
         runtime.gc_register_root_provider(roots);
         let anchor = 0usize;

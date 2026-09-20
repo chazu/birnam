@@ -30,6 +30,7 @@ members = [
     "rust/birnam-gc-settings",
     "rust/birnam-payload-layout",
     "rust/birnam-trace-hooks",
+    "rust/birnam-finalizers",
     "rust/birnam-image",
     "rust/birnam-host",
     "rust/birnam-isolate",

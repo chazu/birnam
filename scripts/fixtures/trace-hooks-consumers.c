@@ -2,7 +2,7 @@
 #ifdef TRACE_HOOKS_BASELINE
 #include "idapi_v17.h"
 #else
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
@@ -50,7 +50,7 @@ int main(int argc,char **argv) {
             ModuleInitFn init_dependency=(ModuleInitFn)dlsym(dependency,"module_init");assert(init_dependency);
             init_dependency(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout()
 #ifndef TRACE_HOOKS_BASELINE
-                ,fixture_trace_hooks()
+                ,fixture_trace_hooks(),fixture_finalizers()
 #endif
             );
         }
@@ -65,7 +65,7 @@ int main(int argc,char **argv) {
 #define MOUNT(table,cap) initialize(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout())
 #else
     TraceHooksV1 selected_hooks={1,sizeof(TraceHooksV1),&first_context,first_set},other_hooks={1,sizeof(TraceHooksV1),&other_context,other_set};
-#define MOUNT(table,cap) initialize(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),cap)
+#define MOUNT(table,cap) initialize(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),cap,fixture_finalizers())
 #endif
     MOUNT(&selected,&selected_hooks);assert(count==expected_count);
 #ifdef TRACE_HOOKS_BASELINE

@@ -293,7 +293,7 @@ impl Heap {
         self.blocks.iter().filter_map(|(address, block)| {
             if block.permanence() == Permanence::Collectable && !block.marked() {
                 block
-                    .finalizer
+                    .finalizer.callback
                     .map(|finalizer| (core::ptr::with_exposed_provenance_mut(*address), finalizer))
             } else {
                 None

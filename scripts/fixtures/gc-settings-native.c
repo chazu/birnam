@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -38,7 +38,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     gc_settings_precise_v1(settings,was_precise);gc_settings_auto_v1(settings,was_auto);
     return result;
 }
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *selected_settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks) { (void)hooks; (void)layouts;
+void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *selected_settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizer_cap) { (void)finalizer_cap; (void)hooks; (void)layouts;
     (void)presence;(void)exports;(void)vtables;(void)observation;
     assert(selected && !prior && imports && root_registry && selected_settings);
     if(api)assert(api==selected && settings==selected_settings);

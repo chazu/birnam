@@ -4,6 +4,8 @@
   "install_name": "@rpath/libbirnam_id.dylib",
   "exported_symbols": [
     "birnam_collect_dependency_v1",
+    "birnam_finalizers_dependency_v1",
+    "birnam_finalizers_provider_v1",
     "birnam_float_dependency_v1",
     "birnam_gc_settings_dependency_v1",
     "birnam_gc_settings_provider_v1",

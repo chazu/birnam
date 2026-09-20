@@ -5,8 +5,8 @@ prefix=${1:?usage: error-presence-image-smoke.sh PREFIX}
 bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-error-presence-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'error presence image root: %s\n' "$scratch"; fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v18 scripts/fixtures/error-value-presence-native.c -o "$scratch/error-value-presence-native.dylib"
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v18 scripts/fixtures/namespace-presence-reload-native.c -o "$scratch/namespace-presence-reload-native.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v19 scripts/fixtures/error-value-presence-native.c -o "$scratch/error-value-presence-native.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v19 scripts/fixtures/namespace-presence-reload-native.c -o "$scratch/namespace-presence-reload-native.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/namespace-presence-reload-native.dylib"];
 [System loadModule: "$scratch/error-value-presence-native.dylib"];

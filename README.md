@@ -818,6 +818,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Trace Hooks](docs/design/81bm-production-trace-hooks.md) owns native hook registration
   and bounded inherited selection through an [explicit capability](abi/trace-hooks-v1.md).
   Run `mise run trace-hooks`.
+- [Finalizers](docs/design/81bn-production-finalizers.md) owns native finalizer
+  registration and inline callbacks through an [explicit capability](abi/finalizers-v1.md).
+  Run `mise run finalizers`.
 - [Payload Layout](docs/design/81bl-production-payload-layout.md) owns exact-vtable
   slot descriptions shared by GC, Image and recovery through an
   [explicit capability](abi/payload-layout-v1.md). Run `mise run payload-layout`.
@@ -835,7 +838,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
   through an [explicit installer](abi/source-loader-v3.md), leaving Prelude
   responsible for identity, layout and installation. Run `mise run source-loader`.
 - [Native Loader](docs/design/81au-production-native-loader.md) owns loadModule:
-  through an [explicit installer](abi/native-loader-v11.md), preserving direct
+  through an [explicit installer](abi/native-loader-v12.md), preserving direct
   loading and initialization callbacks. Run `mise run native-loader`.
 - [Block Loop](docs/design/81at-production-block-loop.md) owns the native while
   methods through an [explicit installer](abi/block-loop-v3.md), preserving

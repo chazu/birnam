@@ -1084,6 +1084,7 @@ struct Failure {
 
 struct Runtime {
     api: usize,
+    finalizers: usize,
     imports: usize,
     isolate_vt: usize,
     isolate_obj: usize,
@@ -1514,7 +1515,7 @@ fn new_handle(api: &IdApi, mut entry: Entry) -> Oop {
         return api.nilObj;
     }
     handle_object(value).token = token;
-    unsafe { (api.setFinalizer)(value, finalise_handle) };
+    unsafe { birnam_abi::finalizers::set(runtime.finalizers as *const birnam_abi::finalizers::ApiV1, value, finalise_handle) };
     value
 }
 
@@ -1956,7 +1957,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// initialization. The returned module state is null and no caller memory is
 /// retained beyond the process-owned API table.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
     if api.is_null() {
         return ptr::null_mut();
     }
@@ -1984,7 +1985,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: 
             (isolate_vt, isolate_obj, handle_vt, failure_vt)
         };
         Runtime {
-            api: api as usize,
+            api: api as usize, finalizers: finalizers as usize,
             imports: imports as usize,
             isolate_vt: isolate_vt as usize,
             isolate_obj: isolate_obj as usize,

@@ -1,4 +1,4 @@
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -22,7 +22,7 @@ static Method lookup(Oop type,const char *name) { return (Method)send1(type,"loo
 static void mount(const char *path,IdApi *table,const NamespaceExportV1 *exports,const RootRegistryV1 *root_registry,const PayloadLayoutV1 *layouts) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image,fixture_root_registry());
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks(),fixture_finalizers());
 }
 static void roots(RootProvider provider) {
     registrations++;
@@ -125,7 +125,7 @@ int main(int argc,char **argv) {
     assert(bindings==8 && publications==1 && collections==8 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
     assert(fixture_namespace_import("Range")==prototype && fixture_namespace_import("RangeVt")==behavior);
     assert(vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
-    for(size_t i=0;i<3;i++) assert(fixture_slot_kind(behavior,i)==IDAPI_V18_SLOT_RAW);
+    for(size_t i=0;i<3;i++) assert(fixture_slot_kind(behavior,i)==IDAPI_V19_SLOT_RAW);
     if(!baseline) {
         assert(range_roots); range_roots(record_mark); assert(marks==3);
         if(!methods_baseline && !fixture_range_v2) {
@@ -211,7 +211,7 @@ int main(int argc,char **argv) {
     api->method(behavior,api->intern("size"),identity); assert(send0(r,"size")==r);
     if(!baseline) {
         ModuleInitFn prepare=(ModuleInitFn)api->dlsym_fn(range_module,"module_init"); assert(prepare);
-        prepare(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); assert(send0(r,"size")==r && bindings==8);
+        prepare(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers()); assert(send0(r,"size")==r && bindings==8);
     }
     fixture_namespace_export("Range",api->nil_obj); fixture_namespace_export("RangeVt",api->nil_obj);
     mount(argv[3],&selected,&selected_exports,&selected_roots,&selected_layouts); assert(bindings==16 && publications==1 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));

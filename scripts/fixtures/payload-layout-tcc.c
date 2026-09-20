@@ -2,7 +2,7 @@
 #ifdef PAYLOAD_LAYOUT_BASELINE
 #include "idapi_v16.h"
 #else
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
@@ -42,7 +42,7 @@ int main(int argc,char **argv) {
 #else
     FixtureLayoutSlots selected_slots={first,fixture_slot_kind},other_slots={incoming,fixture_slot_kind};
     PayloadLayoutV1 selected_layouts=FIXTURE_LAYOUTS(selected_slots),other_layouts=FIXTURE_LAYOUTS(other_slots);
-#define MOUNT(table,cap) initialize(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),cap,fixture_trace_hooks())
+#define MOUNT(table,cap) initialize(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),cap,fixture_trace_hooks(),fixture_finalizers())
 #endif
     MOUNT(&selected,&selected_layouts);
     Oop foreign=fixture_namespace_import("ForeignAddressVt"),unit=fixture_namespace_import("TccUnitVt");

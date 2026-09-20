@@ -4590,6 +4590,21 @@ impl Runtime {
         unsafe { (&mut *self.state.get()).vtables.replace_trace_hook(vtable, slot) };
     }
 
+    pub(crate) fn finalizers(&self) -> *mut birnam_abi::finalizers::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).heap.finalizers_api() }
+    }
+
+    pub(crate) fn admit_finalizers(&self) { self.assert_owner(); }
+
+    pub(crate) fn finalizer_permanence(&self, object: Oop) -> Option<crate::heap::Permanence> {
+        unsafe { (*self.state.get()).heap.permanence_of(object) }
+    }
+
+    pub(crate) fn replace_finalizer(&self, object: Oop, slot: birnam_abi::finalizers::SlotV1) {
+        unsafe { (&mut *self.state.get()).heap.replace_finalizer(object, slot) };
+    }
+
     pub(crate) fn set_finalizer(&self, object: Oop, finalizer: crate::abi::Finalizer) {
         self.assert_owner();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
@@ -6998,6 +7013,86 @@ mod tests {
         assert!(remaining.runtime.checked_vtable_of(dead).is_null());
         assert!(selected(&remaining.runtime, dead).is_none());
         assert_eq!(selected(&remaining.runtime, b), Some(second_hook as *const () as usize));
+    }
+
+    #[test]
+    fn finalizers_follow_moved_runtimes_and_internal_machine_construction_is_canonical() {
+        unsafe extern "C" fn forbidden(_: Oop) { panic!("Heap drop invoked finalizer"); }
+        let first = build_bootstrap();
+        let second = build_bootstrap();
+        first.runtime.publish_canonical_exports();
+        first.runtime.install_execution_objects();
+        let a = first.runtime.allocate_instance(first.runtime.globals().object_vt, 0);
+        let b = second.runtime.allocate_instance(second.runtime.globals().object_vt, 0);
+        let api = first.runtime.finalizers();
+        first.runtime.enter(|| unsafe { birnam_abi::finalizers::set(api, a, forbidden) });
+        let mut runtimes = vec![first, second];
+        assert_eq!(runtimes[0].runtime.finalizers(), api);
+        assert_ne!(runtimes[1].runtime.finalizers(), api);
+        unsafe { (*api).context = core::ptr::null_mut(); (*api).set = None; }
+        let machine = runtimes[0].runtime.create_stackless_machine().unwrap();
+        assert_eq!(runtimes[0].runtime.has_finalizer(machine), Some(true));
+        runtimes[0].runtime.set_finalizer(a, forbidden);
+        assert_eq!(runtimes[0].runtime.has_finalizer(a), Some(true));
+        let remaining = runtimes.pop().unwrap();
+        drop(runtimes);
+        remaining.runtime.enter(|| unsafe {
+            birnam_abi::finalizers::set(remaining.runtime.finalizers(), b, forbidden);
+        });
+        assert_eq!(remaining.runtime.has_finalizer(b), Some(true));
+        // Runtime/Heap teardown releases storage without running callbacks.
+    }
+
+    #[test]
+    fn finalizers_do_not_root_objects_and_later_dead_callbacks_remain_replaceable() {
+        thread_local! {
+            static OBJECTS: core::cell::RefCell<Vec<Oop>> = const { core::cell::RefCell::new(Vec::new()) };
+            static EVENTS: core::cell::RefCell<Vec<(Oop, u8)>> = const { core::cell::RefCell::new(Vec::new()) };
+        }
+        unsafe extern "C" fn forbidden(_: Oop) { panic!("detached or cloned finalizer ran"); }
+        unsafe extern "C" fn later(object: Oop) {
+            EVENTS.with(|events| events.borrow_mut().push((object, 2)));
+            crate::runtime::with_active(|runtime| assert_eq!(runtime.has_finalizer(object), None));
+        }
+        unsafe extern "C" fn first(object: Oop) {
+            EVENTS.with(|events| events.borrow_mut().push((object, 1)));
+            crate::runtime::with_active(|runtime| {
+                assert_eq!(runtime.has_finalizer(object), None);
+                unsafe { birnam_abi::finalizers::set(runtime.finalizers(), object, forbidden) };
+                assert_eq!(runtime.has_finalizer(object), None);
+                OBJECTS.with(|objects| {
+                    for &other in objects.borrow().iter().filter(|&&other| other != object) {
+                        assert_eq!(runtime.has_finalizer(other), Some(true));
+                        unsafe { birnam_abi::finalizers::set(runtime.finalizers(), other, later) };
+                    }
+                });
+                assert_eq!(runtime.gc_collect(), 0);
+            });
+        }
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        let objects: Vec<_> = (0..3).map(|_| runtime.allocate_instance(runtime.globals().object_vt, 8)).collect();
+        runtime.enter(|| {
+            for &object in &objects {
+                unsafe { birnam_abi::finalizers::set(runtime.finalizers(), object, first) };
+            }
+        });
+        let clone = unsafe { (&mut *runtime.state.get()).heap.clone_collectable(objects[0]).unwrap() };
+        assert_eq!(runtime.has_finalizer(clone), Some(false));
+        OBJECTS.with(|saved| *saved.borrow_mut() = objects.clone());
+        EVENTS.with(|events| events.borrow_mut().clear());
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+        EVENTS.with(|events| {
+            let events = events.borrow();
+            assert_eq!(events.iter().map(|(_, kind)| *kind).collect::<Vec<_>>(), [1, 2, 2]);
+            let mut actual: Vec<_> = events.iter().map(|(object, _)| object.addr()).collect();
+            let mut expected: Vec<_> = objects.iter().map(|object| object.addr()).collect();
+            actual.sort_unstable(); expected.sort_unstable(); assert_eq!(actual, expected);
+        });
+        for object in objects.into_iter().chain([clone]) { assert_eq!(runtime.has_finalizer(object), None); }
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+        EVENTS.with(|events| assert_eq!(events.borrow().len(), 3));
+        OBJECTS.with(|objects| objects.borrow_mut().clear());
     }
 
     #[test]

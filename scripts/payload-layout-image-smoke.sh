@@ -5,7 +5,7 @@ prefix=${1:?usage: payload-layout-image-smoke.sh PREFIX}
 bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-payload-layout-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'payload-layout image root: %s\n' "$scratch"; fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v18 scripts/fixtures/payload-layout-native.c -o "$scratch/payload-layout-native.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v19 scripts/fixtures/payload-layout-native.c -o "$scratch/payload-layout-native.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/payload-layout-native.dylib"];
 let value := [Object clone];

@@ -17,6 +17,7 @@ pub(crate) struct Globals {
 
 pub(crate) struct Runtime {
     api: usize,
+    finalizers: usize,
     layouts: usize,
     hooks: usize,
     roots: usize,
@@ -53,8 +54,8 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
     });
 }
 
-pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1) -> &'static Runtime {
-    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, layouts: layouts as usize, hooks: hooks as usize, roots: roots as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
+pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> &'static Runtime {
+    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, finalizers: finalizers as usize, layouts: layouts as usize, hooks: hooks as usize, roots: roots as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
     ROOTS_REGISTERED.call_once(|| unsafe {
         birnam_abi::root_registry::register(runtime.roots as *const birnam_abi::root_registry::ApiV1, mark_roots);
     });
@@ -134,7 +135,7 @@ impl Runtime {
     }
 
     pub(crate) fn set_finalizer(&self, object: Oop, finalizer: Finalizer) {
-        unsafe { (self.api().setFinalizer)(object, finalizer) };
+        unsafe { birnam_abi::finalizers::set(self.finalizers as *const birnam_abi::finalizers::ApiV1, object, finalizer) };
     }
 
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> bool {

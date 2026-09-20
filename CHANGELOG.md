@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Extract native finalizer registration into Finalizers (81BN). IdApi v19 has
+  19 fields / 152 bytes; native initialization receives a twelfth capability,
+  forwarded by Native Loader v12. Preserve canonical native allocation, saved
+  execution selections, weak lifetime, cloning and ordered live replacement
+  during collection. Native consumers require rebuilding; image encoding is
+  unchanged.
+
 - Extract native trace-hook registration and bounded inherited selection into
   Trace Hooks (81BM). IdApi v18 has 20 fields / 160 bytes; native initialization
   gains an eleventh capability, carried by Native Loader v11. Preserve saved

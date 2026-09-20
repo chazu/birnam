@@ -3,7 +3,7 @@
 #include "idapi_v17.h"
 #define SET(v,h) api->set_trace_hook(v,h)
 #else
-#include "idapi_v18.h"
+#include "idapi_v19.h"
 #define SET(v,h) fixture_set_trace_hook(v,h)
 #endif
 #include "storage_v1.h"

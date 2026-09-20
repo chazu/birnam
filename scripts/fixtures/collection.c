@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v18/idapi_v18.h"
+#include "../../abi/fixtures/idapi-v19/idapi_v19.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/collect-v1/collect_v1.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
@@ -135,7 +135,7 @@ static void initial(Oop object) {
     for(size_t i=0;i<3;i++) if(victims[i]!=object) {
         /* Later dead allocations remain registered and mutable until their turn. */
         assert(api->vtable_of(victims[i])==api->object_vt);
-        api->set_finalizer(victims[i],replacement);
+        fixture_set_finalizer(victims[i],replacement);
     }
 }
 static void must_abort(void) {
@@ -158,14 +158,14 @@ int main(int argc, char **argv) {
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); fixture_set_auto(0);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     void *tracer=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(tracer);
-    ((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+    ((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
     const TraceLiveApiV1 *trace_api=((TraceLiveProviderV1)api->dlsym_fn(tracer,"birnam_trace_provider_v1"))();
     actual_trace=trace_api->trace;
     TraceLiveApiV1 watched_trace=*trace_api; watched_trace.trace=traced;
     assert(((TraceLiveDependencyV1)dlsym(floor,"birnam_trace_dependency_v1"))(&watched_trace)==1);
     must_abort(); /* trace alone is insufficient; there is no coordinator fallback */
     void *collector=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL); assert(collector);
-    ((ModuleInitFn)api->dlsym_fn(collector,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
+    ((ModuleInitFn)api->dlsym_fn(collector,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers());
     const CollectApiV1 *implementation=((CollectProviderV1)api->dlsym_fn(collector,"birnam_collect_provider_v1"))();
     actual_collect=implementation->collect; mounted=*implementation; mounted.collect=collected;
     attach=(CollectDependencyV1)dlsym(floor,"birnam_collect_dependency_v1"); assert(attach);
@@ -177,7 +177,7 @@ int main(int argc, char **argv) {
     assert(!attach(implementation));
     for(size_t i=0;i<3;i++) {
         victims[i]=api->alloc(api->object_vt,sizeof(uintptr_t));
-        *(uintptr_t *)victims[i]=0xface; api->set_finalizer(victims[i],initial);
+        *(uintptr_t *)victims[i]=0xface; fixture_set_finalizer(victims[i],initial);
     }
     fail_trace=1; must_abort(); /* failed mark never retires, detaches or finalizes */
     fail_trace=0;

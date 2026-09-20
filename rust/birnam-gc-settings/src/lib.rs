@@ -73,7 +73,7 @@ pub unsafe extern "C" fn module_init(
     _: *const birnam_abi::namespace_export::ApiV1,
     _: *const birnam_abi::vtable_enumeration::ApiV2,
     _: *const birnam_abi::method_observation::ApiV1,
-    _: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1) -> *mut c_void {
+    _: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "GC Settings received a null IdApi");
     ptr::null_mut()
 }

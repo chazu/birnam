@@ -115,6 +115,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-finalizers"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-float"
 version = "0.0.0"
 dependencies = [
@@ -148,6 +155,7 @@ dependencies = [
  "birnam-artifact",
  "birnam-codegen",
  "birnam-collect",
+ "birnam-finalizers",
  "birnam-float",
  "birnam-gc-settings",
  "birnam-integer",
