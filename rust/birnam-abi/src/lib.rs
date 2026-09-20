@@ -38,6 +38,7 @@ pub mod native_stack;
 pub mod native_mark;
 pub mod allocation_budget;
 pub mod collection_phase;
+pub mod storage_observation;
 pub mod text_view;
 pub mod error_value;
 pub mod range;

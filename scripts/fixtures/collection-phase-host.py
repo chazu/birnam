@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-collection_phase-host-') as dire
   cases.append((name,'invalid descriptor',f'static unsigned long f[6]={{{fields}}};void *birnam_collection_phase_factory_v1(void){{return f;}}'))
  cases += [('valid','ok',None)]
  for name,expected,source in cases:
-  case=root/name;case.mkdir();link(case,['id','namespace','object_model','method_observation','root_registry','gc_settings','payload_layout','trace_hooks','finalizers','native_stack','native_mark','allocation_budget'])
+  case=root/name;case.mkdir();link(case,['id','namespace','object_model','method_observation','root_registry','gc_settings','payload_layout','trace_hooks','finalizers','native_stack','native_mark','allocation_budget','storage'])
   if source is not None:compile(case/'libbirnam_collect.dylib',source)
   elif name=='valid':link(case,['collect'])
   run(case,expected)

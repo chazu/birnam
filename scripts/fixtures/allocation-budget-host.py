@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='birnam-allocation_budget-host-') as dir
   cases.append((name,'invalid descriptor',f'static unsigned long f[8]={{{fields}}};void *birnam_allocation_budget_factory_v1(void){{return f;}}'))
  cases += [('valid','ok',None)]
  for name,expected,source in cases:
-  case=root/name;case.mkdir();link(case,['id','namespace','object_model','method_observation','root_registry','gc_settings','payload_layout','trace_hooks','finalizers','native_stack','native_mark','collect'])
+  case=root/name;case.mkdir();link(case,['id','namespace','object_model','method_observation','root_registry','gc_settings','payload_layout','trace_hooks','finalizers','native_stack','native_mark','collect','storage'])
   if source is not None:compile(case/'libbirnam_allocation_budget.dylib',source)
   elif name=='valid':link(case,['allocation_budget'])
   run(case,expected)

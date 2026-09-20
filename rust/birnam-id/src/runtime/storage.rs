@@ -6,9 +6,7 @@ static NEXT_RUNTIME: AtomicU64 = AtomicU64::new(1);
 
 pub(super) struct ObservationState {
     identity: u64,
-    epoch: Cell<u64>,
-    active: Cell<bool>,
-    permit: Cell<bool>,
+    scope: crate::storage_observation::Service,
 }
 impl ObservationState {
     pub(super) fn new() -> Self {
@@ -16,16 +14,15 @@ impl ObservationState {
         boundary::require_invariant(identity != u64::MAX, "storage runtime identity exhausted");
         Self {
             identity,
-            epoch: Cell::new(0),
-            active: Cell::new(false),
-            permit: Cell::new(false),
+            scope: crate::storage_observation::Service::new(),
         }
     }
 }
-struct Reset<'a>(&'a Cell<bool>);
+enum Flag { Active, Permit }
+struct Reset<'a>(&'a crate::storage_observation::Service, Flag);
 impl Drop for Reset<'_> {
     fn drop(&mut self) {
-        self.0.set(false);
+        match self.1 { Flag::Active => self.0.set_active(false), Flag::Permit => self.0.set_permit(false) }
     }
 }
 
@@ -36,7 +33,7 @@ impl Runtime {
             "Rust floor entered from a non-owner thread",
         );
         boundary::require_invariant(
-            !self.observation.active.get(),
+            !self.observation.scope.active(),
             "Id access during storage observation",
         );
     }
@@ -48,7 +45,7 @@ impl Runtime {
             current_thread_token() == self.owner,
             "Rust floor entered from a non-owner thread",
         );
-        if self.observation.active.get() || self.observation.permit.get() {
+        if self.observation.scope.active() || self.observation.scope.permit() {
             return BUSY;
         }
         self.assert_owner();
@@ -73,8 +70,8 @@ impl Runtime {
         if unsafe { valid_request(request) }.is_none() {
             return INVALID;
         }
-        self.observation.permit.set(true);
-        let _permit = Reset(&self.observation.permit);
+        self.observation.scope.set_permit(true);
+        let _permit = Reset(&self.observation.scope, Flag::Permit);
         let answer = self.enter(|| {
             self.send_slice(
                 self.globals().vtable_vt,
@@ -86,8 +83,8 @@ impl Runtime {
     }
 
     unsafe fn with_storage(&self, request: *const RequestV1) -> Status {
-        if !self.observation.permit.get()
-            || self.observation.active.get()
+        if !self.observation.scope.permit()
+            || self.observation.scope.active()
             || self.collection_phase.get() != CollectionPhase::Idle
             || unsafe { (&*self.state.get()).execution.dispatch_read_depth() } != 1
             || unsafe { !(&*self.entry_scopes.get()).is_empty() }
@@ -97,13 +94,12 @@ impl Runtime {
         let Some((context, visitor)) = (unsafe { valid_request(request) }) else {
             return INVALID;
         };
-        self.observation.permit.set(false);
-        let Some(epoch) = self.observation.epoch.get().checked_add(1) else {
+        self.observation.scope.set_permit(false);
+        let Some(epoch) = self.observation.scope.advance_epoch() else {
             return INVALID;
         };
-        self.observation.epoch.set(epoch);
-        self.observation.active.set(true);
-        let _phase = Reset(&self.observation.active);
+        self.observation.scope.set_active(true);
+        let _phase = Reset(&self.observation.scope, Flag::Active);
 
         // This borrow ends before visitor code is invoked. All arrays own their
         // native scratch; no references into RuntimeState cross the callback.
@@ -215,3 +211,6 @@ pub(crate) unsafe extern "C" fn with_storage_view(_: Oop, args: *const Oop, coun
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod scope_tests;

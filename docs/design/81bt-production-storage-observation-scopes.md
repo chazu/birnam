@@ -1,7 +1,8 @@
 # 81BT — Storage-observation scope ownership
 
-> **Status:** Audited next extraction after completed 81BS (`4155fa10`).
-> Production migration pending. Preserve behavior; debug validation only.
+> **Status:** Implementation checkpoint after completed 81BS (`4155fa10`).
+> Production wiring and focused checks are implemented; broader integration
+> validation and completion documentation remain pending. Debug validation only.
 
 Move the per-Runtime observation epoch, active flag and one-use permission from
 `runtime::storage::ObservationState` into the existing `birnam-storage` module.
@@ -125,3 +126,31 @@ image-backed worker parity. Check unchanged descriptor/source bodies, exports,
 linkage, admission contracts and final source/artifact receipts. Add a focused
 gate, ABI reference, README links and changelog; commit the completed extraction
 before selecting another boundary.
+
+## Implementation checkpoint
+
+The native Storage scope, immutable factory, Id adapter, separate reset guards
+and pre-initialization host attachment are implemented. Runtime identity remains
+in Id, and the existing Storage description-provider state is unchanged. The
+export manifests and shared C/Rust fixture preparation include the dependency;
+focused shell builds now include Storage where required.
+
+Completed debug checks:
+
+- ABI, Id and Storage library tests: 299 passed, 15 ignored, none failed.
+- The three Runtime scope tests also pass against the archived 81BS production
+  source, with test-only adapters for its original Cell fields. All 13 baseline
+  and current observation transcript lines match, including runtime identities.
+- `scripts/storage-observation-scope-test.sh` passes: six focused Rust tests,
+  the workspace debug build, loaded-factory transitions and advancement refusal,
+  both exact fail-stop diagnostics, and all 14 host admission cases.
+- The 36 existing shell-script changes only add the Storage build prerequisite;
+  their shell syntax and the new focused script's syntax pass.
+
+This is a progress checkpoint, not completed 81BT acceptance. Remaining work is
+the independent storage/tracing regression comparison, installed dynamic startup
+and source-free compiled/image/baked coverage, image-backed worker parity,
+inventory/linkage and final source/artifact receipts, and the ABI reference,
+task registration, README links and changelog. Image coverage must exercise a
+successful protected observation after execution returns to an idle host
+boundary; rejection during an active native method is insufficient.

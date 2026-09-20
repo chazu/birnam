@@ -1,5 +1,8 @@
 //! Validation of owner-supplied storage descriptions above Id.
-//! No heap, registry, mark algorithm, GC policy or persistent provenance state.
+//! Native observation scopes are independent of description-provider scopes.
+//! No heap, registry, mark algorithm or GC policy.
+mod observation;
+pub use observation::birnam_storage_observation_factory_v1;
 use birnam_abi::storage::*;
 use birnam_abi::{IdApi, Oop, borrowed_slice};
 use core::cell::Cell;

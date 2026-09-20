@@ -4,6 +4,7 @@
   "install_name": "@rpath/libbirnam_storage.dylib",
   "exported_symbols": [
     "birnam_storage_describe_v1",
+    "birnam_storage_observation_factory_v1",
     "birnam_symbol_borrow_v1",
     "module_init"
   ]

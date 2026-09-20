@@ -52,6 +52,7 @@
     "birnam_register_resumable_v2",
     "birnam_root_registry_dependency_v1",
     "birnam_root_registry_provider_v1",
+    "birnam_storage_observation_dependency_v1",
     "birnam_string_dependency_v1",
     "birnam_trace_dependency_v1",
     "birnam_trace_hooks_dependency_v1",

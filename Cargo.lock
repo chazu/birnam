@@ -175,6 +175,7 @@ dependencies = [
  "birnam-object-model",
  "birnam-payload-layout",
  "birnam-root-registry",
+ "birnam-storage",
  "birnam-string",
  "birnam-trace",
  "birnam-trace-hooks",

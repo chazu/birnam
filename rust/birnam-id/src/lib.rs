@@ -18,6 +18,7 @@ mod gc_settings;
 mod native_stack;
 mod allocation_budget;
 mod collection_phase;
+mod storage_observation;
 mod payload_layout;
 mod trace_hooks;
 mod finalizers;

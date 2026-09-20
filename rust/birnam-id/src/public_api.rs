@@ -848,3 +848,10 @@ pub unsafe extern "C" fn birnam_allocation_budget_dependency_v1(factory: *const 
 pub unsafe extern "C" fn birnam_collection_phase_dependency_v1(factory: *const birnam_abi::collection_phase::FactoryV1) -> c_int {
     unsafe { birnam_abi::collection_phase::attach(factory) }
 }
+
+/// # Safety
+/// Prepare before Id initialization; descriptor and code stay pinned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_storage_observation_dependency_v1(factory: *const birnam_abi::storage_observation::FactoryV1) -> c_int {
+    unsafe { birnam_abi::storage_observation::attach(factory) }
+}
