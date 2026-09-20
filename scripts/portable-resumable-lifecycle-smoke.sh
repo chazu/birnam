@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prove a source-less portable resumable unit survives repository eviction
-# while its Block is live, then retires after the outer dispatch-read extent
+# while its Block is live, then retires after the outer Execution turn
 # ends. Separate REPL turns are load-bearing: retirement is forbidden from
 # physically unmapping native code beneath the send that requested it.
 set -euo pipefail

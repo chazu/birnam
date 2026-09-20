@@ -54,7 +54,7 @@ impl Runtime {
         }
         let selector = unsafe {
             let state = &*self.state.get();
-            if state.execution.has_dispatch_readers()
+            if state.execution.has_managed_turn()
                 || !(&*self.entry_scopes.get()).is_empty()
                 || state.staged_resumable_unit.is_some()
                 || state.staged_resumable_publications.is_some()
@@ -86,7 +86,7 @@ impl Runtime {
         if !self.observation.scope.permit()
             || self.observation.scope.active()
             || self.collection_phase.get() != CollectionPhase::Idle
-            || unsafe { (&*self.state.get()).execution.dispatch_read_depth() } != 1
+            || unsafe { (&*self.state.get()).execution.managed_turn_depth() } != 1
             || unsafe { !(&*self.entry_scopes.get()).is_empty() }
         {
             return BUSY;

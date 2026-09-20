@@ -2551,7 +2551,7 @@ pub(crate) struct ExecutionState {
     resumable_by_thunk: AddressMap<ResumableEntryCapability>,
     generation_leases: Vec<GenerationLeaseSlot>,
     free_generation_lease_slots: Vec<usize>,
-    dispatch_read_depth: usize,
+    managed_turn_depth: usize,
     objects: Option<ExecutionObjects>,
     scoped_host_roots: Vec<Oop>,
     _owner_thread_only: PhantomData<Rc<()>>,
@@ -2571,7 +2571,7 @@ impl ExecutionState {
             resumable_by_thunk: AddressMap::default(),
             generation_leases: Vec::new(),
             free_generation_lease_slots: Vec::new(),
-            dispatch_read_depth: 0,
+            managed_turn_depth: 0,
             objects: None,
             scoped_host_roots: Vec::new(),
             _owner_thread_only: PhantomData,
@@ -2729,12 +2729,12 @@ impl ExecutionState {
 
     /// Remove every quiescent entry owned by one code generation. This is the
     /// final Runtime-side release: direct bindings must already be gone and no
-    /// reader, Frame, Continuation, acquisition, or explicit lease may remain.
+    /// managed turn, Frame, Continuation, acquisition, or explicit lease may remain.
     pub(crate) fn unregister_code_generation(
         &mut self,
         code_generation_identity: u64,
     ) -> Result<bool, RegistrationError> {
-        if code_generation_identity == 0 || self.dispatch_read_depth != 0 {
+        if code_generation_identity == 0 || self.managed_turn_depth != 0 {
             return Ok(false);
         }
         let indices = self
@@ -2816,7 +2816,7 @@ impl ExecutionState {
         match entry.lifecycle {
             ResumableEntryLifecycle::Live => {}
             ResumableEntryLifecycle::Retiring
-                if self.dispatch_read_depth != 0 || entry.explicit_generation_leases != 0 => {}
+                if self.managed_turn_depth != 0 || entry.explicit_generation_leases != 0 => {}
             ResumableEntryLifecycle::Retiring => {
                 return Err(RegistrationError::EntryRetired);
             }
@@ -3285,7 +3285,7 @@ impl ExecutionState {
                 || entry.active_frame_pins != 0
                 || entry.continuation_frame_pins != 0
                 || entry.explicit_generation_leases != 0
-                || self.dispatch_read_depth != 0
+                || self.managed_turn_depth != 0
             {
                 entry.lifecycle = ResumableEntryLifecycle::Retiring;
             } else {
@@ -3398,7 +3398,7 @@ impl ExecutionState {
             || entry.active_frame_pins != 0
             || entry.continuation_frame_pins != 0
             || entry.explicit_generation_leases != 0
-            || self.dispatch_read_depth != 0
+            || self.managed_turn_depth != 0
         {
             ResumableEntryLifecycle::Retiring
         } else {
@@ -3409,20 +3409,20 @@ impl ExecutionState {
         Ok(())
     }
 
-    pub(crate) fn begin_dispatch_read(&mut self) -> Result<(), RegistrationError> {
-        self.dispatch_read_depth = self
-            .dispatch_read_depth
+    pub(crate) fn begin_managed_turn(&mut self) -> Result<(), RegistrationError> {
+        self.managed_turn_depth = self
+            .managed_turn_depth
             .checked_add(1)
             .ok_or(RegistrationError::BindingReferenceOverflow)?;
         Ok(())
     }
 
-    pub(crate) fn end_dispatch_read(&mut self) -> Result<(), RegistrationError> {
-        self.dispatch_read_depth = self
-            .dispatch_read_depth
+    pub(crate) fn end_managed_turn(&mut self) -> Result<(), RegistrationError> {
+        self.managed_turn_depth = self
+            .managed_turn_depth
             .checked_sub(1)
             .ok_or(RegistrationError::StaleCapability)?;
-        if self.dispatch_read_depth == 0 {
+        if self.managed_turn_depth == 0 {
             for slot in &mut self.resumable_entries {
                 let Some(entry) = slot.entry.as_mut() else {
                     continue;
@@ -3442,7 +3442,7 @@ impl ExecutionState {
     }
 
     fn finish_entry_retirement(&mut self, capability: ResumableEntryCapability) {
-        if self.dispatch_read_depth != 0 {
+        if self.managed_turn_depth != 0 {
             return;
         }
         let Some(slot) = self.resumable_entries.get_mut(capability.index) else {
@@ -3524,7 +3524,7 @@ impl ExecutionState {
     }
 
     pub(crate) fn can_suppress_registration_roots(&self, code_generation_identity: u64) -> bool {
-        if code_generation_identity == 0 || self.dispatch_read_depth != 0 {
+        if code_generation_identity == 0 || self.managed_turn_depth != 0 {
             return false;
         }
         let mut found = false;
@@ -3546,12 +3546,12 @@ impl ExecutionState {
         found
     }
 
-    pub(crate) fn dispatch_read_depth(&self) -> usize {
-        self.dispatch_read_depth
+    pub(crate) fn managed_turn_depth(&self) -> usize {
+        self.managed_turn_depth
     }
 
-    pub(crate) fn has_dispatch_readers(&self) -> bool {
-        self.dispatch_read_depth != 0
+    pub(crate) fn has_managed_turn(&self) -> bool {
+        self.managed_turn_depth != 0
     }
 
     pub(crate) fn has_code_generation(&self, code_generation_identity: u64) -> bool {
@@ -5772,8 +5772,8 @@ mod tests {
         );
         let read_entry = function_body(
             execution_source,
-            "    pub(crate) fn begin_dispatch_read(",
-            "    pub(crate) fn end_dispatch_read(",
+            "    pub(crate) fn begin_managed_turn(",
+            "    pub(crate) fn end_managed_turn(",
         );
         let runtime_source = include_str!("runtime.rs");
         let resolution = function_body(
@@ -5783,7 +5783,7 @@ mod tests {
         );
 
         for (name, body) in [
-            ("dispatch read entry", read_entry),
+            ("managed turn entry", read_entry),
             ("registry classification", classification),
             ("resolve-and-pin", resolution),
         ] {
@@ -6202,7 +6202,7 @@ mod tests {
             execution.note_direct_binding_added(method).unwrap();
             let mut lease = None;
             match holder {
-                1 => execution.begin_dispatch_read().unwrap(),
+                1 => execution.begin_managed_turn().unwrap(),
                 2 | 4 | 5 => {
                     assert!(matches!(
                         execution.classify_resumable(method),
@@ -6229,7 +6229,7 @@ mod tests {
                 assert!(!execution.unregister_code_generation(generation).unwrap());
             }
             match holder {
-                1 => execution.end_dispatch_read().unwrap(),
+                1 => execution.end_managed_turn().unwrap(),
                 2 => execution.release_acquired_entry(capability).unwrap(),
                 3 => execution
                     .release_explicit_generation_lease(lease.unwrap())

@@ -362,6 +362,10 @@ unsafe fn release_payload(payload: *mut UnitPayload) {
         (*payload).state = ptr::null_mut();
         (*payload).phase = UnitPhase::Released;
     }
+    unsafe { release_native_state(state) };
+}
+
+unsafe fn release_native_state(state: *mut TccState) {
     if !state.is_null() {
         // SAFETY: state came from tcc_new and has not previously been deleted.
         #[cfg(feature = "resource-metrics")]
@@ -674,26 +678,46 @@ unsafe extern "C" fn m_install(self_object: Oop, args: *const Oop, count: usize)
 
 unsafe extern "C" fn unit_finalize(object: Oop) {
     if let Some(payload) = unsafe { unit_payload(object) } {
+        unit_cache::forget(object);
+        let state = unsafe { (*payload).state };
         let generation = unsafe { (*payload).code_generation_identity };
-        unsafe { (*payload).code_generation_identity = 0 };
-        if generation != 0 {
-            static ADDRESS: OnceLock<usize> = OnceLock::new();
-            let runtime = RUNTIME
-                .get()
-                .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-            let Some(retire) = floor_retirement(
-                unsafe { api_ref(runtime) },
-                c"birnam_id_retire_stackless_code_generation_v1",
-                &ADDRESS,
-            ) else {
-                abort("portable TCC generation retirement seam is unavailable");
-            };
-            if unsafe { retire(generation) } != 1 {
-                abort("portable TCC generation remained live at finalization");
-            }
+        unsafe {
+            (*payload).state = ptr::null_mut();
+            (*payload).phase = UnitPhase::Released;
+            (*payload).code_generation_identity = 0;
         }
-        unsafe { release_payload(payload) };
+        if state.is_null() {
+            return;
+        }
+        // The collector frees `object` after this callback. The queue owns only
+        // detached native state, and never reads or resurrects that payload.
+        let record = Box::into_raw(Box::new(RetiredUnit { state, generation }));
+        static QUEUE: OnceLock<usize> = OnceLock::new();
+        let api = unsafe { api_ref(RUNTIME.get().expect("TCC initialized")) };
+        let address = floor_symbol_address(api, c"birnam_execution_queue_retirement_v1", &QUEUE);
+        if address == 0 { abort("Execution retirement queue unavailable"); }
+        let queue: birnam_abi::private::QueueNativeRetirementFn = unsafe { core::mem::transmute(address) };
+        unsafe { queue(record.cast(), release_retired_unit) };
     }
+}
+
+struct RetiredUnit {
+    state: *mut TccState,
+    generation: u64,
+}
+
+unsafe extern "C" fn release_retired_unit(context: *mut c_void) -> u32 {
+    let record = unsafe { &*context.cast::<RetiredUnit>() };
+    if record.generation != 0 {
+        static ADDRESS: OnceLock<usize> = OnceLock::new();
+        let api = unsafe { api_ref(RUNTIME.get().expect("TCC initialized")) };
+        let Some(retire) = floor_retirement(api, c"birnam_id_retire_stackless_code_generation_v1", &ADDRESS)
+        else { abort("portable TCC generation retirement seam is unavailable"); };
+        if unsafe { retire(record.generation) } != 1 { return 0; }
+    }
+    let record = unsafe { Box::from_raw(context.cast::<RetiredUnit>()) };
+    unsafe { release_native_state(record.state) };
+    1
 }
 
 unsafe extern "C" fn m_own_code_generation(

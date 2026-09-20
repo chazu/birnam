@@ -113,7 +113,7 @@ fn run(case: Case, enabled: bool) -> (i64, usize, Vec<usize>) {
                     .vtables
                     .exhaust_mutation_epoch_for_test();
             }
-            let _read = runtime.enter_dispatch_read();
+            let _read = runtime.enter_managed_turn();
             assert_eq!(runtime.guarded_default_lookup_eligible(child), enabled);
             runtime.add_method(
                 runtime.globals().vtable_vt,
@@ -211,7 +211,7 @@ fn native_registration_invalidates_lookup_guard_without_dictionary_change() {
     let selector = runtime.intern(b"registeredLookupProbe").unwrap();
     runtime.add_method(child, selector, one);
     let method = crate::dispatch::vtable_lookup_method as Method;
-    let _read = runtime.enter_dispatch_read();
+    let _read = runtime.enter_managed_turn();
     assert!(runtime.guarded_default_lookup_eligible(child));
     let epoch = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
     let registration = runtime

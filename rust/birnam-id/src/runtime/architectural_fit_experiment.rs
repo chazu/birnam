@@ -535,7 +535,7 @@ unsafe extern "C" fn caller_step(machine: Oop, args: *const Oop, count: usize) -
         if !enabled || pc != 0 {
             return action;
         }
-        let _read = runtime.enter_dispatch_read();
+        let _read = runtime.enter_managed_turn();
         if !runtime.guarded_slot_access_eligible(machine) {
             return action;
         }

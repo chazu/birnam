@@ -10,6 +10,14 @@ loader ports are complete.
 
 ### Changed
 
+- Implement Design 83's managed-turn lifetime policy in the production runtime:
+  nested sends share the outer turn, checkpoint GC roots the outward result,
+  and reentrant cleanup cannot recursively drain retirements. TCC and mapped
+  image finalizers transfer native owners to detached queue records; candidate
+  and CodeBinding reaping runs at eligible checkpoints. Replaced bindings can
+  now be reaped automatically before a later explicit reap. Moving this owner
+  out of Id and replacing production construction remain outstanding.
+
 - Begin Design 83 production migration: generated resumable adapters enter the
   exact implementation selected by lookup, preserving that answer across binding
   replacement. Wire JIT and native artifact callers to the same entry. Advance

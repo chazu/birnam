@@ -5,6 +5,14 @@
 #[path = "native_library.rs"]
 pub mod native_library;
 
+/// Execution checkpoint work owned by a pinned native module. `context` is
+/// detached native storage, never a borrowed finalized Oop. Return 1 after
+/// releasing it, or 0 to retain it for a later checkpoint. No registry borrow
+/// is held across the callback; it may reenter Birnam.
+pub type NativeRetirementFn = unsafe extern "C" fn(*mut core::ffi::c_void) -> u32;
+pub type QueueNativeRetirementFn =
+    unsafe extern "C" fn(*mut core::ffi::c_void, NativeRetirementFn);
+
 /// Versioned Store reservation callbacks. Never persisted in source or images.
 #[derive(Clone, Copy)]
 #[repr(C)]

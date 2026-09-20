@@ -72,7 +72,6 @@ impl Runtime {
         if args.is_null() && count != 0 {
             boundary::fatal_invariant("IdApi.send args is null with nonzero count");
         }
-        let _read = self.enter_dispatch_read();
         let arguments = if count == 0 {
             &[]
         } else {
@@ -80,7 +79,7 @@ impl Runtime {
             unsafe { core::slice::from_raw_parts(args, count) }
         };
 
-        // The original operands and outer dispatch lease are already live.
+        // The original operands and outer managed turn are already live.
         // An ineligible access continues through the unmodified metacircular
         // resolver, including native/resumable overrides and their effects.
         if let Some(answer) = self.try_guarded_machine_send(receiver, selector, arguments) {
@@ -92,7 +91,7 @@ impl Runtime {
             .unwrap_or_else(|error| boundary::fatal_invariant(error.failure_kind().symbol()));
         if !matches!(target, StacklessTarget::Unbound) {
             // SAFETY: the resolved target and caller-owned argument buffer stay
-            // protected by this send's dispatch-read extent.
+            // protected by the caller's managed turn.
             return unsafe {
                 self.invoke_resolved_send_target(target, receiver, args, count, arguments)
             };
@@ -144,7 +143,7 @@ impl Runtime {
                 .unwrap_or_else(|error| boundary::fatal_invariant(error.failure_kind().symbol())),
             StacklessTarget::Synchronous(method) => {
                 // No Rust state reference or collection guard survives this
-                // call. The surrounding dispatch-read token protects the
+                // call. The surrounding managed turn protects the
                 // dictionary-proven Method for the invocation extent.
                 unsafe { method(receiver, args, count) }
             }
@@ -161,7 +160,9 @@ impl Runtime {
 
     pub(crate) fn send_slice(&self, receiver: Oop, selector: Oop, args: &[Oop]) -> Oop {
         // SAFETY: slice supplies a valid pointer/count pair for this call.
-        unsafe { self.send_abi(receiver, selector, args.as_ptr(), args.len()) }
+        self.enter_application(|| unsafe {
+            self.send_abi(receiver, selector, args.as_ptr(), args.len())
+        })
     }
 }
 

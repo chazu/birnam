@@ -530,7 +530,6 @@ impl Runtime {
             payload.extend_from_slice(captures);
             state.heap.prepare_virtual_payload(block_vtable, &payload)?
         };
-        let _read = self.enter_dispatch_read();
         let mut admitted = Vec::new();
         let mut budget = snapshot.total_size();
         let integer_bytes = crate::heap::Heap::allocation_total_size(self.integer_storage().payload_size)?;
@@ -729,7 +728,6 @@ impl Runtime {
             #[cfg(not(test))]
             let completed_count = admitted.len();
             drop(admitted);
-            drop(_read);
             #[cfg(any(test, feature = "ffi-test-hooks"))]
             HITS.set(HITS.get() + 1);
             // Unwind the original C literal's capture locals before the driver

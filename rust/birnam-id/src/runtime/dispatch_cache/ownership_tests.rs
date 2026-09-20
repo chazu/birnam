@@ -8,7 +8,7 @@ unsafe extern "C" fn nil(_: Oop, _: *const Oop, _: usize) -> Oop { with_active(|
 fn counts() -> (usize, usize) { (HITS.get(), MISSES.get()) }
 fn reset_counts() { HITS.set(0); MISSES.set(0); }
 fn lookup(r: &Runtime, shape: Oop, selector: Oop) -> Option<MethodAddress> {
-    r.enter(|| { let _read = r.enter_dispatch_read(); r.cached_default_lookup(shape, selector) })
+    r.enter(|| { let _read = r.enter_managed_turn(); r.cached_default_lookup(shape, selector) })
 }
 fn report(label: &str) { println!("cache {label}: {:?}", counts()); }
 

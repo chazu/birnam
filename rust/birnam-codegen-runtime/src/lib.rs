@@ -275,6 +275,7 @@ static VTABLE_CACHE_ROOTS: Mutex<BTreeMap<(u64, u64), usize>> = Mutex::new(BTree
 static PORTABLE_IMAGE_STAGE: Mutex<Option<PortableImageStage>> = Mutex::new(None);
 static INITIALIZER_TRANSACTION: Mutex<Option<InitializerTransaction>> = Mutex::new(None);
 static RETAINED_GENERATIONS: Mutex<Vec<RetainedGeneration>> = Mutex::new(Vec::new());
+static RETAINED_REAP_QUEUED: AtomicBool = AtomicBool::new(false);
 static MAPPED_IMAGE_RESUMABLES: Mutex<Option<MappedImageResumables>> = Mutex::new(None);
 static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
 static STORE_CALLBACKS_REGISTERED: AtomicBool = AtomicBool::new(false);
@@ -6473,13 +6474,29 @@ unsafe extern "C" fn portable_mapped_unit_finalize(owner: Oop) {
     if handle == 0 {
         return;
     }
+    let record = Box::into_raw(Box::new(PortableMappedUnitPayload {
+        handle, code_generation_identity: generation,
+    }));
+    unsafe { queue_native_retirement(record.cast(), release_mapped_unit) };
+}
+
+unsafe fn queue_native_retirement(context: *mut c_void, release: birnam_abi::private::NativeRetirementFn) {
     let api = unsafe { api(runtime()) };
-    if unsafe { retire_runtime_generation_v1(api, generation) } != RuntimeRetirement::Retired {
-        abort("portable mapped image generation remained live at finalization");
+    let address = unsafe { floor_symbol(api, b"birnam_execution_queue_retirement_v1\0") }
+        .unwrap_or_else(|| abort("Execution retirement queue unavailable"));
+    let queue: birnam_abi::private::QueueNativeRetirementFn = unsafe { core::mem::transmute(address) };
+    unsafe { queue(context, release) };
+}
+
+unsafe extern "C" fn release_mapped_unit(context: *mut c_void) -> u32 {
+    let record = unsafe { &*context.cast::<PortableMappedUnitPayload>() };
+    let api = unsafe { api(runtime()) };
+    if unsafe { retire_runtime_generation_v1(api, record.code_generation_identity) } != RuntimeRetirement::Retired {
+        return 0;
     }
-    if unsafe { dlclose(handle as *mut c_void) } != 0 {
-        abort("portable mapped image unit could not be unmapped");
-    }
+    if unsafe { dlclose(record.handle as *mut c_void) } != 0 { return 0; }
+    drop(unsafe { Box::from_raw(context.cast::<PortableMappedUnitPayload>()) });
+    1
 }
 
 unsafe fn make_portable_mapped_owner(api: &IdApi, handle: usize, generation: u64) -> Option<Oop> {
@@ -9352,7 +9369,7 @@ unsafe extern "C" fn rust_codegen_begin_quiescence(
         )
         .is_ok()
     {
-        unsafe { reap_retained_generations(api) };
+        unsafe { schedule_retained_reap() };
         return api.trueObj;
     }
     note_error(b"RustCodegen cannot begin quiescence from the current phase");
@@ -11998,6 +12015,19 @@ unsafe fn reap_retained_generations(api: &IdApi) {
     }
 }
 
+unsafe extern "C" fn reap_retained_at_checkpoint(_: *mut c_void) -> u32 {
+    unsafe { reap_retained_generations(api(runtime())) };
+    let empty = RETAINED_GENERATIONS.lock().expect("retained generations poisoned").is_empty();
+    if empty { RETAINED_REAP_QUEUED.store(false, Ordering::Release); }
+    u32::from(empty)
+}
+
+unsafe fn schedule_retained_reap() {
+    if !RETAINED_REAP_QUEUED.swap(true, Ordering::AcqRel) {
+        unsafe { queue_native_retirement(ptr::null_mut(), reap_retained_at_checkpoint) };
+    }
+}
+
 unsafe fn dispose_or_retain_candidate(
     candidate: &mut CandidateState,
     mapped_bytes: usize,
@@ -12033,6 +12063,7 @@ unsafe fn dispose_or_retain_candidate(
                 rollback_leases: core::mem::take(&mut candidate.rollback_leases),
             });
         }
+        unsafe { schedule_retained_reap() };
         return PhysicalDisposition::Retained(if runtime_retired {
             b"disposalFailed\0"
         } else {
@@ -12060,6 +12091,7 @@ unsafe fn dispose_or_retain_candidate(
                 rollback_leases: core::mem::take(&mut candidate.rollback_leases),
             });
         }
+        unsafe { schedule_retained_reap() };
         PhysicalDisposition::Retained(b"disposalFailed\0")
     }
 }

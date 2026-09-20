@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prove reflective definitions publish one current portable CodeBinding, replace
 # and remove through ordinary dispatch, and release predecessor TCC units after
-# the active send/read extent has ended. Separate REPL turns are load-bearing.
+# the outer Execution turn has ended. Separate REPL turns are load-bearing.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -29,7 +29,7 @@ let portableBindingBytesBaseline := [Codegen codeBindingGeneratedBytes]
 [Codegen currentCodeBindingCount]
 [Codegen retiringCodeBindingCount]
 [Codegen codeBindingGeneratedBytes]
-[Reflect defineMethod: #removeSelf on: [Globals at: #PortableBindingTarget] as: [:self | [Reflect removeMethod: #removeSelf on: self]; 7]]
+[Reflect defineMethod: #removeSelf on: [Globals at: #PortableBindingTarget] as: [:self | [Reflect removeMethod: #removeSelf on: self]; [Globals at: #RetiringDuringSelfRemoval put: [Codegen retiringCodeBindingCount]]; 7]]
 [[Globals at: #PortableBindingTarget] removeSelf]
 [[[Globals at: #PortableBindingTarget] removeSelf] isError]
 [Reflect removeMethod: #answer: on: [Globals at: #PortableBindingTarget]]
@@ -41,6 +41,7 @@ let portableBindingBytesBaseline := [Codegen codeBindingGeneratedBytes]
 [Codegen retiringCodeBindingCount]
 [Codegen codeBindingGeneratedBytes]
 [Globals includes: #__rust_mblk_0]
+[Globals at: #RetiringDuringSelfRemoval]
 :quit
 EOF
 
@@ -52,7 +53,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
     answers = re.findall(r"^birnam> (.*)$", handle.read(), re.MULTILINE)
 
 answers = [answer for answer in answers if answer]
-assert len(answers) == 23, answers
+assert len(answers) == 24, answers
 baseline = int(answers[0])
 bytes_baseline = int(answers[1])
 assert answers[2] == "anObject", answers
@@ -62,7 +63,9 @@ assert answers[5] == "42", answers
 assert answers[6] == "anObject", answers
 assert answers[7] == "42", answers
 assert int(answers[8]) == baseline + 1, answers
-assert int(answers[9]) >= 1, answers
+# Design 83 checkpoints automatically reap the predecessor on the previous
+# outer return; callers no longer have to issue a separate reap request.
+assert answers[9] == "0", answers
 assert int(answers[10]) > bytes_baseline, answers
 assert answers[11] == "anObject", answers
 assert answers[12] == "7", answers
@@ -70,12 +73,13 @@ assert answers[13] == "true", answers
 assert answers[14] == "anObject", answers
 assert int(answers[15]) == baseline, answers
 assert int(answers[16]) >= 0, answers
-assert int(answers[17]) >= 1, answers
+assert answers[17] == "0", answers
 assert int(answers[18]) >= 0, answers
 assert answers[19] == "0", answers
 assert answers[20] == "0", answers
 assert int(answers[21]) == bytes_baseline, answers
 assert answers[22] == "false", answers
+assert int(answers[23]) >= 1, "self-removal must retain the executing entry until its outer return"
 PY
 
 test ! -s "$smoke_root/repl.err"

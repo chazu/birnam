@@ -982,6 +982,22 @@ pub unsafe extern "C" fn birnam_id_retire_stackless_code_generation_v1(
     .unwrap_or(0)
 }
 
+/// Transfer detached native ownership to the next outer Execution checkpoint.
+/// The callback and its native image must remain pinned until it returns 1.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_execution_queue_retirement_v1(
+    context: *mut core::ffi::c_void,
+    release: birnam_abi::private::NativeRetirementFn,
+) {
+    if crate::runtime::with_active_if_present(|runtime| {
+        runtime.queue_native_retirement(context, release)
+    }).is_none() {
+        // Native host phase hooks may enqueue outside a message turn. Enqueue
+        // itself neither invokes a callback nor releases native ownership.
+        crate::public_api::queue_native_retirement(context, release);
+    }
+}
+
 /// Resolve one committed block-vtable identity for image writing.
 ///
 /// This is a host-to-floor image seam, not an import used by generated code,

@@ -18,7 +18,7 @@ impl Runtime {
         // check neither allocates Birnam objects nor invokes foreign code.
         let state = unsafe { &*self.state.get() };
         let globals = state.globals;
-        if !state.execution.has_dispatch_readers()
+        if !state.execution.has_managed_turn()
             || Vtables::checked_vtable_of(&state.heap, receiver_vtable) != globals.vtable_vt
         {
             return false;

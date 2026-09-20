@@ -2,6 +2,7 @@
 use super::*;
 
 static CODE_BINDINGS: Mutex<Vec<CodeBindingEntry>> = Mutex::new(Vec::new());
+static REAP_QUEUED: AtomicBool = AtomicBool::new(false);
 
 const MAX_CURRENT_CODE_BINDINGS: usize = 262_144;
 
@@ -185,9 +186,32 @@ pub(super) unsafe fn request_code_binding_retirements(api: &IdApi, generations: 
     for generation in generations.iter().copied() {
         let _ = unsafe { retire_runtime_generation_v1(api, generation) };
     }
+    if !generations.is_empty() { unsafe { schedule_reap() }; }
 }
 
 pub(super) unsafe fn reap_code_bindings(api: &IdApi) -> usize {
+    unsafe { schedule_reap() };
+    // A language call still has its generated caller above it. Actual reaping
+    // belongs to the outer checkpoint and has not completed at this return.
+    let _ = api;
+    0
+}
+
+unsafe fn schedule_reap() {
+    if !REAP_QUEUED.swap(true, Ordering::AcqRel) {
+        unsafe { queue_native_retirement(ptr::null_mut(), reap_at_checkpoint) };
+    }
+}
+
+unsafe extern "C" fn reap_at_checkpoint(_: *mut c_void) -> u32 {
+    unsafe { reap_code_bindings_now(api(runtime())) };
+    let pending = CODE_BINDINGS.lock().expect("code bindings poisoned").iter()
+        .any(|binding| binding.lifecycle == CodeBindingLifecycle::Retiring);
+    if !pending { REAP_QUEUED.store(false, Ordering::Release); }
+    u32::from(!pending)
+}
+
+unsafe fn reap_code_bindings_now(api: &IdApi) -> usize {
     let generations = CODE_BINDINGS
         .lock()
         .ok()

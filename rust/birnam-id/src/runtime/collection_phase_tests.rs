@@ -94,7 +94,7 @@ fn runtime_phase_transcript() {
         runtime.dispatch_cache.clear();
         dispatch_cache::HITS.set(0);
         dispatch_cache::MISSES.set(0);
-        let _guard = runtime.enter_dispatch_read();
+        let _guard = runtime.enter_managed_turn();
         collect::assign_phase_for_test(runtime, phase);
         for _ in 0..2 {
             assert_eq!(runtime.cached_default_lookup(parent, selector), expected);

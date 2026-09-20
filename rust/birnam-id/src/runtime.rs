@@ -33,6 +33,8 @@ mod task_control;
 mod scheduling;
 #[cfg(test)]
 mod scheduling_tests;
+#[cfg(test)]
+mod turn_tests;
 #[cfg(feature = "ffi-test-hooks")]
 mod closure_action_probe;
 #[cfg(feature = "ffi-test-hooks")]
@@ -218,6 +220,8 @@ pub(crate) struct Runtime {
     collection_phase: crate::collection_phase::Service,
     state: UnsafeCell<RuntimeState>,
     entry_scopes: UnsafeCell<Vec<MachineCapability>>,
+    native_retirements: core::cell::RefCell<Vec<NativeRetirement>>,
+    draining_retirements: Cell<bool>,
     // Design 74A §3.2: the vtable mutation epoch at which the guarded-slot
     // conditions 2–4 were last verified, and their verdict at that epoch.
     slot_guard_cache: crate::guard_verdict::Service,
@@ -312,8 +316,19 @@ struct StacklessBoundaryGuard<'a> {
     owner: u64,
 }
 
-pub(crate) struct DispatchReadGuard<'a> {
+pub(crate) struct ManagedTurnGuard<'a> {
     runtime: &'a Runtime,
+}
+
+struct NativeRetirement {
+    context: *mut core::ffi::c_void,
+    release: birnam_abi::private::NativeRetirementFn,
+}
+
+struct RetirementDrainGuard<'a>(&'a Cell<bool>);
+
+impl Drop for RetirementDrainGuard<'_> {
+    fn drop(&mut self) { self.0.set(false); }
 }
 
 impl Drop for StacklessDriveRootGuard<'_> {
@@ -357,17 +372,16 @@ impl Drop for StacklessBoundaryGuard<'_> {
     }
 }
 
-impl Drop for DispatchReadGuard<'_> {
+impl Drop for ManagedTurnGuard<'_> {
     fn drop(&mut self) {
-        // SAFETY: owner-thread read tokens are scalar state and do not retain a
-        // borrow across lookup or invocation.
+        // End logical protection only after returning to pinned code. Physical
+        // release requires a separate checkpoint with the outward result rooted.
         unsafe {
             (&mut *self.runtime.state.get())
                 .execution
-                .end_dispatch_read()
-                .unwrap_or_else(|_| boundary::fatal_invariant("dispatch read token underflow"));
+                .end_managed_turn()
+                .unwrap_or_else(|_| boundary::fatal_invariant("managed turn underflow"));
         }
-        self.runtime.drain_pending_stackless_retirements();
     }
 }
 
@@ -378,17 +392,17 @@ impl Drop for CollectionGuard<'_> {
 }
 
 impl Runtime {
-    pub(crate) fn enter_dispatch_read(&self) -> DispatchReadGuard<'_> {
+    pub(crate) fn enter_managed_turn(&self) -> ManagedTurnGuard<'_> {
         self.assert_owner();
         // SAFETY: owner-thread scalar transition; returned guard owns no state
         // borrow and may span metacircular lookup and immediate invocation.
         unsafe {
             (&mut *self.state.get())
                 .execution
-                .begin_dispatch_read()
-                .unwrap_or_else(|_| boundary::fatal_invariant("dispatch read depth overflow"));
+                .begin_managed_turn()
+                .unwrap_or_else(|_| boundary::fatal_invariant("managed turn depth overflow"));
         }
-        DispatchReadGuard { runtime: self }
+        ManagedTurnGuard { runtime: self }
     }
 
     pub(crate) fn new(
@@ -402,6 +416,8 @@ impl Runtime {
             observation: storage::ObservationState::new(),
             collection_phase: crate::collection_phase::Service::new(),
             entry_scopes: UnsafeCell::new(Vec::new()),
+            native_retirements: core::cell::RefCell::new(Vec::new()),
+            draining_retirements: Cell::new(false),
             slot_guard_cache: crate::guard_verdict::Service::new(),
             lookup_guard_cache: crate::guard_verdict::Service::new(),
             dispatch_cache: dispatch_cache::Cache::default(),
@@ -2370,7 +2386,7 @@ impl Runtime {
                 state
                     .execution
                     .has_code_generation(code_generation_identity),
-                state.execution.has_dispatch_readers(),
+                state.execution.has_managed_turn(),
             )
         };
         if staged || committed_count > 1 {
@@ -2383,7 +2399,7 @@ impl Runtime {
                 CodeGenerationRetirement::Retired
             };
         }
-        if readers {
+        if readers || self.collection_phase.get() != CollectionPhase::Idle {
             unsafe {
                 let pending = &mut (&mut *self.state.get()).pending_stackless_retirements;
                 if !pending.contains(&code_generation_identity) {
@@ -2482,7 +2498,7 @@ impl Runtime {
         self.assert_owner();
         let pending = unsafe {
             let state = &mut *self.state.get();
-            if state.execution.has_dispatch_readers() {
+            if state.execution.has_managed_turn() {
                 return;
             }
             core::mem::take(&mut state.pending_stackless_retirements)
@@ -3114,7 +3130,6 @@ impl Runtime {
         receiver: Oop,
         selector: Oop,
     ) -> Result<StacklessTarget, ExecutionError> {
-        let _read = self.enter_dispatch_read();
         // SAFETY: callers establish Runtime::enter and pass live values copied
         // from traced Frame storage.
         let Some(method) = (unsafe { self.bind_active(receiver, selector) }) else {
@@ -3651,6 +3666,10 @@ impl Runtime {
         mut budget: Option<usize>,
         resolve: &mut impl FnMut(&Runtime, Oop, Oop, &[Oop]) -> Result<StacklessTarget, ExecutionError>,
     ) -> Result<Oop, ExecutionError> {
+        // Covers initial, nested, resumed and bounded drives, including direct
+        // native driver callers. An enclosing application turn remains active
+        // after this guard ends; a driver return never drains physical owners.
+        let _turn = self.enter_managed_turn();
         let mut numeric = None;
         loop {
             // Only between fully committed transitions, after native activations,
@@ -4305,6 +4324,50 @@ impl Runtime {
         })
     }
 
+    /// Pinned application entry. Nested sends and FFI reentry share the outer
+    /// turn. Its result stays rooted while checkpoint callbacks collect/reenter.
+    pub(crate) fn enter_application(&self, operation: impl FnOnce() -> Oop) -> Oop {
+        self.enter(|| {
+            if unsafe { (&*self.state.get()).execution.has_managed_turn() } {
+                return operation();
+            }
+            let turn = self.enter_managed_turn();
+            let result = operation();
+            let _root = ScopedOopRootGuard::new(self, result);
+            drop(turn);
+            self.retirement_checkpoint();
+            result
+        })
+    }
+
+    pub(crate) fn queue_native_retirement(
+        &self,
+        context: *mut core::ffi::c_void,
+        release: birnam_abi::private::NativeRetirementFn,
+    ) {
+        self.assert_owner();
+        self.native_retirements.borrow_mut().push(NativeRetirement { context, release });
+    }
+
+    fn retirement_checkpoint(&self) {
+        if self.collection_phase.get() != CollectionPhase::Idle
+            || unsafe { (&*self.state.get()).execution.has_managed_turn() }
+            || self.draining_retirements.replace(true)
+        {
+            return;
+        }
+        let _drain = RetirementDrainGuard(&self.draining_retirements);
+        self.drain_pending_stackless_retirements();
+        // One batch, with no borrow across callbacks. Newly queued work waits
+        // for the next checkpoint rather than creating an unbounded drain.
+        let pending = core::mem::take(&mut *self.native_retirements.borrow_mut());
+        for entry in pending {
+            if unsafe { (entry.release)(entry.context) } != 1 {
+                self.native_retirements.borrow_mut().push(entry);
+            }
+        }
+    }
+
     pub(crate) fn symbol_count(&self) -> usize {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied count.
@@ -4536,18 +4599,17 @@ impl Runtime {
     pub(crate) fn admit_gc_settings(&self) { self.assert_owner(); }
 
     pub(crate) fn gc_collect(&self) -> usize {
-        self.enter(|| self.gc_collect_active())
+        self.enter(|| {
+            let collected = self.gc_collect_active();
+            self.retirement_checkpoint();
+            collected
+        })
     }
 
     fn gc_collect_active(&self) -> usize {
         if self.collection_phase.get() != CollectionPhase::Idle {
             return 0;
         }
-        // A prior retirement attempt may have found a live collectable Block
-        // carrier. Retry before this safe point's ordinary mark so the target
-        // generation can temporarily withdraw only its catalog/registration
-        // roots and let current object-header reachability decide.
-        self.drain_pending_stackless_retirements();
         // SAFETY: owner-thread serialization and a copied stack anchor.
         let stack_bottom = unsafe { (*self.state.get()).metadata.stack_bottom() };
         if stack_bottom == 0 {
@@ -6155,7 +6217,7 @@ mod tests {
             selector,
             registered_probe_thunk,
         );
-        let read = runtime.enter_dispatch_read();
+        let read = runtime.enter_managed_turn();
         let method = runtime
             .lookup_method(runtime.globals().object_vt, selector)
             .unwrap();
@@ -6237,7 +6299,7 @@ mod tests {
             selector,
             registered_probe_thunk,
         );
-        let read = runtime.enter_dispatch_read();
+        let read = runtime.enter_managed_turn();
         let method = runtime
             .lookup_method(runtime.globals().object_vt, selector)
             .unwrap();
@@ -8541,7 +8603,7 @@ mod tests {
             crate::runtime::with_active(|runtime| runtime.canonical().nil)
         }
         runtime.enter(|| {
-            let _read = runtime.enter_dispatch_read();
+            let _read = runtime.enter_managed_turn();
             let selected = unsafe { runtime.bind_active(receiver, selector) }.unwrap();
             runtime.add_method(runtime.globals().object_vt, selector, replacement);
             let args = [expected];
@@ -9050,7 +9112,7 @@ mod tests {
             runtime.stackless_registration_diagnostics().retired_entries,
             1
         );
-        let read = runtime.enter_dispatch_read();
+        let read = runtime.enter_managed_turn();
         assert_eq!(
             runtime.request_stackless_code_generation_retirement(101),
             CodeGenerationRetirement::Deferred,
@@ -9736,7 +9798,7 @@ mod tests {
             registered_probe_thunk,
         );
 
-        let read = runtime.enter_dispatch_read();
+        let read = runtime.enter_managed_turn();
         let method = runtime
             .lookup_method(runtime.globals().object_vt, selector)
             .expect("published thunk resolves");
@@ -9847,7 +9909,7 @@ mod tests {
         });
 
         let acquire = |receiver| {
-            let read = runtime.enter_dispatch_read();
+            let read = runtime.enter_managed_turn();
             let method = runtime
                 .lookup_method(closure_vtable, selector)
                 .expect("published block thunk resolves");
@@ -9948,7 +10010,7 @@ mod tests {
         });
 
         let acquire_portable = |receiver| {
-            let read = runtime.enter_dispatch_read();
+            let read = runtime.enter_managed_turn();
             let method = runtime
                 .lookup_method(portable_vtable, portable_selector)
                 .expect("portable block thunk resolves");
@@ -10283,7 +10345,7 @@ mod tests {
             registered_probe_thunk,
         );
 
-        let read = runtime.enter_dispatch_read();
+        let read = runtime.enter_managed_turn();
         let method = runtime
             .lookup_method(runtime.globals().object_vt, selector)
             .expect("reader resolves the installed thunk");

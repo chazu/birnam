@@ -23,7 +23,7 @@ fn descriptor() -> std::sync::Arc<FrameDescriptor> {
 fn cells(r: &Runtime) -> [(u64, bool); 2] { [r.slot_guard_cache.get(), r.lookup_guard_cache.get()] }
 fn epoch(r: &Runtime) -> u64 { unsafe { (*r.state.get()).vtables.mutation_epoch() } }
 fn lookup(r: &Runtime, shape: Oop) -> bool {
-    let _read = r.enter_dispatch_read();r.guarded_default_lookup_eligible(shape)
+    let _read = r.enter_managed_turn();r.guarded_default_lookup_eligible(shape)
 }
 fn pair(r: &Runtime, machine: Oop, shape: Oop, expected: [bool; 2], label: &str) {
     for _ in 0..2 {

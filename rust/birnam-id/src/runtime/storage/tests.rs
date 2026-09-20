@@ -200,7 +200,7 @@ fn host_permit_rejects_active_execution_and_restores_access_after_error() {
         context: (runtime as *const Runtime).cast_mut().cast(),
         visitor: Some(nested_and_fail),
     };
-    let read = runtime.enter_dispatch_read();
+    let read = runtime.enter_managed_turn();
     assert_eq!(unsafe { runtime.observe_storage(&request) }, BUSY);
     drop(read);
     assert_eq!(unsafe { runtime.observe_storage(&request) }, 77);

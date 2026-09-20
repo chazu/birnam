@@ -1,7 +1,8 @@
 # 83 — Production Id construction and lifetimes
 
 > **Status:** Production migration in progress, 2026-09-20. Exact-entry adapters
-> are implemented; the minimal Id and upper ownership cutover remains open.
+> and managed-turn checkpoints are implemented in the existing production
+> runtime; the minimal Id and upper ownership cutover remains open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -406,3 +407,42 @@ within them, commit coherent progress and remove superseded factories, adapters
 and initialization paths. Update the manifest and startup diagram with the
 executed result. The design is a target contract; implementation and tests must
 establish it before declaring Id decoupled.
+
+### Implementation evidence and remaining boundary
+
+The production emitter now enters the exact registered adapter rather than
+resending its selector. JIT symbol binding and native TCC exports use the same
+entry; image runtime ABI 5 (`b587f81ecfb08b15`) admits that required import.
+
+Public application sends now establish an Execution turn; nested sends share
+it. Machine driving retains the turn across its complete native extent. The
+per-send/per-lookup guards and the optimizer's shorter read scope are removed.
+The outer pinned return roots its result, ends logical protection, then drains
+retirements with a reentrancy guard. Explicit GC also checkpoints when no turn
+or collection is active. Bounded driver returns beneath a caller do not drain.
+
+TCC Unit and mapped-image finalizers transfer their native handles into detached
+queue records before their Oop payloads are freed. Candidate and CodeBinding
+reaping also schedules checkpoint work. A retained CodeBinding can consequently
+disappear at the preceding outer return: a subsequent explicit reap can report
+zero. The lifecycle smoke now asserts this timing and verifies that self-removal
+still retains the executing binding inside its turn.
+
+Debug evidence covers exact adapter entry after binding replacement, checkpoint
+GC with native stack roots excluded, nested callback protection and nonrecursive
+draining, and release after a finalized owner payload is gone. The installed
+source/compiled/source-free checks, mapped/rebuilt/baked image checks, portable
+resumable eviction and CodeBinding replacement/self-removal checks pass.
+Alien's external callbacks already retain their Block and TCC Unit in the
+callback registry before exposing their address. Its explicit unsafe release
+contract remains the native caller's responsibility; nested callback sends use
+the active turn.
+
+These changes establish the lifetime mechanism, **not independent Id**. Its
+registration owner, turn state and temporary private retirement queue export
+still reside in the existing Runtime inside `birnam-id`. Move these together
+to upper Execution during the ownership cutover and migrate their consumers;
+do not retain Id forwarding exports as the final architecture. The typed loader,
+base/extension construction entries, collector adoption and removal of the
+pre-Id preparation path remain unimplemented. No architectural acceptance is
+claimed from the regression results above.

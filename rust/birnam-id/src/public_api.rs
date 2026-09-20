@@ -24,6 +24,13 @@ fn runtime() -> &'static Runtime {
     runtime
 }
 
+pub(crate) fn queue_native_retirement(
+    context: *mut c_void,
+    release: birnam_abi::private::NativeRetirementFn,
+) {
+    runtime().queue_native_retirement(context, release);
+}
+
 /// Host observation rejects nested entry without going through ordinary access.
 pub(crate) unsafe fn observe_storage(request: *const birnam_abi::storage::RequestV1) -> i32 {
     let pointer = PUBLIC_RUNTIME.load(Ordering::Acquire);
@@ -82,7 +89,7 @@ unsafe extern "C" fn api_alloc(vtable: Oop, payload_size: usize) -> Oop {
 
 unsafe extern "C" fn api_send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
     let runtime = runtime();
-    runtime.enter(|| {
+    runtime.enter_application(|| {
         // SAFETY: the public wrapper forwards the IdApi argument-buffer contract.
         unsafe { runtime.send_abi(receiver, selector, args, count) }
     })
