@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 static int forbidden_presence(void *context,const char *name) { (void)context;(void)name;assert(!"numeric admission invoked presence");return 0; }
@@ -16,12 +16,12 @@ int main(int argc, char **argv) {
     NamespaceImportV1 module_imports=*fixture_namespace_imports();
     void *integer = floor_api->dlopen_fn(argv[2], RTLD_NOW | RTLD_LOCAL); assert(integer);
     ModuleInitFn init = (ModuleInitFn)floor_api->dlsym_fn(integer, "module_init"); assert(init);
-    fixture_prepare_float(floor_api, argv[1],fixture_namespace_presence(),fixture_namespace_imports());
-    fixture_prepare_word(floor_api, argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_prepare_float(floor_api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    fixture_prepare_word(floor_api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
     assert(strlen(argv[1])<sizeof(fixture_floor_path));
     strcpy(fixture_floor_path,argv[1]);
     fixture_attach_integer(floor_api, integer);
-    init(&module_api,NULL,&module_presence,&module_imports);
+    init(&module_api,NULL,&module_presence,&module_imports,fixture_namespace_exports());
     IntegerProviderV1 provide = (IntegerProviderV1)floor_api->dlsym_fn(integer, "birnam_integer_provider_v1"); assert(provide);
     fixture_integer = provide(); assert(fixture_integer);
     fixture_attach_integer(floor_api, floor);

@@ -44,6 +44,7 @@ struct Roots {
 /// adapter. The opaque context does not contain a Runtime/Heap pointer.
 pub struct Instance {
     api: *mut IdApi,
+    exports: *const birnam_abi::namespace_export::ApiV1,
     roots: UnsafeCell<Roots>,
     operations: UnsafeCell<IntegerApiV1>,
 }
@@ -52,10 +53,11 @@ impl Instance {
     /// Allocate native state before registering its partially initialized roots.
     /// # Safety
     /// The API lives until this instance and all installed consumers are gone.
-    pub unsafe fn empty(api: *mut IdApi) -> Box<Self> {
+    pub unsafe fn empty(api: *mut IdApi, exports: *const birnam_abi::namespace_export::ApiV1) -> Box<Self> {
         assert!(!api.is_null());
         let result = Box::new(Self {
             api,
+            exports,
             roots: UnsafeCell::new(Roots::default()),
             operations: UnsafeCell::new(IntegerApiV1 {
                 version: 1,
@@ -86,7 +88,7 @@ impl Instance {
             (
                 (*api).proto,
                 (*api).alloc,
-                (*api).exportObj,
+                *self.exports,
                 (*api).setLayout,
                 (*api).object_vt,
             )
@@ -109,8 +111,8 @@ impl Instance {
         unsafe {
             (*self.operations.get()).behavior = behavior;
             (*self.operations.get()).prototype = prototype;
-            export(c"Integer".as_ptr(), prototype);
-            export(c"IntegerVt".as_ptr(), behavior);
+            export.export.unwrap()(export.context, c"Integer".as_ptr(), prototype);
+            export.export.unwrap()(export.context, c"IntegerVt".as_ptr(), behavior);
         }
     }
 

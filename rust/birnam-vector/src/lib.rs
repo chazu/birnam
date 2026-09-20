@@ -1,7 +1,7 @@
 //! Vector representation, canonical identities, methods and scoped sorting roots.
 #![allow(clippy::missing_safety_doc)]
 mod kernel;
-use birnam_abi::vector::{ApiV3, BehaviorsV1};
+use birnam_abi::vector::{ApiV4, BehaviorsV1};
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -146,15 +146,14 @@ unsafe extern "C" fn set_owner(api_pointer: *mut IdApi) {
         )
     };
 }
-unsafe extern "C" fn publish(api_pointer: *mut IdApi) {
-    let api = unsafe { &*api_pointer };
+unsafe extern "C" fn publish(_api_pointer: *mut IdApi, exports: *const birnam_abi::namespace_export::ApiV1) {
     unsafe {
-        (api.exportObj)(VECTOR_VT_NAME.as_ptr().cast(), family().vector_vt as Oop);
-        (api.exportObj)(
+        birnam_abi::namespace_export::export(exports, VECTOR_VT_NAME.as_ptr().cast(), family().vector_vt as Oop);
+        birnam_abi::namespace_export::export(exports,
             VECTOR_NAME.as_ptr().cast(),
             IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop,
         );
-        (api.exportObj)(VECTOR_NODE_NAME.as_ptr().cast(), family().node_vt as Oop);
+        birnam_abi::namespace_export::export(exports, VECTOR_NODE_NAME.as_ptr().cast(), family().node_vt as Oop);
     }
 }
 unsafe fn vec_payload(object: Oop) -> *mut VecPayload {
@@ -723,9 +722,9 @@ unsafe extern "C" fn install(
     }
     vector_comma
 }
-static API: ApiV3 = ApiV3 {
-    version: 3,
-    byte_size: size_of::<ApiV3>(),
+static API: ApiV4 = ApiV4 {
+    version: 4,
+    byte_size: size_of::<ApiV4>(),
     prepare: Some(prepare),
     finish_prototype: Some(finish_prototype),
     set_layout: Some(set_layout),
@@ -739,7 +738,7 @@ static API: ApiV3 = ApiV3 {
     inject: Some(vector_inject),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     if api.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -747,7 +746,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence:
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_vector_provider_v3() -> *const ApiV3 {
+pub extern "C" fn birnam_vector_provider_v4() -> *const ApiV4 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {

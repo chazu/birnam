@@ -24,7 +24,7 @@ pub const PAYLOAD_BYTES: usize = PAYLOAD_WORDS * size_of::<usize>();
 /// # Safety
 ///
 /// The caller must own the Runtime thread and supply its live IdApi.
-pub unsafe fn ensure_family(api: &IdApi, presence: *const crate::namespace_presence::ApiV1, imports: *const crate::namespace_import::ApiV1) -> Option<(Oop, Oop)> {
+pub unsafe fn ensure_family(api: &IdApi, presence: *const crate::namespace_presence::ApiV1, imports: *const crate::namespace_import::ApiV1, exports: *const crate::namespace_export::ApiV1) -> Option<(Oop, Oop)> {
     let existing_vtable = unsafe { crate::namespace_presence::contains(presence, VTABLE_NAME.as_ptr().cast()) } != 0;
     let existing_prototype = unsafe { crate::namespace_presence::contains(presence, PROTOTYPE_NAME.as_ptr().cast()) } != 0;
     if existing_vtable || existing_prototype {
@@ -50,8 +50,8 @@ pub unsafe fn ensure_family(api: &IdApi, presence: *const crate::namespace_prese
         prototype.cast::<usize>().add(1).write(KIND_PROTOTYPE);
         crate::set_vtable_owner(api, vtable, prototype);
     }
-    if unsafe { (api.exportObj)(VTABLE_NAME.as_ptr().cast(), vtable) }.is_null()
-        || unsafe { (api.exportObj)(PROTOTYPE_NAME.as_ptr().cast(), prototype) }.is_null()
+    if unsafe { crate::namespace_export::export(exports, VTABLE_NAME.as_ptr().cast(), vtable) }.is_null()
+        || unsafe { crate::namespace_export::export(exports, PROTOTYPE_NAME.as_ptr().cast(), prototype) }.is_null()
     {
         return None;
     }
@@ -64,11 +64,11 @@ pub unsafe fn ensure_family(api: &IdApi, presence: *const crate::namespace_prese
 ///
 /// The caller must own the Runtime thread. `kind` must describe the authority
 /// that will govern the address's lifetime.
-pub unsafe fn allocate(api: &IdApi, presence: *const crate::namespace_presence::ApiV1, imports: *const crate::namespace_import::ApiV1, address: usize, kind: usize) -> Option<Oop> {
+pub unsafe fn allocate(api: &IdApi, presence: *const crate::namespace_presence::ApiV1, imports: *const crate::namespace_import::ApiV1, exports: *const crate::namespace_export::ApiV1, address: usize, kind: usize) -> Option<Oop> {
     if kind == KIND_PROTOTYPE {
         return None;
     }
-    let (vtable, _) = unsafe { ensure_family(api, presence, imports) }?;
+    let (vtable, _) = unsafe { ensure_family(api, presence, imports, exports) }?;
     let object = unsafe { (api.alloc)(vtable, PAYLOAD_BYTES) };
     if object.is_null() {
         return None;

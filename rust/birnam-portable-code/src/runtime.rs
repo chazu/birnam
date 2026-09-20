@@ -18,6 +18,7 @@ pub(crate) struct Globals {
 pub(crate) struct Runtime {
     api: usize,
     imports: usize,
+    exports: usize,
 }
 
 unsafe impl Send for Runtime {}
@@ -48,8 +49,8 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
     });
 }
 
-pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1) -> &'static Runtime {
-    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, imports: imports as usize });
+pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> &'static Runtime {
+    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, imports: imports as usize, exports: exports as usize });
     ROOTS_REGISTERED.call_once(|| unsafe {
         (runtime.api().gcRegisterRootProvider)(mark_roots);
     });
@@ -100,7 +101,7 @@ impl Runtime {
 
     pub(crate) fn export(&self, bytes: &[u8], value: Oop) -> Result<Oop, ()> {
         let name = Self::c_name(bytes)?;
-        Ok(unsafe { (self.api().exportObj)(name.as_ptr().cast::<c_char>(), value) })
+        Ok(unsafe { birnam_abi::namespace_export::export(self.exports as *const birnam_abi::namespace_export::ApiV1, name.as_ptr().cast::<c_char>(), value) })
     }
 
     pub(crate) fn create_vtable(&self, parent: Oop) -> Oop {

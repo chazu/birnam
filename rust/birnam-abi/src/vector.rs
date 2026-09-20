@@ -9,11 +9,11 @@ pub struct BehaviorsV1 {
     pub node: Oop,
     pub vector: Oop,
 }
-pub type PrepareV3 = unsafe extern "C" fn(*mut IdApi, *const crate::namespace_import::ApiV1, Oop, c_int) -> BehaviorsV1;
+pub type PrepareV4 = unsafe extern "C" fn(*mut IdApi, *const crate::namespace_import::ApiV1, Oop, c_int) -> BehaviorsV1;
 pub type StageV1 = unsafe extern "C" fn(*mut IdApi);
 pub type EmptyV1 = unsafe extern "C" fn() -> Oop;
 pub type PushV1 = unsafe extern "C" fn(Oop, Oop) -> Oop;
-pub type InstallV3 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop) -> Method;
+pub type InstallV4 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop) -> Method;
 /// Owner-thread construction stages preserve Collection's callback order.
 /// Descriptor/code are immutable and process-pinned. Empty/push use the first
 /// selected table's live allocator. Behavior never calls Id. Installation uses
@@ -21,40 +21,40 @@ pub type InstallV3 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop) -> Method;
 /// native comma callback. Native iteration requires prior method installation.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV3 {
+pub struct ApiV4 {
     pub version: u32,
     pub byte_size: usize,
-    pub prepare: Option<PrepareV3>,
+    pub prepare: Option<PrepareV4>,
     pub finish_prototype: Option<StageV1>,
     pub set_layout: Option<StageV1>,
     pub set_owner: Option<StageV1>,
-    pub publish: Option<StageV1>,
+    pub publish: Option<unsafe extern "C" fn(*mut IdApi, *const crate::namespace_export::ApiV1)>,
     pub empty: Option<EmptyV1>,
     pub push: Option<PushV1>,
     pub behavior: Option<EmptyV1>,
-    pub install: Option<InstallV3>,
+    pub install: Option<InstallV4>,
     pub for_each: Option<Method>,
     pub inject: Option<Method>,
 }
 const _: () = {
-    assert!(size_of::<ApiV3>() == 104);
-    assert!(core::mem::offset_of!(ApiV3, behavior) == 72);
-    assert!(core::mem::offset_of!(ApiV3, install) == 80);
-    assert!(core::mem::offset_of!(ApiV3, inject) == 96);
+    assert!(size_of::<ApiV4>() == 104);
+    assert!(core::mem::offset_of!(ApiV4, behavior) == 72);
+    assert!(core::mem::offset_of!(ApiV4, install) == 80);
+    assert!(core::mem::offset_of!(ApiV4, inject) == 96);
     assert!(size_of::<BehaviorsV1>() == 16);
 };
-pub type ProviderV3 = unsafe extern "C" fn() -> *const ApiV3;
-pub type DependencyV3 = unsafe extern "C" fn(*const ApiV3) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV3> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV4 = unsafe extern "C" fn() -> *const ApiV4;
+pub type DependencyV4 = unsafe extern "C" fn(*const ApiV4) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV4> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Mount on the owner thread; the immutable descriptor/code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV3) -> c_int {
+pub unsafe fn attach(api: *const ApiV4) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 3
-        || value.byte_size != size_of::<ApiV3>()
+    if value.version != 4
+        || value.byte_size != size_of::<ApiV4>()
         || value.prepare.is_none()
         || value.finish_prototype.is_none()
         || value.set_layout.is_none()
@@ -79,7 +79,7 @@ pub unsafe fn attach(api: *const ApiV3) -> c_int {
         Err(existing) => c_int::from(ptr::eq(existing, api)),
     }
 }
-fn operations() -> ApiV3 {
+fn operations() -> ApiV4 {
     let api = DEPENDENCY.load(Ordering::Acquire);
     assert!(!api.is_null(), "native Vector dependency was not mounted");
     unsafe { *api }
@@ -107,8 +107,8 @@ pub unsafe fn set_owner(api: *mut IdApi) {
 }
 /// # Safety
 /// Publish after Collection exports in the same branch; do not recheck Vector.
-pub unsafe fn publish(api: *mut IdApi) {
-    unsafe { operations().publish.unwrap()(api) };
+pub unsafe fn publish(api: *mut IdApi, exports: *const crate::namespace_export::ApiV1) {
+    unsafe { operations().publish.unwrap()(api, exports) };
 }
 /// # Safety
 /// Call after prepare, on the runtime owner thread.
@@ -146,8 +146,8 @@ pub unsafe fn behavior() -> Oop {
 macro_rules! vector_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_vector_dependency_v3(
-            api: *const $crate::vector::ApiV3,
+        pub unsafe extern "C" fn birnam_vector_dependency_v4(
+            api: *const $crate::vector::ApiV4,
         ) -> core::ffi::c_int {
             unsafe { $crate::vector::attach(api) }
         }

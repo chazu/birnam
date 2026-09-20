@@ -253,7 +253,7 @@ unsafe extern "C" fn string_builder_as_string(
 
 /// Initialize this native family using its existing adoption/publication rules.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -344,11 +344,11 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, pr
                 runtime.string_builder_vt as Oop,
                 runtime.string_builder_proto as Oop,
             );
-            (api.exportObj)(
+            birnam_abi::namespace_export::export(exports,
                 STRING_BUILDER_VT_NAME.as_ptr().cast(),
                 runtime.string_builder_vt as Oop,
             );
-            (api.exportObj)(
+            birnam_abi::namespace_export::export(exports,
                 STRING_BUILDER_NAME.as_ptr().cast(),
                 runtime.string_builder_proto as Oop,
             );

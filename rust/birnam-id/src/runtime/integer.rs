@@ -155,7 +155,7 @@ impl Runtime {
 
     #[cfg(test)]
     pub(crate) fn mount_test_integer(&self, mut api: Box<birnam_abi::IdApi>) {
-        let instance = unsafe { birnam_integer::storage::Instance::empty(api.as_mut()) };
+        let instance = unsafe { birnam_integer::storage::Instance::empty(api.as_mut(), self.namespace_export()) };
         let pointer = core::ptr::from_ref(instance.as_ref());
         unsafe {
             *self.test_integer.get() = Some(TestOwner {

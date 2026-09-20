@@ -14,6 +14,7 @@ struct Runtime {
     api: usize,
     presence: usize,
     imports: usize,
+    exports: usize,
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -34,7 +35,7 @@ unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
     unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     let (system_vt, system_object) = if unsafe { birnam_abi::namespace_presence::contains(presence, c"System".as_ptr()) } != 0 {
         // SAFETY: an exported System family is process-owned and remains live
         // across reloads; extend its vtable instead of minting a duplicate.
@@ -48,8 +49,8 @@ unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::name
         let system_vt = unsafe { (api.proto)(api.object_vt) };
         let system_object = unsafe { (api.alloc)(system_vt, 0) };
         unsafe { birnam_abi::set_vtable_owner(api, system_vt, system_object) };
-        unsafe { (api.exportObj)(c"SystemVt".as_ptr(), system_vt) };
-        unsafe { (api.exportObj)(c"System".as_ptr(), system_object) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"SystemVt".as_ptr(), system_vt) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"System".as_ptr(), system_object) };
         (system_vt, system_object)
     };
     let print = unsafe { intern(api, b"print:\0") };
@@ -80,7 +81,7 @@ unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::name
             api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, system_vt, load,
         );
         birnam_abi::native_loader::install(
-            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, system_vt, load_module,
+            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, runtime().exports as *const birnam_abi::namespace_export::ApiV1, system_vt, load_module,
         );
         birnam_abi::system_input::install(
             api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, system_vt, read_line,
@@ -93,7 +94,7 @@ unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::name
     let _ = system_object;
 }
 
-unsafe fn install_block_protocol(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn install_block_protocol(api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     let (block_vt, block_proto) = if unsafe { birnam_abi::namespace_presence::contains(presence, c"Block".as_ptr()) } != 0 {
         let block_vt = unsafe { birnam_abi::namespace_import::import(imports, c"BlockVt".as_ptr()) };
         let block_proto = unsafe { birnam_abi::namespace_import::import(imports, c"Block".as_ptr()) };
@@ -105,8 +106,8 @@ unsafe fn install_block_protocol(api: &IdApi, presence: *const birnam_abi::names
         unsafe { (api.setLayout)(block_vt, ptr::null(), 0, birnam_abi::SLOT_OOP) };
         let block_proto = unsafe { (api.alloc)(block_vt, 0) };
         unsafe { birnam_abi::set_vtable_owner(api, block_vt, block_proto) };
-        unsafe { (api.exportObj)(c"Block".as_ptr(), block_proto) };
-        unsafe { (api.exportObj)(c"BlockVt".as_ptr(), block_vt) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"Block".as_ptr(), block_proto) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"BlockVt".as_ptr(), block_vt) };
         (block_vt, block_proto)
     };
     let _ = block_proto;
@@ -120,7 +121,7 @@ unsafe fn install_block_protocol(api: &IdApi, presence: *const birnam_abi::names
     }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -129,10 +130,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         api: api_pointer as usize,
         presence: presence as usize,
         imports: imports as usize,
+        exports: exports as usize,
     });
     unsafe { birnam_abi::printing::install(api_pointer, runtime().api as *const IdApi) };
-    unsafe { install_block_protocol(api, presence, imports) };
-    unsafe { install_system_protocol(api, presence, imports) };
+    unsafe { install_block_protocol(api, presence, imports, exports) };
+    unsafe { install_system_protocol(api, presence, imports, exports) };
 }
 
 /// Identifies the original Rust Prelude rung; identity remains stable.
@@ -149,10 +151,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust prelude against the selected floor's IdApi.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     // SAFETY: bring_up enforces the null boundary and only retains the
     // process-owned IdApi address.
-    unsafe { bring_up(api, presence, imports) };
+    unsafe { bring_up(api, presence, imports, exports) };
     ptr::null_mut()
 }
 

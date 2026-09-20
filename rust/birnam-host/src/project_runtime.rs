@@ -2895,7 +2895,7 @@ impl HostRuntime {
             (api.method)(vtable, snapshot_selector, project_snapshot_for_uri_native);
             (api.method)(vtable, path_selector, project_path_for_uri_native);
         }
-        let exported = unsafe { (api.exportObj)(c"Project".as_ptr(), project) };
+        let exported = unsafe { birnam_abi::namespace_export::export(self.stack.exports(), c"Project".as_ptr(), project) };
         if exported == api.nilObj {
             return Err(ProjectBridgeError::GlobalRejected);
         }

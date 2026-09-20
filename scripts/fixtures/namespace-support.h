@@ -1,6 +1,6 @@
 #ifndef FIXTURE_NAMESPACE_SUPPORT_H
 #define FIXTURE_NAMESPACE_SUPPORT_H
-#include "../../abi/fixtures/namespace-v7/namespace_v7.h"
+#include "../../abi/fixtures/namespace-v8/namespace_v8.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -20,6 +20,18 @@ static inline NamespaceImportV1 *fixture_namespace_imports(void) {
 }
 static inline Oop fixture_namespace_import(const char *name) {
     return namespace_import_v1(fixture_namespace_imports(),name);
+}
+static NamespaceExportV1 *fixture_exports;
+static inline NamespaceExportV1 *fixture_namespace_exports(void) {
+    if(!fixture_exports) {
+        assert(fixture_namespace_floor);
+        NamespaceExportProviderV1 provide=(NamespaceExportProviderV1)dlsym(fixture_namespace_floor,"birnam_namespace_export_provider_v1");assert(provide);
+        fixture_exports=provide();assert(fixture_exports && fixture_exports->version==1 && fixture_exports->byte_size==sizeof(*fixture_exports));
+    }
+    return fixture_exports;
+}
+static inline Oop fixture_namespace_export(const char *name,Oop value) {
+    return namespace_export_v1(fixture_namespace_exports(),name,value);
 }
 /* Per-caller test loans preserve the independent old callback transcripts. */
 typedef Oop (*FixtureImportSlot)(const char *);
@@ -46,14 +58,14 @@ static inline int fixture_presence_slot(void *context,const char *name) {
 #define FIXTURE_PRESENCE(slot) {1,sizeof(NamespacePresenceV1),&(slot),fixture_presence_slot}
 
 static inline void fixture_prepare_namespace(void *floor, const char *floor_path) {
-    NamespaceDependencyV7 attach=(NamespaceDependencyV7)dlsym(floor,"birnam_namespace_dependency_v7");
+    NamespaceDependencyV8 attach=(NamespaceDependencyV8)dlsym(floor,"birnam_namespace_dependency_v8");
     assert(attach);fixture_namespace_floor=floor;
     const char *slash=strrchr(floor_path,'/'); assert(slash); char path[PATH_MAX];
     int n=snprintf(path,sizeof(path),"%.*s/libbirnam_namespace.dylib",(int)(slash-floor_path),floor_path);
     assert(n>0 && (size_t)n<sizeof(path));
     void *image=dlopen(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    NamespaceProviderV7 provide=(NamespaceProviderV7)dlsym(image,"birnam_namespace_provider_v7"); assert(provide);
-    const NamespaceApiV7 *api=provide(); assert(api && attach(api)==1);
+    NamespaceProviderV8 provide=(NamespaceProviderV8)dlsym(image,"birnam_namespace_provider_v8"); assert(provide);
+    const NamespaceApiV8 *api=provide(); assert(api && attach(api)==1);
     /* Both handles remain pinned for the process-owned floor. */
 }
 static inline NamespaceNamesApiV1 *fixture_namespace_names(void) {

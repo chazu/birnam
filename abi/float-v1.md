@@ -26,7 +26,7 @@ no native numeric optimization declaration or allocator-context guard.
 
 ## Mounting and lifetime
 
-The host pins Float's library and calls `birnam_float_prepare_v3(IdApi*, const NamespacePresenceV1*, const NamespaceImportV1*)` before
+The host pins Float's library and calls `birnam_float_prepare_v4(IdApi*, const NamespacePresenceV1*, const NamespaceImportV1*, const NamespaceExportV1*)` before
 initializing Integer. Preparation registers partially initialized roots before
 allocating, then returns a complete primitive table. The provider returns null
 until preparation completes. Attach that table to the host, combined runtime
@@ -65,3 +65,7 @@ The operations descriptor remains v1. Preparation v3 captures the live presence 
 descriptors with the first API, before preparation callbacks. Activation and later
 registration keep that execution selection; they do not replace it with a later
 initializer's capabilities. These descriptors, contexts and code must remain pinned.
+
+The export capability is retained with the early preparation API. Publication
+reads its live function/context after the owner callback and separately for
+each family name. See [Namespace export](namespace-export-v1.md).

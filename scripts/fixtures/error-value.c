@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -111,7 +111,7 @@ static void forbidden_roots(RootProvider provider) { (void)provider;assert(!"Err
 static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
     if(prelude && api->dlsym_fn(image,"birnam_error_value_dependency_v3")) { IdApi watched=*api;watched.alloc=forbidden_alloc;watched.method=forbidden_method;watched.gc_register_root_provider=forbidden_roots;fixture_prepare_error_value(&watched);assert(!fixture_namespace_contains("Error") && !fixture_namespace_contains("System"));validate(image,0); }
-    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,presence,import_cap);
+    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,presence,import_cap,fixture_namespace_exports());
 }
 static int provider_is_error(const IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,Oop value) {
     return fixture_error_value->is_error(table,presence,import_cap,value);
@@ -121,7 +121,7 @@ static Oop provider_from_bytes(const IdApi *table,const NamespacePresenceV1 *pre
 }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0);api->gc_register_root_provider(roots);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0);api->gc_register_root_provider(roots);
     selected=*api;selected_presence_slot=exported;selected_import_slot=imported;selected.intern=intern;selected.send=send;selected.vtable_of=vtable;mount(argv[3],&selected,&selected_presence,&selected_imports,1);
     system_object=fixture_namespace_import("System");Oop system_type=fixture_namespace_import("SystemVt");
     read_file=lookup(system_type,"readFile:");write_file=lookup(system_type,"writeFile:contents:");get_env=lookup(system_type,"getEnv:");load_source=lookup(system_type,"load:");load_module=lookup(system_type,"loadModule:");read_line=lookup(system_type,"readLine");while_true=lookup(fixture_namespace_import("BlockVt"),"whileTrue:");
@@ -186,7 +186,7 @@ int main(int argc,char **argv) {
         assert(provider_from_bytes(&selected,&selected_presence,&selected_imports,(const uint8_t *)"ioError",8,(const uint8_t *)"",0)==answer);expect_message("");
         alternate.nil_obj=second_answer;assert(provider_from_bytes(&alternate,fixture_namespace_presence(),&alternate_imports,(const uint8_t *)"ioError",8,(const uint8_t *)"",0)==second_answer);
     }
-    IdApi other=selected;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot);other.nil_obj=second_answer;prelude_init(&other,NULL,&selected_presence,&other_imports);error_present=0;
+    IdApi other=selected;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot);other.nil_obj=second_answer;prelude_init(&other,NULL,&selected_presence,&other_imports,fixture_namespace_exports());error_present=0;
     begin("reloaded Prelude preserves original execution selection");assert(read_file(system_object,&bad_path,1)==api->nil_obj);end();error_present=1;
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(read_file(system_object,&bad_path,1)==answer);
     fixture_string->make=original_make;fixture_string->context=original_context;

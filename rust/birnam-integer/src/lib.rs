@@ -442,7 +442,7 @@ unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: us
 
 /// The host retains the floor and this library for the process lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -462,7 +462,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, pr
         })
         .ok()
         .expect("Integer initialization serialized");
-    let instance = Box::into_raw(unsafe { storage::Instance::empty(api_pointer) });
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api_pointer, exports) });
     INSTANCE.store(instance, Ordering::Release);
     unsafe { (api.gcRegisterRootProvider)(integer_roots) };
     unsafe { (*instance).populate() };

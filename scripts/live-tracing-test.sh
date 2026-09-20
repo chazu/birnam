@@ -8,6 +8,6 @@ scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-live-tracing.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 cc -std=c11 -Wall -Wextra -Werror scripts/fixtures/live-tracing.c -o "$scratch/live"
 "$scratch/live" "$trace_target/debug/libbirnam_id.dylib" "$trace_target/debug/libbirnam_trace.dylib"
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v10 -Iscripts/fixtures abi/fixtures/idapi-v10/client.c -o "$scratch/client"
-cc -std=c11 -Wall -Wextra -Werror -fvisibility=hidden -dynamiclib abi/fixtures/idapi-v10/module.c -o "$scratch/module.dylib"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v11 -Iscripts/fixtures abi/fixtures/idapi-v11/client.c -o "$scratch/client"
+cc -std=c11 -Wall -Wextra -Werror -fvisibility=hidden -dynamiclib abi/fixtures/idapi-v11/module.c -o "$scratch/module.dylib"
 "$scratch/client" "$trace_target/debug/libbirnam_id.dylib" "$scratch/module.dylib"

@@ -96,7 +96,7 @@ impl Runtime {
 
     #[cfg(test)]
     pub(crate) fn mount_test_word(&self, mut api: Box<birnam_abi::IdApi>) {
-        let instance = unsafe { birnam_word::storage::Instance::empty(api.as_mut(), self.namespace_presence(), self.namespace_import()) };
+        let instance = unsafe { birnam_word::storage::Instance::empty(api.as_mut(), self.namespace_presence(), self.namespace_import(), self.namespace_export()) };
         let pointer = core::ptr::from_ref(instance.as_ref());
         unsafe {
             *self.test_word.get() = Some(TestOwner {

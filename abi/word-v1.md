@@ -21,7 +21,7 @@ module state. No Word optimizer declaration or allocator-context guard is added.
 TCC keeps its generated-code symbol names and unsigned conversion policy; Image
 keeps inherited-family recognition and its current boxed Word bytes.
 
-The host pins Word's library and calls `birnam_word_prepare_v3(IdApi*, const NamespacePresenceV1*, const NamespaceImportV1*)` before
+The host pins Word's library and calls `birnam_word_prepare_v4(IdApi*, const NamespacePresenceV1*, const NamespaceImportV1*, const NamespaceExportV1*)` before
 Float preparation and Integer initialization. Partial roots are registered before
 either identity is allocated. The provider returns null until the primitive table
 is complete. Attach the table to the host and combined runtime before ordinary
@@ -52,3 +52,7 @@ The operations descriptor remains v1. Preparation v3 captures the live presence 
 descriptors with the first API, before preparation callbacks. Activation and later
 registration keep that execution selection; they do not replace it with a later
 initializer's capabilities. These descriptors, contexts and code must remain pinned.
+
+The export capability is retained with the early preparation API. Publication
+reads its live function/context after the owner callback and separately for
+each family name. See [Namespace export](namespace-export-v1.md).

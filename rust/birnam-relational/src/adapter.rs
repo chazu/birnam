@@ -250,14 +250,14 @@ unsafe extern "C" fn rust_logicvar_print_string(
     unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
 }
 
-unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     let logicvar_vt = unsafe { birnam_abi::namespace_import::import(imports, c"LogicVarVt".as_ptr()) };
     let logicvar_vt = if logicvar_vt.is_null() {
         let created = unsafe { (api.proto)(api.object_vt) };
         if created.is_null() {
             abort("Rust Relational could not create LogicVarVt");
         }
-        unsafe { (api.exportObj)(c"LogicVarVt".as_ptr(), created) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"LogicVarVt".as_ptr(), created) };
         created
     } else {
         logicvar_vt
@@ -270,7 +270,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::na
         if created.is_null() {
             abort("Rust Relational could not create LogicVarFactoryVt");
         }
-        unsafe { (api.exportObj)(c"LogicVarFactoryVt".as_ptr(), created) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"LogicVarFactoryVt".as_ptr(), created) };
         created
     } else {
         factory_vt
@@ -283,7 +283,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::na
         if created.is_null() {
             abort("Rust Relational could not create LogicVar factory");
         }
-        unsafe { (api.exportObj)(c"LogicVar".as_ptr(), created) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"LogicVar".as_ptr(), created) };
         created
     } else {
         factory
@@ -296,7 +296,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::na
         if created.is_null() {
             abort("Rust Relational could not create EntityVt");
         }
-        unsafe { (api.exportObj)(c"EntityVt".as_ptr(), created) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"EntityVt".as_ptr(), created) };
         created
     } else {
         entity_vt
@@ -309,7 +309,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::na
         if created.is_null() {
             abort("Rust Relational could not create RelCollectorVt");
         }
-        unsafe { (api.exportObj)(c"RelCollectorVt".as_ptr(), created) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"RelCollectorVt".as_ptr(), created) };
         created
     } else {
         collector_vt
@@ -333,11 +333,11 @@ unsafe fn ensure_relational_contract(api: &IdApi, imports: *const birnam_abi::na
             (api.intern)(c"printString".as_ptr()),
             rust_logicvar_print_string,
         );
-        (api.exportObj)(c"LogicVarVt".as_ptr(), logicvar_vt);
-        (api.exportObj)(c"LogicVarFactoryVt".as_ptr(), factory_vt);
-        (api.exportObj)(c"LogicVar".as_ptr(), factory);
-        (api.exportObj)(c"EntityVt".as_ptr(), entity_vt);
-        (api.exportObj)(c"RelCollectorVt".as_ptr(), collector_vt);
+        birnam_abi::namespace_export::export(exports, c"LogicVarVt".as_ptr(), logicvar_vt);
+        birnam_abi::namespace_export::export(exports, c"LogicVarFactoryVt".as_ptr(), factory_vt);
+        birnam_abi::namespace_export::export(exports, c"LogicVar".as_ptr(), factory);
+        birnam_abi::namespace_export::export(exports, c"EntityVt".as_ptr(), entity_vt);
+        birnam_abi::namespace_export::export(exports, c"RelCollectorVt".as_ptr(), collector_vt);
     }
 }
 
@@ -944,7 +944,7 @@ unsafe extern "C" fn rust_rebuild_rules(self_object: Oop, _args: *const Oop, cou
     self_object
 }
 
-unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     let store_vt = unsafe { birnam_abi::namespace_import::import(imports, c"StoreVt".as_ptr()) };
     if store_vt.is_null() {
         // The classifier-only probe may load this dylib before Store. The
@@ -963,7 +963,7 @@ unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespa
         if created.is_null() {
             abort("Rust Relational could not create EntityVt");
         }
-        unsafe { (api.exportObj)(c"EntityVt".as_ptr(), created) };
+        unsafe { birnam_abi::namespace_export::export(exports, c"EntityVt".as_ptr(), created) };
         created
     } else {
         entity_vt
@@ -1016,7 +1016,7 @@ unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespa
         // Publish the shared Store as `db` only after the complete relational
         // and collection contract is available. A partial export would force
         // roll Relational down its reload path with missing vtables.
-        (api.exportObj)(c"db".as_ptr(), store);
+        birnam_abi::namespace_export::export(exports, c"db".as_ptr(), store);
     }
 }
 
@@ -2331,15 +2331,15 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` must be the process-owned IdApi table supplied by the host, and the
 /// host must keep that table and its floor dylib alive for the module lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     // SAFETY: forwarded frozen host initialization contract.
     unsafe { bring_up(api, imports) };
     // Publish the complete shared relational object contract before exposing
     // the Store as `db`; this is safe to repeat across reloads.
-    unsafe { ensure_relational_contract(&*api, imports) };
+    unsafe { ensure_relational_contract(&*api, imports, exports) };
     // SAFETY: module_init received the process-owned IdApi used to install the
     // Store-facing entity constructor.
-    unsafe { install_entity_method(&*api, imports) };
+    unsafe { install_entity_method(&*api, imports, exports) };
     // SAFETY: module_init received the same process-owned IdApi recorded above.
     register_probe_root(unsafe { &*api });
     ptr::null_mut()

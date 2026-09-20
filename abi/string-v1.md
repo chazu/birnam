@@ -6,7 +6,7 @@ siphon; Id has no normal Rust dependency on the implementation. IdApi v7 removes
 `string_vt`, `mkString` and `stringBytes` (34 fields / 272 bytes). Rebuild native
 consumers. The payload and image formats are unchanged.
 
-`birnam_string_prepare_v1(IdApi *, const NativeAllocationV1 *)` registers partial
+`birnam_string_prepare_v2(IdApi *, const NamespaceExportV1 *, const NativeAllocationV1 *)` registers partial
 roots, creates the canonical behavior and empty prototype, declares RAW layout,
 and installs clone/new once. The host prepares String after the collector is
 mounted and before Word, Float and Integer. It attaches `StringApiV1` to itself,
@@ -55,3 +55,7 @@ The [independent C mirror](fixtures/string-v1/string_v1.h) asserts each extent.
 Run `mise run string` and `scripts/string-image-smoke.sh PREFIX`; Id's focused
 unit suite retains the default/wrapped/wrong-runtime cleanup differential oracle.
 See [Design 81X](../docs/design/81x-production-string-storage.md).
+
+Preparation retains the matching export capability with its early API. Each
+publication reads the live function/context after the owner callback. See
+[Namespace export](namespace-export-v1.md).

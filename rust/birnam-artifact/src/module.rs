@@ -38,6 +38,7 @@ struct DescriptorObject {
 
 struct Runtime {
     api: usize,
+    exports: usize,
     imports: usize,
     presence: usize,
     artifact_vt: usize,
@@ -685,7 +686,7 @@ fn register_methods(state: &Runtime) {
     }
 }
 
-pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -707,6 +708,7 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi
         };
         Runtime {
             api: api_pointer as usize,
+            exports: exports as usize,
             imports: imports as usize,
             presence: presence as usize,
             artifact_vt: oop_address(artifact_vt),
@@ -716,6 +718,7 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi
     });
     register_methods(state);
     let api = api(state);
+    let exports = state.exports as *const birnam_abi::namespace_export::ApiV1;
     ROOT_REGISTERED.get_or_init(|| unsafe {
         (api.gcRegisterRootProvider)(mark_runtime_roots);
     });
@@ -723,12 +726,12 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi
         LAST_FAILURE.store(oop_address(api.nilObj), Ordering::Release);
     }
     if !(unsafe { birnam_abi::namespace_presence::contains(execution_presence(), ARTIFACT_NAME.as_ptr().cast()) != 0 }) {
-        // SAFETY: exportObj publishes the three singleton objects exactly as
+        // SAFETY: the selected export publishes the three singleton objects exactly as
         // the native inspector does on its first load.
         unsafe {
-            let _ = (api.exportObj)(ARTIFACT_VT_NAME.as_ptr().cast(), as_oop(state.artifact_vt));
-            let _ = (api.exportObj)(ARTIFACT_NAME.as_ptr().cast(), as_oop(state.artifact_obj));
-            let _ = (api.exportObj)(
+            let _ = birnam_abi::namespace_export::export(exports, ARTIFACT_VT_NAME.as_ptr().cast(), as_oop(state.artifact_vt));
+            let _ = birnam_abi::namespace_export::export(exports, ARTIFACT_NAME.as_ptr().cast(), as_oop(state.artifact_obj));
+            let _ = birnam_abi::namespace_export::export(exports,
                 DESCRIPTOR_VT_NAME.as_ptr().cast(),
                 as_oop(state.descriptor_vt),
             );
@@ -745,10 +748,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(
     api_pointer: *mut abi::IdApi,
-    _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+    _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     // SAFETY: the host owns the IdApi pointer and calls this entrypoint before
     // dispatching any artifact protocol method.
-    unsafe { bring_up(api_pointer, presence, imports) };
+    unsafe { bring_up(api_pointer, presence, imports, exports) };
     core::ptr::null_mut()
 }
 

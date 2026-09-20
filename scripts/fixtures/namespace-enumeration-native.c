@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "../../abi/fixtures/namespace-enumeration-v1/namespace_enumeration_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -183,7 +183,8 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     return api->true_obj;
 }
 static void roots(void (*mark)(Oop)) { for(size_t i=0;i<5;i++)if(rows[i])mark(rows[i]); }
-void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports) {
+void *module_init(IdApi *selected,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports) {
+    (void)exports;
     (void)presence;
     assert(selected && !state);if(api){assert(api==selected && imports==selected_imports);return NULL;}api=selected;imports=(NamespaceImportV1 *)selected_imports;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);

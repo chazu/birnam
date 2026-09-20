@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -64,8 +64,8 @@ static int exported(const char *name) { int result=fixture_namespace_contains(na
 static Oop intern(const char *name) { if(phase==0 && candidate) { prototype=candidate; candidate=NULL; partial(3); } if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V10_SLOT_RAW && kinds[1]==IDAPI_V10_SLOT_RAW && rest==IDAPI_V10_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V10_SLOT_OOP,IDAPI_V10_SLOT_RAW}; assert(count==2 && rest==IDAPI_V10_SLOT_RAW && !memcmp(kinds,expected,2)); }
+    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V11_SLOT_RAW && kinds[1]==IDAPI_V11_SLOT_RAW && rest==IDAPI_V11_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V11_SLOT_OOP,IDAPI_V11_SLOT_RAW}; assert(count==2 && rest==IDAPI_V11_SLOT_RAW && !memcmp(kinds,expected,2)); }
     api->set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
@@ -101,20 +101,21 @@ static Oop second_allocator(Oop type,size_t size) {
     live_allocations++; api->gc_collect(); return api->alloc(type,size);
 }
 static Oop forbidden_allocator(Oop type,size_t size) { (void)type; (void)size; assert(!"reload replaced the selected table"); return NULL; }
-static Oop publish(const char *name,Oop value) {
+static Oop publish(void *context,const char *name,Oop value) {
+    (void)context;
     if(capture) printf("export %s=%d\n",name,id(value));
     if(!strcmp(name,"Map")) {
         prototype=value; assert(lookup(behavior,"new") && lookup(behavior,"at:put:"));
         Oop other=lookup(behavior,"new")(value,NULL,0); assert(api->vtable_of(other)==behavior && ((Payload *)other)->count==0);
         api->gc_collect(); assert(fixture_integer_value(send0(other,"size"))==0);
     }
-    return api->export_obj(name,value);
+    return fixture_namespace_export(name,value);
 }
 static void validate(void *image,int attached) {
     if(!modern) return;
     if(fixture_map_v2) {
-    MapDependencyV3 attach=(MapDependencyV3)api->dlsym_fn(image,"birnam_map_dependency_v3"); assert(attach && !attach(NULL));
-    MapApiV3 bad=*fixture_map_v2; bad.version++; assert(!attach(&bad)); bad=*fixture_map_v2; bad.byte_size--; assert(!attach(&bad));
+    MapDependencyV4 attach=(MapDependencyV4)api->dlsym_fn(image,"birnam_map_dependency_v4"); assert(attach && !attach(NULL));
+    MapApiV4 bad=*fixture_map_v2; bad.version++; assert(!attach(&bad)); bad=*fixture_map_v2; bad.byte_size--; assert(!attach(&bad));
 #define MISSING(field) bad=*fixture_map_v2; bad.field=NULL; assert(!attach(&bad))
     MISSING(prepare); MISSING(finish_prototype); MISSING(set_layout); MISSING(publish); MISSING(install);
 #undef MISSING
@@ -129,53 +130,53 @@ static void validate(void *image,int attached) {
     if(attached) { bad=*fixture_map; assert(!attach(&bad) && attach(fixture_map)==1); }
     }
 }
-static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     if(strstr(path,"collection")) {
-        modern=api->dlsym_fn(image,"birnam_map_dependency_v1")!=NULL || api->dlsym_fn(image,"birnam_map_dependency_v3")!=NULL;
+        modern=api->dlsym_fn(image,"birnam_map_dependency_v1")!=NULL || api->dlsym_fn(image,"birnam_map_dependency_v4")!=NULL;
         if(modern && !fixture_map && !fixture_map_v2) { fixture_prepare_map(api); validate(image,0); }
     }
     fixture_attach_integer(api,image);
     if(strstr(path,"collection")) validate(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap);
 }
 static void seed(int map_only) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"}; Oop types[6];
-    for(size_t i=0;i<6;i++) { types[i]=api->proto(api->object_vt); if(!map_only || i>=4) api->export_obj(names[i],types[i]); }
+    for(size_t i=0;i<6;i++) { types[i]=api->proto(api->object_vt); if(!map_only || i>=4) fixture_namespace_export(names[i],types[i]); }
     if(!map_only) {
-        api->export_obj("Collection",types[0]);
-        FixtureVectorPayload *vector=api->alloc(types[2],40); *vector=(FixtureVectorPayload){0,5,api->alloc(types[1],256),api->alloc(types[1],256),0}; api->export_obj("Vector",vector);
-        Oop range=api->alloc(types[3],16); memset(range,0,16); api->export_obj("Range",range);
+        fixture_namespace_export("Collection",types[0]);
+        FixtureVectorPayload *vector=api->alloc(types[2],40); *vector=(FixtureVectorPayload){0,5,api->alloc(types[1],256),api->alloc(types[1],256),0}; fixture_namespace_export("Vector",vector);
+        Oop range=api->alloc(types[3],16); memset(range,0,16); fixture_namespace_export("Range",range);
     }
     Oop map=api->alloc(types[4],16); *(Payload *)map=(Payload){NULL,0};
-    api->export_obj("Map",missing?NULL:(rebound?api->nil_obj:map));
+    fixture_namespace_export("Map",missing?NULL:(rebound?api->nil_obj:map));
 }
 static Oop empty(void) { return fixture_map?fixture_map->empty():new_method(prototype,NULL,0); }
 int main(int argc,char **argv) {
     assert(argc==5); adopting=strcmp(argv[4],"normal") && strcmp(argv[4],"map-only-exports");
     missing=!strcmp(argv[4],"missing-prototype"); rebound=!strcmp(argv[4],"rebound-prototype");
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor); api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
-    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
     if(adopting || !strcmp(argv[4],"map-only-exports")) seed(!adopting);
     selected=*api; selected.proto=proto; selected.alloc=allocate; selected_import_slot=import; selected_presence_slot=exported;
-    selected.intern=intern; selected.set_layout=layout; selected.method=method; selected.send=send; selected.export_obj=publish;
+    selected.intern=intern; selected.set_layout=layout; selected.method=method; selected.send=send; NamespaceExportV1 selected_exports={1,sizeof(NamespaceExportV1),NULL,publish};
     selected.gc_register_root_provider=roots; selected.set_finalizer=finalize;
-    capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports); capture=0; phase=1;
+    capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports); capture=0; phase=1;
     if(!prototype) prototype=candidate;
     assert(prototype && !finalizers); partial(3); if(modern) assert(partial_checks>=3); if(fixture_map) assert(fixture_map->behavior()==behavior);
     if(!rebound) assert(!((Payload *)prototype)->root && !((Payload *)prototype)->count); else assert(prototype==api->nil_obj);
     new_method=lookup(behavior,"new"); allocation_count=0; operation_probe=1; Oop map=empty(); operation_probe=0;
     assert(allocation_count==1 && api->vtable_of(map)==behavior && !((Payload *)map)->root && !((Payload *)map)->count);
     if(fixture_map) assert(!fixture_map->count(map) && !fixture_map->root(map));
-    api->export_obj("MapVt",api->nil_obj); api->export_obj("Map",api->nil_obj); api->export_obj("MapNode",api->nil_obj);
-    IdApi other=selected;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot); other.alloc=forbidden_allocator; capture=1; mount(argv[3],&other,&selected_presence,&other_imports); capture=0;
+    fixture_namespace_export("MapVt",api->nil_obj); fixture_namespace_export("Map",api->nil_obj); fixture_namespace_export("MapNode",api->nil_obj);
+    IdApi other=selected;NamespaceExportV1 other_exports=selected_exports;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot); other.alloc=forbidden_allocator; capture=1; mount(argv[3],&other,&selected_presence,&other_imports,&other_exports); capture=0;
     assert(fixture_namespace_import("Map")==api->nil_obj);
     selected.alloc=second_allocator; live_allocations=0; map=empty(); assert(live_allocations==1 && api->vtable_of(map)==behavior);
     /* Forget temporary trace identities before precise GC can recycle their addresses. */
     identity_count=0;
     selected.alloc=allocate; api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0); partial(3);
-    api->export_obj("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports); capture=0;
+    fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports); capture=0;
     assert(fixture_namespace_import("MapVt")==behavior && fixture_namespace_import("Map")==prototype && fixture_namespace_import("MapNode")==node_type && !finalizers);
     printf("map-storage: construction, adoption, allocation, partial roots, live allocator and reload passed mode=%s\n",argv[4]);
 }

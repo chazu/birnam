@@ -17,7 +17,7 @@ caller retains the existing root obligations for arguments and results.
 [Error Value v3](error-value-v3.md) receives this capability per invocation and
 does not retain it. There is no global import dependency or API-address registry.
 
-[Namespace factory v7](namespace-v7.md) creates the canonical runtime-owned
+[Namespace factory v8](namespace-v8.md) creates the canonical runtime-owned
 service. Id retains its owned allocation and exposes the mutable descriptor
 through `birnam_namespace_import_provider_v1` after `id_init`. The host and
 Native Loader supply it as the fourth `module_init` argument after presence.
@@ -26,9 +26,11 @@ that same selection point, including early initialization and callback reentry.
 Incoming registration/adoption uses incoming capabilities where it used the
 incoming API. Reload never replaces a saved execution selection implicitly.
 
-IdApi v10 has 31 fields and 248 bytes, with no import slot. Float/Word prepare
-v3 and the six System/Block v3 installers carry imports after presence;
-Range/Vector/Map prepare v3 carry imports immediately after API. Numeric and
+IdApi v11 has 30 fields and 240 bytes, with no import or export slot.
+Float/Word prepare v4 carry imports after presence and exports after imports.
+The five System/Block v3 installers retain imports after presence; Native Loader
+v4 also carries exports. Range/Vector/Map prepare v4 carry imports immediately
+after API; their publication stages receive exports separately. Numeric and
 Block declarations v4 compare canonical function/context identities against
 live selections without invoking them. Isolate worker and OOP codec bridges
 use v2 exports with imports immediately after API.

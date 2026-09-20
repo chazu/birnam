@@ -1028,6 +1028,14 @@ impl Runtime {
         self.assert_owner();
         self.state.get().cast()
     }
+    pub(crate) fn namespace_export(&self) -> *mut birnam_abi::namespace_export::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.exports() }
+    }
+    pub(crate) fn canonical_namespace_export(&self) -> birnam_abi::namespace_export::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.canonical_exports() }
+    }
     pub(crate) fn namespace_import(&self) -> *mut birnam_abi::namespace_import::ApiV1 {
         self.assert_owner();
         unsafe { (*self.state.get()).environment.imports() }
@@ -4739,7 +4747,7 @@ pub(crate) unsafe extern "C" fn namespace_intern(context: *mut core::ffi::c_void
 
 /// Update the existing representation after raw binding, without collection,
 /// sends or reentry. The state pointer is borrowed only for this call.
-unsafe extern "C" fn namespace_mirror(context: *mut core::ffi::c_void, symbol: Oop, value: Oop) {
+pub(crate) unsafe extern "C" fn namespace_mirror(context: *mut core::ffi::c_void, symbol: Oop, value: Oop) {
     let state = unsafe { &mut *context.cast::<RuntimeState>() };
     if let Some((_, environment)) = state.internal_dictionaries {
         state.vtables.add_weak_opaque_binding(environment, symbol, value);
@@ -6317,6 +6325,33 @@ mod tests {
         }
         assert_ne!(runtimes[0].runtime.intern(b"namespace-publication-\xff").unwrap(),
                    runtimes[1].runtime.intern(b"namespace-publication-\xff").unwrap());
+    }
+
+    #[test]
+    fn namespace_export_follows_independent_moved_runtime_state() {
+        let runtimes = vec![build_bootstrap(), build_bootstrap()];
+        assert_ne!(runtimes[0].runtime.namespace_export(), runtimes[1].runtime.namespace_export());
+        let name = c"independent-export";
+        for bootstrap in &runtimes {
+            let runtime = &bootstrap.runtime;
+            runtime.enter(|| {
+                let exports = runtime.namespace_export();
+                let before = unsafe { (*runtime.state.get()).symbols.count() };
+                for value in [runtime.canonical().nil, runtime.canonical().object_prototype, core::ptr::null_mut()] {
+                    assert_eq!(unsafe { birnam_abi::namespace_export::export(exports, name.as_ptr(), value) }, value);
+                    assert_eq!(runtime.import(name.to_bytes()), Ok(value));
+                }
+                assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before + 1);
+                let canonical = runtime.canonical_namespace_export();
+                unsafe { (*exports).context = core::ptr::null_mut(); (*exports).export = None; }
+                assert_eq!(runtime.canonical_namespace_export().context, canonical.context);
+                let value = runtime.canonical().true_object;
+                assert_eq!(unsafe { birnam_abi::namespace_export::export(&canonical, name.as_ptr(), value) }, value);
+                assert_eq!(runtime.import(name.to_bytes()), Ok(value));
+                // Destruction uses the owned allocation, not the mutable context.
+            });
+        }
+        assert_ne!(runtimes[0].runtime.intern(name.to_bytes()).unwrap(), runtimes[1].runtime.intern(name.to_bytes()).unwrap());
     }
 
     #[test]

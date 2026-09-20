@@ -61,6 +61,11 @@ pub type CreateImportV1 = unsafe extern "C" fn(
     *const crate::namespace_import::FloorV1,
 ) -> *mut crate::namespace_import::ApiV1;
 
+pub type CreateExportV1 = unsafe extern "C" fn(
+    *mut c_void, Option<BindV1>, Option<PublishV1>,
+    *const crate::namespace_export::FloorV1,
+) -> *mut crate::namespace_export::ApiV1;
+
 pub type CreateEnumerationV1 = unsafe extern "C" fn(
     *const c_void,
     Option<unsafe extern "C" fn(*const c_void) -> usize>,
@@ -78,7 +83,7 @@ pub type CreateEnumerationV1 = unsafe extern "C" fn(
 /// the next bind/destroy and must not escape its synchronous use by the caller.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV7 {
+pub struct ApiV8 {
     pub version: u32,
     pub byte_size: usize,
     pub create: Option<unsafe extern "C" fn() -> *mut c_void>,
@@ -106,32 +111,36 @@ pub struct ApiV7 {
     pub publish: Option<PublishV1>,
     pub create_import: Option<CreateImportV1>,
     pub destroy_import: Option<unsafe extern "C" fn(*mut crate::namespace_import::ApiV1)>,
+    pub create_export: Option<CreateExportV1>,
+    pub destroy_export: Option<unsafe extern "C" fn(*mut crate::namespace_export::ApiV1)>,
 }
 const _: () = {
-    assert!(size_of::<ApiV7>() == 160);
-    assert!(core::mem::offset_of!(ApiV7, create_import) == 144);
-    assert!(core::mem::offset_of!(ApiV7, destroy_import) == 152);
-    assert!(core::mem::offset_of!(ApiV7, publish) == 136);
-    assert!(core::mem::offset_of!(ApiV7, create_presence) == 120);
-    assert!(core::mem::offset_of!(ApiV7, destroy_presence) == 128);
-    assert!(core::mem::offset_of!(ApiV7, create) == 16);
-    assert!(core::mem::offset_of!(ApiV7, bindings) == 72);
-    assert!(core::mem::offset_of!(ApiV7, lookup) == 112);
+    assert!(size_of::<ApiV8>() == 176);
+    assert!(core::mem::offset_of!(ApiV8, create_export) == 160);
+    assert!(core::mem::offset_of!(ApiV8, destroy_export) == 168);
+    assert!(core::mem::offset_of!(ApiV8, create_import) == 144);
+    assert!(core::mem::offset_of!(ApiV8, destroy_import) == 152);
+    assert!(core::mem::offset_of!(ApiV8, publish) == 136);
+    assert!(core::mem::offset_of!(ApiV8, create_presence) == 120);
+    assert!(core::mem::offset_of!(ApiV8, destroy_presence) == 128);
+    assert!(core::mem::offset_of!(ApiV8, create) == 16);
+    assert!(core::mem::offset_of!(ApiV8, bindings) == 72);
+    assert!(core::mem::offset_of!(ApiV8, lookup) == 112);
     assert!(size_of::<BindingV1>() == 16);
     assert!(size_of::<ViewV1>() == 16);
 };
-pub type ProviderV7 = unsafe extern "C" fn() -> *const ApiV7;
-pub type DependencyV7 = unsafe extern "C" fn(*const ApiV7) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV7> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV8 = unsafe extern "C" fn() -> *const ApiV8;
+pub type DependencyV8 = unsafe extern "C" fn(*const ApiV8) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV8> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Readable aligned descriptor; valid immutable operations/code stay pinned.
-pub unsafe fn valid(pointer: *const ApiV7) -> bool {
+pub unsafe fn valid(pointer: *const ApiV8) -> bool {
     if pointer.is_null() {
         return false;
     }
     let a = unsafe { *pointer };
-    a.version == 7
-        && a.byte_size == size_of::<ApiV7>()
+    a.version == 8
+        && a.byte_size == size_of::<ApiV8>()
         && a.create.is_some()
         && a.destroy.is_some()
         && a.bind.is_some()
@@ -150,11 +159,13 @@ pub unsafe fn valid(pointer: *const ApiV7) -> bool {
         && a.publish.is_some()
         && a.create_import.is_some()
         && a.destroy_import.is_some()
+        && a.create_export.is_some()
+        && a.destroy_export.is_some()
 }
 /// # Safety
 /// Owner-thread admission before constructing any namespace. Descriptor and code
 /// are immutable and process-pinned. Different descriptors cannot retarget it.
-pub unsafe fn attach(pointer: *const ApiV7) -> c_int {
+pub unsafe fn attach(pointer: *const ApiV8) -> c_int {
     if !unsafe { valid(pointer) } {
         return 0;
     }
@@ -170,7 +181,7 @@ pub unsafe fn attach(pointer: *const ApiV7) -> c_int {
 }
 /// # Safety
 /// Use only after the declared dependency is prepared by the host.
-pub unsafe fn operations() -> ApiV7 {
+pub unsafe fn operations() -> ApiV8 {
     let pointer = DEPENDENCY.load(Ordering::Acquire);
     assert!(
         !pointer.is_null(),
@@ -182,8 +193,8 @@ pub unsafe fn operations() -> ApiV7 {
 macro_rules! namespace_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_namespace_dependency_v7(
-            api: *const $crate::namespace::ApiV7,
+        pub unsafe extern "C" fn birnam_namespace_dependency_v8(
+            api: *const $crate::namespace::ApiV8,
         ) -> core::ffi::c_int {
             unsafe { $crate::namespace::attach(api) }
         }

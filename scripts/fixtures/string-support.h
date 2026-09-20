@@ -18,7 +18,7 @@ static inline void fixture_attach_string(IdApi *api, void *image) {
     StringDependencyV1 attach=(StringDependencyV1)api->dlsym_fn(image,"birnam_string_dependency_v1");
     if(attach) { assert(fixture_string); assert(attach(fixture_string)==1); }
 }
-static inline void fixture_prepare_string(IdApi *api, const char *floor_path) {
+static inline void fixture_prepare_string(IdApi *api, const char *floor_path, const NamespaceExportV1 *exports) {
     if(fixture_string) return;
     const char *slash=strrchr(floor_path,'/'); assert(slash);
     char path[PATH_MAX];
@@ -27,8 +27,8 @@ static inline void fixture_prepare_string(IdApi *api, const char *floor_path) {
     fixture_string_image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(fixture_string_image);
     void *floor=api->dlopen_fn(floor_path,RTLD_NOW|RTLD_LOCAL); assert(floor);
     NativeAllocationProviderV1 allocation=(NativeAllocationProviderV1)api->dlsym_fn(floor,"birnam_native_allocation_provider_v1"); assert(allocation);
-    StringPrepareV1 prepare=(StringPrepareV1)api->dlsym_fn(fixture_string_image,"birnam_string_prepare_v1"); assert(prepare);
-    fixture_string=prepare(api,allocation()); assert(fixture_string);
+    StringPrepareV2 prepare=(StringPrepareV2)api->dlsym_fn(fixture_string_image,"birnam_string_prepare_v2"); assert(prepare);
+    fixture_string=prepare(api,exports,allocation()); assert(fixture_string);
     assert(fixture_string->version==1 && fixture_string->byte_size==sizeof(StringApiV1));
     fixture_attach_string(api,floor);
 }

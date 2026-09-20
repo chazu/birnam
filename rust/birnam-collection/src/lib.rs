@@ -53,7 +53,7 @@ unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8
     unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -117,17 +117,17 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     if unsafe { birnam_abi::namespace_presence::contains(presence, VECTOR_NAME.as_ptr().cast()) == 0 } {
         unsafe {
             birnam_abi::vector::set_owner(api_pointer);
-            let _ = (api.exportObj)(
+            let _ = birnam_abi::namespace_export::export(exports,
                 COLLECTION_VT_NAME.as_ptr().cast(),
                 runtime.collection_vt as Oop,
             );
-            let _ = (api.exportObj)(
+            let _ = birnam_abi::namespace_export::export(exports,
                 COLLECTION_NAME.as_ptr().cast(),
                 runtime.collection_vt as Oop,
             );
-            birnam_abi::vector::publish(api_pointer);
-            birnam_abi::range::publish(api_pointer);
-            birnam_abi::map::publish(api_pointer);
+            birnam_abi::vector::publish(api_pointer, exports);
+            birnam_abi::range::publish(api_pointer, exports);
+            birnam_abi::map::publish(api_pointer, exports);
         }
     }
 }
@@ -146,9 +146,9 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust Collection vector protocol against the process floor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     let _ = state;
-    unsafe { bring_up(api, presence, imports) };
+    unsafe { bring_up(api, presence, imports, exports) };
     ptr::null_mut()
 }
 

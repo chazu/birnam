@@ -46,6 +46,7 @@ pub struct Instance {
     api: *mut IdApi,
     presence: *const birnam_abi::namespace_presence::ApiV1,
     imports: *const birnam_abi::namespace_import::ApiV1,
+    exports: *const birnam_abi::namespace_export::ApiV1,
     roots: UnsafeCell<Roots>,
     operations: UnsafeCell<FloatApiV1>,
 }
@@ -54,12 +55,13 @@ impl Instance {
     /// Allocate native state before registering its partially initialized roots.
     /// # Safety
     /// The API lives until this instance and all installed consumers are gone.
-    pub unsafe fn empty(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> Box<Self> {
+    pub unsafe fn empty(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> Box<Self> {
         assert!(!api.is_null());
         let result = Box::new(Self {
             api,
             presence,
             imports,
+            exports,
             roots: UnsafeCell::new(Roots::default()),
             operations: UnsafeCell::new(FloatApiV1 {
                 version: 1,
@@ -119,8 +121,8 @@ impl Instance {
         let [behavior, prototype] = self.identities();
         unsafe {
             birnam_abi::set_vtable_owner(&*api, behavior, prototype);
-            ((*api).exportObj)(c"Float".as_ptr(), prototype);
-            ((*api).exportObj)(c"FloatVt".as_ptr(), behavior);
+            birnam_abi::namespace_export::export(self.exports, c"Float".as_ptr(), prototype);
+            birnam_abi::namespace_export::export(self.exports, c"FloatVt".as_ptr(), behavior);
         }
     }
 

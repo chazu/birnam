@@ -206,6 +206,7 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    exports: usize,
     presence: usize,
     imports: usize,
     tcc_vt: usize,
@@ -766,7 +767,7 @@ unsafe extern "C" fn m_symbol(self_object: Oop, args: *const Oop, count: usize) 
     if symbol.is_null() {
         api.nilObj
     } else {
-        unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), symbol as usize, KIND_BORROWED) }
+        unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), execution_exports(), symbol as usize, KIND_BORROWED) }
             .unwrap_or(api.nilObj)
     }
 }
@@ -1033,7 +1034,7 @@ pub unsafe extern "C" fn rt_mk_foreign_address(value: usize) -> Oop {
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
     let api = unsafe { api_ref(runtime) };
-    unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), value, KIND_BORROWED) }.unwrap_or(api.nilObj)
+    unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), execution_exports(), value, KIND_BORROWED) }.unwrap_or(api.nilObj)
 }
 
 #[unsafe(export_name = "birnam_foreignAddressValue")]
@@ -1361,12 +1362,12 @@ unsafe extern "C" fn m_bind_runtime(self_object: Oop, _args: *const Oop, _count:
     self_object
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
-    if unsafe { foreign_address::ensure_family(api, presence, imports) }.is_none() {
+    if unsafe { foreign_address::ensure_family(api, presence, imports, exports) }.is_none() {
         abort("ForeignAddress exports were incomplete");
     }
     let runtime = *RUNTIME.get_or_init(|| {
@@ -1388,6 +1389,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
         Runtime {
             api: api_pointer as usize,
+            exports: exports as usize,
             presence: presence as usize,
             imports: imports as usize,
             tcc_vt: tcc_vt as usize,
@@ -1396,6 +1398,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
     });
     let api = unsafe { api_ref(&runtime) };
+    let exports = runtime.exports as *const birnam_abi::namespace_export::ApiV1;
     let presence = runtime.presence as *const birnam_abi::namespace_presence::ApiV1;
     ROOT_REGISTERED.get_or_init(|| unsafe {
         (api.gcRegisterRootProvider)(mark_runtime_roots);
@@ -1463,9 +1466,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     }
     if unsafe { birnam_abi::namespace_presence::contains(presence, TCC_NAME.as_ptr().cast()) } == 0 {
         unsafe {
-            let _ = (api.exportObj)(TCC_VT_NAME.as_ptr().cast(), tcc_vt);
-            let _ = (api.exportObj)(UNIT_VT_NAME.as_ptr().cast(), unit_vt);
-            let _ = (api.exportObj)(TCC_NAME.as_ptr().cast(), runtime.tcc as Oop);
+            let _ = birnam_abi::namespace_export::export(exports, TCC_VT_NAME.as_ptr().cast(), tcc_vt);
+            let _ = birnam_abi::namespace_export::export(exports, UNIT_VT_NAME.as_ptr().cast(), unit_vt);
+            let _ = birnam_abi::namespace_export::export(exports, TCC_NAME.as_ptr().cast(), runtime.tcc as Oop);
         }
     }
 }
@@ -1489,8 +1492,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` must be the live host IdApi table or null for the documented fatal
 /// boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports) };
     ptr::null_mut()
 }
 
@@ -1537,3 +1540,5 @@ birnam_abi::string_dependency!();
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
+
+fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { RUNTIME.get().expect("module not initialized").exports as *const birnam_abi::namespace_export::ApiV1 }

@@ -1,11 +1,11 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include "../../abi/fixtures/storage-v1/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static unsigned root_calls;
-static int publish(const char *name) { return api->export_obj(name,api->nil_obj)==api->nil_obj; }
+static int publish(const char *name) { return fixture_namespace_export(name,api->nil_obj)==api->nil_obj; }
 static void *worker(void *name) { (void)publish(name);return NULL; }
 static void roots(MarkFn mark) { (void)mark;root_calls++;assert(publish("namespace-root-publication")); }
 static int inspect(void *context,const StorageViewV1 *view) { (void)view;return publish(context); }
@@ -14,6 +14,7 @@ int main(int argc,char **argv) {
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
     fixture_prepare_namespace(floor,argv[1]);
     api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);
+    (void)fixture_namespace_exports();
     if(!strcmp(argv[2],"null"))return publish(NULL);
     if(!strcmp(argv[2],"owner") || !strcmp(argv[2],"null-owner")) {
         pthread_t thread;void *name=!strcmp(argv[2],"owner")?(void *)"Object":NULL;

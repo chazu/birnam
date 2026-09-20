@@ -3037,7 +3037,7 @@ mod runtime {
         api.nilObj
     }
 
-    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
         if api.is_null() {
             abort("module_init received a null IdApi");
         }
@@ -3057,8 +3057,8 @@ mod runtime {
             let object = unsafe { (api_ref.alloc)(report_vt, 0) };
             unsafe {
                 birnam_abi::set_vtable_owner(api_ref, report_vt, object);
-                let _ = (api_ref.exportObj)(IMAGE_REPORT_VT_NAME.as_ptr().cast(), report_vt);
-                let _ = (api_ref.exportObj)(IMAGE_REPORT_NAME.as_ptr().cast(), object);
+                let _ = birnam_abi::namespace_export::export(exports, IMAGE_REPORT_VT_NAME.as_ptr().cast(), report_vt);
+                let _ = birnam_abi::namespace_export::export(exports, IMAGE_REPORT_NAME.as_ptr().cast(), object);
             }
             object
         };
@@ -3101,7 +3101,7 @@ mod runtime {
                 intern(api_ref, b"e:a:v:tx:op:historied:\0"),
                 collector_collect,
             );
-            let _ = (api_ref.exportObj)(COLLECTOR_VT_NAME.as_ptr().cast(), collector_vt);
+            let _ = birnam_abi::namespace_export::export(exports, COLLECTOR_VT_NAME.as_ptr().cast(), collector_vt);
             let system_vt = birnam_abi::namespace_import::import(imports, c"SystemVt".as_ptr());
             if !system_vt.is_null() {
                 (api_ref.method)(
@@ -3176,10 +3176,10 @@ mod runtime {
 
     /// Initialize the Rust Image shell against the process floor.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
         let _ = state;
         if RUNTIME.get().is_none() {
-            unsafe { bring_up(api, presence, imports) };
+            unsafe { bring_up(api, presence, imports, exports) };
         }
         ptr::null_mut()
     }

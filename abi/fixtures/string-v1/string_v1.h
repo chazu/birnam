@@ -1,5 +1,6 @@
 #ifndef BIRNAM_STRING_V1_H
 #define BIRNAM_STRING_V1_H
+#include "../namespace-export-v1/namespace_export_v1.h"
 #include <stddef.h>
 #include <stdint.h>
 /* Independent C mirror of the admitted native allocation and String contracts. */
@@ -38,6 +39,7 @@ typedef struct {
 typedef int (*StringDependencyV1)(StringApiV1 *);
 typedef StringApiV1 *(*StringProviderV1)(void);
 typedef StringApiV1 *(*StringPrepareV1)(IdApi *, const NativeAllocationV1 *);
+typedef StringApiV1 *(*StringPrepareV2)(IdApi *, const NamespaceExportV1 *, const NativeAllocationV1 *);
 _Static_assert(sizeof(NativeAllocationV1)==32, "native allocation extent");
 _Static_assert(sizeof(NativeAllocationPlanV1)==48, "native allocation plan extent");
 _Static_assert(sizeof(StringStorageV1)==80, "String storage extent");

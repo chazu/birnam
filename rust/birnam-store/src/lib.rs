@@ -2155,7 +2155,7 @@ unsafe fn register_globals_methods(runtime: &Runtime) {
     unsafe { (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -2242,11 +2242,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     }
     if unsafe { birnam_abi::namespace_presence::contains(presence, STORE_NAME.as_ptr().cast()) == 0 } {
         unsafe {
-            let _ = (api.exportObj)(STORE_VT_NAME.as_ptr().cast(), as_oop(runtime.store_vt));
-            let _ = (api.exportObj)(STORE_NAME.as_ptr().cast(), store);
-            let _ = (api.exportObj)(CELL_VT_NAME.as_ptr().cast(), as_oop(runtime.cell_vt));
-            let _ = (api.exportObj)(GLOBALS_VT_NAME.as_ptr().cast(), as_oop(runtime.globals_vt));
-            let _ = (api.exportObj)(GLOBALS_NAME.as_ptr().cast(), as_oop(runtime.globals));
+            let _ = birnam_abi::namespace_export::export(exports, STORE_VT_NAME.as_ptr().cast(), as_oop(runtime.store_vt));
+            let _ = birnam_abi::namespace_export::export(exports, STORE_NAME.as_ptr().cast(), store);
+            let _ = birnam_abi::namespace_export::export(exports, CELL_VT_NAME.as_ptr().cast(), as_oop(runtime.cell_vt));
+            let _ = birnam_abi::namespace_export::export(exports, GLOBALS_VT_NAME.as_ptr().cast(), as_oop(runtime.globals_vt));
+            let _ = birnam_abi::namespace_export::export(exports, GLOBALS_NAME.as_ptr().cast(), as_oop(runtime.globals));
         }
     }
 }
@@ -2271,10 +2271,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// null to request the documented fatal boundary. `_state` is an opaque host
 /// token and is not retained by this rung.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     // SAFETY: forwarded host contract; bring_up performs the null check and
     // retains only the process-owned table address.
-    unsafe { bring_up(api, presence, imports) };
+    unsafe { bring_up(api, presence, imports, exports) };
     ptr::null_mut()
 }
 

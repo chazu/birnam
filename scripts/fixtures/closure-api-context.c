@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include <assert.h>
@@ -46,19 +46,19 @@ int main(int argc, char **argv) {
     fixture_mount_object_model(api, argv[1]);
     api->gc_set_auto(0);
     void *tcc = dlopen(argv[2], RTLD_NOW | RTLD_LOCAL); assert(tcc);
-    ModuleInitFn tcc_init = (ModuleInitFn)dlsym(tcc, "module_init"); assert(tcc_init); fixture_attach_integer(api, tcc); tcc_init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    ModuleInitFn tcc_init = (ModuleInitFn)dlsym(tcc, "module_init"); assert(tcc_init); fixture_attach_integer(api, tcc); tcc_init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
     void *codegen = dlopen(argv[3], RTLD_NOW | RTLD_LOCAL); assert(codegen);
     ModuleInitFn init = (ModuleInitFn)dlsym(codegen, "module_init"); assert(init);
-    IdApi copied = *api; copied_import_slot=fixture_namespace_import; fixture_attach_integer(api, codegen); init(&copied,NULL,fixture_namespace_presence(),&copied_imports);
+    IdApi copied = *api; copied_import_slot=fixture_namespace_import; fixture_attach_integer(api, codegen); init(&copied,NULL,fixture_namespace_presence(),&copied_imports,fixture_namespace_exports());
     Attempt attempt = (Attempt)dlsym(codegen, "birnam_portable_block_or_inline_v1"); assert(attempt);
     New baseline = (New)dlsym(codegen, "birnam_portable_block_new_v1"); assert(baseline);
     OwnedNew owned_baseline = (OwnedNew)dlsym(codegen, "birnam_portable_materialized_block_new_v2"); assert(owned_baseline);
     Oop v1vt = api->proto(api->object_vt), v2vt = api->proto(api->object_vt);
-    api->set_layout(v1vt, NULL, 0, IDAPI_V10_SLOT_RAW); api->set_layout(v2vt, NULL, 0, IDAPI_V10_SLOT_RAW);
+    api->set_layout(v1vt, NULL, 0, IDAPI_V11_SLOT_RAW); api->set_layout(v2vt, NULL, 0, IDAPI_V11_SLOT_RAW);
     V1 *v1 = api->alloc(v1vt, sizeof(V1)); *v1 = (V1){1, sizeof(V1), admit, construct};
     V2 *v2 = api->alloc(v2vt, sizeof(V2)); *v2 = (V2){2, sizeof(V2), construct_owned};
-    api->export_obj("_BirnamPortableCodeApiV1", v1); api->export_obj("_BirnamPortableCodeApiV1Vt", v1vt);
-    api->export_obj("_BirnamPortableCodeApiV2", v2); api->export_obj("_BirnamPortableCodeApiV2Vt", v2vt);
+    fixture_namespace_export("_BirnamPortableCodeApiV1", v1); fixture_namespace_export("_BirnamPortableCodeApiV1Vt", v1vt);
+    fixture_namespace_export("_BirnamPortableCodeApiV2", v2); fixture_namespace_export("_BirnamPortableCodeApiV2Vt", v2vt);
     vt = api->proto(api->object_vt); code = api->alloc(api->object_vt, 0);
     owner = api->alloc(api->object_vt, 0); captures[0] = captures[1] = api->true_obj;
     copied_import_slot = import; copied.vtable_of = vtable; copied.object_payload_size = size;

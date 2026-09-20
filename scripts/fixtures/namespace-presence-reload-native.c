@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -15,7 +15,8 @@ static int incoming(void *context,const char *name) {
     early_checks++;
     return namespace_presence_contains_v1(original,name);
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports) {
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports) {
+    (void)exports;
     assert(api && !state && presence);original=presence;early_checks=0;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
     const char *slash=strrchr(info.dli_fname,'/');assert(slash);
@@ -27,7 +28,7 @@ void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,con
         assert(n>0 && (size_t)n<sizeof(path));
         void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
         ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
-        assert(!init(&copied,NULL,&selected,&copied_imports));
+        assert(!init(&copied,NULL,&selected,&copied_imports,exports));
         assert(early_checks==(i?2u:0u));
     }
     return NULL;

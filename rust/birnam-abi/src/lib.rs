@@ -1,4 +1,4 @@
-//! No-state C-layout mirror of the current `IdApi` v9 boundary.
+//! No-state C-layout mirror of the current `IdApi` v11 boundary.
 //!
 //! Raw data pointers are intentionally nullable. Function-pointer fields are
 //! non-null except for the explicitly optional method-overwrite hook.
@@ -25,6 +25,7 @@ pub mod namespace;
 pub mod namespace_names;
 pub mod namespace_presence;
 pub mod namespace_import;
+pub mod namespace_export;
 pub mod namespace_enumeration;
 pub mod text_view;
 pub mod error_value;
@@ -131,10 +132,10 @@ pub type TraceHook = unsafe extern "C" fn(Oop, MarkFn);
 pub type Finalizer = unsafe extern "C" fn(Oop);
 pub type MethodOverwriteHook = unsafe extern "C" fn(Oop, Oop);
 pub type IdInitFn = unsafe extern "C" fn() -> *mut IdApi;
-/// Native initialization receives the presence and import capabilities associated
+/// Native initialization receives the presence, import and export capabilities associated
 /// with `api`. All live selections and their code/context must outlive any retained module
 /// execution state; callers do not transfer ownership.
-pub type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void, *const namespace_presence::ApiV1, *const namespace_import::ApiV1) -> *mut c_void;
+pub type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void, *const namespace_presence::ApiV1, *const namespace_import::ApiV1, *const namespace_export::ApiV1) -> *mut c_void;
 
 /// Borrow a foreign read-only buffer while enforcing the ABI's null/count and
 /// alignment rules.
@@ -197,8 +198,6 @@ pub struct IdApi {
     pub method: unsafe extern "C" fn(Oop, Oop, Method),
     pub alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
 
-    pub exportObj: unsafe extern "C" fn(*const c_char, Oop) -> Oop,
-
     pub send: unsafe extern "C" fn(Oop, Oop, *const Oop, usize) -> Oop,
 
     pub nilObj: Oop,
@@ -231,7 +230,7 @@ pub struct IdApi {
 
 pub const ABI_DESCRIPTOR_MAGIC: [u8; 8] = *b"BIRNABI1";
 pub const ABI_TYPE_COUNT: usize = 8;
-pub const ABI_FIELD_COUNT: usize = 31;
+pub const ABI_FIELD_COUNT: usize = 30;
 
 const LAYOUT_KIND_TYPE: usize = 0;
 const LAYOUT_KIND_DATA_POINTER: usize = 1;
@@ -250,7 +249,7 @@ pub struct AbiLayoutEntryV1 {
 
 /// Pointer-free diagnostic description of the Rust mirror's actual layout.
 ///
-/// Entry order is the canonical order in `abi/idapi-v10.json`. Names and
+/// Entry order is the canonical order in `abi/idapi-v11.json`. Names and
 /// signatures remain owned by that manifest; this value supplies the Rust
 /// compiler's concrete sizes, alignments, offsets, nullability, and field kind.
 #[repr(C)]
@@ -302,7 +301,7 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
     magic: ABI_DESCRIPTOR_MAGIC,
     descriptor_version: 1,
     descriptor_size: size_of::<AbiDescriptorV1>(),
-    schema_version: 10,
+    schema_version: 11,
     target_arch: 1,   // aarch64
     target_os: 1,     // macOS
     target_abi: 0,    // none
@@ -334,7 +333,6 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         field_layout!(proto, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(method, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(alloc, false, LAYOUT_KIND_FUNCTION_POINTER),
-        field_layout!(exportObj, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(send, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(nilObj, true, LAYOUT_KIND_DATA_POINTER),
         field_layout!(trueObj, true, LAYOUT_KIND_DATA_POINTER),
@@ -363,7 +361,7 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         SLOT_CODE as usize,
         SLOT_UNKNOWN as usize,
     ],
-    fingerprint: [0xb0, 0x00, 0x5f, 0x93, 0xb3, 0x97, 0xd1, 0xcd, 0xb2, 0x2b, 0x2b, 0x26, 0x0c, 0x3d, 0x62, 0x4c, 0x48, 0x22, 0x21, 0x99, 0xce, 0x39, 0x1d, 0x44, 0x7c, 0x8c, 0x65, 0x17, 0x24, 0x31, 0xad, 0xef],
+    fingerprint: [0x12, 0x24, 0xe6, 0xa2, 0xfb, 0x37, 0xbf, 0x22, 0x73, 0xfc, 0xbf, 0x47, 0x65, 0x00, 0x72, 0xc2, 0xb6, 0x6b, 0x49, 0xd9, 0x07, 0x2c, 0xa6, 0x20, 0xdc, 0xf7, 0x24, 0x90, 0xe4, 0x9d, 0x6e, 0x0e],
 };
 
 macro_rules! assert_field_offset {
@@ -394,7 +392,7 @@ const _: () = {
     assert!(size_of::<Option<MethodOverwriteHook>>() == 8);
     assert!(size_of::<IdInitFn>() == 8);
     assert!(size_of::<ModuleInitFn>() == 8);
-    assert!(size_of::<IdApi>() == 248);
+    assert!(size_of::<IdApi>() == 240);
     assert!(align_of::<IdApi>() == 8);
 
     assert_field_offset!(dlopen, 0);
@@ -406,28 +404,27 @@ const _: () = {
     assert_field_offset!(proto, 48);
     assert_field_offset!(method, 56);
     assert_field_offset!(alloc, 64);
-    assert_field_offset!(exportObj, 72);
-    assert_field_offset!(send, 80);
-    assert_field_offset!(nilObj, 88);
-    assert_field_offset!(trueObj, 96);
-    assert_field_offset!(falseObj, 104);
-    assert_field_offset!(symbolName, 112);
-    assert_field_offset!(vtableOf, 120);
-    assert_field_offset!(gcSetStackBottom, 128);
-    assert_field_offset!(gcRegisterRootProvider, 136);
-    assert_field_offset!(gcCollect, 144);
-    assert_field_offset!(gcLiveCount, 152);
-    assert_field_offset!(setTraceHook, 160);
-    assert_field_offset!(gcSetAuto, 168);
-    assert_field_offset!(setFinalizer, 176);
-    assert_field_offset!(setLayout, 184);
-    assert_field_offset!(gcSetPrecise, 192);
-    assert_field_offset!(objectPayloadSize, 200);
-    assert_field_offset!(slotKind, 208);
-    assert_field_offset!(setMethodOverwriteHook, 216);
-    assert_field_offset!(vtableCount, 224);
-    assert_field_offset!(vtableAt, 232);
-    assert_field_offset!(vtableSelectorAt, 240);
+    assert_field_offset!(send, 72);
+    assert_field_offset!(nilObj, 80);
+    assert_field_offset!(trueObj, 88);
+    assert_field_offset!(falseObj, 96);
+    assert_field_offset!(symbolName, 104);
+    assert_field_offset!(vtableOf, 112);
+    assert_field_offset!(gcSetStackBottom, 120);
+    assert_field_offset!(gcRegisterRootProvider, 128);
+    assert_field_offset!(gcCollect, 136);
+    assert_field_offset!(gcLiveCount, 144);
+    assert_field_offset!(setTraceHook, 152);
+    assert_field_offset!(gcSetAuto, 160);
+    assert_field_offset!(setFinalizer, 168);
+    assert_field_offset!(setLayout, 176);
+    assert_field_offset!(gcSetPrecise, 184);
+    assert_field_offset!(objectPayloadSize, 192);
+    assert_field_offset!(slotKind, 200);
+    assert_field_offset!(setMethodOverwriteHook, 208);
+    assert_field_offset!(vtableCount, 216);
+    assert_field_offset!(vtableAt, 224);
+    assert_field_offset!(vtableSelectorAt, 232);
 
     assert!(SLOT_RAW == 0);
     assert!(SLOT_OOP == 1);
@@ -444,8 +441,8 @@ mod tests {
         assert_eq!((size_of::<Oop>(), align_of::<Oop>()), (8, 8));
         assert_eq!((size_of::<Method>(), align_of::<Method>()), (8, 8));
         assert_eq!(size_of::<Option<MethodOverwriteHook>>(), 8);
-        assert_eq!((size_of::<IdApi>(), align_of::<IdApi>()), (248, 8));
-        assert_eq!(offset_of!(IdApi, vtableSelectorAt), 240);
+        assert_eq!((size_of::<IdApi>(), align_of::<IdApi>()), (240, 8));
+        assert_eq!(offset_of!(IdApi, vtableSelectorAt), 232);
         assert_eq!(
             [SLOT_RAW, SLOT_OOP, SLOT_CODE, SLOT_UNKNOWN],
             [0, 1, 2, 255]
@@ -547,9 +544,9 @@ mod v10_manifest_tests {
     use super::*;
     use sha2::{Digest, Sha256};
     #[test]
-    fn current_descriptor_matches_independent_v10_manifest() {
+    fn current_descriptor_matches_independent_v11_manifest() {
         let mut manifest: serde_json::Value =
-            serde_json::from_str(include_str!("../../../abi/idapi-v10.json")).unwrap();
+            serde_json::from_str(include_str!("../../../abi/idapi-v11.json")).unwrap();
         let expected = manifest
             .as_object_mut()
             .unwrap()
@@ -569,7 +566,7 @@ mod v10_manifest_tests {
             assert_eq!(field["size"], actual.size);
             assert_eq!(field["alignment"], actual.alignment);
             for removed in [
-                "exportedNameOf", "isExported", "import",
+                "exportedNameOf", "isExported", "import", "exportObj",
                 "string_vt", "mkString", "stringBytes",
                 "smallint_vt", "mkSmallInt", "smallIntValue", "isSmallInt",
                 "ensurePrivateVtable",

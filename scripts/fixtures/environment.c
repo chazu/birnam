@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -35,7 +35,7 @@ static void roots(MarkFn mark) {
 }
 static void registered(RootProvider provider) { registrations++;api->gc_register_root_provider(provider); }
 static Oop allocate(Oop type,size_t size) { allocations++;if(capture) printf("alloc %zu\n",size);return api->alloc(type,size); }
-static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports); }
+static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports()); }
 static Oop intern(const char *name) {
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(reentry_mode==1 && !strcmp(name,"getEnv:")) reenter();
@@ -95,7 +95,7 @@ static const uint8_t *bytes(void *context,Oop value,size_t *length) {
 static void method(Oop type,Oop selector,Method implementation) {
     if(capture) printf("method %s\n",api->symbol_name(selector));
     if(reentry_mode==2 && selector==api->intern("print:")) reenter();
-    if(change_snapshot && selector==api->intern("writeFile:contents:")) { change_snapshot=0;map_generation=1;api->export_obj("SystemVt",alternate); }
+    if(change_snapshot && selector==api->intern("writeFile:contents:")) { change_snapshot=0;map_generation=1;fixture_namespace_export("SystemVt",alternate); }
     if(selector==api->intern("getEnv:") || (selectors[0] && (selector==selectors[0] || selector==selectors[1]))) {
         bindings++;seen_selector=selector;seen_target=type;env_method=implementation;
         if(expected_target) assert(type==expected_target);
@@ -121,7 +121,7 @@ static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *prese
         assert(!bindings && !registrations && allocations==before && !fixture_namespace_contains("System"));validate(image,0);
     }
     fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
-    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap);
+    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap,fixture_namespace_exports());
 }
 static Oop construct(Oop self,const Oop *args,size_t count) {
     assert(args && count==2 && args[0]==api->intern("ioError"));calls++;seen_factory=self;
@@ -136,7 +136,7 @@ int main(int argc,char **argv) {
     reentry_mode=!strcmp(argv[4],"first-getenv-intern-reentry")?1:(!strcmp(argv[4],"first-print-binding-reentry")?2:0);
     snprintf(key,sizeof(key),"BIRNAM_81AR_%ld",(long)getpid());assert(!setenv(key,"ready",1));strcpy(lookup_buffer,key);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0);api->gc_register_root_provider(roots);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0);api->gc_register_root_provider(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;fixture_string->make=make;fixture_string->bytes=bytes;
     env_name=text((const uint8_t *)key,strlen(key));bad_name=text((const uint8_t *)"\xff",1);
     selected=*api;selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected.vtable_of=vtable;selected_presence_slot=exported;selected_import_slot=imported;selected.send=send;
@@ -176,13 +176,13 @@ int main(int argc,char **argv) {
     begin("fresh factory replacement and custom lookup");assert(failure()==answer);api->method(type,api->intern("kind:message:"),construct_second);assert(failure()==second);
     Oop meta=api->proto(api->vtable_vt);api->method(meta,api->intern("lookup"),custom_lookup);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){type,meta},2);assert(failure()==answer && failure()==second && lookups==2);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){type,api->vtable_vt},2);api->method(type,api->intern("kind:message:"),construct);end();
     assert(!setenv(key,"ready",1));api->method(system_type,api->intern("getEnv:"),replacement);begin("copied method survives replacement");expect_bytes(env_method(NULL,&env_name,1),(const uint8_t *)"ready",5);end();
-    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports);end();assert(lookup(system_type,api->intern("getEnv:"))==env_method);
+    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports());end();assert(lookup(system_type,api->intern("getEnv:"))==env_method);
     if(fixture_environment) { IdApi registration=other;registration.intern=forbidden_intern;fixture_environment->install(&registration,&other,&other_presence,&other_imports,system_type,api->intern("getEnv:")); }
     begin("retained execution after reload");assert(failure()==answer);end();
     selectors[0]=api->intern("environment-test-0");selectors[1]=api->intern("environment-test-1");alternate=api->proto(api->object_vt);expected_target=system_type;map_selectors=change_snapshot=1;map_generation=0;
-    begin("earlier registration keeps behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports);end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==env_method);
-    expected_target=alternate;begin("next installation adopts current behavior and selector");prelude_init(&other,NULL,&other_presence,&other_imports);end();assert(seen_selector==selectors[1] && seen_target==alternate);
-    api->export_obj("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
+    begin("earlier registration keeps behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports());end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==env_method);
+    expected_target=alternate;begin("next installation adopts current behavior and selector");prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports());end();assert(seen_selector==selectors[1] && seen_target==alternate);
+    fixture_namespace_export("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);expect_bytes(env_method(alias,&env_name,1),(const uint8_t *)"ready",5);assert(failure()==answer);
     fixture_string->make=original_make;fixture_string->bytes=original_bytes;fixture_string->context=string_context;assert(!unsetenv(key));
     printf("environment: %zu name/value/receiver cases, Unicode, missing values, live callbacks, nested lookup, errors, registration reentry, snapshots and GC passed mode=%s\n",cases,argv[4]);

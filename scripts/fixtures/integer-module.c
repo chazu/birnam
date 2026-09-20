@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include <assert.h>
@@ -24,7 +24,7 @@ static void mount(const char *path) {
         assert(attach(&copied) == 0); /* no silent remount onto another table */
     }
     fixture_attach_integer(api, image);
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
 }
 static Method lookup(Oop behavior, const char *name) {
     Oop selector = api->intern(name);
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
     assert(cloned != lower && api->vtable_of(cloned) == api->object_vt);
     assert(api->send(lower, api->intern("=="), &lower, 1) == api->true_obj);
     assert(!fixture_namespace_import("Integer"));
-    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_mount_integer(api, argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
     assert(lookup(fixture_integer->behavior, "+"));
     mount(argv[3]); /* Errors are independently mounted, without Prelude. */
     const int64_t inputs[] = {INT64_MIN, INT64_MIN + 1, -17, -1, 0, 1, 17,
@@ -114,12 +114,12 @@ int main(int argc, char **argv) {
     assert(!fixture_is_integer(NULL) && !fixture_is_integer((void *)(uintptr_t)0x12345));
     /* Module roots survive namespace rebinding in precise collection. */
     Oop prototype = fixture_integer->prototype, behavior = fixture_integer->behavior;
-    api->export_obj("Integer", api->nil_obj);
-    api->export_obj("IntegerVt", api->nil_obj);
+    fixture_namespace_export("Integer", api->nil_obj);
+    fixture_namespace_export("IntegerVt", api->nil_obj);
     api->gc_set_precise(1); api->gc_set_stack_bottom(0); api->gc_collect();
     assert(api->vtable_of(prototype) == behavior && fixture_integer_value(prototype) == 0);
     assert(fixture_integer_value(fixture_integer_make(INT64_MIN)) == INT64_MIN);
-    api->export_obj("Integer", prototype); api->export_obj("IntegerVt", behavior);
+    fixture_namespace_export("Integer", prototype); fixture_namespace_export("IntegerVt", behavior);
     printf("integer-module: %u oracle cases, mixed values, identity, errors and replacement before/after Prelude passed\n", checked);
     return 0;
 }

@@ -1,6 +1,6 @@
 //! Range representation, construction and all existing Range methods.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::range::ApiV3;
+use birnam_abi::range::ApiV4;
 use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -117,14 +117,14 @@ unsafe extern "C" fn set_layout(api_pointer: *mut IdApi) {
         )
     };
 }
-unsafe extern "C" fn publish(api_pointer: *mut IdApi) {
+unsafe extern "C" fn publish(api_pointer: *mut IdApi, exports: *const birnam_abi::namespace_export::ApiV1) {
     let api = unsafe { &*api_pointer };
     let behavior = family().range_vt as Oop;
     let prototype = IDENTITY_ROOTS[1].load(Ordering::Acquire) as Oop;
     unsafe {
         birnam_abi::set_vtable_owner(api, behavior, prototype);
-        (api.exportObj)(RANGE_VT_NAME.as_ptr().cast(), behavior);
-        (api.exportObj)(RANGE_NAME.as_ptr().cast(), prototype);
+        birnam_abi::namespace_export::export(exports, RANGE_VT_NAME.as_ptr().cast(), behavior);
+        birnam_abi::namespace_export::export(exports, RANGE_NAME.as_ptr().cast(), prototype);
     }
 }
 unsafe fn empty_range(api: &IdApi, behavior: Oop, start: i64, end: i64) -> Oop {
@@ -384,9 +384,9 @@ unsafe extern "C" fn install(
         );
     }
 }
-static API: ApiV3 = ApiV3 {
-    version: 3,
-    byte_size: size_of::<ApiV3>(),
+static API: ApiV4 = ApiV4 {
+    version: 4,
+    byte_size: size_of::<ApiV4>(),
     prepare: Some(prepare),
     finish_prototype: Some(finish_prototype),
     set_layout: Some(set_layout),
@@ -394,7 +394,7 @@ static API: ApiV3 = ApiV3 {
     publish: Some(publish),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
     if api.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -402,7 +402,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence:
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_range_provider_v3() -> *const ApiV3 {
+pub extern "C" fn birnam_range_provider_v4() -> *const ApiV4 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {

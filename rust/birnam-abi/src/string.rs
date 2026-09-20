@@ -37,8 +37,9 @@ pub struct StringApiV1 {
     pub storage: *const StringStorageV1,
 }
 pub type StringDependencyV1 = unsafe extern "C" fn(*mut StringApiV1) -> c_int;
-pub type StringPrepareV1 = unsafe extern "C" fn(
+pub type StringPrepareV2 = unsafe extern "C" fn(
     *mut crate::IdApi,
+    *const crate::namespace_export::ApiV1,
     *const crate::native_allocation::NativeAllocationV1,
 ) -> *mut StringApiV1;
 pub type StringProviderV1 = unsafe extern "C" fn() -> *mut StringApiV1;

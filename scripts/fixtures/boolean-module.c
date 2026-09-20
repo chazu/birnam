@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -13,7 +13,7 @@ static void mount(const char *path, IdApi *selected) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
 }
 static Oop send0(Oop receiver, const char *name) {
     return api->send(receiver,api->intern(name),NULL,0);
@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
     int baseline=argc==6;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     mount(argv[2],api); /* object-model, before either Boolean or Prelude */
     Oop true_vt=api->vtable_of(api->true_obj);
@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
     Oop branch_vt=api->proto(api->object_vt);
     api->method(branch_vt,api->intern("value"),value);
     Oop left=api->alloc(branch_vt,0), right=api->alloc(branch_vt,0);
-    api->export_obj("BooleanTestLeft",left); api->export_obj("BooleanTestRight",right);
+    fixture_namespace_export("BooleanTestLeft",left); fixture_namespace_export("BooleanTestRight",right);
     Oop branches[]={left,right}, receivers[]={api->false_obj,api->true_obj};
     unsigned checked=0;
     for(unsigned truth=0;truth<2;truth++) {
@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
     /* Conditional methods intentionally accept inherited receivers. Other
        operators and printing require the exact singleton identities. */
     Oop inherited=api->alloc(true_vt,0);
-    api->export_obj("BooleanTestInherited",inherited);
+    fixture_namespace_export("BooleanTestInherited",inherited);
     assert(send(inherited,"ifTrue:",left)==left);
     assert(send(inherited,"ifFalse:",left)==api->nil_obj);
     assert(lookup(false_vt,"ifFalse:")(inherited,&right,1)==right);
@@ -125,10 +125,10 @@ int main(int argc, char **argv) {
     fixture_string->make=original_string;
     Method not=lookup(true_vt,"not"); api->method(true_vt,api->intern("not"),identity);
     assert(send0(api->false_obj,"not")==api->false_obj);
-    api->export_obj("Boolean",api->nil_obj);
+    fixture_namespace_export("Boolean",api->nil_obj);
     mount(argv[3],&boolean_api);
     assert(lookup(true_vt,"not")==not && api->vtable_of(api->false_obj)==false_vt);
-    assert(fixture_namespace_import("Boolean")==api->nil_obj); api->export_obj("Boolean",api->true_obj);
+    assert(fixture_namespace_import("Boolean")==api->nil_obj); fixture_namespace_export("Boolean",api->true_obj);
     api->method(true_vt,api->intern("not"),identity);
     if(!baseline) {
         mount(argv[4],api); /* Later Prelude must preserve Boolean replacements. */

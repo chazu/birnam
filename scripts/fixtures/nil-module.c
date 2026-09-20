@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -11,7 +11,7 @@ static void mount(const char *path, IdApi *selected) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
 }
 static Oop send0(Oop receiver, const char *name) {
     return api->send(receiver,api->intern(name),NULL,0);
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     int baseline=argc==6;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     mount(argv[2],api); /* object-model for Collection in the baseline/later check */
     Oop nil_vt=api->vtable_of(api->nil_obj);
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
     Method methods[]={lookup(api->object_vt,"isNil"),lookup(api->object_vt,"notNil"),
         lookup(nil_vt,"isNil"),lookup(nil_vt,"notNil"),lookup(nil_vt,"printString")};
     Oop ordinary=api->alloc(api->object_vt,0), inherited=api->alloc(nil_vt,0);
-    api->export_obj("NilTestOrdinary",ordinary); api->export_obj("NilTestInherited",inherited);
+    fixture_namespace_export("NilTestOrdinary",ordinary); fixture_namespace_export("NilTestInherited",inherited);
     Oop receivers[]={api->nil_obj,api->true_obj,api->false_obj,ordinary,inherited,NULL};
     Oop expected[]={api->false_obj,api->true_obj,api->true_obj,api->false_obj};
     unsigned checked=0;
@@ -69,10 +69,10 @@ int main(int argc, char **argv) {
     nil_api.false_obj=ordinary; assert(send0(api->nil_obj,"notNil")==ordinary); nil_api.false_obj=api->false_obj;
     api->method(nil_vt,api->intern("isNil"),identity);
     assert(send0(api->nil_obj,"isNil")==api->nil_obj);
-    api->export_obj("nil",ordinary);
+    fixture_namespace_export("nil",ordinary);
     mount(argv[3],&nil_api);
     assert(lookup(nil_vt,"isNil")==methods[2] && api->vtable_of(api->nil_obj)==nil_vt);
-    assert(fixture_namespace_import("nil")==ordinary); api->export_obj("nil",api->nil_obj);
+    assert(fixture_namespace_import("nil")==ordinary); fixture_namespace_export("nil",api->nil_obj);
     api->method(nil_vt,api->intern("isNil"),identity);
     api->method(api->object_vt,api->intern("notNil"),identity);
     if(!baseline) {

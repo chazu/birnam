@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "collect-support.h"
@@ -32,17 +32,17 @@ static void mount_trace(const char *floor_path, void *floor) {
     const char *slash=strrchr(floor_path,'/'); assert(slash); char path[PATH_MAX];
     snprintf(path,sizeof(path),"%.*s/libbirnam_trace.dylib",(int)(slash-floor_path),floor_path);
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
     const TraceLiveApiV1 *provided=((TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"))();
     actual_trace=provided->trace;
     TraceLiveApiV1 watched={1,sizeof(watched),traced};
     assert(((TraceLiveDependencyV1)api->dlsym_fn(floor,"birnam_trace_dependency_v1"))(&watched)==1);
     fixture_mount_collect(api,floor_path);
 }
-static void mount(const char *path, IdApi *selected) {
+static void mount(const char *path, IdApi *selected,const NamespaceExportV1 *exports) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image);
     fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),exports);
 }
 static Oop send0(Oop receiver,const char *name) { return api->send(receiver,api->intern(name),NULL,0); }
 static Oop send(Oop receiver,const char *name,Oop argument) { return api->send(receiver,api->intern(name),&argument,1); }
@@ -81,13 +81,14 @@ static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(count==3 && kinds[0]==0 && kinds[1]==0 && kinds[2]==0 && rest==0) behavior=type;
     api->set_layout(type,kinds,count,rest);
 }
-static Oop publish(const char *name,Oop value) {
+static Oop publish(void *context,const char *name,Oop value) {
+    (void)context;
     if(!strcmp(name,"StringBuilder")) {
         publications++; assert(value==prototype);
         Oop copy=send0(value,"new"); assert(copy!=value && api->vtable_of(copy)==behavior);
         api->gc_collect(); expect_size(copy,0);
     }
-    return api->export_obj(name,value);
+    return fixture_namespace_export(name,value);
 }
 static Oop counted_string(void *context,const uint8_t *bytes,size_t length) {
     string_calls++; api->gc_collect(); return original_make(context,bytes,length);
@@ -117,30 +118,30 @@ static void observed_cleanup(Oop object) {
 static void seed_collections(void) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"};
     Oop types[6];
-    for(size_t i=0;i<6;i++) { types[i]=api->proto(api->object_vt); api->export_obj(names[i],types[i]); }
-    api->export_obj("Collection",types[0]);
+    for(size_t i=0;i<6;i++) { types[i]=api->proto(api->object_vt); fixture_namespace_export(names[i],types[i]); }
+    fixture_namespace_export("Collection",types[0]);
     Oop vector=api->alloc(types[2],40), range=api->alloc(types[3],16), map=api->alloc(types[4],16);
     memset(vector,0,40); memset(range,0,16); memset(map,0,16);
-    api->export_obj("Vector",vector); api->export_obj("Range",range); api->export_obj("Map",map);
+    fixture_namespace_export("Vector",vector); fixture_namespace_export("Range",range); fixture_namespace_export("Map",map);
 }
 int main(int argc,char **argv) {
     assert(argc==7 || argc==8); baseline=argc==8;
     int adopted=strstr(argv[6],"adopted")!=NULL, present=strstr(argv[6],"present")!=NULL;
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports()); mount(argv[2],api); mount(argv[3],api);
+    mount_trace(argv[1],floor); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports()); mount(argv[2],api,fixture_namespace_exports()); mount(argv[3],api,fixture_namespace_exports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     if(present) seed_collections();
     Oop adopted_type=NULL, adopted_prototype=NULL;
     if(adopted) {
         adopted_type=api->proto(api->object_vt); adopted_prototype=api->alloc(adopted_type,sizeof(Builder));
         memset(adopted_prototype,0,sizeof(Builder)); prototype=adopted_prototype;
-        api->export_obj("StringBuilderVt",adopted_type); api->export_obj("StringBuilder",adopted_prototype);
+        fixture_namespace_export("StringBuilderVt",adopted_type); fixture_namespace_export("StringBuilder",adopted_prototype);
     }
     builder_api=*api; builder_api.alloc=allocate; builder_api.set_finalizer=finalizer;
-    builder_api.intern=intern; builder_api.set_layout=layout; builder_api.export_obj=publish;
+    builder_api.intern=intern; builder_api.set_layout=layout; NamespaceExportV1 builder_exports={1,sizeof(NamespaceExportV1),NULL,publish};
     builder_api.gc_register_root_provider=register_roots;
-    initializing=1; force_preparation_gc=!baseline; mount(argv[4],&builder_api); initializing=0;
+    initializing=1; force_preparation_gc=!baseline; mount(argv[4],&builder_api,&builder_exports); initializing=0;
     assert(registrations==1 && roots && behavior && prototype && publications==(unsigned)!present);
     if(!baseline) assert(collections>0);
     if(adopted) assert(behavior==adopted_type && prototype==adopted_prototype);
@@ -149,12 +150,12 @@ int main(int argc,char **argv) {
     else assert(fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     assert(vtable_parent(api,behavior)==api->object_vt);
     if(!present) assert(vtable_owner(api,behavior)==prototype);
-    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V10_SLOT_RAW);
+    for(size_t i=0;i<4;i++) assert(api->slot_kind(behavior,i)==IDAPI_V11_SLOT_RAW);
     print_selector=api->intern("printString"); roots(record_mark); assert(marked==3);
     Method create=lookup("new"), clone=lookup("clone"), append=lookup("add:"), add_byte=lookup("addByte:");
     assert(create==clone && create && append && add_byte && lookup("asString")==lookup("printString"));
     allocations=finalizers=0;
-    Oop builder=send0(prototype,"new"); api->export_obj("BuilderTestRoot",builder);
+    Oop builder=send0(prototype,"new"); fixture_namespace_export("BuilderTestRoot",builder);
     assert(allocations==1 && finalizers==1 && builder!=prototype && api->vtable_of(builder)==behavior);
     assert(create(api->true_obj,NULL,1)==api->nil_obj && clone(builder,NULL,2)==api->nil_obj);
     Oop unrelated=create(api->true_obj,NULL,0); assert(api->vtable_of(unrelated)==behavior);
@@ -187,8 +188,8 @@ int main(int argc,char **argv) {
     send(inherited,"addByte:",fixture_integer_make('i')); expect_bytes(send0(inherited,"asString"),(const uint8_t *)"i",1);
     assert(api->vtable_of(send0(inherited,"clone"))==behavior);
     Oop printer_type=api->proto(api->object_vt), printer=api->alloc(printer_type,0);
-    api->export_obj("BuilderTestPrinter",printer);
-    reentrant_builder=send0(prototype,"new"); api->export_obj("ReentrantBuilder",reentrant_builder);
+    fixture_namespace_export("BuilderTestPrinter",printer);
+    reentrant_builder=send0(prototype,"new"); fixture_namespace_export("ReentrantBuilder",reentrant_builder);
     api->method(printer_type,print_selector,print_first); send(reentrant_builder,"add:",printer);
     api->method(printer_type,print_selector,print_reentrant); send(reentrant_builder,"add:",printer);
     assert(conversion_calls==2); expect_bytes(send0(reentrant_builder,"asString"),(const uint8_t *)"one!two",7);
@@ -208,15 +209,15 @@ int main(int argc,char **argv) {
     api->gc_set_precise(1); api->gc_collect(); assert(finalized==1); victim=NULL; api->gc_collect(); assert(finalized==1);
     /* Match the ordinary next rung and preserve a replacement through it. */
     Method size=lookup("size"); api->method(behavior,api->intern("size"),identity);
-    if(!baseline) { mount(argv[5],api); assert(lookup("size")==identity); }
+    if(!baseline) { mount(argv[5],api,fixture_namespace_exports()); assert(lookup("size")==identity); }
     else api->method(behavior,api->intern("size"),size);
     /* Vector present: own reinitialization reinstalls methods but not exports. */
-    api->export_obj("Vector",api->true_obj); api->export_obj("StringBuilder",api->nil_obj); api->export_obj("StringBuilderVt",api->nil_obj);
-    unsigned before=publications; mount(argv[4],&builder_api); assert(lookup("size")==size && publications==before);
+    fixture_namespace_export("Vector",api->true_obj); fixture_namespace_export("StringBuilder",api->nil_obj); fixture_namespace_export("StringBuilderVt",api->nil_obj);
+    unsigned before=publications; mount(argv[4],&builder_api,&builder_exports); assert(lookup("size")==size && publications==before);
     assert(fixture_namespace_import("StringBuilder")==api->nil_obj && fixture_namespace_import("StringBuilderVt")==api->nil_obj);
     api->gc_collect(); expect_size(builder,length); marked=0; roots(record_mark); assert(marked==3 && registrations==1);
     /* Vector absent: cached canonical identities are republished, as before. */
-    api->export_obj("Vector",NULL); mount(argv[4],&builder_api);
+    fixture_namespace_export("Vector",NULL); mount(argv[4],&builder_api,&builder_exports);
     assert(publications==before+1 && fixture_namespace_import("StringBuilder")==prototype && fixture_namespace_import("StringBuilderVt")==behavior);
     printf("string-builder: %zu byte/growth cases, empty clone/new, inherited receivers, live callbacks, conversion reentry, cleanup, roots and Vector-guarded reinitialization passed mode=%s%s\n",checked,argv[6],baseline?" baseline":"");
 }

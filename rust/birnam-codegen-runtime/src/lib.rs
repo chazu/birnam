@@ -232,6 +232,7 @@ const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    exports: usize,
     presence: usize,
     imports: usize,
     rust_codegen_vt: usize,
@@ -1668,7 +1669,7 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
 }
 
 unsafe fn borrowed_address(api: &IdApi, address: usize) -> Option<Oop> {
-    unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), address, KIND_BORROWED) }
+    unsafe { foreign_address::allocate(api, execution_presence(), execution_imports(), execution_exports(), address, KIND_BORROWED) }
 }
 
 unsafe fn foreign_address_value(api: &IdApi, object: Oop) -> Option<usize> {
@@ -12656,7 +12657,7 @@ unsafe extern "C" fn rust_reflect_export_vtable(
             api.nilObj
         };
     }
-    if unsafe { (api.exportObj)(name.as_ptr(), vt) }.is_null() {
+    if unsafe { birnam_abi::namespace_export::export(execution_exports(), name.as_ptr(), vt) }.is_null() {
         note_error(b"RustReflect exportVtableOf:as: export failed");
         return api.nilObj;
     }
@@ -12688,7 +12689,7 @@ unsafe extern "C" fn rust_reflect_export_object(
             api.nilObj
         };
     }
-    if unsafe { (api.exportObj)(name.as_ptr(), values[0]) }.is_null() {
+    if unsafe { birnam_abi::namespace_export::export(execution_exports(), name.as_ptr(), values[0]) }.is_null() {
         note_error(b"RustReflect exportObject:as: export failed");
         return api.nilObj;
     }
@@ -12961,7 +12962,7 @@ unsafe extern "C" fn rust_reflect_collect_fact(
     unsafe { api(runtime()) }.nilObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -13051,6 +13052,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let store = unsafe { birnam_abi::namespace_import::import(imports, STORE_NAME.as_ptr().cast()) };
         Runtime {
             api: api_pointer as usize,
+            exports: exports as usize,
             presence: presence as usize,
             imports: imports as usize,
             rust_codegen_vt: rust_codegen_vt as usize,
@@ -13069,6 +13071,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
     });
     let api = unsafe { api(&runtime) };
+    let exports = runtime.exports as *const birnam_abi::namespace_export::ApiV1;
     ROOT_REGISTERED.get_or_init(|| unsafe {
         (api.gcRegisterRootProvider)(mark_live_units);
     });
@@ -13078,7 +13081,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             intern(api, EMIT_SELECTOR),
             rust_codegen_emit,
         );
-        (api.exportObj)(
+        birnam_abi::namespace_export::export(exports,
             PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast(),
             runtime.portable_mapped_unit_vt as Oop,
         );
@@ -13710,32 +13713,32 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             intern(api, b"value:value:value:\0"),
             rust_reflect_collect_fact,
         );
-        let _ = (api.exportObj)(
+        let _ = birnam_abi::namespace_export::export(exports,
             ADAPTER_CODEGEN_VT_NAME.as_ptr().cast(),
             runtime.adapter_codegen_vt as Oop,
         );
-        let _ = (api.exportObj)(
+        let _ = birnam_abi::namespace_export::export(exports,
             ADAPTER_CODEGEN_NAME.as_ptr().cast(),
             runtime.adapter_codegen as Oop,
         );
-        let _ = (api.exportObj)(
+        let _ = birnam_abi::namespace_export::export(exports,
             ADAPTER_REFLECT_VT_NAME.as_ptr().cast(),
             runtime.adapter_reflect_vt as Oop,
         );
-        let _ = (api.exportObj)(
+        let _ = birnam_abi::namespace_export::export(exports,
             ADAPTER_REFLECT_NAME.as_ptr().cast(),
             runtime.adapter_reflect as Oop,
         );
-        let _ = (api.exportObj)(
+        let _ = birnam_abi::namespace_export::export(exports,
             ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast(),
             runtime.adapter_collector_vt as Oop,
         );
         if birnam_abi::namespace_presence::contains(execution_presence(), DISCARD_RECEIPT_NAME.as_ptr().cast()) == 0 {
-            let _ = (api.exportObj)(
+            let _ = birnam_abi::namespace_export::export(exports,
                 DISCARD_RECEIPT_VT_NAME.as_ptr().cast(),
                 runtime.discard_receipt_vt as Oop,
             );
-            let _ = (api.exportObj)(
+            let _ = birnam_abi::namespace_export::export(exports,
                 DISCARD_RECEIPT_NAME.as_ptr().cast(),
                 runtime.discard_receipt as Oop,
             );
@@ -13755,17 +13758,17 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
                     if birnam_abi::namespace_import::import(execution_imports(), name.as_ptr().cast()) != value {
                         abort("RustCodegen canonical export conflicts with an existing authority");
                     }
-                } else if (api.exportObj)(name.as_ptr().cast(), value).is_null() {
+                } else if birnam_abi::namespace_export::export(exports, name.as_ptr().cast(), value).is_null() {
                     abort("RustCodegen canonical export failed");
                 }
             }
         }
         if birnam_abi::namespace_presence::contains(execution_presence(), RUST_CODEGEN_NAME.as_ptr().cast()) == 0 {
-            let _ = (api.exportObj)(
+            let _ = birnam_abi::namespace_export::export(exports,
                 RUST_CODEGEN_VT_NAME.as_ptr().cast(),
                 runtime.rust_codegen_vt as Oop,
             );
-            let _ = (api.exportObj)(
+            let _ = birnam_abi::namespace_export::export(exports,
                 RUST_CODEGEN_NAME.as_ptr().cast(),
                 runtime.rust_codegen as Oop,
             );
@@ -13789,8 +13792,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports) };
     ptr::null_mut()
 }
 
@@ -14693,3 +14696,5 @@ birnam_abi::namespace_names_dependency!();
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
+
+fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { runtime().exports as *const birnam_abi::namespace_export::ApiV1 }

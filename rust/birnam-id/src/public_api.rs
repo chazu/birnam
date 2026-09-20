@@ -60,16 +60,6 @@ unsafe extern "C" fn api_intern(name: *const c_char) -> Oop {
         .unwrap_or_else(|_| boundary::fatal_invariant("IdApi.intern name contains embedded NUL"))
 }
 
-unsafe extern "C" fn api_export_object(name: *const c_char, object: Oop) -> Oop {
-    boundary::require_invariant(!name.is_null(), "IdApi.exportObj name is null");
-    // SAFETY: the C ABI requires a live NUL-terminated name pointer, and the
-    // bytes do not escape this synchronous call.
-    let bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
-    runtime()
-        .export(bytes, object)
-        .unwrap_or_else(|_| boundary::fatal_invariant("IdApi.exportObj name contains embedded NUL"))
-}
-
 unsafe extern "C" fn api_proto(parent: Oop) -> Oop {
     boundary::require_invariant(!parent.is_null(), "IdApi.proto parent is null");
     runtime().create_vtable(parent)
@@ -260,7 +250,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         proto: api_proto,
         method: api_method,
         alloc: canonical_numeric_functions().alloc,
-        exportObj: api_export_object,
         send: api_send,
         nilObj: canonical.nil,
         trueObj: canonical.true_object,
@@ -522,9 +511,6 @@ pub unsafe extern "C" fn birnam_integer_dependency_v1(ops: *mut birnam_abi::inte
 pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
     use crate::runtime::with_active;
     unsafe extern "C" fn proto(parent: Oop) -> Oop { with_active(|r| r.create_vtable(parent)) }
-    unsafe extern "C" fn export(name: *const c_char, value: Oop) -> Oop {
-        with_active(|r| r.export(unsafe { CStr::from_ptr(name) }.to_bytes(), value).unwrap())
-    }
     unsafe extern "C" fn intern(name: *const c_char) -> Oop {
         with_active(|r| r.intern(unsafe { CStr::from_ptr(name) }.to_bytes()).unwrap())
     }
@@ -539,7 +525,7 @@ pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
         with_active(|r| { r.add_method(vt, selector, method); });
     }
     api.method = method;
-    api.proto = proto; api.exportObj = export; api.intern = intern;
+    api.proto = proto; api.intern = intern;
     api.setLayout = layout; api.send = send;
     // alloc and vtableOf already route through the active runtime. Every
     // callback used by Instance is local to this test's owner-thread entry.
@@ -661,4 +647,25 @@ pub(crate) fn namespace_import_access() -> birnam_abi::namespace_import::FloorV1
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_namespace_import_provider_v1() -> *mut birnam_abi::namespace_import::ApiV1 {
     runtime().namespace_import()
+}
+
+
+pub(crate) fn namespace_export_access() -> birnam_abi::namespace_export::FloorV1 {
+    unsafe extern "C" fn access(_: *mut c_void) -> *mut c_void {
+        #[cfg(not(test))]
+        { runtime().namespace_interner_context() }
+        #[cfg(test)]
+        { crate::runtime::with_active(|runtime| runtime.namespace_interner_context()) }
+    }
+    birnam_abi::namespace_export::FloorV1 {
+        version: 1,
+        byte_size: size_of::<birnam_abi::namespace_export::FloorV1>(),
+        context: core::ptr::null_mut(), access: Some(access),
+        intern: Some(crate::runtime::namespace_intern),
+        mirror: Some(crate::runtime::namespace_mirror),
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_namespace_export_provider_v1() -> *mut birnam_abi::namespace_export::ApiV1 {
+    runtime().namespace_export()
 }

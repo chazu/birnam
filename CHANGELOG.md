@@ -10,6 +10,14 @@ loader ports are complete.
 
 ### Changed
 
+- Move canonical C-name export into Namespace (Design 81BF). IdApi v11 has
+  30 fields / 240 bytes; native initialization carries matching live exports
+  as its fifth argument. Namespace factory is v8, Float/Word preparation and
+  collection publication contracts are v4, String preparation is v2, and Native
+  Loader installation is v4. Preserve Integer's early export snapshot, other
+  callers' live selection, incoming/saved API choices, roots and publication
+  results. Native consumers require rebuilding; image encoding is unchanged.
+
 - Move canonical C-name import into Namespace (Design 81BE).
   IdApi v10 has 31 fields / 248 bytes; native initializers carry an explicit live
   import capability as their fourth argument. Namespace factory becomes v7,

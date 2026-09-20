@@ -194,6 +194,7 @@ impl Runtime {
         let instance = unsafe {
             birnam_string::storage::Instance::empty(
                 api.as_mut(),
+                self.namespace_export(),
                 allocation,
                 crate::public_api::string_finalizer,
                 crate::public_api::test_string_cleanup_owner,

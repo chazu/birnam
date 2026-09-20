@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -46,7 +46,7 @@ static void roots(MarkFn mark) {
 }
 static void registered(RootProvider provider) { registrations++;api->gc_register_root_provider(provider); }
 static Oop allocate(Oop type,size_t size) { allocations++;if(capture) printf("alloc %zu\n",size);return api->alloc(type,size); }
-static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports); }
+static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports()); }
 static Oop intern(const char *name) {
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(reentry_mode==1 && !strcmp(name,"load:")) reenter();
@@ -160,7 +160,7 @@ static void end(void) { capture=0;printf("done intern=%zu send=%zu export=%zu im
 static void method(Oop type,Oop selector,Method implementation) {
     if(capture) printf("method %s\n",api->symbol_name(selector));
     if(reentry_mode==2 && selector==api->intern("print:")) reenter();
-    if(change_snapshot && selector==api->intern("getEnv:")) { change_snapshot=0;map_generation=1;api->export_obj("SystemVt",alternate); }
+    if(change_snapshot && selector==api->intern("getEnv:")) { change_snapshot=0;map_generation=1;fixture_namespace_export("SystemVt",alternate); }
     if(selector==api->intern("load:") || (selectors[0] && (selector==selectors[0] || selector==selectors[1]))) {
         bindings++;seen_selector=selector;seen_target=type;loader=implementation;if(expected_target) assert(type==expected_target);
         assert(implementation(NULL,(Oop *)(uintptr_t)1,0)==selected.nil_obj);assert(invoke(implementation,NULL,&path_name,1)==alias);diagnostic_is(0,first_path);
@@ -178,7 +178,7 @@ static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *prese
         IdApi watched=*api;watched.alloc=allocate;watched.method=method;watched.gc_register_root_provider=registered;
         size_t before=allocations;fixture_prepare_source_loader(&watched);assert(!bindings && !registrations && allocations==before && !fixture_namespace_contains("System"));validate(image,0);
     }
-    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap);
+    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap,fixture_namespace_exports());
 }
 static Oop failure(void) { return invoke(loader,NULL,&bad_path,1); }
 static Oop replacement(Oop self,const Oop *args,size_t count) { (void)self;(void)args;(void)count;return alias; }
@@ -187,7 +187,7 @@ int main(int argc,char **argv) {
     assert(mkdtemp(directory));snprintf(first_path,sizeof(first_path),"%s/a-src",directory);snprintf(second_path,sizeof(second_path),"%s/b-src",directory);path_length=strlen(first_path);strcpy(path_buffer,first_path);assert(strlen(second_path)==path_length);
     write_source((const uint8_t *)"source",6);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0);api->gc_register_root_provider(roots);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),0);api->gc_register_root_provider(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;original_integer_make=fixture_integer->make;integer_context=fixture_integer->context;
     fixture_string->make=make;fixture_string->bytes=bytes;fixture_integer->make=make_integer;
     path_name=text((const uint8_t *)first_path,path_length);bad_path=text((const uint8_t *)"\xff",1);diagnostic=text((const uint8_t *)"A\xff",2);alias=api->alloc(api->object_vt,0);second=api->alloc(api->object_vt,0);
@@ -249,13 +249,13 @@ int main(int argc,char **argv) {
     begin("fresh Error factory method and custom lookup");api->method(factory_type,api->intern("kind:message:"),construct_second);assert(failure()==second);api->method(factory_type,api->intern("kind:message:"),construct);
     Oop meta=api->proto(api->vtable_vt);api->method(meta,api->intern("lookup"),factory_lookup);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){factory_type,meta},2);assert(failure()==answer && failure()==second && lookups==2);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){factory_type,api->vtable_vt},2);end();
     api->method(system_type,api->intern("load:"),replacement);begin("copied Method survives replacement");assert(invoke(loader,NULL,&path_name,1)==alias);end();
-    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports);end();assert(lookup(system_type,api->intern("load:"))==loader);
+    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports());end();assert(lookup(system_type,api->intern("load:"))==loader);
     if(fixture_source_loader) { IdApi registration=other;registration.intern=forbidden_intern;fixture_source_loader->install(&registration,&other,&other_presence,&other_imports,system_type,api->intern("load:")); }
     begin("original execution after direct installation");assert(invoke(loader,NULL,&path_name,1)==alias && failure()==answer);end();
     selectors[0]=api->intern("source-loader-test-0");selectors[1]=api->intern("source-loader-test-1");alternate=api->proto(api->object_vt);expected_target=system_type;map_selectors=change_snapshot=1;map_generation=0;
-    begin("earlier binding preserves behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports);end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==loader);
-    expected_target=alternate;begin("next installation adopts current selection");prelude_init(&other,NULL,&other_presence,&other_imports);end();assert(seen_selector==selectors[1] && seen_target==alternate);
-    api->export_obj("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
+    begin("earlier binding preserves behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports());end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==loader);
+    expected_target=alternate;begin("next installation adopts current selection");prelude_init(&other,NULL,&other_presence,&other_imports,fixture_namespace_exports());end();assert(seen_selector==selectors[1] && seen_target==alternate);
+    fixture_namespace_export("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(invoke(loader,NULL,&path_name,1)==alias && failure()==answer);
     fixture_string->make=original_make;fixture_string->bytes=original_bytes;fixture_string->context=string_context;fixture_integer->make=original_integer_make;fixture_integer->context=integer_context;
     assert(!unlink(first_path) && !rmdir(directory));

@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -105,11 +105,11 @@ static void mount(const char *path,IdApi *table) {
         void *value=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(value); fixture_attach_integer(api,value);
         CollectionValueProviderV1 provide=(CollectionValueProviderV1)api->dlsym_fn(value,"birnam_collection_value_provider_v1"); assert(provide && !provide());
         ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(value,"module_init"); assert(init); unsigned before=roots_registered;
-        init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports()); assert(roots_registered==before); fixture_collection_value=provide(); assert(fixture_collection_value); validate(image,0);
+        init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports()); assert(roots_registered==before); fixture_collection_value=provide(); assert(fixture_collection_value); validate(image,0);
     }
     fixture_attach_integer(api,image);
     if(strstr(path,"collection") && fixture_collection_value) validate(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
 }
 static void begin(const char *name) { capture=1; sends=0; printf("case %s\n",name); }
 static void end(void) { capture=0; assert(!sends); checks++; }
@@ -121,7 +121,7 @@ static void pair(size_t left,size_t right,int expected) {
 int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_mount_trace(api,argv[1]); fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor)); mount(argv[2],api);
     selected=*api; selected.vtable_of=vt; selected.symbol_name=sn; selected.send=send; selected.gc_register_root_provider=roots; mount(argv[3],&selected);
     api->gc_register_root_provider(mark_roots);

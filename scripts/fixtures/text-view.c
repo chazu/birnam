@@ -1,4 +1,4 @@
-#include "idapi_v10.h"
+#include "idapi_v11.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -88,12 +88,12 @@ static void validate(void *image,int attached) {
 static void mount(const char *path,IdApi *table,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
     if(prelude && api->dlsym_fn(image,"birnam_text_view_dependency_v1")) { fixture_prepare_text_view(api);assert(!fixture_namespace_contains("System"));validate(image,0); }
-    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports());
+    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
 }
 int main(int argc,char **argv) {
     assert(argc==4);trace=fdopen(dup(STDOUT_FILENO),"w");assert(trace);setvbuf(trace,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
-    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0);
+    fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,0);
     selected=*api;selected.vtable_of=vtable;selected.intern=intern;selected.send=send;mount(argv[3],&selected,1);api->gc_register_root_provider(roots);
     Oop system_type=fixture_namespace_import("SystemVt");system_object=fixture_namespace_import("System");
     print_method=lookup(system_type,"print:");println_method=lookup(system_type,"println:");read_file=lookup(system_type,"readFile:");write_file=lookup(system_type,"writeFile:contents:");get_env=lookup(system_type,"getEnv:");load_source=lookup(system_type,"load:");load_module=lookup(system_type,"loadModule:");
@@ -138,8 +138,8 @@ int main(int argc,char **argv) {
     Oop inexact=api->alloc(api->proto(fixture_string->behavior),16);begin("inherited String arguments are rejected without rendering");assert(read_file(system_object,&inexact,1)==api->nil_obj && get_env(system_object,&inexact,1)==api->nil_obj);end();assert(!byte_calls && !sends);
     begin("environment exact bytes");expect_string(get_env(system_object,&env_name,1),(const uint8_t *)"nested",6);end();
     FILE *source=fopen(first_path,"wb");assert(source && fwrite("source",1,6,source)==6 && !fclose(source));
-    Oop codegen_type=api->proto(api->object_vt),codegen=api->alloc(codegen_type,0);api->method(codegen_type,api->intern("sourceRevisionOf:"),revision);api->method(codegen_type,api->intern("evalPersisting:from:"),evaluate);api->method(codegen_type,api->intern("lastError"),last_error_method);api->export_obj("Codegen",codegen);
-    Oop error_type=api->proto(api->object_vt);error_object=api->alloc(error_type,0);api->method(error_type,api->intern("printString"),first_answer);api->export_obj("ErrorVt",error_type);last_error=text("syntax");
+    Oop codegen_type=api->proto(api->object_vt),codegen=api->alloc(codegen_type,0);api->method(codegen_type,api->intern("sourceRevisionOf:"),revision);api->method(codegen_type,api->intern("evalPersisting:from:"),evaluate);api->method(codegen_type,api->intern("lastError"),last_error_method);fixture_namespace_export("Codegen",codegen);
+    Oop error_type=api->proto(api->object_vt);error_object=api->alloc(error_type,0);api->method(error_type,api->intern("printString"),first_answer);fixture_namespace_export("ErrorVt",error_type);last_error=text("syntax");
     path_view=1;uint8_t diagnostic[4096];size_t diagnostic_length=0;char expected[1200];
     for(eval_mode=0;eval_mode<=1;eval_mode++) {
         strcpy(path_buffer,first_path);begin(eval_mode?"lastError exact diagnostic after evaluation":"printable diagnostic after evaluation");
@@ -149,7 +149,7 @@ int main(int argc,char **argv) {
     path_view=0;selected.dlopen_fn=open_module;selected.dlsym_fn=find_module;
     for(module_mode=0;module_mode<3;module_mode++) { begin("module path conversion and loader result");assert(load_module(system_object,&path_object,1)==(module_mode?api->nil_obj:system_object));end(); }assert(init_calls==1);
     selected.dlopen_fn=api->dlopen_fn;selected.dlsym_fn=api->dlsym_fn;
-    IdApi other=selected;other.nil_obj=api->true_obj;prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports());input=text("reload");
+    IdApi other=selected;other.nil_obj=api->true_obj;prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());input=text("reload");
     begin("reinstalled consumer keeps original execution callbacks");expect_output(print_method,input,(const uint8_t *)"reload",6,0,system_object);end();
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);expect_string(input,(const uint8_t *)"reload",6);
     fixture_string->bytes=original_bytes;fixture_string->make=original_make;assert(!unlink(first_path) && !rmdir(directory));

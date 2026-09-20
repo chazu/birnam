@@ -47,6 +47,7 @@ struct Roots {
 /// One mounting. Tests use local instances and explicit adapter callbacks.
 pub struct Instance {
     api: *mut IdApi,
+    exports: *const birnam_abi::namespace_export::ApiV1,
     allocation: NativeAllocationV1,
     roots: UnsafeCell<Roots>,
     owners: UnsafeCell<Owners>,
@@ -58,6 +59,7 @@ impl Instance {
     /// Owner-thread construction; every supplied capability outlives this state.
     pub unsafe fn empty(
         api: *mut IdApi,
+        exports: *const birnam_abi::namespace_export::ApiV1,
         allocation: NativeAllocationV1,
         cleanup: Finalizer,
         cleanup_owner: unsafe extern "C" fn(Finalizer) -> *mut c_void,
@@ -67,6 +69,7 @@ impl Instance {
         assert_eq!(allocation.byte_size, size_of::<NativeAllocationV1>());
         let result = Box::new(Self {
             api,
+            exports,
             allocation,
             roots: UnsafeCell::new(Roots::default()),
             owners: UnsafeCell::new(Owners::default()),
@@ -135,8 +138,8 @@ impl Instance {
         let [behavior, prototype] = self.identities();
         unsafe {
             birnam_abi::set_vtable_owner(&*self.api, behavior, prototype);
-            ((*self.api).exportObj)(c"String".as_ptr(), prototype);
-            ((*self.api).exportObj)(c"StringVt".as_ptr(), behavior);
+            birnam_abi::namespace_export::export(self.exports, c"String".as_ptr(), prototype);
+            birnam_abi::namespace_export::export(self.exports, c"StringVt".as_ptr(), behavior);
         }
     }
     pub fn api(&self) -> *mut IdApi {

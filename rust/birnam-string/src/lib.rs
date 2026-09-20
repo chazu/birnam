@@ -62,7 +62,7 @@ pub unsafe extern "C" fn birnam_string_provider_v1() -> *mut birnam_abi::string:
     unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_string_prepare_v1(api: *mut IdApi, allocation: *const birnam_abi::native_allocation::NativeAllocationV1) -> *mut birnam_abi::string::StringApiV1 {
+pub unsafe extern "C" fn birnam_string_prepare_v2(api: *mut IdApi, exports: *const birnam_abi::namespace_export::ApiV1, allocation: *const birnam_abi::native_allocation::NativeAllocationV1) -> *mut birnam_abi::string::StringApiV1 {
     if api.is_null() { abort("preparation received a null IdApi"); }
     if PHASE.load(Ordering::Acquire) != 0 {
         let instance = INSTANCE.load(Ordering::Acquire);
@@ -72,7 +72,7 @@ pub unsafe extern "C" fn birnam_string_prepare_v1(api: *mut IdApi, allocation: *
     }
     if allocation.is_null() { abort("native allocation capability missing"); }
     PHASE.store(1, Ordering::Release);
-    let instance = Box::into_raw(unsafe { storage::Instance::empty(api, allocation.read(), cleanup, cleanup_owner) });
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api, exports, allocation.read(), cleanup, cleanup_owner) });
     INSTANCE.store(instance, Ordering::Release);
     unsafe { ((*api).gcRegisterRootProvider)(storage_roots); (*instance).prepare(string_clone); }
     let ops = unsafe { (*instance).operations() };
@@ -419,8 +419,8 @@ fn trim_ascii(bytes: &[u8]) -> &[u8] {
 
 /// Install the existing String methods through the selected floor API.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
-    let _ = unsafe { birnam_string_prepare_v1(api_pointer, ptr::null()) };
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
+    let _ = unsafe { birnam_string_prepare_v2(api_pointer, exports, ptr::null()) };
     let previous = PHASE.swap(3, Ordering::AcqRel);
     if previous != 2 && previous != 4 { abort("recursive String activation"); }
     let _ = unsafe { birnam_abi::integer::operations() };
