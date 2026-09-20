@@ -4,7 +4,7 @@ use core::ffi::{c_char, c_int, c_void};
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::abi::{Finalizer, IdApi, Method, MethodOverwriteHook, Oop, RootProvider, TraceHook};
+use crate::abi::{Finalizer, IdApi, Method, Oop, RootProvider, TraceHook};
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
 use crate::runtime::{Runtime, with_active_if_present};
@@ -221,10 +221,6 @@ unsafe extern "C" fn api_slot_kind(vtable: Oop, word: usize) -> u8 {
     runtime().slot_kind(vtable, word)
 }
 
-unsafe extern "C" fn api_set_method_overwrite_hook(hook: Option<MethodOverwriteHook>) {
-    runtime().set_method_overwrite_hook(hook);
-}
-
 fn table_for(bootstrap: &Bootstrap) -> IdApi {
     let globals = bootstrap.runtime.globals();
     let canonical = bootstrap.runtime.canonical();
@@ -255,7 +251,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         gcSetPrecise: api_gc_set_precise,
         objectPayloadSize: api_object_payload_size,
         slotKind: api_slot_kind,
-        setMethodOverwriteHook: api_set_method_overwrite_hook,
     }
 }
 
@@ -685,4 +680,27 @@ pub unsafe extern "C" fn birnam_vtable_enumeration_dependency_v2(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_vtable_enumeration_provider_v2() -> *mut birnam_abi::vtable_enumeration::ApiV2 {
     runtime().vtable_enumeration()
+}
+
+pub(crate) fn method_observation_access() -> birnam_abi::method_observation::FloorV1 {
+    unsafe extern "C" fn admit(_: *mut c_void) {
+        #[cfg(not(test))]
+        { runtime().admit_method_observation(); }
+        #[cfg(test)]
+        { crate::runtime::with_active(|runtime| runtime.admit_method_observation()); }
+    }
+    birnam_abi::method_observation::FloorV1 {
+        version: 1, byte_size: size_of::<birnam_abi::method_observation::FloorV1>(),
+        context: core::ptr::null_mut(), admit: Some(admit),
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_method_observation_dependency_v1(
+    factory: *const birnam_abi::method_observation::FactoryV1,
+) -> c_int {
+    unsafe { birnam_abi::method_observation::attach(factory) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_method_observation_provider_v1() -> *mut birnam_abi::method_observation::ApiV1 {
+    runtime().method_observation()
 }

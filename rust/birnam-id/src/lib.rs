@@ -26,6 +26,7 @@ mod symbol;
 mod values;
 mod vtable;
 mod vtable_enumeration;
+mod method_observation;
 
 use core::ffi::c_char;
 

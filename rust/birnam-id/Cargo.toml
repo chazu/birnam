@@ -21,6 +21,7 @@ birnam-collect = { path = "../birnam-collect" }
 birnam-trace = { path = "../birnam-trace" }
 birnam-integer = { path = "../birnam-integer" }
 birnam-object-model = { path = "../birnam-object-model" }
+birnam-method-observation = { path = "../birnam-method-observation" }
 birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization", "dev-frame-read-reuse"] }
 
 [features]

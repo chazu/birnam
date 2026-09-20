@@ -893,6 +893,7 @@ pub enum FloorError {
     EmbeddedNul,
     OpenFailed,
     MissingIdInit,
+    MethodObservation { path: PathBuf, reason: &'static str },
     VtableEnumeration { path: PathBuf, reason: &'static str },
     Namespace { path: PathBuf, reason: &'static str },
     NullApi,
@@ -927,6 +928,7 @@ impl fmt::Debug for FloorError {
             Self::EmbeddedNul => formatter.write_str("EmbeddedNul"),
             Self::OpenFailed => formatter.write_str("OpenFailed"),
             Self::MissingIdInit => formatter.write_str("MissingIdInit"),
+            Self::MethodObservation { path, reason } => write!(formatter, "Method observation preparation failed: {} ({reason})", path.display()),
             Self::VtableEnumeration { path, reason } => write!(formatter, "Vtable enumeration preparation failed: {} ({reason})", path.display()),
             Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
@@ -945,6 +947,8 @@ impl fmt::Debug for FloorError {
 pub struct LoadedFloor {
     _namespace: NonNull<std::ffi::c_void>,
     _object_model: NonNull<std::ffi::c_void>,
+    _method_observation: NonNull<std::ffi::c_void>,
+    method_observation: NonNull<birnam_abi::method_observation::ApiV1>,
     vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV2>,
     namespace_names: NonNull<birnam_abi::namespace_names::ApiV1>,
     namespace_presence: NonNull<birnam_abi::namespace_presence::ApiV1>,
@@ -1075,6 +1079,7 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_float",
     "libbirnam_word",
     "libbirnam_object_model",
+    "libbirnam_method_observation",
     "libbirnam_id_artifact",
     "libbirnam_store",
     "libbirnam_id_peg",
@@ -2092,7 +2097,7 @@ pub struct LoadedStack {
     environment: *const birnam_abi::environment::ApiV3,
     file_io: *const birnam_abi::file_io::ApiV3,
     block_loop: *const birnam_abi::block_loop::ApiV3,
-    native_loader: *const birnam_abi::native_loader::ApiV6,
+    native_loader: *const birnam_abi::native_loader::ApiV7,
     source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2105,6 +2110,7 @@ impl LoadedStack {
     pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.floor.imports() }
     pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.floor.exports() }
     pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.floor.vtables() }
+    pub fn observation(&self) -> *const birnam_abi::method_observation::ApiV1 { self.floor.observation() }
 
     pub fn new(floor: LoadedFloor) -> Self {
         let control = unsafe {
@@ -2413,9 +2419,9 @@ impl LoadedStack {
                 return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v6".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v7".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::native_loader::DependencyV6 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::native_loader::DependencyV7 = unsafe { std::mem::transmute(dependency) };
             if self.native_loader.is_null() || unsafe { attach(self.native_loader) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
             }
@@ -2486,6 +2492,7 @@ impl LoadedStack {
                 self.floor.imports(),
                 self.floor.exports(),
                 self.floor.vtables(),
+                self.floor.observation(),
             )
         };
         let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v4".as_ptr()) };
@@ -2578,9 +2585,9 @@ impl LoadedStack {
             }
             self.block_loop = provided;
         }
-        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v6".as_ptr()) };
+        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v7".as_ptr()) };
         if !native_loader_provider.is_null() {
-            let provide: birnam_abi::native_loader::ProviderV6 = unsafe { std::mem::transmute(native_loader_provider) };
+            let provide: birnam_abi::native_loader::ProviderV7 = unsafe { std::mem::transmute(native_loader_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::native_loader::attach(provided) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
@@ -2966,6 +2973,7 @@ impl LoadedFloor {
     pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.namespace_import.as_ptr() }
     pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.namespace_export.as_ptr() }
     pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.vtable_enumeration.as_ptr() }
+    pub fn observation(&self) -> *const birnam_abi::method_observation::ApiV1 { self.method_observation.as_ptr() }
 
     pub fn api(&self) -> &IdApi {
         // SAFETY: `id_init` returned a process-owned, non-null table and the
@@ -3001,6 +3009,7 @@ pub fn load_floor(
     }
     let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
     let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
+    let observation_path = path.with_file_name("libbirnam_method_observation.dylib");
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -3049,6 +3058,13 @@ pub fn load_floor(
         }
     };
     let object_model = match unsafe { prepare_vtable_enumeration(handle, &object_model_path) } {
+        Ok(image) => image,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
+    let observation_image = match unsafe { prepare_method_observation(handle, &observation_path) } {
         Ok(image) => image,
         Err(error) => {
             unsafe { system_dlclose(handle.as_ptr()) };
@@ -3124,7 +3140,18 @@ pub fn load_floor(
     if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } {
         return Err(FloorError::VtableEnumeration { path: object_model_path, reason: "invalid capability" });
     }
+    let observation_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_method_observation_provider_v1".as_ptr()) };
+    if observation_provider.is_null() {
+        return Err(FloorError::MethodObservation { path: observation_path, reason: "missing capability" });
+    }
+    let provide: birnam_abi::method_observation::ProviderV1 = unsafe { std::mem::transmute(observation_provider) };
+    let observation = unsafe { provide() };
+    if !unsafe { birnam_abi::method_observation::valid(observation) } {
+        return Err(FloorError::MethodObservation { path: observation_path, reason: "invalid capability" });
+    }
     Ok(LoadedFloor {
+        _method_observation: observation_image,
+        method_observation: NonNull::new(observation).unwrap(),
         _object_model: object_model,
         vtable_enumeration: NonNull::new(vtables).unwrap(),
         namespace_export: NonNull::new(export).unwrap(),
@@ -3199,6 +3226,39 @@ unsafe fn prepare_vtable_enumeration(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::vtable_enumeration::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::vtable_enumeration::DependencyV2 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
+}
+
+unsafe fn prepare_method_observation(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::MethodObservation {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_method_observation_dependency_v1".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_method_observation_factory_v1".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::method_observation::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::method_observation::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::method_observation::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use birnam_artifact::stackless_selection::ImplementationKind;
 
 use crate::abi::SLOT_OOP;
-use crate::abi::{MarkFn, Method, MethodOverwriteHook, Oop};
+use crate::abi::{MarkFn, Method, Oop};
 use crate::boundary;
 use crate::env::Environment;
 use crate::execution::{
@@ -130,6 +130,7 @@ impl CanonicalObjects {
 }
 
 struct RuntimeState {
+    method_observation: crate::method_observation::Service,
     vtable_enumeration: crate::vtable_enumeration::Service,
     // Ordered authorities are dropped before the raw heap owner at harness
     // teardown. No destructor dereferences a heap payload.
@@ -143,7 +144,6 @@ struct RuntimeState {
     symbol_compatibility_limits: Option<SymbolCompatibilityLimits>,
     metadata: MetadataShell,
     environment: Environment,
-    method_overwrite_hook: Option<MethodOverwriteHook>,
     execution: ExecutionState,
     staged_resumable_unit: Option<StagedUnit>,
     staged_resumable_claims: Option<Vec<Option<RuntimeRegistrationClaim>>>,
@@ -439,6 +439,7 @@ impl Runtime {
             #[cfg(all(test, target_os = "macos"))]
             read_reuse_gc_epoch: Cell::new(0),
             state: UnsafeCell::new(RuntimeState {
+                method_observation: crate::method_observation::Service::new(),
                 vtable_enumeration: crate::vtable_enumeration::Service::new(),
                 symbols,
                 vtables,
@@ -450,7 +451,6 @@ impl Runtime {
                 symbol_compatibility_limits: None,
                 metadata: MetadataShell::new(),
                 environment: Environment::new(),
-                method_overwrite_hook: None,
                 execution: ExecutionState::new(current_thread_token()),
                 staged_resumable_unit: None,
                 staged_resumable_claims: None,
@@ -516,20 +516,17 @@ impl Runtime {
 
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         self.assert_owner();
-        // Copy all callback inputs and end the state borrow before foreign code.
-        // SAFETY: owner-thread serialization; direct_lookup and hook are copied.
-        let hook = unsafe {
+        // Exact lookup still precedes observation, including when no hook is set.
+        // Copy the immutable operation and owned address before entering foreign code.
+        let (direct, notify, observation) = unsafe {
             let state = &*self.state.get();
-            state
-                .vtables
-                .direct_lookup(vtable, selector)
-                .and(state.method_overwrite_hook)
+            let direct = state.vtables.direct_lookup(vtable, selector).is_some();
+            let (notify, observation) = state.method_observation.notification();
+            (direct, notify, observation)
         };
-        if let Some(hook) = hook {
-            // No Rust state borrow survives this callback. The ABI contract
-            // permits only pure Store-log mutation and read-only floor queries.
-            unsafe { hook(vtable, selector) };
-        }
+        // The upper service snapshots the current hook. No RuntimeState borrow
+        // survives its pure Store-log/read-only-floor callback boundary.
+        unsafe { notify(observation, i32::from(direct), vtable, selector) };
         // SAFETY: callback returned and owner-thread serialization is restored.
         let result = unsafe {
             (&mut *self.state.get())
@@ -587,20 +584,17 @@ impl Runtime {
 
     pub(crate) fn remove_method(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         self.assert_owner();
-        // Copy all callback inputs and end the state borrow before foreign code.
-        // SAFETY: owner-thread serialization; direct_lookup and hook are copied.
-        let hook = unsafe {
+        // Exact lookup still precedes observation, including when no hook is set.
+        // Copy the immutable operation and owned address before entering foreign code.
+        let (direct, notify, observation) = unsafe {
             let state = &*self.state.get();
-            state
-                .vtables
-                .direct_lookup(vtable, selector)
-                .and(state.method_overwrite_hook)
+            let direct = state.vtables.direct_lookup(vtable, selector).is_some();
+            let (notify, observation) = state.method_observation.notification();
+            (direct, notify, observation)
         };
-        if let Some(hook) = hook {
-            // No Rust state borrow survives this callback. The ABI contract
-            // permits only pure Store-log mutation and read-only floor queries.
-            unsafe { hook(vtable, selector) };
-        }
+        // The upper service snapshots the current hook. No RuntimeState borrow
+        // survives its pure Store-log/read-only-floor callback boundary.
+        unsafe { notify(observation, i32::from(direct), vtable, selector) };
         // SAFETY: callback returned and owner-thread serialization is restored.
         let removed = unsafe {
             (&mut *self.state.get())
@@ -640,11 +634,12 @@ impl Runtime {
         removed
     }
 
-    pub(crate) fn set_method_overwrite_hook(&self, hook: Option<MethodOverwriteHook>) {
+    pub(crate) fn method_observation(&self) -> *mut birnam_abi::method_observation::ApiV1 {
         self.assert_owner();
-        // SAFETY: owner-thread serialization and no foreign call in this scope.
-        unsafe { (&mut *self.state.get()).method_overwrite_hook = hook };
+        unsafe { (*self.state.get()).method_observation.api() }
     }
+
+    pub(crate) fn admit_method_observation(&self) { self.assert_owner(); }
 
     pub(crate) fn create_vtable(&self, parent: Oop) -> Oop {
         self.assert_owner();

@@ -761,7 +761,7 @@ mod tests {
         HOOK_CALLS.set(0);
         HOOK_SAW_PRE_MUTATION.set(false);
         HOOK_READ_REFLECTION.set(false);
-        runtime.set_method_overwrite_hook(Some(observe_overwrite));
+        runtime.enter(|| unsafe { birnam_abi::method_observation::replace(runtime.method_observation(), Some(observe_overwrite)) });
 
         let AddMethod::Overwrote(previous) = runtime.add_method(vtable, selector, answer_77) else {
             panic!("method replacement did not report the previous binding");
@@ -798,7 +798,7 @@ mod tests {
 
         assert_eq!(runtime.remove_method(vtable, selector), None);
         assert_eq!(HOOK_CALLS.get(), 2);
-        runtime.set_method_overwrite_hook(None);
+        runtime.enter(|| unsafe { birnam_abi::method_observation::replace(runtime.method_observation(), None) });
         assert_eq!(
             runtime.add_method(vtable, selector, answer_42),
             AddMethod::Added

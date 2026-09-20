@@ -25,6 +25,7 @@ members = [
     "rust/birnam-namespace",
     "rust/birnam-integer",
     "rust/birnam-object-model",
+    "rust/birnam-method-observation",
     "rust/birnam-image",
     "rust/birnam-host",
     "rust/birnam-isolate",
