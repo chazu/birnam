@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v11/idapi_v11.h"
+#include "../../abi/fixtures/idapi-v12/idapi_v12.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include "collect-support.h"
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     fixture_mount_collect(api,argv[1]);
     must_abort_collection(); /* no in-Id fallback */
     void *image=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
     TraceLiveProviderV1 provide=(TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"); assert(provide);
     const TraceLiveApiV1 *implementation=provide(); assert(implementation);
     actual_trace=implementation->trace; assert(actual_trace);

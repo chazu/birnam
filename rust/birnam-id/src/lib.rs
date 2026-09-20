@@ -25,6 +25,7 @@ mod runtime;
 mod symbol;
 mod values;
 mod vtable;
+mod vtable_enumeration;
 
 use core::ffi::c_char;
 

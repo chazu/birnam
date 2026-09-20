@@ -36,7 +36,7 @@ descriptor borrows the service and does not extend its lifetime. Id destroys
 services before their raw namespace storage.
 
 Id exposes the live descriptor through `birnam_namespace_export_provider_v1`;
-modules receive it explicitly with their API through five-argument native
+modules receive it explicitly with their API through six-argument native
 initialization. IdApi v11 removes the old export slot. Internal byte-slice
 bootstrap export remains private to Id. Language behavior and image encoding
 are unchanged.

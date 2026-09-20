@@ -1,4 +1,4 @@
-#include "idapi_v11.h"
+#include "idapi_v12.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -111,7 +111,7 @@ static void forbidden_roots(RootProvider provider) { (void)provider;assert(!"Err
 static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
     if(prelude && api->dlsym_fn(image,"birnam_error_value_dependency_v3")) { IdApi watched=*api;watched.alloc=forbidden_alloc;watched.method=forbidden_method;watched.gc_register_root_provider=forbidden_roots;fixture_prepare_error_value(&watched);assert(!fixture_namespace_contains("Error") && !fixture_namespace_contains("System"));validate(image,0); }
-    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,presence,import_cap,fixture_namespace_exports());
+    fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,presence,import_cap,fixture_namespace_exports(),fixture_vtable_enumeration());
 }
 static int provider_is_error(const IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,Oop value) {
     return fixture_error_value->is_error(table,presence,import_cap,value);
@@ -186,7 +186,7 @@ int main(int argc,char **argv) {
         assert(provider_from_bytes(&selected,&selected_presence,&selected_imports,(const uint8_t *)"ioError",8,(const uint8_t *)"",0)==answer);expect_message("");
         alternate.nil_obj=second_answer;assert(provider_from_bytes(&alternate,fixture_namespace_presence(),&alternate_imports,(const uint8_t *)"ioError",8,(const uint8_t *)"",0)==second_answer);
     }
-    IdApi other=selected;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot);other.nil_obj=second_answer;prelude_init(&other,NULL,&selected_presence,&other_imports,fixture_namespace_exports());error_present=0;
+    IdApi other=selected;FixtureImportSlot other_import_slot=selected_import_slot;NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot);other.nil_obj=second_answer;prelude_init(&other,NULL,&selected_presence,&other_imports,fixture_namespace_exports(),fixture_vtable_enumeration());error_present=0;
     begin("reloaded Prelude preserves original execution selection");assert(read_file(system_object,&bad_path,1)==api->nil_obj);end();error_present=1;
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(read_file(system_object,&bad_path,1)==answer);
     fixture_string->make=original_make;fixture_string->context=original_context;

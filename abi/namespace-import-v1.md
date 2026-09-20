@@ -26,10 +26,10 @@ that same selection point, including early initialization and callback reentry.
 Incoming registration/adoption uses incoming capabilities where it used the
 incoming API. Reload never replaces a saved execution selection implicitly.
 
-IdApi v11 has 30 fields and 240 bytes, with no import or export slot.
+IdApi v12 has 28 fields and 224 bytes, with no import or export slot.
 Float/Word prepare v4 carry imports after presence and exports after imports.
 The five System/Block v3 installers retain imports after presence; Native Loader
-v4 also carries exports. Range/Vector/Map prepare v4 carry imports immediately
+v5 also carries exports and vtable enumeration. Range/Vector/Map prepare v4 carry imports immediately
 after API; their publication stages receive exports separately. Numeric and
 Block declarations v4 compare canonical function/context identities against
 live selections without invoking them. Isolate worker and OOP codec bridges

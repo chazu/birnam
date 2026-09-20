@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Move native vtable count and indexed observation into Object Model (81BG).
+  IdApi v12 has 28 fields / 224 bytes; six-argument native initialization carries
+  the matching live enumeration capability, and Native Loader installation is
+  v5. Preserve live Store traversal, weak registry membership, GC ordering,
+  Codegen clamping and existing ForeignAddress/Image/Tcc traversal bounds.
+  Native consumers require rebuilding; image encoding is unchanged.
+
 - Move canonical C-name export into Namespace (Design 81BF). IdApi v11 has
   30 fields / 240 bytes; native initialization carries matching live exports
   as its fifth argument. Namespace factory is v8, Float/Word preparation and

@@ -130,6 +130,7 @@ impl CanonicalObjects {
 }
 
 struct RuntimeState {
+    vtable_enumeration: crate::vtable_enumeration::Service,
     // Ordered authorities are dropped before the raw heap owner at harness
     // teardown. No destructor dereferences a heap payload.
     symbols: Symbols,
@@ -438,6 +439,7 @@ impl Runtime {
             #[cfg(all(test, target_os = "macos"))]
             read_reuse_gc_epoch: Cell::new(0),
             state: UnsafeCell::new(RuntimeState {
+                vtable_enumeration: crate::vtable_enumeration::Service::new(),
                 symbols,
                 vtables,
                 heap,
@@ -4379,6 +4381,17 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.count() }
     }
 
+    pub(crate) fn vtable_enumeration(&self) -> *mut birnam_abi::vtable_enumeration::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).vtable_enumeration.api() }
+    }
+
+    pub(crate) fn vtable_view(&self) -> birnam_abi::vtable_enumeration::ViewV1 {
+        self.assert_owner();
+        // Immediate borrowed representation only; no callbacks retain this view.
+        unsafe { (*self.state.get()).vtables.view() }
+    }
+
     pub(crate) fn vtable_at(&self, index: usize) -> Oop {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied identity.
@@ -6749,6 +6762,31 @@ mod tests {
         assert_eq!(runtime.vtable_owner(live_vtable), live_owner);
         assert!((0..runtime.vtable_count()).any(|index| runtime.vtable_at(index) == live_vtable));
         assert!((0..runtime.vtable_count()).all(|index| runtime.vtable_at(index) != dead_vtable));
+    }
+
+    #[test]
+    fn object_model_enumeration_observes_independent_moved_runtime_state() {
+        // Each push moves the enclosing runtime; the service retains no view or
+        // address into RuntimeState from its construction point.
+        let mut runtimes = Vec::with_capacity(1);
+        runtimes.push(build_bootstrap());
+        runtimes.push(build_bootstrap());
+        let mut identities = Vec::new();
+        for bootstrap in &runtimes {
+            let runtime = &bootstrap.runtime;
+            runtime.enter(|| {
+                let api = runtime.vtable_enumeration();
+                let before = unsafe { birnam_abi::vtable_enumeration::count(api) };
+                assert_eq!(before, runtime.vtable_count());
+                let created = runtime.create_vtable(runtime.globals().object_vt);
+                assert_eq!(unsafe { birnam_abi::vtable_enumeration::at(api, before) }, created);
+                assert_eq!(unsafe { birnam_abi::vtable_enumeration::count(api) }, before + 1);
+                assert!(unsafe { birnam_abi::vtable_enumeration::at(api, usize::MAX) }.is_null());
+                identities.push((api, created));
+            });
+        }
+        assert_ne!(identities[0].0, identities[1].0);
+        assert_ne!(identities[0].1, identities[1].1);
     }
 
     #[test]

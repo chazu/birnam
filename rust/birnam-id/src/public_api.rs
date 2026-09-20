@@ -225,14 +225,6 @@ unsafe extern "C" fn api_set_method_overwrite_hook(hook: Option<MethodOverwriteH
     runtime().set_method_overwrite_hook(hook);
 }
 
-unsafe extern "C" fn api_vtable_count() -> usize {
-    runtime().vtable_count()
-}
-
-unsafe extern "C" fn api_vtable_at(index: usize) -> Oop {
-    runtime().vtable_at(index)
-}
-
 unsafe extern "C" fn api_vtable_selector_at(vtable: Oop, index: usize) -> Oop {
     runtime().vtable_selector_at(vtable, index)
 }
@@ -268,8 +260,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         objectPayloadSize: api_object_payload_size,
         slotKind: api_slot_kind,
         setMethodOverwriteHook: api_set_method_overwrite_hook,
-        vtableCount: api_vtable_count,
-        vtableAt: api_vtable_at,
         vtableSelectorAt: api_vtable_selector_at,
     }
 }
@@ -668,4 +658,28 @@ pub(crate) fn namespace_export_access() -> birnam_abi::namespace_export::FloorV1
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_namespace_export_provider_v1() -> *mut birnam_abi::namespace_export::ApiV1 {
     runtime().namespace_export()
+}
+
+
+pub(crate) fn vtable_enumeration_access() -> birnam_abi::vtable_enumeration::FloorV1 {
+    unsafe extern "C" fn view(_: *mut c_void) -> birnam_abi::vtable_enumeration::ViewV1 {
+        #[cfg(not(test))]
+        { runtime().vtable_view() }
+        #[cfg(test)]
+        { crate::runtime::with_active(|runtime| runtime.vtable_view()) }
+    }
+    birnam_abi::vtable_enumeration::FloorV1 {
+        version: 1, byte_size: size_of::<birnam_abi::vtable_enumeration::FloorV1>(),
+        context: core::ptr::null_mut(), view: Some(view),
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_vtable_enumeration_dependency_v1(
+    factory: *const birnam_abi::vtable_enumeration::FactoryV1,
+) -> c_int {
+    unsafe { birnam_abi::vtable_enumeration::attach(factory) }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_vtable_enumeration_provider_v1() -> *mut birnam_abi::vtable_enumeration::ApiV1 {
+    runtime().vtable_enumeration()
 }

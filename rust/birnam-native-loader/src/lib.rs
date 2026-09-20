@@ -1,7 +1,7 @@
 //! System's existing direct native-module loader, installed by Prelude (81AU).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::error_value::numeric_error;
-use birnam_abi::native_loader::ApiV4;
+use birnam_abi::native_loader::ApiV5;
 use birnam_abi::text_view::string_bytes;
 use birnam_abi::{IdApi, ModuleInitFn, Oop, borrowed_oop_args};
 use core::ffi::c_void;
@@ -19,6 +19,7 @@ struct Runtime {
     presence: usize,
     imports: usize,
     exports: usize,
+    vtables: usize,
 }
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 fn runtime() -> &'static Runtime {
@@ -59,7 +60,7 @@ unsafe extern "C" fn system_load_module(self_object: Oop, args: *const Oop, coun
     // Birnam module initializers share this frozen C ABI and receive the
     // process-owned IdApi with no state payload for this loader path.
     let init: ModuleInitFn = unsafe { core::mem::transmute(symbol) };
-    unsafe { init(runtime().api as *mut IdApi, ptr::null_mut(), execution_presence(), execution_imports(), runtime().exports as *const birnam_abi::namespace_export::ApiV1) };
+    unsafe { init(runtime().api as *mut IdApi, ptr::null_mut(), execution_presence(), execution_imports(), runtime().exports as *const birnam_abi::namespace_export::ApiV1, runtime().vtables as *const birnam_abi::vtable_enumeration::ApiV1) };
     self_object
 }
 
@@ -69,6 +70,7 @@ unsafe extern "C" fn install(
     presence: *const birnam_abi::namespace_presence::ApiV1,
     imports: *const birnam_abi::namespace_import::ApiV1,
     exports: *const birnam_abi::namespace_export::ApiV1,
+    vtables: *const birnam_abi::vtable_enumeration::ApiV1,
     system_vt: Oop,
     load_module: Oop,
 ) {
@@ -76,25 +78,25 @@ unsafe extern "C" fn install(
         READY.load(Ordering::Acquire) && !registration.is_null() && !execution.is_null(),
         "invalid Native Loader installation"
     );
-    RUNTIME.get_or_init(|| Runtime { api: execution as usize, presence: presence as usize, imports: imports as usize, exports: exports as usize });
+    RUNTIME.get_or_init(|| Runtime { api: execution as usize, presence: presence as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
     let api = unsafe { &*registration };
     unsafe {
         (api.method)(system_vt, load_module, system_load_module);
     }
 }
-static API: ApiV4 = ApiV4 {
-    version: 4,
-    byte_size: size_of::<ApiV4>(),
+static API: ApiV5 = ApiV5 {
+    version: 5,
+    byte_size: size_of::<ApiV5>(),
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "Native Loader received a null IdApi");
     READY.store(true, Ordering::Release);
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_native_loader_provider_v4() -> *const ApiV4 {
+pub extern "C" fn birnam_native_loader_provider_v5() -> *const ApiV5 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {

@@ -2,7 +2,7 @@
 # Focused debug production coordinator and independent native contract probe.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mise exec -- cargo build -p birnam-namespace -p birnam-id -p birnam-string -p birnam-trace -p birnam-collect --locked --offline
+mise exec -- cargo build -p birnam-namespace -p birnam-object-model -p birnam-id -p birnam-string -p birnam-trace -p birnam-collect --locked --offline
 collect_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-collection.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT

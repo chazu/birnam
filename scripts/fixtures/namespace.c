@@ -1,6 +1,6 @@
 #define _DARWIN_C_SOURCE
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
-#include "idapi_v11.h"
+#include "idapi_v12.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include <stdlib.h>
@@ -55,8 +55,9 @@ static void publication_oracle(void) {
 /* Inspect the historical raw dictionary view, including null values. */
 typedef struct { size_t capacity,tally; Oop *keys,*values; } DictionaryView;
 static Oop mirror_of(IdApi *api,Oop symbol) {
-    for(size_t i=0;i<api->vtable_count();i++) {
-        DictionaryView *view=api->vtable_at(i);
+    (void)api;
+    for(size_t i=0;i<vtable_count_v1(fixture_vtable_enumeration());i++) {
+        DictionaryView *view=vtable_at_v1(fixture_vtable_enumeration(),i);
         for(size_t j=0;j<view->tally;j++)if(view->keys[j]==symbol && view->values[j])return view->values[j];
     }
     return NULL;
@@ -148,6 +149,7 @@ int main(int argc,char **argv) {
         assert(attach(&observed)==1 && attach(&observed)==1 && !attach(storage));
         reload=(ModuleInitFn)dlsym(namespace_image,"module_init");assert(reload);
     }
+    fixture_prepare_vtable_enumeration(floor,argv[1]);
     IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init");assert(initialize);
     IdApi *api=initialize();assert(api);api->gc_set_auto(0);
     Dl_info owner;assert(dladdr((void *)fixture_namespace_presence()->contains,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));
@@ -219,7 +221,7 @@ int main(int argc,char **argv) {
     assert(fixture_namespace_import("namespace-second-alias")==retained && !fixture_namespace_contains("namespace-first-alias"));
     if(reload) {
         IdApi probe=*api;probe.intern=forbidden_intern;probe.alloc=forbidden_alloc;probe.method=forbidden_method;probe.gc_register_root_provider=forbidden_roots;
-        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports()));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports()));
+        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()));
         assert(count()==before && binds==was_binds && creates==1);
         assert(fixture_namespace_import("namespace-second-alias")==retained);
         assert(finds && reverses && views && counts && names_at && lookups && publications==binds);

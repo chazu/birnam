@@ -1,14 +1,16 @@
 # ABI evidence
 
-`idapi-v11.json` describes the current arm64 macOS IdApi: 30 fields, 240 bytes.
+`idapi-v12.json` describes the current arm64 macOS IdApi: 28 fields, 224 bytes.
+Design 81BG removes `vtableCount` and `vtableAt` into [Object Model enumeration](vtable-enumeration-v1.md).
 Design 81BF removes `exportObj` into the explicit [Namespace export capability](namespace-export-v1.md).
 Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
 following 81BB's [presence capability](namespace-presence-v1.md).
-Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *, const NamespaceExportV1 *)`.
-All native modules must be rebuilt for this signature and IdApi v11.
+Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *, const NamespaceExportV1 *, const VtableEnumerationV1 *)`.
+All native modules must be rebuilt for this signature and IdApi v12.
 After `id_init`, the selected floor exposes `birnam_namespace_presence_provider_v1`,
 `birnam_namespace_import_provider_v1` and `birnam_namespace_export_provider_v1`. The host and Native Loader pass these
-selections explicitly. Modules capture matching live capabilities when they save
+selections explicitly. The floor also supplies `birnam_vtable_enumeration_provider_v1`
+from the Object Model factory prepared before Id initialization. Modules capture matching live capabilities when they save
 their execution API; incoming registration/adoption uses the incoming selection
 at its original call points. There is no API-address registry or production
 callback-slot loan. Code, contexts and descriptors must remain valid for every
@@ -21,23 +23,23 @@ Design 81R removes the four Float fields into an explicit [Float dependency](flo
 Design 81J removes `ensurePrivateVtable`; 81K removes owner/parent getters and
 setters. 81L removes the four Integer fields into an explicit
 [Integer dependency](integer-v1.md). Object-model consumers use ordinary Vtable
-messages. Existing v1-v10 native consumers
+messages. Existing v1-v11 native consumers
 must be rebuilt.
 Backward compatibility is not a requirement for this refactor.
 
 The Rust mirror has compile-time offsets and exports a diagnostic descriptor.
-The descriptor's format version remains 1, while its IdApi schema version is 11.
-Its fingerprint matches the independent v11 manifest. The v11 fingerprint algorithm
+The descriptor's format version remains 1, while its IdApi schema version is 12.
+Its fingerprint matches the independent v12 manifest. The v12 fingerprint algorithm
 is SHA-256 over compact, key-sorted UTF-8 JSON, excluding the `fingerprint` member.
 The workspace tests verify that fingerprint and every compiled field offset.
 
-`fixtures/idapi-v11/idapi_v11.h` is the current independent C header. The routine
-native gate compiles the v11 client/module and checks the table and separately
+`fixtures/idapi-v12/idapi_v12.h` is the current independent C header. The routine
+native gate compiles the v12 client/module and checks the table and separately
 loaded String, Integer, Float, Word and object-model implementations. Other active foreign fixtures use this header.
 
 `idapi-v1.json` and `fixtures/idapi-v1` preserve the historical 54-field ABI and
-its frozen binary evidence. They are not changed to match v11. Their old opt-in
-compatibility script applies only to a v1 floor; running that client against v11
+its frozen binary evidence. They are not changed to match v12. Their old opt-in
+compatibility script applies only to a v1 floor; running that client against v12
 is unsupported. The archived v4 image remains historical evidence as before.
 
 The Cargo workspace and `scripts/rust-install.sh` remain the build authority.
@@ -181,7 +183,7 @@ stackless control still replaces the methods later. The
 [export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
 encoding.
 
-[Native Loader v4](native-loader-v4.md) owns System loadModule: through a 24-byte
+[Native Loader v5](native-loader-v5.md) owns System loadModule: through a 24-byte
 installer, preserving the existing direct path without host dependency admission.
 The [export inventory](rust-native-loader-dylib-v1.json) adds no IdApi fields,
 objects or image encoding.

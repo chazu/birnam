@@ -892,6 +892,7 @@ pub enum FloorError {
     EmbeddedNul,
     OpenFailed,
     MissingIdInit,
+    VtableEnumeration { path: PathBuf, reason: &'static str },
     Namespace { path: PathBuf, reason: &'static str },
     NullApi,
     MissingIdentity,
@@ -925,6 +926,7 @@ impl fmt::Debug for FloorError {
             Self::EmbeddedNul => formatter.write_str("EmbeddedNul"),
             Self::OpenFailed => formatter.write_str("OpenFailed"),
             Self::MissingIdInit => formatter.write_str("MissingIdInit"),
+            Self::VtableEnumeration { path, reason } => write!(formatter, "Vtable enumeration preparation failed: {} ({reason})", path.display()),
             Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
             Self::MissingIdentity => formatter.write_str("MissingIdentity"),
@@ -941,6 +943,8 @@ impl fmt::Debug for FloorError {
 /// owns process-wide heap/GC state and may retain function pointers in modules.
 pub struct LoadedFloor {
     _namespace: NonNull<std::ffi::c_void>,
+    _object_model: NonNull<std::ffi::c_void>,
+    vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV1>,
     namespace_names: NonNull<birnam_abi::namespace_names::ApiV1>,
     namespace_presence: NonNull<birnam_abi::namespace_presence::ApiV1>,
     namespace_import: NonNull<birnam_abi::namespace_import::ApiV1>,
@@ -2086,7 +2090,7 @@ pub struct LoadedStack {
     environment: *const birnam_abi::environment::ApiV3,
     file_io: *const birnam_abi::file_io::ApiV3,
     block_loop: *const birnam_abi::block_loop::ApiV3,
-    native_loader: *const birnam_abi::native_loader::ApiV4,
+    native_loader: *const birnam_abi::native_loader::ApiV5,
     source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2406,9 +2410,9 @@ impl LoadedStack {
                 return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v4".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v5".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::native_loader::DependencyV4 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::native_loader::DependencyV5 = unsafe { std::mem::transmute(dependency) };
             if self.native_loader.is_null() || unsafe { attach(self.native_loader) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
             }
@@ -2478,6 +2482,7 @@ impl LoadedStack {
                 self.floor.presence(),
                 self.floor.imports(),
                 self.floor.exports(),
+                self.floor.vtables(),
             )
         };
         let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v4".as_ptr()) };
@@ -2570,9 +2575,9 @@ impl LoadedStack {
             }
             self.block_loop = provided;
         }
-        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v4".as_ptr()) };
+        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v5".as_ptr()) };
         if !native_loader_provider.is_null() {
-            let provide: birnam_abi::native_loader::ProviderV4 = unsafe { std::mem::transmute(native_loader_provider) };
+            let provide: birnam_abi::native_loader::ProviderV5 = unsafe { std::mem::transmute(native_loader_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::native_loader::attach(provided) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
@@ -2957,6 +2962,7 @@ impl LoadedFloor {
     pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.namespace_presence.as_ptr() }
     pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.namespace_import.as_ptr() }
     pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.namespace_export.as_ptr() }
+    pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV1 { self.vtable_enumeration.as_ptr() }
 
     pub fn api(&self) -> &IdApi {
         // SAFETY: `id_init` returned a process-owned, non-null table and the
@@ -2991,6 +2997,7 @@ pub fn load_floor(
         }
     }
     let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
+    let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -3033,6 +3040,13 @@ pub fn load_floor(
     // is explicit here; Id has no loader fallback or linked implementation.
     let namespace = match unsafe { prepare_namespace(handle, &namespace_path) } {
         Ok(namespace) => namespace,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
+    let object_model = match unsafe { prepare_vtable_enumeration(handle, &object_model_path) } {
+        Ok(image) => image,
         Err(error) => {
             unsafe { system_dlclose(handle.as_ptr()) };
             return Err(error);
@@ -3098,7 +3112,18 @@ pub fn load_floor(
     if !unsafe { birnam_abi::namespace_export::valid(export) } {
         return Err(FloorError::Namespace { path: namespace_path, reason: "invalid export capability" });
     }
+    let vtables_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_vtable_enumeration_provider_v1".as_ptr()) };
+    if vtables_provider.is_null() {
+        return Err(FloorError::VtableEnumeration { path: object_model_path, reason: "missing capability" });
+    }
+    let provide: birnam_abi::vtable_enumeration::ProviderV1 = unsafe { std::mem::transmute(vtables_provider) };
+    let vtables = unsafe { provide() };
+    if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } {
+        return Err(FloorError::VtableEnumeration { path: object_model_path, reason: "invalid capability" });
+    }
     Ok(LoadedFloor {
+        _object_model: object_model,
+        vtable_enumeration: NonNull::new(vtables).unwrap(),
         namespace_export: NonNull::new(export).unwrap(),
         namespace_import: NonNull::new(import).unwrap(),
         namespace_presence: NonNull::new(presence).unwrap(),
@@ -3138,6 +3163,39 @@ unsafe fn prepare_namespace(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::namespace::valid(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::namespace::DependencyV8 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
+}
+
+unsafe fn prepare_vtable_enumeration(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::VtableEnumeration {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_vtable_enumeration_dependency_v1".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_vtable_enumeration_factory_v1".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::vtable_enumeration::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::vtable_enumeration::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::vtable_enumeration::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

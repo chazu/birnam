@@ -1,4 +1,4 @@
-#include "idapi_v11.h"
+#include "idapi_v12.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -91,7 +91,7 @@ static void method(Oop type,Oop selector,Method implementation) {
 }
 static void begin(const char *name) { printf("case %s\n",name);capture=1;reads=interns=makes=exports=imports=vt_calls=sends=calls=0; }
 static void end(void) { capture=0;printf("done read=%zu intern=%zu make=%zu export=%zu import=%zu vtable=%zu send=%zu calls=%zu\n",reads,interns,makes,exports,imports,vt_calls,sends,calls); }
-static void mount(const char *path) { void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports()); }
+static void mount(const char *path) { void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()); }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);fixture_mount_trace(api,argv[1]);
@@ -104,7 +104,7 @@ int main(int argc,char **argv) {
     answer=api->alloc(api->object_vt,0);second=api->alloc(api->object_vt,0);error_type=api->proto(api->object_vt);other_type=api->proto(error_type);
     Oop type=api->proto(api->object_vt);factory=api->alloc(type,0);alternate=api->alloc(type,0);factory_export=factory;api->method(type,api->intern("kind:message:"),construct);
     void *image=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image);float_init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(float_init);
-    begin("all affected methods can fail during their registration");float_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports());end();assert(bindings==13);
+    begin("all affected methods can fail during their registration");float_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration());end();assert(bindings==13);
     for(size_t i=0;i<13;i++) assert(lookup(specs[i].name)==methods[i]);
     begin("invalid arities skip all policy");for(size_t i=0;i<13;i++) assert(methods[i](left,(Oop *)(uintptr_t)1,2)==api->nil_obj);end();assert(!reads && !makes && !exports);
     begin("null binary carriers retain earlier receiver read");for(size_t i=0;i<8;i++) assert(methods[i](left,NULL,1)==api->nil_obj);end();assert(reads==8 && !exports && !makes);
@@ -142,7 +142,7 @@ int main(int argc,char **argv) {
     collect=nested=1;begin("nested construction and callback GC");assert(invoke(8)==answer);end();collect=0;assert(calls==2 && makes==2);
     Oop behavior=fixture_float->behavior,prototype=fixture_float->prototype;api->method(behavior,api->intern("asInteger"),construct_second);
     begin("copied method survives public replacement");assert(invoke(8)==answer);end();
-    begin("reload retains identities and original execution table");float_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports());end();assert(fixture_float->behavior==behavior && fixture_float->prototype==prototype && bindings==26);
+    begin("reload retains identities and original execution table");float_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration());end();assert(fixture_float->behavior==behavior && fixture_float->prototype==prototype && bindings==26);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(invoke(8)==answer);
     fixture_string->make=original_make;fixture_string->context=string_context;fixture_float->read=original_read;
     printf("float-error-value: %zu failure/recognition/construction cases, registration calls, precedence, live callbacks, lookup, reentry, GC and reload passed\n",cases);

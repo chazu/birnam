@@ -1,4 +1,4 @@
-#include "idapi_v11.h"
+#include "idapi_v12.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -36,7 +36,7 @@ static void *mount(const char *path, IdApi *selected) {
     if(!image) fprintf(stderr,"%s\n",dlerror());
     assert(image); fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports()); return image;
+    init(selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()); return image;
 }
 static Oop send(Oop object, const char *name, Oop argument) {
     return api->send(object,api->intern(name),&argument,1);
@@ -94,7 +94,7 @@ int main(int argc, char **argv) {
     for(size_t i=0;i<sizeof(payloads)/sizeof(*payloads);i++) {
         double value; memcpy(&value,&payloads[i],8);
         Oop boxed=fixture_float_make(value);
-        assert(api->object_payload_size(boxed)==8 && api->slot_kind(fixture_float->behavior,0)==IDAPI_V11_SLOT_RAW);
+        assert(api->object_payload_size(boxed)==8 && api->slot_kind(fixture_float->behavior,0)==IDAPI_V12_SLOT_RAW);
         assert(!memcmp(boxed,&payloads[i],8));
         double read=fixture_float_value(boxed); assert(!memcmp(&read,&payloads[i],8));
         uint8_t raw[10]; memset(raw,0xab,sizeof(raw));

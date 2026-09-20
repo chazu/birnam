@@ -232,6 +232,7 @@ const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    vtables: usize,
     exports: usize,
     presence: usize,
     imports: usize,
@@ -1673,7 +1674,7 @@ unsafe fn borrowed_address(api: &IdApi, address: usize) -> Option<Oop> {
 }
 
 unsafe fn foreign_address_value(api: &IdApi, object: Oop) -> Option<usize> {
-    unsafe { foreign_address::value(api, execution_imports(), object) }.map(|(address, _kind)| address)
+    unsafe { foreign_address::value(api, execution_imports(), runtime().vtables as *const _, object) }.map(|(address, _kind)| address)
 }
 
 // JIT identities are scalar registry keys, not roots. Payload addresses are
@@ -12206,7 +12207,7 @@ unsafe extern "C" fn rust_codegen_live_vtable_count(
     if count != 0 {
         return api.nilObj;
     }
-    unsafe { (birnam_abi::integer::make)((api.vtableCount)().min(i64::MAX as usize) as i64) }
+    unsafe { (birnam_abi::integer::make)(birnam_abi::vtable_enumeration::count(runtime().vtables as *const _).min(i64::MAX as usize) as i64) }
 }
 
 unsafe fn floor_diagnostic_method(count: usize, symbol: &[u8]) -> Oop {
@@ -12962,7 +12963,7 @@ unsafe extern "C" fn rust_reflect_collect_fact(
     unsafe { api(runtime()) }.nilObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -13052,6 +13053,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let store = unsafe { birnam_abi::namespace_import::import(imports, STORE_NAME.as_ptr().cast()) };
         Runtime {
             api: api_pointer as usize,
+            vtables: vtables as usize,
             exports: exports as usize,
             presence: presence as usize,
             imports: imports as usize,
@@ -13792,8 +13794,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports, vtables) };
     ptr::null_mut()
 }
 

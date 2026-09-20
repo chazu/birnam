@@ -28,7 +28,7 @@ const RUST_ALIEN_IDENTITY: &[u8] = b"rust-alien-r5-loader\0";
 const ALIEN_VT_NAME: &[u8] = b"AlienVt\0";
 const ALIEN_NAME: &[u8] = b"Alien\0";
 
-static API: OnceLock<(usize, usize, usize, usize)> = OnceLock::new();
+static API: OnceLock<(usize, usize, usize, usize, usize)> = OnceLock::new();
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static REGISTRY: OnceLock<Mutex<LibraryRegistry>> = OnceLock::new();
 static CALLBACKS: OnceLock<Mutex<Vec<CallbackEntry>>> = OnceLock::new();
@@ -360,11 +360,11 @@ unsafe fn ensure_callback_roots(api: &IdApi) {
 }
 
 unsafe fn address_value(api: &IdApi, value: Oop) -> Option<usize> {
-    unsafe { foreign_address::value(api, execution_imports(), value) }.map(|(address, _kind)| address)
+    unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), value) }.map(|(address, _kind)| address)
 }
 
 unsafe fn resolve_buffer_address(api: &IdApi, receiver: Oop, offset: Oop) -> Result<usize, Oop> {
-    let Some((base, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), receiver) }) else {
+    let Some((base, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) }) else {
         return Err(unsafe {
             make_error(
                 api,
@@ -437,7 +437,7 @@ unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usi
 
 unsafe extern "C" fn alien_free(receiver: Oop, _args: *const Oop, _count: usize) -> Oop {
     let api = unsafe { api_ref() };
-    let Some((address, kind)) = (unsafe { foreign_address::value(api, execution_imports(), receiver) }) else {
+    let Some((address, kind)) = (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) }) else {
         return unsafe { make_error(api, b"typeMismatch\0", b"free needs a ForeignAddress") };
     };
     if kind != KIND_ALIEN_MALLOC {
@@ -452,7 +452,7 @@ unsafe extern "C" fn alien_free(receiver: Oop, _args: *const Oop, _count: usize)
     if address == 0 {
         return unsafe { make_error(api, b"alreadyFreed\0", b"the address was already freed") };
     }
-    unsafe { foreign_address::clear(api, execution_imports(), receiver) };
+    unsafe { foreign_address::clear(api, execution_imports(), execution_vtables(), receiver) };
     unsafe { free(address as *mut c_void) };
     api.nilObj
 }
@@ -466,7 +466,7 @@ unsafe extern "C" fn foreign_address_is_null(
     if count != 0 {
         return api.nilObj;
     }
-    match unsafe { foreign_address::value(api, execution_imports(), receiver) } {
+    match unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) } {
         Some((0, _kind)) => api.trueObj,
         Some((_address, _kind)) => api.falseObj,
         None => api.nilObj,
@@ -476,13 +476,13 @@ unsafe extern "C" fn foreign_address_is_null(
 unsafe extern "C" fn foreign_address_equal(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     let (Some((left, _left_kind)), Some(other)) =
-        (unsafe { foreign_address::value(api, execution_imports(), receiver) }, unsafe {
+        (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) }, unsafe {
             argument(args, count)
         })
     else {
         return api.nilObj;
     };
-    match unsafe { foreign_address::value(api, execution_imports(), other) } {
+    match unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), other) } {
         Some((right, _right_kind)) if left == right => api.trueObj,
         _ => api.falseObj,
     }
@@ -497,7 +497,7 @@ unsafe extern "C" fn foreign_address_print_string(
     if count != 0 {
         return api.nilObj;
     }
-    let Some((address, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), receiver) }) else {
+    let Some((address, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) }) else {
         return api.nilObj;
     };
     let text = format!("ForeignAddress(0x{address:x})");
@@ -1110,11 +1110,11 @@ unsafe extern "C" fn alien_release_callback(
             0,
         )
     };
-    unsafe { foreign_address::clear(api, execution_imports(), value) };
+    unsafe { foreign_address::clear(api, execution_imports(), execution_vtables(), value) };
     api.trueObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -1123,7 +1123,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         Some(existing) if existing.0 != address => abort("IdApi was replaced"),
         Some(_) => {}
         None => {
-            let _ = API.set((address, presence as usize, imports as usize, exports as usize));
+            let _ = API.set((address, presence as usize, imports as usize, exports as usize, vtables as usize));
         }
     }
     let api = unsafe { &*api_pointer };
@@ -1275,11 +1275,11 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust Alien object family and its dynamic-library protocol.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
     let _ = state;
     // SAFETY: the host supplies the process-owned IdApi table and retains it
     // for the module lifetime.
-    unsafe { bring_up(api, presence, imports, exports) };
+    unsafe { bring_up(api, presence, imports, exports, vtables) };
     ptr::null_mut()
 }
 
@@ -1288,3 +1288,5 @@ fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { API.ge
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { API.get().expect("module not initialized").2 as *const birnam_abi::namespace_import::ApiV1 }
 
 fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { API.get().expect("module not initialized").3 as *const birnam_abi::namespace_export::ApiV1 }
+
+fn execution_vtables() -> *const birnam_abi::vtable_enumeration::ApiV1 { API.get().expect("module not initialized").4 as *const _ }

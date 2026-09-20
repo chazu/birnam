@@ -6,6 +6,6 @@ mise exec -- cargo build -p birnam-namespace -p birnam-id -p birnam-string -p bi
 float_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-float.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v11 -Iscripts/fixtures scripts/fixtures/float-module.c -o "$scratch/float"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v12 -Iscripts/fixtures scripts/fixtures/float-module.c -o "$scratch/float"
 "$scratch/float" "$float_target/debug/libbirnam_id.dylib" "$float_target/debug/libbirnam_float.dylib" \
   "$float_target/debug/libbirnam_object_model.dylib" "$float_target/debug/libbirnam_prelude.dylib" "$float_target/debug/libbirnam_error.dylib"

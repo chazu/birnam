@@ -521,6 +521,7 @@ mod runtime {
     #[derive(Clone, Copy)]
     struct Runtime {
         api: usize,
+        vtables: usize,
         imports: usize,
         report_obj: usize,
         report: &'static Mutex<SaveReport>,
@@ -712,7 +713,7 @@ mod runtime {
     }
 
     unsafe fn vtable_inherits_from(api: &IdApi, mut vtable: Oop, ancestor: Oop) -> bool {
-        let mut remaining = unsafe { (api.vtableCount)() }.saturating_add(1);
+        let mut remaining = unsafe { birnam_abi::vtable_enumeration::count(runtime().vtables as *const _) }.saturating_add(1);
         while !vtable.is_null() && remaining != 0 {
             if vtable == ancestor {
                 return true;
@@ -3037,7 +3038,7 @@ mod runtime {
         api.nilObj
     }
 
-    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) {
         if api.is_null() {
             abort("module_init received a null IdApi");
         }
@@ -3139,6 +3140,7 @@ mod runtime {
         }
         let _ = RUNTIME.set(Runtime {
             api: api as usize,
+            vtables: vtables as usize,
             imports: imports as usize,
             report_obj: report_obj as usize,
             report: &SAVE_REPORT,
@@ -3176,10 +3178,10 @@ mod runtime {
 
     /// Initialize the Rust Image shell against the process floor.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> *mut c_void {
+    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
         let _ = state;
         if RUNTIME.get().is_none() {
-            unsafe { bring_up(api, presence, imports, exports) };
+            unsafe { bring_up(api, presence, imports, exports, vtables) };
         }
         ptr::null_mut()
     }

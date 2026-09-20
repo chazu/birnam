@@ -85,7 +85,7 @@ pub unsafe fn allocate(api: &IdApi, presence: *const crate::namespace_presence::
 /// # Safety
 ///
 /// The caller must preserve the Oop across the query and subsequent use.
-pub unsafe fn value(api: &IdApi, imports: *const crate::namespace_import::ApiV1, object: Oop) -> Option<(usize, usize)> {
+pub unsafe fn value(api: &IdApi, imports: *const crate::namespace_import::ApiV1, vtables: *const crate::vtable_enumeration::ApiV1, object: Oop) -> Option<(usize, usize)> {
     if object.is_null() || unsafe { (api.objectPayloadSize)(object) } != PAYLOAD_BYTES {
         return None;
     }
@@ -94,7 +94,7 @@ pub unsafe fn value(api: &IdApi, imports: *const crate::namespace_import::ApiV1,
         return None;
     }
     let mut vtable = unsafe { (api.vtableOf)(object) };
-    let mut remaining = unsafe { (api.vtableCount)() }.saturating_add(1);
+    let mut remaining = unsafe { crate::vtable_enumeration::count(vtables) }.saturating_add(1);
     while !vtable.is_null() && remaining != 0 {
         if vtable == family {
             return Some(unsafe {
@@ -116,8 +116,8 @@ pub unsafe fn value(api: &IdApi, imports: *const crate::namespace_import::ApiV1,
 ///
 /// The caller must own the Runtime thread and ensure no foreign operation is
 /// concurrently using the object.
-pub unsafe fn clear(api: &IdApi, imports: *const crate::namespace_import::ApiV1, object: Oop) -> bool {
-    if unsafe { value(api, imports, object) }.is_none() {
+pub unsafe fn clear(api: &IdApi, imports: *const crate::namespace_import::ApiV1, vtables: *const crate::vtable_enumeration::ApiV1, object: Oop) -> bool {
+    if unsafe { value(api, imports, vtables, object) }.is_none() {
         return false;
     }
     unsafe { object.cast::<usize>().write(0) };

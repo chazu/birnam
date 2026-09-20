@@ -73,7 +73,7 @@ pub(super) unsafe extern "C" fn bind(unit: Oop, _args: *const Oop, count: usize)
         return api.nilObj;
     }
     let mut vtable = unsafe { (api.vtableOf)(unit) };
-    let mut remaining = unsafe { (api.vtableCount)() };
+    let mut remaining = unsafe { birnam_abi::vtable_enumeration::count(runtime.vtables as *const _) };
     while vtable != runtime.unit_vt as Oop && !vtable.is_null() && remaining != 0 {
         vtable = unsafe { birnam_abi::vtable_parent(api, vtable) };
         remaining -= 1;

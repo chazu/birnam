@@ -391,6 +391,13 @@ impl Vtables {
         self.ordered.len()
     }
 
+    pub(crate) fn view(&self) -> birnam_abi::vtable_enumeration::ViewV1 {
+        birnam_abi::vtable_enumeration::ViewV1 {
+            entries: self.ordered.as_ptr(),
+            count: self.ordered.len(),
+        }
+    }
+
     pub(crate) fn at(&self, index: usize) -> Oop {
         self.ordered
             .get(index)
