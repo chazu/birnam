@@ -63,6 +63,7 @@
     "birnam_vtable_enumeration_dependency_v2",
     "birnam_vtable_enumeration_provider_v2",
     "birnam_word_dependency_v1",
-    "id_init"
+    "id_init",
+    "birnam_key_index_dependency_v1"
   ]
 }

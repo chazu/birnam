@@ -1,6 +1,6 @@
 # 81BX — Derived Vtable key-index storage
 
-> **Status:** Audited next extraction after 81BW (`d9ad8a66`).
+> **Status:** Completed production extraction after 81BW (`d9ad8a66`).
 > Debug validation only; no new language functionality or lookup policy.
 
 Move only `VtableRecord::key_indices`, the derived address-to-position map,
@@ -14,7 +14,8 @@ module never owns or caches a Method.
 `key_index` scans ordered keys when the map is empty; otherwise it reads the
 stored position. `KEY_INDEX_THRESHOLD` remains 16. Appending the seventeenth
 key rebuilds the complete map; later appends insert only the last position.
-Overwrite changes the current value and weak flag without updating the index.
+Overwrite changes the current value without updating the index; weak opaque
+overwrite also marks the entry weak.
 Removal compacts all three ordered vectors, clears/rebuilds the map and
 synchronizes the raw view. Missing removal still advances the mutation epoch.
 Weak sweeps rebuild only changed dictionaries and advance the epoch once for a
@@ -111,3 +112,91 @@ and reload. Compare actual image-backed workers. Check full library/export/
 linkage inventories and source/artifact receipts, update ABI reference, focused
 task, README and changelog, then commit this extraction before selecting another.
 Release validation is waived.
+
+## Implementation and evidence
+
+Object Model owns the nullable map context; no owner is allocated until Id's
+first insert at 17 keys. The adapter changes only the Vtable field, constructor
+and copied map-read expression. Reversing those three substitutions reproduces
+the preserved Vtables source exactly, including all cutoff, rebuild and raw-view
+logic. The original address hasher is copied byte for byte. Heap/registry maps,
+Runtime, inherited lookup, lookup/slot guards and native-tier code are unchanged.
+
+The host pins the new factory after Mutation Epoch. C and Rust fixture loaders
+follow the same order. The independent C header freezes its 56-byte layout;
+earlier admission fixtures acknowledge the dependency without changing their
+original failure gates. The ABI reference and `mise run key-index` describe the
+storage owner without adding language methods.
+
+Debug evidence:
+
+- Core ABI, Object Model, Dispatch Cache, host and Id suites: 405 passed,
+  16 ignored. The workspace all-targets check passes.
+- Two identical new witnesses pass against both the original map and extracted
+  owner; all 38 exact transcript lines match. They compare every key against a
+  linear oracle, ordered selectors/current values, weak flags, strong edges,
+  raw mirrors, capacities and mutation epochs. Cases include every initial
+  size through 20, overwrite, missing/front/middle/end removal, shrinking to
+  16, regrowth, address reinsertion, registry growth/movement, independent
+  teardown and 32-entry weak dictionaries compacted both above and below the
+  threshold, through all-dead and repeated-empty sweeps.
+- Module tests cover unallocated null ownership, every bit position in keys and
+  values, unchanged miss outputs, overwrite, retained capacity after clear,
+  moved slots, independent ownership and frozen address/byte hash results. ABI
+  attachment tests reject null, wrong version/size, each missing operation and
+  retargeting without calling an operation.
+- The real loaded dictionary probe passes for workspace and installed modules.
+  Attachment invokes no operation. Empty and 1..16-entry dictionaries allocate
+  no owner; 17 entries cause exactly 17 inserts and one allocation, and the
+  eighteenth adds once. Overwrite reads the current Method without rebuilding;
+  absent removal does not rebuild. Present removal repairs positions, shrinking
+  selects linear scans, and regrowth reuses the owner. Growing the actual
+  registry through 4096 Vtables moves the context field while preserving its
+  owned map and correct positions.
+- All 13 new host-admission cases pass for workspace and installed libraries.
+  Missing Object Model fails at Vtable Enumeration; each invalid new descriptor
+  fails before initialization. Installed Mutation Epoch, Guard Verdict,
+  Dispatch Cache, Allocation Budget, Collection Phase and Storage Observation
+  host regressions pass their 12, 12, 13, 14, 12 and 14 cases. The Relational
+  native-output fixture passes through the updated Rust loader.
+- Dynamic startup, source-free compiled callers and mapped/rebuilt/baked images
+  exercise 24-key dictionaries with overwrite, removal through the threshold,
+  regrowth, live parent/behavior replacement, active Frame reads/writes, custom
+  lookup, aliases, precise GC and reload. The saved dictionary has 24 distinct
+  portable methods; recovery checks every result, 0 through 23, and its alias.
+  Authored sources and the saver module are deleted before image recovery.
+  The real host asserts `Mapped` for ordinary/baked loads and `SourceRecovery`
+  for explicit rebuild; all three then match the complete 30-line transcript.
+- Old/new actual image-backed workers match all 12 wire values and orderly
+  shutdown byte for byte. The external debug wait leaves production deadlines
+  unchanged.
+
+The saved-dictionary fixture deliberately sends through a local `Reflect`
+receiver to install ordinary portable CodeBindings. Compiled-module top-level
+literal `Reflect` definitions take the separate artifact installation path;
+that initial probe lost its methods at recovery in the preserved 81BW build as
+well, both with and without an explicit global root. The ordinary dynamic send
+preserves all 24 results on both builds. This extraction changes neither
+compiler nor image installation semantics.
+
+## Inventory and receipts
+
+The installed inventory remains 81 libraries: 53 native and 28 compiled. All
+38 native manifests match. The only export additions are Object Model's key
+index factory and Id's dependency. Both libraries remain system-linked only;
+Object Model's Cargo output-path install name is unchanged. Public admission
+contracts match exactly, including IdApi v20 and image v8; ModuleInit remains
+twelve arguments and Native Loader remains v12.
+
+Preserved 81BW baseline: 508 source inputs and 547 installed artifacts.
+
+- Source: `b8a6643e7ff150c63d6797c31535c2012944569f3b52670db4139bd973c6df66`
+- Artifacts: `cf1573d39419f32b053518bf0153df0f24cba1330a5549517bea9af6c275c68e`
+
+Final debug installation: 512 source inputs and 551 installed artifacts,
+verified against current source and installed contents.
+
+- Source: `e70241bb25681871f210af47206ffd705d80848e7abc96f2abfa354794285c28`
+- Artifacts: `50393b8141a15d1d1108510b54329ca27dddfbbb798c0d8863fd4ef96e1a4308`
+
+No release validation was run.

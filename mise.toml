@@ -111,6 +111,10 @@ run = "scripts/guard-verdict-test.sh"
 description = "Check Vtable epoch ownership, exact mutation counts, live dispatch and host admission (debug)"
 run = "scripts/mutation-epoch-test.sh"
 
+[tasks.key-index]
+description = "Check derived Vtable key-index ownership, threshold transitions, live lookup and host admission (debug)"
+run = "scripts/key-index-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"

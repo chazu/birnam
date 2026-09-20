@@ -3,6 +3,7 @@
 #include "../../abi/fixtures/namespace-v8/namespace_v8.h"
 #include "vtable-enumeration-support.h"
 #include "mutation-epoch-support.h"
+#include "key-index-support.h"
 #include "method-observation-support.h"
 #include "root-registry-support.h"
 #include "gc-settings-support.h"
@@ -84,6 +85,7 @@ static inline void fixture_prepare_namespace(void *floor, const char *floor_path
     /* Both handles remain pinned for the process-owned floor. */
     fixture_prepare_vtable_enumeration(floor,floor_path);
     fixture_prepare_mutation_epoch(floor,floor_path);
+    fixture_prepare_key_index(floor,floor_path);
     fixture_prepare_method_observation(floor,floor_path);
     fixture_prepare_root_registry(floor,floor_path);
     fixture_prepare_gc_settings(floor,floor_path);

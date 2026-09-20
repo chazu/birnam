@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move derived Vtable key-index storage into Object Model (81BX). Id retains
+  threshold 16, ordered keys and current values, rebuilds, weak compaction and
+  mutation accounting. Small dictionaries allocate no native index owner;
+  clearing retains capacity. Public formats and library inventory are unchanged.
+
 - Move each Vtables registry's mutation-epoch cell into Object Model (81BW).
   Keep saturation, mutation counts and lookup/native-tier readers in Id. Startup
   and compiled-image checks preserve live dictionary and behavior changes,

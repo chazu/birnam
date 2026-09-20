@@ -52,7 +52,7 @@ struct VtableRecord {
     weak_keys: Vec<bool>,
     // Derived identity lookup only. Ordered vectors retain raw-view and GC
     // authority; these integer addresses never add roots or cache dispatch.
-    key_indices: AddressMap<usize>,
+    key_indices: crate::key_index::Index,
     parent: Oop,
     owner: Oop,
     trace_hook: birnam_abi::trace_hooks::SlotV1,
@@ -73,7 +73,7 @@ impl VtableRecord {
         if self.key_indices.is_empty() {
             return self.keys.iter().position(|candidate| *candidate == key);
         }
-        self.key_indices.get(&key.addr()).copied()
+        self.key_indices.get(key.addr())
     }
 
     fn rebuild_key_indices(&mut self) {
@@ -237,7 +237,7 @@ impl Vtables {
                 keys: Vec::new(),
                 values: Vec::new(),
                 weak_keys: Vec::new(),
-                key_indices: AddressMap::default(),
+                key_indices: crate::key_index::Index::new(),
                 parent,
                 owner: core::ptr::null_mut(),
                 trace_hook: birnam_abi::trace_hooks::SlotV1::EMPTY,
@@ -1205,3 +1205,6 @@ mod tests {
 
 #[cfg(test)]
 mod mutation_epoch_tests;
+
+#[cfg(test)]
+mod key_index_tests;

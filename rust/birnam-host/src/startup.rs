@@ -905,6 +905,7 @@ pub enum FloorError {
     DispatchCache { path: PathBuf, reason: &'static str },
     GuardVerdict { path: PathBuf, reason: &'static str },
     MutationEpoch { path: PathBuf, reason: &'static str },
+    KeyIndex { path: PathBuf, reason: &'static str },
     NativeMark { path: PathBuf, reason: &'static str },
     NativeStack { path: PathBuf, reason: &'static str },
     VtableEnumeration { path: PathBuf, reason: &'static str },
@@ -955,6 +956,7 @@ impl fmt::Debug for FloorError {
             Self::DispatchCache { path, reason } => write!(formatter, "Dispatch cache preparation failed: {} ({reason})", path.display()),
             Self::GuardVerdict { path, reason } => write!(formatter, "Guard verdict preparation failed: {} ({reason})", path.display()),
             Self::MutationEpoch { path, reason } => write!(formatter, "Mutation epoch preparation failed: {} ({reason})", path.display()),
+            Self::KeyIndex { path, reason } => write!(formatter, "Key index preparation failed: {} ({reason})", path.display()),
             Self::VtableEnumeration { path, reason } => write!(formatter, "Vtable enumeration preparation failed: {} ({reason})", path.display()),
             Self::Namespace { path, reason } => write!(formatter, "Namespace preparation failed: {} ({reason})", path.display()),
             Self::NullApi => formatter.write_str("NullApi"),
@@ -974,6 +976,7 @@ pub struct LoadedFloor {
     _namespace: NonNull<std::ffi::c_void>,
     _object_model: NonNull<std::ffi::c_void>,
     _mutation_epoch: NonNull<std::ffi::c_void>,
+    _key_index: NonNull<std::ffi::c_void>,
     _root_registry: NonNull<std::ffi::c_void>,
     root_registry: NonNull<birnam_abi::root_registry::ApiV1>,
     _gc_settings: NonNull<std::ffi::c_void>,
@@ -3153,6 +3156,13 @@ pub fn load_floor(
             return Err(error);
         }
     };
+    let key_index_image = match unsafe { prepare_key_index(handle, &object_model_path) } {
+        Ok(image) => image,
+        Err(error) => {
+            unsafe { system_dlclose(handle.as_ptr()) };
+            return Err(error);
+        }
+    };
     let observation_image = match unsafe { prepare_method_observation(handle, &observation_path) } {
         Ok(image) => image,
         Err(error) => {
@@ -3399,6 +3409,7 @@ pub fn load_floor(
         method_observation: NonNull::new(observation).unwrap(),
         _object_model: object_model,
         _mutation_epoch: mutation_epoch_image,
+        _key_index: key_index_image,
         vtable_enumeration: NonNull::new(vtables).unwrap(),
         namespace_export: NonNull::new(export).unwrap(),
         namespace_import: NonNull::new(import).unwrap(),
@@ -3934,6 +3945,39 @@ unsafe fn prepare_mutation_epoch(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::mutation_epoch::valid(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::mutation_epoch::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
+        Ok(image)
+    })();
+    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
+    result
+}
+
+unsafe fn prepare_key_index(
+    floor: NonNull<std::ffi::c_void>,
+    path: &Path,
+) -> Result<NonNull<std::ffi::c_void>, FloorError> {
+    let error = |reason| FloorError::KeyIndex {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let attach =
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_key_index_dependency_v1".as_ptr()) };
+    if attach.is_null() {
+        return Err(error("missing floor dependency"));
+    }
+    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
+    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+        .ok_or_else(|| error("open failed"))?;
+    let result = (|| {
+        let provider =
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_key_index_factory_v1".as_ptr()) };
+        if provider.is_null() {
+            return Err(error("missing provider"));
+        }
+        let provide: birnam_abi::key_index::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let descriptor = unsafe { provide() };
+        if !unsafe { birnam_abi::key_index::valid(descriptor) } { return Err(error("invalid descriptor")); }
+        let attach: birnam_abi::key_index::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();
