@@ -883,3 +883,10 @@ pub unsafe extern "C" fn birnam_mutation_epoch_dependency_v1(factory: *const bir
 pub unsafe extern "C" fn birnam_key_index_dependency_v1(factory: *const birnam_abi::key_index::FactoryV1) -> c_int {
     unsafe { birnam_abi::key_index::attach(factory) }
 }
+
+/// # Safety
+/// Prepare before Id initialization; descriptor and code stay pinned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_allocation_identity_dependency_v1(factory: *const birnam_abi::allocation_identity::FactoryV1) -> c_int {
+    unsafe { birnam_abi::allocation_identity::attach(factory) }
+}

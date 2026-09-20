@@ -1,6 +1,6 @@
 # 81BY — Heap allocation-identity storage
 
-> **Status:** Audited next extraction after 81BX (`d20a499a`).
+> **Status:** Completed production extraction after 81BX (`d20a499a`).
 > Debug validation only; identity issuance and allocation behavior stay in Id.
 
 Move only `Heap::next_allocation_identity`, the per-Heap `u64` storage cell,
@@ -23,7 +23,7 @@ including the `allocation identity exhausted` fatal diagnostic after raw
 allocation. The first issued identity is 1; the last is `(1 << 59) - 1`.
 
 An identity is never reused within a Heap, including when the allocator reuses
-a dead address. Clearing marks, changing permanence, detaching/reclaiming,
+a dead address. Clearing marks, changing headers, detaching/reclaiming,
 Vtable mutation, finalizer work and storage observation do not reset this cell.
 The counter is distinct from deferred-allocation IDs, Runtime observation IDs,
 Vtable mutation epochs and code-generation identities. Do not consolidate them.
@@ -105,3 +105,88 @@ continue issuing identities.
   receipts. Add the ABI reference, focused task, README and changelog, update
   Storage's manifest scope, then commit before the next extraction. No release
   validation is required.
+
+## Implementation and evidence
+
+Storage owns one opaque cell per Heap. Id changes only the field type,
+constructor, checked successor's read/store and metadata read. Reversing those
+four production substitutions reproduces the preserved Heap source exactly;
+the private test setup seam is the only other adaptation. Block layout and
+metadata, all raw allocation/registry/charging expressions, deferred journals,
+Runtime storage observation, Vtables and native-tier/guard callers are unchanged.
+Storage's existing implementation is unchanged apart from the module declaration
+and factory re-export.
+
+The host and both fixture loaders prepare/pin the factory immediately after
+Storage Observation. Later cache-admission fixtures now acknowledge it while
+retaining their original failure gates. The ABI reference, independent C header,
+focused task, README and changelog describe native storage ownership without
+adding language methods.
+
+Debug evidence:
+
+- Core ABI, Storage, Object Model, Dispatch Cache, host and Id suites: 415 passed,
+  16 ignored. The workspace all-targets check passes.
+- Four identical new Heap witnesses pass on original and extracted storage;
+  all 12 exact transcript lines match. They cover zero/first/last identities,
+  all eight padding possibilities, permanent/collectable blocks, four-word
+  Block geometry, zeroed payloads, header changes, marking, finalizer attachment,
+  detachment, callback/reclaim, unchanged charging, budget reset and independent
+  moved owners. Across 256 allocate/reclaim cycles, the allocator actually
+  reuses addresses while identities remain strictly new.
+- The original last permitted identity is `576460752303423487`; the witness
+  checks its packed metadata. Isolated child processes test both the 59-bit
+  limit and `checked_add` overflow, each producing SIGABRT and the exact
+  `allocation identity exhausted` diagnostic. No production forcing export is
+  added. Module tests independently cover all-bit/reordered/repeated stores,
+  zero initialization and independent owner destruction.
+- The complete focused task passes after fixture corrections. The actual loaded
+  Heap probe passes for workspace and installed libraries: attachment invokes
+  no operations; Id creates one zeroed owner; every bootstrap/later write is
+  the exact successor. Sixteen explicit allocations each advance once and
+  storage reports preserve their exact identities and extents through GC.
+  An unrooted finalizer runs exactly once; GC/observation do not reset issuance.
+  Last-valid and both fatal exhaustion cases also pass with installed libraries.
+- All 12 new host-admission cases pass in workspace and installation. A missing
+  Storage library fails at the earlier observation factory; invalid new
+  descriptors and rejected/missing Id dependencies fail before initialization.
+  Installed Dispatch Cache, Guard Verdict and Storage Observation regressions
+  pass their 13, 12 and 14 cases. The Relational native-output fixture passes
+  through the updated Rust fixture loader and real installed floor.
+- Dynamic Siphon startup and source-free compiled callers pass. Mapped/rebuilt
+  native Code images and baked execution reproduce the exact 30-line output,
+  including all 24 distinct saved method values and their alias. The consumer
+  exercises fresh allocations, finalization, large-dictionary mutation, live
+  parent/behavior replacement, active Frame reads/writes, custom lookup, GC and
+  reload. Authored sources and the saver module are deleted before recovery.
+- The real host asserts `Mapped` for ordinary/baked loads and `SourceRecovery`
+  for rebuild. After main returns, its native idle check observes exact block
+  identities/extents, preserves a rooted alias through collection/finalization,
+  and confirms that the next allocation receives a greater identity. During
+  active dispatch the consumer instead asserts the existing `STORAGE_BUSY`
+  result; it does not relax the observation boundary. The standalone collection
+  probe supplies a live stack anchor, preserving the existing zero-anchor
+  suppression rule.
+- Old/new actual image-backed host workers match all 12 wire values and orderly
+  shutdown byte for byte. The external debug wait changes no production deadline.
+
+## Inventory and receipts
+
+The inventory remains 81 libraries: 53 native and 28 compiled modules. All 38
+native export manifests match, with only Storage's allocation-identity factory
+and Id's dependency added. Both libraries link only system libraries; Storage
+retains `@rpath/libbirnam_storage.dylib`. Public admission contracts match exactly:
+IdApi v20, twelve-argument ModuleInit, Native Loader v12 and image v8.
+
+Preserved 81BX baseline: 512 source inputs and 551 installed artifacts.
+
+- Source: `e70241bb25681871f210af47206ffd705d80848e7abc96f2abfa354794285c28`
+- Artifacts: `50393b8141a15d1d1108510b54329ca27dddfbbb798c0d8863fd4ef96e1a4308`
+
+Final debug installation: 516 source inputs and 555 installed artifacts,
+verified against current source and installed contents.
+
+- Source: `5d03e1080fe395f6fe2b44ff98485f050e56e852ccefebd1fec578ed7a498a06`
+- Artifacts: `5af4ea2ccc1902fa18b3a1080d51d655544645a20a217e950ad90aa6dc07ccd5`
+
+No release validation was run.

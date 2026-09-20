@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move the Heap's allocation-identity storage cell into Storage (81BY). Id keeps
+  checked issuance, the 59-bit exhaustion bound, packed block metadata and byte
+  charging. GC and address reuse do not reset identities; public formats and
+  library inventory remain unchanged.
+
 - Move derived Vtable key-index storage into Object Model (81BX). Id retains
   threshold 16, ordered keys and current values, rebuilds, weak compaction and
   mutation accounting. Small dictionaries allocate no native index owner;

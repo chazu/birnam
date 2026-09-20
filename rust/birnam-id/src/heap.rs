@@ -159,7 +159,7 @@ pub(crate) struct Heap {
     numeric_allocations: Vec<dead_allocations::numeric::Entry>,
     counted_frame_indices: Option<Box<dead_allocations::frame_indices::CountedFrameIndices>>,
     next_deferred_id: u64,
-    next_allocation_identity: u64,
+    next_allocation_identity: crate::allocation_identity::Service,
     // Retaining records precede the service in field drop order.
     finalizers: crate::finalizers::Service,
 }
@@ -180,10 +180,13 @@ impl Heap {
             counted_frame_indices: None,
             deferred_allocations: Vec::new(),
             next_deferred_id: 0,
-            next_allocation_identity: 0,
+            next_allocation_identity: crate::allocation_identity::Service::new(),
             finalizers: crate::finalizers::Service::new(),
         }
     }
+
+    #[cfg(test)]
+    fn set_allocation_identity_for_test(&mut self, value: u64) { self.next_allocation_identity.set(value); }
 
     pub(crate) fn allocation_total_size(payload_size: usize) -> Option<usize> {
         VTABLE_HEADER_SIZE
@@ -207,16 +210,16 @@ impl Heap {
         let payload = unsafe { payload_from_base(base) };
         let payload_address = payload.as_ptr().addr();
 
-        self.next_allocation_identity = self.next_allocation_identity
+        self.next_allocation_identity.set(self.next_allocation_identity.get()
             .checked_add(1)
             .filter(|identity| *identity <= u64::MAX >> 5)
-            .unwrap_or_else(|| boundary::fatal_invariant("allocation identity exhausted"));
+            .unwrap_or_else(|| boundary::fatal_invariant("allocation identity exhausted")));
         let previous = self.blocks.insert(
             payload_address,
             Block {
                 base,
                 total_size,
-                metadata: (self.next_allocation_identity << 5)
+                metadata: (self.next_allocation_identity.get() << 5)
                     | (((total_size - VTABLE_HEADER_SIZE - payload_size) as u64) << 2)
                     | if permanence == Permanence::Permanent {
                         2
@@ -854,3 +857,6 @@ mod tests {
 
 #[cfg(test)]
 mod allocation_budget_tests;
+
+#[cfg(test)]
+mod allocation_identity_tests;

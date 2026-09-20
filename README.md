@@ -860,6 +860,11 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [separate dependency](abi/guard-verdict-v1.md). Guard evaluation stays in Id.
   Run `mise run guard-verdict`; use `scripts/guard-verdict-image-smoke.sh PREFIX`
   for startup and compiled-image checks with active Frame reads and writes.
+- [Allocation Identity](docs/design/81by-production-allocation-identity.md) moves
+  the Heap's counter storage into Storage through an [explicit dependency](abi/allocation-identity-v1.md).
+  Id retains issuance, exhaustion and packed metadata.
+  Run `mise run allocation-identity`; use `scripts/allocation-identity-image-smoke.sh PREFIX`
+  for startup and compiled-image allocation, GC and finalization coverage.
 - [Vtable Key Index](docs/design/81bx-production-vtable-key-index.md) moves derived
   key positions into Object Model through an [explicit dependency](abi/key-index-v1.md).
   Id retains ordered dictionaries, threshold 16 and live lookup decisions.

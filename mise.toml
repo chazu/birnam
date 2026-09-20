@@ -115,6 +115,10 @@ run = "scripts/mutation-epoch-test.sh"
 description = "Check derived Vtable key-index ownership, threshold transitions, live lookup and host admission (debug)"
 run = "scripts/key-index-test.sh"
 
+[tasks.allocation-identity]
+description = "Check Heap allocation-identity ownership, exhaustion, storage reports and host admission (debug)"
+run = "scripts/allocation-identity-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"
