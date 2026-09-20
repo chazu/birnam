@@ -1,6 +1,6 @@
 #ifndef FIXTURE_NATIVE_STACK_SUPPORT_H
 #define FIXTURE_NATIVE_STACK_SUPPORT_H
-#include "../../abi/fixtures/native-stack-v1/native_stack_v1.h"
+#include "../../abi/fixtures/native-stack-v2/native_stack_v2.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -8,13 +8,13 @@
 #include <string.h>
 static void *fixture_native_stack_floor;
 static inline void fixture_prepare_native_stack(void *floor,const char *floor_path) {
-    NativeStackDependencyV1 attach=(NativeStackDependencyV1)dlsym(floor,"birnam_native_stack_dependency_v1");assert(attach);
+    NativeStackDependencyV2 attach=(NativeStackDependencyV2)dlsym(floor,"birnam_native_stack_dependency_v2");assert(attach);
     const char *slash=strrchr(floor_path,'/');assert(slash);char path[PATH_MAX];
     int n=snprintf(path,sizeof(path),"%.*s/libbirnam_native_stack.dylib",(int)(slash-floor_path),floor_path);
     assert(n>0 && (size_t)n<sizeof(path));
     void *image=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    NativeStackFactoryProviderV1 provide=(NativeStackFactoryProviderV1)dlsym(image,"birnam_native_stack_factory_v1");assert(provide);
-    const NativeStackFactoryV1 *factory=provide();assert(factory && attach(factory)==1);
+    NativeStackFactoryProviderV2 provide=(NativeStackFactoryProviderV2)dlsym(image,"birnam_native_stack_factory_v2");assert(provide);
+    const NativeStackFactoryV2 *factory=provide();assert(factory && attach(factory)==1);
     fixture_native_stack_floor=floor;
 }
 static inline NativeStackV1 *fixture_native_stack(void) {

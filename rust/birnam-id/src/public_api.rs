@@ -824,7 +824,7 @@ pub(crate) fn native_stack_access() -> birnam_abi::native_stack::FloorV1 {
     }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_stack_dependency_v1(factory: *const birnam_abi::native_stack::FactoryV1) -> c_int {
+pub unsafe extern "C" fn birnam_native_stack_dependency_v2(factory: *const birnam_abi::native_stack::FactoryV2) -> c_int {
     unsafe { birnam_abi::native_stack::attach(factory) }
 }
 #[unsafe(no_mangle)]

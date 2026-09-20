@@ -81,3 +81,71 @@ fn descriptor_validation_and_teardown_are_inert() {
     }
     assert!(floor.seen.borrow().is_empty());
 }
+
+#[test]
+fn scanner_emits_only_complete_words_in_order_for_every_byte_boundary() {
+    unsafe extern "C" fn emit(context: *mut c_void, value: usize) -> i32 {
+        unsafe { &mut *context.cast::<Vec<usize>>() }.push(value);
+        birnam_abi::storage::OK
+    }
+    let words = [0, 7, 7, usize::MAX, 1usize << (usize::BITS - 1), 19];
+    let mut values = Vec::<usize>::new();
+    let sink = birnam_abi::trace_live::SinkV1 { context: (&raw mut values).cast(), emit };
+    let base = words.as_ptr().addr(); let bytes = size_of_val(&words); let word = size_of::<usize>();
+    for low in 0..=bytes {
+        for high in 0..=bytes {
+            values.clear();
+            unsafe { scan(&sink, base + low, base + high) };
+            let expected: Vec<_> = words.iter().enumerate()
+                .filter_map(|(index, value)| (index * word >= low && (index + 1) * word <= high).then_some(*value)).collect();
+            assert_eq!(values, expected, "byte interval {low}..{high}");
+        }
+    }
+    values.clear(); unsafe { scan(&sink, 0, 0); scan(&sink, usize::MAX - word + 1, usize::MAX) };
+    assert!(values.is_empty());
+}
+
+#[test]
+fn scanner_reads_after_each_callback_and_supports_synchronous_emission_reentry() {
+    struct Recording { words: *mut usize, values: RefCell<Vec<usize>>, entered: Cell<bool> }
+    unsafe extern "C" fn emit(context: *mut c_void, value: usize) -> i32 {
+        let state = unsafe { &*context.cast::<Recording>() };
+        state.values.borrow_mut().push(value);
+        if !state.entered.replace(true) {
+            unsafe { state.words.add(2).write(99) };
+            let nested = [41usize, 43];
+            let sink = birnam_abi::trace_live::SinkV1 { context, emit };
+            unsafe { scan(&sink, nested.as_ptr().addr(), nested.as_ptr().addr() + size_of_val(&nested)) };
+        }
+        birnam_abi::storage::OK
+    }
+    let mut words = [0usize, 7, 7, usize::MAX];
+    let mut state = Recording { words: words.as_mut_ptr(), values: RefCell::new(Vec::new()), entered: Cell::new(false) };
+    let sink = birnam_abi::trace_live::SinkV1 { context: (&raw mut state).cast(), emit };
+    unsafe { scan(&sink, words.as_ptr().addr(), words.as_ptr().addr() + size_of_val(&words)) };
+    assert_eq!(*state.values.borrow(), [0, 41, 43, 7, 99, usize::MAX]);
+}
+
+#[test]
+fn scanner_rejects_before_another_candidate_with_the_original_diagnostic() {
+    const CHILD: &str = "BIRNAM_STACK_SCAN_REJECT_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        unsafe extern "C" fn reject(_: *mut c_void, value: usize) -> i32 {
+            use std::io::Write;
+            writeln!(std::io::stdout().lock(), "candidate {value}").unwrap();
+            -77
+        }
+        let words = [17usize, 23];
+        let sink = birnam_abi::trace_live::SinkV1 { context: ptr::null_mut(), emit: reject };
+        unsafe { scan(&sink, words.as_ptr().addr(), words.as_ptr().addr() + size_of_val(&words)) };
+        panic!("scanner returned after rejection");
+    }
+    use std::os::unix::process::ExitStatusExt;
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "tests::scanner_rejects_before_another_candidate_with_the_original_diagnostic", "--nocapture"])
+        .env(CHILD, "1").output().unwrap();
+    assert_eq!(output.status.signal(), Some(6));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.ends_with("candidate 17\n") && !stdout.contains("candidate 23"));
+    assert_eq!(String::from_utf8(output.stderr).unwrap(), "birnam-id invariant failed: GC tracer rejected a candidate\n");
+}

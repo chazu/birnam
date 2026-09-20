@@ -1,5 +1,5 @@
-//! Native root-anchor state. Physical register capture and scanning stay in Id.
-use birnam_abi::native_stack::{ApiV1, FactoryV1, FloorV1};
+//! Native root-anchor state and word scanning. Physical capture stays in Id.
+use birnam_abi::native_stack::{ApiV1, FactoryV2, FloorV1};
 use core::ffi::{c_int, c_void};
 use core::ptr;
 
@@ -38,14 +38,29 @@ unsafe extern "C" fn create(floor: *const FloorV1) -> *mut ApiV1 {
 unsafe extern "C" fn destroy(api: *mut ApiV1) {
     unsafe { drop(Box::from_raw(api.cast::<Anchor>())) };
 }
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1, byte_size: size_of::<FactoryV1>(), create: Some(create), destroy: Some(destroy),
-    set: Some(set), get: Some(get),
+// Capture and interval validation remain in Id. This loop runs below that frame.
+unsafe extern "C" fn scan(pointer: *const birnam_abi::trace_live::SinkV1, start: usize, bottom: usize) {
+    let sink = unsafe { &*pointer };
+    let mut address = start.next_multiple_of(size_of::<usize>());
+    while address.checked_add(size_of::<usize>()).is_some_and(|end| end <= bottom) {
+        // Read and emit one complete word at a time, preserving callback effects.
+        let candidate = unsafe { (address as *const usize).read() };
+        let status = unsafe { (sink.emit)(sink.context, candidate) };
+        if status != birnam_abi::storage::OK {
+            eprintln!("birnam-id invariant failed: GC tracer rejected a candidate");
+            std::process::abort();
+        }
+        address += size_of::<usize>();
+    }
+}
+static FACTORY: FactoryV2 = FactoryV2 {
+    version: 2, byte_size: size_of::<FactoryV2>(), create: Some(create), destroy: Some(destroy),
+    set: Some(set), get: Some(get), scan: Some(scan),
 };
 /// # Safety
 /// Owner-thread operations require the declared descriptor and code lifetimes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_stack_factory_v1() -> *const FactoryV1 { &FACTORY }
+pub unsafe extern "C" fn birnam_native_stack_factory_v2() -> *const FactoryV2 { &FACTORY }
 
 /// # Safety
 /// All descriptors and code have the native initialization lifetime.

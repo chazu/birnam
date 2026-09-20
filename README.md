@@ -823,7 +823,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
   Run `mise run native-mark`; use `scripts/native-mark-image-smoke.sh PREFIX`
   for installed startup and compiled-image checks.
 - [Native Stack](docs/design/81bo-production-native-stack-anchor.md) owns the host's
-  native root anchor through an [explicit capability](abi/native-stack-v1.md).
+  native root anchor and word scanning through an [explicit capability](abi/native-stack-v2.md).
   Run `mise run native-stack`; use `scripts/native-stack-image-smoke.sh PREFIX`
   for installed startup and compiled-image checks.
 - [Finalizers](docs/design/81bn-production-finalizers.md) owns native finalizer

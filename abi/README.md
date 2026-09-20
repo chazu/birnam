@@ -252,3 +252,8 @@ Native Mark v1 (81BP) owns native mark scopes and emission policy while Id keeps
 per-floor/thread selection and Rust unwinding. See [the contract](native-mark-v1.md)
 and [implementation manifest](rust-native-mark-dylib-v1.json). IdApi v20,
 Native Loader v12, twelve-argument initialization and image v8 remain unchanged.
+
+Native Stack factory v2 (81BQ) adds incremental native word scanning to the
+existing module while preserving the v1 setter capability. See
+[the v2 contract](native-stack-v2.md). Register capture and interval validation
+remain in Id; IdApi v20 and native initialization are unchanged.

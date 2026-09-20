@@ -58,15 +58,11 @@ pub(crate) fn with_native_root_range<T>(_: usize, _: impl FnOnce(usize) -> T) ->
 /// Emit native words in their existing low-to-high order. The tracer performs
 /// immediate first-mark admission; its frames stay below the captured interval.
 pub(crate) fn emit_native_root_range(sink: &SinkV1, start: usize, stack_bottom: usize) {
-    let mut address = start.next_multiple_of(size_of::<usize>());
-    while address
-        .checked_add(size_of::<usize>())
-        .is_some_and(|end| end <= stack_bottom)
-    {
-        // SAFETY: the caller supplies a validated live stack interval.
-        emit_candidate(sink, unsafe { (address as *const usize).read() });
-        address += size_of::<usize>();
-    }
+    #[cfg(test)]
+    let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v2() };
+    #[cfg(not(test))]
+    let factory = unsafe { birnam_abi::native_stack::operations() };
+    unsafe { factory.scan.unwrap()(sink, start, stack_bottom) };
 }
 
 pub(crate) fn emit_candidate(sink: &SinkV1, candidate: usize) {

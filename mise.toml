@@ -84,7 +84,7 @@ description = "Check native mark scopes, reentry and callback lifetime (debug)"
 run = "scripts/native-mark-test.sh"
 
 [tasks.native-stack]
-description = "Check native stack-anchor ownership, admission and collection (debug)"
+description = "Check native stack anchor, word scanning and collection (debug)"
 run = "scripts/native-stack-test.sh"
 
 [tasks.finalizers]

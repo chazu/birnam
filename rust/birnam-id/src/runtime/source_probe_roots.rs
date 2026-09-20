@@ -68,3 +68,33 @@ impl Runtime {
         self.gc_collect_from_native_range(range.start, range.bottom)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn nested_probe_keeps_outer_native_interval_after_anchor_reset() {
+        let bootstrap = crate::dispatch::build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.gc_set_auto_requested(false);
+        let boundary = [runtime.allocate_instance(runtime.globals().object_vt, 0).addr(), 0usize];
+        runtime.gc_set_stack_bottom(boundary.as_ptr().addr() + size_of_val(&boundary));
+        runtime.enter(|| with_source_probe_native_roots(|runtime| {
+            let outer = OUTER.get().unwrap();
+            runtime.gc_set_stack_bottom(0);
+            // This scratch is below the original capture and must not become a
+            // conservative root merely because the nested probe can still see it.
+            let scratch = runtime.allocate_instance(runtime.globals().object_vt, 0);
+            with_source_probe_native_roots(|nested| {
+                let selected = OUTER.get().unwrap();
+                assert!(core::ptr::eq(selected.runtime, outer.runtime));
+                assert_eq!((selected.start, selected.bottom), (outer.start, outer.bottom));
+                nested.gc_collect_for_source_probe();
+            });
+            assert!(runtime.checked_vtable_of(scratch).is_null());
+        }));
+        assert!(OUTER.get().is_none());
+        let rooted = unsafe { boundary.as_ptr().read_volatile() } as Oop;
+        assert_eq!(runtime.checked_vtable_of(rooted), runtime.globals().object_vt);
+    }
+}

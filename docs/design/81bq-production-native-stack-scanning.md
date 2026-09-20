@@ -1,7 +1,7 @@
 # 81BQ — Native stack word scanning
 
-> **Status:** Audited next extraction after completed 81BP (`45c02878`).
-> Production migration pending. Preserve behavior; debug validation only.
+> **Status:** Production extraction complete after 81BP (`45c02878`).
+> Debug validation passed; release validation remains waived.
 
 [81D](81d-id-api-partition.md) places native-root integration above Id.
 [81BO](81bo-production-native-stack-anchor.md) moved anchor ownership into
@@ -113,3 +113,59 @@ native Code images and baked execution. Confirm actual callback/scan symbol
 ownership, aliases, reload and the real image-backed worker comparison. Check
 all declared export changes, linkage and source/artifact receipts. Record final
 evidence and commit the extraction before selecting another responsibility.
+
+## Completed implementation and evidence
+
+Native Stack factory v2 now owns the word walker. Id's existing
+`emit_native_root_range` selects that immutable scan operation at the original
+call site. The v1 setter capability and copied floor are unchanged, and their
+historical C declarations/contract remain frozen. Current factory/dependency
+exports, host attachment, Id ownership, Rust/C fixtures and native image
+consumers now use v2. No library or native initializer argument was added.
+
+The completed 81BP source at `45c02878` and its installed debug prefix were
+preserved before migration. Final debug evidence:
+
+- ABI, Id, Native Mark and Native Stack library tests: 296 passed, with 15
+  existing Id tests ignored. Workspace build and all-target checks passed.
+  Scanner tests cover every byte boundary in a valid buffer, partial trailing
+  words, empty intervals, exact zero/duplicate/high-bit candidates, incremental
+  reads after callback mutation, synchronous reentry and immediate rejection.
+- Five actual old/new runtime anchor transcripts match exit status, stdout and
+  stderr. They exercise an Oop held only in a live native interval, automatic
+  collection thresholds, provider roots, callback-time anchor reset, native
+  finalization, nested collection and owner/observation failures.
+- Two direct old/new scanner transcripts also match exactly. For this separate
+  buffer-level comparison, the private old walker and failure policy were
+  compiled verbatim from preserved 81BP source behind a test-only C entry;
+  this supplements the actual-runtime native-root comparison above.
+- The feature-gated source-probe test passed: a nested probe retains its outer
+  interval after resetting the current anchor, preserves an outer native-only
+  object and reclaims deeper scratch that must not become a native root.
+  Existing empty-range symbol-compaction and weak-dictionary tests passed in
+  the Id suite.
+- The focused Native Stack and Native Mark gates passed. The actual installed
+  host test confirms live anchor callback/context selection and ordering before
+  optional precise-GC policy. All 18 host factory/capability admission cases
+  passed, including missing scan and unchanged v1 public-capability validation.
+- Live-tracing and Finalizers gates passed, including native roots, the tracer's
+  admission/LIFO oracle, failure before sweep, ordered native cleanup, reentry
+  and all seven native finalizer callers. The v20 C client also passed.
+- Installed startup, source-free compiled callers, mapped/rebuilt saved native
+  Code images and baked execution passed. The native consumer checks scan
+  symbol ownership, incremental reads, a live native-only object, anchor resets,
+  aliases and module reload. Both old/new image-backed workers completed 12
+  exact wire round trips and orderly shutdown with matching transcripts.
+- All 79 installed library export inventories and 35 native manifests match
+  the declared v1-to-v2 factory/dependency changes. Id and Native Stack link only
+  system libraries. All 478 current build inputs and 515 published artifact
+  hashes match the debug receipt; counts remain 51 native libraries and 28
+  compiled modules.
+
+The final review confirms exact agreement for capture, collection, tracing,
+Runtime, the Native Mark adapter and Native Loader. Source-probe production
+code is unchanged; only the feature-gated regression test was appended. IdApi
+remains v20 and image encoding remains v8. Current C fixtures pass strict syntax
+checks. Evidence is in `.cargo-target/81bq-*.log`; repeatable entry points remain
+`scripts/native-stack-test.sh PREFIX` and
+`scripts/native-stack-image-smoke.sh PREFIX`.

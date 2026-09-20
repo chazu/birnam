@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move native stack word scanning into Native Stack (81BQ) through its v2
+  implementation factory. Preserve physical capture in Id, incremental word
+  reads, exact sink failures and existing public anchor assignment. IdApi v20,
+  native initialization and image v8 remain unchanged.
+
 - Extract native mark-callback scope ownership into Native Mark (81BP), preserving
   per-floor/thread selection, provider and hook ordering, emission reentry,
   unwind cleanup and fail-stop diagnostics. IdApi v20 and image v8 are unchanged.

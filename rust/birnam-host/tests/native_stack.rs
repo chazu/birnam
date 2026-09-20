@@ -8,7 +8,7 @@ use std::path::PathBuf;
 struct Probe {
     original_stack: native_stack::ApiV1,
     original_settings: gc_settings::ApiV1,
-    factory: native_stack::FactoryV1,
+    factory: native_stack::FactoryV2,
     selected: *const native_stack::ApiV1,
     expected: Cell<usize>,
     events: RefCell<Vec<&'static str>>,
@@ -45,8 +45,8 @@ fn real_host_uses_live_anchor_selection_before_optional_precise_policy() {
     let path = CString::new(prefix.join("lib/libbirnam_native_stack.dylib").as_os_str().as_encoded_bytes()).unwrap();
     let api = runtime.stack.api();
     let image = unsafe { (api.dlopen)(path.as_ptr(), 6) };assert!(!image.is_null());
-    let symbol = unsafe { (api.dlsym)(image, c"birnam_native_stack_factory_v1".as_ptr()) };assert!(!symbol.is_null());
-    let provide: native_stack::FactoryProviderV1 = unsafe { std::mem::transmute(symbol) };
+    let symbol = unsafe { (api.dlsym)(image, c"birnam_native_stack_factory_v2".as_ptr()) };assert!(!symbol.is_null());
+    let provide: native_stack::FactoryProviderV2 = unsafe { std::mem::transmute(symbol) };
     let original_stack = unsafe { *selected };
     let original_settings = unsafe { *settings };
     let factory = unsafe { *provide() };

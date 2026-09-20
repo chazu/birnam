@@ -18,6 +18,15 @@ for mode,message in [('owner','Rust floor entered from a non-owner thread'),('ob
         assert result.returncode==-6 and result.stderr=='birnam-id invariant failed: '+message+'\n',(mode,value,result)
         print(mode+' '+value+': cached setter admission preserved')
 PY
+cc -std=c11 -Wall -Wextra -Werror scripts/fixtures/native-stack-scan.c -o "$scratch/scan"
+python3 - "$scratch/scan" "$native_stack_target/debug/libbirnam_native_stack.dylib" <<'PYSCAN'
+import resource,subprocess,sys
+resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+subprocess.run([*sys.argv[1:],'normal'],check=True)
+result=subprocess.run([*sys.argv[1:],'reject'],capture_output=True,text=True)
+assert result.returncode==-6 and result.stdout=='candidate 0\n' and result.stderr=='birnam-id invariant failed: GC tracer rejected a candidate\n',result
+print('scan rejection: no later candidate emitted')
+PYSCAN
 if [[ $# -gt 0 ]]; then
   BIRNAM_NATIVE_STACK_PREFIX="$1" mise exec -- cargo test --offline --locked -p birnam-host --test native_stack -- --ignored
 fi

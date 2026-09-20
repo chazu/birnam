@@ -42,7 +42,7 @@
     "birnam_namespace_presence_provider_v1",
     "birnam_native_allocation_provider_v1",
     "birnam_native_mark_dependency_v1",
-    "birnam_native_stack_dependency_v1",
+    "birnam_native_stack_dependency_v2",
     "birnam_native_stack_provider_v1",
     "birnam_payload_layout_dependency_v1",
     "birnam_payload_layout_provider_v1",
