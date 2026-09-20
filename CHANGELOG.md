@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Move per-Runtime storage-observation epoch and admission flags into Storage
+  (81BT). Preserve runtime identity, permission consumption, live dispatch,
+  visitor failure and guard cleanup. The host prepares the factory before Id;
+  public storage ABI, IdApi and image formats are unchanged.
+
 - Move per-Runtime collection-phase ownership into Collect (81BS), preserving
   allocation and storage admission, dispatch-cache bypass, callback restrictions
   and guard reset. Keep the coordinator's reentry guard separate. The host

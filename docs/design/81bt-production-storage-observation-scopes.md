@@ -1,8 +1,7 @@
 # 81BT — Storage-observation scope ownership
 
-> **Status:** Implementation checkpoint after completed 81BS (`4155fa10`).
-> Production wiring and focused checks are implemented; broader integration
-> validation and completion documentation remain pending. Debug validation only.
+> **Status:** Completed production extraction after 81BS (`4155fa10`).
+> Debug validation only; no behavior, public IdApi or image-format change.
 
 Move the per-Runtime observation epoch, active flag and one-use permission from
 `runtime::storage::ObservationState` into the existing `birnam-storage` module.
@@ -127,13 +126,15 @@ linkage, admission contracts and final source/artifact receipts. Add a focused
 gate, ABI reference, README links and changelog; commit the completed extraction
 before selecting another boundary.
 
-## Implementation checkpoint
+## Completed implementation and evidence
 
 The native Storage scope, immutable factory, Id adapter, separate reset guards
 and pre-initialization host attachment are implemented. Runtime identity remains
 in Id, and the existing Storage description-provider state is unchanged. The
 export manifests and shared C/Rust fixture preparation include the dependency;
 focused shell builds now include Storage where required.
+Final source comparison confirms the physical-fact builder, public observation
+method and Storage description implementation are byte-for-byte unchanged.
 
 Completed debug checks:
 
@@ -147,10 +148,46 @@ Completed debug checks:
 - The 36 existing shell-script changes only add the Storage build prerequisite;
   their shell syntax and the new focused script's syntax pass.
 
-This is a progress checkpoint, not completed 81BT acceptance. Remaining work is
-the independent storage/tracing regression comparison, installed dynamic startup
-and source-free compiled/image/baked coverage, image-backed worker parity,
-inventory/linkage and final source/artifact receipts, and the ABI reference,
-task registration, README links and changelog. Image coverage must exercise a
-successful protected observation after execution returns to an idle host
-boundary; rejection during an active native method is insufficient.
+- All-target workspace check passed. The focused scope gate also passed against
+  the installed debug libraries, including all 14 actual host admission cases.
+- Independent C storage-observation and storage-tracing fixtures produce exactly
+  matching output against preserved 81BS and current libraries. They check
+  extents, allocation identities, behavior reassociation, provider descriptions,
+  coverage gaps, stale sinks, cleanup and 13 forbidden Id mutations, plus exact
+  graphs, cycles, roots, raw payloads and malformed graph rejection.
+- `scripts/storage-observation-scope-image-smoke.sh PREFIX` passed real Siphon
+  startup, source-free compiled callers, mapped/rebuilt saved native Code images
+  and baked execution. The source and saver dylib are removed before image
+  execution, and the independent image reader requires a v8 native Code record.
+  The native consumer finds Storage already loaded, verifies operation ownership
+  and independent contexts, exercises root callbacks and automatic collection,
+  and preserves arithmetic, aliases and module reload.
+- A separate real-host consumer successfully observes storage before execution
+  and after source, compiled, mapped, rebuilt and baked-image execution returns
+  to an idle boundary. It requires mapped/rebuilt outcomes explicitly. Every run
+  verifies epochs 1 through 5, malformed-request refusal, nested BUSY, a visitor
+  returning -77, subsequent guard cleanup, aliases and stable allocation identity
+  after GC. Native-method and collection-callback rejection are checked
+  separately; those refusals are not used as evidence of successful observation.
+- Old/new actual image-backed workers passed twelve wire-v1 value round trips
+  and orderly stop, with byte-for-byte equal complete transcripts. The external
+  debug harness did not change production handshake deadlines.
+- Collection Phase and Allocation Budget regression gates passed, including
+  their exact failure diagnostics and 12/14 host admission cases with the new
+  Storage prerequisite.
+- Installation contains the same 52 native libraries and 28 compiled modules.
+  All 80 export sets match the baseline plus the two declared factory/dependency
+  symbols. All 36 native manifests match; Id and Storage link only system
+  libraries. Installed admission contracts match exactly, including IdApi v20,
+  the runtime ABI hash and image v8. Native initialization remains twelve
+  arguments and Native Loader remains v12.
+- All 493 current source inputs and 531 installed artifacts match their receipts.
+  Source digest:
+  `6d801c105f4a7b47d842acb3f334b91573ec97f9b871c6ba2a566d276a2b1982`.
+  Artifact digest:
+  `3893d65bf420ae98bbf9e7984c85c548537c085072191728dd04c22bff7345e4`.
+
+The [v1 reference](../../abi/storage-observation-scope-v1.md), independent C
+declaration, `mise run storage-observation-scope`, README links and changelog
+accompany the implementation. Local evidence and prefix markers are under
+`.cargo-target/81bt-*`. No release validation was run.

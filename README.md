@@ -844,6 +844,12 @@ artifact required. The Rust host owns the complete runtime and build closure.
   Runtime's phase state into Collect through an [explicit dependency](abi/collection-phase-v1.md).
   Run `mise run collection-phase`; use `scripts/collection-phase-image-smoke.sh PREFIX`
   for installed startup and compiled-image checks.
+- [Storage Observation Scopes](docs/design/81bt-production-storage-observation-scopes.md)
+  moves each Runtime's epoch and admission flags into Storage through an
+  [explicit dependency](abi/storage-observation-scope-v1.md).
+  Run `mise run storage-observation-scope`; use
+  `scripts/storage-observation-scope-image-smoke.sh PREFIX` for installed startup,
+  compiled-image and protected host-observation checks.
 - [Root Registry](docs/design/81bj-production-root-provider-registry.md) owns
   ordered native root-provider registration and copied snapshots through an
   [explicit capability](abi/root-registry-v1.md). Collector phases and storage

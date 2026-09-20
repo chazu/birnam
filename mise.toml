@@ -95,6 +95,10 @@ run = "scripts/allocation-budget-test.sh"
 description = "Check Runtime collection phases, callback admission and host preparation (debug)"
 run = "scripts/collection-phase-test.sh"
 
+[tasks.storage-observation-scope]
+description = "Check Runtime observation scope ownership, guard ordering and host admission (debug)"
+run = "scripts/storage-observation-scope-test.sh"
+
 [tasks.finalizers]
 description = "Check native finalizer registration and loaded collection (debug)"
 run = "scripts/finalizers-test.sh"
