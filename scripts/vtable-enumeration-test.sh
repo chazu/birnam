@@ -6,7 +6,7 @@ enumeration_target=$(mise exec -- cargo metadata --locked --offline --no-deps --
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-vtable-enumeration.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 for fixture in vtable-enumeration vtable-enumeration-consumers vtable-enumeration-boundary; do
-  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v12 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
+  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v13 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
 done
 "$scratch/vtable-enumeration" "$enumeration_target/debug/libbirnam_id.dylib"
 "$scratch/vtable-enumeration-consumers" "$enumeration_target/debug/libbirnam_id.dylib" "$enumeration_target/debug/libbirnam_store.dylib" "$enumeration_target/debug/libbirnam_tcc.dylib" "$enumeration_target/debug/libbirnam_codegen_runtime.dylib"

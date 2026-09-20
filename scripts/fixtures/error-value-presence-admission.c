@@ -1,5 +1,5 @@
 /* Check every real consumer before dependency attachment or initialization. */
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/error-value-v3/error_value_v3.h"
 int main(int argc,char **argv) {

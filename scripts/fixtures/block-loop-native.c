@@ -1,12 +1,12 @@
 /* Image smoke guard: called only after explicitly reloading Prelude. */
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 #ifndef EXPECT_BLOCK_LOOP_LIBRARY
 #define EXPECT_BLOCK_LOOP_LIBRARY "libbirnam_block_loop.dylib"
 #endif
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV1 *vtables) { (void)vtables;
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables) { (void)vtables;
     (void)exports;
     (void)presence;
     (void)state;assert(api);Oop type=namespace_import_v1(imports,"BlockVt");assert(type);

@@ -59,7 +59,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2) -> *mut c_void {
     let _ = state;
     if api.is_null() {
         abort("module_init received a null IdApi");
@@ -69,7 +69,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presen
             abort("Collection and Error must load before Portable Code");
         }
     }
-    let runtime = runtime::install(api, imports, exports);
+    let runtime = runtime::install(api, imports, exports, vtables);
     runtime.install_portable_code_objects();
     ptr::null_mut()
 }

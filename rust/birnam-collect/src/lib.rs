@@ -132,7 +132,7 @@ pub extern "C" fn birnam_collect_provider_v1() -> *const ApiV1 {
 /// # Safety
 /// The loader obeys the native module lifetime contract.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(_: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(_: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2) -> *mut c_void {
     core::ptr::null_mut()
 }
 

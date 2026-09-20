@@ -25,7 +25,7 @@ def plan(suite, prefix, output):
     result = [step('tool-tests', ['python3', 'scripts/validation-support-test.py'],
                    ('scripts/validation*.py', 'scripts/validate.py', 'scripts/closure_plan.py', 'scripts/rust-install.sh', 'scripts/*timing*.py')),
               step('workspace', ['cargo', 'test', '--workspace', '--locked', '--offline'],
-                   PRODUCTION + ('abi/idapi-v12.json',), timeout=300)]
+                   PRODUCTION + ('abi/idapi-v13.json',), timeout=300)]
     for fixture in ('stackless-s2', 'portable-code-v1'):
         result.append(step(fixture, ['python3', f'abi/fixtures/{fixture}/verify.py'], (f'abi/fixtures/{fixture}/*',)))
     for script in ('release-changelog-test.py', 'v014-performance-acceptance-test.py', 'v015-performance-acceptance-test.py'):
@@ -39,7 +39,7 @@ def plan(suite, prefix, output):
     result.append(step('floor-discovery', ['python3', 'scripts/floor-discovery-test.py',
                        '--prefix', prefix, '--output', output/'floor-discovery.json'],
                        PRODUCTION + ('scripts/floor-discovery-test.py', 'scripts/fixtures/floor-lookup.c',
-                                     'abi/fixtures/idapi-v12/idapi_v12.h'),
+                                     'abi/fixtures/idapi-v13/idapi_v13.h'),
                        depends=('install',), artifacts=(str(output/'floor-discovery.json'),), timeout=300))
     result.append(step('relational-output', ['python3', 'scripts/relational-output-test.py',
                        '--prefix', prefix, '--output', output/'relational-output.json'],

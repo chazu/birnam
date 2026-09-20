@@ -68,6 +68,10 @@ run = "scripts/namespace-names-test.sh"
 description = "Focused debug raw namespace state and bootstrap checks"
 run = "scripts/namespace-test.sh"
 
+[tasks.selector-enumeration]
+description = "Check Object Model selector enumeration and live consumers (debug)"
+run = "scripts/selector-enumeration-test.sh"
+
 [tasks.vtable-enumeration]
 description = "Focused debug live vtable enumeration and native consumer checks"
 run = "scripts/vtable-enumeration-test.sh"

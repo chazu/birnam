@@ -1114,7 +1114,7 @@ unsafe extern "C" fn alien_release_callback(
     api.trueObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -1275,7 +1275,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust Alien object family and its dynamic-library protocol.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2) -> *mut c_void {
     let _ = state;
     // SAFETY: the host supplies the process-owned IdApi table and retains it
     // for the module lifetime.
@@ -1289,4 +1289,4 @@ fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { API.get()
 
 fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { API.get().expect("module not initialized").3 as *const birnam_abi::namespace_export::ApiV1 }
 
-fn execution_vtables() -> *const birnam_abi::vtable_enumeration::ApiV1 { API.get().expect("module not initialized").4 as *const _ }
+fn execution_vtables() -> *const birnam_abi::vtable_enumeration::ApiV2 { API.get().expect("module not initialized").4 as *const _ }

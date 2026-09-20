@@ -4,11 +4,11 @@
 #define CONTEXT
 #define CHECK_CONTEXT() ((void)0)
 #else
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #define CONTEXT void *context,
 #define CHECK_CONTEXT() assert(context==&context_token)
 static int context_token;
-static VtableEnumerationV1 selected_vtables,other_vtables;
+static VtableEnumerationV2 selected_vtables,other_vtables;
 #endif
 #include "namespace-support.h"
 #include "object-model-support.h"
@@ -74,9 +74,16 @@ static Oop vtable(Oop object) {
     if(watching && unit_probe && object==roots[5])return roots[4];
     return api->vtable_of(object);
 }
-static Oop selector_at(Oop object,size_t index) {
+static Oop selector_at(CONTEXT Oop object,size_t index) {
+#ifndef FIXTURE_IDAPI_V11
+    (void)context;
+#endif
     if(watching) { assert(object==roots[0] || object==roots[1]);printf("selector %zu\n",index); }
+#ifdef FIXTURE_IDAPI_V11
     return api->vtable_selector_at(object,index);
+#else
+    return vtable_selector_at_v2(fixture_vtable_enumeration(),object,index);
+#endif
 }
 static Oop answer(Oop self,const Oop *args,size_t count) { (void)args;(void)count;return self; }
 static void initialize(void *image,IdApi *table,int alternate) {
@@ -109,9 +116,11 @@ int main(int argc,char **argv) {
     fixture_mount_object_model(api,argv[1]);fixture_mount_trace(api,argv[1]);api->gc_set_auto(0);
     uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     api->gc_register_root_provider(mark_roots);
-    selected=*api;selected.send=send;selected.vtable_selector_at=selector_at;selected.vtable_of=vtable;
+    selected=*api;selected.send=send;selected.vtable_of=vtable;
 #ifndef FIXTURE_IDAPI_V11
-    selected_vtables=*fixture_vtable_enumeration();
+    selected_vtables=*fixture_vtable_enumeration();selected_vtables.selector_at=selector_at;
+#else
+    selected.vtable_selector_at=selector_at;
 #endif
     void *store_image=mount(argv[2]);mount(argv[3]);mount(argv[4]);
     other=selected;

@@ -3,31 +3,31 @@ use crate::{IdApi, Oop};
 use core::ffi::c_int;
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
-pub type InstallV5 = unsafe extern "C" fn(*const IdApi, *const IdApi, *const crate::namespace_presence::ApiV1, *const crate::namespace_import::ApiV1, *const crate::namespace_export::ApiV1, *const crate::vtable_enumeration::ApiV1, Oop, Oop);
+pub type InstallV6 = unsafe extern "C" fn(*const IdApi, *const IdApi, *const crate::namespace_presence::ApiV1, *const crate::namespace_import::ApiV1, *const crate::namespace_export::ApiV1, *const crate::vtable_enumeration::ApiV2, Oop, Oop);
 /// Immutable, process-pinned descriptor. Installation runs on the owner thread
 /// at Prelude's existing point; the execution table is its original selection.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV5 {
+pub struct ApiV6 {
     pub version: u32,
     pub byte_size: usize,
-    pub install: Option<InstallV5>,
+    pub install: Option<InstallV6>,
 }
 const _: () = {
-    assert!(size_of::<ApiV5>() == 24);
-    assert!(core::mem::offset_of!(ApiV5, install) == 16);
+    assert!(size_of::<ApiV6>() == 24);
+    assert!(core::mem::offset_of!(ApiV6, install) == 16);
 };
-pub type ProviderV5 = unsafe extern "C" fn() -> *const ApiV5;
-pub type DependencyV5 = unsafe extern "C" fn(*const ApiV5) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV5> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV6 = unsafe extern "C" fn() -> *const ApiV6;
+pub type DependencyV6 = unsafe extern "C" fn(*const ApiV6) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV6> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Owner-thread admission; immutable descriptor and code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV5) -> c_int {
+pub unsafe fn attach(api: *const ApiV6) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 5 || value.byte_size != size_of::<ApiV5>() || value.install.is_none() {
+    if value.version != 6 || value.byte_size != size_of::<ApiV6>() || value.install.is_none() {
         return 0;
     }
     match DEPENDENCY.compare_exchange(
@@ -52,7 +52,7 @@ pub unsafe fn install(
     presence: *const crate::namespace_presence::ApiV1,
     imports: *const crate::namespace_import::ApiV1,
     exports: *const crate::namespace_export::ApiV1,
-    vtables: *const crate::vtable_enumeration::ApiV1,
+    vtables: *const crate::vtable_enumeration::ApiV2,
     system_vt: Oop,
     load_module: Oop,
 ) {
@@ -67,8 +67,8 @@ pub unsafe fn install(
 macro_rules! native_loader_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_native_loader_dependency_v5(
-            api: *const $crate::native_loader::ApiV5,
+        pub unsafe extern "C" fn birnam_native_loader_dependency_v6(
+            api: *const $crate::native_loader::ApiV6,
         ) -> core::ffi::c_int {
             unsafe { $crate::native_loader::attach(api) }
         }

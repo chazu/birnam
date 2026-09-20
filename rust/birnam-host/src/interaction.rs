@@ -194,7 +194,7 @@ impl HostRuntime {
         } else {
             unsafe { global_named(self.stack.api(), self.stack.imports(), "Repl") }
                 .map(|repl| unsafe {
-                    !receiver_has_selector(self.stack.api(), repl, init_selector)
+                    !receiver_has_selector(self.stack.api(), self.stack.vtables(), repl, init_selector)
                 })
                 .unwrap_or(true)
         };
@@ -466,7 +466,7 @@ impl HostRuntime {
             return Err(WorkerStartupError::ReceiverNotFound);
         }
         let selector = unsafe { (api.intern)(selector_name.as_ptr()) };
-        if receiver == api.nilObj || !unsafe { receiver_has_selector(api, receiver, selector) } {
+        if receiver == api.nilObj || !unsafe { receiver_has_selector(api, self.stack.vtables(), receiver, selector) } {
             return Err(WorkerStartupError::SelectorNotFound);
         }
         unsafe { self.run_worker(fd, receiver, selector) }.map_err(WorkerStartupError::Driver)

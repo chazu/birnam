@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Move native selector enumeration into Object Model (81BH). IdApi v13 has
+  27 fields / 216 bytes; enumeration v2 carries direct dictionary selection
+  through the existing sixth initialization argument and Native Loader v6.
+  Preserve ordered keys, invalid-vtable admission, live callback selection and
+  pure Block-constructor admission through its v5 declaration. Native consumers
+  require rebuilding; image encoding is unchanged.
+
 - Move native vtable count and indexed observation into Object Model (81BG).
   IdApi v12 has 28 fields / 224 bytes; six-argument native initialization carries
   the matching live enumeration capability, and Native Loader installation is

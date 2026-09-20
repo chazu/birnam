@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -15,7 +15,7 @@ static int incoming(void *context,const char *name) {
     early_checks++;
     return namespace_presence_contains_v1(original,name);
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV1 *vtables) { (void)vtables;
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables) { (void)vtables;
     (void)exports;
     assert(api && !state && presence);original=presence;early_checks=0;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);

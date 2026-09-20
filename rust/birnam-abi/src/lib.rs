@@ -1,4 +1,4 @@
-//! No-state C-layout mirror of the current `IdApi` v12 boundary.
+//! No-state C-layout mirror of the current `IdApi` v13 boundary.
 //!
 //! Raw data pointers are intentionally nullable. Function-pointer fields are
 //! non-null except for the explicitly optional method-overwrite hook.
@@ -136,7 +136,7 @@ pub type IdInitFn = unsafe extern "C" fn() -> *mut IdApi;
 /// Native initialization receives presence, import, export and vtable enumeration capabilities associated
 /// with `api`. All live selections and their code/context must outlive any retained module
 /// execution state; callers do not transfer ownership.
-pub type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void, *const namespace_presence::ApiV1, *const namespace_import::ApiV1, *const namespace_export::ApiV1, *const vtable_enumeration::ApiV1) -> *mut c_void;
+pub type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void, *const namespace_presence::ApiV1, *const namespace_import::ApiV1, *const namespace_export::ApiV1, *const vtable_enumeration::ApiV2) -> *mut c_void;
 
 /// Borrow a foreign read-only buffer while enforcing the ABI's null/count and
 /// alignment rules.
@@ -224,12 +224,11 @@ pub struct IdApi {
     pub slotKind: unsafe extern "C" fn(Oop, usize) -> u8,
 
     pub setMethodOverwriteHook: unsafe extern "C" fn(Option<MethodOverwriteHook>),
-    pub vtableSelectorAt: unsafe extern "C" fn(Oop, usize) -> Oop,
 }
 
 pub const ABI_DESCRIPTOR_MAGIC: [u8; 8] = *b"BIRNABI1";
 pub const ABI_TYPE_COUNT: usize = 8;
-pub const ABI_FIELD_COUNT: usize = 28;
+pub const ABI_FIELD_COUNT: usize = 27;
 
 const LAYOUT_KIND_TYPE: usize = 0;
 const LAYOUT_KIND_DATA_POINTER: usize = 1;
@@ -248,7 +247,7 @@ pub struct AbiLayoutEntryV1 {
 
 /// Pointer-free diagnostic description of the Rust mirror's actual layout.
 ///
-/// Entry order is the canonical order in `abi/idapi-v12.json`. Names and
+/// Entry order is the canonical order in `abi/idapi-v13.json`. Names and
 /// signatures remain owned by that manifest; this value supplies the Rust
 /// compiler's concrete sizes, alignments, offsets, nullability, and field kind.
 #[repr(C)]
@@ -300,7 +299,7 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
     magic: ABI_DESCRIPTOR_MAGIC,
     descriptor_version: 1,
     descriptor_size: size_of::<AbiDescriptorV1>(),
-    schema_version: 12,
+    schema_version: 13,
     target_arch: 1,   // aarch64
     target_os: 1,     // macOS
     target_abi: 0,    // none
@@ -350,7 +349,6 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         field_layout!(objectPayloadSize, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(slotKind, false, LAYOUT_KIND_FUNCTION_POINTER),
         field_layout!(setMethodOverwriteHook, false, LAYOUT_KIND_FUNCTION_POINTER),
-        field_layout!(vtableSelectorAt, false, LAYOUT_KIND_FUNCTION_POINTER),
     ],
     constants: [
         SLOT_RAW as usize,
@@ -358,7 +356,7 @@ pub static ABI_DESCRIPTOR_V1: AbiDescriptorV1 = AbiDescriptorV1 {
         SLOT_CODE as usize,
         SLOT_UNKNOWN as usize,
     ],
-    fingerprint: [0x8e, 0x28, 0xd0, 0xa2, 0xc9, 0x7b, 0x0e, 0x59, 0x6b, 0x66, 0x0e, 0xf2, 0x94, 0xfd, 0x8d, 0xbc, 0x35, 0x4b, 0xeb, 0x9d, 0x7f, 0x01, 0x8b, 0x43, 0xd6, 0xf4, 0x10, 0x9a, 0x5e, 0x55, 0x7a, 0xaa],
+    fingerprint: [0x95, 0x36, 0x03, 0x46, 0xc9, 0xda, 0x31, 0x65, 0x1a, 0x5c, 0xf2, 0x22, 0x4d, 0x6c, 0x72, 0x7d, 0x5e, 0x99, 0xb2, 0x75, 0x86, 0x59, 0x65, 0x23, 0x0f, 0xa9, 0x2b, 0x52, 0xa1, 0x8b, 0x38, 0x89],
 };
 
 macro_rules! assert_field_offset {
@@ -389,7 +387,7 @@ const _: () = {
     assert!(size_of::<Option<MethodOverwriteHook>>() == 8);
     assert!(size_of::<IdInitFn>() == 8);
     assert!(size_of::<ModuleInitFn>() == 8);
-    assert!(size_of::<IdApi>() == 224);
+    assert!(size_of::<IdApi>() == 216);
     assert!(align_of::<IdApi>() == 8);
 
     assert_field_offset!(dlopen, 0);
@@ -419,7 +417,6 @@ const _: () = {
     assert_field_offset!(objectPayloadSize, 192);
     assert_field_offset!(slotKind, 200);
     assert_field_offset!(setMethodOverwriteHook, 208);
-    assert_field_offset!(vtableSelectorAt, 216);
 
     assert!(SLOT_RAW == 0);
     assert!(SLOT_OOP == 1);
@@ -436,8 +433,8 @@ mod tests {
         assert_eq!((size_of::<Oop>(), align_of::<Oop>()), (8, 8));
         assert_eq!((size_of::<Method>(), align_of::<Method>()), (8, 8));
         assert_eq!(size_of::<Option<MethodOverwriteHook>>(), 8);
-        assert_eq!((size_of::<IdApi>(), align_of::<IdApi>()), (224, 8));
-        assert_eq!(offset_of!(IdApi, vtableSelectorAt), 216);
+        assert_eq!((size_of::<IdApi>(), align_of::<IdApi>()), (216, 8));
+        assert_eq!(offset_of!(IdApi, setMethodOverwriteHook), 208);
         assert_eq!(
             [SLOT_RAW, SLOT_OOP, SLOT_CODE, SLOT_UNKNOWN],
             [0, 1, 2, 255]
@@ -535,13 +532,13 @@ unsafe fn vtable_protocol(api: &IdApi, selector: &core::ffi::CStr, args: &[Oop])
 }
 
 #[cfg(test)]
-mod v12_manifest_tests {
+mod v13_manifest_tests {
     use super::*;
     use sha2::{Digest, Sha256};
     #[test]
-    fn current_descriptor_matches_independent_v12_manifest() {
+    fn current_descriptor_matches_independent_v13_manifest() {
         let mut manifest: serde_json::Value =
-            serde_json::from_str(include_str!("../../../abi/idapi-v12.json")).unwrap();
+            serde_json::from_str(include_str!("../../../abi/idapi-v13.json")).unwrap();
         let expected = manifest
             .as_object_mut()
             .unwrap()
@@ -561,7 +558,7 @@ mod v12_manifest_tests {
             assert_eq!(field["size"], actual.size);
             assert_eq!(field["alignment"], actual.alignment);
             for removed in [
-                "exportedNameOf", "isExported", "import", "exportObj", "vtableCount", "vtableAt",
+                "exportedNameOf", "isExported", "import", "exportObj", "vtableCount", "vtableAt", "vtableSelectorAt",
                 "string_vt", "mkString", "stringBytes",
                 "smallint_vt", "mkSmallInt", "smallIntValue", "isSmallInt",
                 "ensurePrivateVtable",

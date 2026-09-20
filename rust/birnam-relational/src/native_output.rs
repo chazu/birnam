@@ -101,7 +101,7 @@ fn exported_output_contract() {
         let presence = entry!(floor, c"birnam_namespace_presence_provider_v1", birnam_abi::namespace_presence::ProviderV1)();
         let imports = entry!(floor, c"birnam_namespace_import_provider_v1", birnam_abi::namespace_import::ProviderV1)();
         let exports = entry!(floor, c"birnam_namespace_export_provider_v1", birnam_abi::namespace_export::ProviderV1)();
-        let vtables = entry!(floor, c"birnam_vtable_enumeration_provider_v1", birnam_abi::vtable_enumeration::ProviderV1)();
+        let vtables = entry!(floor, c"birnam_vtable_enumeration_provider_v2", birnam_abi::vtable_enumeration::ProviderV2)();
         let api_pointer = api as *const _ as *mut IdApi;
         let float_image = load("libbirnam_float.dylib");
         let floats = entry!(float_image, c"birnam_float_prepare_v4", birnam_abi::float::FloatPrepareV4)(api_pointer, presence, imports, exports);

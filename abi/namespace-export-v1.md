@@ -23,7 +23,7 @@ their meaning. Existing diagnostics and their precedence are unchanged.
 Symbol interning and weak-dictionary representation remain Id primitives;
 Globals remains a separate registry. No RuntimeState reference spans callbacks.
 
-IdApi v11 removed `exportObj`; current v12 has 28 fields, 224 bytes. Native initialization
+IdApi v11 removed `exportObj`; current v13 has 27 fields, 216 bytes. Native initialization
 receives `(api, prior_state, presence, imports, exports, vtables)`. A saved execution API
 retains exports at the same selection point, including early preparation.
 Incoming registration and adoption use the incoming capability where the old
@@ -32,7 +32,7 @@ There is no aggregate facade, callback-slot loan or API-address registry.
 
 Float/Word prepare v4 append exports after imports. String prepare v2 receives
 `(api, exports, allocation)`. Range/Vector/Map construction v4 change only
-`publish(api, exports)`. Native Loader installation v5 receives execution exports
+`publish(api, exports)`. Native Loader installation v6 receives execution exports
 after imports, followed by vtable enumeration. The other five System/Block installers stay v3;
 numeric and warm Block declarations stay v4 because their admitted paths do
 not export. Native modules require rebuilding; image encoding is unchanged.

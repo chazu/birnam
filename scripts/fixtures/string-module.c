@@ -1,4 +1,4 @@
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
     assert(storage->cleanup_owner(storage->cleanup)==fixture_string->context && !storage->cleanup_owner(inert_cleanup));
     size_t absent_length=123; assert(!storage->borrow(fixture_string->context,api->true_obj,&absent_length));
     assert(!storage->release(fixture_string->context,api->true_obj));
-    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V12_SLOT_RAW);
+    assert(api->slot_kind(fixture_string->behavior,0)==IDAPI_V13_SLOT_RAW);
     Oop owner=text("owned"); size_t owned_length=0; const uint8_t *owned=fixture_string_bytes(owner,&owned_length);
     assert(api->object_payload_size(owner)==16 && owned_length==5);
     uintptr_t *words=(uintptr_t *)owner; assert(words[0]==(uintptr_t)owned && words[1]==5);

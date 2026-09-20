@@ -19,6 +19,7 @@ pub(crate) struct Runtime {
     api: usize,
     imports: usize,
     exports: usize,
+    vtables: usize,
 }
 
 unsafe impl Send for Runtime {}
@@ -49,8 +50,8 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
     });
 }
 
-pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) -> &'static Runtime {
-    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, imports: imports as usize, exports: exports as usize });
+pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2) -> &'static Runtime {
+    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
     ROOTS_REGISTERED.call_once(|| unsafe {
         (runtime.api().gcRegisterRootProvider)(mark_roots);
     });
@@ -62,6 +63,7 @@ pub(crate) fn with_active_if_present<T>(body: impl FnOnce(&Runtime) -> T) -> Opt
 }
 
 impl Runtime {
+    pub(crate) fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.vtables as *const _ }
     pub(crate) fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.imports as *const birnam_abi::namespace_import::ApiV1 }
     pub(crate) fn api(&self) -> &'static IdApi {
         unsafe { &*(self.api as *const IdApi) }
@@ -158,7 +160,7 @@ impl Runtime {
     }
 
     pub(crate) fn vtable_selector_at(&self, vtable: Oop, index: usize) -> Oop {
-        unsafe { (self.api().vtableSelectorAt)(vtable, index) }
+        unsafe { birnam_abi::vtable_enumeration::selector_at(self.vtables(), vtable, index) }
     }
 
     pub(crate) fn is_integer(&self, object: Oop) -> bool {

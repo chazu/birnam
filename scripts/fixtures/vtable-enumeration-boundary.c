@@ -1,7 +1,7 @@
 #ifdef FIXTURE_IDAPI_V11
 #include "idapi_v11.h"
 #else
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"
@@ -11,13 +11,13 @@ static IdApi *api;
 static unsigned root_calls;
 static int indexed;
 #ifndef FIXTURE_IDAPI_V11
-static VtableEnumerationV1 *enumeration;
+static VtableEnumerationV2 *enumeration;
 #endif
 static void check(void) {
 #ifdef FIXTURE_IDAPI_V11
     if(indexed)assert(api->vtable_at(0)==api->vtable_vt);else assert(api->vtable_count()>0);
 #else
-    if(indexed)assert(vtable_at_v1(enumeration,0)==api->vtable_vt);else assert(vtable_count_v1(enumeration)>0);
+    if(indexed)assert(vtable_at_v2(enumeration,0)==api->vtable_vt);else assert(vtable_count_v2(enumeration)>0);
 #endif
 }
 static void *worker(void *context) { (void)context;check();return NULL; }

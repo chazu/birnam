@@ -520,6 +520,11 @@ impl Vtables {
             .unwrap_or(core::ptr::null_mut())
     }
 
+    pub(crate) fn selector_view(&self, vtable: Oop) -> birnam_abi::vtable_enumeration::ViewV1 {
+        let keys = &self.record(vtable).keys;
+        birnam_abi::vtable_enumeration::ViewV1 { entries: keys.as_ptr(), count: keys.len() }
+    }
+
     pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         let record = self.record(vtable);
         record

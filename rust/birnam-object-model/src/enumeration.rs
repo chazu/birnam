@@ -1,13 +1,13 @@
 //! Count and checked selection over a transient Id-owned registry view.
-use birnam_abi::vtable_enumeration::{ApiV1, FactoryV1, FloorV1};
+use birnam_abi::vtable_enumeration::{ApiV2, FactoryV2, FloorV2};
 use birnam_abi::Oop;
 use core::ffi::c_void;
 use core::ptr;
 
 #[repr(C)]
 struct Enumeration {
-    api: ApiV1,
-    floor: FloorV1,
+    api: ApiV2,
+    floor: FloorV2,
 }
 unsafe extern "C" fn count(context: *mut c_void) -> usize {
     let floor = unsafe { (*context.cast::<Enumeration>()).floor };
@@ -20,30 +20,37 @@ unsafe extern "C" fn at(context: *mut c_void, index: usize) -> Oop {
     // No callback or mutation occurs between the borrow and this identity copy.
     unsafe { *view.entries.add(index) }
 }
-unsafe extern "C" fn create(floor: *const FloorV1) -> *mut ApiV1 {
+unsafe extern "C" fn selector_at(context: *mut c_void, vtable: Oop, index: usize) -> Oop {
+    let floor = unsafe { (*context.cast::<Enumeration>()).floor };
+    // Admission and exact dictionary membership precede even SIZE_MAX bounds.
+    let view = unsafe { floor.selectors.unwrap()(floor.context, vtable) };
+    if index >= view.count { return ptr::null_mut(); }
+    unsafe { *view.entries.add(index) }
+}
+unsafe extern "C" fn create(floor: *const FloorV2) -> *mut ApiV2 {
     if floor.is_null() { return ptr::null_mut(); }
     let floor = unsafe { *floor };
-    if floor.version != 1 || floor.byte_size != size_of::<FloorV1>() || floor.view.is_none() {
+    if floor.version != 2 || floor.byte_size != size_of::<FloorV2>() || floor.view.is_none() || floor.selectors.is_none() {
         return ptr::null_mut();
     }
     let mut service = Box::new(Enumeration {
-        api: ApiV1 { version: 1, byte_size: size_of::<ApiV1>(), context: ptr::null_mut(),
-                     count: Some(count), at: Some(at) },
+        api: ApiV2 { version: 2, byte_size: size_of::<ApiV2>(), context: ptr::null_mut(),
+                     count: Some(count), at: Some(at), selector_at: Some(selector_at) },
         floor,
     });
     service.api.context = ptr::from_mut(service.as_mut()).cast();
     Box::into_raw(service).cast()
 }
-unsafe extern "C" fn destroy(api: *mut ApiV1) {
+unsafe extern "C" fn destroy(api: *mut ApiV2) {
     unsafe { drop(Box::from_raw(api.cast::<Enumeration>())) };
 }
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1, byte_size: size_of::<FactoryV1>(), create: Some(create), destroy: Some(destroy),
+static FACTORY: FactoryV2 = FactoryV2 {
+    version: 2, byte_size: size_of::<FactoryV2>(), create: Some(create), destroy: Some(destroy),
 };
 /// # Safety
 /// Factory operations require their declared owner-thread and borrow contracts.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_vtable_enumeration_factory_v1() -> *const FactoryV1 {
+pub unsafe extern "C" fn birnam_vtable_enumeration_factory_v2() -> *const FactoryV2 {
     &FACTORY
 }
 
@@ -55,7 +62,7 @@ mod tests {
     struct Probe {
         entries: Vec<Oop>,
         reads: usize,
-        replace: *mut ApiV1,
+        replace: *mut ApiV2,
     }
     unsafe extern "C" fn view(context: *mut c_void) -> ViewV1 {
         let probe = unsafe { &mut *context.cast::<Probe>() };
@@ -66,8 +73,12 @@ mod tests {
         ViewV1 { entries: probe.entries.as_ptr(), count: probe.entries.len() }
     }
     unsafe extern "C" fn replaced(context: *mut c_void) -> usize { context as usize }
-    fn floor(probe: &mut Probe) -> FloorV1 {
-        FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: ptr::from_mut(probe).cast(), view: Some(view) }
+    unsafe extern "C" fn selectors(context: *mut c_void, vtable: Oop) -> ViewV1 {
+        assert_eq!(vtable, 19usize as Oop);
+        unsafe { view(context) }
+    }
+    fn floor(probe: &mut Probe) -> FloorV2 {
+        FloorV2 { version: 2, byte_size: size_of::<FloorV2>(), context: ptr::from_mut(probe).cast(), view: Some(view), selectors: Some(selectors) }
     }
     #[test]
     fn views_remain_live_unrooted_ordered_and_independent() {
@@ -113,9 +124,29 @@ mod tests {
         let mut probe = Probe { entries: Vec::new(), reads: 0, replace: ptr::null_mut() };
         let good = floor(&mut probe);
         assert!(unsafe { create(ptr::null()) }.is_null());
-        for bad in [FloorV1 { version: 2, ..good }, FloorV1 { byte_size: good.byte_size - 1, ..good }, FloorV1 { view: None, ..good }] {
+        for bad in [FloorV2 { version: 1, ..good }, FloorV2 { byte_size: good.byte_size - 1, ..good }, FloorV2 { view: None, ..good }, FloorV2 { selectors: None, ..good }] {
             assert!(unsafe { create(&bad) }.is_null());
         }
         assert_eq!(probe.reads, 0);
+    }
+    #[test]
+    fn selector_views_are_live_and_checked_before_bounds() {
+        let mut probe = Probe { entries: vec![7usize as Oop, 9usize as Oop], reads: 0, replace: ptr::null_mut() };
+        let owned = unsafe { create(&floor(&mut probe)) };
+        let saved = unsafe { *owned };
+        let vtable = 19usize as Oop;
+        assert_eq!(unsafe { api::selector_at(owned, vtable, 0) }, 7usize as Oop);
+        probe.entries.remove(0);
+        assert_eq!(unsafe { api::selector_at(owned, vtable, 0) }, 9usize as Oop);
+        assert!(unsafe { api::selector_at(owned, vtable, 1) }.is_null());
+        assert!(unsafe { api::selector_at(owned, vtable, usize::MAX) }.is_null());
+        assert_eq!(probe.reads, 4);
+        unsafe extern "C" fn replacement(context: *mut c_void, _: Oop, index: usize) -> Oop {
+            (context as usize + index) as Oop
+        }
+        unsafe { (*owned).selector_at = Some(replacement); (*owned).context = 31usize as Oop; }
+        assert_eq!(unsafe { api::selector_at(owned, vtable, 2) }, 33usize as Oop);
+        assert_eq!(unsafe { api::selector_at(&saved, vtable, 0) }, 9usize as Oop);
+        unsafe { destroy(owned); }
     }
 }

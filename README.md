@@ -706,7 +706,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
-- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v12.
+- `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v13.
 - `rust/birnam-namespace/` — per-runtime raw export bindings, reverse aliases and enumeration; its factory is prepared before Id initialization.
 - `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for native System, Block and numeric methods.
 - `rust/birnam-source-loader/` — System source reading, staging, evaluation and diagnostics.
@@ -792,11 +792,11 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - [Namespace state](docs/design/81aw-production-namespace-state.md) owns raw
   Symbol/value bindings through an [opaque storage contract](abi/namespace-v8.md).
   [Namespace names](docs/design/81ax-production-namespace-names.md) owns reverse
-  export lookup through a [live capability](abi/namespace-names-v1.md); IdApi v12
-  has 28 fields / 224 bytes. Native initializers receive the explicit
+  export lookup through a [live capability](abi/namespace-names-v1.md); IdApi v13
+  has 27 fields / 216 bytes. Native initializers receive the explicit
   [presence capability](abi/namespace-presence-v1.md) as their third argument
   [import capability](abi/namespace-import-v1.md) as their fourth, and
-  [export capability](abi/namespace-export-v1.md) as their fifth, followed by [vtable enumeration](abi/vtable-enumeration-v1.md)
+  [export capability](abi/namespace-export-v1.md) as their fifth, followed by [vtable enumeration](abi/vtable-enumeration-v2.md)
   as their sixth. Run `mise run namespace-names`.
   [Enumeration](docs/design/81ay-production-namespace-enumeration.md) moves
   count/name-at behind Namespace descriptors while preserving Reflect discovery.
@@ -811,13 +811,15 @@ artifact required. The Rust host owns the complete runtime and build closure.
   publication into Namespace while preserving each caller's callback selection. The
   host prepares factory v8 before Id; Globals remains separate. Run `mise run namespace`.
 - [Vtable enumeration](docs/design/81bg-production-vtable-enumeration.md) moves live
-  registry observation into Object Model through an [explicit capability](abi/vtable-enumeration-v1.md).
+  registry observation into Object Model through an [explicit capability](abi/vtable-enumeration-v2.md).
   The registry remains in Id. Run `mise run vtable-enumeration`.
+  [Selector enumeration](docs/design/81bh-production-selector-enumeration.md)
+  moves checked dictionary selection into the same service. Run `mise run selector-enumeration`.
 - [Source Loader](docs/design/81av-production-source-loader.md) owns load:
   through an [explicit installer](abi/source-loader-v3.md), leaving Prelude
   responsible for identity, layout and installation. Run `mise run source-loader`.
 - [Native Loader](docs/design/81au-production-native-loader.md) owns loadModule:
-  through an [explicit installer](abi/native-loader-v5.md), preserving direct
+  through an [explicit installer](abi/native-loader-v6.md), preserving direct
   loading and initialization callbacks. Run `mise run native-loader`.
 - [Block Loop](docs/design/81at-production-block-loop.md) owns the native while
   methods through an [explicit installer](abi/block-loop-v3.md), preserving

@@ -1,7 +1,7 @@
 //! System's existing direct native-module loader, installed by Prelude (81AU).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::error_value::numeric_error;
-use birnam_abi::native_loader::ApiV5;
+use birnam_abi::native_loader::ApiV6;
 use birnam_abi::text_view::string_bytes;
 use birnam_abi::{IdApi, ModuleInitFn, Oop, borrowed_oop_args};
 use core::ffi::c_void;
@@ -60,7 +60,7 @@ unsafe extern "C" fn system_load_module(self_object: Oop, args: *const Oop, coun
     // Birnam module initializers share this frozen C ABI and receive the
     // process-owned IdApi with no state payload for this loader path.
     let init: ModuleInitFn = unsafe { core::mem::transmute(symbol) };
-    unsafe { init(runtime().api as *mut IdApi, ptr::null_mut(), execution_presence(), execution_imports(), runtime().exports as *const birnam_abi::namespace_export::ApiV1, runtime().vtables as *const birnam_abi::vtable_enumeration::ApiV1) };
+    unsafe { init(runtime().api as *mut IdApi, ptr::null_mut(), execution_presence(), execution_imports(), runtime().exports as *const birnam_abi::namespace_export::ApiV1, runtime().vtables as *const birnam_abi::vtable_enumeration::ApiV2) };
     self_object
 }
 
@@ -70,7 +70,7 @@ unsafe extern "C" fn install(
     presence: *const birnam_abi::namespace_presence::ApiV1,
     imports: *const birnam_abi::namespace_import::ApiV1,
     exports: *const birnam_abi::namespace_export::ApiV1,
-    vtables: *const birnam_abi::vtable_enumeration::ApiV1,
+    vtables: *const birnam_abi::vtable_enumeration::ApiV2,
     system_vt: Oop,
     load_module: Oop,
 ) {
@@ -84,19 +84,19 @@ unsafe extern "C" fn install(
         (api.method)(system_vt, load_module, system_load_module);
     }
 }
-static API: ApiV5 = ApiV5 {
-    version: 5,
-    byte_size: size_of::<ApiV5>(),
+static API: ApiV6 = ApiV6 {
+    version: 6,
+    byte_size: size_of::<ApiV6>(),
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2) -> *mut c_void {
     assert!(!api.is_null(), "Native Loader received a null IdApi");
     READY.store(true, Ordering::Release);
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_native_loader_provider_v5() -> *const ApiV5 {
+pub extern "C" fn birnam_native_loader_provider_v6() -> *const ApiV6 {
     if READY.load(Ordering::Acquire) {
         &API
     } else {

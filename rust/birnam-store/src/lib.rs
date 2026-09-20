@@ -747,7 +747,7 @@ unsafe extern "C" fn tracked_remove_method(
     let mut direct = false;
     let mut index = 0;
     loop {
-        let bound = unsafe { (api.vtableSelectorAt)(vtable, index) };
+        let bound = unsafe { birnam_abi::vtable_enumeration::selector_at(runtime.vtables as *const _, vtable, index) };
         if bound.is_null() {
             break;
         }
@@ -801,7 +801,7 @@ unsafe extern "C" fn backfill_mirror(
         }
         let mut selector_index = 0;
         loop {
-            let selector = unsafe { (api.vtableSelectorAt)(vtable, selector_index) };
+            let selector = unsafe { birnam_abi::vtable_enumeration::selector_at(runtime.vtables as *const _, vtable, selector_index) };
             if selector.is_null() {
                 break;
             }
@@ -2156,7 +2156,7 @@ unsafe fn register_globals_methods(runtime: &Runtime) {
     unsafe { (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -2273,7 +2273,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// null to request the documented fatal boundary. `_state` is an opaque host
 /// token and is not retained by this rung.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2) -> *mut c_void {
     // SAFETY: forwarded host contract; bring_up performs the null check and
     // retains only the process-owned table address.
     unsafe { bring_up(api, presence, imports, exports, vtables) };

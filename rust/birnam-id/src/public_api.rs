@@ -225,10 +225,6 @@ unsafe extern "C" fn api_set_method_overwrite_hook(hook: Option<MethodOverwriteH
     runtime().set_method_overwrite_hook(hook);
 }
 
-unsafe extern "C" fn api_vtable_selector_at(vtable: Oop, index: usize) -> Oop {
-    runtime().vtable_selector_at(vtable, index)
-}
-
 fn table_for(bootstrap: &Bootstrap) -> IdApi {
     let globals = bootstrap.runtime.globals();
     let canonical = bootstrap.runtime.canonical();
@@ -260,7 +256,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         objectPayloadSize: api_object_payload_size,
         slotKind: api_slot_kind,
         setMethodOverwriteHook: api_set_method_overwrite_hook,
-        vtableSelectorAt: api_vtable_selector_at,
     }
 }
 
@@ -298,16 +293,17 @@ pub(crate) fn block_construction_context(
     runtime: &Runtime,
     symbol_vtable: Oop,
     metavtable: Oop,
-) -> [usize; 13] {
+) -> [usize; 14] {
     let imports = runtime.canonical_namespace_import();
     let names = runtime.canonical_namespace_names();
+    let enumeration = runtime.canonical_vtable_enumeration();
     [
         canonical_numeric_functions().alloc as usize,
         imports.import.unwrap() as usize,
         api_object_payload_size as *const () as usize,
         canonical_numeric_functions().vtable_of as usize,
         api_send as *const () as usize,
-        api_vtable_selector_at as *const () as usize,
+        enumeration.selector_at.unwrap() as usize,
         api_symbol_name as *const () as usize,
         api_intern as *const () as usize,
         symbol_vtable as usize,
@@ -315,6 +311,7 @@ pub(crate) fn block_construction_context(
         names.context as usize,
         metavtable as usize,
         imports.context as usize,
+        enumeration.context as usize,
     ]
 }
 
@@ -661,25 +658,31 @@ pub unsafe extern "C" fn birnam_namespace_export_provider_v1() -> *mut birnam_ab
 }
 
 
-pub(crate) fn vtable_enumeration_access() -> birnam_abi::vtable_enumeration::FloorV1 {
+pub(crate) fn vtable_enumeration_access() -> birnam_abi::vtable_enumeration::FloorV2 {
     unsafe extern "C" fn view(_: *mut c_void) -> birnam_abi::vtable_enumeration::ViewV1 {
         #[cfg(not(test))]
         { runtime().vtable_view() }
         #[cfg(test)]
         { crate::runtime::with_active(|runtime| runtime.vtable_view()) }
     }
-    birnam_abi::vtable_enumeration::FloorV1 {
-        version: 1, byte_size: size_of::<birnam_abi::vtable_enumeration::FloorV1>(),
-        context: core::ptr::null_mut(), view: Some(view),
+    unsafe extern "C" fn selectors(_: *mut c_void, vtable: Oop) -> birnam_abi::vtable_enumeration::ViewV1 {
+        #[cfg(not(test))]
+        { runtime().vtable_selector_view(vtable) }
+        #[cfg(test)]
+        { crate::runtime::with_active(|runtime| runtime.vtable_selector_view(vtable)) }
+    }
+    birnam_abi::vtable_enumeration::FloorV2 {
+        version: 2, byte_size: size_of::<birnam_abi::vtable_enumeration::FloorV2>(),
+        context: core::ptr::null_mut(), view: Some(view), selectors: Some(selectors),
     }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_vtable_enumeration_dependency_v1(
-    factory: *const birnam_abi::vtable_enumeration::FactoryV1,
+pub unsafe extern "C" fn birnam_vtable_enumeration_dependency_v2(
+    factory: *const birnam_abi::vtable_enumeration::FactoryV2,
 ) -> c_int {
     unsafe { birnam_abi::vtable_enumeration::attach(factory) }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_vtable_enumeration_provider_v1() -> *mut birnam_abi::vtable_enumeration::ApiV1 {
+pub unsafe extern "C" fn birnam_vtable_enumeration_provider_v2() -> *mut birnam_abi::vtable_enumeration::ApiV2 {
     runtime().vtable_enumeration()
 }

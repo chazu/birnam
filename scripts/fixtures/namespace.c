@@ -1,6 +1,6 @@
 #define _DARWIN_C_SOURCE
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include <stdlib.h>
@@ -56,8 +56,8 @@ static void publication_oracle(void) {
 typedef struct { size_t capacity,tally; Oop *keys,*values; } DictionaryView;
 static Oop mirror_of(IdApi *api,Oop symbol) {
     (void)api;
-    for(size_t i=0;i<vtable_count_v1(fixture_vtable_enumeration());i++) {
-        DictionaryView *view=vtable_at_v1(fixture_vtable_enumeration(),i);
+    for(size_t i=0;i<vtable_count_v2(fixture_vtable_enumeration());i++) {
+        DictionaryView *view=vtable_at_v2(fixture_vtable_enumeration(),i);
         for(size_t j=0;j<view->tally;j++)if(view->keys[j]==symbol && view->values[j])return view->values[j];
     }
     return NULL;

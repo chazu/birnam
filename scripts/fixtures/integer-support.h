@@ -16,7 +16,7 @@
 #include "../../abi/fixtures/system-output-v1/system_output_v1.h"
 #include "../../abi/fixtures/system-input-v3/system_input_v3.h"
 #include "../../abi/fixtures/environment-v3/environment_v3.h"
-#include "../../abi/fixtures/native-loader-v5/native_loader_v5.h"
+#include "../../abi/fixtures/native-loader-v6/native_loader_v6.h"
 #include "../../abi/fixtures/source-loader-v3/source_loader_v3.h"
 #include "../../abi/fixtures/file-io-v3/file_io_v3.h"
 #include "../../abi/fixtures/block-loop-v3/block_loop_v3.h"
@@ -76,7 +76,7 @@ static const FileIoApiV3 *fixture_file_io;
 static inline void fixture_prepare_file_io(IdApi *api);
 static const SourceLoaderApiV3 *fixture_source_loader;
 static inline void fixture_prepare_source_loader(IdApi *api);
-static const NativeLoaderApiV5 *fixture_native_loader;
+static const NativeLoaderApiV6 *fixture_native_loader;
 static inline void fixture_prepare_native_loader(IdApi *api);
 static const EnvironmentApiV3 *fixture_environment;
 static inline void fixture_prepare_environment(IdApi *api);
@@ -174,7 +174,7 @@ static inline void fixture_attach_integer(IdApi *api, void *image) {
     if(input_attach) { fixture_prepare_system_input(api); assert(input_attach(fixture_system_input)==1); }
     EnvironmentDependencyV3 environment_attach=(EnvironmentDependencyV3)api->dlsym_fn(image,"birnam_environment_dependency_v3");
     if(environment_attach) { fixture_prepare_environment(api); assert(environment_attach(fixture_environment)==1); }
-    NativeLoaderDependencyV5 native_loader_attach=(NativeLoaderDependencyV5)api->dlsym_fn(image,"birnam_native_loader_dependency_v5");
+    NativeLoaderDependencyV6 native_loader_attach=(NativeLoaderDependencyV6)api->dlsym_fn(image,"birnam_native_loader_dependency_v6");
     if(native_loader_attach) { fixture_prepare_native_loader(api); assert(native_loader_attach(fixture_native_loader)==1); }
     SourceLoaderDependencyV3 source_loader_attach=(SourceLoaderDependencyV3)api->dlsym_fn(image,"birnam_source_loader_dependency_v3");
     if(source_loader_attach) { fixture_prepare_source_loader(api); assert(source_loader_attach(fixture_source_loader)==1); }
@@ -281,7 +281,7 @@ static inline void fixture_prepare_native_loader(IdApi *api) {
     assert(n>0 && (size_t)n<sizeof(path));
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    NativeLoaderProviderV5 provide=(NativeLoaderProviderV5)api->dlsym_fn(image,"birnam_native_loader_provider_v5"); assert(provide && !provide());
+    NativeLoaderProviderV6 provide=(NativeLoaderProviderV6)api->dlsym_fn(image,"birnam_native_loader_provider_v6"); assert(provide && !provide());
     init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()); fixture_native_loader=provide(); assert(fixture_native_loader);
 }
 static inline void fixture_prepare_source_loader(IdApi *api) {

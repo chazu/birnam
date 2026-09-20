@@ -1,4 +1,4 @@
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include <assert.h>
@@ -17,6 +17,13 @@ typedef unsigned (*Admission)(const void *, Oop, Oop, size_t, Oop, const uint8_t
 
 static IdApi *api;
 static unsigned allocations;
+static VtableEnumerationV2 selector_original;
+static unsigned selector_calls;
+static Oop counted_selector(void *context,Oop vtable,size_t index) {
+    assert(context==&selector_original);selector_calls++;
+    return selector_original.selector_at(selector_original.context,vtable,index);
+}
+static Oop forbidden_selector(void *context,Oop vtable,size_t index) { (void)context;(void)vtable;(void)index;assert(!"Block admission invoked selector enumeration");return NULL; }
 static Oop forbidden_import(void *context,const char *name) { (void)context;(void)name;assert(!"Block admission invoked import");return NULL; }
 static NamespaceNamesApiV1 original_names, selected_names;
 static unsigned name_calls;
@@ -75,6 +82,7 @@ int main(int argc, char **argv) {
     probe = api->alloc(probe_vt, 0);
     IdApi module_api = *api;
     NamespaceImportV1 module_imports=*fixture_namespace_imports(),original_imports=module_imports;
+    VtableEnumerationV2 module_vtables=*fixture_vtable_enumeration(),original_vtables=module_vtables;
     void *portable = NULL;
     for (int i = 2; i <= 5; ++i) {
         if (argc == 8 && i == 2) continue;
@@ -83,10 +91,10 @@ int main(int argc, char **argv) {
         ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(module, "module_init");
         assert(init);
         fixture_attach_integer(api, module);
-        init(i == 5 ? &module_api : api,NULL,fixture_namespace_presence(),i == 5 ? &module_imports : fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+        init(i == 5 ? &module_api : api,NULL,fixture_namespace_presence(),i == 5 ? &module_imports : fixture_namespace_imports(),fixture_namespace_exports(),i == 5 ? &module_vtables : fixture_vtable_enumeration());
         if (i == 5) portable = module;
     }
-    Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v4");
+    Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v5");
     assert(query);
     PortableV1 *v1 = fixture_namespace_import("_BirnamPortableCodeApiV1");
     PortableV2 *v2 = fixture_namespace_import("_BirnamPortableCodeApiV2");
@@ -94,10 +102,11 @@ int main(int argc, char **argv) {
     assert(v2 && v2->version == 2 && v2->size == sizeof(*v2));
     uintptr_t context[] = {
         (uintptr_t)api->alloc, (uintptr_t)fixture_namespace_imports()->import, (uintptr_t)api->object_payload_size,
-        (uintptr_t)api->vtable_of, (uintptr_t)api->send, (uintptr_t)api->vtable_selector_at,
+        (uintptr_t)api->vtable_of, (uintptr_t)api->send, (uintptr_t)fixture_vtable_enumeration()->selector_at,
         (uintptr_t)api->symbol_name, (uintptr_t)api->intern, (uintptr_t)api->symbol_vt,
         (uintptr_t)fixture_namespace_names()->name_of, (uintptr_t)fixture_namespace_names()->context, (uintptr_t)api->vtable_vt,
         (uintptr_t)fixture_namespace_imports()->context,
+        (uintptr_t)fixture_vtable_enumeration()->context,
     };
     FILE *file = fopen(argv[6], "rb");
     assert(file && fseek(file, 0, SEEK_END) == 0);
@@ -182,6 +191,27 @@ int main(int argc, char **argv) {
     module_imports=original_imports;
     assert(ASK(v1->construct, vt, code, 2, NULL)==1);
     assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==1);
+    /* The floor's canonical operands survive mutation of its public descriptor.
+       This module retains an independent copy of the original selection. */
+    VtableEnumerationV2 public_saved=*fixture_vtable_enumeration();
+    fixture_vtable_enumeration()->selector_at=forbidden_selector;
+    fixture_vtable_enumeration()->context=&module_vtables;
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==1);
+    *fixture_vtable_enumeration()=public_saved;
+    module_vtables.selector_at=forbidden_selector;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==0);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==0);
+    module_vtables=original_vtables;module_vtables.context=&module_vtables;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==0);
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==0);
+    module_vtables=original_vtables;
+    assert(ASK(v1->construct, vt, code, 2, NULL)==1);
+    selector_original=module_vtables;
+    module_vtables.selector_at=counted_selector;module_vtables.context=&selector_original;
+    assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0)==0 && selector_calls==0);
+    Oop observed=v1->construct(vt,code,captures,2);
+    assert(observed && observed!=first && ((Oop *)observed)[0]==code && selector_calls>0);
+    module_vtables=original_vtables;
     module_api.alloc = counted_alloc;
     assert(ASK(v1->construct, vt, code, 2, NULL) == 0);
     assert(floor_admits((void *)v1->construct, vt, code, 2, NULL, bytes, (size_t)length, 0) == 0);

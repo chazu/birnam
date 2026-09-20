@@ -1,4 +1,4 @@
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -16,7 +16,7 @@ static FixtureImportSlot other_import_slot;
 static NamespaceImportV1 other_imports=FIXTURE_IMPORT(other_import_slot);
 
 static NamespaceExportV1 selected_exports,other_exports;
-static VtableEnumerationV1 selected_vtables,other_vtables;
+static VtableEnumerationV2 selected_vtables,other_vtables;
 static IdApi *api,selected,other;
 static ModuleInitFn prelude_init;
 static Method loader;
@@ -53,12 +53,12 @@ static void nested_load(int stage) {
         loader_nested=0;assert(invoke(loader,alias,&path_name,1)==alias);owned();
     }
 }
-static void *initialize(IdApi *table,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV1 *vtables) { (void)vtables;
+static void *initialize(IdApi *table,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV2 *vtables) { (void)vtables;
     assert(presence==&selected_presence && import_cap==&selected_imports && export_cap==&selected_exports && vtables==&selected_vtables);
     assert(table==&selected && !state);inits++;if(capture) puts("initialize original API and null state");owned();
     if(collect) api->gc_collect();nested_load(3);owned();return (void *)(uintptr_t)0x1234;
 }
-static void *initialize_second(IdApi *table,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV1 *vtables) { (void)vtables; (void)initialize(table,state,presence,import_cap,export_cap,vtables);if(capture) puts("alternate initializer");return NULL; }
+static void *initialize_second(IdApi *table,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV2 *vtables) { (void)vtables; (void)initialize(table,state,presence,import_cap,export_cap,vtables);if(capture) puts("alternate initializer");return NULL; }
 static void *mock_open(const char *path,int mode) {
     assert(depth && mode==1 && strlen(path)==expected_length && !memcmp(path,expected_bytes,expected_length));
     assert((const void *)path!=(const void *)lookup_buffer);owned_paths[depth-1]=path;memcpy(path_copies[depth-1],path,expected_length+1);
@@ -155,15 +155,15 @@ static void method(Oop type,Oop selector,Method implementation) {
 static void begin(const char *name) { printf("case %s\n",name);capture=1;vt_calls=byte_calls=interns=makes=exports=imports=sends=calls=opens=symbols=inits=0; }
 static void end(void) { capture=0;printf("done vtable=%zu bytes=%zu intern=%zu make=%zu export=%zu import=%zu send=%zu calls=%zu\n",vt_calls,byte_calls,interns,makes,exports,imports,sends,calls);printf("loader open=%zu symbol=%zu init=%zu\n",opens,symbols,inits); }
 static void validate(void *image,int attached) {
-    NativeLoaderDependencyV5 attach=(NativeLoaderDependencyV5)api->dlsym_fn(image,"birnam_native_loader_dependency_v5");if(!attach) return;
-    NativeLoaderApiV5 bad=*fixture_native_loader;
+    NativeLoaderDependencyV6 attach=(NativeLoaderDependencyV6)api->dlsym_fn(image,"birnam_native_loader_dependency_v6");if(!attach) return;
+    NativeLoaderApiV6 bad=*fixture_native_loader;
     assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_native_loader;
     bad.byte_size--;assert(!attach(&bad));bad=*fixture_native_loader;bad.install=NULL;assert(!attach(&bad));
     if(attached) { bad=*fixture_native_loader;assert(!attach(&bad) && attach(fixture_native_loader)==1); }
 }
-static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV1 *vtables,int prelude) {
+static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV2 *vtables,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    if(prelude && api->dlsym_fn(image,"birnam_native_loader_dependency_v5") && !fixture_native_loader) {
+    if(prelude && api->dlsym_fn(image,"birnam_native_loader_dependency_v6") && !fixture_native_loader) {
         IdApi watched=*api;watched.alloc=allocate;watched.method=method;watched.gc_register_root_provider=registered;
         size_t before=allocations;fixture_prepare_native_loader(&watched);
         assert(!bindings && !registrations && allocations==before && !fixture_namespace_contains("System"));validate(image,0);

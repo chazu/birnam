@@ -5,7 +5,7 @@ prefix=${1:?usage: namespace-enumeration-image-smoke.sh PREFIX [BASELINE_PREFIX]
 baseline=${2:-}
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-enumeration-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'enumeration image root: %s\n' "$scratch"; fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v12 scripts/fixtures/namespace-enumeration-native.c -o "$scratch/probe.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v13 scripts/fixtures/namespace-enumeration-native.c -o "$scratch/probe.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/probe.dylib"];
 [System println: [[System namespaceEnumerationProbe] printString]]
@@ -14,7 +14,7 @@ BIRNAM
 test ! -s "$scratch/startup.err"
 grep -Fxq true "$scratch/startup.out"
 if [[ -n $baseline ]]; then
-  cc -std=c11 -Wall -Wextra -Werror -DENUMERATION_V1=0 -dynamiclib -Iabi/fixtures/idapi-v12 scripts/fixtures/namespace-enumeration-native.c -o "$scratch/old.dylib"
+  cc -std=c11 -Wall -Wextra -Werror -DENUMERATION_V1=0 -dynamiclib -Iabi/fixtures/idapi-v13 scripts/fixtures/namespace-enumeration-native.c -o "$scratch/old.dylib"
   sed "s,probe.dylib,old.dylib," "$scratch/probe.birnam" >"$scratch/old.birnam"
   "$baseline/bin/birnam" "$scratch/old.birnam" >"$scratch/baseline.out" 2>"$scratch/baseline.err"
   test ! -s "$scratch/baseline.err"

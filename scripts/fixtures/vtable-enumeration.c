@@ -1,7 +1,7 @@
 #ifdef FIXTURE_IDAPI_V11
 #include "idapi_v11.h"
 #else
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"
@@ -19,14 +19,14 @@ static size_t count(void) {
 #ifdef FIXTURE_IDAPI_V11
     return api->vtable_count();
 #else
-    return vtable_count_v1(fixture_vtable_enumeration());
+    return vtable_count_v2(fixture_vtable_enumeration());
 #endif
 }
 static Oop at(size_t index) {
 #ifdef FIXTURE_IDAPI_V11
     return api->vtable_at(index);
 #else
-    return vtable_at_v1(fixture_vtable_enumeration(),index);
+    return vtable_at_v2(fixture_vtable_enumeration(),index);
 #endif
 }
 int main(int argc,char **argv) {
@@ -37,7 +37,7 @@ int main(int argc,char **argv) {
     api->gc_set_auto(0);fixture_mount_trace(api,argv[1]);
     api->gc_register_root_provider(mark_roots);api->gc_set_precise(1);collect_now();
 #ifndef FIXTURE_IDAPI_V11
-    VtableEnumerationV1 *selected=fixture_vtable_enumeration();
+    VtableEnumerationV2 *selected=fixture_vtable_enumeration();
     Dl_info owner;
     assert(dladdr((void *)selected->count,&owner) && strstr(owner.dli_fname,"libbirnam_object_model"));
     assert(dladdr((void *)selected->at,&owner) && strstr(owner.dli_fname,"libbirnam_object_model"));

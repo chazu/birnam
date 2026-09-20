@@ -4381,9 +4381,20 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.count() }
     }
 
-    pub(crate) fn vtable_enumeration(&self) -> *mut birnam_abi::vtable_enumeration::ApiV1 {
+    pub(crate) fn vtable_enumeration(&self) -> *mut birnam_abi::vtable_enumeration::ApiV2 {
         self.assert_owner();
         unsafe { (*self.state.get()).vtable_enumeration.api() }
+    }
+
+    pub(crate) fn canonical_vtable_enumeration(&self) -> birnam_abi::vtable_enumeration::ApiV2 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).vtable_enumeration.canonical() }
+    }
+
+    pub(crate) fn vtable_selector_view(&self, vtable: Oop) -> birnam_abi::vtable_enumeration::ViewV1 {
+        self.assert_owner();
+        // Borrow only until dictionary mutation; the consumer copies immediately.
+        unsafe { (*self.state.get()).vtables.selector_view(vtable) }
     }
 
     pub(crate) fn vtable_view(&self) -> birnam_abi::vtable_enumeration::ViewV1 {
@@ -6629,6 +6640,10 @@ mod tests {
         let runtime = &bootstrap.runtime;
         runtime.enable_symbol_compaction_for_test();
         let baseline = runtime.symbol_count();
+        let enumeration = runtime.vtable_enumeration();
+        let observed = |index| runtime.enter(|| unsafe {
+            birnam_abi::vtable_enumeration::selector_at(enumeration, runtime.canonical().symbol_list, index)
+        });
         let symbols_dictionary = runtime.canonical().symbol_list;
         let ephemeral = runtime
             .intern(b"j2-ephemeral-symbol")
@@ -6643,6 +6658,7 @@ mod tests {
             Some(&b"j2-ephemeral-symbol"[..])
         );
 
+        assert_eq!(observed(baseline), ephemeral);
         let reclaimed = runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
         assert!(reclaimed >= 1);
         assert_eq!(runtime.symbol_count(), baseline);
@@ -6653,6 +6669,7 @@ mod tests {
                 .is_null()
         );
 
+        assert!(observed(baseline).is_null());
         let replacement = runtime
             .intern(b"j2-ephemeral-symbol")
             .expect("collected Symbol value re-interns");

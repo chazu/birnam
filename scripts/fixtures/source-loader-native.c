@@ -1,11 +1,11 @@
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 #ifndef EXPECT_SOURCE_LOADER_LIBRARY
 #define EXPECT_SOURCE_LOADER_LIBRARY "libbirnam_source_loader.dylib"
 #endif
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV1 *vtables) { (void)vtables;
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables) { (void)vtables;
     (void)exports;
     (void)presence;
     assert(api && !state);Oop type=namespace_import_v1(imports,"SystemVt"),selector=api->intern("load:");

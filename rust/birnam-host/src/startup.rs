@@ -687,7 +687,7 @@ pub unsafe fn load_image(
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImage:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [path_value, rebuild_value].as_ptr(), 2) };
-    unsafe { finish_image_load(api, runtime.stack.presence(), runtime.stack.imports(), system, status) }
+    unsafe { finish_image_load(api, runtime.stack.presence(), runtime.stack.imports(), runtime.stack.vtables(), system, status) }
 }
 
 /// Load complete image bytes through the ordinary Birnam `System` send surface.
@@ -716,11 +716,12 @@ pub unsafe fn load_image_bytes(
     let rebuild_value = if rebuild { api.trueObj } else { api.falseObj };
     let selector = unsafe { (api.intern)(c"loadImageBytes:rebuild:".as_ptr()) };
     let status = unsafe { (api.send)(system, selector, [image_value, rebuild_value].as_ptr(), 2) };
-    unsafe { finish_image_load(api, runtime.stack.presence(), runtime.stack.imports(), system, status) }
+    unsafe { finish_image_load(api, runtime.stack.presence(), runtime.stack.imports(), runtime.stack.vtables(), system, status) }
 }
 
 unsafe fn finish_image_load(
     api: &IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1,
+    vtables: *const birnam_abi::vtable_enumeration::ApiV2,
     system: birnam_abi::Oop,
     status: birnam_abi::Oop,
 ) -> Result<ImageLoadOutcome, ImageError> {
@@ -751,7 +752,7 @@ unsafe fn finish_image_load(
             let config_surface_missing = unsafe { global_named(api, imports, "Config") }
                 .map(|config| unsafe {
                     let loads = (api.intern)(c"loads".as_ptr());
-                    !receiver_has_selector(api, config, loads)
+                    !receiver_has_selector(api, vtables, config, loads)
                 })
                 .unwrap_or(false);
             if config_surface_missing {
@@ -817,7 +818,7 @@ unsafe fn finish_image_load(
         let config_surface_missing = unsafe { global_named(api, imports, "Config") }
             .map(|config| unsafe {
                 let loads = (api.intern)(c"loads".as_ptr());
-                !receiver_has_selector(api, config, loads)
+                !receiver_has_selector(api, vtables, config, loads)
             })
             .unwrap_or(false);
         if config_surface_missing {
@@ -944,7 +945,7 @@ impl fmt::Debug for FloorError {
 pub struct LoadedFloor {
     _namespace: NonNull<std::ffi::c_void>,
     _object_model: NonNull<std::ffi::c_void>,
-    vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV1>,
+    vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV2>,
     namespace_names: NonNull<birnam_abi::namespace_names::ApiV1>,
     namespace_presence: NonNull<birnam_abi::namespace_presence::ApiV1>,
     namespace_import: NonNull<birnam_abi::namespace_import::ApiV1>,
@@ -1853,6 +1854,7 @@ pub(super) fn selector_has_arity_one(selector: &str) -> bool {
 
 unsafe fn receiver_has_selector(
     api: &IdApi,
+    vtables: *const birnam_abi::vtable_enumeration::ApiV2,
     receiver: birnam_abi::Oop,
     selector: birnam_abi::Oop,
 ) -> bool {
@@ -1860,7 +1862,7 @@ unsafe fn receiver_has_selector(
     while !vtable.is_null() {
         let mut index = 0usize;
         loop {
-            let candidate = unsafe { (api.vtableSelectorAt)(vtable, index) };
+            let candidate = unsafe { birnam_abi::vtable_enumeration::selector_at(vtables, vtable, index) };
             if candidate.is_null() {
                 break;
             }
@@ -2090,7 +2092,7 @@ pub struct LoadedStack {
     environment: *const birnam_abi::environment::ApiV3,
     file_io: *const birnam_abi::file_io::ApiV3,
     block_loop: *const birnam_abi::block_loop::ApiV3,
-    native_loader: *const birnam_abi::native_loader::ApiV5,
+    native_loader: *const birnam_abi::native_loader::ApiV6,
     source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2102,6 +2104,7 @@ impl LoadedStack {
     pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.floor.presence() }
     pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.floor.imports() }
     pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.floor.exports() }
+    pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.floor.vtables() }
 
     pub fn new(floor: LoadedFloor) -> Self {
         let control = unsafe {
@@ -2410,9 +2413,9 @@ impl LoadedStack {
                 return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v5".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v6".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::native_loader::DependencyV5 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::native_loader::DependencyV6 = unsafe { std::mem::transmute(dependency) };
             if self.native_loader.is_null() || unsafe { attach(self.native_loader) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
             }
@@ -2575,9 +2578,9 @@ impl LoadedStack {
             }
             self.block_loop = provided;
         }
-        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v5".as_ptr()) };
+        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v6".as_ptr()) };
         if !native_loader_provider.is_null() {
-            let provide: birnam_abi::native_loader::ProviderV5 = unsafe { std::mem::transmute(native_loader_provider) };
+            let provide: birnam_abi::native_loader::ProviderV6 = unsafe { std::mem::transmute(native_loader_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::native_loader::attach(provided) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
@@ -2962,7 +2965,7 @@ impl LoadedFloor {
     pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.namespace_presence.as_ptr() }
     pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.namespace_import.as_ptr() }
     pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.namespace_export.as_ptr() }
-    pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV1 { self.vtable_enumeration.as_ptr() }
+    pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.vtable_enumeration.as_ptr() }
 
     pub fn api(&self) -> &IdApi {
         // SAFETY: `id_init` returned a process-owned, non-null table and the
@@ -3112,11 +3115,11 @@ pub fn load_floor(
     if !unsafe { birnam_abi::namespace_export::valid(export) } {
         return Err(FloorError::Namespace { path: namespace_path, reason: "invalid export capability" });
     }
-    let vtables_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_vtable_enumeration_provider_v1".as_ptr()) };
+    let vtables_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_vtable_enumeration_provider_v2".as_ptr()) };
     if vtables_provider.is_null() {
         return Err(FloorError::VtableEnumeration { path: object_model_path, reason: "missing capability" });
     }
-    let provide: birnam_abi::vtable_enumeration::ProviderV1 = unsafe { std::mem::transmute(vtables_provider) };
+    let provide: birnam_abi::vtable_enumeration::ProviderV2 = unsafe { std::mem::transmute(vtables_provider) };
     let vtables = unsafe { provide() };
     if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } {
         return Err(FloorError::VtableEnumeration { path: object_model_path, reason: "invalid capability" });
@@ -3179,7 +3182,7 @@ unsafe fn prepare_vtable_enumeration(
         reason,
     };
     let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_vtable_enumeration_dependency_v1".as_ptr()) };
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_vtable_enumeration_dependency_v2".as_ptr()) };
     if attach.is_null() {
         return Err(error("missing floor dependency"));
     }
@@ -3188,14 +3191,14 @@ unsafe fn prepare_vtable_enumeration(
         .ok_or_else(|| error("open failed"))?;
     let result = (|| {
         let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_vtable_enumeration_factory_v1".as_ptr()) };
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_vtable_enumeration_factory_v2".as_ptr()) };
         if provider.is_null() {
             return Err(error("missing provider"));
         }
-        let provide: birnam_abi::vtable_enumeration::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let provide: birnam_abi::vtable_enumeration::FactoryProviderV2 = unsafe { std::mem::transmute(provider) };
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::vtable_enumeration::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::vtable_enumeration::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        let attach: birnam_abi::vtable_enumeration::DependencyV2 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

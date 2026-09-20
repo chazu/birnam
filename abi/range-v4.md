@@ -18,5 +18,5 @@ API. No execution selection is inferred from an API address.
 Preparation remains `prepare(api, imports, parent, adopting)`. All other stage
 signatures, allocation, partial roots, identities, layouts, callbacks, dispatch,
 adoption and reload behavior retain v3 contracts. Native initialization uses
-IdApi v12's six arguments. Object representation and image encoding are unchanged.
+IdApi v13's six arguments. Object representation and image encoding are unchanged.
 See the [native export inventory](rust-range-dylib-v1.json).

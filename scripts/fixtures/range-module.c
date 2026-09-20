@@ -1,4 +1,4 @@
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -123,7 +123,7 @@ int main(int argc,char **argv) {
     assert(bindings==8 && publications==1 && collections==8 && registrations==(unsigned)(baseline?1:((fixture_map || fixture_map_v2)?4:(fixture_vector?3:2))));
     assert(fixture_namespace_import("Range")==prototype && fixture_namespace_import("RangeVt")==behavior);
     assert(vtable_parent(api,behavior)==fixture_namespace_import("CollectionVt"));
-    for(size_t i=0;i<3;i++) assert(api->slot_kind(behavior,i)==IDAPI_V12_SLOT_RAW);
+    for(size_t i=0;i<3;i++) assert(api->slot_kind(behavior,i)==IDAPI_V13_SLOT_RAW);
     if(!baseline) {
         assert(range_roots); range_roots(record_mark); assert(marks==3);
         if(!methods_baseline && !fixture_range_v2) {

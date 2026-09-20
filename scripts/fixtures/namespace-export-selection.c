@@ -3,7 +3,7 @@
 #ifdef FIXTURE_IDAPI_V10
 #include "idapi_v10.h"
 #else
-#include "idapi_v12.h"
+#include "idapi_v13.h"
 #endif
 #include "namespace-support.h"
 #include "integer-support.h"
