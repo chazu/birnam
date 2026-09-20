@@ -186,6 +186,8 @@ int main(int argc,char **argv) {
     fixture_set_precise(1); api->gc_collect();
     Oop rebuilt=to(first_integer,&last_integer,1); assert(api->vtable_of(rebuilt)==behavior);
     if(modern) { family_marks=selector_marks=0; owner_roots(mark); assert(family_marks==2 && selector_marks==3); }
+    /* GC may recycle temporary addresses recorded by an earlier trace phase. */
+    identity_count=0;
     fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots,&selected_layouts); capture=0;
     assert(fixture_namespace_import("RangeVt")==behavior && fixture_namespace_import("Range")==prototype && !finalizers);
     printf("range-storage: construction, adoption, callbacks, roots, clone and reload passed mode=%s\n",argv[4]);

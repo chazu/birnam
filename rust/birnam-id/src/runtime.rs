@@ -6865,6 +6865,71 @@ mod tests {
     }
 
     #[test]
+    fn payload_layout_releases_once_at_replacement_retirement_and_runtime_destruction() {
+        use birnam_abi::payload_layout::{ApiV1, OwnedV1};
+        use crate::heap::Heap;
+        use core::cell::RefCell;
+        thread_local! {
+            static EVENTS: RefCell<Vec<Option<usize>>> = const { RefCell::new(Vec::new()) };
+            static RETIRING: Cell<(*const Heap, Oop, usize)> = const {
+                Cell::new((core::ptr::null(), core::ptr::null_mut(), 0))
+            };
+        }
+        unsafe extern "C" fn release(owned: OwnedV1) {
+            let (heap, vtable, prefix) = RETIRING.get();
+            if prefix != 0 && owned.view.kinds.addr() == prefix {
+                // The collector borrows Vtables here, not this separate Heap.
+                assert_eq!(unsafe { (*heap).payload_size(vtable) }, Some(80));
+            }
+            if owned.view.count != 0 {
+                EVENTS.with_borrow_mut(|events| events.push(Some(owned.view.kinds.addr())));
+            }
+            let factory = unsafe { &*birnam_payload_layout::birnam_payload_layout_factory_v1() };
+            unsafe { factory.release.unwrap()(owned) };
+        }
+        unsafe extern "C" fn destroy(api: *mut ApiV1) {
+            EVENTS.with_borrow_mut(|events| events.push(None));
+            let factory = unsafe { &*birnam_payload_layout::birnam_payload_layout_factory_v1() };
+            unsafe { factory.destroy.unwrap()(api) };
+        }
+        let mut factory = unsafe { *birnam_payload_layout::birnam_payload_layout_factory_v1() };
+        factory.release = Some(release);
+        factory.destroy = Some(destroy);
+        crate::payload_layout::TEST_FACTORY.set(Some(factory));
+        let bootstrap = build_bootstrap();
+        crate::payload_layout::TEST_FACTORY.set(None);
+        let runtime = &bootstrap.runtime;
+        let dead = runtime.create_vtable(runtime.globals().object_vt);
+        let live = runtime.create_vtable(runtime.globals().object_vt);
+        runtime.export(b"PayloadLayoutRetained", live).unwrap();
+        runtime.set_layout(dead, [SLOT_OOP, 9].as_ptr(), 2, crate::abi::SLOT_RAW);
+        let old = runtime.payload_layout_view(dead);
+        EVENTS.with_borrow_mut(Vec::clear);
+        runtime.set_layout(dead, old.kinds, old.count, SLOT_OOP);
+        EVENTS.with_borrow(|events| assert_eq!(*events, vec![Some(old.kinds.addr())]));
+        let retired = runtime.payload_layout_view(dead).kinds.addr();
+        assert_ne!(retired, old.kinds.addr());
+        runtime.set_layout(live, [SLOT_OOP].as_ptr(), 1, SLOT_OOP);
+        let retained = runtime.payload_layout_view(live).kinds.addr();
+        EVENTS.with_borrow_mut(Vec::clear);
+        RETIRING.set((unsafe { &raw const (*runtime.state.get()).heap }, dead, retired));
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+        RETIRING.set((core::ptr::null(), core::ptr::null_mut(), 0));
+        assert!(runtime.checked_vtable_of(dead).is_null());
+        assert_eq!(runtime.payload_layout_view(live).kinds.addr(), retained);
+        EVENTS.with_borrow(|events| assert_eq!(*events, vec![Some(retired)]));
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+        EVENTS.with_borrow(|events| assert_eq!(*events, vec![Some(retired)]));
+        EVENTS.with_borrow_mut(Vec::clear);
+        drop(bootstrap);
+        EVENTS.with_borrow(|events| {
+            assert_eq!(events.iter().filter(|event| **event == Some(retained)).count(), 1);
+            assert_eq!(events.iter().filter(|event| event.is_none()).count(), 1);
+            assert_eq!(events.last(), Some(&None), "release records before destroying the capability");
+        });
+    }
+
+    #[test]
     fn payload_layout_follows_exact_records_across_runtime_moves_and_public_instrumentation() {
         let first = build_bootstrap();
         let second = build_bootstrap();

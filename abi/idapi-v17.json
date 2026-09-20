@@ -281,7 +281,7 @@
       "rule": "null permitted exactly when count is zero"
     },
     {
-      "path": "IdApi.setLayout.kinds",
+      "path": "PayloadLayoutV1.set.kinds",
       "rule": "null permitted exactly when prefix count is zero"
     }
   ],
@@ -306,6 +306,6 @@
   "fingerprint": {
     "algorithm": "sha256",
     "canonicalization": "json-sorted-keys-no-whitespace",
-    "value": "4ee264f43b7b39366eccb8a0be70bb60853025bbc068acbec2a42369527d0ee0"
+    "value": "97ed7a6b5af6afd36285011148f5a58d1ef19e7bdb9c21f03296ba89e8b835cc"
   }
 }

@@ -254,6 +254,8 @@ int main(int argc,char **argv) {
     fixture_set_precise(1); api->gc_collect(); partial(3);
     vector=fixture_namespace_import("VectorStorageRoot"); assert(vector==fixture_namespace_import("VectorStorageAlias")); verify(vector,32801);
     for(size_t j=0;j<4;j++) verify(versions[j],retained[j]);
+    /* GC may recycle temporary addresses recorded by an earlier trace phase. */
+    identity_count=0;
     fixture_namespace_export("Vector",NULL); capture=1; mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_roots,&selected_layouts); capture=0;
     assert(fixture_namespace_import("VectorVt")==behavior && fixture_namespace_import("Vector")==prototype && fixture_namespace_import("VectorNode")==node_type && !finalizers);
     printf("vector-storage: construction, persistence through 32801, native consumers, allocation order, roots, live callbacks and reload passed mode=%s\n",argv[4]);

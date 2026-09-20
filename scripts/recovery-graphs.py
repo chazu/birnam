@@ -462,11 +462,11 @@ def main():
             receipt["authorities"][name] = sha(ROOT / name)
         run(["python3", "scripts/compatibility-authority-test.py"], "image-compatibility-authority")
         receipt["image_authority_migration"] = "Design 81K owner/parent, 81L Integer, 81R Float, 81T Word, 81X String and 81AX Namespace names dependency call substitutions; encoding unchanged"
-        # 81J through 81BK deliberately reduce IdApi. Verify the current independent v16
+        # 81J through 81BL deliberately reduce IdApi. Verify the current independent v17
         # manifest instead of claiming that this table matches the 74T baseline.
         run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v17")
         receipt["current_id_api"] = {
-            "schema_version": 16, "change": "Design 81BK explicit GC Settings",
+            "schema_version": 17, "change": "Design 81BL explicit Payload Layout",
             "files_sha256": {name: sha(ROOT / name) for name in CURRENT_IDAPI},
         }
         for profile in ("debug", "release"):
@@ -478,7 +478,7 @@ def main():
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["cargo", "build", "--locked", "--offline",
-                     "-p", "birnam-id", "-p", "birnam-object-model", "-p", "birnam-method-observation", "-p", "birnam-root-registry", "-p", "birnam-gc-settings", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-collection",
+                     "-p", "birnam-id", "-p", "birnam-object-model", "-p", "birnam-method-observation", "-p", "birnam-root-registry", "-p", "birnam-gc-settings", "-p", "birnam-payload-layout", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-collection",
                      "-p", "birnam-error", "-p", "birnam-portable-code",
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")

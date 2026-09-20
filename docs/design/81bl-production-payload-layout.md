@@ -1,8 +1,8 @@
 # 81BL — Native payload-layout descriptions
 
-> **Status:** Implementation checkpoint against completed 81BK (`d7638dea`).
-> Focused tests and installed startup/compiled/image/baked checks pass. Broader
-> regression evidence remains pending below. Debug validation only.
+> **Status:** Implemented against completed 81BK (`d7638dea`). Final installed
+> startup, compiled, image, baked and portable recovery/resave checks pass.
+> Debug validation only.
 
 [81D](81d-id-api-partition.md) places descriptions of user payloads above Id,
 shared by GC and Image. Extract the existing owned byte prefix, repeated tail
@@ -12,7 +12,7 @@ inheritance rule, language method, collection policy or image encoding.
 
 ## Existing laws and ownership
 
-Before extraction, `vtable.rs::VtableRecord` owns a boxed byte prefix, a tail byte and a
+Before extraction, `vtable.rs::VtableRecord` owned a boxed byte prefix, a tail byte and a
 presence bit. An unset record owns no allocation. A set record with an empty
 prefix is distinct from an unset record and also needs no byte allocation.
 
@@ -85,7 +85,8 @@ The factory and code stay pinned until all carriers and consumers are gone.
 | Prelude, Error, String Builder and Isolate | Incoming capability for incoming construction API |
 | Artifact | Propagate selection through its construction helper and saved Runtime as required by each existing API use |
 | Codegen | Incoming capability for bring-up layouts; first saved execution capability for lazy Block construction |
-| TCC and Portable Code | Save the capability with the same execution API for later construction; preserve incoming bring-up selection |
+| TCC | Incoming capability for ForeignAddress family preparation; saved first capability for Unit layout assignment on every initialization and for later construction |
+| Portable Code | Save the capability with the same first execution API for later construction |
 | Relational | Incoming capability for LogicVar construction; first saved execution selection for later callback families; explicitly migrate its independent native-output fixture |
 | ForeignAddress helper and Alien/TCC callers | Pass the matching layout capability through family creation/allocation, preserving live presence/import/export calls |
 | Image | Incoming capability for report-family creation; saved execution capability for all four existing slot-query sites |
@@ -132,40 +133,72 @@ execution. Run affected ABI/admission, stdlib, GC, recovery and image-backed
 worker checks. Record the exact source/artifact relationship and remaining gates
 before marking this extraction complete; do not run release validation.
 
-## Implementation checkpoint evidence
+## Completed implementation and focused evidence
 
 The module, floor attachment, explicit caller migration, startup/install wiring,
 current ABI manifests and independent C fixtures are implemented. Historical ABI
 fixtures remain unchanged. The following debug checks pass:
 
 - Workspace build and all-target check; affected all-feature checks.
-- 279 focused Rust tests (13 ABI, 261 Id, 5 Payload Layout), with 15 existing
-  timing tests ignored; 73 current C fixture syntax checks and the v17 C client.
+- 280 focused Rust tests (13 ABI, 262 Id, 5 Payload Layout), with 15 existing
+  timing tests ignored; 74 current C fixture syntax checks and the v17 C client.
+- A counted canonical destructor proves one release on borrowed replacement,
+  one at dead-record retirement while the heap allocation remains attached,
+  and one for the retained record at Runtime teardown before capability disposal.
 - Nine exact old/new stdout, stderr and exit-status comparisons against archived
   `d7638dea` source and its installed v16 floor, including diagnostic precedence.
 - Nineteen existing native-consumer transcripts and 27 early value/layout
-  consumer transcripts match the historical implementation; error-presence
-  admission and copied numeric API context checks also pass.
+  consumer transcripts match the historical implementation against the final
+  installed prefix; error-presence admission and copied numeric API context
+  checks also pass. Range/Vector trace identity resets are explained below.
 - Twenty-one host factory/capability admission cases pass against both the debug
   build and the fresh installed prefix. The installed v17 C client also passes.
-- Fresh debug installation contains 47 native libraries and 28 authored modules.
-  All 2013 source-file hashes remained unchanged through installation and were
-  rechecked before this evidence-only documentation update.
+- Fresh final debug installation contains 47 native libraries and 28 authored
+  modules. All 2014 source-file hashes remained unchanged through installation
+  and were rechecked before this evidence-only documentation update.
 - The installed Payload Layout smoke verifies function ownership at startup,
   source-free compiled execution, v8 native-Code image recovery and baked
   execution, including copied prefixes, callback-time layout replacement during
-  collection, nested collection, aliases and repeated native loading.
+  collection, nested collection, aliases and repeated native loading. A second
+  probe replaces the public query callback, changes a later slot during the
+  encoding pass, proves rejection of that newly unknown slot, restores the
+  description and saves/loads the same Range successfully.
 - Installed stdlib: 145 passed, zero failed. `git diff --check` passes.
+- Actual old/new image-backed workers agree byte for byte on ready, twelve wire
+  values and orderly stop. Floor discovery, all 75 library export deltas and 31
+  native manifests pass. Id and Payload Layout link only system libraries.
+- Final installed portable-v8 checks pass for boxed identity, nested source-free
+  meaning, CodeBinding recovery, ordinary and forced-rebuild entry, baked entry,
+  resaving and rejection of live boundary capabilities.
+- Nine adjacent installed image suites pass: GC Settings, Root Registry, System
+  GC, Method Observation, Native Loader, Namespace, Namespace Enumeration,
+  Selector Enumeration and Block Loop. These ran on the original implementation
+  prefix; final startup/image, worker and consumer checks were repeated after
+  the ABI metadata and TCC selection corrections below.
 
-Local receipts are under `.cargo-target/81bl-*`, including `source-hashes.json`,
-`install.log`, `integrated-tests.log`, `layout-oracle.json`, `native-audit.log`,
-`layout-consumers.log`, `installed-host-validation.log`, `installed-idapi.log`,
-`installed-stdlib.log` and `payload-layout-image.log`. The installed prefix is
-recorded in `.cargo-target/81bl-prefix-path`; these are local evidence, not
-checked-in artifacts.
+The independent TCC fixture first passed against the archived v16 implementation
+and failed against the initial extraction: a repeated initializer assigned the
+Unit layout through the incoming capability instead of the saved execution
+capability. The correction restores the original selection. Its transcript now
+matches v16, including mutation of the saved callback and recreation of the
+ForeignAddress family through the incoming capability. The focused debug gate
+runs this regression. The current v17 manifest also names the moved
+`PayloadLayoutV1.set.kinds` contract; its descriptor fingerprint is
+`97ed7a6b5af6afd36285011148f5a58d1ef19e7bdb9c21f03296ba89e8b835cc`.
 
-Remaining before closing the full extraction audit: rerun the native-consumer
-comparisons against the installed prefix, adjacent image/recovery suites,
-image-backed worker wire comparison and final export/dependency inventory.
-Dedicated image-encoding callback instrumentation and release-count evidence at
-record retirement are also still pending. No release validation was run.
+Range/Vector trace fixtures retained temporary addresses across precise GC,
+occasionally assigning a reclaimed object's old trace number to a new allocation.
+The same current binary reproduced the instability. Resetting only the fixture's
+trace identities before the next capture phase fixes the comparison without
+adding roots or changing runtime execution. The exact same reset is applied to
+a separate historical fixture copy; the archived production source and headers
+are untouched. The full 27-case comparison and thirty isolated old/new repeats
+of each affected mode pass after this correction.
+
+Local receipts are under `.cargo-target/81bl-*`; final installation, source hashes,
+consumer comparisons, host/ABI checks, stdlib, floor discovery, inventory, worker
+and image receipts use the `81bl-final-` prefix. Earlier independent diagnostics
+are in `81bl-layout-oracle.json`; the TCC regression is in
+`81bl-tcc-layout-{old-before,new-before,final}.log`. The final installed prefix is
+recorded in `.cargo-target/81bl-final-prefix-path`. These are local evidence,
+not checked-in artifacts. No release validation was run.

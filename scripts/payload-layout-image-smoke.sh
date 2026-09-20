@@ -63,4 +63,24 @@ grep -Fq '/libbirnam_payload_layout.dylib' "$scratch/image.err"
 BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
 grep -Fq '/libbirnam_payload_layout.dylib' "$scratch/baked.err"
-printf 'payload-layout-image-smoke: startup, source-free compiled caller, v8 native Code image and baked executable preserve exact layouts, copied prefixes, arbitrary slot kinds, callback-time replacement, nested collection, roots, aliases and reload\n'
+cat >"$scratch/encoding.birnam" <<BIRNAM
+[System loadModule: "$scratch/payload-layout-native.dylib"];
+let range := [System payloadLayoutArmImage: [17 to: 23]];
+let main := [| [System println: [range size]]];
+[System saveImage: "$scratch/rejected.image"];
+[System println: [[System imageSaveReport] status]];
+[System println: [System payloadLayoutImageChecked]];
+[System saveImage: "$scratch/restored.image"];
+[System println: [[System imageSaveReport] status]]
+BIRNAM
+"$bin" "$scratch/encoding.birnam" >"$scratch/encoding.out" 2>"$scratch/encoding.err"
+printf '#rejected\ntrue\n#saved\n' >"$scratch/encoding-expected.out"
+cmp "$scratch/encoding-expected.out" "$scratch/encoding.out"
+test ! -s "$scratch/encoding.err"
+test ! -e "$scratch/rejected.image"
+rm "$scratch/encoding.birnam"
+"$bin" "$scratch/restored.image" >"$scratch/restored.out" 2>"$scratch/restored.err"
+printf '7\n' >"$scratch/restored-expected.out"
+cmp "$scratch/restored-expected.out" "$scratch/restored.out"
+test ! -s "$scratch/restored.err"
+printf 'payload-layout-image-smoke: startup, source-free compiled caller, v8 native Code image and baked executable preserve exact layouts, copied prefixes, arbitrary slot kinds, callback-time replacement, nested collection, roots, aliases and reload; encoding observes live callback and layout replacement, rejects unknown slots, and saves after restoration\n'

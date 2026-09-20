@@ -2,6 +2,11 @@
 use birnam_abi::payload_layout::{ApiV1, FactoryV1, OwnedV1, ReleaseV1, ViewV1};
 use core::ptr::NonNull;
 
+#[cfg(test)]
+thread_local! {
+    pub(crate) static TEST_FACTORY: core::cell::Cell<Option<FactoryV1>> = const { core::cell::Cell::new(None) };
+}
+
 pub(crate) struct Owned {
     carrier: OwnedV1,
     release: ReleaseV1,
@@ -23,7 +28,9 @@ pub(crate) struct Service {
 impl Service {
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_payload_layout::birnam_payload_layout_factory_v1() };
+        let factory = TEST_FACTORY.get().unwrap_or_else(|| unsafe {
+            *birnam_payload_layout::birnam_payload_layout_factory_v1()
+        });
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::payload_layout::operations() };
         let floor = crate::public_api::payload_layout_access();

@@ -1404,6 +1404,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
     });
     let api = unsafe { api_ref(&runtime) };
+    let layouts = runtime.layouts as *const birnam_abi::payload_layout::ApiV1;
     let exports = runtime.exports as *const birnam_abi::namespace_export::ApiV1;
     let presence = runtime.presence as *const birnam_abi::namespace_presence::ApiV1;
     ROOT_REGISTERED.get_or_init(|| unsafe {
