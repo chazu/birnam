@@ -58,8 +58,8 @@ unsafe fn api_ref() -> &'static IdApi {
 unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
     unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
 }
-unsafe fn import(api: &IdApi, name: &[u8]) -> Oop {
-    unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
+unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8]) -> Oop {
+    unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
 }
 unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
     unsafe { borrowed_oop_args(args, count)?.first().copied() }
@@ -253,7 +253,7 @@ unsafe extern "C" fn string_builder_as_string(
 
 /// Initialize this native family using its existing adoption/publication rules.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -262,7 +262,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, pr
     let runtime = *RUNTIME.get_or_init(|| {
         let adopting = unsafe { birnam_abi::namespace_presence::contains(presence, STRING_BUILDER_NAME.as_ptr().cast()) } != 0;
         let behavior = if adopting {
-            unsafe { import(api, STRING_BUILDER_VT_NAME) }
+            unsafe { import(imports, STRING_BUILDER_VT_NAME) }
         } else {
             unsafe { (api.proto)(api.object_vt) }
         };
@@ -271,7 +271,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, pr
         }
         ROOTS[0].store(behavior as usize, Ordering::Release);
         let prototype = if adopting {
-            unsafe { import(api, STRING_BUILDER_NAME) }
+            unsafe { import(imports, STRING_BUILDER_NAME) }
         } else {
             ptr::null_mut()
         };

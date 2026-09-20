@@ -13787,7 +13787,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     unsafe { bring_up(api, presence) };
     ptr::null_mut()
 }

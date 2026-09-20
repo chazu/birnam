@@ -98,6 +98,7 @@ impl StoreState {
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    imports: usize,
     store_vt: usize,
     store: usize,
     cell_vt: usize,
@@ -159,9 +160,9 @@ unsafe fn intern(api: &IdApi, name: &[u8]) -> birnam_abi::Oop {
     unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn import(api: &IdApi, name: &[u8]) -> birnam_abi::Oop {
+unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8]) -> birnam_abi::Oop {
     // SAFETY: module names are static NUL-terminated strings.
-    unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
+    unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
 }
 
 unsafe fn state_mut(store: birnam_abi::Oop) -> &'static mut StoreState {
@@ -181,7 +182,7 @@ type MethodMutationAuthorizer = unsafe extern "C" fn() -> birnam_abi::Oop;
 
 fn mop_error(runtime: &Runtime, kind: &[u8]) -> birnam_abi::Oop {
     let api = unsafe { api(runtime) };
-    let error = unsafe { import(api, b"Error\0") };
+    let error = unsafe { import(runtime.imports as *const birnam_abi::namespace_import::ApiV1, b"Error\0") };
     if error.is_null() {
         return api.nilObj;
     }
@@ -1285,7 +1286,7 @@ unsafe extern "C" fn compact(
 
 fn history_not_retained_error(runtime: &Runtime) -> birnam_abi::Oop {
     let api = unsafe { api(runtime) };
-    let error = unsafe { import(api, b"Error\0") };
+    let error = unsafe { import(runtime.imports as *const birnam_abi::namespace_import::ApiV1, b"Error\0") };
     if error.is_null() {
         return api.nilObj;
     }
@@ -2154,7 +2155,7 @@ unsafe fn register_globals_methods(runtime: &Runtime) {
     unsafe { (api.setLayout)(vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -2163,11 +2164,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, STORE_NAME.as_ptr().cast()) != 0 };
         let (store_vt, store, cell_vt, globals_vt, globals) = if reloading {
             (
-                unsafe { import(api, STORE_VT_NAME) },
-                unsafe { import(api, STORE_NAME) },
-                unsafe { import(api, CELL_VT_NAME) },
-                unsafe { import(api, GLOBALS_VT_NAME) },
-                unsafe { import(api, GLOBALS_NAME) },
+                unsafe { import(imports, STORE_VT_NAME) },
+                unsafe { import(imports, STORE_NAME) },
+                unsafe { import(imports, CELL_VT_NAME) },
+                unsafe { import(imports, GLOBALS_VT_NAME) },
+                unsafe { import(imports, GLOBALS_NAME) },
             )
         } else {
             let store_vt = unsafe { (api.proto)(api.object_vt) };
@@ -2205,6 +2206,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
         Runtime {
             api: api_pointer as usize,
+            imports: imports as usize,
             store_vt: oop_address(store_vt),
             store: oop_address(store),
             cell_vt: oop_address(cell_vt),
@@ -2269,10 +2271,10 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// null to request the documented fatal boundary. `_state` is an opaque host
 /// token and is not retained by this rung.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     // SAFETY: forwarded host contract; bring_up performs the null check and
     // retains only the process-owned table address.
-    unsafe { bring_up(api, presence) };
+    unsafe { bring_up(api, presence, imports) };
     ptr::null_mut()
 }
 
@@ -2316,6 +2318,7 @@ mod tests {
     pub(super) fn test_runtime(compaction_transitions: u64, fact_bytes_limit: usize) -> Runtime {
         Runtime {
             api: 0,
+            imports: 0,
             store_vt: 0,
             store: 0,
             cell_vt: 0,

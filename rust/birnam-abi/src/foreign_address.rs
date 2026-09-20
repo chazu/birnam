@@ -24,15 +24,15 @@ pub const PAYLOAD_BYTES: usize = PAYLOAD_WORDS * size_of::<usize>();
 /// # Safety
 ///
 /// The caller must own the Runtime thread and supply its live IdApi.
-pub unsafe fn ensure_family(api: &IdApi, presence: *const crate::namespace_presence::ApiV1) -> Option<(Oop, Oop)> {
+pub unsafe fn ensure_family(api: &IdApi, presence: *const crate::namespace_presence::ApiV1, imports: *const crate::namespace_import::ApiV1) -> Option<(Oop, Oop)> {
     let existing_vtable = unsafe { crate::namespace_presence::contains(presence, VTABLE_NAME.as_ptr().cast()) } != 0;
     let existing_prototype = unsafe { crate::namespace_presence::contains(presence, PROTOTYPE_NAME.as_ptr().cast()) } != 0;
     if existing_vtable || existing_prototype {
         if !(existing_vtable && existing_prototype) {
             return None;
         }
-        let vtable = unsafe { (api.import)(VTABLE_NAME.as_ptr().cast()) };
-        let prototype = unsafe { (api.import)(PROTOTYPE_NAME.as_ptr().cast()) };
+        let vtable = unsafe { crate::namespace_import::import(imports, VTABLE_NAME.as_ptr().cast()) };
+        let prototype = unsafe { crate::namespace_import::import(imports, PROTOTYPE_NAME.as_ptr().cast()) };
         return validate_family(api, vtable, prototype).then_some((vtable, prototype));
     }
 
@@ -64,11 +64,11 @@ pub unsafe fn ensure_family(api: &IdApi, presence: *const crate::namespace_prese
 ///
 /// The caller must own the Runtime thread. `kind` must describe the authority
 /// that will govern the address's lifetime.
-pub unsafe fn allocate(api: &IdApi, presence: *const crate::namespace_presence::ApiV1, address: usize, kind: usize) -> Option<Oop> {
+pub unsafe fn allocate(api: &IdApi, presence: *const crate::namespace_presence::ApiV1, imports: *const crate::namespace_import::ApiV1, address: usize, kind: usize) -> Option<Oop> {
     if kind == KIND_PROTOTYPE {
         return None;
     }
-    let (vtable, _) = unsafe { ensure_family(api, presence) }?;
+    let (vtable, _) = unsafe { ensure_family(api, presence, imports) }?;
     let object = unsafe { (api.alloc)(vtable, PAYLOAD_BYTES) };
     if object.is_null() {
         return None;
@@ -85,11 +85,11 @@ pub unsafe fn allocate(api: &IdApi, presence: *const crate::namespace_presence::
 /// # Safety
 ///
 /// The caller must preserve the Oop across the query and subsequent use.
-pub unsafe fn value(api: &IdApi, object: Oop) -> Option<(usize, usize)> {
+pub unsafe fn value(api: &IdApi, imports: *const crate::namespace_import::ApiV1, object: Oop) -> Option<(usize, usize)> {
     if object.is_null() || unsafe { (api.objectPayloadSize)(object) } != PAYLOAD_BYTES {
         return None;
     }
-    let family = unsafe { (api.import)(VTABLE_NAME.as_ptr().cast()) };
+    let family = unsafe { crate::namespace_import::import(imports, VTABLE_NAME.as_ptr().cast()) };
     if family.is_null() {
         return None;
     }
@@ -116,8 +116,8 @@ pub unsafe fn value(api: &IdApi, object: Oop) -> Option<(usize, usize)> {
 ///
 /// The caller must own the Runtime thread and ensure no foreign operation is
 /// concurrently using the object.
-pub unsafe fn clear(api: &IdApi, object: Oop) -> bool {
-    if unsafe { value(api, object) }.is_none() {
+pub unsafe fn clear(api: &IdApi, imports: *const crate::namespace_import::ApiV1, object: Oop) -> bool {
+    if unsafe { value(api, imports, object) }.is_none() {
         return false;
     }
     unsafe { object.cast::<usize>().write(0) };

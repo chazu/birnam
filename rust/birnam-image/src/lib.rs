@@ -3171,7 +3171,7 @@ mod runtime {
 
     /// Initialize the Rust Image shell against the process floor.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
         let _ = state;
         if RUNTIME.get().is_none() {
             unsafe { bring_up(api, presence) };

@@ -154,6 +154,7 @@ impl PatternState {
 #[derive(Clone, Copy)]
 struct Runtime {
     api: usize,
+    imports: usize,
     pattern_vt: usize,
     peg_vt: usize,
     peg: usize,
@@ -195,9 +196,9 @@ unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
     unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn import(api: &IdApi, name: &[u8]) -> Oop {
+unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8]) -> Oop {
     // SAFETY: all import names are static NUL-terminated bytes.
-    unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
+    unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
 }
 
 unsafe fn state_mut(object: Oop) -> &'static mut PatternState {
@@ -619,7 +620,7 @@ fn match_pattern(matcher: &mut Matcher, pattern: Oop, position: usize) -> Option
 
 unsafe fn peg_error(kind: &[u8], message: &[u8]) -> Oop {
     let api = unsafe { api(runtime()) };
-    let error_facade = unsafe { import(api, b"Error\0") };
+    let error_facade = unsafe { import(execution_imports(), b"Error\0") };
     if error_facade.is_null() {
         return api.nilObj;
     }
@@ -1109,7 +1110,7 @@ unsafe extern "C" fn cst_children(self_object: Oop, pointer: *const Oop, count: 
         abort("children expects no arguments");
     }
     let api = unsafe { api(runtime()) };
-    let vector = unsafe { import(api, b"Vector\0") };
+    let vector = unsafe { import(execution_imports(), b"Vector\0") };
     if vector.is_null() {
         return api.nilObj;
     }
@@ -1201,7 +1202,7 @@ unsafe fn register_methods(runtime: &Runtime) {
     }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -1210,11 +1211,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, PEG_NAME.as_ptr().cast()) != 0 };
         let (pattern_vt, peg_vt, peg, grammar_vt, cst_vt) = if reloading {
             (
-                unsafe { import(api, PATTERN_VT_NAME) },
-                unsafe { import(api, PEG_VT_NAME) },
-                unsafe { import(api, PEG_NAME) },
-                unsafe { import(api, GRAMMAR_VT_NAME) },
-                unsafe { import(api, CST_VT_NAME) },
+                unsafe { import(imports, PATTERN_VT_NAME) },
+                unsafe { import(imports, PEG_VT_NAME) },
+                unsafe { import(imports, PEG_NAME) },
+                unsafe { import(imports, GRAMMAR_VT_NAME) },
+                unsafe { import(imports, CST_VT_NAME) },
             )
         } else {
             let pattern_vt = unsafe { (api.proto)(api.object_vt) };
@@ -1232,6 +1233,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
         Runtime {
             api: api_pointer as usize,
+            imports: imports as usize,
             pattern_vt: oop_address(pattern_vt),
             peg_vt: oop_address(peg_vt),
             peg: oop_address(peg),
@@ -1272,8 +1274,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` is the live host IdApi table or null for the documented fatal boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports) };
     ptr::null_mut()
 }
 
@@ -1297,3 +1299,5 @@ mod tests {
 birnam_abi::integer_dependency!();
 
 birnam_abi::string_dependency!();
+
+fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }

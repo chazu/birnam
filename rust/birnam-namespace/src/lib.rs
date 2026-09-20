@@ -5,9 +5,10 @@ mod enumeration;
 mod names;
 mod lookup;
 mod presence;
+mod import;
 mod publication;
 mod state;
-use birnam_abi::namespace::{ApiV6, ViewV1};
+use birnam_abi::namespace::{ApiV7, ViewV1};
 use birnam_abi::{IdApi, Oop};
 use core::ffi::c_void;
 use state::Environment;
@@ -35,9 +36,9 @@ unsafe extern "C" fn name_at(context: *const c_void, index: usize) -> Oop {
 unsafe extern "C" fn bindings(context: *const c_void) -> ViewV1 {
     unsafe { &*context.cast::<Environment>() }.bindings()
 }
-static API: ApiV6 = ApiV6 {
-    version: 6,
-    byte_size: size_of::<ApiV6>(),
+static API: ApiV7 = ApiV7 {
+    version: 7,
+    byte_size: size_of::<ApiV7>(),
     create: Some(create),
     destroy: Some(destroy),
     bind: Some(bind),
@@ -54,15 +55,17 @@ static API: ApiV6 = ApiV6 {
     create_presence: Some(presence::create),
     destroy_presence: Some(presence::destroy),
     publish: Some(publication::publish),
+    create_import: Some(import::create),
+    destroy_import: Some(import::destroy),
 };
 /// Preparation has no side effects and needs no Id or namespace instance.
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_namespace_provider_v6() -> *const ApiV6 {
+pub extern "C" fn birnam_namespace_provider_v7() -> *const ApiV7 {
     &API
 }
 /// Normal mounting must not recreate any already-constructed namespace.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "Namespace received a null IdApi");
     core::ptr::null_mut()
 }

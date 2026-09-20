@@ -68,9 +68,8 @@ fn operations() -> ApiV3 {
 /// # Safety
 /// Owner-thread call using the live selected table and a valid candidate Oop.
 /// Export/import/vtable callbacks may reenter and collect as before.
-pub unsafe fn is_error(api: &IdApi, presence: *const PresenceV1, value: Oop) -> bool {
-    let imports = unsafe { crate::namespace_import::borrow_slot(&raw const api.import) };
-    unsafe { operations().is_error.unwrap()(api, presence, &imports, value) != 0 }
+pub unsafe fn is_error(api: &IdApi, presence: *const PresenceV1, imports: *const ImportV1, value: Oop) -> bool {
+    unsafe { operations().is_error.unwrap()(api, presence, imports, value) != 0 }
 }
 /// # Safety
 /// The kind slice is NUL-terminated, as required by IdApi intern. Both borrowed
@@ -79,15 +78,15 @@ pub unsafe fn is_error(api: &IdApi, presence: *const PresenceV1, value: Oop) -> 
 pub unsafe fn numeric_error(
     api: &IdApi,
     presence: *const PresenceV1,
+    imports: *const ImportV1,
     kind: &[u8],
     message: &[u8],
 ) -> Oop {
-    let imports = unsafe { crate::namespace_import::borrow_slot(&raw const api.import) };
     unsafe {
         operations().from_bytes.unwrap()(
             api,
             presence,
-            &imports,
+            imports,
             kind.as_ptr(),
             kind.len(),
             message.as_ptr(),

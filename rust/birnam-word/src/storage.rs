@@ -41,6 +41,7 @@ struct Roots {
 pub struct Instance {
     api: *mut IdApi,
     presence: *const birnam_abi::namespace_presence::ApiV1,
+    imports: *const birnam_abi::namespace_import::ApiV1,
     roots: UnsafeCell<Roots>,
     operations: UnsafeCell<WordApiV1>,
 }
@@ -49,11 +50,12 @@ impl Instance {
     /// Allocate native state before registering its partially initialized roots.
     /// # Safety
     /// The API lives until this instance and all installed consumers are gone.
-    pub unsafe fn empty(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) -> Box<Self> {
+    pub unsafe fn empty(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> Box<Self> {
         assert!(!api.is_null());
         let result = Box::new(Self {
             api,
             presence,
+            imports,
             roots: UnsafeCell::new(Roots::default()),
             operations: UnsafeCell::new(WordApiV1 {
                 version: 1,
@@ -121,6 +123,7 @@ impl Instance {
     pub fn operations(&self) -> *mut WordApiV1 {
         self.operations.get()
     }
+    pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.imports }
     pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.presence }
     pub fn api(&self) -> *mut IdApi {
         self.api

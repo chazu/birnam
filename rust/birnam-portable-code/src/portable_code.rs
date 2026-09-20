@@ -895,10 +895,10 @@ unsafe extern "C" fn native_new_block(
 }
 
 /// Optional, pure declaration of the exact warm constructor operation.
-/// See abi/native-block-construction-v3.md. This never constructs an object,
+/// See abi/native-block-construction-v4.md. This never constructs an object,
 /// installs a carrier, calls an Id Method, or grants invocation authority.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_block_construction_v3(
+pub unsafe extern "C" fn birnam_native_block_construction_v4(
     constructor: *const core::ffi::c_void,
     nil: Oop,
     context: *const usize,
@@ -928,11 +928,12 @@ pub unsafe extern "C" fn birnam_native_block_construction_v3(
         // Check the current table before calling any entry. Copied tables work;
         // instrumentation or a different floor must withdraw this declaration.
         let names = unsafe { birnam_abi::namespace_names::operations() };
+        let imports = unsafe { *runtime.imports() };
         if nil != api.nilObj
-            || unsafe { core::slice::from_raw_parts(context, 12) }
+            || unsafe { core::slice::from_raw_parts(context, 13) }
                 != [
                     api.alloc as usize,
-                    api.import as usize,
+                    imports.import.unwrap() as usize,
                     api.objectPayloadSize as usize,
                     api.vtableOf as usize,
                     api.send as usize,
@@ -943,6 +944,7 @@ pub unsafe extern "C" fn birnam_native_block_construction_v3(
                     names.name_of.unwrap() as usize,
                     names.context as usize,
                     api.vtable_vt as usize,
+                    imports.context as usize,
                 ]
         {
             return 0;

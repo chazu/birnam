@@ -37,9 +37,10 @@ pub unsafe extern "C" fn birnam_float_provider_v1() -> *mut birnam_abi::float::F
     unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_float_prepare_v2(
+pub unsafe extern "C" fn birnam_float_prepare_v3(
     api: *mut IdApi,
     presence: *const birnam_abi::namespace_presence::ApiV1,
+    imports: *const birnam_abi::namespace_import::ApiV1,
 ) -> *mut birnam_abi::float::FloatApiV1 {
     if api.is_null() {
         abort("preparation received a null IdApi");
@@ -55,7 +56,7 @@ pub unsafe extern "C" fn birnam_float_prepare_v2(
         return unsafe { birnam_float_provider_v1() };
     }
     PHASE.store(1, Ordering::Release);
-    let instance = Box::into_raw(unsafe { storage::Instance::empty(api, presence) });
+    let instance = Box::into_raw(unsafe { storage::Instance::empty(api, presence, imports) });
     INSTANCE.store(instance, Ordering::Release);
     unsafe {
         ((*api).gcRegisterRootProvider)(float_roots);
@@ -122,12 +123,12 @@ unsafe fn float_binary(
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { is_error(api, execution_presence(), right_object) } {
+    if unsafe { is_error(api, execution_presence(), execution_imports(), right_object) } {
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
         return unsafe {
-            numeric_error(api, execution_presence(), b"typeMismatch\0", b"Float arithmetic needs a number")
+            numeric_error(api, execution_presence(), execution_imports(), b"typeMismatch\0", b"Float arithmetic needs a number")
         };
     };
     let right = match right {
@@ -160,12 +161,12 @@ unsafe extern "C" fn float_div(self_object: Oop, args: *const Oop, count: usize)
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { is_error(api, execution_presence(), right_object) } {
+    if unsafe { is_error(api, execution_presence(), execution_imports(), right_object) } {
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
         return unsafe {
-            numeric_error(api, execution_presence(), b"typeMismatch\0", b"Float arithmetic needs a number")
+            numeric_error(api, execution_presence(), execution_imports(), b"typeMismatch\0", b"Float arithmetic needs a number")
         };
     };
     let right = match right {
@@ -173,7 +174,7 @@ unsafe extern "C" fn float_div(self_object: Oop, args: *const Oop, count: usize)
         Numeric::Float(value) => value,
     };
     if right == 0.0 {
-        return unsafe { numeric_error(api, execution_presence(), b"zeroDivide\0", b"division by zero") };
+        return unsafe { numeric_error(api, execution_presence(), execution_imports(), b"zeroDivide\0", b"division by zero") };
     }
     unsafe { (birnam_abi::float::make)(left / right) }
 }
@@ -194,11 +195,11 @@ unsafe fn float_compare(
     let Some(right_object) = (unsafe { argument(args, count) }) else {
         return api.nilObj;
     };
-    if unsafe { is_error(api, execution_presence(), right_object) } {
+    if unsafe { is_error(api, execution_presence(), execution_imports(), right_object) } {
         return right_object;
     }
     let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return unsafe { numeric_error(api, execution_presence(), b"typeMismatch\0", b"comparison needs a number") };
+        return unsafe { numeric_error(api, execution_presence(), execution_imports(), b"typeMismatch\0", b"comparison needs a number") };
     };
     let right = match right {
         Numeric::Integer(value) => value as f64,
@@ -261,13 +262,13 @@ unsafe extern "C" fn float_negated(self_object: Oop, _args: *const Oop, count: u
 
 unsafe fn float_to_integer(api: &IdApi, value: f64) -> Oop {
     if !value.is_finite() {
-        return unsafe { numeric_error(api, execution_presence(), b"overflow\0", b"float out of Integer range") };
+        return unsafe { numeric_error(api, execution_presence(), execution_imports(), b"overflow\0", b"float out of Integer range") };
     }
     let value = value.trunc();
     // A SmallInt cannot represent 2^63 even though that boundary rounds from
     // i64::MAX when converted to f64. Reject it before Rust's saturating cast.
     if value < i64::MIN as f64 || value >= 9_223_372_036_854_775_808.0 {
-        return unsafe { numeric_error(api, execution_presence(), b"overflow\0", b"float out of Integer range") };
+        return unsafe { numeric_error(api, execution_presence(), execution_imports(), b"overflow\0", b"float out of Integer range") };
     }
     unsafe { (birnam_abi::integer::make)(value as i64) }
 }
@@ -336,7 +337,7 @@ unsafe extern "C" fn float_sqrt(self_object: Oop, _args: *const Oop, count: usiz
         return api.nilObj;
     };
     if value < 0.0 {
-        return unsafe { numeric_error(api, execution_presence(), b"domain\0", b"square root of a negative number") };
+        return unsafe { numeric_error(api, execution_presence(), execution_imports(), b"domain\0", b"square root of a negative number") };
     }
     unsafe { (birnam_abi::float::make)(value.sqrt()) }
 }
@@ -359,8 +360,8 @@ unsafe extern "C" fn float_print_string(self_object: Oop, _args: *const Oop, cou
 
 /// Install the existing Float protocol on this module's canonical behavior.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
-    let operations = unsafe { birnam_float_prepare_v2(api_pointer, presence) };
+pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+    let operations = unsafe { birnam_float_prepare_v3(api_pointer, presence, imports) };
     let previous = PHASE.swap(3, Ordering::AcqRel);
     if previous != 2 && previous != 4 {
         abort("recursive Float activation");
@@ -414,3 +415,5 @@ birnam_abi::string_dependency!();
 birnam_abi::error_value_dependency!();
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { unsafe { (*INSTANCE.load(Ordering::Acquire)).presence() } }
+
+fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { unsafe { (*INSTANCE.load(Ordering::Acquire)).imports() } }

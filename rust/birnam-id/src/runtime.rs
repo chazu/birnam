@@ -1028,6 +1028,14 @@ impl Runtime {
         self.assert_owner();
         self.state.get().cast()
     }
+    pub(crate) fn namespace_import(&self) -> *mut birnam_abi::namespace_import::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.imports() }
+    }
+    pub(crate) fn canonical_namespace_import(&self) -> birnam_abi::namespace_import::ApiV1 {
+        self.assert_owner();
+        unsafe { (*self.state.get()).environment.canonical_imports() }
+    }
     pub(crate) fn namespace_presence(&self) -> *mut birnam_abi::namespace_presence::ApiV1 {
         self.assert_owner();
         unsafe { (*self.state.get()).environment.presence() }

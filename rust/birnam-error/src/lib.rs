@@ -198,7 +198,7 @@ unsafe extern "C" fn object_dnu(_self_object: Oop, args: *const Oop, count: usiz
     unsafe { make_error(api, kind, message) }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -208,9 +208,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ERROR_NAME.as_ptr().cast()) } != 0;
         let (error_vt, factory_vt, factory_obj) = if reloading {
             (
-                unsafe { (api.import)(ERROR_VT_NAME.as_ptr().cast()) },
-                unsafe { (api.import)(FACTORY_VT_NAME.as_ptr().cast()) },
-                unsafe { (api.import)(ERROR_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, ERROR_VT_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, FACTORY_VT_NAME.as_ptr().cast()) },
+                unsafe { birnam_abi::namespace_import::import(imports, ERROR_NAME.as_ptr().cast()) },
             )
         } else {
             let error_vt = unsafe { (api.proto)(api.object_vt) };
@@ -298,9 +298,9 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     let _ = state;
-    unsafe { bring_up(api, presence) };
+    unsafe { bring_up(api, presence, imports) };
     ptr::null_mut()
 }
 

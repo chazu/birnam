@@ -4,9 +4,9 @@ use core::ffi::c_int;
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-pub type PrepareV2 = unsafe extern "C" fn(*mut IdApi, Oop, c_int) -> Oop;
-pub type StageV2 = unsafe extern "C" fn(*mut IdApi);
-pub type InstallV2 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop, Method);
+pub type PrepareV3 = unsafe extern "C" fn(*mut IdApi, *const crate::namespace_import::ApiV1, Oop, c_int) -> Oop;
+pub type StageV3 = unsafe extern "C" fn(*mut IdApi);
+pub type InstallV3 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop, Method);
 
 /// Stages run synchronously at Collection's existing construction points. The
 /// first selected table and canonical identities persist for the process. The
@@ -14,32 +14,32 @@ pub type InstallV2 = unsafe extern "C" fn(*mut IdApi, Oop, Oop, Oop, Method);
 /// comma Method is a direct native callback retained at initial installation.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV2 {
+pub struct ApiV3 {
     pub version: u32,
     pub byte_size: usize,
-    pub prepare: Option<PrepareV2>,
-    pub finish_prototype: Option<StageV2>,
-    pub set_layout: Option<StageV2>,
-    pub install: Option<InstallV2>,
-    pub publish: Option<StageV2>,
+    pub prepare: Option<PrepareV3>,
+    pub finish_prototype: Option<StageV3>,
+    pub set_layout: Option<StageV3>,
+    pub install: Option<InstallV3>,
+    pub publish: Option<StageV3>,
 }
 const _: () = {
-    assert!(size_of::<ApiV2>() == 56);
-    assert!(core::mem::offset_of!(ApiV2, publish) == 48);
+    assert!(size_of::<ApiV3>() == 56);
+    assert!(core::mem::offset_of!(ApiV3, publish) == 48);
 };
-pub type ProviderV2 = unsafe extern "C" fn() -> *const ApiV2;
-pub type DependencyV2 = unsafe extern "C" fn(*const ApiV2) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV2> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV3 = unsafe extern "C" fn() -> *const ApiV3;
+pub type DependencyV3 = unsafe extern "C" fn(*const ApiV3) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV3> = AtomicPtr::new(ptr::null_mut());
 
 /// # Safety
 /// Mount on the owner thread; the immutable descriptor/code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV2) -> c_int {
+pub unsafe fn attach(api: *const ApiV3) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 2
-        || value.byte_size != size_of::<ApiV2>()
+    if value.version != 3
+        || value.byte_size != size_of::<ApiV3>()
         || value.prepare.is_none()
         || value.finish_prototype.is_none()
         || value.set_layout.is_none()
@@ -58,7 +58,7 @@ pub unsafe fn attach(api: *const ApiV2) -> c_int {
         Err(existing) => c_int::from(ptr::eq(existing, api)),
     }
 }
-fn operations() -> ApiV2 {
+fn operations() -> ApiV3 {
     let api = DEPENDENCY.load(Ordering::Acquire);
     assert!(!api.is_null(), "native Range dependency was not mounted");
     unsafe { *api }
@@ -66,8 +66,8 @@ fn operations() -> ApiV2 {
 /// # Safety
 /// Call once at the original Range behavior creation/import position. The
 /// selected table and parent remain live; `adopting` is the Vector export test.
-pub unsafe fn prepare(api: *mut IdApi, parent: Oop, adopting: bool) -> Oop {
-    unsafe { operations().prepare.unwrap()(api, parent, c_int::from(adopting)) }
+pub unsafe fn prepare(api: *mut IdApi, imports: *const crate::namespace_import::ApiV1, parent: Oop, adopting: bool) -> Oop {
+    unsafe { operations().prepare.unwrap()(api, imports, parent, c_int::from(adopting)) }
 }
 /// # Safety
 /// Call after prepare, at the original Range prototype allocation point.
@@ -101,8 +101,8 @@ pub unsafe fn publish(api: *mut IdApi) {
 macro_rules! range_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_range_dependency_v2(
-            api: *const $crate::range::ApiV2,
+        pub unsafe extern "C" fn birnam_range_dependency_v3(
+            api: *const $crate::range::ApiV3,
         ) -> core::ffi::c_int {
             unsafe { $crate::range::attach(api) }
         }

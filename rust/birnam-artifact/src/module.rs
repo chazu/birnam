@@ -38,6 +38,7 @@ struct DescriptorObject {
 
 struct Runtime {
     api: usize,
+    imports: usize,
     presence: usize,
     artifact_vt: usize,
     artifact_obj: usize,
@@ -102,10 +103,10 @@ unsafe fn intern(api: &abi::IdApi, bytes: &[u8]) -> abi::Oop {
     unsafe { (api.intern)(value.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn import(api: &abi::IdApi, name: &[u8]) -> abi::Oop {
+unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8]) -> abi::Oop {
     debug_assert!(name.last() == Some(&0));
     // SAFETY: all module names are static NUL-terminated strings.
-    unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
+    unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
 }
 
 unsafe fn fail(api: &abi::IdApi, name: &[u8]) -> abi::Oop {
@@ -266,7 +267,7 @@ unsafe fn vector_of(state: &Runtime, receiver: abi::Oop, kind: ListKind) -> abi:
     let api = api(state);
     // SAFETY: Vector is the existing Birnam collection protocol; all selector
     // strings are static and NUL-terminated.
-    let vector = unsafe { import(api, VECTOR_NAME) };
+    let vector = unsafe { import(execution_imports(), VECTOR_NAME) };
     if vector.is_null() {
         return api.nilObj;
     }
@@ -684,7 +685,7 @@ fn register_methods(state: &Runtime) {
     }
 }
 
-pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -694,9 +695,9 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ARTIFACT_NAME.as_ptr().cast()) != 0 };
         let (artifact_vt, artifact_obj, descriptor_vt) = if reloading {
             (
-                unsafe { import(api, ARTIFACT_VT_NAME) },
-                unsafe { import(api, ARTIFACT_NAME) },
-                unsafe { import(api, DESCRIPTOR_VT_NAME) },
+                unsafe { import(imports, ARTIFACT_VT_NAME) },
+                unsafe { import(imports, ARTIFACT_NAME) },
+                unsafe { import(imports, DESCRIPTOR_VT_NAME) },
             )
         } else {
             let artifact_vt = unsafe { (api.proto)(api.object_vt) };
@@ -706,6 +707,7 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi
         };
         Runtime {
             api: api_pointer as usize,
+            imports: imports as usize,
             presence: presence as usize,
             artifact_vt: oop_address(artifact_vt),
             artifact_obj: oop_address(artifact_obj),
@@ -743,11 +745,13 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(
     api_pointer: *mut abi::IdApi,
-    _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+    _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     // SAFETY: the host owns the IdApi pointer and calls this entrypoint before
     // dispatching any artifact protocol method.
-    unsafe { bring_up(api_pointer, presence) };
+    unsafe { bring_up(api_pointer, presence, imports) };
     core::ptr::null_mut()
 }
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
+
+fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }

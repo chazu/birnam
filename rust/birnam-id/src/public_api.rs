@@ -60,16 +60,6 @@ unsafe extern "C" fn api_intern(name: *const c_char) -> Oop {
         .unwrap_or_else(|_| boundary::fatal_invariant("IdApi.intern name contains embedded NUL"))
 }
 
-unsafe extern "C" fn api_import(name: *const c_char) -> Oop {
-    boundary::require_invariant(!name.is_null(), "IdApi.import name is null");
-    // SAFETY: the C ABI requires a live NUL-terminated name pointer, and the
-    // bytes do not escape this synchronous call.
-    let bytes = unsafe { CStr::from_ptr(name) }.to_bytes();
-    runtime()
-        .import(bytes)
-        .unwrap_or_else(|_| boundary::fatal_invariant("IdApi.import name contains embedded NUL"))
-}
-
 unsafe extern "C" fn api_export_object(name: *const c_char, object: Oop) -> Oop {
     boundary::require_invariant(!name.is_null(), "IdApi.exportObj name is null");
     // SAFETY: the C ABI requires a live NUL-terminated name pointer, and the
@@ -270,7 +260,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         proto: api_proto,
         method: api_method,
         alloc: canonical_numeric_functions().alloc,
-        import: canonical_numeric_functions().import,
         exportObj: api_export_object,
         send: api_send,
         nilObj: canonical.nil,
@@ -301,7 +290,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
 /// in another codegen unit can select a different compiled copy in release.
 struct NumericFunctions {
     alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
-    import: unsafe extern "C" fn(*const c_char) -> Oop,
     vtable_of: unsafe extern "C" fn(Oop) -> Oop,
 }
 
@@ -309,21 +297,21 @@ fn canonical_numeric_functions() -> &'static NumericFunctions {
     static FUNCTIONS: std::sync::OnceLock<NumericFunctions> = std::sync::OnceLock::new();
     FUNCTIONS.get_or_init(|| NumericFunctions {
         alloc: api_alloc,
-        import: api_import,
         vtable_of: api_vtable_of,
     })
 }
 
 /// Process-local comparison operands for an optional native declaration. This
 /// does not publish another IdApi entry or call any of these functions.
-pub(crate) fn numeric_functions(runtime: &Runtime) -> [usize; 11] {
+pub(crate) fn numeric_functions(runtime: &Runtime) -> [usize; 12] {
     let functions = canonical_numeric_functions();
     let ops = runtime.integer_operations();
     let presence = runtime.canonical_namespace_presence();
+    let imports = runtime.canonical_namespace_import();
     [ops.is_exact as usize, ops.read as usize, presence.contains.unwrap() as usize,
-     functions.import as usize, functions.vtable_of as usize, ops.make as usize,
+     imports.import.unwrap() as usize, functions.vtable_of as usize, ops.make as usize,
      ops.context as usize, ops.storage as usize, ops.prototype as usize,
-     canonical_numeric_functions().alloc as usize, presence.context as usize]
+     canonical_numeric_functions().alloc as usize, presence.context as usize, imports.context as usize]
 }
 
 /// Current floor operands for the optional warm Block constructor declaration.
@@ -331,11 +319,12 @@ pub(crate) fn block_construction_context(
     runtime: &Runtime,
     symbol_vtable: Oop,
     metavtable: Oop,
-) -> [usize; 12] {
+) -> [usize; 13] {
+    let imports = runtime.canonical_namespace_import();
     let names = runtime.canonical_namespace_names();
     [
         canonical_numeric_functions().alloc as usize,
-        canonical_numeric_functions().import as usize,
+        imports.import.unwrap() as usize,
         api_object_payload_size as *const () as usize,
         canonical_numeric_functions().vtable_of as usize,
         api_send as *const () as usize,
@@ -346,6 +335,7 @@ pub(crate) fn block_construction_context(
         names.name_of.unwrap() as usize,
         names.context as usize,
         metavtable as usize,
+        imports.context as usize,
     ]
 }
 
@@ -652,4 +642,23 @@ pub(crate) fn namespace_presence_access() -> birnam_abi::namespace_presence::Flo
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_namespace_presence_provider_v1() -> *mut birnam_abi::namespace_presence::ApiV1 {
     runtime().namespace_presence()
+}
+
+pub(crate) fn namespace_import_access() -> birnam_abi::namespace_import::FloorV1 {
+    unsafe extern "C" fn access(_: *mut c_void) -> *mut c_void {
+        #[cfg(not(test))]
+        { runtime().namespace_interner_context() }
+        #[cfg(test)]
+        { crate::runtime::with_active(|runtime| runtime.namespace_interner_context()) }
+    }
+    birnam_abi::namespace_import::FloorV1 {
+        version: 1,
+        byte_size: size_of::<birnam_abi::namespace_import::FloorV1>(),
+        context: core::ptr::null_mut(), access: Some(access),
+        intern: Some(crate::runtime::namespace_intern),
+    }
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_namespace_import_provider_v1() -> *mut birnam_abi::namespace_import::ApiV1 {
+    runtime().namespace_import()
 }

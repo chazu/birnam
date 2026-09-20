@@ -3,7 +3,6 @@ use crate::Oop;
 use core::ffi::{c_char, c_void};
 
 pub type ImportV1 = unsafe extern "C" fn(*mut c_void, *const c_char) -> Oop;
-pub type ImportSlot = unsafe extern "C" fn(*const c_char) -> Oop;
 
 /// Owner-thread descriptor. Select its function/context only at invocation.
 /// The descriptor, selected context and code remain valid through each borrow.
@@ -38,48 +37,28 @@ pub unsafe fn import(api: *const ApiV1, name: *const c_char) -> Oop {
     unsafe { selected.import.unwrap()(selected.context, name) }
 }
 
-unsafe extern "C" fn import_slot(context: *mut c_void, name: *const c_char) -> Oop {
-    let selected = unsafe { *context.cast::<ImportSlot>() };
-    unsafe { selected(name) }
+/// Immutable primitive access copied by Namespace during service construction.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct FloorV1 {
+    pub version: u32,
+    pub byte_size: usize,
+    pub context: *mut c_void,
+    pub access: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
+    pub intern: Option<crate::namespace::InternV1>,
 }
-
-/// Lend one existing mutable callback slot during consumer migration.
-/// # Safety
-/// Owner-thread access; the slot/code stay live for every use of this descriptor.
-/// Earlier callbacks may replace the slot. Do not retain the loan past its call.
-pub unsafe fn borrow_slot(slot: *const ImportSlot) -> ApiV1 {
-    ApiV1 {
-        version: 1,
-        byte_size: size_of::<ApiV1>(),
-        context: slot.cast_mut().cast(),
-        import: Some(import_slot),
-    }
-}
-
+const _: () = {
+    assert!(size_of::<FloorV1>() == 40);
+    assert!(core::mem::offset_of!(FloorV1, access) == 24);
+    assert!(core::mem::offset_of!(FloorV1, intern) == 32);
+};
+pub type ProviderV1 = unsafe extern "C" fn() -> *mut ApiV1;
 #[cfg(test)]
 mod tests {
     use super::*;
     use core::ptr;
-    unsafe extern "C" fn first(_: *const c_char) -> Oop {
-        3usize as Oop
-    }
-    unsafe extern "C" fn second(_: *const c_char) -> Oop {
-        7usize as Oop
-    }
     unsafe extern "C" fn explicit(context: *mut c_void, _: *const c_char) -> Oop {
         context
-    }
-    #[test]
-    fn independent_slots_are_read_at_invocation() {
-        let mut slot: ImportSlot = first;
-        let other: ImportSlot = second;
-        let a = unsafe { borrow_slot(&raw const slot) };
-        let b = unsafe { borrow_slot(&other) };
-        assert_eq!(unsafe { import(&a, c"name".as_ptr()) }, 3usize as Oop);
-        slot = second;
-        assert_eq!(unsafe { import(&a, c"name".as_ptr()) }, 7usize as Oop);
-        assert_eq!(unsafe { import(&b, c"name".as_ptr()) }, 7usize as Oop);
-        assert_eq!(slot as usize, second as ImportSlot as usize);
     }
     #[test]
     fn live_context_and_inert_validation() {

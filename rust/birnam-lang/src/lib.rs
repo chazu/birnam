@@ -710,20 +710,20 @@ unsafe extern "C" fn lang_furthest_fail(
     unsafe { send0(api, grammar, b"furthestFail\0") }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
-        let peg = unsafe { (api.import)(PEG_NAME.as_ptr().cast::<c_char>()) };
+        let peg = unsafe { birnam_abi::namespace_import::import(imports, PEG_NAME.as_ptr().cast::<c_char>()) };
         if peg.is_null() {
             abort("Lang requires the Peg facade");
         }
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, LANG_NAME.as_ptr().cast::<c_char>()) != 0 };
         let (lang_vt, lang) = if reloading {
-            let lang_vt = unsafe { (api.import)(LANG_VT_NAME.as_ptr().cast::<c_char>()) };
-            let lang = unsafe { (api.import)(LANG_NAME.as_ptr().cast::<c_char>()) };
+            let lang_vt = unsafe { birnam_abi::namespace_import::import(imports, LANG_VT_NAME.as_ptr().cast::<c_char>()) };
+            let lang = unsafe { birnam_abi::namespace_import::import(imports, LANG_NAME.as_ptr().cast::<c_char>()) };
             (lang_vt, lang)
         } else {
             let lang_vt = unsafe { (api.proto)(api.object_vt) };
@@ -778,8 +778,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 ///
 /// `api` is the live host IdApi table or null for the documented fatal boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports) };
     ptr::null_mut()
 }
 

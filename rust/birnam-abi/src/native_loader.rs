@@ -3,31 +3,31 @@ use crate::{IdApi, Oop};
 use core::ffi::c_int;
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
-pub type InstallV2 = unsafe extern "C" fn(*const IdApi, *const IdApi, *const crate::namespace_presence::ApiV1, Oop, Oop);
+pub type InstallV3 = unsafe extern "C" fn(*const IdApi, *const IdApi, *const crate::namespace_presence::ApiV1, *const crate::namespace_import::ApiV1, Oop, Oop);
 /// Immutable, process-pinned descriptor. Installation runs on the owner thread
 /// at Prelude's existing point; the execution table is its original selection.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV2 {
+pub struct ApiV3 {
     pub version: u32,
     pub byte_size: usize,
-    pub install: Option<InstallV2>,
+    pub install: Option<InstallV3>,
 }
 const _: () = {
-    assert!(size_of::<ApiV2>() == 24);
-    assert!(core::mem::offset_of!(ApiV2, install) == 16);
+    assert!(size_of::<ApiV3>() == 24);
+    assert!(core::mem::offset_of!(ApiV3, install) == 16);
 };
-pub type ProviderV2 = unsafe extern "C" fn() -> *const ApiV2;
-pub type DependencyV2 = unsafe extern "C" fn(*const ApiV2) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV2> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV3 = unsafe extern "C" fn() -> *const ApiV3;
+pub type DependencyV3 = unsafe extern "C" fn(*const ApiV3) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV3> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Owner-thread admission; immutable descriptor and code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV2) -> c_int {
+pub unsafe fn attach(api: *const ApiV3) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 2 || value.byte_size != size_of::<ApiV2>() || value.install.is_none() {
+    if value.version != 3 || value.byte_size != size_of::<ApiV3>() || value.install.is_none() {
         return 0;
     }
     match DEPENDENCY.compare_exchange(
@@ -50,6 +50,7 @@ pub unsafe fn install(
     registration: *const IdApi,
     execution: *const IdApi,
     presence: *const crate::namespace_presence::ApiV1,
+    imports: *const crate::namespace_import::ApiV1,
     system_vt: Oop,
     load_module: Oop,
 ) {
@@ -58,14 +59,14 @@ pub unsafe fn install(
         !pointer.is_null(),
         "native loader dependency was not mounted"
     );
-    unsafe { (*pointer).install.unwrap()(registration, execution, presence, system_vt, load_module) };
+    unsafe { (*pointer).install.unwrap()(registration, execution, presence, imports, system_vt, load_module) };
 }
 #[macro_export]
 macro_rules! native_loader_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_native_loader_dependency_v2(
-            api: *const $crate::native_loader::ApiV2,
+        pub unsafe extern "C" fn birnam_native_loader_dependency_v3(
+            api: *const $crate::native_loader::ApiV3,
         ) -> core::ffi::c_int {
             unsafe { $crate::native_loader::attach(api) }
         }

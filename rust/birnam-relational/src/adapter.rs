@@ -2331,7 +2331,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` must be the process-owned IdApi table supplied by the host, and the
 /// host must keep that table and its floor dylib alive for the module lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     // SAFETY: forwarded frozen host initialization contract.
     unsafe { bring_up(api) };
     // Publish the complete shared relational object contract before exposing

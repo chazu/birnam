@@ -48,12 +48,12 @@ unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
     unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn import(api: &IdApi, name: &[u8]) -> Oop {
+unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8]) -> Oop {
     // SAFETY: names are static NUL-terminated byte strings.
-    unsafe { (api.import)(name.as_ptr().cast::<c_char>()) }
+    unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -61,13 +61,13 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     let runtime = *RUNTIME.get_or_init(|| {
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, VECTOR_NAME.as_ptr().cast()) != 0 };
         let collection_vt = if reloading {
-            unsafe { import(api, COLLECTION_VT_NAME) }
+            unsafe { import(imports, COLLECTION_VT_NAME) }
         } else {
             unsafe { (api.proto)(api.object_vt) }
         };
-        let vector = unsafe { birnam_abi::vector::prepare(api_pointer, collection_vt, reloading) };
-        let range_vt = unsafe { birnam_abi::range::prepare(api_pointer, collection_vt, reloading) };
-        let map = unsafe { birnam_abi::map::prepare(api_pointer, collection_vt, reloading) };
+        let vector = unsafe { birnam_abi::vector::prepare(api_pointer, imports, collection_vt, reloading) };
+        let range_vt = unsafe { birnam_abi::range::prepare(api_pointer, imports, collection_vt, reloading) };
+        let map = unsafe { birnam_abi::map::prepare(api_pointer, imports, collection_vt, reloading) };
         if [collection_vt, vector.node, vector.vector, range_vt, map.map, map.node]
             .iter().any(|value| value.is_null())
         {
@@ -146,9 +146,9 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 
 /// Initialize the Rust Collection vector protocol against the process floor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) -> *mut c_void {
     let _ = state;
-    unsafe { bring_up(api, presence) };
+    unsafe { bring_up(api, presence, imports) };
     ptr::null_mut()
 }
 
