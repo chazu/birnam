@@ -1,6 +1,6 @@
 #define _DARWIN_C_SOURCE
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
-#include "idapi_v17.h"
+#include "idapi_v18.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include <stdlib.h>
@@ -224,7 +224,7 @@ int main(int argc,char **argv) {
     assert(fixture_namespace_import("namespace-second-alias")==retained && !fixture_namespace_contains("namespace-first-alias"));
     if(reload) {
         IdApi probe=*api;probe.intern=forbidden_intern;probe.alloc=forbidden_alloc;probe.method=forbidden_method;probe_root_slot=forbidden_roots;
-        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&probe_roots,fixture_gc_settings(),fixture_payload_layout()));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout()));
+        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),&probe_roots,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()));
         assert(count()==before && binds==was_binds && creates==1);
         assert(fixture_namespace_import("namespace-second-alias")==retained);
         assert(finds && reverses && views && counts && names_at && lookups && publications==binds);

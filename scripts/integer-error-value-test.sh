@@ -8,7 +8,7 @@ lib="$integer_error_target/debug"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-integer-error.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 for fixture in integer-error-value integer-module native-numeric-api-context; do
-  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v17 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
+  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
 done
 "$scratch/integer-error-value" "$lib/libbirnam_id.dylib" "$lib/libbirnam_object_model.dylib" "$lib/libbirnam_integer.dylib" >"$scratch/oracle.log"
 tail -1 "$scratch/oracle.log"

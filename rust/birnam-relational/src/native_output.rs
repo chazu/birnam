@@ -109,6 +109,7 @@ fn exported_output_contract() {
         let observation = entry!(floor, c"birnam_method_observation_provider_v1", birnam_abi::method_observation::ProviderV1)();
         let roots = entry!(floor, c"birnam_root_registry_provider_v1", birnam_abi::root_registry::ProviderV1)();
         let layouts = entry!(floor, c"birnam_payload_layout_provider_v1", birnam_abi::payload_layout::ProviderV1)();
+        let hooks = entry!(floor, c"birnam_trace_hooks_provider_v1", birnam_abi::trace_hooks::ProviderV1)();
         let api_pointer = api as *const _ as *mut IdApi;
         let float_image = load("libbirnam_float.dylib");
         let floats = entry!(float_image, c"birnam_float_prepare_v6", birnam_abi::float::FloatPrepareV6)(api_pointer, presence, imports, exports, roots, layouts);
@@ -116,13 +117,13 @@ fn exported_output_contract() {
         assert_eq!(entry!(floor, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
         let integer_image = load("libbirnam_integer.dylib");
         assert_eq!(entry!(integer_image, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
-        entry!(integer_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts);
+        entry!(integer_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts, hooks);
         let integers = entry!(integer_image, c"birnam_integer_provider_v1", unsafe extern "C" fn() -> *mut birnam_abi::integer::IntegerApiV1)();
         assert_eq!(birnam_abi::integer::attach(integers), 1);
         assert_eq!(entry!(floor, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
         assert_eq!(entry!(float_image, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
-        entry!(float_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts);
-        module_init(api as *const _ as *mut _, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts);
+        entry!(float_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts, hooks);
+        module_init(api as *const _ as *mut _, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts, hooks);
         let integer = |n| (birnam_abi::integer::make)(n);
         let null = ptr::null_mut();
         let attribute = integer(7);

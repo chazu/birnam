@@ -1,4 +1,4 @@
-#include "idapi_v17.h"
+#include "idapi_v18.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -16,10 +16,10 @@ static Oop count_loads(Oop self,const Oop *args,size_t count) {
     return first_api->intern(value);
 }
 /* The direct System loader must not perform host dependency admission. */
-int birnam_native_loader_dependency_v10(const void *provider) {
+int birnam_native_loader_dependency_v11(const void *provider) {
     (void)provider;assert(!"direct loader attached dependencies");return 0;
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts) { (void)layouts; (void)settings; (void)root_registry; (void)observation; (void)vtables;
+void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks) { (void)hooks; (void)layouts; (void)settings; (void)root_registry; (void)observation; (void)vtables;
     (void)exports;
     (void)presence;
     assert(api && !state);if(first_api) assert(api==first_api);else first_api=api;

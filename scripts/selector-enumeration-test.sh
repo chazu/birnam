@@ -6,7 +6,7 @@ selector_target=$(mise exec -- cargo metadata --locked --offline --no-deps --for
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-selector-enumeration.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 for fixture in selector-enumeration selector-enumeration-consumers; do
-  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v17 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
+  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
 done
 "$scratch/selector-enumeration-consumers" "$selector_target/debug/libbirnam_id.dylib" "$selector_target/debug/libbirnam_store.dylib"
 python3 - "$scratch/selector-enumeration" "$selector_target/debug/libbirnam_id.dylib" <<'PYTHON'

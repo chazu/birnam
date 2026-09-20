@@ -16,7 +16,7 @@
 #include "../../abi/fixtures/system-output-v1/system_output_v1.h"
 #include "../../abi/fixtures/system-input-v3/system_input_v3.h"
 #include "../../abi/fixtures/environment-v3/environment_v3.h"
-#include "../../abi/fixtures/native-loader-v10/native_loader_v10.h"
+#include "../../abi/fixtures/native-loader-v11/native_loader_v11.h"
 #include "../../abi/fixtures/source-loader-v3/source_loader_v3.h"
 #include "../../abi/fixtures/file-io-v3/file_io_v3.h"
 #include "../../abi/fixtures/block-loop-v3/block_loop_v3.h"
@@ -76,7 +76,7 @@ static const FileIoApiV3 *fixture_file_io;
 static inline void fixture_prepare_file_io(IdApi *api,const RootRegistryV1 *root_registry);
 static const SourceLoaderApiV3 *fixture_source_loader;
 static inline void fixture_prepare_source_loader(IdApi *api,const RootRegistryV1 *root_registry);
-static const NativeLoaderApiV10 *fixture_native_loader;
+static const NativeLoaderApiV11 *fixture_native_loader;
 static inline void fixture_prepare_native_loader(IdApi *api,const RootRegistryV1 *root_registry);
 static const EnvironmentApiV3 *fixture_environment;
 static inline void fixture_prepare_environment(IdApi *api,const RootRegistryV1 *root_registry);
@@ -118,7 +118,7 @@ static inline void fixture_attach_integer(IdApi *api, void *image,const RootRegi
             void *value=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(value); fixture_attach_integer(api,value,root_registry);
             ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(value,"module_init"); assert(init);
             CollectionValueProviderV1 provide=(CollectionValueProviderV1)api->dlsym_fn(value,"birnam_collection_value_provider_v1"); assert(provide);
-            assert(!provide()); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_collection_value=provide(); assert(fixture_collection_value);
+            assert(!provide()); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_collection_value=provide(); assert(fixture_collection_value);
         }
         assert(value_attach(fixture_collection_value)==1);
     }
@@ -141,7 +141,7 @@ static inline void fixture_attach_integer(IdApi *api, void *image,const RootRegi
             assert(n>0 && (size_t)n<sizeof(path));
             void *range=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(range);
             fixture_attach_integer(api,range,root_registry);
-            ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout());
+            ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
             if (range_v2_attach) {
                 RangeProviderV6 provide=(RangeProviderV6)api->dlsym_fn(range,"birnam_range_provider_v6"); assert(provide);
                 fixture_range_v2=provide(); assert(fixture_range_v2);
@@ -174,7 +174,7 @@ static inline void fixture_attach_integer(IdApi *api, void *image,const RootRegi
     if(input_attach) { fixture_prepare_system_input(api,root_registry); assert(input_attach(fixture_system_input)==1); }
     EnvironmentDependencyV3 environment_attach=(EnvironmentDependencyV3)api->dlsym_fn(image,"birnam_environment_dependency_v3");
     if(environment_attach) { fixture_prepare_environment(api,root_registry); assert(environment_attach(fixture_environment)==1); }
-    NativeLoaderDependencyV10 native_loader_attach=(NativeLoaderDependencyV10)api->dlsym_fn(image,"birnam_native_loader_dependency_v10");
+    NativeLoaderDependencyV11 native_loader_attach=(NativeLoaderDependencyV11)api->dlsym_fn(image,"birnam_native_loader_dependency_v11");
     if(native_loader_attach) { fixture_prepare_native_loader(api,root_registry); assert(native_loader_attach(fixture_native_loader)==1); }
     SourceLoaderDependencyV3 source_loader_attach=(SourceLoaderDependencyV3)api->dlsym_fn(image,"birnam_source_loader_dependency_v3");
     if(source_loader_attach) { fixture_prepare_source_loader(api,root_registry); assert(source_loader_attach(fixture_source_loader)==1); }
@@ -200,11 +200,11 @@ static inline void fixture_prepare_vector(IdApi *api,const RootRegistryV1 *root_
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(vector,"module_init"); assert(init);
     VectorProviderV6 current=(VectorProviderV6)api->dlsym_fn(vector,"birnam_vector_provider_v6");
     if(current) {
-        assert(!current()); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_vector_v2=current(); assert(fixture_vector_v2);
+        assert(!current()); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_vector_v2=current(); assert(fixture_vector_v2);
         fixture_vector_ops=(FixtureVectorOps){fixture_vector_v2->empty,fixture_vector_v2->push,fixture_vector_count,fixture_vector_at,fixture_vector_v2->behavior};
     } else {
         VectorProviderV1 previous=(VectorProviderV1)api->dlsym_fn(vector,"birnam_vector_provider_v1"); assert(previous && !previous());
-        init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_vector_v1=previous(); assert(fixture_vector_v1);
+        init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_vector_v1=previous(); assert(fixture_vector_v1);
         fixture_vector_ops=(FixtureVectorOps){fixture_vector_v1->empty,fixture_vector_v1->push,fixture_vector_v1->count,fixture_vector_v1->at,fixture_vector_v1->behavior};
     }
     fixture_vector=&fixture_vector_ops;
@@ -218,10 +218,10 @@ static inline void fixture_prepare_map(IdApi *api,const RootRegistryV1 *root_reg
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(map,"module_init"); assert(init);
     MapProviderV6 current=(MapProviderV6)api->dlsym_fn(map,"birnam_map_provider_v6");
     if(current) {
-        assert(!current()); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_map_v2=current(); assert(fixture_map_v2);
+        assert(!current()); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_map_v2=current(); assert(fixture_map_v2);
     } else {
         MapProviderV1 previous=(MapProviderV1)api->dlsym_fn(map,"birnam_map_provider_v1"); assert(previous && !previous());
-        init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_map=previous(); assert(fixture_map);
+        init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_map=previous(); assert(fixture_map);
     }
 }
 static inline void fixture_prepare_error_value(IdApi *api,const RootRegistryV1 *root_registry) {
@@ -232,7 +232,7 @@ static inline void fixture_prepare_error_value(IdApi *api,const RootRegistryV1 *
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     ErrorValueProviderV3 provide=(ErrorValueProviderV3)api->dlsym_fn(image,"birnam_error_value_provider_v3"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_error_value=provide(); assert(fixture_error_value);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_error_value=provide(); assert(fixture_error_value);
 }
 static inline void fixture_prepare_text_view(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_text_view) return;
@@ -242,7 +242,7 @@ static inline void fixture_prepare_text_view(IdApi *api,const RootRegistryV1 *ro
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     TextViewProviderV1 provide=(TextViewProviderV1)api->dlsym_fn(image,"birnam_text_view_provider_v1"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_text_view=provide(); assert(fixture_text_view);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_text_view=provide(); assert(fixture_text_view);
 }
 static inline void fixture_prepare_system_output(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_system_output) return;
@@ -252,7 +252,7 @@ static inline void fixture_prepare_system_output(IdApi *api,const RootRegistryV1
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     SystemOutputProviderV1 provide=(SystemOutputProviderV1)api->dlsym_fn(image,"birnam_system_output_provider_v1"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_system_output=provide(); assert(fixture_system_output);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_system_output=provide(); assert(fixture_system_output);
 }
 static inline void fixture_prepare_system_input(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_system_input) return;
@@ -262,7 +262,7 @@ static inline void fixture_prepare_system_input(IdApi *api,const RootRegistryV1 
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     SystemInputProviderV3 provide=(SystemInputProviderV3)api->dlsym_fn(image,"birnam_system_input_provider_v3"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_system_input=provide(); assert(fixture_system_input);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_system_input=provide(); assert(fixture_system_input);
 }
 static inline void fixture_prepare_environment(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_environment) return;
@@ -272,7 +272,7 @@ static inline void fixture_prepare_environment(IdApi *api,const RootRegistryV1 *
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     EnvironmentProviderV3 provide=(EnvironmentProviderV3)api->dlsym_fn(image,"birnam_environment_provider_v3"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_environment=provide(); assert(fixture_environment);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_environment=provide(); assert(fixture_environment);
 }
 static inline void fixture_prepare_native_loader(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_native_loader) return;
@@ -281,8 +281,8 @@ static inline void fixture_prepare_native_loader(IdApi *api,const RootRegistryV1
     assert(n>0 && (size_t)n<sizeof(path));
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
-    NativeLoaderProviderV10 provide=(NativeLoaderProviderV10)api->dlsym_fn(image,"birnam_native_loader_provider_v10"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_native_loader=provide(); assert(fixture_native_loader);
+    NativeLoaderProviderV11 provide=(NativeLoaderProviderV11)api->dlsym_fn(image,"birnam_native_loader_provider_v11"); assert(provide && !provide());
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_native_loader=provide(); assert(fixture_native_loader);
 }
 static inline void fixture_prepare_source_loader(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_source_loader) return;
@@ -292,7 +292,7 @@ static inline void fixture_prepare_source_loader(IdApi *api,const RootRegistryV1
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     SourceLoaderProviderV3 provide=(SourceLoaderProviderV3)api->dlsym_fn(image,"birnam_source_loader_provider_v3"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_source_loader=provide(); assert(fixture_source_loader);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_source_loader=provide(); assert(fixture_source_loader);
 }
 static inline void fixture_prepare_file_io(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_file_io) return;
@@ -302,7 +302,7 @@ static inline void fixture_prepare_file_io(IdApi *api,const RootRegistryV1 *root
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     FileIoProviderV3 provide=(FileIoProviderV3)api->dlsym_fn(image,"birnam_file_io_provider_v3"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_file_io=provide(); assert(fixture_file_io);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_file_io=provide(); assert(fixture_file_io);
 }
 static inline void fixture_prepare_block_loop(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_block_loop) return;
@@ -312,7 +312,7 @@ static inline void fixture_prepare_block_loop(IdApi *api,const RootRegistryV1 *r
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     BlockLoopProviderV3 provide=(BlockLoopProviderV3)api->dlsym_fn(image,"birnam_block_loop_provider_v3"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_block_loop=provide(); assert(fixture_block_loop);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_block_loop=provide(); assert(fixture_block_loop);
 }
 static inline void fixture_prepare_system_gc(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_system_gc) return;
@@ -322,7 +322,7 @@ static inline void fixture_prepare_system_gc(IdApi *api,const RootRegistryV1 *ro
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     SystemGcProviderV2 provide=(SystemGcProviderV2)api->dlsym_fn(image,"birnam_system_gc_provider_v2"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_system_gc=provide(); assert(fixture_system_gc);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_system_gc=provide(); assert(fixture_system_gc);
 }
 static inline void fixture_prepare_printing(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_printing) return;
@@ -332,7 +332,7 @@ static inline void fixture_prepare_printing(IdApi *api,const RootRegistryV1 *roo
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     PrintingProviderV1 provide=(PrintingProviderV1)api->dlsym_fn(image,"birnam_printing_provider_v1"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_printing=provide(); assert(fixture_printing);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_printing=provide(); assert(fixture_printing);
 }
 static inline void fixture_prepare_string_collection(IdApi *api,const RootRegistryV1 *root_registry) {
     if(fixture_string_collection) return;
@@ -342,7 +342,7 @@ static inline void fixture_prepare_string_collection(IdApi *api,const RootRegist
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image,root_registry);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     StringCollectionProviderV1 provide=(StringCollectionProviderV1)api->dlsym_fn(image,"birnam_string_collection_provider_v1"); assert(provide && !provide());
-    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout()); fixture_string_collection=provide(); assert(fixture_string_collection);
+    init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks()); fixture_string_collection=provide(); assert(fixture_string_collection);
 }
 static inline void fixture_mount_integer(IdApi *api, const char *floor_path, const NamespacePresenceV1 *presence, const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const RootRegistryV1 *root_registry) {
     assert(strlen(floor_path)<sizeof(fixture_floor_path));
@@ -360,7 +360,7 @@ static inline void fixture_mount_integer(IdApi *api, const char *floor_path, con
     assert(image);
     ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(image, "module_init"); assert(init);
     fixture_attach_integer(api, image,root_registry);
-    init(api,NULL,presence,imports,exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout());
+    init(api,NULL,presence,imports,exports,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
     IntegerProviderV1 provide = (IntegerProviderV1)api->dlsym_fn(image, "birnam_integer_provider_v1"); assert(provide);
     fixture_integer = provide(); assert(fixture_integer);
     assert(fixture_integer->version == 1 && fixture_integer->byte_size == sizeof(IntegerApiV1));

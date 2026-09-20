@@ -3,31 +3,31 @@ use crate::{IdApi, Oop};
 use core::ffi::c_int;
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
-pub type InstallV10 = unsafe extern "C" fn(*const IdApi, *const IdApi, *const crate::namespace_presence::ApiV1, *const crate::namespace_import::ApiV1, *const crate::namespace_export::ApiV1, *const crate::vtable_enumeration::ApiV2, *const crate::method_observation::ApiV1, *const crate::root_registry::ApiV1, *const crate::gc_settings::ApiV1, *const crate::payload_layout::ApiV1, Oop, Oop);
+pub type InstallV11 = unsafe extern "C" fn(*const IdApi, *const IdApi, *const crate::namespace_presence::ApiV1, *const crate::namespace_import::ApiV1, *const crate::namespace_export::ApiV1, *const crate::vtable_enumeration::ApiV2, *const crate::method_observation::ApiV1, *const crate::root_registry::ApiV1, *const crate::gc_settings::ApiV1, *const crate::payload_layout::ApiV1, *const crate::trace_hooks::ApiV1, Oop, Oop);
 /// Immutable, process-pinned descriptor. Installation runs on the owner thread
 /// at Prelude's existing point; the execution table is its original selection.
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ApiV10 {
+pub struct ApiV11 {
     pub version: u32,
     pub byte_size: usize,
-    pub install: Option<InstallV10>,
+    pub install: Option<InstallV11>,
 }
 const _: () = {
-    assert!(size_of::<ApiV10>() == 24);
-    assert!(core::mem::offset_of!(ApiV10, install) == 16);
+    assert!(size_of::<ApiV11>() == 24);
+    assert!(core::mem::offset_of!(ApiV11, install) == 16);
 };
-pub type ProviderV10 = unsafe extern "C" fn() -> *const ApiV10;
-pub type DependencyV10 = unsafe extern "C" fn(*const ApiV10) -> c_int;
-static DEPENDENCY: AtomicPtr<ApiV10> = AtomicPtr::new(ptr::null_mut());
+pub type ProviderV11 = unsafe extern "C" fn() -> *const ApiV11;
+pub type DependencyV11 = unsafe extern "C" fn(*const ApiV11) -> c_int;
+static DEPENDENCY: AtomicPtr<ApiV11> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Owner-thread admission; immutable descriptor and code outlive the consumer.
-pub unsafe fn attach(api: *const ApiV10) -> c_int {
+pub unsafe fn attach(api: *const ApiV11) -> c_int {
     if api.is_null() {
         return 0;
     }
     let value = unsafe { *api };
-    if value.version != 10 || value.byte_size != size_of::<ApiV10>() || value.install.is_none() {
+    if value.version != 11 || value.byte_size != size_of::<ApiV11>() || value.install.is_none() {
         return 0;
     }
     match DEPENDENCY.compare_exchange(
@@ -57,6 +57,7 @@ pub unsafe fn install(
     roots: *const crate::root_registry::ApiV1,
     settings: *const crate::gc_settings::ApiV1,
     layouts: *const crate::payload_layout::ApiV1,
+    hooks: *const crate::trace_hooks::ApiV1,
     system_vt: Oop,
     load_module: Oop,
 ) {
@@ -65,14 +66,14 @@ pub unsafe fn install(
         !pointer.is_null(),
         "native loader dependency was not mounted"
     );
-    unsafe { (*pointer).install.unwrap()(registration, execution, presence, imports, exports, vtables, observation, roots, settings, layouts, system_vt, load_module) };
+    unsafe { (*pointer).install.unwrap()(registration, execution, presence, imports, exports, vtables, observation, roots, settings, layouts, hooks, system_vt, load_module) };
 }
 #[macro_export]
 macro_rules! native_loader_dependency {
     () => {
         #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_native_loader_dependency_v10(
-            api: *const $crate::native_loader::ApiV10,
+        pub unsafe extern "C" fn birnam_native_loader_dependency_v11(
+            api: *const $crate::native_loader::ApiV11,
         ) -> core::ffi::c_int {
             unsafe { $crate::native_loader::attach(api) }
         }

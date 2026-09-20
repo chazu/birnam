@@ -2117,7 +2117,7 @@ pub struct LoadedStack {
     environment: *const birnam_abi::environment::ApiV3,
     file_io: *const birnam_abi::file_io::ApiV3,
     block_loop: *const birnam_abi::block_loop::ApiV3,
-    native_loader: *const birnam_abi::native_loader::ApiV10,
+    native_loader: *const birnam_abi::native_loader::ApiV11,
     source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
     prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
@@ -2443,9 +2443,9 @@ impl LoadedStack {
                 return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v10".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v11".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::native_loader::DependencyV10 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::native_loader::DependencyV11 = unsafe { std::mem::transmute(dependency) };
             if self.native_loader.is_null() || unsafe { attach(self.native_loader) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
             }
@@ -2520,6 +2520,7 @@ impl LoadedStack {
                 self.floor.root_registry(),
                 self.floor.gc_settings(),
                 self.floor.payload_layout(),
+                self.floor.trace_hooks(),
             )
         };
         let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v6".as_ptr()) };
@@ -2612,9 +2613,9 @@ impl LoadedStack {
             }
             self.block_loop = provided;
         }
-        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v10".as_ptr()) };
+        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v11".as_ptr()) };
         if !native_loader_provider.is_null() {
-            let provide: birnam_abi::native_loader::ProviderV10 = unsafe { std::mem::transmute(native_loader_provider) };
+            let provide: birnam_abi::native_loader::ProviderV11 = unsafe { std::mem::transmute(native_loader_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::native_loader::attach(provided) } != 1 {
                 return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });

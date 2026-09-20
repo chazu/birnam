@@ -1,4 +1,4 @@
-#include "idapi_v17.h"
+#include "idapi_v18.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 static int forbidden_presence(void *context,const char *name) { (void)context;(void)name;assert(!"numeric admission invoked presence");return 0; }
@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     assert(strlen(argv[1])<sizeof(fixture_floor_path));
     strcpy(fixture_floor_path,argv[1]);
     fixture_attach_integer(floor_api, integer,fixture_root_registry());
-    init(&module_api,NULL,&module_presence,&module_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout());
+    init(&module_api,NULL,&module_presence,&module_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
     IntegerProviderV1 provide = (IntegerProviderV1)floor_api->dlsym_fn(integer, "birnam_integer_provider_v1"); assert(provide);
     fixture_integer = provide(); assert(fixture_integer);
     fixture_attach_integer(floor_api, floor,fixture_root_registry());

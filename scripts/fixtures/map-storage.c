@@ -1,4 +1,4 @@
-#include "idapi_v17.h"
+#include "idapi_v18.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -66,8 +66,8 @@ static int exported(const char *name) { int result=fixture_namespace_contains(na
 static Oop intern(const char *name) { if(phase==0 && candidate) { prototype=candidate; candidate=NULL; partial(3); } if(capture) printf("intern %s\n",name); return api->intern(name); }
 static void layout(Oop type,const uint8_t *kinds,size_t count,uint8_t rest) {
     if(capture) { printf("layout %d rest=%u",id(type),rest); for(size_t i=0;i<count;i++) printf(" %u",kinds[i]); putchar('\n'); }
-    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V17_SLOT_RAW && kinds[1]==IDAPI_V17_SLOT_RAW && rest==IDAPI_V17_SLOT_OOP);
-    if(type==behavior) { const uint8_t expected[]={IDAPI_V17_SLOT_OOP,IDAPI_V17_SLOT_RAW}; assert(count==2 && rest==IDAPI_V17_SLOT_RAW && !memcmp(kinds,expected,2)); }
+    if(type==node_type) assert(count==2 && kinds[0]==IDAPI_V18_SLOT_RAW && kinds[1]==IDAPI_V18_SLOT_RAW && rest==IDAPI_V18_SLOT_OOP);
+    if(type==behavior) { const uint8_t expected[]={IDAPI_V18_SLOT_OOP,IDAPI_V18_SLOT_RAW}; assert(count==2 && rest==IDAPI_V18_SLOT_RAW && !memcmp(kinds,expected,2)); }
     fixture_set_layout(type,kinds,count,rest);
 }
 static void method(Oop type,Oop selector,Method implementation) {
@@ -140,7 +140,7 @@ static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *prese
     }
     fixture_attach_integer(api,image,fixture_root_registry());
     if(strstr(path,"collection")) validate(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts);
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,presence,import_cap,export_cap,fixture_vtable_enumeration(),fixture_method_observation(),root_registry,fixture_gc_settings(),layouts,fixture_trace_hooks());
 }
 static void seed(int map_only) {
     const char *names[]={"CollectionVt","VectorNode","VectorVt","RangeVt","MapVt","MapNode"}; Oop types[6];

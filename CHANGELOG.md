@@ -10,10 +10,12 @@ loader ports are complete.
 
 ### Changed
 
-- Begin the Native Trace Hooks extraction (81BM): move bounded inherited-hook
-  selection into its own native library and wire Id, host startup and fixture
-  preparation to its factory. This is an implementation checkpoint; IdApi v18
-  and production caller migration remain pending.
+- Extract native trace-hook registration and bounded inherited selection into
+  Trace Hooks (81BM). IdApi v18 has 20 fields / 160 bytes; native initialization
+  gains an eleventh capability, carried by Native Loader v11. Preserve saved
+  execution selections, live parent/hook reads, raw vtable mirrors, weak record
+  lifetime and GC callback order. Native consumers require rebuilding; image
+  encoding is unchanged.
 
 - Extract exact-vtable payload descriptions into Payload Layout (81BL), preserving
   copied prefixes, arbitrary slot codes, noninheritance and record retirement.

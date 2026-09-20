@@ -954,6 +954,43 @@ mod tests {
     }
 
     #[test]
+    fn trace_hooks_keep_exact_mirror_epoch_live_parents_and_bounded_cycles() {
+        unsafe extern "C" fn nearer(_: Oop, _: crate::abi::MarkFn) { panic!("selection invoked hook"); }
+        let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
+        let address = |hook: Option<TraceHook>| hook.map(|hook| hook as usize);
+        let first = Some(trace_hook as *const () as usize);
+        let second = Some(nearer as *const () as usize);
+        let epoch = vtables.mutation_epoch();
+        assert!(vtables.trace_hook(child).is_none());
+        vtables.set_trace_hook(parent, trace_hook);
+        assert_eq!(vtables.mutation_epoch(), epoch);
+        assert_eq!(address(vtables.trace_hook(child)), first);
+        assert_eq!(address(unsafe { vtables.record(parent).raw.as_ref().trace_hook }), first);
+        assert!(unsafe { vtables.record(child).raw.as_ref().trace_hook }.is_none());
+        vtables.set_trace_hook(parent, nearer);
+        assert_eq!(vtables.mutation_epoch(), epoch);
+        assert_eq!(address(vtables.trace_hook(child)), second);
+        vtables.set_owner(parent, child);
+        vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_RAW);
+        assert_eq!(address(unsafe { vtables.record(parent).raw.as_ref().trace_hook }), second);
+        vtables.set_parent(child, child);
+        assert!(vtables.trace_hook(child).is_none());
+        vtables.set_parent(child, parent);
+        assert_eq!(address(vtables.trace_hook(child)), second);
+        vtables.set_trace_hook(child, trace_hook);
+        assert_eq!(address(vtables.trace_hook(child)), first);
+        assert!(vtables.trace_hook(core::ptr::null_mut()).is_none());
+        assert!(vtables.trace_hook(core::ptr::without_provenance_mut(1)).is_none());
+        // Internal damaged links retain absence and count-bound behavior.
+        vtables.record_mut(parent).trace_hook = birnam_abi::trace_hooks::SlotV1::EMPTY;
+        vtables.record_mut(child).trace_hook = birnam_abi::trace_hooks::SlotV1::EMPTY;
+        vtables.record_mut(parent).parent = child;
+        assert!(vtables.trace_hook(child).is_none());
+        vtables.record_mut(parent).parent = core::ptr::without_provenance_mut(1);
+        assert!(vtables.trace_hook(child).is_none());
+    }
+
+    #[test]
     fn all_oop_layout_checks_current_prefix_tail_and_exact_vtable() {
         let (_heap, mut vtables, _meta, parent, child) = new_hierarchy();
         assert!(!vtables.all_oop_layout(parent, 1));

@@ -4,7 +4,7 @@ use core::ffi::{c_char, c_int, c_void};
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::abi::{Finalizer, IdApi, Method, Oop, TraceHook};
+use crate::abi::{Finalizer, IdApi, Method, Oop};
 use crate::boundary;
 use crate::dispatch::{Bootstrap, build_bootstrap};
 use crate::runtime::{Runtime, with_active_if_present};
@@ -191,10 +191,6 @@ unsafe extern "C" fn api_gc_live_count() -> usize {
     runtime().gc_live_count()
 }
 
-unsafe extern "C" fn api_set_trace_hook(vtable: Oop, hook: TraceHook) {
-    runtime().set_trace_hook(vtable, hook);
-}
-
 unsafe extern "C" fn api_set_finalizer(object: Oop, finalizer: Finalizer) {
     runtime().set_finalizer(object, finalizer);
 }
@@ -225,7 +221,6 @@ fn table_for(bootstrap: &Bootstrap) -> IdApi {
         gcSetStackBottom: api_gc_set_stack_bottom,
         gcCollect: api_gc_collect,
         gcLiveCount: api_gc_live_count,
-        setTraceHook: api_set_trace_hook,
         setFinalizer: api_set_finalizer,
         objectPayloadSize: api_object_payload_size,
     }

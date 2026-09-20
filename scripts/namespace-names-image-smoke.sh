@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 prefix=${1:?usage: namespace-names-image-smoke.sh PREFIX}
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-namespace-names.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'namespace names root: %s\n' "$scratch"; fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v17 scripts/fixtures/namespace-native.c -o "$scratch/names.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v18 scripts/fixtures/namespace-native.c -o "$scratch/names.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/names.dylib"];
 [System namespaceRename: System];

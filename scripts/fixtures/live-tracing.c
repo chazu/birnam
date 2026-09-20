@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v17/idapi_v17.h"
+#include "../../abi/fixtures/idapi-v18/idapi_v18.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include "collect-support.h"
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     fixture_mount_collect(api,argv[1],fixture_root_registry());
     must_abort_collection(); /* no in-Id fallback */
     void *image=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(image);
-    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout());
+    ((ModuleInitFn)api->dlsym_fn(image,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),fixture_gc_settings(),fixture_payload_layout(),fixture_trace_hooks());
     TraceLiveProviderV1 provide=(TraceLiveProviderV1)api->dlsym_fn(image,"birnam_trace_provider_v1"); assert(provide);
     const TraceLiveApiV1 *implementation=provide(); assert(implementation);
     actual_trace=implementation->trace; assert(actual_trace);
@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
     roots[0]=api->alloc(vtable,sizeof(Oop)); roots[1]=api->alloc(vtable,sizeof(Oop));
     child=api->alloc(api->object_vt,0);
     *(Oop *)roots[0]=roots[1]; *(Oop *)roots[1]=roots[0];
-    api->set_trace_hook(vtable,hook);
+    fixture_set_trace_hook(vtable,hook);
     fixture_register_root(provider);
     /* Keep a root only on the native stack, separate from the provider graph. */
     Oop volatile native_root=api->alloc(api->object_vt,sizeof(uintptr_t));

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "scope": "Native trace-hook attachments and bounded inherited selection",
+  "install_name": "@rpath/libbirnam_trace_hooks.dylib",
+  "exported_symbols": [
+    "birnam_symbol_borrow_v1",
+    "birnam_trace_hooks_factory_v1",
+    "module_init"
+  ]
+}

@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "idapi_v17.h"
+#include "idapi_v18.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -30,7 +30,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(api->send(basis_root,api->intern("="),&basis_after,1)==api->true_obj);
     rooted=basis_root=NULL;return args[0];
 }
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *selected_observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts) { (void)layouts; (void)settings;
+void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *selected_imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *selected_observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks) { (void)hooks; (void)layouts; (void)settings;
     (void)presence;(void)exports;(void)vtables;assert(selected && !prior && selected_imports && selected_observation);
     if(api)assert(api==selected && imports==selected_imports && observation==selected_observation);
     else { api=selected;imports=selected_imports;observation=selected_observation; }

@@ -7,7 +7,7 @@ observation_target=$(mise exec -- cargo metadata --locked --offline --no-deps --
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-method-observation.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 for fixture in method-observation method-observation-store; do
-  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v17 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
+  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
 done
 for mode in normal root-reentry hook-reentry; do
   "$scratch/method-observation-store" "$observation_target/debug/libbirnam_id.dylib" "$observation_target/debug/libbirnam_store.dylib" "$mode"

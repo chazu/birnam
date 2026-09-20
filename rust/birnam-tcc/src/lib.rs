@@ -207,6 +207,7 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
 struct Runtime {
     api: usize,
     layouts: usize,
+    hooks: usize,
     roots: usize,
     vtables: usize,
     exports: usize,
@@ -1365,7 +1366,7 @@ unsafe extern "C" fn m_bind_runtime(self_object: Oop, _args: *const Oop, _count:
     self_object
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -1393,6 +1394,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         Runtime {
             api: api_pointer as usize,
             layouts: layouts as usize,
+            hooks: hooks as usize,
             roots: roots as usize,
             vtables: vtables as usize,
             exports: exports as usize,
@@ -1415,7 +1417,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     // cache, without making that cache a process-wide GC root.
     unsafe {
         birnam_abi::payload_layout::set(layouts, unit_vt, ptr::null(), 0, SLOT_RAW);
-        (api.setTraceHook)(unit_vt, unit_cache::trace);
+        birnam_abi::trace_hooks::set(runtime.hooks as *const birnam_abi::trace_hooks::ApiV1, unit_vt, unit_cache::trace);
     }
     let tcc_vt = runtime.tcc_vt as Oop;
     let tcc_methods: &[(&[u8], Method)] = &[
@@ -1499,8 +1501,8 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` must be the live host IdApi table or null for the documented fatal
 /// boundary.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, vtables, roots, layouts) };
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1) -> *mut c_void {
+    unsafe { bring_up(api, presence, imports, exports, vtables, roots, layouts, hooks) };
     ptr::null_mut()
 }
 

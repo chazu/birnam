@@ -1,11 +1,11 @@
 #ifdef FIXTURE_IDAPI_V11
 #include "idapi_v11.h"
 #else
-#include "idapi_v17.h"
+#include "idapi_v18.h"
 #endif
 #include "namespace-support.h"
 #include "trace-support.h"
-#include "../../abi/fixtures/idapi-v17/storage_v1.h"
+#include "../../abi/fixtures/idapi-v18/storage_v1.h"
 #include <pthread.h>
 static IdApi *api;
 static unsigned root_calls;

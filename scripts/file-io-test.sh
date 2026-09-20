@@ -6,7 +6,7 @@ mise exec -- cargo build -p birnam-namespace -p birnam-id -p birnam-string -p bi
 file_io_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-file-io.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v17 -Iscripts/fixtures scripts/fixtures/file-io.c -o "$scratch/file-io"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v18 -Iscripts/fixtures scripts/fixtures/file-io.c -o "$scratch/file-io"
 for mode in normal first-readfile-intern-reentry first-print-binding-reentry; do
   "$scratch/file-io" "$file_io_target/debug/libbirnam_id.dylib" "$file_io_target/debug/libbirnam_object_model.dylib" "$file_io_target/debug/libbirnam_prelude.dylib" "$mode" >"$scratch/$mode.log"
   tail -1 "$scratch/$mode.log"

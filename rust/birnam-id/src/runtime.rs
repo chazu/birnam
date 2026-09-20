@@ -6967,6 +6967,40 @@ mod tests {
     }
 
     #[test]
+    fn trace_hooks_follow_moved_runtimes_without_rooting_records_or_using_public_selection() {
+        unsafe extern "C" fn first_hook(_: Oop, _: crate::abi::MarkFn) {}
+        unsafe extern "C" fn second_hook(_: Oop, _: crate::abi::MarkFn) {}
+        let first = build_bootstrap();
+        let second = build_bootstrap();
+        let a = first.runtime.create_vtable(first.runtime.globals().object_vt);
+        let b = second.runtime.create_vtable(second.runtime.globals().object_vt);
+        let dead = second.runtime.create_vtable(second.runtime.globals().object_vt);
+        second.runtime.export(b"TraceHooksRetained", b).unwrap();
+        first.runtime.set_trace_hook(a, first_hook);
+        second.runtime.set_trace_hook(dead, first_hook);
+        let api = first.runtime.trace_hooks();
+        let mut runtimes = vec![first, second];
+        assert_eq!(runtimes[0].runtime.trace_hooks(), api);
+        assert_ne!(runtimes[1].runtime.trace_hooks(), api);
+        unsafe { (*api).context = core::ptr::null_mut(); (*api).set = None; }
+        let selected = |runtime: &super::Runtime, vt| unsafe {
+            (*runtime.state.get()).vtables.trace_hook(vt).map(|hook| hook as usize)
+        };
+        assert_eq!(selected(&runtimes[0].runtime, a), Some(first_hook as *const () as usize));
+        runtimes[0].runtime.set_trace_hook(a, second_hook);
+        assert_eq!(selected(&runtimes[0].runtime, a), Some(second_hook as *const () as usize));
+        let remaining = runtimes.pop().unwrap();
+        drop(runtimes);
+        remaining.runtime.enter(|| unsafe {
+            birnam_abi::trace_hooks::set(remaining.runtime.trace_hooks(), b, second_hook);
+            remaining.runtime.gc_collect_from_native_range(0, 0);
+        });
+        assert!(remaining.runtime.checked_vtable_of(dead).is_null());
+        assert!(selected(&remaining.runtime, dead).is_none());
+        assert_eq!(selected(&remaining.runtime, b), Some(second_hook as *const () as usize));
+    }
+
+    #[test]
     fn root_registry_callback_append_is_visible_only_in_the_next_gc_snapshot() {
         thread_local! {
             static ORDER: core::cell::RefCell<Vec<usize>> = const { core::cell::RefCell::new(Vec::new()) };

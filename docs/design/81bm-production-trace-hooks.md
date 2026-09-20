@@ -1,9 +1,7 @@
 # 81BM — Native trace-hook descriptions
 
-> **Status:** Implementation checkpoint after completed 81BL (`2cb614b2`).
-> Canonical module and Id/host wiring implemented; public caller migration and
-> extraction-completion evidence remain pending.
-> Debug validation only.
+> **Status:** Implemented after completed 81BL (`2cb614b2`) and the
+> `d4a31a02` implementation checkpoint. Debug validation only.
 
 [81D](81d-id-api-partition.md) places trace-provider integration above Id. The
 next extraction is `birnam-trace-hooks`: registration of a native hook on an
@@ -130,30 +128,78 @@ GC/image checks and image-backed worker replies. Check the final source/artifact
 relationship, exports and system-only link dependencies. Commit the completed
 extraction before selecting the next responsibility. Do not run release gates.
 
-## Implementation checkpoint
+## Implementation and evidence
 
-The workspace now includes `birnam-trace-hooks`, its C/Rust factory and capability
-contracts, independent selection tests, Id's inline attachment and registry-fact
-adapter, and host preparation before `id_init`. Build/install inventories and
-native fixture preparation include the new library. The canonical selection
-algorithm lives in the new module; GC still invokes the returned hook at the
-existing call site.
+`birnam-trace-hooks` owns the inline slot and inherited selection algorithm.
+Id supplies exact record facts and attachment primitives. The host prepares and
+pins the factory before `id_init`, includes the library in startup/install
+inventories, and supplies the matching public capability. PEG, Store, Portable
+Code and TCC retain the first execution selection and consult its live descriptor
+at each original registration point. Prelude and Native Loader preserve that
+selection during repeated initialization.
 
-This checkpoint retains IdApi v17, the ten-argument native initializer and Native
-Loader v10. Existing production callers still register through `setTraceHook`.
-The public v18 migration, matching saved capabilities in PEG/Store/Portable Code/
-TCC, and Native Loader v11 are the next implementation step. The proposed final
-boundary above is not yet complete.
+IdApi v18 removes only `setTraceHook`: 20 fields / 160 bytes. All current Rust and
+independent C initializers receive eleven arguments. Native Loader v11 installs
+with thirteen arguments. Early value preparation contracts and image v8 encoding
+are unchanged; historical headers and manifests remain frozen. The v18 manifest
+fingerprint is
+`9015df2ad6d27a354ee9bcd48a8e959dddd9494ab40c2dfdd5a883e6b9b94224`.
+`MarkFn` and `TraceHook` remain shared ABI types, not IdApi slots.
 
-Checkpoint validation: the locked, offline workspace check passes for all
-targets. Focused debug library tests pass: 14 ABI, 262 Id and four Trace Hooks
-tests; 15 existing Id tests remain ignored. The selection suite compares 18,000
-graph/budget/root cases with an independent shortest-path oracle and exercises
-exact reads, admission reentry and descriptor independence. Full old/new native
-transcript comparisons and installed compiled/image/baked validation remain
-pending for the completed extraction.
+Validation uses the untouched `2cb614b2` source archive and its installed debug
+prefix as the independent pre-extraction baseline:
 
-The existing debug live-tracing and IdApi v17 C client, storage-observation, and
-storage-tracing scripts also pass with the new factory mounted. The last fixture
-needed its current v17 storage header and ten-argument initializer calls restored;
-historical ABI headers remain unchanged.
+- Locked offline workspace/all-target checks and debug builds pass. Focused
+  tests pass: 14 ABI, 264 Id and four Trace Hooks tests (282 total); 15 existing
+  Id tests remain ignored. The selection suite compares 18,000 graph/budget/root
+  cases against an independent all-pairs shortest-path oracle. Id tests cover
+  raw mirrors, unchanged epochs, missing records, cycles, live parents, weak
+  retirement, moved/independent Runtimes and public descriptor instrumentation.
+- All 78 current C fixtures pass strict syntax checks. The new independent
+  old/new registration probe matches exactly for unset/inherited/nearest hooks,
+  replacement, raw mirror resynchronization, parent changes and observation
+  without invocation. Owner-thread, restricted-observation and invalid-membership
+  failures match both exit status and exact diagnostic. C factory checks confirm
+  symbol ownership, slot/source layout, exact read count and budget behavior.
+- Separate PEG, Store/Cell, Portable Code and TCC processes produce identical
+  old/new transcripts after two reinitializations with different incoming APIs
+  and capabilities. Replacement of the saved descriptor's function and context
+  is observed; the later incoming hook setter is never selected. Native Loader's
+  independent oracle checks matching forwarded capability identity, including
+  registration reentry. The TCC layout oracle still distinguishes incoming
+  ForeignAddress preparation from saved Unit registration.
+- The existing live-tracing/current C client, storage-observation,
+  storage-tracing, native-loader and payload-layout debug scripts pass. The live
+  traversal fixture now replaces future hooks through the explicit capability.
+  Nineteen prior native method transcripts and 27 value/storage consumer
+  transcripts match the pre-extraction build. All 145 stdlib assertions pass.
+- Seventeen installed-host preparation cases cover missing images/exports,
+  null/malformed factories, each missing canonical operation, missing/rejected
+  floor attachment, missing/malformed public capabilities and successful startup.
+- A debug prefix contains 48 native libraries and 28 compiled Birnam modules.
+  All 76 library export sets match the baseline plus the declared extraction;
+  all 32 applicable native manifests match. Id and Trace Hooks link only system
+  libraries. All 2,038 source hashes were unchanged through installation;
+  subsequent edits are fixture corrections and documentation, with production
+  build inputs unchanged.
+- `scripts/trace-hooks-image-smoke.sh` passes dynamic startup, source-free
+  compiled-module execution, v8 native Code image reload and baked execution.
+  Actual hooks execute across collections and repeated module loads while roots
+  and aliases survive. Dynamic-library traces and `dladdr` establish ownership.
+  The first smoke draft incorrectly expected immediate reclamation after clearing
+  explicit roots while C locals were still conservatively scanned; only that
+  fixture assertion changed, not collection policy or production code.
+- Portable image v8 passes ordinary and forced-rebuild entry, source-free nested
+  meaning, CodeBinding recovery, baked entry, resave and boundary refusal. Actual
+  old/new saved-image workers return identical ready, twelve wire-value replies
+  and orderly-stop bytes. The external harness accommodates debug startup without
+  changing the production handshake deadline.
+- Installed Native Loader, Method Observation, Root Registry, GC Settings and
+  Payload Layout image suites also pass. They cover Store mirror behavior,
+  duplicate roots and callback-time mutation, precise/automatic settings,
+  reload, baked execution and live image-encoding reads. Floor discovery passes
+  against the same installed prefix.
+
+Run `mise run trace-hooks` for focused registration/selection/consumer checks and
+`scripts/trace-hooks-image-smoke.sh PREFIX` for installed startup and image proof.
+No release validation was run.

@@ -58,7 +58,7 @@ pub unsafe extern "C" fn module_init(
     _: *const birnam_abi::namespace_import::ApiV1,
     _: *const birnam_abi::namespace_export::ApiV1,
     _: *const birnam_abi::vtable_enumeration::ApiV2,
-    _: *const ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut c_void {
+    _: *const ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "Method Observation received a null IdApi");
     ptr::null_mut()
 }
