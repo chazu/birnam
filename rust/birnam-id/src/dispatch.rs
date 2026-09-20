@@ -97,7 +97,16 @@ impl Runtime {
             };
         }
 
-        // SAFETY: send_abi requires an active owner-thread runtime.
+        unsafe { self.send_unbound_abi(receiver, selector, args, count) }
+    }
+
+    /// Continue an already resolved missing send. In particular, Machine must
+    /// not repeat the original, potentially effectful lookup on its DNU path.
+    /// The caller supplies the same live buffer and active-turn contract as send.
+    pub(crate) unsafe fn send_unbound_abi(
+        &self, receiver: Oop, selector: Oop, args: *const Oop, count: usize,
+    ) -> Oop {
+        // SAFETY: the caller holds an active owner-thread runtime and turn.
         let globals = unsafe { self.globals_active() };
         let mut forwarded = [core::ptr::null_mut(); 1 + MAX_DNU_ARGS];
         forwarded[0] = selector;

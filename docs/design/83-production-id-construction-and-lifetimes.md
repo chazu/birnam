@@ -413,6 +413,9 @@ establish it before declaring Id decoupled.
 The production emitter now enters the exact registered adapter rather than
 resending its selector. JIT symbol binding and native TCC exports use the same
 entry; image runtime ABI 5 (`b587f81ecfb08b15`) admits that required import.
+Machine's missing-send path now proceeds directly to fresh DNU lookup rather
+than repeating the original lookup. A paired native/Machine regression verifies
+one original lookup and preservation of the forwarded argument.
 
 Public application sends now establish an Execution turn; nested sends share
 it. Machine driving retains the turn across its complete native extent. The

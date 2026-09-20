@@ -139,8 +139,11 @@ entering C. The frozen
 IdApi is unchanged: one shared Rust helper builds this family through its
 ordinary `proto`, `alloc`, layout, ancestry, and export operations.
 
-These additions define Runtime ABI v4 with exact hash
-`0xcdb641f978540d45`; image-v8 headers carry that hash.
+These additions defined Runtime ABI v4 with exact hash
+`0xcdb641f978540d45`. [Design 83](83-production-id-construction-and-lifetimes.md)
+subsequently advances the runtime ABI to v5 (`0xb587f81ecfb08b15`) for exact-entry
+resumable adapters. Current image-v8 headers carry the v5 hash; the image format
+version itself remains 8.
 
 ## 6. Acceptance
 

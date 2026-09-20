@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Preserve one effectful lookup per missing Machine send: resolve
+  `doesNotUnderstand:` directly after the original miss, using the same
+  forwarding path as native sends.
+
 - Implement Design 83's managed-turn lifetime policy in the production runtime:
   nested sends share the outer turn, checkpoint GC roots the outward result,
   and reentrant cleanup cannot recursively drain retirements. TCC and mapped

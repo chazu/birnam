@@ -3354,8 +3354,9 @@ impl Runtime {
                 arguments.as_ptr()
             };
             // SAFETY: same live driver-owned buffer contract as the direct
-            // synchronous adapter; send_abi performs normal DNU redispatch.
-            unsafe { self.send_abi(receiver, selector, args, arguments.len()) }
+            // synchronous adapter. Lookup already missed in the driver; resolve
+            // only DNU now, rather than looking up the original selector twice.
+            unsafe { self.send_unbound_abi(receiver, selector, args, arguments.len()) }
         }))
     }
 
@@ -8299,6 +8300,48 @@ mod tests {
             runtime.enter(|| runtime.send_slice(call_action, action_kind, &[])),
             call_kind
         );
+    }
+
+    #[test]
+    fn native_and_machine_missing_sends_each_perform_the_original_lookup_once() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        CALL_SITE_PROBE_SELECTOR.set(runtime.intern(b"callSite:").unwrap());
+        RETURN_PROBE_SELECTOR.set(runtime.intern(b"returnAt:").unwrap());
+        let selector = runtime.intern(b"missingOnce:").unwrap();
+        CUSTOM_LOOKUP_SELECTOR.set(selector);
+        CUSTOM_LOOKUP_RESULT.set(core::ptr::null_mut());
+        runtime.add_method(runtime.globals().vtable_vt, runtime.globals().lookup, late_bound_custom_lookup);
+        runtime.add_method(runtime.globals().object_vt, runtime.globals().does_not_understand, synchronous_second_argument);
+        let receiver = runtime.canonical().object_prototype;
+        let expected = runtime.make_integer(83);
+        CUSTOM_LOOKUP_CALLS.set(0);
+        assert_eq!(runtime.send_slice(receiver, selector, &[expected]), expected);
+        assert_eq!(CUSTOM_LOOKUP_CALLS.get(), 1);
+
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+            identity: DescriptorIdentity { implementation: 83, generation: 1, source_map: 83 },
+            program_counter_count: 2,
+            driver_argument_count: 1,
+            call_sites: vec![CallSiteDescriptor {
+                kind: CallSiteKind::Call,
+                receiver_slot: 0,
+                selector_slot: 1,
+                argument_start: 2,
+                argument_count: 1,
+                result_slot: Some(3),
+                continuation_pc: Some(1),
+            }],
+            step_method: single_call_parent_step,
+            edges: vec![probe_call(0, 1, 0, 3, 4)],
+            ..probe_spec(4, 2)
+        }).unwrap();
+        let machine = runtime.create_stackless_machine().unwrap();
+        CUSTOM_LOOKUP_CALLS.set(0);
+        assert_eq!(runtime.drive_stackless(machine, descriptor, &[(0, receiver), (1, selector), (2, expected)]), Ok(expected));
+        assert_eq!(CUSTOM_LOOKUP_CALLS.get(), 1, "Machine must continue to DNU without retrying the original lookup");
     }
 
     #[test]
