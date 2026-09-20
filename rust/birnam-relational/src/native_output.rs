@@ -112,6 +112,13 @@ fn exported_output_contract() {
         let hooks = entry!(floor, c"birnam_trace_hooks_provider_v1", birnam_abi::trace_hooks::ProviderV1)();
         let finalizers = entry!(floor, c"birnam_finalizers_provider_v1", birnam_abi::finalizers::ProviderV1)();
         let api_pointer = api as *const _ as *mut IdApi;
+        // Classification also consults String's canonical behavior for values
+        // outside the numeric pair, so prepare its real floor-owned binding.
+        let string_image = load("libbirnam_string.dylib");
+        let allocation = entry!(floor, c"birnam_native_allocation_provider_v1", birnam_abi::native_allocation::NativeAllocationProviderV1)();
+        let strings = entry!(string_image, c"birnam_string_prepare_v4", birnam_abi::string::StringPrepareV4)(api_pointer, exports, allocation, roots, layouts);
+        assert_eq!(birnam_abi::string::attach(strings), 1);
+        assert_eq!(entry!(floor, c"birnam_string_dependency_v1", birnam_abi::string::StringDependencyV1)(strings), 1);
         let float_image = load("libbirnam_float.dylib");
         let floats = entry!(float_image, c"birnam_float_prepare_v6", birnam_abi::float::FloatPrepareV6)(api_pointer, presence, imports, exports, roots, layouts);
         assert_eq!(birnam_abi::float::attach(floats), 1);

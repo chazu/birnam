@@ -1,24 +1,8 @@
 # 81BV — Guard-verdict cache ownership
 
-> **Status:** Implementation checkpoint after completed 81BU (`3d009cbf`).
-> Production wiring is implemented; extraction validation and fixture migration
-> remain pending. Preserve behavior; debug validation only.
-
-## Checkpoint scope
-
-The checkpoint adds the guard-verdict ABI, two independent Dispatch Cache owners,
-Id's tuple-shaped adapter and pre-initialization host attachment. Runtime field
-types and construction change; the existing guard expressions and read/write
-sites are unchanged. Native export manifests include the new factory and
-dependency. The debug workspace check passes with all targets.
-The ABI, Dispatch Cache, host and Id library tests pass: 389 passed, 16 ignored.
-These checks do not complete the loaded-runtime and image gates below.
-
-This is not a completed extraction. C/Rust fixture preparation, the independent
-old/new Runtime witness, loaded-factory and host-admission probes, compiled/image
-and worker comparisons, final inventory/receipts, ABI reference and focused task
-remain to be completed as described below. Direct Id fixture loaders still need
-to attach the new dependency before initialization.
+> **Status:** Completed production extraction after 81BU (`3d009cbf`) and
+> implementation checkpoint `0718e168`. Debug validation only; no behavior
+> or public format change.
 
 Move the two `(mutation_epoch, verified)` cells from Runtime into the existing
 Dispatch Cache module. They memoize different proofs: canonical lookup and
@@ -158,3 +142,86 @@ verify unchanged guard expressions, descriptor/source bodies, existing exports,
 linkage and final source/artifact receipts. Add the ABI reference, focused task,
 README links and changelog. Commit the completed extraction before selecting
 another boundary. No release validation is required.
+
+## Implementation and evidence
+
+Dispatch Cache owns two separate native cells through its second factory.
+Runtime retains the original tuple-shaped adapter calls. The lookup guard,
+Machine-slot eligibility and condition expressions, guarded send dispatch and
+inherited-cache adapter match the 81BU source byte for byte. GC still clears
+only the inherited table. No new library, language method, Image record or
+production forcing API was introduced.
+
+The host and C/Rust fixture loaders prepare the dependency before Id. The
+independent C header pins the 48-byte factory and 16-byte state layout. The
+ABI reference, `mise run guard-verdict`, installed-prefix smoke script and
+README links describe the boundary. The Relational native-output fixture now
+also prepares its missing real String binding; this is fixture setup only.
+
+Debug validation:
+
+- Core ABI, Dispatch Cache, host and Id suites: 390 passed, 16 ignored.
+- The same new Runtime witness runs against preserved 81BU source and the
+  extracted owners. All 17 transcript lines match byte for byte, including
+  independent/moved owners, opposite verdicts, warm true/false, early refusals,
+  registration changes without an epoch bump, private receivers, parent
+  mutation, GC, saturation in both directions and surviving owner destruction.
+  Bootstrap already warms lookup; native factory tests separately prove both
+  owners start at `(UINT64_MAX, false)` before bootstrap runs.
+- The original five enabled/disabled lookup and guarded-send tests pass in
+  both source trees. They retain active Frame results, invalid operands,
+  override and lookup effects, registration classification and GC mutation.
+- The loaded C observer captures the actual Runtime's two contexts. Attachment
+  creates neither owner; Id initialization creates exactly two. It observes
+  separate cold writes, warm reads, cached false and opposite verdicts, ordinary
+  override calls exactly once, and no guard writes during collection. The same
+  probe passes against the final installed libraries.
+- All 12 host guard-verdict admission cases pass with workspace and installed
+  libraries. Invalid descriptors reject before Id initialization; the missing
+  shared library fails at the earlier inherited-table factory as designed.
+- Dynamic startup, source-free compiled callers, mapped/rebuilt native Code
+  images and baked execution pass. The consumer runs a resumable send with real
+  active Frame reads and writes, canonical and overridden slot methods and
+  custom lookup, plus restored canonical behavior, aliases, GC and module
+  reload. Sources and the saver module are removed before recovery. The actual
+  host asserts `Mapped` for ordinary and baked loading and `SourceRecovery`
+  for explicit rebuild before running image main.
+- Actual old/new image-backed host workers match all 12 wire values and orderly
+  shutdown byte for byte. The external debug harness waits for startup without
+  changing the production handshake deadline.
+- Inherited-cache, collection-phase and storage-observation scope regressions
+  pass, including their 13, 12 and 14 host admission cases. The updated Rust
+  namespace loader is exercised by the Relational native-output fixture; that
+  explicit ignored fixture passes, and its ordinary suite has 22 passing tests
+  and two ignored fixtures.
+
+The image consumer deliberately uses a resumable send. A simple argument-return
+probe produced no slot reads and was rejected by the observer assertions; it
+was replaced before claiming image coverage. GC may remove a private Vtable
+and advance the mutation epoch, so the independent witness checks retained
+cell contents without assuming collection leaves the dictionary epoch fixed.
+
+## Final inventory and receipts
+
+There are still 81 installed libraries: 53 native and 28 compiled modules.
+All 37 native export manifests match. Existing exports are unchanged except
+for the declared guard-verdict factory and Id dependency. Id and Dispatch Cache
+link only system libraries; Dispatch Cache retains its ordinary install name
+and initializer position. The public admission contract matches 81BU exactly:
+IdApi v20, twelve-argument ModuleInit, Native Loader v12 and image v8.
+
+The preserved baseline has 499 source inputs and 538 installed artifacts:
+
+- Source: `8bbc5941659800904004f0faa5a576f7d18401e7d332b1bbcdb9b3ae6243d017`
+- Artifacts: `ef646caede66c54ba432f9c39da650a0e27b40188d87bd148b5d2a8768d4d831`
+
+The final debug installation has 503 source inputs and 542 installed artifacts,
+all checked against the current worktree or their installed file contents:
+
+- Source: `083463fdb66a21ce8c7079ebc5e1bdcc877b3e534e65152dc68e0969606424fd`
+- Artifacts: `1827409f949d7224cde88d88902ec02ef54d8140b3b5daab610f6f9e688f3f4d`
+
+The fixture-only String preparation fix required an install receipt refresh.
+Id, Dispatch Cache and the host remained byte-identical; the installer regenerated
+the 28 compiled modules. Image and worker comparisons were rerun against those
+final artifacts. No release validation was run.

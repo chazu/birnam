@@ -38,8 +38,8 @@ unsaturated mutation epoch. It inserts present inherited Methods only; missing
 answers retain a colliding entry and follow ordinary DNU resolution. A hit is
 classified and acquired afresh even if registration changed without a vtable
 mutation. GC clears at the original root-emission site, after native/initial
-roots and before floor/provider roots. The two separate guard-verdict caches
-remain unchanged in Id.
+roots and before floor/provider roots. The two [guard-verdict cells](guard-verdict-v1.md) have independent native
+owners in the same library; their eligibility evaluation remains in Id.
 
 The host pins and attaches the factory through
 `birnam_dispatch_cache_dependency_v1` before Id initialization. Validation

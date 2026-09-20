@@ -855,6 +855,11 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [explicit dependency](abi/dispatch-cache-v1.md). Run `mise run dispatch-cache`;
   use `scripts/dispatch-cache-image-smoke.sh PREFIX` for installed startup and
   compiled-image checks with warm mutation and custom lookup effects.
+- [Guard Verdicts](docs/design/81bv-production-guard-verdict-caches.md) move each
+  Runtime's two eligibility cache cells into Dispatch Cache through a
+  [separate dependency](abi/guard-verdict-v1.md). Guard evaluation stays in Id.
+  Run `mise run guard-verdict`; use `scripts/guard-verdict-image-smoke.sh PREFIX`
+  for startup and compiled-image checks with active Frame reads and writes.
 - [Root Registry](docs/design/81bj-production-root-provider-registry.md) owns
   ordered native root-provider registration and copied snapshots through an
   [explicit capability](abi/root-registry-v1.md). Collector phases and storage

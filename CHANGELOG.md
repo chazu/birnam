@@ -10,10 +10,11 @@ loader ports are complete.
 
 ### Changed
 
-- Checkpoint guard-verdict cache extraction into Dispatch Cache (81BV): add
-  independent native owners, the Id adapter and host dependency preparation.
-  Guard evaluation remains in Id. Fixture migration and extraction validation
-  are still pending; see the [checkpoint status](docs/design/81bv-production-guard-verdict-caches.md).
+- Move per-Runtime lookup and Machine-slot guard-verdict cells into Dispatch
+  Cache (81BV). Keep eligibility evaluation, mutation checks and fallback in Id,
+  with independent owners and unchanged GC behavior. Startup and compiled-image
+  checks cover active Frame reads/writes and live overrides; library inventory,
+  IdApi and image formats are unchanged.
 
 - Extract the per-Runtime inherited-lookup table into Dispatch Cache (81BU).
   Preserve direct lookup, collision handling, live mutation, GC invalidation and

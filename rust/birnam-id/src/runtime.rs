@@ -11103,3 +11103,6 @@ impl birnam_object_model::BehaviorAccess for Runtime {
 
 #[cfg(test)]
 mod collection_phase_tests;
+
+#[cfg(test)]
+mod guard_verdict_tests;
