@@ -3,7 +3,7 @@
   "scope": "System file IO methods installed by Prelude",
   "install_name": "@rpath/libbirnam_file_io.dylib",
   "exported_symbols": [
-    "birnam_error_value_dependency_v2",
+    "birnam_error_value_dependency_v3",
     "birnam_file_io_provider_v2",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",

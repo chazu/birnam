@@ -16,3 +16,7 @@ lib="$error_value_target/debug"
   "$lib/libbirnam_integer.dylib" "$lib/libbirnam_float.dylib" "$lib/libbirnam_word.dylib" \
   "$lib/libbirnam_environment.dylib" "$lib/libbirnam_system_input.dylib" "$lib/libbirnam_file_io.dylib" \
   "$lib/libbirnam_source_loader.dylib" "$lib/libbirnam_native_loader.dylib" "$lib/libbirnam_block_loop.dylib"
+
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v9 scripts/fixtures/error-value-import-native.c -o "$scratch/import-native.dylib"
+cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v9 -Iscripts/fixtures scripts/fixtures/error-value-import.c -o "$scratch/import-oracle"
+"$scratch/import-oracle" "$lib/libbirnam_id.dylib" "$lib/libbirnam_object_model.dylib" "$lib/libbirnam_prelude.dylib" "$scratch/import-native.dylib"

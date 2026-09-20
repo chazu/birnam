@@ -3,7 +3,7 @@
 `birnam-float` owns Float's canonical behavior, zero prototype and eight-byte
 IEEE payload. It depends on IdApi v7 and explicitly acquires Integer for mixed
 operations and conversions, String for printing, and
-[Error Value](error-value-v2.md) for its existing recognition/construction policy
+[Error Value](error-value-v3.md) for its existing recognition/construction policy
 (Design [81AO](../docs/design/81ao-production-float-error-value.md)).
 Id initializes without Float; its still-combined
 Machine and image/recovery consumers acquire the family through

@@ -24,6 +24,7 @@ pub mod source_loader;
 pub mod namespace;
 pub mod namespace_names;
 pub mod namespace_presence;
+pub mod namespace_import;
 pub mod namespace_enumeration;
 pub mod text_view;
 pub mod error_value;

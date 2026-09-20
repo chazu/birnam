@@ -449,3 +449,8 @@ live capability. IdApi v9 has 32 fields / 256 bytes.
 [81BC](81bc-production-namespace-publication.md) moves intern/bind/weak-mirror
 publication policy into Namespace factory v6. The remaining public import/export
 capability handoff and field removal remain separate work.
+
+[81BD](81bd-production-error-import-handoff.md) moves Error Value's import
+consumers onto an explicit borrowed capability, preserving the selected caller's
+live import slot pending native handoff migration. Error Value becomes v3;
+IdApi v9 remains unchanged.

@@ -3,7 +3,7 @@
   "scope": "Word representation, methods, storage codec and explicit Integer/String/Error Value dependencies",
   "install_name": "@rpath/libbirnam_word.dylib",
   "exported_symbols": [
-    "birnam_error_value_dependency_v2",
+    "birnam_error_value_dependency_v3",
     "birnam_integer_dependency_v1",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",

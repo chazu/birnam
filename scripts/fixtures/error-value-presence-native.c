@@ -1,7 +1,7 @@
 /* Independent v2 presence-handoff oracle, usable in all execution forms. */
 #define _DARWIN_C_SOURCE
 #include "idapi_v9.h"
-#include "../../abi/fixtures/error-value-v2/error_value_v2.h"
+#include "../../abi/fixtures/error-value-v3/error_value_v3.h"
 #include "../../abi/fixtures/string-v1/string_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -10,7 +10,11 @@
 #include <string.h>
 
 static IdApi *floor_api, watched;
-static const ErrorValueApiV2 *errors;
+static const ErrorValueApiV3 *errors;
+static Oop import_slot(void *context,const char *name) { return (*(Oop (**)(const char *))context)(name); }
+static NamespaceImportV1 import_loan(const IdApi *api) {
+    return (NamespaceImportV1){1,sizeof(NamespaceImportV1),(void *)&api->import_fn,import_slot};
+}
 static StringApiV1 *strings;
 static uintptr_t identities[8];
 #define ID(n) ((Oop)&identities[n])
@@ -48,13 +52,15 @@ static Oop make(void *context,const uint8_t *bytes,size_t length) {
         nested=1;
         NamespacePresenceV1 other={1,sizeof(other),&right,contains};
         IdApi other_api=watched;other_api.nil_obj=ID(0);
-        assert(errors->from_bytes(&other_api,&other,(const uint8_t *)"kind",5,bytes,length)==ID(0));
+        NamespaceImportV1 imports=import_loan(&other_api);
+        assert(errors->from_bytes(&other_api,&other,&imports,(const uint8_t *)"kind",5,bytes,length)==ID(0));
         nested=0;
     }
     return ID(6);
 }
 static Oop construct(const NamespacePresenceV1 *presence) {
-    return errors->from_bytes(&watched,presence,(const uint8_t *)"kind",5,(const uint8_t *)"msg",3);
+    NamespaceImportV1 imports=import_loan(&watched);
+    return errors->from_bytes(&watched,presence,&imports,(const uint8_t *)"kind",5,(const uint8_t *)"msg",3);
 }
 static Oop exercise(Oop self,const Oop *args,size_t count) {
     (void)self;(void)args;assert(count==0);
@@ -63,10 +69,11 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     StringApiV1 original=*strings;strings->context=&mode;strings->make=make;
     left=(struct Choice){'A',1};right=(struct Choice){'B',0};
     NamespacePresenceV1 presence={1,sizeof(presence),&left,contains};active_presence=&presence;
+    NamespaceImportV1 imports=import_loan(&watched);
     mode=nested=0;used=0;events[0]=0;
-    assert(!errors->is_error(&watched,NULL,NULL));expect("");
-    assert(errors->is_error(&watched,&presence,ID(5))==1);expect("Arv");
-    presence.context=&right;assert(!errors->is_error(&watched,&presence,ID(5)));expect("B");
+    assert(!errors->is_error(&watched,NULL,NULL,NULL));expect("");
+    assert(errors->is_error(&watched,&presence,&imports,ID(5))==1);expect("Arv");
+    presence.context=&right;assert(!errors->is_error(&watched,&presence,&imports,ID(5)));expect("B");
     presence.context=&left;
     for(int result=-1;result<=1;result++) {
         left.result=result;
@@ -93,8 +100,8 @@ void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence) {
     assert(api && !state);if(floor_api)assert(floor_api==api);else floor_api=api;
     Dl_info info;assert(dladdr((void *)api->dlsym_fn,&info) && info.dli_fname);
     void *image=open_sibling(info.dli_fname,"libbirnam_error_value.dylib");
-    ErrorValueProviderV2 provider=(ErrorValueProviderV2)api->dlsym_fn(image,"birnam_error_value_provider_v2");
-    assert(provider);errors=provider();assert(errors && errors->version==2 && errors->byte_size==sizeof(*errors));
+    ErrorValueProviderV3 provider=(ErrorValueProviderV3)api->dlsym_fn(image,"birnam_error_value_provider_v3");
+    assert(provider);errors=provider();assert(errors && errors->version==3 && errors->byte_size==sizeof(*errors));
     image=open_sibling(info.dli_fname,"libbirnam_string.dylib");
     StringProviderV1 string_provider=(StringProviderV1)api->dlsym_fn(image,"birnam_string_provider_v1");
     assert(string_provider);strings=string_provider();assert(strings);

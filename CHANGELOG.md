@@ -10,6 +10,10 @@ loader ports are complete.
 
 ### Changed
 
+- Pass the selected caller's live import capability explicitly to Error Value
+  (Design 81BD). Error Value ABI is v3; preserve late import selection, nested
+  calls and imported result snapshots. IdApi v9 and image encoding are unchanged.
+
 - Move interned publication into Namespace (Design 81BC), preserving selected
   raw binding, weak dictionary mirrors, Symbol identity and callback order.
   Namespace factory is v6; IdApi v9 and image encoding are unchanged.

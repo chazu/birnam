@@ -149,9 +149,12 @@ Prelude supplies selected behavior/selectors and its original execution table at
 the first two registration slots. The [export inventory](rust-system-output-dylib-v1.json)
 adds no IdApi fields, objects, roots or owned byte buffers.
 
-[Error value v2](error-value-v2.md) supplies Prelude, Integer and Float lazy Error factory
-dispatch and exact recognition, plus Word's overflow errors. The [export inventory](rust-error-value-dylib-v1.json)
-adds no IdApi fields, objects, roots or retained runtime selection.
+[Error value v3](error-value-v3.md) supplies lazy Error factory dispatch and exact
+recognition to Integer, Float, Word, Environment, System Input, File IO, Block Loop,
+Native Loader and Source Loader. Each call receives explicit presence and
+[import capabilities](namespace-import-v1.md). The
+[export inventory](rust-error-value-dylib-v1.json) adds no IdApi fields, objects,
+roots or retained runtime selection.
 
 [System input v2](system-input-v2.md) owns readLine and stdin buffering. Prelude
 supplies its original execution table at the existing registration slot. The

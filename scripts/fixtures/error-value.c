@@ -18,6 +18,7 @@ static Oop made_value,kind_arg,message_arg,seen_factory,constructor_answer;
 static size_t interns,makes,imports,exports,vt_calls,sends,factory_calls,lookups,cases,condition_step;
 static int capture,error_present=1,type_present=1,override_kind,override_message,replace_make;
 static int replace_presence_slot;
+static int replace_import_slot;
 static int collect,nested,mutate_factory,mutate_type,reported_match,recognition_phase,current_phase;
 static const uint8_t *borrowed_message;
 static size_t borrowed_length;
@@ -33,9 +34,11 @@ static void roots(MarkFn mark) {
     mark(answer);mark(second_answer);mark(made_value);mark(kind_arg);mark(message_arg);mark(seen_factory);mark(constructor_answer);
 }
 static Oop changed_make(void *context,const uint8_t *bytes,size_t length);
+static Oop late_null(const char *name) { assert(!strcmp(name,"Error"));return NULL; }
 static int exported(const char *name) {
     if(strcmp(name,"Error") && strcmp(name,"ErrorVt")) return fixture_namespace_contains(name);
     exports++;if(capture) printf("exported %s\n",name);if(collect) api->gc_collect();
+    if(replace_import_slot==3) { replace_import_slot=0;selected.import_fn=late_null; }
     return !strcmp(name,"Error")?error_present:type_present;
 }
 static Oop imported(const char *name) {
@@ -45,6 +48,7 @@ static Oop imported(const char *name) {
 }
 static int late_absent(const char *name) { assert(!strcmp(name,"Error"));return 0; }
 static Oop intern(const char *name) {
+    if(replace_import_slot==1) { replace_import_slot=0;selected.import_fn=late_null; }
     if(replace_presence_slot==1) { replace_presence_slot=0;selected_presence_slot=late_absent; }
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(!strcmp(name,"kind:message:")) {
@@ -56,6 +60,7 @@ static Oop intern(const char *name) {
     return api->intern(name);
 }
 static Oop make(void *context,const uint8_t *bytes,size_t length) {
+    if(replace_import_slot==2) { replace_import_slot=0;selected.import_fn=late_null; }
     if(replace_presence_slot==2) { replace_presence_slot=0;selected_presence_slot=late_absent; }
     assert(context==original_context);makes++;if(capture) printf("make %zu\n",length);
     if(borrowed_message) assert(bytes==borrowed_message && length==borrowed_length);
@@ -93,8 +98,8 @@ static void expect_message(const char *message) {
 static void begin(const char *name) { printf("case %s\n",name);capture=1;interns=makes=imports=exports=vt_calls=sends=factory_calls=0;condition_step=0; }
 static void end(void) { capture=0;printf("done intern=%zu make=%zu import=%zu export=%zu vtable=%zu send=%zu factory=%zu\n",interns,makes,imports,exports,vt_calls,sends,factory_calls); }
 static void validate(void *image,int attached) {
-    ErrorValueDependencyV2 attach=(ErrorValueDependencyV2)api->dlsym_fn(image,"birnam_error_value_dependency_v2");if(!attach) return;
-    ErrorValueApiV2 bad=*fixture_error_value;assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_error_value;
+    ErrorValueDependencyV3 attach=(ErrorValueDependencyV3)api->dlsym_fn(image,"birnam_error_value_dependency_v3");if(!attach) return;
+    ErrorValueApiV3 bad=*fixture_error_value;assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_error_value;
     bad.byte_size--;assert(!attach(&bad));bad=*fixture_error_value;bad.is_error=NULL;assert(!attach(&bad));bad=*fixture_error_value;bad.from_bytes=NULL;assert(!attach(&bad));
     if(attached) { bad=*fixture_error_value;assert(!attach(&bad) && attach(fixture_error_value)==1); }
 }
@@ -103,14 +108,16 @@ static void forbidden_method(Oop type,Oop selector,Method method) { (void)type;(
 static void forbidden_roots(RootProvider provider) { (void)provider;assert(!"Error value registered roots during initialization"); }
 static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    if(prelude && api->dlsym_fn(image,"birnam_error_value_dependency_v2")) { IdApi watched=*api;watched.alloc=forbidden_alloc;watched.method=forbidden_method;watched.gc_register_root_provider=forbidden_roots;fixture_prepare_error_value(&watched);assert(!fixture_namespace_contains("Error") && !fixture_namespace_contains("System"));validate(image,0); }
+    if(prelude && api->dlsym_fn(image,"birnam_error_value_dependency_v3")) { IdApi watched=*api;watched.alloc=forbidden_alloc;watched.method=forbidden_method;watched.gc_register_root_provider=forbidden_roots;fixture_prepare_error_value(&watched);assert(!fixture_namespace_contains("Error") && !fixture_namespace_contains("System"));validate(image,0); }
     fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);if(prelude) { prelude_init=init;validate(image,1); }init(table,NULL,presence);
 }
 static int provider_is_error(const IdApi *table,const NamespacePresenceV1 *presence,Oop value) {
-    return fixture_error_value->is_error(table,presence,value);
+    NamespaceImportV1 imports=fixture_import_loan(table);
+    return fixture_error_value->is_error(table,presence,&imports,value);
 }
 static Oop provider_from_bytes(const IdApi *table,const NamespacePresenceV1 *presence,const uint8_t *kind,size_t kind_length,const uint8_t *message,size_t message_length) {
-    return fixture_error_value->from_bytes(table,presence,kind,kind_length,message,message_length);
+    NamespaceImportV1 imports=fixture_import_loan(table);
+    return fixture_error_value->from_bytes(table,presence,&imports,kind,kind_length,message,message_length);
 }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);
@@ -125,6 +132,11 @@ int main(int argc,char **argv) {
     error_factory=factory;error_type=api->proto(api->object_vt);alternate_type=api->proto(error_type);
     error_present=0;begin("absent factory still interns and makes message");assert(read_file(system_object,&bad_path,1)==api->nil_obj);end();assert(interns==1 && makes==1 && exports==1 && !imports && !sends);
     error_present=1;
+    for(int stage=1;stage<=3;stage++) {
+        replace_import_slot=stage;
+        assert(read_file(system_object,&bad_path,1)==api->nil_obj);
+        assert(!replace_import_slot);selected.import_fn=imported;
+    }
     for(int stage=1;stage<=2;stage++) {
         replace_presence_slot=stage;
         assert(read_file(system_object,&bad_path,1)==api->nil_obj);

@@ -1,5 +1,7 @@
 # Lazy Error value policy v2
 
+> Historical contract; [v3](error-value-v3.md) makes per-call import explicit.
+
 Design [81BA](../docs/design/81ba-production-error-presence-handoff.md) separates
 the caller's presence capability from the remaining IdApi access. Compared with
 [v1](error-value-v1.md), both operations gain a borrowed

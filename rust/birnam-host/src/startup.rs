@@ -2077,7 +2077,7 @@ pub struct LoadedStack {
     printing: *const birnam_abi::printing::ApiV1,
     system_gc: *const birnam_abi::system_gc::ApiV1,
     text_view: *const birnam_abi::text_view::ApiV1,
-    error_value: *const birnam_abi::error_value::ApiV2,
+    error_value: *const birnam_abi::error_value::ApiV3,
     system_output: *const birnam_abi::system_output::ApiV1,
     system_input: *const birnam_abi::system_input::ApiV2,
     environment: *const birnam_abi::environment::ApiV2,
@@ -2352,9 +2352,9 @@ impl LoadedStack {
                 return Err(ModuleError::CollectionValueDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_error_value_dependency_v2".as_ptr()) };
+        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_error_value_dependency_v3".as_ptr()) };
         if !dependency.is_null() {
-            let attach: birnam_abi::error_value::DependencyV2 = unsafe { std::mem::transmute(dependency) };
+            let attach: birnam_abi::error_value::DependencyV3 = unsafe { std::mem::transmute(dependency) };
             if self.error_value.is_null() || unsafe { attach(self.error_value) } != 1 {
                 return Err(ModuleError::ErrorValueDependencyRejected { path: path.to_path_buf() });
             }
@@ -2500,9 +2500,9 @@ impl LoadedStack {
             }
             self.collection_value = provided;
         }
-        let error_value_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_error_value_provider_v2".as_ptr()) };
+        let error_value_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_error_value_provider_v3".as_ptr()) };
         if !error_value_provider.is_null() {
-            let provide: birnam_abi::error_value::ProviderV2 = unsafe { std::mem::transmute(error_value_provider) };
+            let provide: birnam_abi::error_value::ProviderV3 = unsafe { std::mem::transmute(error_value_provider) };
             let provided = unsafe { provide() };
             if unsafe { birnam_abi::error_value::attach(provided) } != 1 {
                 return Err(ModuleError::ErrorValueDependencyRejected { path: path.to_path_buf() });

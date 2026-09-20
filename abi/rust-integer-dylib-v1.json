@@ -2,7 +2,7 @@
   "schema_version": 1,
   "scope": "Integer representation, methods, native numeric declaration and explicit Float/String/Error Value dependencies",
   "exported_symbols": [
-    "birnam_error_value_dependency_v2",
+    "birnam_error_value_dependency_v3",
     "birnam_float_dependency_v1",
     "birnam_integer_provider_v1",
     "birnam_integer_rust_identity",
