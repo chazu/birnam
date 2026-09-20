@@ -1,4 +1,4 @@
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "../../../scripts/fixtures/namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
@@ -28,7 +28,7 @@ PROTOCOL_WRAPPER(2)
 PROTOCOL_WRAPPER(3)
 
 static void fail(const char *message) {
-    fprintf(stderr, "idapi-v13-client: %s\n", message);
+    fprintf(stderr, "idapi-v14-client: %s\n", message);
     exit(1);
 }
 
@@ -99,12 +99,12 @@ int main(int argc, char **argv) {
     if (!fixture_is_integer(answer) || fixture_integer_value(answer) != 42)
         fail("zero-argument send failed");
 
-    fixture_namespace_export("IdApiV13FixtureObject", object);
-    if (!fixture_namespace_contains("IdApiV13FixtureObject") ||
-        fixture_namespace_import("IdApiV13FixtureObject") != object)
+    fixture_namespace_export("IdApiV14FixtureObject", object);
+    if (!fixture_namespace_contains("IdApiV14FixtureObject") ||
+        fixture_namespace_import("IdApiV14FixtureObject") != object)
         fail("environment round-trip failed");
     const char *exported_name = fixture_namespace_name_of(object);
-    if (exported_name == NULL || strcmp(exported_name, "IdApiV13FixtureObject") != 0)
+    if (exported_name == NULL || strcmp(exported_name, "IdApiV14FixtureObject") != 0)
         fail("reverse export lookup failed");
 
     Oop string = fixture_string_make((const uint8_t *)"v9-bytes", 8);
@@ -177,8 +177,8 @@ int main(int argc, char **argv) {
     if (vtable_count_v2(fixture_vtable_enumeration()) < 2 || vtable_at_v2(fixture_vtable_enumeration(),vtable_count_v2(fixture_vtable_enumeration())) != NULL)
         fail("vtable registry ABI failed");
 
-    api->set_layout(vtable, NULL, 0, IDAPI_V13_SLOT_RAW);
-    if (api->slot_kind(vtable, 0) != IDAPI_V13_SLOT_RAW ||
+    api->set_layout(vtable, NULL, 0, IDAPI_V14_SLOT_RAW);
+    if (api->slot_kind(vtable, 0) != IDAPI_V14_SLOT_RAW ||
         api->object_payload_size(object) != 0)
         fail("layout/image introspection ABI failed");
     api->set_trace_hook(vtable, trace_hook);
@@ -204,11 +204,11 @@ int main(int argc, char **argv) {
     unsigned (*module_calls)(void *) = NULL;
     memcpy(&module_init, &raw_module_init, sizeof(module_init));
     memcpy(&module_calls, &raw_module_calls, sizeof(module_calls));
-    void *state = module_init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
-    if (state == NULL || module_init(api,state,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()) != state || module_calls(state) != 2)
+    void *state = module_init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
+    if (state == NULL || module_init(api,state,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()) != state || module_calls(state) != 2)
         fail("module state threading failed");
 
-    printf("idapi-v13-client: ok fields=27 module_calls=2 provider_calls=%u trace_calls=%u finalizers=%u\n",
+    printf("idapi-v14-client: ok fields=26 module_calls=2 provider_calls=%u trace_calls=%u finalizers=%u\n",
            provider_calls, trace_calls, finalizer_calls);
     return 0;
 }

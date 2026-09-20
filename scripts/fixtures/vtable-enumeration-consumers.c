@@ -4,7 +4,7 @@
 #define CONTEXT
 #define CHECK_CONTEXT() ((void)0)
 #else
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #define CONTEXT void *context,
 #define CHECK_CONTEXT() assert(context==&context_token)
 static int context_token;
@@ -91,7 +91,7 @@ static void initialize(void *image,IdApi *table,int alternate) {
 #ifdef FIXTURE_IDAPI_V11
     (void)alternate;init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());
 #else
-    init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),alternate?&other_vtables:&selected_vtables);
+    init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),alternate?&other_vtables:&selected_vtables,fixture_method_observation());
 #endif
 }
 static void *mount(const char *path) {

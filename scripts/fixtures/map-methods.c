@@ -1,4 +1,4 @@
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -93,7 +93,7 @@ static Oop print_replacement(Oop self,const Oop *args,size_t count) { puts("repl
 static Oop forbidden(Oop self,const Oop *args,size_t count) { (void)self; (void)args; (void)count; assert(!"private operation used public lookup or reloaded selectors"); return NULL; }
 static void mount(const char *path,IdApi *table) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
 }
 static void expect_vector(Oop object,const int *indices,size_t count) {
     assert(fixture_vector->count(object)==count);

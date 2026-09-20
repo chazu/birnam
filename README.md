@@ -815,11 +815,14 @@ artifact required. The Rust host owns the complete runtime and build closure.
   The registry remains in Id. Run `mise run vtable-enumeration`.
   [Selector enumeration](docs/design/81bh-production-selector-enumeration.md)
   moves checked dictionary selection into the same service. Run `mise run selector-enumeration`.
+- [Method Observation](docs/design/81bi-production-method-observation.md) owns the
+  native pre-overwrite hook through an [explicit capability](abi/method-observation-v1.md).
+  Id retains dictionary mutation and executable lifetime accounting. Run `mise run method-observation`.
 - [Source Loader](docs/design/81av-production-source-loader.md) owns load:
   through an [explicit installer](abi/source-loader-v3.md), leaving Prelude
   responsible for identity, layout and installation. Run `mise run source-loader`.
 - [Native Loader](docs/design/81au-production-native-loader.md) owns loadModule:
-  through an [explicit installer](abi/native-loader-v6.md), preserving direct
+  through an [explicit installer](abi/native-loader-v7.md), preserving direct
   loading and initialization callbacks. Run `mise run native-loader`.
 - [Block Loop](docs/design/81at-production-block-loop.md) owns the native while
   methods through an [explicit installer](abi/block-loop-v3.md), preserving

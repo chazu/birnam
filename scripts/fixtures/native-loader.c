@@ -1,4 +1,4 @@
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -19,6 +19,7 @@ static NamespaceExportV1 selected_exports,other_exports;
 static VtableEnumerationV2 selected_vtables,other_vtables;
 static IdApi *api,selected,other;
 static ModuleInitFn prelude_init;
+static MethodObservationV1 selected_observation,other_observation;
 static Method loader;
 static Oop system_type,system_object,alias,alternate,expected_target,selectors[2],seen_selector,seen_target;
 static Oop path_name,bad_name,input,factory,second_factory,factory_export,answer,second,made,nested_result,seen_factory;
@@ -53,12 +54,12 @@ static void nested_load(int stage) {
         loader_nested=0;assert(invoke(loader,alias,&path_name,1)==alias);owned();
     }
 }
-static void *initialize(IdApi *table,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV2 *vtables) { (void)vtables;
-    assert(presence==&selected_presence && import_cap==&selected_imports && export_cap==&selected_exports && vtables==&selected_vtables);
+static void *initialize(IdApi *table,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation) { (void)observation; (void)vtables;
+    assert(presence==&selected_presence && import_cap==&selected_imports && export_cap==&selected_exports && vtables==&selected_vtables && observation==&selected_observation);
     assert(table==&selected && !state);inits++;if(capture) puts("initialize original API and null state");owned();
     if(collect) api->gc_collect();nested_load(3);owned();return (void *)(uintptr_t)0x1234;
 }
-static void *initialize_second(IdApi *table,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV2 *vtables) { (void)vtables; (void)initialize(table,state,presence,import_cap,export_cap,vtables);if(capture) puts("alternate initializer");return NULL; }
+static void *initialize_second(IdApi *table,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation) { (void)observation; (void)vtables; (void)initialize(table,state,presence,import_cap,export_cap,vtables,observation);if(capture) puts("alternate initializer");return NULL; }
 static void *mock_open(const char *path,int mode) {
     assert(depth && mode==1 && strlen(path)==expected_length && !memcmp(path,expected_bytes,expected_length));
     assert((const void *)path!=(const void *)lookup_buffer);owned_paths[depth-1]=path;memcpy(path_copies[depth-1],path,expected_length+1);
@@ -84,7 +85,7 @@ static void roots(MarkFn mark) {
 }
 static void registered(RootProvider provider) { registrations++;api->gc_register_root_provider(provider); }
 static Oop allocate(Oop type,size_t size) { allocations++;if(capture) printf("alloc %zu\n",size);return api->alloc(type,size); }
-static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports,&other_exports,&other_vtables); }
+static void reenter(void) { reentry_mode=0;reentered=1;prelude_init(&other,NULL,&other_presence,&other_imports,&other_exports,&other_vtables,&other_observation); }
 static Oop intern(const char *name) {
     interns++;if(capture) printf("intern %s\n",name);if(collect) api->gc_collect();
     if(reentry_mode==1 && !strcmp(name,"loadModule:")) reenter();
@@ -155,21 +156,21 @@ static void method(Oop type,Oop selector,Method implementation) {
 static void begin(const char *name) { printf("case %s\n",name);capture=1;vt_calls=byte_calls=interns=makes=exports=imports=sends=calls=opens=symbols=inits=0; }
 static void end(void) { capture=0;printf("done vtable=%zu bytes=%zu intern=%zu make=%zu export=%zu import=%zu send=%zu calls=%zu\n",vt_calls,byte_calls,interns,makes,exports,imports,sends,calls);printf("loader open=%zu symbol=%zu init=%zu\n",opens,symbols,inits); }
 static void validate(void *image,int attached) {
-    NativeLoaderDependencyV6 attach=(NativeLoaderDependencyV6)api->dlsym_fn(image,"birnam_native_loader_dependency_v6");if(!attach) return;
-    NativeLoaderApiV6 bad=*fixture_native_loader;
+    NativeLoaderDependencyV7 attach=(NativeLoaderDependencyV7)api->dlsym_fn(image,"birnam_native_loader_dependency_v7");if(!attach) return;
+    NativeLoaderApiV7 bad=*fixture_native_loader;
     assert(!attach(NULL));bad.version++;assert(!attach(&bad));bad=*fixture_native_loader;
     bad.byte_size--;assert(!attach(&bad));bad=*fixture_native_loader;bad.install=NULL;assert(!attach(&bad));
     if(attached) { bad=*fixture_native_loader;assert(!attach(&bad) && attach(fixture_native_loader)==1); }
 }
 static void mount(const char *path,IdApi *table,const NamespacePresenceV1 *presence,const NamespaceImportV1 *import_cap,const NamespaceExportV1 *export_cap,const VtableEnumerationV2 *vtables,int prelude) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    if(prelude && api->dlsym_fn(image,"birnam_native_loader_dependency_v6") && !fixture_native_loader) {
+    if(prelude && api->dlsym_fn(image,"birnam_native_loader_dependency_v7") && !fixture_native_loader) {
         IdApi watched=*api;watched.alloc=allocate;watched.method=method;watched.gc_register_root_provider=registered;
         size_t before=allocations;fixture_prepare_native_loader(&watched);
         assert(!bindings && !registrations && allocations==before && !fixture_namespace_contains("System"));validate(image,0);
     }
     fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);
-    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap,export_cap,vtables);
+    if(prelude) { validate(image,1);prelude_init=init; }init(table,NULL,presence,import_cap,export_cap,vtables,prelude?&selected_observation:fixture_method_observation());
 }
 static Oop construct(Oop self,const Oop *args,size_t count) {
     assert(args && count==2 && args[0]==api->intern(error_kind));calls++;seen_factory=self;
@@ -187,6 +188,7 @@ int main(int argc,char **argv) {
     fixture_mount_trace(api,argv[1]);fixture_mount_integer(api,argv[1],fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports());uintptr_t anchor=0;api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));mount(argv[2],api,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),0);api->gc_register_root_provider(roots);
     original_make=fixture_string->make;original_bytes=fixture_string->bytes;string_context=fixture_string->context;fixture_string->make=make;fixture_string->bytes=bytes;
     path_name=text(expected_bytes,expected_length);bad_name=text((const uint8_t *)"a\0b",3);
+    selected_observation=*fixture_method_observation();other_observation=selected_observation;
     selected=*api;selected_vtables=*fixture_vtable_enumeration();selected_exports=*fixture_namespace_exports();selected.intern=intern;selected.method=method;selected.alloc=allocate;selected.gc_register_root_provider=registered;selected.vtable_of=vtable;selected_presence_slot=exported;selected_import_slot=imported;selected.send=send;selected.dlopen_fn=mock_open;selected.dlsym_fn=mock_symbol;
     other=selected;other_vtables=selected_vtables;other_exports=selected_exports;other_import_slot=selected_import_slot;other.nil_obj=api->true_obj;other.vtable_of=forbidden_vtable;other_presence_slot=forbidden_exported;other.send=forbidden_send;other.dlopen_fn=forbidden_open;other.dlsym_fn=forbidden_symbol;
     begin("initial registration");mount(argv[3],&selected,&selected_presence,&selected_imports,&selected_exports,&selected_vtables,1);end();assert(bindings==(reentered?2u:1u) && !registrations);
@@ -224,12 +226,12 @@ int main(int argc,char **argv) {
     begin("fresh factory replacement and custom lookup");assert(failure()==answer);api->method(type,api->intern("kind:message:"),construct_second);assert(failure()==second);
     Oop meta=api->proto(api->vtable_vt);api->method(meta,api->intern("lookup"),custom_lookup);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){type,meta},2);assert(failure()==answer && failure()==second && lookups==2);api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),(Oop[]){type,api->vtable_vt},2);api->method(type,api->intern("kind:message:"),construct);end();
     api->method(system_type,api->intern("loadModule:"),replacement);begin("copied method survives replacement");assert(invoke(loader,alias,&path_name,1)==alias);end();
-    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports,&other_exports,&other_vtables);end();assert(lookup(system_type,api->intern("loadModule:"))==loader);
-    if(fixture_native_loader) { IdApi registration=other;registration.intern=forbidden_intern;fixture_native_loader->install(&registration,&other,&other_presence,&other_imports,&other_exports,&other_vtables,system_type,api->intern("loadModule:")); }
+    begin("reload retains original execution table");prelude_init(&other,NULL,&other_presence,&other_imports,&other_exports,&other_vtables,&other_observation);end();assert(lookup(system_type,api->intern("loadModule:"))==loader);
+    if(fixture_native_loader) { IdApi registration=other;registration.intern=forbidden_intern;fixture_native_loader->install(&registration,&other,&other_presence,&other_imports,&other_exports,&other_vtables,&other_observation,system_type,api->intern("loadModule:")); }
     begin("original execution after direct installation");assert(invoke(loader,NULL,&path_name,1)==NULL && failure()==answer);end();
     selectors[0]=api->intern("native-loader-test-0");selectors[1]=api->intern("native-loader-test-1");alternate=api->proto(api->object_vt);expected_target=system_type;map_selectors=change_snapshot=1;map_generation=0;
-    begin("earlier binding preserves behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports,&selected_exports,&selected_vtables);end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==loader);
-    expected_target=alternate;begin("next installation adopts current selection");prelude_init(&other,NULL,&other_presence,&other_imports,&other_exports,&other_vtables);end();assert(seen_selector==selectors[1] && seen_target==alternate);
+    begin("earlier binding preserves behavior and selector snapshot");prelude_init(&selected,NULL,&selected_presence,&selected_imports,&selected_exports,&selected_vtables,&selected_observation);end();assert(seen_selector==selectors[0] && seen_target==system_type && lookup(system_type,selectors[0])==loader);
+    expected_target=alternate;begin("next installation adopts current selection");prelude_init(&other,NULL,&other_presence,&other_imports,&other_exports,&other_vtables,&other_observation);end();assert(seen_selector==selectors[1] && seen_target==alternate);
     fixture_namespace_export("SystemVt",system_type);map_selectors=0;expected_target=NULL;assert(!registrations);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(invoke(loader,alias,&path_name,1)==alias && failure()==answer);
     fixture_string->make=original_make;fixture_string->bytes=original_bytes;fixture_string->context=string_context;

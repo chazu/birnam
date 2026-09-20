@@ -6777,6 +6777,50 @@ mod tests {
     }
 
     #[test]
+    fn method_observation_follows_independent_moved_runtime_state() {
+        thread_local! { static CALLS: Cell<usize> = const { Cell::new(0) }; }
+        unsafe extern "C" fn observe(_: Oop, _: Oop) { CALLS.set(CALLS.get() + 1); }
+        let first = build_bootstrap();
+        let first_api = first.runtime.method_observation();
+        first.runtime.enter(|| unsafe {
+            birnam_abi::method_observation::replace(first_api, Some(observe));
+        });
+        let mut runtimes = Vec::with_capacity(1);
+        runtimes.push(first);
+        runtimes.push(build_bootstrap());
+        assert_eq!(runtimes[0].runtime.method_observation(), first_api);
+        assert_ne!(first_api, runtimes[1].runtime.method_observation());
+        CALLS.set(0);
+        for bootstrap in &runtimes {
+            let runtime = &bootstrap.runtime;
+            let vtable = runtime.create_vtable(runtime.globals().object_vt);
+            let selector = runtime.intern(b"independent-observation").unwrap();
+            runtime.add_method(vtable, selector, synchronous_identity);
+            runtime.add_method(vtable, selector, synchronous_identity);
+        }
+        assert_eq!(CALLS.get(), 1);
+        // Public context/function replacement does not affect Id's original
+        // notification address or the service's destruction after another move.
+        unsafe { (*first_api).context = core::ptr::null_mut(); (*first_api).replace = None; }
+        let first = runtimes.remove(0);
+        let selector = first.runtime.intern(b"afterMove").unwrap();
+        let vtable = first.runtime.globals().object_vt;
+        first.runtime.add_method(vtable, selector, synchronous_identity);
+        first.runtime.remove_method(vtable, selector);
+        assert_eq!(CALLS.get(), 2);
+        drop(first);
+        let second = runtimes.pop().unwrap();
+        second.runtime.enter(|| unsafe {
+            birnam_abi::method_observation::replace(second.runtime.method_observation(), Some(observe));
+        });
+        let selector = second.runtime.intern(b"afterOtherDrop").unwrap();
+        let vtable = second.runtime.globals().object_vt;
+        second.runtime.add_method(vtable, selector, synchronous_identity);
+        second.runtime.remove_method(vtable, selector);
+        assert_eq!(CALLS.get(), 3);
+    }
+
+    #[test]
     fn object_model_enumeration_observes_independent_moved_runtime_state() {
         // Each push moves the enclosing runtime; the service retains no view or
         // address into RuntimeState from its construction point.
@@ -8667,6 +8711,8 @@ mod tests {
 
     #[test]
     fn incomplete_manifest_restores_publications_and_commit_consumes_abort_token() {
+        thread_local! { static OVERWRITES: Cell<usize> = const { Cell::new(0) }; }
+        unsafe extern "C" fn observe(_: Oop, _: Oop) { OVERWRITES.set(OVERWRITES.get() + 1); }
         let bootstrap = build_bootstrap();
         let runtime = &bootstrap.runtime;
         let fixture = |name: &str| {
@@ -8717,6 +8763,10 @@ mod tests {
             driver_argument_count: 0,
             descriptor_sha256: entry.descriptor_sha256,
         };
+        OVERWRITES.set(0);
+        runtime.enter(|| unsafe {
+            birnam_abi::method_observation::replace(runtime.method_observation(), Some(observe));
+        });
         assert!(runtime.begin_staged_resumable_unit(&mixed, authority, 101, 103));
         assert_eq!(
             runtime.enter(|| unsafe {
@@ -8740,7 +8790,12 @@ mod tests {
             ),
             AddMethod::Added
         );
+        assert_eq!(OVERWRITES.get(), 1, "only direct replacement notifies");
         assert!(!runtime.finish_staged_resumable_unit());
+        assert_eq!(OVERWRITES.get(), 1, "rollback must not notify");
+        runtime.enter(|| unsafe {
+            birnam_abi::method_observation::replace(runtime.method_observation(), None);
+        });
         assert_eq!(
             runtime.lookup_method(runtime.globals().object_vt, overwritten_selector),
             Some(MethodAddress::from_method(synchronous_identity)),

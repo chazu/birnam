@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mise exec -- cargo build --offline --locked -p birnam-id -p birnam-object-model -p birnam-namespace -p birnam-integer -p birnam-float -p birnam-word -p birnam-string -p birnam-trace -p birnam-collect -p birnam-store
+mise exec -- cargo build --offline --locked -p birnam-id -p birnam-object-model -p birnam-method-observation -p birnam-namespace -p birnam-integer -p birnam-float -p birnam-word -p birnam-string -p birnam-trace -p birnam-collect -p birnam-store
 selector_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-selector-enumeration.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 for fixture in selector-enumeration selector-enumeration-consumers; do
-  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v13 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
+  cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v14 -Iscripts/fixtures "scripts/fixtures/$fixture.c" -o "$scratch/$fixture"
 done
 "$scratch/selector-enumeration-consumers" "$selector_target/debug/libbirnam_id.dylib" "$selector_target/debug/libbirnam_store.dylib"
 python3 - "$scratch/selector-enumeration" "$selector_target/debug/libbirnam_id.dylib" <<'PYTHON'

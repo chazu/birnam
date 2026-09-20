@@ -1,4 +1,4 @@
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -60,12 +60,12 @@ static void mount(const char *path,IdApi *table) {
         assert(n>0 && (size_t)n<sizeof(library));
         void *range=api->dlopen_fn(library,RTLD_NOW|RTLD_LOCAL); assert(range); fixture_attach_integer(api,range);
         RangeProviderV4 provide=(RangeProviderV4)api->dlsym_fn(range,"birnam_range_provider_v4"); assert(provide && !provide());
-        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+        ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(range,"module_init"); assert(init); init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
         fixture_range_v2=provide(); assert(fixture_range_v2); validate_dependency(image,0);
     }
     fixture_attach_integer(api,image);
     if(strstr(path,"collection") && fixture_range_v2) validate_dependency(image,1);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
 }
 static Oop vector(const int64_t *values,size_t count) {
     Oop result=fixture_vector->empty();

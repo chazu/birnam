@@ -1,4 +1,4 @@
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -65,7 +65,7 @@ static void method(Oop type,Oop selector,Method implementation) {
 }
 static void begin(const char *name) { printf("case %s\n",name);capture=1;reads=interns=makes=exports=imports=sends=calls=0; }
 static void end(void) { capture=0;printf("done read=%zu intern=%zu make=%zu export=%zu import=%zu send=%zu calls=%zu\n",reads,interns,makes,exports,imports,sends,calls); }
-static void mount(const char *path) { void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()); }
+static void mount(const char *path) { void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL);assert(image);fixture_attach_integer(api,image);ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init");assert(init);init(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()); }
 int main(int argc,char **argv) {
     assert(argc==4);setvbuf(stdout,NULL,_IONBF,0);
     void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))();assert(api);api->gc_set_auto(0);fixture_mount_trace(api,argv[1]);
@@ -78,7 +78,7 @@ int main(int argc,char **argv) {
     answer=api->alloc(api->object_vt,0);second=api->alloc(api->object_vt,0);
     Oop type=api->proto(api->object_vt);factory=api->alloc(type,0);alternate=api->alloc(type,0);factory_export=factory;api->method(type,api->intern("kind:message:"),construct);
     void *word=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL);assert(word);fixture_attach_integer(api,word);word_init=(ModuleInitFn)api->dlsym_fn(word,"module_init");assert(word_init);
-    begin("activation callback calls overflow before registration returns");word_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration());end();assert(bindings==1 && lookup()==convert);
+    begin("activation callback calls overflow before registration returns");word_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());end();assert(bindings==1 && lookup()==convert);
     begin("invalid arity and receivers skip error policy");assert(convert(high,(Oop *)(uintptr_t)1,1)==api->nil_obj && convert(NULL,NULL,0)==api->nil_obj && convert(api->true_obj,NULL,0)==api->nil_obj);end();assert(!reads && !makes && !interns);
     const uint64_t values[]={0,1,INT64_MAX,(uint64_t)INT64_MAX+1,UINT64_C(0xfedcba9876543210),UINT64_MAX};
     for(size_t i=0;i<6;i++) { subject=fixture_word_make(values[i]);Oop result=convert(subject,(Oop *)(uintptr_t)1,0);if(values[i]<=INT64_MAX) assert(fixture_integer_value(result)==(int64_t)values[i]);else assert(result==api->nil_obj);cases++; }
@@ -101,7 +101,7 @@ int main(int argc,char **argv) {
     Oop behavior=fixture_word->behavior,prototype=fixture_word->prototype;
     api->method(behavior,api->intern("asInteger"),construct_second);
     begin("copied method retains live policy after public replacement");assert(convert(high,NULL,0)==answer);end();
-    begin("reinitialization keeps original table and identities");word_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration());end();assert(lookup()==convert && fixture_word->behavior==behavior && fixture_word->prototype==prototype && bindings==2);
+    begin("reinitialization keeps original table and identities");word_init(&selected,NULL,&selected_presence,&selected_imports,fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());end();assert(lookup()==convert && fixture_word->behavior==behavior && fixture_word->prototype==prototype && bindings==2);
     api->gc_set_precise(1);api->gc_collect();api->gc_set_precise(0);assert(convert(high,NULL,0)==answer && fixture_word_value(high)==UINT64_MAX);
     fixture_string->make=original_make;fixture_string->context=string_context;fixture_word->read=original_read;
     printf("word-error-value: %zu boundary/construction cases, activation calls, live callbacks, lazy exports, lookup, reentry, GC and reload passed\n",cases);

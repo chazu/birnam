@@ -1,6 +1,6 @@
 #define _DARWIN_C_SOURCE
 /* Independent ordered-binding oracle, exercised through the loaded floor. */
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "namespace-support.h"
 #include "trace-support.h"
 #include <stdlib.h>
@@ -150,6 +150,7 @@ int main(int argc,char **argv) {
         reload=(ModuleInitFn)dlsym(namespace_image,"module_init");assert(reload);
     }
     fixture_prepare_vtable_enumeration(floor,argv[1]);
+    fixture_prepare_method_observation(floor,argv[1]);
     IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init");assert(initialize);
     IdApi *api=initialize();assert(api);api->gc_set_auto(0);
     Dl_info owner;assert(dladdr((void *)fixture_namespace_presence()->contains,&owner) && strstr(owner.dli_fname,"libbirnam_namespace.dylib"));
@@ -221,7 +222,7 @@ int main(int argc,char **argv) {
     assert(fixture_namespace_import("namespace-second-alias")==retained && !fixture_namespace_contains("namespace-first-alias"));
     if(reload) {
         IdApi probe=*api;probe.intern=forbidden_intern;probe.alloc=forbidden_alloc;probe.method=forbidden_method;probe.gc_register_root_provider=forbidden_roots;
-        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()));
+        size_t before=count(),was_binds=binds;assert(!reload(&probe,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()));assert(!reload(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()));
         assert(count()==before && binds==was_binds && creates==1);
         assert(fixture_namespace_import("namespace-second-alias")==retained);
         assert(finds && reverses && views && counts && names_at && lookups && publications==binds);

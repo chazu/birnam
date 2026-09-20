@@ -1,4 +1,4 @@
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -99,7 +99,7 @@ static Oop sum(Oop self,const Oop *args,size_t count) {
 static Oop null_sum(Oop self,const Oop *args,size_t count) { (void)self; (void)args; assert(count==2); visits++; return NULL; }
 static void mount(const char *path,IdApi *table) {
     void *image=api->dlopen_fn(path,RTLD_NOW|RTLD_LOCAL); assert(image); fixture_attach_integer(api,image);
-    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+    ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init); init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
 }
 int main(int argc,char **argv) {
     assert(argc==4); void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(floor);
@@ -117,7 +117,7 @@ int main(int argc,char **argv) {
     }
     assert(methods[11]==methods[12]);
     block_type=api->proto(api->object_vt); block=api->alloc(block_type,0); key_type=api->proto(api->object_vt);
-    api->set_layout(key_type,NULL,0,IDAPI_V13_SLOT_RAW); api->method(key_type,api->intern("<"),less);
+    api->set_layout(key_type,NULL,0,IDAPI_V14_SLOT_RAW); api->method(key_type,api->intern("<"),less);
     fixture_namespace_export("VectorTestBlock",block); fixture_namespace_export("VectorTestKeys",key_type);
     const int64_t values[]={5,2,4,1,3,0},inner[]={12,11,10};
     input=vector(values,6); nested=vector(inner,3);

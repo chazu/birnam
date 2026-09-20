@@ -1,5 +1,5 @@
-#ifndef BIRNAM_IDAPI_V13_H
-#define BIRNAM_IDAPI_V13_H
+#ifndef BIRNAM_IDAPI_V14_H
+#define BIRNAM_IDAPI_V14_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -7,6 +7,7 @@
 #include "../namespace-import-v1/namespace_import_v1.h"
 #include "../namespace-export-v1/namespace_export_v1.h"
 #include "../vtable-enumeration-v2/vtable_enumeration_v2.h"
+#include "../method-observation-v1/method_observation_v1.h"
 
 typedef void *Oop;
 typedef Oop (*Method)(Oop self, const Oop *args, size_t count);
@@ -14,17 +15,16 @@ typedef void (*MarkFn)(Oop value);
 typedef void (*RootProvider)(MarkFn mark);
 typedef void (*TraceHook)(Oop self, MarkFn mark);
 typedef void (*Finalizer)(Oop self);
-typedef void (*MethodOverwriteHook)(Oop vtable, Oop selector);
 
 typedef struct IdApi IdApi;
 typedef IdApi *(*IdInitFn)(void);
-typedef void *(*ModuleInitFn)(IdApi *api, void *prior_state, const NamespacePresenceV1 *presence, const NamespaceImportV1 *imports, const NamespaceExportV1 *exports, const VtableEnumerationV2 *vtables);
+typedef void *(*ModuleInitFn)(IdApi *api, void *prior_state, const NamespacePresenceV1 *presence, const NamespaceImportV1 *imports, const NamespaceExportV1 *exports, const VtableEnumerationV2 *vtables, const MethodObservationV1 *observation);
 
 enum {
-    IDAPI_V13_SLOT_RAW = 0,
-    IDAPI_V13_SLOT_OOP = 1,
-    IDAPI_V13_SLOT_CODE = 2,
-    IDAPI_V13_SLOT_UNKNOWN = 255,
+    IDAPI_V14_SLOT_RAW = 0,
+    IDAPI_V14_SLOT_OOP = 1,
+    IDAPI_V14_SLOT_CODE = 2,
+    IDAPI_V14_SLOT_UNKNOWN = 255,
 };
 
 struct IdApi {
@@ -54,16 +54,15 @@ struct IdApi {
     void (*gc_set_precise)(int enabled);
     size_t (*object_payload_size)(Oop object);
     uint8_t (*slot_kind)(Oop vtable, size_t word);
-    void (*set_method_overwrite_hook)(MethodOverwriteHook hook);
 };
 
-_Static_assert(sizeof(void *) == 8, "IdApi v13 requires 64-bit pointers");
-_Static_assert(sizeof(IdApi) == 216, "IdApi v13 table size changed");
-_Static_assert(_Alignof(IdApi) == 8, "IdApi v13 table alignment changed");
-_Static_assert(offsetof(IdApi, dlopen_fn) == 0, "IdApi v13 first field changed");
-_Static_assert(offsetof(IdApi, send) == 72, "IdApi v13 send offset changed");
-_Static_assert(offsetof(IdApi, set_layout) == 176, "IdApi v13 layout offset changed");
-_Static_assert(offsetof(IdApi, set_method_overwrite_hook) == 208, "IdApi v13 final field changed");
+_Static_assert(sizeof(void *) == 8, "IdApi v14 requires 64-bit pointers");
+_Static_assert(sizeof(IdApi) == 208, "IdApi v14 table size changed");
+_Static_assert(_Alignof(IdApi) == 8, "IdApi v14 table alignment changed");
+_Static_assert(offsetof(IdApi, dlopen_fn) == 0, "IdApi v14 first field changed");
+_Static_assert(offsetof(IdApi, send) == 72, "IdApi v14 send offset changed");
+_Static_assert(offsetof(IdApi, set_layout) == 176, "IdApi v14 layout offset changed");
+_Static_assert(offsetof(IdApi, slot_kind) == 200, "IdApi v14 final field changed");
 
 /* Message adapters only; the table contains no owner/parent entries. */
 static inline Oop vtable_owner(IdApi *api, Oop candidate) {

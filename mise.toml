@@ -68,6 +68,10 @@ run = "scripts/namespace-names-test.sh"
 description = "Focused debug raw namespace state and bootstrap checks"
 run = "scripts/namespace-test.sh"
 
+[tasks.method-observation]
+description = "Check native pre-overwrite observation and Store registration (debug)"
+run = "scripts/method-observation-test.sh"
+
 [tasks.selector-enumeration]
 description = "Check Object Model selector enumeration and live consumers (debug)"
 run = "scripts/selector-enumeration-test.sh"

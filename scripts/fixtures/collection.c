@@ -1,4 +1,4 @@
-#include "../../abi/fixtures/idapi-v13/idapi_v13.h"
+#include "../../abi/fixtures/idapi-v14/idapi_v14.h"
 #include "namespace-support.h"
 #include "../../abi/fixtures/collect-v1/collect_v1.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
@@ -158,14 +158,14 @@ int main(int argc, char **argv) {
     api=((IdInitFn)(fixture_prepare_namespace(floor,argv[1]),dlsym(floor,"id_init")))(); assert(api); api->gc_set_auto(0);
     uintptr_t anchor=0; api->gc_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     void *tracer=api->dlopen_fn(argv[2],RTLD_NOW|RTLD_LOCAL); assert(tracer);
-    ((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+    ((ModuleInitFn)api->dlsym_fn(tracer,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
     const TraceLiveApiV1 *trace_api=((TraceLiveProviderV1)api->dlsym_fn(tracer,"birnam_trace_provider_v1"))();
     actual_trace=trace_api->trace;
     TraceLiveApiV1 watched_trace=*trace_api; watched_trace.trace=traced;
     assert(((TraceLiveDependencyV1)dlsym(floor,"birnam_trace_dependency_v1"))(&watched_trace)==1);
     must_abort(); /* trace alone is insufficient; there is no coordinator fallback */
     void *collector=api->dlopen_fn(argv[3],RTLD_NOW|RTLD_LOCAL); assert(collector);
-    ((ModuleInitFn)api->dlsym_fn(collector,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+    ((ModuleInitFn)api->dlsym_fn(collector,"module_init"))(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
     const CollectApiV1 *implementation=((CollectProviderV1)api->dlsym_fn(collector,"birnam_collect_provider_v1"))();
     actual_collect=implementation->collect; mounted=*implementation; mounted.collect=collected;
     attach=(CollectDependencyV1)dlsym(floor,"birnam_collect_dependency_v1"); assert(attach);

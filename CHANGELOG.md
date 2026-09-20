@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Move the native pre-overwrite hook into Method Observation (81BI). IdApi v14
+  has 26 fields / 208 bytes; seven-argument initialization and Native Loader v7
+  carry the explicit capability. Preserve exact direct-binding notification,
+  pre-mutation timing, Store incoming registration/reentry, and silent rollback.
+  Dictionary mutation and executable lifetime accounting remain in Id. Native
+  consumers require rebuilding; image encoding is unchanged.
+
 - Move native selector enumeration into Object Model (81BH). IdApi v13 has
   27 fields / 216 bytes; enumeration v2 carries direct dictionary selection
   through the existing sixth initialization argument and Native Loader v6.

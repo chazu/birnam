@@ -1,4 +1,4 @@
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "namespace-support.h"
 #include "integer-support.h"
 #include "trace-support.h"
@@ -19,7 +19,7 @@ static Oop allocate(Oop type,size_t size) { if(capture) printf("alloc %zu\n",siz
 static Oop intern(const char *name) {
     interns++; if(capture) printf("intern %s\n",name);
     if(first_reentry && !strcmp(name,"printString")) {
-        first_reentry=0; reentered=1; prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+        first_reentry=0; reentered=1; prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
         assert(lookup(api->object_vt,"printString")(NULL,NULL,1)==api->nil_obj);
     }
     if(collect) api->gc_collect();
@@ -90,7 +90,7 @@ static void mount(const char *path,IdApi *table,int prelude) {
     fixture_attach_integer(api,image);
     ModuleInitFn init=(ModuleInitFn)api->dlsym_fn(image,"module_init"); assert(init);
     if(prelude) { validate(image,1); prelude_init=init; }
-    init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration());
+    init(table,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation());
 }
 int main(int argc,char **argv) {
     assert(argc==5); first_reentry=!strcmp(argv[4],"first-intern-reentry");
@@ -140,12 +140,12 @@ int main(int argc,char **argv) {
     lookups=0; nested=collect=1; begin("nested printing and callback GC"); result=symbol_print(subject,NULL,0); end(); collect=0; expect(result,(const uint8_t *)"#alpha",6); assert(lookups==1);
     api->method(api->object_vt,api->intern("printString"),answer); api->method(api->object_vt,api->intern("asString"),answer); api->method(api->symbol_vt,api->intern("printString"),answer);
     begin("copied Methods survive replacement"); result=object_print(subject,NULL,0); expect(result,(const uint8_t *)"anObject",8); result=symbol_print(subject,NULL,0); expect(result,(const uint8_t *)"#alpha",6); end();
-    begin("reinstallation retains execution table"); prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()); end();
+    begin("reinstallation retains execution table"); prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()); end();
     assert(lookup(api->object_vt,"printString")==object_print && lookup(api->object_vt,"asString")==object_as && lookup(api->symbol_vt,"printString")==symbol_print);
     if(fixture_printing) fixture_printing->install(&other,&other);
     begin("retained live execution callbacks"); result=symbol_print(subject,NULL,0); end(); expect(result,(const uint8_t *)"#alpha",6);
     other.object_vt=api->proto(api->object_vt); other.symbol_vt=api->proto(api->symbol_vt);
-    begin("registration uses current target behaviors"); prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration()); end();
+    begin("registration uses current target behaviors"); prelude_init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation()); end();
     assert(lookup(other.object_vt,"printString")==object_print && lookup(other.object_vt,"asString")==object_as && lookup(other.symbol_vt,"printString")==symbol_print);
     assert(!registrations); api->gc_set_precise(1); api->gc_collect(); api->gc_set_precise(0); expect(result,(const uint8_t *)"#alpha",6);
     fixture_string->make=original_make;

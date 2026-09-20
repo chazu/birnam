@@ -1,16 +1,16 @@
 # 81BI — Native method-overwrite observation
 
 > **Status:** Boundary audited against completed 81BH (`26ae3c02`);
-> implementation checkpoint at the user's request; extraction and ABI consumer
-> migration are incomplete. This is not a validated production transition.
+> implemented and validated with debug native and compiled-image checks.
+> Method Observation owns callback storage and invocation; Id retains mutation.
 
 [81D](81d-id-api-partition.md) places higher method observation above Id while
 retaining essential dictionary mutation and executable lifetime protection in
-the seed. The next candidate is the state and notification behind
+the seed. This slice extracts the state and notification behind
 `setMethodOverwriteHook`. This extraction must preserve the current single,
 nullable callback and its timing; a multiple-observer API would change behavior.
 
-## Current state and callers
+## Audited 81BH state and callers
 
 `RuntimeState.method_overwrite_hook` starts as None. The public setter selects
 the process-published Runtime, performs its normal owner/observation admission,
@@ -114,28 +114,67 @@ startup, source-free compiled callers, saved native Code images and baked
 executables. Mark the extraction complete only after it passes those checks.
 No release validation is required.
 
-## Implementation checkpoint
+## Completion evidence
 
-This checkpoint saves the new Method Observation crate and capability, Id service
-ownership, Store registration, host factory preparation, and seventh-argument
-forwarding through Rust initializers and Native Loader v7. IdApi v14's Rust
-layout and JSON manifest have been drafted. Existing registry dependency
-versions are preserved in Cargo.lock.
+The initial checkpoint `fcd36b54` was explicitly unfinished. This completion
+migrates current C headers/fixtures/runners, export manifests, build prerequisites,
+Error Value's native initializer, and the matching Rust/host callers. Historical
+IdApi v13 and Native Loader v6 headers/manifests remain unchanged.
 
-Remaining work before completion:
+- Workspace/all-targets check and affected-package all-feature checks passed.
+  The affected unit suites pass 370 tests, with 18 existing opt-in tests ignored.
+  Coverage includes inert factory admission, copied floor lifetime, independent
+  services, replace/clear, public descriptor replacement, notification reentry,
+  Runtime movement/destruction, and notification-free publication rollback.
+- Fourteen exact old/new native comparisons use the archived 81BH source/header
+  tree and final debug prefix as the independent oracle. They cover direct,
+  same-address, inherited/new/missing bindings, replacement/clearing, old-dictionary
+  reads, roots/GC, invalid targets with and without a hook, owner/observation
+  admission, Store incoming versus saved execution, and both once-flag reentries.
+- Sixteen existing native consumer transcripts also match 81BH byte for byte.
+  Native Loader explicitly checks the seventh borrowed pointer through nested
+  loads, reload, direct installation and initial registration reentry.
+- Sixteen real host admission cases cover absent/malformed factory and capability
+  providers, attachment rejection and a usable production capability. Nine floor
+  discovery/cache cases pass. The independent v14 C client reports 26 fields and
+  successful repeated initialization with all seven arguments.
+- The debug prefix contains 44 native libraries and 28 compiled authored modules.
+  All 72 Birnam library export inventories match the declared changes. The new
+  module has its exact three exports, relocatable install name and system-only
+  linkage. Both callback replacement and notification addresses resolve to it;
+  normal Id has no dependency on its Rust implementation.
+- `method-observation-image-smoke.sh` passes ordinary startup, a compiled caller
+  after deleting its source, a saved v8 image with native Code, and a baked
+  executable. It checks same-address and different-address mirror retraction,
+  raw removal, stable Store basis, GC, aliases and reload. Loader traces identify
+  the new module in startup and both image modes. Selector enumeration, vtable
+  enumeration, Namespace, Native Loader and Block Loop image suites also pass.
+- The installed stdlib suite executes 145 assertions with zero failures. Actual
+  image-backed 81BH/current workers complete twelve exact wire round trips and
+  orderly shutdown with identical transcripts. The external debug harness waits
+  for readiness; it does not change the production handshake deadline.
 
-- Migrate the current C headers, fixtures and runners. The new `idapi-v14` and
-  `native-loader-v7` fixture directories are copied scaffolds whose contents
-  still describe their preceding versions; they are not frozen ABI fixtures.
-- Update export manifests, build prerequisites, ABI documentation and current
-  references. Preserve historical headers and the independent 81BH baseline.
-- Add service ownership, callback replacement/reentry, Store incoming-selection,
-  Runtime movement/teardown and silent-rollback coverage.
-- Run the independent native comparison and debug installed startup, compiled
-  caller, saved-image and baked-executable checks described above.
+The first image probe incorrectly compared freshly boxed basis Integers by
+pointer identity. The corrected probe roots the saved value and compares it
+numerically; all four execution modes pass. No runtime change was needed.
+The initial stdlib invocation only registered its suite; the final receipt
+explicitly runs the suite and verifies its allPassed exit status.
 
-No production-completion or image-compatibility claim is made by this checkpoint.
+Receipts are `.cargo-target/81bi-{unit,abi-final,consumer-units,check-final,
+features,native-check,native-audit,host-validation,inventory,idapi-client,
+floor-discovery,stdlib,worker-wire}.log` and the six `81bi-*-image.log` files.
+The final installed prefix is recorded in `.cargo-target/81bi-prefix-path`;
+`81bi-install-driver.log` records 1,921 unchanged source hashes at installation.
+Only the image test fixture changed afterward, for the rooted numerical
+comparison above; installed runtime/build sources stayed unchanged.
+No release validation, image-format change or performance claim is included.
 
-Checkpoint validation: `mise exec -- cargo check --workspace --all-targets
---offline --locked` and `git diff --check` passed. This compile check does not
-cover the unfinished C fixtures or runtime/image behavior above.
+## Next boundary
+
+Audit the native root-provider registry in Id's `gc::MetadataShell`. The ordered
+callback list and snapshot operation are a distinct state owner that can move
+above Id without moving native stack capture, automatic collection policy,
+object metadata retirement or physical storage. Preserve duplicates, the exact
+32-provider limit/diagnostic, snapshot timing and provider code lifetime. Do not
+turn this into a new root-unregistration or ownership API. Symbol bytes remain a
+seed-owned representation/lifetime question, not a forwarding-only extraction.

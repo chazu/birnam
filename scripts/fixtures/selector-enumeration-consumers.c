@@ -4,7 +4,7 @@
 #define CONTEXT
 #define CHECK_CONTEXT(expected) ((void)(expected))
 #else
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #define Enumeration VtableEnumerationV2
 #define CONTEXT void *context,
 #define CHECK_CONTEXT(expected) assert(context==(expected))
@@ -12,6 +12,11 @@
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include "trace-support.h"
+#ifdef FIXTURE_IDAPI_V12
+#define OBSERVATION_ARGUMENT
+#else
+#define OBSERVATION_ARGUMENT ,fixture_method_observation()
+#endif
 static IdApi *api,selected,other;
 static Enumeration enumeration,alternate;
 static int first_context,second_context,active;
@@ -56,14 +61,14 @@ int main(int argc,char **argv) {
     selected=*api;enumeration=*fixture_vtable_enumeration();
     void *store_image=dlopen(argv[2],RTLD_NOW|RTLD_LOCAL);assert(store_image);fixture_attach_integer(api,store_image);
     ModuleInitFn init=(ModuleInitFn)dlsym(store_image,"module_init");assert(init);
-    init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),&enumeration);
+    init(&selected,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),&enumeration OBSERVATION_ARGUMENT);
     other=selected;alternate=enumeration;
 #ifdef FIXTURE_IDAPI_V12
     other.vtable_selector_at=forbidden;
 #else
     alternate.selector_at=forbidden;
 #endif
-    init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),&alternate);
+    init(&other,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),&alternate OBSERVATION_ARGUMENT);
     roots[0]=api->proto(api->object_vt);roots[1]=api->alloc(roots[0],0);set_owner(api,roots[0],roots[1]);
     roots[2]=api->intern("selector-first");roots[3]=api->intern("selector-second");
     api->method(roots[0],roots[2],answer);api->method(roots[0],roots[3],answer);

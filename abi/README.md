@@ -1,17 +1,20 @@
 # ABI evidence
 
-`idapi-v13.json` describes the current arm64 macOS IdApi: 27 fields, 216 bytes.
+`idapi-v14.json` describes the current arm64 macOS IdApi: 26 fields, 208 bytes.
+Design 81BI removes `setMethodOverwriteHook` into [Method Observation](method-observation-v1.md).
 Design 81BH removes `vtableSelectorAt` into the same explicit enumeration service.
 Design 81BG removes `vtableCount` and `vtableAt` into [Object Model enumeration](vtable-enumeration-v2.md).
 Design 81BF removes `exportObj` into the explicit [Namespace export capability](namespace-export-v1.md).
 Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
 following 81BB's [presence capability](namespace-presence-v1.md).
-Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *, const NamespaceExportV1 *, const VtableEnumerationV2 *)`.
-All native modules must be rebuilt for this signature and IdApi v13.
+Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *, const NamespaceExportV1 *, const VtableEnumerationV2 *, const MethodObservationV1 *)`.
+All native modules must be rebuilt for this signature and IdApi v14.
 After `id_init`, the selected floor exposes `birnam_namespace_presence_provider_v1`,
 `birnam_namespace_import_provider_v1` and `birnam_namespace_export_provider_v1`. The host and Native Loader pass these
 selections explicitly. The floor also supplies `birnam_vtable_enumeration_provider_v2`
-from the Object Model factory prepared before Id initialization. Modules capture matching live capabilities when they save
+from the Object Model factory prepared before Id initialization. The Method Observation
+factory is also prepared before Id; `birnam_method_observation_provider_v1` supplies
+its matching registration capability as the seventh initialization argument. Modules capture matching live capabilities when they save
 their execution API; incoming registration/adoption uses the incoming selection
 at its original call points. There is no API-address registry or production
 callback-slot loan. Code, contexts and descriptors must remain valid for every
@@ -24,23 +27,23 @@ Design 81R removes the four Float fields into an explicit [Float dependency](flo
 Design 81J removes `ensurePrivateVtable`; 81K removes owner/parent getters and
 setters. 81L removes the four Integer fields into an explicit
 [Integer dependency](integer-v1.md). Object-model consumers use ordinary Vtable
-messages. Existing v1-v12 native consumers
+messages. Existing v1-v13 native consumers
 must be rebuilt.
 Backward compatibility is not a requirement for this refactor.
 
 The Rust mirror has compile-time offsets and exports a diagnostic descriptor.
-The descriptor's format version remains 1, while its IdApi schema version is 13.
-Its fingerprint matches the independent v13 manifest. The v13 fingerprint algorithm
+The descriptor's format version remains 1, while its IdApi schema version is 14.
+Its fingerprint matches the independent v14 manifest. The v14 fingerprint algorithm
 is SHA-256 over compact, key-sorted UTF-8 JSON, excluding the `fingerprint` member.
 The workspace tests verify that fingerprint and every compiled field offset.
 
-`fixtures/idapi-v13/idapi_v13.h` is the current independent C header. The routine
-native gate compiles the v13 client/module and checks the table and separately
+`fixtures/idapi-v14/idapi_v14.h` is the current independent C header. The routine
+native gate compiles the v14 client/module and checks the table and separately
 loaded String, Integer, Float, Word and object-model implementations. Other active foreign fixtures use this header.
 
 `idapi-v1.json` and `fixtures/idapi-v1` preserve the historical 54-field ABI and
-its frozen binary evidence. They are not changed to match v13. Their old opt-in
-compatibility script applies only to a v1 floor; running that client against v13
+its frozen binary evidence. They are not changed to match v14. Their old opt-in
+compatibility script applies only to a v1 floor; running that client against v14
 is unsupported. The archived v4 image remains historical evidence as before.
 
 The Cargo workspace and `scripts/rust-install.sh` remain the build authority.
@@ -184,7 +187,7 @@ stackless control still replaces the methods later. The
 [export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
 encoding.
 
-[Native Loader v6](native-loader-v6.md) owns System loadModule: through a 24-byte
+[Native Loader v7](native-loader-v7.md) owns System loadModule: through a 24-byte
 installer, preserving the existing direct path without host dependency admission.
 The [export inventory](rust-native-loader-dylib-v1.json) adds no IdApi fields,
 objects or image encoding.

@@ -1,4 +1,4 @@
-#include "idapi_v13.h"
+#include "idapi_v14.h"
 #include "namespace-support.h"
 #include "object-model-support.h"
 #include <assert.h>
@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
         ModuleInitFn init = (ModuleInitFn)api->dlsym_fn(module, "module_init");
         assert(init);
         fixture_attach_integer(api, module);
-        init(i == 5 ? &module_api : api,NULL,fixture_namespace_presence(),i == 5 ? &module_imports : fixture_namespace_imports(),fixture_namespace_exports(),i == 5 ? &module_vtables : fixture_vtable_enumeration());
+        init(i == 5 ? &module_api : api,NULL,fixture_namespace_presence(),i == 5 ? &module_imports : fixture_namespace_imports(),fixture_namespace_exports(),i == 5 ? &module_vtables : fixture_vtable_enumeration(),fixture_method_observation());
         if (i == 5) portable = module;
     }
     Query query = (Query)api->dlsym_fn(portable, "birnam_native_block_construction_v5");

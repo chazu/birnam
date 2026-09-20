@@ -79,3 +79,27 @@ pub unsafe fn operations() -> FactoryV1 {
     assert!(!pointer.is_null(), "native method observation factory was not mounted");
     unsafe { *pointer }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    unsafe extern "C" fn create(_: *const FloorV1) -> *mut ApiV1 { panic!("admission invoked creation"); }
+    unsafe extern "C" fn destroy(_: *mut ApiV1) { panic!("admission invoked destruction"); }
+    unsafe extern "C" fn notify(_: *mut ApiV1, _: c_int, _: Oop, _: Oop) { panic!("admission invoked notification"); }
+    static FIRST: FactoryV1 = FactoryV1 { version:1, byte_size:size_of::<FactoryV1>(), create:Some(create), destroy:Some(destroy), notify:Some(notify) };
+    static SECOND: FactoryV1 = FactoryV1 { version:1, byte_size:size_of::<FactoryV1>(), create:Some(create), destroy:Some(destroy), notify:Some(notify) };
+    #[test]
+    fn factory_admission_is_inert_repeats_same_pointer_and_rejects_retargeting() {
+        unsafe {
+            assert_eq!(attach(ptr::null()), 0);
+            let mut invalid = FIRST;
+            invalid.version=2; assert_eq!(attach(&invalid),0);
+            invalid=FIRST; invalid.byte_size-=1; assert_eq!(attach(&invalid),0);
+            invalid=FIRST; invalid.create=None; assert_eq!(attach(&invalid),0);
+            invalid=FIRST; invalid.destroy=None; assert_eq!(attach(&invalid),0);
+            invalid=FIRST; invalid.notify=None; assert_eq!(attach(&invalid),0);
+            assert_eq!(attach(&FIRST),1); assert_eq!(attach(&FIRST),1);
+            assert_eq!(attach(&SECOND),0);
+        }
+    }
+}

@@ -1,7 +1,7 @@
 //! No-state C-layout mirror of the current `IdApi` v14 boundary.
 //!
 //! Raw data pointers are intentionally nullable. Function-pointer fields are
-//! non-null except for the explicitly optional method-overwrite hook.
+//! non-null; the separately declared method observation hook is optional.
 
 use core::ffi::{c_char, c_int, c_void};
 use core::mem::{align_of, offset_of, size_of};
@@ -133,7 +133,7 @@ pub type RootProvider = unsafe extern "C" fn(MarkFn);
 pub type TraceHook = unsafe extern "C" fn(Oop, MarkFn);
 pub type Finalizer = unsafe extern "C" fn(Oop);
 pub type IdInitFn = unsafe extern "C" fn() -> *mut IdApi;
-/// Native initialization receives presence, import, export and vtable enumeration capabilities associated
+/// Native initialization receives presence, import, export, vtable enumeration and method observation capabilities associated
 /// with `api`. All live selections and their code/context must outlive any retained module
 /// execution state; callers do not transfer ownership.
 pub type ModuleInitFn = unsafe extern "C" fn(*mut IdApi, *mut c_void, *const namespace_presence::ApiV1, *const namespace_import::ApiV1, *const namespace_export::ApiV1, *const vtable_enumeration::ApiV2, *const method_observation::ApiV1) -> *mut c_void;

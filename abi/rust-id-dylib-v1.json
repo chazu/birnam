@@ -27,6 +27,8 @@
     "birnam_id_try_closure_elision_v2",
     "birnam_id_warm_block_construction_v1",
     "birnam_integer_dependency_v1",
+    "birnam_method_observation_dependency_v1",
+    "birnam_method_observation_provider_v1",
     "birnam_namespace_count_v1",
     "birnam_namespace_dependency_v8",
     "birnam_namespace_export_provider_v1",

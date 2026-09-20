@@ -2,6 +2,7 @@
 #define FIXTURE_NAMESPACE_SUPPORT_H
 #include "../../abi/fixtures/namespace-v8/namespace_v8.h"
 #include "vtable-enumeration-support.h"
+#include "method-observation-support.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -69,6 +70,7 @@ static inline void fixture_prepare_namespace(void *floor, const char *floor_path
     const NamespaceApiV8 *api=provide(); assert(api && attach(api)==1);
     /* Both handles remain pinned for the process-owned floor. */
     fixture_prepare_vtable_enumeration(floor,floor_path);
+    fixture_prepare_method_observation(floor,floor_path);
 }
 static inline NamespaceNamesApiV1 *fixture_namespace_names(void) {
     if(!fixture_names) {

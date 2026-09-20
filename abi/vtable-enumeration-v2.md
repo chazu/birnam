@@ -35,7 +35,7 @@ lifetime. Ordinary Object Model method installation stays at its original point.
 
 Id publishes `birnam_vtable_enumeration_provider_v2`. Native initialization
 still receives `(api, prior_state, presence, imports, exports, vtables)`;
-[Native Loader v6](native-loader-v6.md) forwards the saved matching capability.
+[Native Loader v7](native-loader-v7.md) forwards the saved matching capability.
 Each operation copies callback and context before invoking either. Consumers
 retain it at the same point as their execution API. Replacing a shared context
 requires callbacks that accept that context; an active call retains its selected
