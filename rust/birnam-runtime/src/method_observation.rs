@@ -6,11 +6,7 @@ pub(crate) struct Service {
     factory: FactoryV1,
 }
 impl Service {
-    pub(crate) fn new() -> Self {
-        #[cfg(test)]
-        let factory = unsafe { *birnam_method_observation::birnam_method_observation_factory_v1() };
-        #[cfg(not(test))]
-        let factory = unsafe { birnam_abi::method_observation::operations() };
+    pub(crate) fn with_factory(factory: FactoryV1) -> Self {
         let floor = crate::public_api::method_observation_access();
         let api = NonNull::new(unsafe { factory.create.unwrap()(&floor) })
             .expect("method observation creation failed");

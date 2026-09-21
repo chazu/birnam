@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Load the remaining Runtime support factories through Id and supply their
+  complete operations explicitly to Runtime v14. Remove six host preparations,
+  normal dependency-setter exports, and three empty legacy module entries.
+
 - Separate the production Id and Runtime packages. Id depends only on the ABI
   crate and exports its native module entry and identity. The host constructs Id
   through Siphon, then loads the separate Runtime through Id after its native

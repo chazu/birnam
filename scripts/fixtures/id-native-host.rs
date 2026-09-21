@@ -49,6 +49,7 @@ fn main() {
         "only the actual Id is available"
     );
     let id = birnam_host::siphon::load(id_path.as_os_str().as_bytes()).unwrap();
+    let primitives = unsafe { birnam_abi::id_primitives::select(id) }.unwrap_or_else(|_| panic!("initial primitives"));
     let early = intern(&id, b"earlyNativeEcho:");
     assert_eq!(
         load(&id, &scratch.join("0.dylib"), b"earlyNativeEcho:")
@@ -340,8 +341,16 @@ fn main() {
     initial.activate_collection().unwrap();
     assert_eq!(send(&id, activation_save, &[]).status, native::LOADED);
     let runtime_path = isolated.join("libbirnam_runtime.dylib");
+    let support = initial.initialize_runtime_support().unwrap();
+    let construction = [Operand::word(roots as usize), Operand::word(records as usize),
+        Operand::word(values as usize), Operand::word(namespace as usize), Operand::word(model as usize),
+        Operand::word(graph as usize), Operand::word(collection as usize),
+        Operand::word((&primitives as *const birnam_abi::id_primitives::PrimitivesV1).addr()),
+        Operand::word((&support as *const birnam_abi::runtime_support::FactoriesV1).addr())];
+    let construction_bytes = unsafe { std::slice::from_raw_parts(construction.as_ptr().cast::<u8>(), size_of_val(&construction)) };
+
     assert_eq!(unsafe { initial.load_native(scratch.join("runtime-construction.dylib").as_os_str().as_bytes(),
-        &[Operand::bytes(runtime_path.as_os_str().as_bytes())]) }.status, native::LOADED);
+        &[Operand::bytes(runtime_path.as_os_str().as_bytes()), Operand::bytes(construction_bytes)]) }.status, native::LOADED);
     println!("separate Runtime rejects malformed constructors before adoption");
     let floor = initial.finish().unwrap();
     assert_eq!(floor.gc_settings(), unsafe { (*collection).settings }.cast_const());

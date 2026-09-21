@@ -9,12 +9,12 @@ pub(super) struct ObservationState {
     scope: crate::storage_observation::Service,
 }
 impl ObservationState {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(factory: birnam_abi::storage_observation::FactoryV1) -> Self {
         let identity = NEXT_RUNTIME.fetch_add(1, Ordering::Relaxed);
         boundary::require_invariant(identity != u64::MAX, "storage runtime identity exhausted");
         Self {
             identity,
-            scope: crate::storage_observation::Service::new(),
+            scope: crate::storage_observation::Service::with_factory(factory),
         }
     }
 }

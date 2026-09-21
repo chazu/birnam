@@ -5,7 +5,7 @@
 > runtime. Core Id allocation, Symbols, dictionaries and typed dispatch no longer
 > require upper services. Siphon now loads the real Id through the common native
 > protocol before upper preparation. Runtime now borrows the native Id carrier
-> and original entries through the temporary [v13 constructor](../../abi/runtime-construction-v13.md),
+> and original entries through the temporary [v14 constructor](../../abi/runtime-construction-v14.md),
 > without taking Id's Rust owner or referencing its primitive functions for
 > lookup/Integer admission. Id is independently packaged with only the ABI crate;
 > Runtime/compiler code is in a separate upper library loaded through Id. Native
@@ -561,8 +561,9 @@ entered images, including failed initializers with partial publication.
 
 Upper startup uses the same objects and carrier. Id keeps its registries; each
 registry has one owner and a stable address. No graph is copied and no carrier
-slot is retargeted. Six upper factory preparations still run in the host
-after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace/Object-Model/String/Error initialization and feed the aggregate Runtime constructor. That
+slot is retargeted. Six complete supporting factories now load through Id from Method Observation,
+Storage and Dispatch Cache. Runtime receives copies explicitly; the host no longer
+prepares dependency globals or maps Runtime ahead of native initialization. That
 ordering improvement does not implement the construction graph in section 4.
 
 The first upper native entry is now
@@ -592,9 +593,9 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. Runtime's native entry in `libbirnam_runtime.dylib` receives the eight
+prefix. Runtime's native entry in `libbirnam_runtime.dylib` receives nine
 completed predecessor pointers as Word operands and invokes the temporary
-[v13 constructor](../../abi/runtime-construction-v13.md). Earlier Runtime bridges
+[v14 constructor](../../abi/runtime-construction-v14.md). Earlier Runtime bridges
 and normal `id_init` exports are removed. Explicit Runtime diagnostic builds
 retain the old local initialization path for fixtures that have not yet migrated;
 that path is absent from normal Id and Runtime libraries. The host's obsolete
@@ -1686,3 +1687,42 @@ checker to accept it. That comparison remains an open validation issue.
 Earlier evidence sections above record intermediate states and their then-current
 export counts. Their two additional artifact exports came from statically linked
 `birnam-artifact`, not installer-generated wrappers.
+
+
+### Runtime receives completed supporting factories
+
+The final six host preparations have been removed. Method Observation, Storage
+and Dispatch Cache now publish their existing complete factories through Id's
+native loading entry, using the explicit [factory requests](../../abi/runtime-support-v1.md).
+`FactoriesV1` carries the copied operations into Runtime v14; Heap, observation,
+cache and guard consumers receive their actual operations during construction.
+Their ordinary constructors no longer consult global factory slots. Normal Runtime
+no longer exports the six dependency setters or the v13 constructor. Explicit
+legacy diagnostic construction remains separate from the production path.
+
+The host opens Runtime only through the real Id loader after all construction
+arguments exist, then acquires its lookup handle after initialization. The three
+empty legacy module entries and their `SCRIPT_MODULES` rows are removed. Their
+replacement entries are the six named native requests in the factory document;
+no language methods or objects were published by those removed rows.
+
+This completes the supporting-factory migration, not the Execution/compiler
+separation. Runtime still includes artifact/optimization policy, and the full
+entry/predecessor manifest, owned Method migration, older diagnostic drivers and
+worker acceptance remain required.
+
+
+Validation: 363 ABI/Runtime/support-library unit tests pass (15 ignored), and
+normal and explicit diagnostic/guarded-slot builds compile. The fresh debug
+installation builds 56 native libraries and 28 authored stage-1 modules. The
+independent native suite validates the exact installed export inventories,
+exercises all six factories with Runtime unavailable, rejects malformed native
+requests and eight malformed factory tables with otherwise valid predecessors,
+then constructs Runtime from those same predecessors. Existing early-object,
+collector, saved-entry and post-adoption checks also pass. Release validation
+remains waived.
+
+The final host/installer suite passes 90 tests (one ignored). The installed
+storage-observation suite passes dynamic source, source-free compiled,
+mapped/rebuilt native Code images and baked execution, including independent
+host observations, nested rejection, failure cleanup, roots, aliases and reload.

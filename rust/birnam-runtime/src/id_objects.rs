@@ -101,7 +101,7 @@ mod tests {
             ..proxy.inner
         };
         let mut bootstrap = crate::dispatch::build_bootstrap_with(
-            id, None, None, None, None, None, None, None, None,
+            id, None, None, None, None, None, None, None, None, crate::support::diagnostic(),
         );
         assert!(proxy.calls.get() > 0);
         // The constructor cannot cast this context to private Id State. Keep
@@ -176,6 +176,7 @@ mod tests {
             None,
             None,
             Some(primitives),
+            crate::support::diagnostic(),
         );
         bootstrap.runtime.test_id_owner = Some(Box::new((originals, initial.protocol)));
         let runtime = &bootstrap.runtime;

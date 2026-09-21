@@ -122,12 +122,16 @@ impl Heap {
     }
     #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn adopt_with_collection(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
-        Self::with_memory(memory::Memory::Local(memory), finalizers, owner)
+        Self::with_memory(memory::Memory::Local(memory), finalizers, owner, crate::support::diagnostic())
     }
+    #[cfg(test)]
     pub(crate) fn from_id(id: crate::abi::id_protocol::Protocol, behavior: Oop, primitives: birnam_abi::id_primitives::PrimitivesV1, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
-        Self::with_memory(memory::Memory::Id(memory::Client::new(id, behavior, primitives)), finalizers, owner)
+        Self::from_id_with_support(id, behavior, primitives, finalizers, owner, crate::support::diagnostic())
     }
-    fn with_memory(memory: memory::Memory, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
+    pub(crate) fn from_id_with_support(id: crate::abi::id_protocol::Protocol, behavior: Oop, primitives: birnam_abi::id_primitives::PrimitivesV1, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>, support: birnam_abi::runtime_support::FactoriesV1) -> Self {
+        Self::with_memory(memory::Memory::Id(memory::Client::new(id, behavior, primitives)), finalizers, owner, support)
+    }
+    fn with_memory(memory: memory::Memory, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>, support: birnam_abi::runtime_support::FactoriesV1) -> Self {
         let mut blocks = records::Records::new(owner.clone());
         let mut budget = owner.map(crate::allocation_budget::Service::from_collection).unwrap_or_else(crate::allocation_budget::Service::new);
         // Native records already describe the early heap. Add only allocations
@@ -145,8 +149,8 @@ impl Heap {
             dead_allocations: Vec::new(),
             numeric_allocations: Vec::new(),
             counted_frame_indices: None,
-            deferred_allocations: dead_allocations::deferred_index::Index::new(),
-            next_deferred_id: crate::deferred_identity::Service::new(),
+            deferred_allocations: dead_allocations::deferred_index::Index::with_factory(support.index),
+            next_deferred_id: crate::deferred_identity::Service::with_factory(support.identity),
             finalizers: finalizers.unwrap_or_else(crate::finalizers::Service::new),
         }
     }

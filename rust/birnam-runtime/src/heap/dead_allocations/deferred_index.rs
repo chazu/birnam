@@ -8,11 +8,7 @@ pub(in crate::heap) struct Index {
     factory: FactoryV1,
 }
 impl Index {
-    pub(in crate::heap) fn new() -> Self {
-        #[cfg(test)]
-        let factory = unsafe { *birnam_storage::birnam_deferred_index_factory_v1() };
-        #[cfg(not(test))]
-        let factory = unsafe { birnam_abi::deferred_index::operations() };
+    pub(in crate::heap) fn with_factory(factory: FactoryV1) -> Self {
         Self {
             context: ptr::null_mut(),
             factory,

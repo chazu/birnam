@@ -20,6 +20,11 @@ For the installed production handoff, run:
 python3 scripts/id-native-loading-smoke.py /path/to/debug-prefix
 ```
 
+A separate prefix contains only Id, Bootstrap, Method Observation, Storage and
+Dispatch Cache. The [support factory fixture](../../runtime-support-v1.md) loads
+all six factories through Id and calls every operation with Runtime absent. The
+full construction test rejects malformed factory inputs before owner adoption.
+
 That fixture uses the actual host Siphon and installed Id, with upper libraries
 absent at first. The independent C module checks explicit initializer operands,
 object/behavior construction, Symbol byte access, method/context publication

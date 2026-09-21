@@ -419,6 +419,7 @@ impl Runtime {
         ManagedTurnGuard { runtime: self }
     }
 
+    #[cfg(test)]
     pub(crate) fn new(
         heap: Heap,
         vtables: Behaviors,
@@ -426,7 +427,7 @@ impl Runtime {
         id_protocol: Option<crate::abi::id_protocol::Protocol>,
         globals: DispatchGlobals,
     ) -> Self {
-        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None, None, None)
+        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None, None, None, crate::support::diagnostic())
     }
     pub(crate) fn new_with_owners(
         heap: Heap,
@@ -439,21 +440,22 @@ impl Runtime {
         model: Option<crate::object_model::Shared>,
         trace_graph: Option<birnam_abi::trace_graph::GraphV2>,
         collection_owner: Option<crate::collection_state::Shared>,
+        support: birnam_abi::runtime_support::FactoriesV1,
     ) -> Self {
         let id_storage = if collection_owner.is_none() { id_protocol.as_ref().map(|id| id_storage::Storage::new(*id)) } else { None };
         Self {
             id_storage,
             trace_graph,
             owner: current_thread_token(),
-            observation: storage::ObservationState::new(),
+            observation: storage::ObservationState::new(support.storage),
             collection_phase: collection_owner.clone().map(crate::collection_phase::Service::from_collection).unwrap_or_else(crate::collection_phase::Service::new),
             collection_owner: collection_owner.clone(),
             entry_scopes: UnsafeCell::new(Vec::new()),
             native_retirements: core::cell::RefCell::new(Vec::new()),
             draining_retirements: Cell::new(false),
-            slot_guard_cache: crate::guard_verdict::Service::new(),
-            lookup_guard_cache: crate::guard_verdict::Service::new(),
-            dispatch_cache: dispatch_cache::Cache::default(),
+            slot_guard_cache: crate::guard_verdict::Service::with_factory(support.verdict),
+            lookup_guard_cache: crate::guard_verdict::Service::with_factory(support.verdict),
+            dispatch_cache: dispatch_cache::Cache::with_factory(support.cache),
             native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
             numeric: core::cell::RefCell::new(numeric::Registry::default()),
             integer: Cell::new(None),
@@ -486,7 +488,7 @@ impl Runtime {
             #[cfg(test)]
             test_id_owner: None,
             state: UnsafeCell::new(RuntimeState {
-                method_observation: crate::method_observation::Service::new(),
+                method_observation: crate::method_observation::Service::with_factory(support.observation),
                 root_registry: roots.unwrap_or_else(crate::root_registry::Service::new),
                 vtable_enumeration: model.map(crate::vtable_enumeration::Service::from_model).unwrap_or_else(crate::vtable_enumeration::Service::new),
                 symbols,

@@ -1,9 +1,10 @@
 //! Bounded inherited dictionary answers, without roots or executable leases.
+mod native;
 mod guard_verdict;
 pub use guard_verdict::birnam_guard_verdict_factory_v1;
 use birnam_abi::dispatch_cache::FactoryV2;
 use birnam_abi::id_protocol::NativeEntry;
-use core::{cell::Cell, ffi::{c_int, c_void}, ptr};
+use core::{cell::Cell, ffi::c_void, ptr};
 
 const SLOTS: usize = 64;
 #[derive(Clone, Copy)]
@@ -46,29 +47,3 @@ pub unsafe extern "C" fn birnam_dispatch_cache_factory_v2() -> *const FactoryV2 
 
 #[cfg(test)]
 mod tests;
-
-/// # Safety
-/// All descriptors and code have the native initialization lifetime.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(
-    api: *mut birnam_abi::IdApi,
-    _: *mut c_void,
-    _: *const birnam_abi::namespace_presence::ApiV1,
-    _: *const birnam_abi::namespace_import::ApiV1,
-    _: *const birnam_abi::namespace_export::ApiV1,
-    _: *const birnam_abi::vtable_enumeration::ApiV2,
-    _: *const birnam_abi::method_observation::ApiV1,
-    _: *const birnam_abi::root_registry::ApiV1,
-    _: *const birnam_abi::gc_settings::ApiV1,
-    _: *const birnam_abi::payload_layout::ApiV1,
-    _: *const birnam_abi::trace_hooks::ApiV1,
-    _: *const birnam_abi::finalizers::ApiV1,
-) -> *mut c_void {
-    assert!(!api.is_null(), "Dispatch Cache received a null IdApi");
-    ptr::null_mut()
-}
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> c_int {
-    1
-}
-

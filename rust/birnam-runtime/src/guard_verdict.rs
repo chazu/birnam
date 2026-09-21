@@ -7,11 +7,7 @@ pub(crate) struct Service {
     factory: FactoryV1,
 }
 impl Service {
-    pub(crate) fn new() -> Self {
-        #[cfg(test)]
-        let factory = unsafe { *birnam_dispatch_cache::birnam_guard_verdict_factory_v1() };
-        #[cfg(not(test))]
-        let factory = unsafe { birnam_abi::guard_verdict::operations() };
+    pub(crate) fn with_factory(factory: FactoryV1) -> Self {
         let context = NonNull::new(unsafe { factory.create.unwrap()() }).expect("guard verdict creation failed");
         Self { context, factory }
     }

@@ -17,8 +17,8 @@ def run(*args, **kwargs):
 
 
 # Check the installed images, not just source-level module visibility.
-for stem in ("id", "runtime"):
-    library = prefix / f"lib/libbirnam_{stem}.dylib"
+for stem in ("id", "runtime", "method-observation", "storage", "dispatch-cache"):
+    library = prefix / ("lib/libbirnam_" + stem.replace("-", "_") + ".dylib")
     manifest = json.loads((root / f"abi/rust-{stem}-dylib-v1.json").read_text())
     exports = set(run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines())
     assert exports == {"_" + symbol for symbol in manifest["exported_symbols"]}, (stem, exports)
@@ -47,6 +47,18 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     shutil.copy2(prefix / "lib/libbirnam_id.dylib", isolated)
     run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
         "scripts/fixtures/runtime-construction-native.c", "-o", str(scratch / "runtime-construction.dylib"))
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/runtime-support-native.c", "-o", str(scratch / "runtime-support.dylib"))
+    support_driver = scratch / "support-driver"
+    run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
+        "scripts/fixtures/runtime-support-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
+        "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(support_driver))
+    support_prefix = scratch / "support-prefix"
+    support_prefix.mkdir()
+    for name in ["id", "bootstrap", "method_observation", "storage", "dispatch_cache"]:
+        library = f"libbirnam_{name}.dylib"
+        shutil.copy2(prefix / "lib" / library, support_prefix / library)
+    run(str(support_driver), str(support_prefix), str(scratch / "runtime-support.dylib"))
     for mode in range(6):
         run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib", f"-DMODE={mode}",
             "scripts/fixtures/id-native-module.c", "-o", str(scratch / f"{mode}.dylib"))

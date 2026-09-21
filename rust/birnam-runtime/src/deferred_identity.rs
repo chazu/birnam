@@ -7,11 +7,7 @@ pub(crate) struct Service {
     factory: FactoryV1,
 }
 impl Service {
-    pub(crate) fn new() -> Self {
-        #[cfg(test)]
-        let factory = unsafe { *birnam_storage::birnam_deferred_identity_factory_v1() };
-        #[cfg(not(test))]
-        let factory = unsafe { birnam_abi::deferred_identity::operations() };
+    pub(crate) fn with_factory(factory: FactoryV1) -> Self {
         let context = NonNull::new(unsafe { factory.create.unwrap()() })
             .expect("deferred identity creation failed");
         Self { context, factory }

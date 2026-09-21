@@ -310,15 +310,15 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
 /// Perform the one supported process-lifetime initialization transition.
 #[cfg(any(test, feature = "ffi-test-hooks"))]
 pub(crate) fn initialize_once() -> *mut IdApi {
-    initialize_with_owners(crate::id::protocol(), None, None, None, None, None, None, None, None)
+    initialize_with_owners(crate::id::protocol(), None, None, None, None, None, None, None, None, crate::support::diagnostic())
 }
-pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::id_primitives::PrimitivesV1>) -> *mut IdApi {
+pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::id_primitives::PrimitivesV1>, support: birnam_abi::runtime_support::FactoriesV1) -> *mut IdApi {
     // This is Runtime's one-shot transition. Id keeps its owner and does not
     // police upper construction by handing out a Rust value exactly once.
     boundary::require_invariant(!CONSTRUCTION_STARTED.swap(true, Ordering::AcqRel),
         "Rust id_init called more than once");
     let namespace_exists = namespace.is_some();
-    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(id, roots, lifetime, values, namespace, model, graph, collection, primitives));
+    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(id, roots, lifetime, values, namespace, model, graph, collection, primitives, support));
     let construction_roots = bootstrap.runtime.retain_construction_roots();
     bootstrap.runtime.install_id_runtime_extensions();
     bootstrap.runtime.install_namespace_runtime_extension();
@@ -682,6 +682,7 @@ pub(crate) fn method_observation_access() -> birnam_abi::method_observation::Flo
     }
 }
 #[unsafe(no_mangle)]
+#[cfg(feature = "ffi-test-hooks")]
 pub unsafe extern "C" fn birnam_method_observation_dependency_v1(
     factory: *const birnam_abi::method_observation::FactoryV1,
 ) -> c_int {
@@ -878,6 +879,7 @@ pub unsafe extern "C" fn birnam_collection_phase_dependency_v1(factory: *const b
 /// # Safety
 /// Prepare before Id initialization; descriptor and code stay pinned.
 #[unsafe(no_mangle)]
+#[cfg(feature = "ffi-test-hooks")]
 pub unsafe extern "C" fn birnam_storage_observation_dependency_v1(factory: *const birnam_abi::storage_observation::FactoryV1) -> c_int {
     unsafe { birnam_abi::storage_observation::attach(factory) }
 }
@@ -885,6 +887,7 @@ pub unsafe extern "C" fn birnam_storage_observation_dependency_v1(factory: *cons
 /// # Safety
 /// Prepare before Id initialization; descriptor and code stay pinned.
 #[unsafe(no_mangle)]
+#[cfg(feature = "ffi-test-hooks")]
 pub unsafe extern "C" fn birnam_dispatch_cache_dependency_v2(factory: *const birnam_abi::dispatch_cache::FactoryV2) -> c_int {
     unsafe { birnam_abi::dispatch_cache::attach(factory) }
 }
@@ -892,6 +895,7 @@ pub unsafe extern "C" fn birnam_dispatch_cache_dependency_v2(factory: *const bir
 /// # Safety
 /// Prepare before Id initialization; descriptor and code stay pinned.
 #[unsafe(no_mangle)]
+#[cfg(feature = "ffi-test-hooks")]
 pub unsafe extern "C" fn birnam_guard_verdict_dependency_v1(factory: *const birnam_abi::guard_verdict::FactoryV1) -> c_int {
     unsafe { birnam_abi::guard_verdict::attach(factory) }
 }
@@ -899,6 +903,7 @@ pub unsafe extern "C" fn birnam_guard_verdict_dependency_v1(factory: *const birn
 /// # Safety
 /// Prepare before Id initialization; descriptor and code stay pinned.
 #[unsafe(no_mangle)]
+#[cfg(feature = "ffi-test-hooks")]
 pub unsafe extern "C" fn birnam_deferred_identity_dependency_v1(factory: *const birnam_abi::deferred_identity::FactoryV1) -> c_int {
     unsafe { birnam_abi::deferred_identity::attach(factory) }
 }
@@ -906,6 +911,7 @@ pub unsafe extern "C" fn birnam_deferred_identity_dependency_v1(factory: *const 
 /// # Safety
 /// Prepare before Id initialization; descriptor and code stay pinned.
 #[unsafe(no_mangle)]
+#[cfg(feature = "ffi-test-hooks")]
 pub unsafe extern "C" fn birnam_deferred_index_dependency_v1(factory: *const birnam_abi::deferred_index::FactoryV1) -> c_int {
     unsafe { birnam_abi::deferred_index::attach(factory) }
 }

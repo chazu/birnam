@@ -14,19 +14,12 @@ pub(super) struct Cache {
     factory: FactoryV2,
 }
 
-impl Default for Cache {
-    fn default() -> Self {
-        #[cfg(test)]
-        let factory = unsafe { *birnam_dispatch_cache::birnam_dispatch_cache_factory_v2() };
-        #[cfg(not(test))]
-        let factory = unsafe { birnam_abi::dispatch_cache::operations() };
+impl Cache {
+    pub(super) fn with_factory(factory: FactoryV2) -> Self {
         let context = NonNull::new(unsafe { factory.create.unwrap()() })
             .expect("dispatch cache creation failed");
         Self { context, factory }
     }
-}
-
-impl Cache {
     pub(super) fn clear(&self) {
         unsafe { self.factory.clear.unwrap()(self.context.as_ptr()) };
     }

@@ -14,6 +14,8 @@ mod id_adoption_tests;
 mod symbol_tests;
 mod native_runtime;
 #[cfg(any(test, feature = "ffi-test-hooks"))]
+mod support;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 pub(crate) use id::{id_dispatch, object_memory, symbol, vtable};
 #[cfg(test)]
 pub(crate) use id::{initial_objects, native_id};
@@ -102,9 +104,9 @@ pub extern "C" fn id_init() -> *mut core::ffi::c_void {
 /// # Safety
 /// Transfer the five native owners once; retain base values and the Trace graph.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_runtime_init_v13(id: *const birnam_abi::id_protocol::Protocol, roots: *const birnam_abi::root_registry::OwnedV1, records: *const birnam_abi::lifetime::OwnedV1, values: *const birnam_abi::base_values::ValuesV1, namespace: *const birnam_abi::namespace_owner::OwnedV1, model: *const birnam_abi::object_model::OwnedV1, graph: *const birnam_abi::trace_graph::GraphV2, collection: *const birnam_abi::collection_state::OwnedV2, primitives: *const birnam_abi::id_primitives::PrimitivesV1) -> *mut core::ffi::c_void {
-    if !unsafe { birnam_abi::id_protocol::valid_protocol(id) && birnam_abi::root_registry::valid_owned(roots) && birnam_abi::lifetime::valid(records) && birnam_abi::base_values::valid(values) && birnam_abi::namespace_owner::valid(namespace) && birnam_abi::object_model::valid(model) && birnam_abi::trace_graph::valid(graph) && birnam_abi::collection_state::valid(collection) && birnam_abi::id_primitives::valid(primitives) } { return core::ptr::null_mut(); }
-    public_api::initialize_with_owners(unsafe { *id }, Some(unsafe { root_registry::Service::adopt(roots) }), Some(unsafe { lifetime::Owner::adopt(records) }), Some(unsafe { *values }), Some(unsafe { env::Environment::adopt(namespace) }), Some(unsafe { object_model::Owner::adopt(model) }), Some(unsafe { *graph }), Some(unsafe { collection_state::Owner::adopt(collection) }), Some(unsafe { *primitives })).cast()
+pub unsafe extern "C" fn birnam_runtime_init_v14(id: *const birnam_abi::id_protocol::Protocol, roots: *const birnam_abi::root_registry::OwnedV1, records: *const birnam_abi::lifetime::OwnedV1, values: *const birnam_abi::base_values::ValuesV1, namespace: *const birnam_abi::namespace_owner::OwnedV1, model: *const birnam_abi::object_model::OwnedV1, graph: *const birnam_abi::trace_graph::GraphV2, collection: *const birnam_abi::collection_state::OwnedV2, primitives: *const birnam_abi::id_primitives::PrimitivesV1, support: *const birnam_abi::runtime_support::FactoriesV1) -> *mut core::ffi::c_void {
+    if !unsafe { birnam_abi::id_protocol::valid_protocol(id) && birnam_abi::root_registry::valid_owned(roots) && birnam_abi::lifetime::valid(records) && birnam_abi::base_values::valid(values) && birnam_abi::namespace_owner::valid(namespace) && birnam_abi::object_model::valid(model) && birnam_abi::trace_graph::valid(graph) && birnam_abi::collection_state::valid(collection) && birnam_abi::id_primitives::valid(primitives) && birnam_abi::runtime_support::valid(support) } { return core::ptr::null_mut(); }
+    public_api::initialize_with_owners(unsafe { *id }, Some(unsafe { root_registry::Service::adopt(roots) }), Some(unsafe { lifetime::Owner::adopt(records) }), Some(unsafe { *values }), Some(unsafe { env::Environment::adopt(namespace) }), Some(unsafe { object_model::Owner::adopt(model) }), Some(unsafe { *graph }), Some(unsafe { collection_state::Owner::adopt(collection) }), Some(unsafe { *primitives }), unsafe { *support }).cast()
 }
 
 /// Private host/floor admission seam for Design 60J Symbol compaction.
