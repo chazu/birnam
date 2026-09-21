@@ -1,6 +1,5 @@
 //! Object and Symbol printing defaults, available before collections.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::printing::ApiV1;
 use birnam_abi::{IdApi, Oop};
 use core::ffi::c_char;
 use core::ptr;
@@ -89,11 +88,6 @@ unsafe extern "C" fn install(registration: *mut IdApi, execution: *const IdApi) 
         );
     }
 }
-static API: ApiV1 = ApiV1 {
-    version: 1,
-    byte_size: size_of::<ApiV1>(),
-    install: Some(install),
-};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
@@ -111,13 +105,13 @@ unsafe extern "C" fn initialize_native(id: *const birnam_abi::id_protocol::Proto
     if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
         || EXECUTION_API.get().is_some_and(|selected| *selected != api.addr())
         || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid(); }
-    if NATIVE_COMPLETE.load(Ordering::Acquire) { return Outcome::loaded(Operand::word((&API as *const ApiV1).addr())); }
+    if NATIVE_COMPLETE.load(Ordering::Acquire) { return Outcome::loaded(Operand::unit()); }
     if NATIVE_BUSY.swap(true, Ordering::AcqRel) { return invalid(); }
     READY.store(true, Ordering::Release);
     unsafe { install(api, api) };
     NATIVE_COMPLETE.store(true, Ordering::Release);
     NATIVE_BUSY.store(false, Ordering::Release);
-    Outcome::loaded(Operand::word((&API as *const ApiV1).addr()))
+    Outcome::loaded(Operand::unit())
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {

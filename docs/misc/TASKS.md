@@ -18,29 +18,27 @@ Commit `.beads/issues.jsonl` with related work; the SQLite database is local.
 Before changing issues, `br where` must resolve this repository's `.beads/`,
 not the unrelated home-directory Maggie tracker.
 
-## Current runtime direction — 2026-09-20
+## Current runtime direction — 2026-09-21
 
 [Design 82 — Minimal production Id](../design/82-minimal-production-id.md) is the
-current architectural decision. The 81-series extractions reduced IdApi while
+historical dependency-direction decision. The 81-series extractions reduced IdApi while
 leaving Id dependent on the extracted services. Correct production ownership and
 startup before rewriting another value module. No more isolated seed experiments
 or automatic per-field extraction sequence. The design records the failure,
 remaining integration contracts, migration packages and architectural acceptance
-tests; implementation has not begun at this documentation checkpoint.
+tests; its original documentation checkpoint predates the production migration.
 
-[Design 83](../design/83-production-id-construction-and-lifetimes.md) addresses
-the adversarial review of 82. Use fixed Id bind/invoke with upper Execution turns
-and outer retirement checkpoints; do not reproduce per-send execution machinery
-inside Id. The design also specifies native loading results, complete base/extension
-construction stages and the pre-GC root/metadata handoff. Its safety boundary
-protects ordinary Birnam execution while treating native ABI obligations as the
-native author's responsibility. Both documents describe targets, not implemented
-runtime changes.
+[Design 84](../design/84-message-only-native-modules.md) is the current production
+simplification plan. Delete cross-module tables and their scaffolding; use opaque
+objects and Id messages. The first implementation removes twelve ABI tables and
+converts Vector consumers to messages. Remaining value, lifetime, collector and
+Runtime interfaces are still migration debt. Design 83's safety and active-code
+lifetime requirements remain, but its descriptor-based integration is superseded.
 
 ## Self-hosting history — 2026-09-17 onward
 
 The entries below record earlier work and proposals. Their next-step language is
-historical; it does not override Design 82 or reopen the closed extraction phase.
+historical; it does not override Design 84 or reopen the closed extraction phase.
 
 [Design 81](../design/81-toward-a-birnam-implementation.md) records the proposed
 major workstreams toward a Birnam implementation. Its companion

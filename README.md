@@ -707,8 +707,9 @@ Siphon -> Id -> Bootstrap
 Id owns object storage, Symbols, behavior dictionaries, primitive dispatch and
 native loading. Collection, managed execution and compiler services are upper
 modules. Native base and extension entries may share a library; each publishes
-behavior after its required inputs exist. The remaining entry-level construction
-migration is tracked in [Design 83](docs/design/83-production-id-construction-and-lifetimes.md).
+behavior after its required inputs exist. [Design 84](docs/design/84-message-only-native-modules.md) now governs removal
+of the remaining cross-module tables; native loading through Id alone does not
+complete that correction.
 
 The standard library and most application-facing modules are Birnam source.
 Birnam retains a cold source bootstrap through declared non-Birnam toolchains,

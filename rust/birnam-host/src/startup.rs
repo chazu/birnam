@@ -1860,20 +1860,8 @@ pub unsafe fn bootstrap_self_hosted(
 /// The common loader retains entered primitive native images for process life.
 pub struct LoadedStack {
     pub floor: LoadedFloor,
-    range: *const birnam_abi::range::ApiV6,
-    vector: *const birnam_abi::vector::ApiV6,
-    map: *const birnam_abi::map::ApiV6,
-    string_collection: *const birnam_abi::string_collection::ApiV1,
-    printing: *const birnam_abi::printing::ApiV1,
-    system_gc: *const birnam_abi::system_gc::ApiV2,
     text_view: *const birnam_abi::text_view::ApiV1,
     error_value: *const birnam_abi::error_value::ApiV3,
-    system_output: *const birnam_abi::system_output::ApiV1,
-    system_input: *const birnam_abi::system_input::ApiV3,
-    environment: *const birnam_abi::environment::ApiV3,
-    file_io: *const birnam_abi::file_io::ApiV3,
-    block_loop: *const birnam_abi::block_loop::ApiV3,
-    source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
 }
 
@@ -1915,20 +1903,8 @@ impl LoadedStack {
         }
         Self {
             floor,
-            range: std::ptr::null(),
-            vector: std::ptr::null(),
-            map: std::ptr::null(),
-            string_collection: std::ptr::null(),
-            printing: std::ptr::null(),
-            system_gc: std::ptr::null(),
             text_view: std::ptr::null(),
             error_value: std::ptr::null(),
-            system_output: std::ptr::null(),
-            system_input: std::ptr::null(),
-            environment: std::ptr::null(),
-            file_io: std::ptr::null(),
-            block_loop: std::ptr::null(),
-            source_loader: std::ptr::null(),
             collection_value: std::ptr::null(),
         }
     }
@@ -1949,16 +1925,8 @@ impl LoadedStack {
         self.initialize_control()?;
         self.construct(b"collections")?;
         self.collection_value = self.construction_word(b"valuePolicy")? as _;
-        self.vector = self.construction_word(b"vector")? as _;
-        self.range = self.construction_word(b"range")? as _;
-        self.map = self.construction_word(b"map")? as _;
-        self.string_collection = self.construction_word(b"stringCollection")? as _;
         unsafe {
             assert_eq!(birnam_abi::collection_value::attach(self.collection_value), 1);
-            assert_eq!(birnam_abi::vector::attach(self.vector), 1);
-            assert_eq!(birnam_abi::range::attach(self.range), 1);
-            assert_eq!(birnam_abi::map::attach(self.map), 1);
-            assert_eq!(birnam_abi::string_collection::attach(self.string_collection), 1);
         }
         Ok(())
     }
@@ -1978,26 +1946,15 @@ impl LoadedStack {
     pub fn initialize_system_io(&mut self) -> Result<(), ModuleError> {
         self.initialize_control()?;
         self.construct(b"systemIo")?;
-        self.system_gc = self.construction_word(b"systemGc")? as _;
-        assert_eq!(unsafe { birnam_abi::system_gc::attach(self.system_gc) }, 1);
         self.text_view = self.construction_word(b"textView")? as _;
         assert_eq!(unsafe { birnam_abi::text_view::attach(self.text_view) }, 1);
-        self.system_output = self.construction_word(b"systemOutput")? as _;
-        assert_eq!(unsafe { birnam_abi::system_output::attach(self.system_output) }, 1);
-        self.system_input = self.construction_word(b"systemInput")? as _;
-        assert_eq!(unsafe { birnam_abi::system_input::attach(self.system_input) }, 1);
-        self.environment = self.construction_word(b"environment")? as _;
-        assert_eq!(unsafe { birnam_abi::environment::attach(self.environment) }, 1);
-        self.file_io = self.construction_word(b"fileIo")? as _;
-        assert_eq!(unsafe { birnam_abi::file_io::attach(self.file_io) }, 1);
         self.construct(b"nativeLoader")?;
         Ok(())
     }
     pub fn initialize_system(&mut self) -> Result<(), ModuleError> {
         self.initialize_compiler()?;
         self.initialize_system_io()?;
-        self.source_loader = self.construction_word(b"sourceLoader")? as _;
-        assert_eq!(unsafe { birnam_abi::source_loader::attach(self.source_loader) }, 1);
+        self.construct(b"sourceLoader")?;
         Ok(())
     }
 
@@ -2011,16 +1968,10 @@ impl LoadedStack {
     pub fn initialize_control(&mut self) -> Result<(), ModuleError> {
         self.construct(b"control")?;
         let errors = self.construction_word(b"errorValue")? as *const birnam_abi::error_value::ApiV3;
-        let printing = self.construction_word(b"printing")? as *const birnam_abi::printing::ApiV1;
-        let loops = self.construction_word(b"blockLoop")? as *const birnam_abi::block_loop::ApiV3;
         unsafe {
             assert_eq!(birnam_abi::error_value::attach(errors), 1);
-            assert_eq!(birnam_abi::printing::attach(printing), 1);
-            assert_eq!(birnam_abi::block_loop::attach(loops), 1);
         }
         self.error_value = errors;
-        self.printing = printing;
-        self.block_loop = loops;
         Ok(())
     }
 

@@ -1,9 +1,8 @@
 //! Vector representation, canonical identities, methods and scoped sorting roots.
 #![allow(clippy::missing_safety_doc)]
 mod kernel;
-use birnam_abi::vector::{ApiV6, BehaviorsV1};
-use birnam_abi::{IdApi, MarkFn, Method, Oop, borrowed_oop_args};
-use core::ffi::{c_char, c_void};
+use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
+use core::ffi::c_char;
 use core::ptr;
 pub use kernel::PersistentVector;
 use std::cell::RefCell;
@@ -78,13 +77,13 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
         }
     });
 }
-unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop, adopting: i32) -> BehaviorsV1 {
+unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop, adopting: i32) {
     if !READY.load(Ordering::Acquire) || api_pointer.is_null() {
         abort("invalid Vector preparation");
     }
     let api = unsafe { &*api_pointer };
     ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });
-    let state = FAMILY.get_or_init(|| {
+    FAMILY.get_or_init(|| {
         let node = if adopting != 0 {
             unsafe { birnam_abi::namespace_import::import(imports, VECTOR_NODE_NAME.as_ptr().cast()) }
         } else {
@@ -109,10 +108,6 @@ unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi
             vector_vt: vector as usize,
         }
     });
-    BehaviorsV1 {
-        node: state.node_vt as Oop,
-        vector: state.vector_vt as Oop,
-    }
 }
 unsafe extern "C" fn finish_prototype(api_pointer: *mut IdApi) {
     if IDENTITY_ROOTS[2].load(Ordering::Acquire) == 0 {
@@ -676,7 +671,7 @@ unsafe extern "C" fn install(
     value1: Oop,
     value2: Oop,
     print_string: Oop,
-) -> Method {
+) {
     RUNTIME.get_or_init(|| Runtime {
         api: family().api,
         value1: value1 as usize,
@@ -719,32 +714,10 @@ unsafe extern "C" fn install(
         (api.method)(self::behavior(), intern(api, b"new\0"), vector_new);
         (api.method)(self::behavior(), intern(api, b"clone\0"), vector_new);
     }
-    vector_comma
 }
-static API: ApiV6 = ApiV6 {
-    version: 6,
-    byte_size: size_of::<ApiV6>(),
-    prepare: Some(prepare),
-    finish_prototype: Some(finish_prototype),
-    set_layout: Some(set_layout),
-    set_owner: Some(set_owner),
-    publish: Some(publish),
-    empty: Some(empty),
-    push: Some(push),
-    behavior: Some(behavior),
-    install: Some(install),
-    for_each: Some(vector_do),
-    inject: Some(vector_inject),
-};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
-}
-
-unsafe extern "C" fn native_comma(_: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
-    let Some([argument]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let Some(argument) = argument.as_object() else { return invalid_native(); };
-    Outcome::loaded(Operand::object(unsafe { vector_comma(receiver, &argument, 1) }))
 }
 
 use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
@@ -752,13 +725,6 @@ static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::
 fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
 unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
     if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    if let Some([request]) = unsafe { birnam_abi::borrowed_slice(args, count) } {
-        if request.as_bytes().and_then(|b| unsafe { birnam_abi::borrowed_bytes(b.pointer,b.length) }) == Some(b"comma".as_slice()) && NATIVE_PHASE.load(Ordering::Acquire) == 2
-            && unsafe { (*(family().api as *const IdApi)).vtable_vt == (*id).receiver } {
-            return Outcome::loaded(Operand::entry(native::NativeEntry::new(native_comma, ptr::null_mut())));
-        }
-        return invalid_native();
-    }
     let Some([api, presence, imports, exports, roots, layouts, integer, string, policy, parent]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
     let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(layouts)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), layouts.as_word()) else { return invalid_native(); };
     let api = api as *mut IdApi;
@@ -776,7 +742,7 @@ unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand
     if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 || unsafe { birnam_abi::collection_value::attach(policy as _) } != 1 { return invalid_native(); }
     if FAMILY.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
     match NATIVE_PHASE.compare_exchange(0, 1, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::word((&API as *const ApiV6).addr())), _ => return invalid_native(),
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop)), _ => return invalid_native(),
     }
     READY.store(true, Ordering::Release);
     unsafe {
@@ -791,7 +757,7 @@ unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand
     let print_string = unsafe { retained.keep(intern(&*api, b"printString\0")) };
     unsafe { install(api, value1, value2, print_string); publish(api, exports); }
     NATIVE_PHASE.store(2, std::sync::atomic::Ordering::Release);
-    Outcome::loaded(Operand::word((&API as *const ApiV6).addr()))
+    Outcome::loaded(Operand::object(IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop))
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

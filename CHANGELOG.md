@@ -8,6 +8,13 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Begin Design 84's removal of the parallel native module APIs. Delete twelve
+  ABI tables and their provider/attachment/host plumbing. Vector returns an
+  opaque prototype; Map, Range and String splitting use replaceable Vector
+  messages, including concatenation and iteration. Installation-only entries
+  return Unit. Remove the special Vector comma entry and update construction
+  documentation. The remaining value/Runtime/service tables are still pending.
+
 - Save and restore the compiled source-generation unit alongside portable image
   code. Normal image and baked startup no longer rebuild source-defined methods
   unconditionally; explicit rebuilds and v8 images missing that unit retain source

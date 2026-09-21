@@ -1,11 +1,15 @@
 //! Late String-to-Vector adapter, installed at Collection's original point.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::string_collection::ApiV1;
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use core::ptr;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+// Vector owns and roots this prototype for the module lifetime.
+static VECTOR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+unsafe fn send(receiver: Oop, selector: &core::ffi::CStr, args: &[Oop]) -> Oop {
+    let api = unsafe { api_ref() };
+    unsafe { (api.send)(receiver, (api.intern)(selector.as_ptr()), args.as_ptr(), args.len()) }
+}
 static READY: AtomicBool = AtomicBool::new(false);
 // Collection supplies its original selection, even when registration reenters
 // with another table before the first split installation. The host pins it.
@@ -46,8 +50,8 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
         return api.nilObj;
     };
     if unsafe { (api.vtableOf)(separator) } != unsafe { birnam_abi::string::behavior() } {
-        let result = unsafe { birnam_abi::vector::empty() };
-        return unsafe { birnam_abi::vector::push(result, self_object) };
+        let result = unsafe { send(VECTOR.load(Ordering::Acquire) as Oop, c"new", &[]) };
+        return unsafe { send(result, c"add:", &[self_object]) };
     }
     let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
@@ -55,10 +59,10 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
     let Some(separator) = (unsafe { string_copy(api, separator) }) else {
         return api.nilObj;
     };
-    let mut result = unsafe { birnam_abi::vector::empty() };
+    let mut result = unsafe { send(VECTOR.load(Ordering::Acquire) as Oop, c"new", &[]) };
     if separator.is_empty() {
         let item = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
-        return unsafe { birnam_abi::vector::push(result, item) };
+        return unsafe { send(result, c"add:", &[item]) };
     }
     let mut start = 0usize;
     let mut cursor = 0usize;
@@ -67,7 +71,7 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
             let item = unsafe {
                 (birnam_abi::string::make)(bytes[start..cursor].as_ptr(), cursor - start)
             };
-            result = unsafe { birnam_abi::vector::push(result, item) };
+            result = unsafe { send(result, c"add:", &[item]) };
             cursor += separator.len();
             start = cursor;
         } else {
@@ -75,7 +79,7 @@ unsafe extern "C" fn string_split(self_object: Oop, args: *const Oop, count: usi
         }
     }
     let item = unsafe { (birnam_abi::string::make)(bytes[start..].as_ptr(), bytes.len() - start) };
-    unsafe { birnam_abi::vector::push(result, item) }
+    unsafe { send(result, c"add:", &[item]) }
 }
 
 unsafe extern "C" fn install(registration: *mut IdApi, execution: *const IdApi) {
@@ -94,11 +98,6 @@ unsafe extern "C" fn install(registration: *mut IdApi, execution: *const IdApi) 
         );
     }
 }
-static API: ApiV1 = ApiV1 {
-    version: 1,
-    byte_size: size_of::<ApiV1>(),
-    install: Some(install),
-};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
@@ -110,19 +109,21 @@ fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
 unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
     if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
     let Some([api, string, vector, parent]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let (Some(api), Some(string), Some(vector)) = (api.as_word(), string.as_word(), vector.as_word()) else { return invalid_native(); };
+    let (Some(api), Some(string), Some(vector)) = (api.as_word(), string.as_word(), vector.as_object().filter(|p| !p.is_null())) else { return invalid_native(); };
     let api = api as *mut IdApi;
     let Some(parent) = parent.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
     if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
-        || unsafe { birnam_abi::string::attach(string as _) } != 1 || unsafe { birnam_abi::vector::attach(vector as _) } != 1 { return invalid_native(); }
+        || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
     if EXECUTION_API.get().is_some_and(|selected| *selected != api.addr()) { return invalid_native(); }
+    if VECTOR.load(Ordering::Acquire) != 0 && VECTOR.load(Ordering::Acquire) != vector.addr() { return invalid_native(); }
     match NATIVE_PHASE.compare_exchange(0, 1, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::word((&API as *const ApiV1).addr())), _ => return invalid_native(),
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::unit()), _ => return invalid_native(),
     }
+    VECTOR.store(vector.addr(), Ordering::Release);
     READY.store(true, Ordering::Release);
     unsafe { birnam_abi::set_vtable_parent(&*api, birnam_abi::string::behavior(), parent); install(api, api); }
     NATIVE_PHASE.store(2, std::sync::atomic::Ordering::Release);
-    Outcome::loaded(Operand::word((&API as *const ApiV1).addr()))
+    Outcome::loaded(Operand::unit())
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

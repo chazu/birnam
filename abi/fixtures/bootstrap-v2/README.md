@@ -44,8 +44,9 @@ construction is rejected. No Bootstrap-state borrow crosses a module callback.
 The loaded Bootstrap module owns the dependency order and arguments from roots
 through the complete native application stack. Stages `roots`, `lifetime`, `values`, `namespace`, `objectModel`,
 `string`, `integer`, `float`, `word`, `trace`, `collection`, `runtimeSupport`,
-`runtimeValues`, `runtime`, `errorValue`, `printing`, and `blockLoop` return Word
-pointers to completed descriptors. `control` installs Integer/Boolean control,
+`runtimeValues`, `runtime`, and `errorValue` return Word
+pointers to completed descriptors pending Design 84 migration. `printing` and
+`blockLoop` install their methods and return Unit. `control` installs Integer/Boolean control,
 Block loops and Object/Symbol printing and returns Unit.
 `error` returns its Object; `text` and `activate` return Unit. Each constructs its
 required predecessors first. Repeated successful requests return the same owners.
@@ -108,23 +109,24 @@ All inputs are complete before the entry is invoked.
 | Collection | F | Object(Collection behavior), published and rooted |
 | StringBuilder | F, Word(finalizers), Word(Integer), Word(String) | Object(StringBuilder prototype), with storage and methods installed |
 | Collection Value | Word(Integer), Word(Float), Word(String) | Word(value-policy API v1) |
-| Vector | F, Word(Integer), Word(String), Word(value policy), Object(Collection behavior) | Word(Vector API v6), with representation, methods and exports installed |
-| Vector | Bytes("comma") | NativeEntry for its exact concatenation implementation; available only after Vector construction |
-| Range | F, Word(Integer), Word(String), Word(Vector), Object(Collection behavior), NativeEntry(Vector concatenation) | Word(Range API v6), including Integer `to:` |
-| Map | F, Word(Integer), Word(String), Word(Vector), Word(value policy), Object(Collection behavior) | Word(Map API v6) |
-| String Collection | Word(Runtime API), Word(String), Word(Vector), Object(Collection behavior) | Word(String collection API v1), with String inheritance and splitting installed |
+| Vector | F, Word(Integer), Word(String), Word(value policy), Object(Collection behavior) | Object(Vector prototype), with representation, methods and exports installed |
+| Range | F, Word(Integer), Word(String), Object(Vector prototype), Object(Collection behavior) | Unit, including Integer `to:` installation |
+| Map | F, Word(Integer), Word(String), Object(Vector prototype), Word(value policy), Object(Collection behavior) | Unit |
+| String Collection | Word(Runtime API), Word(String), Object(Vector prototype), Object(Collection behavior) | Unit, with String inheritance and splitting installed |
 | Store | F, Word(vtable enumeration), Word(method observation), Word(trace hooks), Word(Integer) | Object(Store), with Cells, Globals, roots and observation installed |
 | Store | Bytes("compensation"), Word(Runtime API) | Word(existing compensation API v1), after Store construction |
 
 Bootstrap stages `collectionBase`, `stringBuilder` and `store` return their
-completed Objects. `valuePolicy`, `vector`, `range`, `map`, `stringCollection`
-and `storeCompensation` return the descriptors above. `collections` completes
+completed Objects. `vector` returns its opaque prototype. `range`, `map` and
+`stringCollection` return Unit. `valuePolicy` and `storeCompensation` still return
+descriptors pending Design 84 migration. `collections` completes
 StringBuilder, Vector, Range, Map and String's extension and returns Unit.
 Vector completes before Range/Map/String Collection; Store follows collections.
 Bootstrap releases temporary Object-result roots after the module has registered
 its own roots. Construction scopes retain newly allocated objects and selectors
-until those permanent roots are available. Range retains the complete typed
-Vector callable without repeating Vector's installation or discarding context.
+until those permanent roots are available. Range sends `,` to its constructed Vector. String splitting and Map/Range
+construction send `new` and `add:`; Map iteration sends `do:` and `inject:into:`.
+These consumers retain no Vector implementation entry or payload layout.
 
 The parser group uses the same native descriptor and completed value families:
 
@@ -217,8 +219,9 @@ same Runtime and System selection. Constructor selectors have temporary roots.
 `systemBase` returns System; `systemIo` completes all entries except Source
 Loader and returns Unit. It needs no collections, Store, parsers or compiler.
 `system` also completes Source Loader and returns System. Named stages
-`textView`, `systemGc`, `systemOutput`, `systemInput`, `environment`, `fileIo`,
-and `sourceLoader` return their completed descriptors; `nativeLoader` returns System.
+`textView` still returns a descriptor pending Design 84 migration. `systemGc`,
+`systemOutput`, `systemInput`, `environment`, `fileIo` and `sourceLoader` return
+Unit after installation; `nativeLoader` returns System.
 The host delegates to this sequence. Native Loader supplies only the explicit
 Object operands selected by its caller to Id; it has no aggregate initializer
 or provider/installer export. See [the language contract](../../native-loading.md).

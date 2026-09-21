@@ -721,19 +721,6 @@
       "operations": "Vector representation and operations"
     },
     {
-      "name": "vector.comma",
-      "library": "libbirnam_vector.dylib",
-      "entry": "birnam_native_module_v1",
-      "receiver": "Id",
-      "request": [
-        "comma"
-      ],
-      "predecessors": [
-        "vector"
-      ],
-      "operations": "Exact Vector concatenation entry with its context"
-    },
-    {
       "name": "range",
       "library": "libbirnam_range.dylib",
       "entry": "birnam_native_module_v1",
@@ -749,8 +736,7 @@
         "integer",
         "string",
         "vector",
-        "collection",
-        "vector.comma"
+        "collection"
       ],
       "operations": "Range operations and Integer to:"
     },

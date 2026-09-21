@@ -71,6 +71,49 @@ static Oop native_block(const char *selector,Method method,Oop captured) {
     api->method(vt,api->intern(selector),method);
     Oop block=keep(api->alloc(vt,sizeof(Oop))); *(Oop *)block=captured; return block;
 }
+/* Cross-module calls must observe replacement, including collection during it. */
+static size_t dependency_calls, dependency_arity;
+static Oop dependency_answer;
+static Oop dependency_probe(Oop receiver,const Oop *args,size_t count) {
+    (void)args; assert(count==dependency_arity); dependency_calls++;
+    api->gc_collect();
+    return dependency_answer ? dependency_answer : receiver;
+}
+static Oop replace_vector(const char *name,size_t arity,Oop answer) {
+    Oop type=named("VectorVt"), selector=api->intern(name);
+    Oop original=keep(send1(type,"lookup",selector));
+    dependency_calls=0; dependency_arity=arity; dependency_answer=answer;
+    api->method(type,selector,dependency_probe);
+    return original;
+}
+static void restore_vector(const char *name,Oop original) {
+    Oop args[]={original,api->intern(name)};
+    Oop restored=api->send(named("VectorVt"),api->intern("addMethod:as:"),args,2);
+    assert(send0(restored,"isError")!=api->true_obj);
+}
+static void check_collection_dispatch(Oop map,Oop range,Oop vector,Oop visitor,Oop marker) {
+    size_t saved=root_count;
+    Oop empty=keep(send0(named("Vector"),"new"));
+    Oop input=text("a,b"), separator=text(",");
+    Oop original=replace_vector("new",0,empty);
+    assert(number(send0(send1(input,"split:",separator),"size"))==2);
+    send0(map,"keys"); send0(range,"reversed");
+    assert(dependency_calls==3); restore_vector("new",original);
+    original=replace_vector("add:",1,NULL);
+    send1(input,"split:",separator); send0(map,"values"); send0(range,"reversed");
+    assert(dependency_calls==5); restore_vector("add:",original);
+    original=replace_vector(",",1,marker);
+    assert(send1(range,",",vector)==marker && dependency_calls==1);
+    restore_vector(",",original);
+    original=replace_vector("do:",1,api->nil_obj);
+    assert(send1(map,"do:",visitor)==map && dependency_calls==1);
+    restore_vector("do:",original);
+    original=replace_vector("inject:into:",2,marker);
+    Oop args[]={marker,visitor};
+    assert(api->send(map,api->intern("inject:into:"),args,2)==marker && dependency_calls==1);
+    restore_vector("inject:into:",original);
+    root_count=saved;
+}
 typedef struct {
     uint32_t version; size_t byte_size; void *context;
     void *(*resolve)(void *,const uint8_t *,size_t);
@@ -394,6 +437,7 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     Oop range=keep(send1(one,"to:",two));
     Oop joined=keep(send1(range,",",vector));
     printed(joined,"#[1 2 1 2]");
+    check_collection_dispatch(map,range,vector,visitor,expected);
     if(args[6].data.word==3) {
         assert(!namespace_import_v1(imports,"Store"));
         assert(!namespace_import_v1(imports,"Globals"));

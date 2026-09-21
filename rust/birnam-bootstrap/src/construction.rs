@@ -30,10 +30,10 @@ pub(super) struct Construction {
     collection_base: Option<birnam_abi::Oop>,
     string_builder: Option<birnam_abi::Oop>,
     value_policy: Option<*const birnam_abi::collection_value::ApiV1>,
-    vector: Option<*const birnam_abi::vector::ApiV6>,
-    range: Option<*const birnam_abi::range::ApiV6>,
-    map: Option<*const birnam_abi::map::ApiV6>,
-    string_collection: Option<*const birnam_abi::string_collection::ApiV1>,
+    vector: Option<birnam_abi::Oop>,
+    range: bool,
+    map: bool,
+    string_collection: bool,
     store: Option<birnam_abi::Oop>,
     artifact: Option<birnam_abi::Oop>,
     peg: Option<birnam_abi::Oop>,
@@ -47,11 +47,11 @@ pub(super) struct Construction {
     relational: Option<birnam_abi::Oop>,
     alien: Option<birnam_abi::Oop>,
     image: Option<birnam_abi::Oop>,
-    system_services: std::collections::BTreeMap<&'static str, usize>,
+    system_services: std::collections::BTreeMap<&'static str, Operand>,
 
     error_value: Option<*const birnam_abi::error_value::ApiV3>,
-    printing: Option<*const birnam_abi::printing::ApiV1>,
-    block_loop: Option<*const birnam_abi::block_loop::ApiV3>,
+    printing: bool,
+    block_loop: bool,
     id_protocol: Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: BootstrapRef,
@@ -89,9 +89,9 @@ impl Construction {
             string_builder: None,
             value_policy: None,
             vector: None,
-            range: None,
-            map: None,
-            string_collection: None,
+            range: false,
+            map: false,
+            string_collection: false,
             store: None,
             artifact: None,
             peg: None,
@@ -108,8 +108,8 @@ impl Construction {
             system_services: std::collections::BTreeMap::new(),
 
             error_value: None,
-            printing: None,
-            block_loop: None,
+            printing: false,
+            block_loop: false,
             runtime: None,
             support_result: None,
             values_result: None,
@@ -718,26 +718,24 @@ impl Construction {
         self.error_value = Some(api);
         Ok(api)
     }
-    fn initialize_printing(&mut self) -> Result<*const birnam_abi::printing::ApiV1, Outcome> {
-        if let Some(api) = self.printing { return Ok(api); }
+    fn initialize_printing(&mut self) -> Result<(), Outcome> {
+        if self.printing { return Ok(()); }
         let runtime = self.initialize_runtime()?;
         let value = self.load("libbirnam_printing.dylib", &[Operand::word(runtime.addr()), Operand::word(self.string.unwrap().addr())])?;
-        let api = value.as_word().ok_or_else(invalid)? as *const birnam_abi::printing::ApiV1;
-        if unsafe { birnam_abi::printing::attach(api) } != 1 { return Err(invalid()); }
-        self.printing = Some(api);
-        Ok(api)
+        if value.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.printing = true;
+        Ok(())
     }
-    fn initialize_block_loop(&mut self) -> Result<*const birnam_abi::block_loop::ApiV3, Outcome> {
-        if let Some(api) = self.block_loop { return Ok(api); }
+    fn initialize_block_loop(&mut self) -> Result<(), Outcome> {
+        if self.block_loop { return Ok(()); }
         let runtime = self.initialize_runtime()?;
         let error = self.initialize_error_value()?;
         let presence = self.runtime_service(b"namespacePresence")?;
         let imports = self.runtime_service(b"namespaceImport")?;
         let value = self.load("libbirnam_block_loop.dylib", &[Operand::word(runtime.addr()), presence, imports, Operand::word(error.addr())])?;
-        let api = value.as_word().ok_or_else(invalid)? as *const birnam_abi::block_loop::ApiV3;
-        if unsafe { birnam_abi::block_loop::attach(api) } != 1 { return Err(invalid()); }
-        self.block_loop = Some(api);
-        Ok(api)
+        if value.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.block_loop = true;
+        Ok(())
     }
     fn initialize_control(&mut self) -> Result<(), Outcome> {
         if self.control_ready { return Ok(()); }
@@ -795,50 +793,45 @@ impl Construction {
         self.value_policy = Some(api);
         Ok(api)
     }
-    fn initialize_vector(&mut self) -> Result<*const birnam_abi::vector::ApiV6, Outcome> {
+    fn initialize_vector(&mut self) -> Result<birnam_abi::Oop, Outcome> {
         if let Some(value) = self.vector { return Ok(value); }
         let parent = self.initialize_collection_base()?;
         let policy = self.initialize_value_policy()?;
         let mut args = self.family_arguments()?;
         args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(policy.addr()), Operand::object(parent)]);
         let result = self.load("libbirnam_vector.dylib", &args)?;
-        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::vector::ApiV6;
-        if unsafe { birnam_abi::vector::attach(api) } != 1 { return Err(invalid()); }
-        self.vector = Some(api);
-        Ok(api)
+        let object = self.published_object(result)?;
+        self.vector = Some(object);
+        Ok(object)
     }
-    fn initialize_range(&mut self) -> Result<*const birnam_abi::range::ApiV6, Outcome> {
-        if let Some(value) = self.range { return Ok(value); }
+    fn initialize_range(&mut self) -> Result<(), Outcome> {
+        if self.range { return Ok(()); }
         let vector = self.initialize_vector()?;
-        let comma = self.load("libbirnam_vector.dylib", &[Operand::bytes(b"comma")])?;
         let mut args = self.family_arguments()?;
-        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(vector.addr()), Operand::object(self.collection_base.unwrap()), comma]);
+        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::object(vector), Operand::object(self.collection_base.unwrap())]);
         let result = self.load("libbirnam_range.dylib", &args)?;
-        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::range::ApiV6;
-        if unsafe { birnam_abi::range::attach(api) } != 1 { return Err(invalid()); }
-        self.range = Some(api);
-        Ok(api)
+        if result.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.range = true;
+        Ok(())
     }
-    fn initialize_map(&mut self) -> Result<*const birnam_abi::map::ApiV6, Outcome> {
-        if let Some(value) = self.map { return Ok(value); }
+    fn initialize_map(&mut self) -> Result<(), Outcome> {
+        if self.map { return Ok(()); }
         let vector = self.initialize_vector()?;
         let mut args = self.family_arguments()?;
-        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(vector.addr()), Operand::word(self.value_policy.unwrap().addr()), Operand::object(self.collection_base.unwrap())]);
+        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::object(vector), Operand::word(self.value_policy.unwrap().addr()), Operand::object(self.collection_base.unwrap())]);
         let result = self.load("libbirnam_map.dylib", &args)?;
-        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::map::ApiV6;
-        if unsafe { birnam_abi::map::attach(api) } != 1 { return Err(invalid()); }
-        self.map = Some(api);
-        Ok(api)
+        if result.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.map = true;
+        Ok(())
     }
-    fn initialize_string_collection(&mut self) -> Result<*const birnam_abi::string_collection::ApiV1, Outcome> {
-        if let Some(value) = self.string_collection { return Ok(value); }
+    fn initialize_string_collection(&mut self) -> Result<(), Outcome> {
+        if self.string_collection { return Ok(()); }
         let vector = self.initialize_vector()?;
-        let args = [Operand::word(self.runtime.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(vector.addr()), Operand::object(self.collection_base.unwrap())];
+        let args = [Operand::word(self.runtime.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::object(vector), Operand::object(self.collection_base.unwrap())];
         let result = self.load("libbirnam_string_collection.dylib", &args)?;
-        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::string_collection::ApiV1;
-        if unsafe { birnam_abi::string_collection::attach(api) } != 1 { return Err(invalid()); }
-        self.string_collection = Some(api);
-        Ok(api)
+        if result.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.string_collection = true;
+        Ok(())
     }
     fn initialize_collections(&mut self) -> Result<(), Outcome> {
         self.initialize_range()?;
@@ -980,14 +973,14 @@ impl Construction {
         self.system = Some(system);
         Ok(system)
     }
-    fn initialize_system_service(&mut self, name: &'static str) -> Result<usize, Outcome> {
+    fn initialize_system_service(&mut self, name: &'static str) -> Result<Operand, Outcome> {
         if let Some(value) = self.system_services.get(name) { return Ok(*value); }
         if name == "textView" {
             self.initialize_string()?;
             let result = self.load("libbirnam_text_view.dylib", &[Operand::word(self.string.unwrap().addr())])?;
-            let pointer = result.as_word().filter(|p| *p != 0).ok_or_else(invalid)?;
-            self.system_services.insert(name, pointer);
-            return Ok(pointer);
+            result.as_word().filter(|p| *p != 0).ok_or_else(invalid)?;
+            self.system_services.insert(name, result);
+            return Ok(result);
         }
         let system = self.initialize_system_base()?;
         let mut args = vec![Operand::word(self.runtime.unwrap().addr()), Operand::word(self.roots.unwrap().addr()), Operand::object(system)];
@@ -997,7 +990,7 @@ impl Construction {
                 "libbirnam_system_gc.dylib"
             },
             "systemOutput" => {
-                args.push(Operand::word(self.initialize_system_service("textView")?));
+                args.push(self.initialize_system_service("textView")?);
                 "libbirnam_system_output.dylib"
             },
             "systemInput" | "environment" | "fileIo" | "sourceLoader" => {
@@ -1005,7 +998,7 @@ impl Construction {
                 args.extend([self.runtime_service(b"namespacePresence")?, self.runtime_service(b"namespaceImport")?]);
                 if name == "sourceLoader" { args.push(Operand::word(self.integer.unwrap().addr())); }
                 args.extend([Operand::word(self.string.unwrap().addr()), Operand::word(errors.addr())]);
-                if name != "systemInput" { args.push(Operand::word(self.initialize_system_service("textView")?)); }
+                if name != "systemInput" { args.push(self.initialize_system_service("textView")?); }
                 match name {
                     "systemInput" => "libbirnam_system_input.dylib",
                     "environment" => "libbirnam_environment.dylib",
@@ -1017,16 +1010,17 @@ impl Construction {
                 let errors = self.initialize_error_value()?;
                 args.extend([self.runtime_service(b"namespacePresence")?, self.runtime_service(b"namespaceImport")?,
                     Operand::word(self.integer.unwrap().addr()), Operand::word(errors.addr()),
-                    Operand::word(self.initialize_system_service("textView")?)]);
+                    self.initialize_system_service("textView")?]);
                 "libbirnam_native_loader.dylib"
             },
             _ => return Err(invalid()),
         };
         let result = self.load(library, &args)?;
-        let pointer = if name == "nativeLoader" { result.as_object().map(|p| p.addr()) } else { result.as_word() }
-            .filter(|p| *p != 0).ok_or_else(invalid)?;
-        self.system_services.insert(name, pointer);
-        Ok(pointer)
+        if name == "nativeLoader" {
+            result.as_object().filter(|p| !p.is_null()).ok_or_else(invalid)?;
+        } else if result.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.system_services.insert(name, result);
+        Ok(result)
     }
     fn initialize_system_io(&mut self) -> Result<(), Outcome> {
         for name in ["systemGc", "systemOutput", "systemInput", "environment", "fileIo", "nativeLoader"] {
@@ -1166,16 +1160,16 @@ impl Construction {
             b"nativeStack" => self.runtime_service(stage),
             b"namespaceNames" => self.runtime_service(stage),
             b"errorValue" => Ok(Operand::word(self.initialize_error_value()?.addr())),
-            b"printing" => Ok(Operand::word(self.initialize_printing()?.addr())),
-            b"blockLoop" => Ok(Operand::word(self.initialize_block_loop()?.addr())),
+            b"printing" => { self.initialize_printing()?; Ok(Operand::unit()) },
+            b"blockLoop" => { self.initialize_block_loop()?; Ok(Operand::unit()) },
             b"control" => { self.initialize_control()?; Ok(Operand::unit()) },
             b"collectionBase" => Ok(Operand::object(self.initialize_collection_base()?)),
             b"stringBuilder" => Ok(Operand::object(self.initialize_string_builder()?)),
             b"valuePolicy" => Ok(Operand::word(self.initialize_value_policy()?.addr())),
-            b"vector" => Ok(Operand::word(self.initialize_vector()?.addr())),
-            b"range" => Ok(Operand::word(self.initialize_range()?.addr())),
-            b"map" => Ok(Operand::word(self.initialize_map()?.addr())),
-            b"stringCollection" => Ok(Operand::word(self.initialize_string_collection()?.addr())),
+            b"vector" => Ok(Operand::object(self.initialize_vector()?)),
+            b"range" => { self.initialize_range()?; Ok(Operand::unit()) },
+            b"map" => { self.initialize_map()?; Ok(Operand::unit()) },
+            b"stringCollection" => { self.initialize_string_collection()?; Ok(Operand::unit()) },
             b"compilerAdmission" => Ok(Operand::word(self.initialize_compiler_admission()?.addr())),
             b"tcc" => Ok(Operand::object(self.initialize_tcc()?)),
             b"portable" => { self.initialize_portable()?; Ok(Operand::unit()) },
@@ -1192,14 +1186,14 @@ impl Construction {
                 self.initialize_system_service("sourceLoader")?;
                 Ok(Operand::object(self.system.unwrap()))
             },
-            b"textView" => Ok(Operand::word(self.initialize_system_service("textView")?)),
-            b"systemGc" => Ok(Operand::word(self.initialize_system_service("systemGc")?)),
-            b"systemOutput" => Ok(Operand::word(self.initialize_system_service("systemOutput")?)),
-            b"systemInput" => Ok(Operand::word(self.initialize_system_service("systemInput")?)),
-            b"environment" => Ok(Operand::word(self.initialize_system_service("environment")?)),
-            b"fileIo" => Ok(Operand::word(self.initialize_system_service("fileIo")?)),
-            b"nativeLoader" => Ok(Operand::object(self.initialize_system_service("nativeLoader")? as birnam_abi::Oop)),
-            b"sourceLoader" => Ok(Operand::word(self.initialize_system_service("sourceLoader")?)),
+            b"textView" => Ok(self.initialize_system_service("textView")?),
+            b"systemGc" => self.initialize_system_service("systemGc"),
+            b"systemOutput" => self.initialize_system_service("systemOutput"),
+            b"systemInput" => self.initialize_system_service("systemInput"),
+            b"environment" => self.initialize_system_service("environment"),
+            b"fileIo" => self.initialize_system_service("fileIo"),
+            b"nativeLoader" => self.initialize_system_service("nativeLoader"),
+            b"sourceLoader" => self.initialize_system_service("sourceLoader"),
             b"codegen" => Ok(Operand::object(self.initialize_codegen()?)),
             b"artifact" => Ok(Operand::object(self.initialize_artifact()?)),
             b"peg" => Ok(Operand::object(self.initialize_peg()?)),

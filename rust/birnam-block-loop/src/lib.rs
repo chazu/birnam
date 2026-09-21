@@ -1,6 +1,5 @@
 //! Native Block loops installed after Runtime's Block representation.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::block_loop::ApiV3;
 use birnam_abi::error_value::{is_error, numeric_error};
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::c_char;
@@ -101,11 +100,6 @@ unsafe extern "C" fn install(
         (api.method)(block_vt, while_false, block_while_false);
     }
 }
-static API: ApiV3 = ApiV3 {
-    version: 3,
-    byte_size: size_of::<ApiV3>(),
-    install: Some(install),
-};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
@@ -141,12 +135,12 @@ unsafe extern "C" fn initialize_native(id: *const birnam_abi::id_protocol::Proto
         || EXECUTION_API.get().is_some_and(|selected| *selected != (api.addr(), presence, imports))
         || !unsafe { birnam_abi::namespace_presence::valid(presence as _) && birnam_abi::namespace_import::valid(imports as _) }
         || unsafe { birnam_abi::error_value::attach(errors as _) } != 1 { return invalid(); }
-    if NATIVE_COMPLETE.load(Ordering::Acquire) { return Outcome::loaded(Operand::word((&API as *const ApiV3).addr())); }
+    if NATIVE_COMPLETE.load(Ordering::Acquire) { return Outcome::loaded(Operand::unit()); }
     if NATIVE_BUSY.swap(true, Ordering::AcqRel) { return invalid(); }
     unsafe { mount(api, presence as _, imports as _) };
     NATIVE_COMPLETE.store(true, Ordering::Release);
     NATIVE_BUSY.store(false, Ordering::Release);
-    Outcome::loaded(Operand::word((&API as *const ApiV3).addr()))
+    Outcome::loaded(Operand::unit())
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {

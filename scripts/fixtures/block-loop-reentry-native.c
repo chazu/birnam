@@ -45,9 +45,9 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
         native_args[1]=args[1];native_args[2]=args[2];native_args[3]=args[3];
         assert(native_loop->initialize(id,NULL,0).status==BIRNAM_INVALID_REQUEST);
         BirnamOutcome first=native_loop->initialize(id,native_args,4);
-        assert(first.status==BIRNAM_LOADED && first.value.kind==BIRNAM_WORD);
+        assert(first.status==BIRNAM_LOADED && first.value.kind==BIRNAM_UNIT);
         BirnamOutcome again=native_loop->initialize(id,native_args,4);
-        assert(again.status==BIRNAM_LOADED && again.value.data.word==first.value.data.word);
+        assert(again.status==BIRNAM_LOADED && again.value.kind==BIRNAM_UNIT);
     }
     assert(entries==1);
     Oop type=original->proto(namespace_import_v1(imports,"BlockVt"));

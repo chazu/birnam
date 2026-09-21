@@ -1,5 +1,11 @@
 # ABI evidence
 
+[Design 84](../docs/design/84-message-only-native-modules.md) supersedes the
+module-specific table architecture documented here. Remaining tables are
+migration debt. Vector now returns its opaque prototype; Range, Map, String
+Collection and the control/System installers return Unit. Their twelve Rust
+ABI tables and the captured Vector concatenation entry have been deleted.
+
 Production now enters through [the typed Id protocol](fixtures/id-protocol-v1/README.md),
 then constructs Bootstrap, roots, Lifetime, [Nil/Boolean base values](fixtures/base-values-v1/README.md),
 the [native Namespace owner](fixtures/namespace-owner-v1/README.md), and

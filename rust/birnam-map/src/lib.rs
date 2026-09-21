@@ -1,6 +1,5 @@
 //! Map canonical identities, HAMT storage, methods, traversal and printing.
 #![allow(clippy::missing_safety_doc)]
-use birnam_abi::map::{ApiV6, BehaviorsV1};
 use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
 use core::ffi::c_char;
 use core::ptr;
@@ -48,6 +47,12 @@ struct Family {
 static FAMILY: OnceLock<Family> = OnceLock::new();
 static ROOTS_REGISTERED: Once = Once::new();
 static IDENTITY_ROOTS: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
+// Vector owns and roots this prototype for the module lifetime.
+static VECTOR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+unsafe fn send(receiver: Oop, selector: &core::ffi::CStr, args: &[Oop]) -> Oop {
+    let api = unsafe { api_ref() };
+    unsafe { (api.send)(receiver, (api.intern)(selector.as_ptr()), args.as_ptr(), args.len()) }
+}
 static READY: AtomicBool = AtomicBool::new(false);
 fn abort(message: &str) -> ! {
     eprintln!("birnam Map: {message}");
@@ -71,13 +76,13 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
         }
     }
 }
-unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop, adopting: i32) -> BehaviorsV1 {
+unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop, adopting: i32) {
     if !READY.load(Ordering::Acquire) || api_pointer.is_null() {
         abort("invalid Map preparation");
     }
     let api = unsafe { &*api_pointer };
     ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });
-    let state = FAMILY.get_or_init(|| {
+    FAMILY.get_or_init(|| {
         let map = if adopting != 0 {
             unsafe { birnam_abi::namespace_import::import(imports, MAP_VT_NAME.as_ptr().cast()) }
         } else {
@@ -102,10 +107,6 @@ unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi
             map_node_vt: node as usize,
         }
     });
-    BehaviorsV1 {
-        map: state.map_vt as Oop,
-        node: state.map_node_vt as Oop,
-    }
 }
 unsafe extern "C" fn finish_prototype(api_pointer: *mut IdApi) {
     if IDENTITY_ROOTS[1].load(Ordering::Acquire) == 0 {
@@ -618,7 +619,7 @@ unsafe fn map_collect_values(node: Oop, mut result: Oop, keys: bool) -> Oop {
             } else {
                 unsafe { self::slot(node, index + 1) }
             };
-            result = unsafe { birnam_abi::vector::push(result, item) };
+            result = unsafe { send(result, c"add:", &[item]) };
         }
     }
     result
@@ -762,7 +763,7 @@ unsafe extern "C" fn map_keys(self_object: Oop, _args: *const Oop, count: usize)
     if count != 0 {
         return api.nilObj;
     }
-    let result = unsafe { birnam_abi::vector::empty() };
+    let result = unsafe { send(VECTOR.load(Ordering::Acquire) as Oop, c"new", &[]) };
     unsafe { map_collect_values(self::root(self_object), result, true) }
 }
 
@@ -771,7 +772,7 @@ unsafe extern "C" fn map_values(self_object: Oop, _args: *const Oop, count: usiz
     if count != 0 {
         return api.nilObj;
     }
-    let result = unsafe { birnam_abi::vector::empty() };
+    let result = unsafe { send(VECTOR.load(Ordering::Acquire) as Oop, c"new", &[]) };
     unsafe { map_collect_values(self::root(self_object), result, false) }
 }
 
@@ -780,7 +781,7 @@ unsafe extern "C" fn map_do(self_object: Oop, args: *const Oop, count: usize) ->
         return unsafe { api_ref() }.nilObj;
     }
     let values = unsafe { map_values(self_object, ptr::null(), 0) };
-    let result = unsafe { birnam_abi::vector::for_each(values, args, count) };
+    let result = unsafe { send(values, c"do:", borrowed_oop_args(args, count).unwrap()) };
     if result.is_null() {
         return result;
     }
@@ -792,7 +793,7 @@ unsafe extern "C" fn map_inject(self_object: Oop, args: *const Oop, count: usize
         return unsafe { api_ref() }.nilObj;
     }
     let values = unsafe { map_values(self_object, ptr::null(), 0) };
-    unsafe { birnam_abi::vector::inject(values, args, count) }
+    unsafe { send(values, c"inject:into:", borrowed_oop_args(args, count).unwrap()) }
 }
 
 unsafe extern "C" fn map_keys_and_values_do(
@@ -866,15 +867,6 @@ unsafe extern "C" fn install(api_pointer: *mut IdApi, value: Oop, value2: Oop, p
         );
     }
 }
-static API: ApiV6 = ApiV6 {
-    version: 6,
-    byte_size: size_of::<ApiV6>(),
-    prepare: Some(prepare),
-    finish_prototype: Some(finish_prototype),
-    set_layout: Some(set_layout),
-    publish: Some(publish),
-    install: Some(install),
-};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
@@ -897,13 +889,15 @@ unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand
         || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports)
             && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots)
             && birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
-    let (Some(integer), Some(string), Some(vector), Some(policy)) = (integer.as_word(), string.as_word(), vector.as_word(), policy.as_word()) else { return invalid_native(); };
+    let (Some(integer), Some(string), Some(vector), Some(policy)) = (integer.as_word(), string.as_word(), vector.as_object().filter(|p| !p.is_null()), policy.as_word()) else { return invalid_native(); };
     let Some(parent) = parent.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
-    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 || unsafe { birnam_abi::vector::attach(vector as _) } != 1 || unsafe { birnam_abi::collection_value::attach(policy as _) } != 1 { return invalid_native(); }
+    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 || unsafe { birnam_abi::collection_value::attach(policy as _) } != 1 { return invalid_native(); }
     if FAMILY.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
+    if VECTOR.load(Ordering::Acquire) != 0 && VECTOR.load(Ordering::Acquire) != vector.addr() { return invalid_native(); }
     match NATIVE_PHASE.compare_exchange(0, 1, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::word((&API as *const ApiV6).addr())), _ => return invalid_native(),
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::unit()), _ => return invalid_native(),
     }
+    VECTOR.store(vector.addr(), Ordering::Release);
     READY.store(true, Ordering::Release);
     unsafe { prepare(api, imports, (*roots).api, parent, 0); finish_prototype(api); set_layout(api, layouts); }
     let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
@@ -912,7 +906,7 @@ unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand
     let print_string = unsafe { retained.keep(intern(&*api, b"printString\0")) };
     unsafe { install(api, value, value2, print_string); publish(api, exports); }
     NATIVE_PHASE.store(2, std::sync::atomic::Ordering::Release);
-    Outcome::loaded(Operand::word((&API as *const ApiV6).addr()))
+    Outcome::loaded(Operand::unit())
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

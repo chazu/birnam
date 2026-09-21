@@ -1,8 +1,15 @@
-# Vector v6
+# Vector: retired native table
 
-Version 6 preserves [v5](vector-v5.md) except for the explicit
-[Payload Layout v1](payload-layout-v1.md) capability. Its layout stage now receives `(IdApi *, const PayloadLayoutV1 *)` and uses the supplied capability at the existing layout assignment points. All other stages retain their ordering and signatures.
+The versioned Vector function table, dependency attachment registry and installer
+wrapper have been deleted from production under
+[Design 84](../docs/design/84-message-only-native-modules.md). Do not implement or
+consume this former ABI. Historical C mirrors remain only for unmigrated legacy
+fixtures; they are not supported production interfaces.
 
-See [81BL](../docs/design/81bl-production-payload-layout.md) for the migration.
-The [independent C header](fixtures/vector-v6/vector_v6.h)
-records the current descriptor. Consumers must rebuild; image encoding is unchanged.
+The common native initializer returns the opaque Vector prototype after installing
+its methods and exports. Consumers send `new`, `add:`, `do:`, `inject:into:` and
+`,` as needed. No consumer receives a Vector storage layout or a concatenation
+function pointer. Replacement is observed on subsequent sends.
+
+See [production construction](fixtures/bootstrap-v2/README.md) for the current
+initializer operands. Remaining predecessor tables there are migration debt.

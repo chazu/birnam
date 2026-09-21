@@ -1,10 +1,9 @@
 //! System's existing source loader, constructed through Bootstrap (81AV).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::error_value::{is_error, numeric_error};
-use birnam_abi::source_loader::ApiV3;
 use birnam_abi::text_view::{printable_string, string_bytes};
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use core::ffi::{c_char, c_void};
+use core::ffi::c_char;
 use core::ptr;
 use std::fs::File;
 use std::io::Read;
@@ -172,11 +171,6 @@ unsafe extern "C" fn install(
         (api.method)(system_vt, load, system_load);
     }
 }
-static API: ApiV3 = ApiV3 {
-    version: 3,
-    byte_size: size_of::<ApiV3>(),
-    install: Some(install),
-};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
@@ -217,7 +211,7 @@ unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand
     if codegen.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
     if NATIVE_SELECTION.get().is_some_and(|selected| *selected != (api.addr(), system.addr())) { return invalid_native(); }
     match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::word((&API as *const _ as *const c_void).addr())), _ => return invalid_native(),
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::unit()), _ => return invalid_native(),
     }
     assert!(NATIVE_SELECTION.set((api.addr(), system.addr())).is_ok());
     READY.store(true, Ordering::Release);
@@ -226,7 +220,7 @@ unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand
     let s0 = unsafe { retained.keep(((*api).intern)(c"load:".as_ptr())) };
     unsafe { install(api, api, presence, imports, system_vt, s0) };
     NATIVE_PHASE.store(2, Ordering::Release);
-    Outcome::loaded(Operand::word((&API as *const _ as *const c_void).addr()))
+    Outcome::loaded(Operand::unit())
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

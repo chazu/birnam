@@ -65,7 +65,7 @@ Examples of intended production use:
 
 | Consumer | Receiver and message | Remove |
 |---|---|---|
-| String splitting | Vector prototype `new`, result `append:` with each element | Vector empty/push table |
+| String splitting | Vector prototype `new`, result `add:` with each element | Vector empty/push table |
 | Map iteration | Temporary Vector `do:` or `inject:into:` with caller's blocks | Direct Vector method callbacks |
 | Range concatenation | Constructed Vector `,` with the other collection | Captured Vector comma implementation |
 | Numeric consumers | Integer object/family messages for construction and native conversion | IntegerApi and shared storage codec |
@@ -171,3 +171,25 @@ Use targeted debug builds and meaningful installed behavior tests. Release
 validation and forced-source worker readiness timing are not required. Report
 which criteria remain open; do not claim success based on crate counts or a
 passing suite that only validates the architecture being removed.
+
+## Implementation checkpoint — 2026-09-21
+
+The first production change deletes all twelve tables in package 1, their
+attachment code and host fields. Vector returns its opaque prototype. Range,
+Map and String Collection use live `new`, `add:`, `,`, `do:` and `inject:into:`
+sends; the special comma initializer and captured native entry are gone.
+Installation-only results are Unit. The construction manifest and current ABI
+pages reflect this change. Legacy C table fixtures still await deletion/migration.
+
+Validation: workspace `cargo check --offline --locked --workspace`; five targeted
+Vector/System Output unit tests; debug installation at
+`/tmp/birnam-84-message-modules`; `scripts/id-native-loading-smoke.py` on that
+installation. The native suite includes 43 Runtime service cases, construction
+prefixes, full native application initialization and a new test replacing all
+five Vector methods through actual Map/Range/String consumers, with GC inside
+the replacements. Logs: `/tmp/birnam84-check.log`, `/tmp/birnam84-unit.log`,
+`/tmp/birnam84-install.log`, `/tmp/birnam84-native.log`.
+
+This completes the first package's production edits, not Design 84. The old
+Runtime message bridge and value, collection-policy, lifetime, collector and
+compiler tables remain; subsequent work must remove them with their consumers.
