@@ -1,4 +1,54 @@
-# Lazy Error value policy v3
+# Error construction and legacy value policy v3
+
+## Production Error construction
+
+Bootstrap now loads `libbirnam_id_error.dylib:birnam_native_module_v1` before
+Integer, Float, Block or Runtime. This is the installed form of `birnam-error`;
+its [export manifest](rust-error-dylib-v1.json) records both filenames.
+The entry receives Id and five Word operands: the completed root registry,
+Lifetime, base Nil/Boolean values, Namespace and String operations descriptors.
+It returns the `Error` factory as an Object operand, with no new descriptor.
+
+| Receiver | Selector and operands | Result |
+|---|---|---|
+| Error factory | `kind:message:` Object kind, Object message | Error containing those references |
+| Error factory | `kind:` Object kind | Error whose message is nil |
+| Error factory | `message:` Object message | Error whose kind is `#error` |
+| Error instance | `kind` / `message` | Stored reference |
+| Object / Error instance | `isError` | false / true |
+| Error instance | Unbound message | Same Error, propagating the failure |
+| Object | Unbound message | Error kind `#doesNotUnderstand`, with a String naming the missing selector |
+
+The native methods have no Integer, Float, compiler or Execution dependency.
+Malformed native operand counts/kinds return InvalidRequest. Construction roots
+kind/message across the current Id allocation message, checks the allocation's
+actual size and behavior, and writes the existing two-Oop payload. Readers check
+allocation bounds and reference membership before returning fields, so a copied
+method or changed behavior cannot expose a native payload word as an object.
+Explicit native null Object arguments and uninitialized null fields denote nil.
+
+Lifetime receives the Oop payload layout. Error registers its own canonical
+roots and publishes `Error`, `ErrorVt` and `ErrorFactoryVt` into the existing
+Namespace. Bootstrap then releases its temporary result root. Error fields and
+String buffers retain their ordinary collection/finalization behavior. Runtime
+preserves the already installed Object missing-message handler; late Error
+mounting preserves identities, layouts and exact method/context bindings. The
+legacy `id_init` path still uses the previous constructor. Printing and Block
+control extensions continue to mount later with their dependencies.
+
+The independent C fixture `scripts/fixtures/early-error-native.c` runs against
+the actual thirteen-library prefix, then the same Runtime after adoption. It
+checks construction, recognition, propagation, missing-message semantics,
+malformed operands, payload safety, live factory replacement and precise GC of
+an Error's kind and String message. No alternate Error implementation is used.
+
+## Legacy Error Value v3 adapter
+
+`birnam-error-value` remains the stateless adapter for consumers using the old
+IdApi calling convention. It calls the real Error factory constructed above;
+its provider and per-call dispatch contract remain unchanged. The lazy absence
+behavior below still applies if a caller removes/replaces Namespace bindings or
+uses legacy construction. This adapter does not own Error representation.
 
 Design [81BD](../docs/design/81bd-production-error-import-handoff.md) moves the
 shared consumer's import selection to a per-call

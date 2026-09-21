@@ -549,7 +549,7 @@ entered images, including failed initializers with partial publication.
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
 slot is retargeted. Eleven upper factory preparations still run in the host
-after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace/Object-Model/String initialization and feed the aggregate Runtime constructor. That
+after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace/Object-Model/String/Error initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
 
 The first upper native entry is now
@@ -700,9 +700,28 @@ already initialized Lifetime records. No storage-map borrow spans a send.
 The completed String table is adopted by the upper consumers; production skips
 String's legacy preparation. Late String mounting preserves early names, storage
 and clone/new bindings while installing methods whose number/text dependencies
-now exist. This completes step 5's production byte-storage construction. Error,
-integer-only arithmetic and later extensions still need their own completed
-native construction entries; the aggregate Runtime remains in Id.
+now exist. This completes step 5's production byte-storage construction. Integer-only
+arithmetic and later extensions still need their own completed native
+construction entries; the aggregate Runtime remains in Id.
+
+`InitialFloor::initialize_error` now loads the actual installed Error library
+(`libbirnam_id_error.dylib`) with completed roots, Lifetime, base values,
+Namespace and String. Its [native entry](../../abi/error-value-v3.md#production-error-construction)
+returns the Error factory as an Object, publishes the existing three Error names
+and registers its own roots. Bootstrap releases its temporary result root once
+that publication is complete. No descriptor or new library is added.
+
+The existing factory selectors, kind/message access, recognition, Error
+propagation and Object missing-message construction are all usable before
+numbers, Block or Runtime. Kind/message references are rooted across allocation;
+payload writes validate the returned allocation and readers validate stored
+references. Lifetime owns the existing two-Oop layout. Runtime preserves an
+already installed Object DNU, and late Error mounting preserves the native
+factory, layout and method/context identities, including early replacements.
+The old stateless Error Value v3 adapter remains for legacy IdApi consumers; it
+owns no representation and now sees a completed factory before numbers mount.
+This completes step 6's native Error construction. The Integer/Float split,
+collector activation and remaining upper/package separation are still open.
 
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
@@ -847,6 +866,18 @@ Current debug evidence:
   String library exports exactly its seven manifest symbols and links only the
   platform library. The existing String ABI and private Runtime v5 bridge remain
   unchanged; no new factory preparation or production library was introduced.
+- The thirteen-library prefix constructs Error before Integer/Float/Block.
+  Independent C verifies the three existing factory forms, predicates, kind and
+  message access, propagation, missing-message construction, malformed operands,
+  and reader/allocation safety. An Error retained by one root keeps its kind and
+  String message alive after Runtime adoption. Releasing that root reclaims all
+  three and releases the String buffer. Changed payload-layout records, native
+  factory replacements and Object DNU entries survive adoption and late Error
+  mounting. The same fixture repeats construction/reclamation with Runtime
+  active. Error's source, compiled, saved-image and baked-image workloads pass,
+  including fresh factory replacement and exact recognition. Id's 308 and the
+  host's 86 debug units pass; the installed Error exports match its five-symbol manifest and
+  link only the platform library. The private Runtime v5 bridge is unchanged.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.

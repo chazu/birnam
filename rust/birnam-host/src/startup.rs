@@ -3157,7 +3157,7 @@ pub fn begin_id(
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3172,6 +3172,7 @@ pub struct InitialFloor {
     namespace: Option<*const birnam_abi::namespace_owner::OwnedV1>,
     model: Option<*const birnam_abi::object_model::OwnedV1>,
     string: Option<*mut birnam_abi::string::StringApiV1>,
+    error: Option<birnam_abi::Oop>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
@@ -3290,10 +3291,29 @@ impl InitialFloor {
         self.string = Some(string);
         Ok(self.string)
     }
+    /// Construct Error values and propagation before numbers or Runtime.
+    pub fn initialize_error(&mut self) -> Result<Option<birnam_abi::Oop>, FloorError> {
+        if self.runtime_init.is_none() || self.error.is_some() { return Ok(self.error); }
+        self.initialize_string()?;
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let path = self.source_path.with_file_name("libbirnam_id_error.dylib");
+        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize),
+            Operand::word(self.base_values.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize),
+            Operand::word(self.string.unwrap() as usize)];
+        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        let error = answer.value.as_object().filter(|value| !value.is_null())
+            .ok_or(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 })?;
+        // Error has published its own roots and Namespace names. Its factory
+        // no longer needs Bootstrap's temporary initialization-result root.
+        if let Some(bootstrap) = &self.bootstrap { assert_eq!(unsafe { bootstrap.release(answer.value) }, 1); }
+        self.error = Some(error);
+        Ok(self.error)
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
-        self.initialize_string()?;
+        self.initialize_error()?;
         let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");

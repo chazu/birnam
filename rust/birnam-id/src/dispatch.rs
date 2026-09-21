@@ -331,6 +331,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
     heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
     let mut vtables = Behaviors::adopt_with(dictionaries, lifetime, model.clone());
     vtables.set_legacy_lookup(lookup);
+    let has_object_dnu = vtables.native_direct_lookup(object_vt, does_not_understand).is_some();
 
     let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
     let environment = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
@@ -421,6 +422,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
             ),
         ] {
             if values.is_some() && selector == selectors.identical { continue; }
+            if has_object_dnu && selector == selectors.does_not_understand { continue; }
             let arguments = [selector, MethodAddress::from_method(method).as_oop()];
             let installed = runtime.send_slice(vtable, selectors.add_method, &arguments);
             boundary::require_invariant(

@@ -40,6 +40,8 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
         "scripts/fixtures/early-object-model-native.c", "-o", str(scratch / "early-object-model.dylib"))
     run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
         "scripts/fixtures/early-string-native.c", "-o", str(scratch / "early-string.dylib"))
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/early-error-native.c", "-o", str(scratch / "early-error.dylib"))
     for mode in range(2):
         run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib", f"-DMODE={mode}",
             "scripts/fixtures/bootstrap-result-native.c", "-o", str(scratch / f"bootstrap-result-{mode}.dylib"))

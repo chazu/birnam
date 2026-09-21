@@ -1,10 +1,11 @@
 # ABI evidence
 
 Production now enters through [the typed Id protocol](fixtures/id-protocol-v1/README.md),
-then constructs Bootstrap, roots, Lifetime, [Nil/Boolean base values](fixtures/base-values-v1/README.md)
+then constructs Bootstrap, roots, Lifetime, [Nil/Boolean base values](fixtures/base-values-v1/README.md),
 the [native Namespace owner](fixtures/namespace-owner-v1/README.md), and
 [Object Model ownership/enumeration](fixtures/object-model-owner-v1/README.md),
-followed by [String storage](fixtures/string-v1/README.md).
+followed by [String storage](fixtures/string-v1/README.md) and
+[Error construction](error-value-v3.md#production-error-construction).
 The remaining aggregate Runtime and module interfaces below are migration
 boundaries. Earlier descriptions of factory preparation before `id_init` apply
 to the legacy path; current startup loads the real Id first. See

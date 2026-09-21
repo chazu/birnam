@@ -203,6 +203,21 @@ fn main() {
     let string_check = intern(&id, b"earlyStringCheck");
     let string_release = intern(&id, b"releaseEarlyStrings");
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 12);
+    symlink(prefix.join("lib/libbirnam_id_error.dylib"), isolated.join("libbirnam_id_error.dylib")).unwrap();
+    let error_path = isolated.join("libbirnam_id_error.dylib");
+    assert_eq!(unsafe { initial.load_native(error_path.as_os_str().as_bytes(), &[]) }.status, native::INVALID_REQUEST);
+    let error = initial.initialize_error().unwrap().unwrap();
+    assert_eq!(initial.initialize_error().unwrap(), Some(error));
+    let repeated = [Operand::word(roots as usize), Operand::word(records as usize), Operand::word(values as usize), Operand::word(namespace as usize), Operand::word(string as usize)];
+    assert_eq!(unsafe { initial.load_native(error_path.as_os_str().as_bytes(), &repeated) }.status, native::INVALID_REQUEST);
+    let error_fixture = scratch.join("early-error.dylib");
+    let error_arguments = [Operand::word(roots as usize), Operand::word(records as usize), Operand::word(namespace as usize), Operand::word(values as usize), Operand::word(string as usize), Operand::object(error), Operand::word(0)];
+    let result = unsafe { initial.load_native(error_fixture.as_os_str().as_bytes(), &error_arguments) };
+    assert_eq!(result.status, native::LOADED);
+    let error_identity = result.value.as_word().unwrap();
+    let error_check = intern(&id, b"earlyErrorCheck");
+    let error_release = intern(&id, b"releaseEarlyError");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 13);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -274,6 +289,20 @@ fn main() {
     unsafe { (runtime.stack.api().gcCollect)(); }
     assert_eq!(send(&id, string_check, &[]).value.kind(), native::UNIT);
     println!("String owns bytes before Error/numbers; live allocation, clone and finalizers survive adoption and release");
+    assert_eq!(send(&id, error_check, &[]).value.as_word(), Some(error_identity));
+    assert_eq!(send(&id, error_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, error_check, &[]).value.kind(), native::UNIT);
+    let mut later_arguments = error_arguments; later_arguments[6] = Operand::word(1);
+    let later = unsafe { runtime.stack.load_native(error_fixture.as_os_str().as_bytes(), &later_arguments) };
+    assert_eq!(later.status, native::LOADED);
+    let later_identity = later.value.as_word().unwrap(); assert_ne!(later_identity, error_identity);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, error_check, &[]).value.as_word(), Some(later_identity));
+    assert_eq!(send(&id, error_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, error_check, &[]).value.kind(), native::UNIT);
+    println!("Error constructs and propagates before numbers; factory replacements, payload roots and DNU survive adoption/GC");
     assert_eq!(send(&id, root_identity, &[]).value.as_word(), Some(early_identity));
     assert_eq!(send(&id, release_root, &[]).value.as_word(), Some(1));
     unsafe { (runtime.stack.api().gcCollect)(); }

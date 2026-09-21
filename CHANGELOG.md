@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Construct production Error through Id before Integer, Float, Block or Runtime
+  (Design 83). Keep the existing two-Oop representation and factory selectors,
+  with working recognition, propagation and missing-message errors using early
+  String storage. Preserve native methods, layouts and replacements through
+  Runtime adoption and late mounting; transfer Bootstrap's result root to the
+  published owner. Check payload reads/writes and cover early construction,
+  precise GC, source/compiled execution and saved/baked images.
 - Construct production String storage through Id before Error, numbers or Runtime
   (Design 83). Own, copy and read bytes through native operands using the existing
   String representation and Lifetime finalizers; adopt the same storage in upper
