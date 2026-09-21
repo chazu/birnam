@@ -8,6 +8,8 @@ pub(super) struct Binding {
     pointer: *mut IntegerApiV1,
     admitted: IntegerApiV1,
     storage: IntegerStorageV1,
+    native: Option<birnam_abi::integer_native::ConstructionV1>,
+    namespace_lookup: Option<NativeEntry>,
 }
 
 #[cfg(test)]
@@ -52,10 +54,23 @@ impl Runtime {
         {
             return false;
         }
+        let native = crate::loader::integer_native_construction(&ops);
+        let namespace_lookup = native.and_then(|facts| {
+            let (owner, entry) = {
+                let state = unsafe { &*self.state.get() };
+                let owner = state.environment.native_owner()?;
+                if facts.namespace != owner.receiver { return None; }
+                let behavior = state.heap.vtable_of(owner.receiver)?;
+                (owner, state.vtables.native_lookup(behavior, facts.binding)?)
+            };
+            crate::loader::namespace_lookup_declared(entry, &owner, &facts.id).then_some(entry)
+        });
         self.integer.set(Some(Binding {
             pointer,
             admitted: ops,
             storage,
+            native,
+            namespace_lookup,
         }));
         true
     }
@@ -90,9 +105,43 @@ impl Runtime {
             return false;
         };
         let current = unsafe { binding.pointer.read() };
-        current.same_contract(&binding.admitted)
-            && unsafe { (current.allocation_context)(current.context) }
-                == crate::public_api::canonical_allocator()
+        if !current.same_contract(&binding.admitted) { return false; }
+        let Some(facts) = binding.native else {
+            return unsafe { (current.allocation_context)(current.context) }
+                == crate::public_api::canonical_allocator();
+        };
+        if !self.guarded_default_lookup_eligible(current.behavior) { return false; }
+        let state = unsafe { &*self.state.get() };
+        let Some(id) = state.id_protocol.as_ref() else { return false; };
+        let Some(roots) = state.root_registry.native_owner() else { return false; };
+        facts.id.same_contract(&id.protocol)
+            && facts.roots.context == roots.context
+            && facts.roots.retain.map(|f| f as usize) == roots.retain.map(|f| f as usize)
+            && facts.roots.release.map(|f| f as usize) == roots.release.map(|f| f as usize)
+            && facts.allocation_size == NativeEntry::new(crate::native_id::objects::allocation_size, id.protocol.context)
+            && facts.behavior_of == NativeEntry::new(crate::native_id::objects::behavior_of, id.protocol.context)
+            && state.symbols.existing(b"allocate") == Some(facts.allocate)
+            && state.vtables.native_lookup(state.globals.vtable_vt, facts.allocate)
+                == Some(NativeEntry::new(super::id_protocol::allocate, core::ptr::from_ref(self).cast_mut().cast()))
+    }
+
+    pub(crate) fn integer_native_numeric_current(&self) -> bool {
+        if !self.integer_context_current() { return false; }
+        let binding = self.integer_binding();
+        let Some(facts) = binding.native else { return false; };
+        let Some(expected) = binding.namespace_lookup else { return false; };
+        let state = unsafe { &*self.state.get() };
+        let Some(behavior) = state.heap.vtable_of(facts.namespace) else { return false; };
+        if !self.guarded_default_lookup_eligible(behavior) { return false; }
+        let Some(symbol_bytes) = state.symbols.existing(b"symbolBytesOf:") else { return false; };
+        state.environment.native_receiver() == Some(facts.namespace)
+            && state.symbols.existing(b"bindingAt:") == Some(facts.binding)
+            && state.symbols.existing(b"ErrorVt") == Some(facts.error_behavior_name)
+            && state.vtables.native_lookup(behavior, facts.binding) == Some(expected)
+            && state.vtables.native_lookup(facts.id.receiver, facts.id.intern)
+                == Some(NativeEntry::new(super::id_protocol::intern, core::ptr::from_ref(self).cast_mut().cast()))
+            && state.vtables.native_lookup(facts.id.receiver, symbol_bytes)
+                == Some(NativeEntry::new(crate::native_id::objects::symbol_bytes, facts.id.context))
     }
     #[cfg(feature = "ffi-test-hooks")]
     pub(crate) fn integer_live_pointer(&self) -> *mut IntegerApiV1 {

@@ -60,42 +60,74 @@ pub(super) fn resident_address_declaration(
     Some((image, declaration))
 }
 
+pub(crate) fn integer_native_construction(ops: &birnam_abi::integer::IntegerApiV1)
+    -> Option<birnam_abi::integer_native::ConstructionV1>
+{
+    let (_pin, declaration) = resident_address_declaration(ops.make as *const c_void,
+        c"birnam_integer_construction_v1")?;
+    let query: birnam_abi::integer_native::ConstructionQueryV1 = unsafe { core::mem::transmute(declaration) };
+    let mut facts = core::mem::MaybeUninit::uninit();
+    if unsafe { query(ops, facts.as_mut_ptr()) } != 1 { return None; }
+    // The Integer dependency contract retains the constructor, context and
+    // declared dependencies for the module lifetime; only copied facts escape.
+    Some(unsafe { facts.assume_init() })
+}
+
+pub(crate) fn namespace_lookup_declared(entry: crate::abi::id_protocol::NativeEntry,
+    owner: &birnam_abi::namespace_owner::OwnedV1, id: &birnam_abi::id_protocol::Protocol) -> bool
+{
+    let Some(method) = entry.method else { return false; };
+    let Some((_pin, declaration)) = resident_address_declaration(method as *const c_void,
+        c"birnam_namespace_lookup_semantics_v1") else { return false; };
+    let query: unsafe extern "C" fn(crate::abi::id_protocol::NativeEntry,
+        *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::id_protocol::Protocol) -> i32
+        = unsafe { core::mem::transmute(declaration) };
+    unsafe { query(entry, owner, id) == 1 }
+}
+
+enum Query {
+    Legacy(unsafe extern "C" fn(*const c_void, crate::abi::Oop, *const usize) -> u32),
+    Native(birnam_abi::integer_native::NumericQueryV5),
+}
 pub(crate) struct NumericSummary {
-    method: *const c_void,
-    query: unsafe extern "C" fn(*const c_void, crate::abi::Oop, *const usize) -> u32,
+    entry: crate::abi::id_protocol::NativeEntry,
+    query: Query,
     _image: ImagePin,
 }
 
 impl NumericSummary {
-    /// The caller already owns a live Method through ordinary dispatch. Query
-    /// only its resident image; never load a different file to obtain a fact.
-    pub(crate) fn discover(
-        method: crate::abi::Method,
-        runtime: &crate::runtime::Runtime,
-    ) -> Option<Self> {
-        let address = method as *const c_void;
-        let (image, declaration) =
-            resident_declaration(method, c"birnam_native_numeric_semantics_v4")?;
-        // A native image exporting this optional symbol promises the versioned
-        // pure query contract, just as it promises its Method/TraceHook ABI.
-        let query: unsafe extern "C" fn(*const c_void, crate::abi::Oop, *const usize) -> u32 =
-            unsafe { core::mem::transmute(declaration) };
-        let summary = Self {
-            method: address,
-            query,
-            _image: image,
+    #[cfg(test)]
+    pub(crate) fn discover(method: crate::abi::Method, runtime: &crate::runtime::Runtime) -> Option<Self> {
+        Self::discover_native(crate::legacy_method::encode(method, false), runtime)
+    }
+    pub(crate) fn discover_native(entry: crate::abi::id_protocol::NativeEntry,
+        runtime: &crate::runtime::Runtime) -> Option<Self>
+    {
+        let (image, query) = if let Some(legacy) = crate::legacy_method::try_decode(entry) {
+            let (image, declaration) = resident_declaration(legacy.to_method(), c"birnam_native_numeric_semantics_v4")?;
+            (image, Query::Legacy(unsafe { core::mem::transmute(declaration) }))
+        } else {
+            let (image, declaration) = resident_address_declaration(entry.method? as *const c_void,
+                c"birnam_native_numeric_semantics_v5")?;
+            (image, Query::Native(unsafe { core::mem::transmute(declaration) }))
         };
+        let summary = Self { entry, query, _image: image };
         summary.operator(runtime)?;
         Some(summary)
     }
-
     pub(crate) fn operator(&self, runtime: &crate::runtime::Runtime) -> Option<Operator> {
-        // A module may have an instrumented/copied IdApi table. Revalidate
-        // every invocation rather than caching assumptions about its pointers.
         if !runtime.integer_context_current() { return None; }
-        let functions = crate::public_api::numeric_functions(runtime);
-        Operator::from_declaration(unsafe {
-            (self.query)(self.method, runtime.integer_behavior(), functions.as_ptr())
-        })
+        let code = match self.query {
+            Query::Legacy(query) => {
+                let method = crate::legacy_method::try_decode(self.entry)?;
+                let functions = crate::public_api::numeric_functions(runtime);
+                unsafe { query(method.to_method() as *const c_void, runtime.integer_behavior(), functions.as_ptr()) }
+            }
+            Query::Native(query) => {
+                if !runtime.integer_native_numeric_current() { return None; }
+                unsafe { query(self.entry, &runtime.integer_operations()) }
+            }
+        };
+        Operator::from_declaration(code)
     }
 }

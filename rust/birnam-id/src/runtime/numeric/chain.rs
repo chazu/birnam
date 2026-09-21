@@ -66,7 +66,7 @@ pub(in crate::runtime) struct CompiledChain {
 /// A prediction's native declaration is an owned lookup hint. Its current
 /// context is queried again when the actual resolved Method matches the hint.
 pub(in crate::runtime) struct Binding {
-    pub(in crate::runtime) method: Method,
+    pub(in crate::runtime) method: NativeEntry,
     pub(in crate::runtime) summary: Rc<NumericSummary>,
     pub(in crate::runtime) operator: Operator,
 }
@@ -239,12 +239,12 @@ pub(in crate::runtime) struct Prediction {
     left: i64,
     right: i64,
     result: i64,
-    method: Method,
+    method: NativeEntry,
     summary: Rc<NumericSummary>,
 }
 impl Prediction {
-    pub(super) fn summary(&self, method: Method) -> Option<&NumericSummary> {
-        (self.method as usize == method as usize).then_some(self.summary.as_ref())
+    pub(super) fn summary(&self, method: NativeEntry) -> Option<&NumericSummary> {
+        (self.method == method).then_some(self.summary.as_ref())
     }
     pub(super) fn matches(&self, operator: Operator, left: i64, right: i64) -> bool {
         self.operator == operator && self.left == left && self.right == right
@@ -297,9 +297,9 @@ impl Ticket {
                 let Some(symbol) = state.symbols.existing(&send.selector) else {
                     return false;
                 };
-                let method = MethodAddress::from_method(binding.method);
-                if state.vtables.lookup(vt, symbol) != Some(method)
-                    || state.execution.has_resumable_thunk(method)
+                let method = binding.method;
+                if state.vtables.native_lookup(vt, symbol) != Some(method)
+                    || crate::legacy_method::try_decode(method).is_some_and(|method| state.execution.has_resumable_thunk(method))
                 {
                     return false;
                 }
@@ -421,11 +421,11 @@ impl Runtime {
                 .iter()
                 .map(|send| {
                     let symbol = state.symbols.existing(&send.selector)?;
-                    let method = state.vtables.lookup(self.integer_behavior(), symbol)?;
-                    if state.execution.has_resumable_thunk(method) {
+                    let method = state.vtables.native_lookup(self.integer_behavior(), symbol)?;
+                    if crate::legacy_method::try_decode(method).is_some_and(|method| state.execution.has_resumable_thunk(method)) {
                         return None;
                     }
-                    Some(method.to_method())
+                    Some(method)
                 })
                 .collect::<Option<Vec<_>>>()?
         };
@@ -437,7 +437,7 @@ impl Runtime {
                     .numeric
                     .borrow()
                     .records
-                    .get(&(method as usize))?
+                    .get(&super::entry_key(method))?
                     .summary
                     .clone()?;
                 let operator = summary.operator(self)?;

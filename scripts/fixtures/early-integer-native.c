@@ -1,13 +1,16 @@
+#define _DARWIN_C_SOURCE
 /* Signed-128 C oracle against the real Integer base, before Float is loaded. */
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/root-registry-owner-v1/root_registry_owner_v1.h"
 #include "../../abi/fixtures/namespace-owner-v1/namespace_owner_v1.h"
 #include "../../abi/fixtures/base-values-v1/base_values_v1.h"
 #include "../../abi/fixtures/integer-v1/integer_v1.h"
+#include "../../abi/fixtures/integer-native-v1/integer_native_v1.h"
 typedef void (*Finalizer)(void *);
 typedef struct IdApi IdApi;
 #include "../../abi/fixtures/string-v1/string_v1.h"
 #include <assert.h>
+#include <dlfcn.h>
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
@@ -94,6 +97,40 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
     collect=(size_t (*)(void))args[6].data.word;
     assert(integer->version==1 && integer->byte_size==sizeof(*integer));
     assert(integer->storage->payload_size==8 && integer->allocation_context(integer->context)==0);
+    Dl_info library; assert(dladdr((void *)integer->make,&library));
+    void *image=dlopen(library.dli_fname,RTLD_NOW|RTLD_NOLOAD); assert(image);
+    IntegerConstructionQueryV1 construction=(IntegerConstructionQueryV1)dlsym(image,"birnam_integer_construction_v1");
+    NativeNumericQueryV5 numeric=(NativeNumericQueryV5)dlsym(image,"birnam_native_numeric_semantics_v5");
+    assert(construction && numeric);
+    IntegerConstructionV1 facts; assert(construction(integer,&facts)==1);
+    assert(facts.id.context==id.context && facts.id.message==id.message && facts.allocate==name("allocate"));
+    assert(facts.namespace_receiver==namespace.receiver && facts.roots.context==roots.context);
+    const char *declared[]={"+","-","*","/","mod:"};
+    for(unsigned i=0;i<5;i++) {
+        BirnamNativeEntry entry=lookup(declared[i]).data.entry;
+        if(args[5].data.word && i==0) {
+            assert(numeric(entry,integer)==0 && numeric(original_add,integer)==1);
+        } else assert(numeric(entry,integer)==i+1);
+        entry.context=id.context; assert(numeric(entry,integer)==0);
+    }
+    IntegerApiV1 altered=*integer; altered.prototype=values.nil;
+    assert(construction(&altered,&facts)==0 && numeric(lookup("+").data.entry,&altered)==0);
+    void *prototype=integer->prototype; integer->prototype=values.nil;
+    assert(construction(integer,&facts)==0 && numeric(lookup("+").data.entry,integer)==0);
+    integer->prototype=prototype; assert(construction(integer,&facts)==1);
+    dlclose(image);
+    assert(dladdr((void *)namespace.destroy,&library));
+    image=dlopen(library.dli_fname,RTLD_NOW|RTLD_NOLOAD); assert(image);
+    NamespaceLookupQueryV1 namespace_query=(NamespaceLookupQueryV1)dlsym(image,"birnam_namespace_lookup_semantics_v1");
+    assert(namespace_query);
+    BirnamOperand binding_arg=oop(name("bindingAt:")), namespace_arg=oop(namespace.receiver);
+    void *namespace_behavior=send(id.receiver,name("behaviorOf:"),&namespace_arg,1).value.data.object;
+    BirnamNativeEntry binding_entry=send(namespace_behavior,name("lookup"),&binding_arg,1).value.data.entry;
+    assert(namespace_query(binding_entry,&namespace,&id)==1);
+    BirnamProtocol foreign=id;foreign.context=integer->context;
+    assert(namespace_query(binding_entry,&namespace,&foreign)==0);
+    binding_entry.context=integer->context;assert(namespace_query(binding_entry,&namespace,&id)==0);
+    dlclose(image);
     if(!args[5].data.word) {
         assert(!binding("Float") && !binding("Word") && !binding("Block"));
         assert(lookup("asFloat").kind==BIRNAM_UNIT && lookup("to:do:").kind==BIRNAM_UNIT);

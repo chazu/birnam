@@ -5,6 +5,7 @@ mod block;
 mod field;
 mod numeric;
 pub(crate) use block::BlockConstructionSummary;
+pub(crate) use numeric::{integer_native_construction, namespace_lookup_declared};
 pub(crate) use field::FieldSummary;
 pub(crate) use numeric::NumericSummary;
 

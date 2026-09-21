@@ -117,7 +117,7 @@ unsafe extern "C" fn object_prototype(
         (*context.cast::<State>()).object_prototype
     }))
 }
-unsafe extern "C" fn behavior_of(
+pub(crate) unsafe extern "C" fn behavior_of(
     context: *mut c_void,
     _: Oop,
     args: *const Operand,
@@ -131,7 +131,7 @@ unsafe extern "C" fn behavior_of(
         unsafe { (&*state.memory).vtable_of(object) }.filter(|behavior| !behavior.is_null());
     Outcome::loaded(behavior.map(Operand::object).unwrap_or_else(Operand::unit))
 }
-unsafe extern "C" fn allocation_size(
+pub(crate) unsafe extern "C" fn allocation_size(
     context: *mut c_void,
     _: Oop,
     args: *const Operand,
@@ -165,7 +165,7 @@ unsafe extern "C" fn identity(
             .unwrap_or_else(Operand::unit),
     )
 }
-unsafe extern "C" fn symbol_bytes(
+pub(crate) unsafe extern "C" fn symbol_bytes(
     context: *mut c_void,
     _: Oop,
     args: *const Operand,

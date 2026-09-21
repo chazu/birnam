@@ -11,6 +11,22 @@ struct Namespace {
 // The registry's existing C root-provider convention has no context argument.
 // This points to the one completed production Namespace, never future services.
 static NAMESPACE: AtomicPtr<Namespace> = AtomicPtr::new(ptr::null_mut());
+/// Pure declaration: this entry validates a Symbol through Id's current
+/// intern:/symbolBytesOf: messages, then reads this owner's binding storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_namespace_lookup_semantics_v1(
+    entry: NativeEntry, owner: *const OwnedV1, id: *const Protocol,
+) -> i32 {
+    if owner.is_null() || id.is_null() { return 0; }
+    let namespace = NAMESPACE.load(Ordering::Acquire);
+    if namespace.is_null() { return 0; }
+    let namespace = unsafe { &*namespace };
+    let owner = unsafe { &*owner };
+    i32::from(entry == NativeEntry::new(find, namespace.owned.context)
+        && owner.context == namespace.owned.context && owner.storage == namespace.owned.storage
+        && owner.receiver == namespace.owned.receiver && owner.api == namespace.owned.api
+        && namespace.id.same_contract(unsafe { &*id }))
+}
 fn invalid() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
 fn value(object: Oop) -> Operand { if object.is_null() { Operand::unit() } else { Operand::object(object) } }
 fn send(id: Protocol, receiver: Oop, selector: Oop, args: &[Operand]) -> Result<Operand, Outcome> {

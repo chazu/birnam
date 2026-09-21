@@ -68,6 +68,7 @@ impl Environment {
         }
     }
     pub(crate) fn native_receiver(&self) -> Option<Oop> { self.native_owner.map(|owner| owner.receiver) }
+    pub(crate) fn native_owner(&self) -> Option<birnam_abi::namespace_owner::OwnedV1> { self.native_owner }
     pub(crate) fn exports(&self) -> *mut birnam_abi::namespace_export::ApiV1 { self.exports.as_ptr() }
     pub(crate) fn canonical_exports(&self) -> birnam_abi::namespace_export::ApiV1 { self.canonical_exports }
     pub(crate) fn imports(&self) -> *mut birnam_abi::namespace_import::ApiV1 { self.imports.as_ptr() }

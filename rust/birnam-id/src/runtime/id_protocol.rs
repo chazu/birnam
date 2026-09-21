@@ -201,8 +201,8 @@ unsafe fn relation(context: *mut c_void, args: *const Operand, count: usize, own
     // migrate. Canonical owner records still distinguish null from actual Nil.
     Outcome::loaded(Operand::object(if owner { runtime.vtable_owner(behavior) } else { runtime.vtable_parent(behavior) }))
 }
-unsafe extern "C" fn owner_of(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { relation(context, args, count, true) } }
-unsafe extern "C" fn parent_of(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { relation(context, args, count, false) } }
+pub(crate) unsafe extern "C" fn owner_of(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { relation(context, args, count, true) } }
+pub(crate) unsafe extern "C" fn parent_of(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { relation(context, args, count, false) } }
 unsafe fn put_relation(context: *mut c_void, args: *const Operand, count: usize, owner: bool) -> Outcome {
     let Some([behavior, value]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return Outcome::failed(native::INVALID_REQUEST, 0); };
     let Some(behavior) = behavior.as_object() else { return Outcome::failed(native::INVALID_REQUEST, 0); };
@@ -219,7 +219,7 @@ unsafe fn put_relation(context: *mut c_void, args: *const Operand, count: usize,
 unsafe extern "C" fn owner_put(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { put_relation(context, args, count, true) } }
 unsafe extern "C" fn parent_put(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { put_relation(context, args, count, false) } }
 
-unsafe extern "C" fn intern(
+pub(crate) unsafe extern "C" fn intern(
     context: *mut c_void,
     _: Oop,
     args: *const Operand,
@@ -322,6 +322,27 @@ pub(crate) unsafe extern "C" fn remove_method(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn block_constructor_guard_checks_native_relation_contexts_without_invoking_them() {
+        let bootstrap = Box::new(crate::dispatch::build_bootstrap_from(crate::initial_objects::InitialObjects::new()));
+        let other = crate::dispatch::build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.install_id_runtime_extensions();
+        let block = runtime.create_vtable(runtime.globals().object_vt);
+        runtime.export(b"BlockVt", block).unwrap();
+        let owner = runtime.allocate_instance(runtime.globals().object_vt, 0);
+        runtime.set_vtable_owner(block, owner);
+        assert_eq!(runtime.default_block_behavior_owner(block), Some(owner));
+        for name in [b"ownerOf:".as_slice(), b"parentOf:"] {
+            let selector = runtime.intern(name).unwrap();
+            let original = unsafe { runtime.lookup_native_method_active(runtime.globals().vtable_vt, selector) }.unwrap();
+            let different = NativeEntry { context: core::ptr::from_ref(&other.runtime).cast_mut().cast(), ..original };
+            runtime.add_native_method(runtime.globals().vtable_vt, selector, different);
+            assert_eq!(runtime.default_block_behavior_owner(block), None);
+            runtime.add_native_method(runtime.globals().vtable_vt, selector, original);
+            assert_eq!(runtime.default_block_behavior_owner(block), Some(owner));
+        }
+    }
     #[test]
     fn native_construction_survives_adoption_and_uses_gc_accounting_afterward() {
         let initial = crate::initial_objects::InitialObjects::new();

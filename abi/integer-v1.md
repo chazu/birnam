@@ -72,12 +72,14 @@ native storage before charging; Heap settles those bytes without codec callbacks
 Equal values still incur separate identities and charges. Counted slot indices
 retain their separate bounded ledger and do not consume the general journal.
 
-The existing optimization requires exact admitted identities, context, code and
-codec, and the original direct Id allocator. Production message construction
-cannot attest that contract: `allocation_context` and the optional
-[v4 numeric declaration](native-numeric-semantics-v4.md) return zero. Ordinary
-dispatch remains available; native-aware compiler admission is still unfinished.
-Legacy direct construction retains its existing declaration and guards.
+Optimization requires exact admitted identities, context, code and codec.
+Production message construction cannot attest the old direct allocator contract:
+`allocation_context` and the optional [v4 declaration](native-numeric-semantics-v4.md)
+still return zero. Its [v5 declaration](native-numeric-semantics-v5.md) identifies
+the actual native function/context pair and describes its construction dependencies.
+The compiler checks current lookup, allocation and Namespace operations before
+omitting their dispatch. Replacements withdraw admission without being invoked
+by the guard. Legacy direct construction retains its existing v4 checks.
 The private closure-elision hook is now `birnam_id_try_closure_elision_v2`, carrying
 the producer's actual Integer table alongside its IdApi. Generated code's TCC
 bridge names, Method ABI, Frame descriptors and durable image bytes are unchanged.

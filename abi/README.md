@@ -97,7 +97,9 @@ The installed native inventory now includes the separate Integer and object-mode
 The current optional Block-construction declaration is [v5](native-block-construction-v5.md).
 
 `idapi-v3.json` and `fixtures/idapi-v3` preserve the 81K checkpoint.
-The current optional numeric declaration is [v4](native-numeric-semantics-v4.md).
+The current native numeric declaration is [v5](native-numeric-semantics-v5.md),
+with live construction and Namespace admission. Legacy Methods retain
+[v4](native-numeric-semantics-v4.md).
 
 [Storage observation v1](storage-v1.md) adds a protected host entry and a separate
 stateless description validator. It leaves IdApi v4 and its fingerprint unchanged.

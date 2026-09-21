@@ -5,12 +5,15 @@ use crate::loader::NumericSummary;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+fn entry_key(entry: NativeEntry) -> (usize, usize) {
+    (entry.method.map_or(0, |f| f as usize), entry.context as usize)
+}
 const HOT_CALLS: usize = 64;
 const MAX_RECORDS: usize = 256;
 
 #[derive(Default)]
 pub(super) struct Registry {
-    records: BTreeMap<usize, Record>,
+    records: BTreeMap<(usize, usize), Record>,
     buffers: Option<chain::Pool>,
 }
 
@@ -22,8 +25,8 @@ struct Record {
 }
 
 impl Registry {
-    fn observe(&mut self, method: Method) -> (bool, Option<Rc<NumericSummary>>) {
-        let key = method as usize;
+    fn observe(&mut self, method: NativeEntry) -> (bool, Option<Rc<NumericSummary>>) {
+        let key = entry_key(method);
         if !self.records.contains_key(&key) && self.records.len() == MAX_RECORDS {
             self.records.pop_first();
         }
@@ -38,18 +41,18 @@ impl Registry {
 }
 
 impl Runtime {
-    fn numeric_summary(&self, method: Method) -> Option<Rc<NumericSummary>> {
+    fn numeric_summary(&self, method: NativeEntry) -> Option<Rc<NumericSummary>> {
         let (query, mut summary) = self.numeric.borrow_mut().observe(method);
         if query {
             // Discovery enters a native declaration. No RuntimeState or
             // registry borrow survives that call. Native code owns its pure
             // declaration contract; the returned image pin is retained here.
-            summary = NumericSummary::discover(method, self).map(Rc::new);
+            summary = NumericSummary::discover_native(method, self).map(Rc::new);
             if let Some(record) = self
                 .numeric
                 .borrow_mut()
                 .records
-                .get_mut(&(method as usize))
+                .get_mut(&entry_key(method))
             {
                 record.summary = summary.clone();
             }
@@ -64,12 +67,12 @@ impl Runtime {
         receiver: Oop,
         arguments: &[Oop],
     ) -> Option<Oop> {
-        self.try_numeric_call_with_prediction(method, receiver, arguments, None)
+        self.try_numeric_call_with_prediction(crate::legacy_method::encode(method, false), receiver, arguments, None)
     }
 
     pub(super) fn try_numeric_call_with_prediction(
         &self,
-        method: Method,
+        method: NativeEntry,
         receiver: Oop,
         arguments: &[Oop],
         prediction: Option<chain::Prediction>,
@@ -79,6 +82,9 @@ impl Runtime {
             return None;
         }
         if !self.integer_context_current() { return None; }
+        if crate::legacy_method::try_decode(method).is_none() && !self.integer_native_numeric_current() {
+            return None;
+        }
         let &[argument] = arguments else {
             return None;
         };

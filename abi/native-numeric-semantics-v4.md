@@ -8,8 +8,9 @@ Design 83's production Integer base now constructs through the current Id
 `allocate` message. It returns zero from this query and from
 `IntegerApiV1.allocation_context`: arbitrary allocation dispatch cannot satisfy
 v4's one-direct-allocation/no-other-effects contract. Source, compiled and image
-execution use ordinary dispatch. Native-aware compiler admission remains to be
-implemented; the legacy direct-allocation initializer still supports v4.
+execution may instead use the [v5 native declaration](native-numeric-semantics-v5.md)
+with explicit live dispatch guards. The legacy direct-allocation initializer
+still supports v4.
 
 ```c
 unsigned int birnam_native_numeric_semantics_v4(

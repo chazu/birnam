@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Admit production native Integer construction and arithmetic to compiler
+  optimizations using live dispatch checks and exact function/context pairs.
+  Custom allocation, lookup and Namespace operations retain their observable
+  effects. Closure admission recognizes the native owner/parent protocols;
+  optional numeric v5 declarations keep compiler policy above Id.
+
 - Preserve native method context and typed operands when a legacy custom lookup
   delegates to Id's lookup. Nested lookups keep separate temporary results, and
   replacing a binding does not change the callable already selected. This fixes

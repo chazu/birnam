@@ -570,6 +570,53 @@ struct FloatExtension {
 }
 static FLOAT_EXTENSION: std::sync::atomic::AtomicPtr<FloatExtension> =
     std::sync::atomic::AtomicPtr::new(ptr::null_mut());
+
+fn admitted_instance(ops: &birnam_abi::integer::IntegerApiV1) -> Option<&'static Instance> {
+    if !ready() { return None; }
+    let instance = super::INSTANCE.load(Ordering::Acquire);
+    if instance.is_null() { return None; }
+    let instance = unsafe { &*instance };
+    let original = instance.original_operations();
+    (ops.same_contract(&original) && unsafe { *instance.operations() }.same_contract(&original))
+        .then_some(instance)
+}
+
+/// Pure snapshot of the immutable dependencies of the actual constructor.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_integer_construction_v1(
+    ops: *const birnam_abi::integer::IntegerApiV1,
+    out: *mut birnam_abi::integer_native::ConstructionV1,
+) -> i32 {
+    if ops.is_null() || out.is_null() { return 0; }
+    let Some(instance) = admitted_instance(unsafe { &*ops }) else { return 0; };
+    let Some(access) = instance.native_access() else { return 0; };
+    unsafe { out.write(birnam_abi::integer_native::ConstructionV1 {
+        id: access.id, allocation_size: access.allocation_size, behavior_of: access.behavior_of,
+        allocate: access.allocate, namespace: access.namespace, binding: access.binding,
+        error_behavior_name: access.error_behavior_name, roots: access.roots,
+    }) };
+    1
+}
+
+/// Successful exact-Integer cases do not consult Float, including mixed entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_native_numeric_semantics_v5(
+    entry: NativeEntry, ops: *const birnam_abi::integer::IntegerApiV1,
+) -> u32 {
+    if ops.is_null() { return 0; }
+    let Some(instance) = admitted_instance(unsafe { &*ops }) else { return 0; };
+    let context = ptr::from_ref(instance).cast_mut().cast();
+    for (method, code) in [(add as native::Method, 1), (subtract, 2), (multiply, 3), (divide, 4), (modulo, 5)] {
+        if entry == NativeEntry::new(method, context) { return code; }
+    }
+    let extension = FLOAT_EXTENSION.load(Ordering::Acquire);
+    if !extension.is_null() && unsafe { (*extension).integer } == ptr::from_ref(instance) {
+        for (method, code) in [(mixed_add as native::Method, 1), (mixed_sub, 2), (mixed_mul, 3), (mixed_div, 4)] {
+            if entry == NativeEntry::new(method, extension.cast()) { return code; }
+        }
+    }
+    0
+}
 unsafe fn floating_value(extension: &FloatExtension, access: Access, object: Oop) -> Option<f64> {
     let float = unsafe { *extension.float };
     if unsafe { (float.is_exact)(float.context, object) } == 0

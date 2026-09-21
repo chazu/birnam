@@ -3312,8 +3312,7 @@ impl Runtime {
                 *numeric = self.prepare_numeric_chain(capability, owner, key);
             }
             let prediction = numeric.as_mut().and_then(|ticket| ticket.take(key, pc));
-            if let Some(legacy) = crate::legacy_method::try_decode(method)
-                && let Some(result) = self.try_numeric_call_with_prediction(legacy.to_method(), receiver, arguments, prediction)
+            if let Some(result) = self.try_numeric_call_with_prediction(method, receiver, arguments, prediction)
             {
                 return result;
             }
@@ -4497,23 +4496,18 @@ impl Runtime {
         if Behaviors::checked_vtable_of(&state.heap, meta) != meta {
             return None;
         }
-        for (selector, method) in [
-            (
-                state.globals.lookup,
-                crate::dispatch::vtable_lookup_method as Method,
-            ),
-            (
-                state.symbols.existing(b"ownerOf:")?,
-                crate::dispatch::vtable_owner_of as Method,
-            ),
-            (
-                state.symbols.existing(b"parentOf:")?,
-                crate::dispatch::vtable_parent_of as Method,
-            ),
+        let context = core::ptr::from_ref(self).cast_mut().cast();
+        let relation = |legacy: Method, native: crate::abi::id_protocol::Method| {
+            if state.id_protocol.is_some() { NativeEntry::new(native, context) }
+            else { crate::legacy_method::encode(legacy, false) }
+        };
+        for (selector, entry) in [
+            (state.globals.lookup, crate::legacy_method::encode(crate::dispatch::vtable_lookup_method, true)),
+            (state.symbols.existing(b"ownerOf:")?, relation(crate::dispatch::vtable_owner_of, id_protocol::owner_of)),
+            (state.symbols.existing(b"parentOf:")?, relation(crate::dispatch::vtable_parent_of, id_protocol::parent_of)),
         ] {
-            let method = MethodAddress::from_method(method);
-            if state.vtables.direct_lookup(meta, selector) != Some(method)
-                || state.execution.has_resumable_thunk(method)
+            if state.vtables.native_direct_lookup(meta, selector) != Some(entry)
+                || crate::legacy_method::try_decode(entry).is_some_and(|method| state.execution.has_resumable_thunk(method))
             {
                 return None;
             }

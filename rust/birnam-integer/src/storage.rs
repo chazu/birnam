@@ -59,6 +59,12 @@ pub struct Instance {
 }
 
 impl Instance {
+    pub(crate) fn original_operations(&self) -> IntegerApiV1 {
+        let [behavior, prototype] = self.identities();
+        IntegerApiV1 { version: 1, byte_size: size_of::<IntegerApiV1>(),
+            context: ptr::from_ref(self).cast_mut().cast(), behavior, prototype,
+            make, read, is_exact, storage: &STORAGE, allocation_context }
+    }
     /// Allocate native state before registering its partially initialized roots.
     /// # Safety
     /// The API lives until this instance and all installed consumers are gone.

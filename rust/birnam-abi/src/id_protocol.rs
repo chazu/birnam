@@ -213,6 +213,14 @@ pub struct Module {
     pub byte_size: u32,
     pub initialize: Option<Initialize>,
 }
+impl Protocol {
+    pub fn same_contract(&self, other: &Self) -> bool {
+        self.version == other.version && self.byte_size == other.byte_size
+            && self.message.map(|f| f as usize) == other.message.map(|f| f as usize)
+            && self.context == other.context && self.receiver == other.receiver
+            && self.intern == other.intern && self.load == other.load
+    }
+}
 const _: () = {
     assert!(size_of::<NativeEntry>() == 16);
     assert!(size_of::<Operand>() == 24);

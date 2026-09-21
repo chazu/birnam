@@ -10,6 +10,7 @@ pub mod id_protocol;
 pub mod native_module;
 pub mod foreign_address;
 pub mod integer;
+pub mod integer_native;
 pub mod float;
 pub mod word;
 pub mod string;

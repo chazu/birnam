@@ -742,9 +742,15 @@ This completes step 7's Integer base. Later entries reuse its actual operations
 table and identities; mixed-number methods replace only original base entries,
 preserving early replacements. Float conversion and Block iteration are absent
 until those dependencies exist.
-The old numeric compiler declaration assumes direct allocation and therefore
-returns zero for this message-based constructor. Native-aware compiler admission
-must still be implemented; this fallback is not the completed compiler design.
+The old numeric compiler declaration assumes direct allocation and still returns
+zero for this message-based constructor. The [v5 native declaration](../../abi/native-numeric-semantics-v5.md)
+now supplies the successful exact-Integer contract for actual native entries.
+Compiler construction admission checks current lookup and allocation; arithmetic
+also checks Namespace and Symbol lookup. Numeric predictions preserve complete
+function/context pairs, and closure admission checks the current native
+owner/parent entries. Replacements withdraw admission without running their
+callbacks. These upper compiler checks must move with Execution/compiler during
+the remaining package split.
 
 String, Error and Integer root their cached selectors and predecessor references.
 Removing a method binding must not collect a selector still held by a native
@@ -799,8 +805,8 @@ references remain rooted.
 This completes the value/text entries in step 8, with the real sixteen-library
 prefix exercising both ordinary results and advertised failure paths. No new
 library, representation, descriptor version or Runtime bridge is added.
-Collector activation, Execution/Block, native-aware compiler admission and the
-remaining upper/package separation are still open.
+Collector activation, Execution/Block and the remaining upper/package separation
+are still open. Native Integer/compiler admission is described above.
 
 The live graph portion of step 9 now constructs before Runtime as well.
 `InitialFloor::initialize_trace` loads Native Mark through Id, then constructs
@@ -1149,20 +1155,32 @@ represented by the same legacy address in one lookup are rejected as ambiguous.
 This supports existing callable legacy adapters only; arbitrary native entries
 still require migration of reflective consumers, not invented Method addresses.
 
-The unchanged deferred-identity workload now produces its expected output in
-source and compiled form, including custom lookup and explicit collection. Its
-full image smoke test is still **not passing**: it stops at the compiled closure
-optimization report assertions before saving an image. Production Integer's
-message-based constructor deliberately returns zero from the old direct-allocator
-admission query, so `integer_context_current` refuses these optimizations.
-Native-aware compiler admission must prove the current dispatch and effects
-before those optimizations can resume. The fixture and its assertions remain
-intact; this result is not evidence for the later image/recovery checks.
+The unchanged `scripts/deferred-identity-image-smoke.sh PREFIX` now passes in
+full: source, compiled module, saved mapped/rebuilt image and baked execution,
+including the actual host's image-mode checks and forced recovery. Its independent
+Storage observer records the same closure/numeric deferred writes in all three
+image forms: `(386, 150)` normally and `(386, 75)` with forced recovery. The
+existing assertions for identity, finalization, Frame reads/writes, custom lookup,
+dictionary mutation, aliases, GC and reload remain intact.
+
+Native compiler admission uses the current allocator and lookup, full native
+function/context pairs, and the declared Namespace read path. Closure admission
+also recognizes the native owner/parent protocol entries. The independent
+`scripts/native-integer-admission-smoke.sh PREFIX` compares counted effects with
+optimization disabled/enabled for eight replacements: allocation, Namespace
+binding lookup, interning, Symbol validation, lookup, owner/parent queries and
+arithmetic. All counts match; restoring every method restores closure admission.
+The production native-loading harness also passes with C checks for the new
+declarations before and after Runtime adoption. Debug export inventories match
+the Integer and Namespace manifests (11 and 5 symbols respectively).
 
 The legacy adapter tests exercise the actual native allocator with a Word size
 after nested lookup and binding replacement, and distinct live Runtime contexts
-sharing one legacy address. The complete Id unit suite passes (310 passed,
-15 ignored). These compatibility tests do not close native reflection migration.
+sharing one legacy address. The current ABI/Id/Integer/Namespace unit suites pass
+(356 passed, 16 ignored), including native relation-context rejection. Legacy
+Integer error/value and numeric-context fixtures pass their 800 oracle cases and
+live callback/restoration checks. These tests do not close arbitrary native
+reflection migration, collector activation or the package split.
 
 Remaining architectural acceptance requires all of the following:
 
