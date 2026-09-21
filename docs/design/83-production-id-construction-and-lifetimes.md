@@ -1,5 +1,9 @@
 # 83 — Production Id construction and lifetimes
 
+> **Superseded integration architecture:** [Design 84](84-message-only-native-modules.md)
+> requires deleting cross-module function tables and using opaque objects and
+> Id messages throughout production. Existing lifetime/safety requirements remain.
+
 > **Status:** Production migration in progress, 2026-09-21. Id is independently
 > packaged with only the ABI crate, and Bootstrap constructs the production
 > module graph through Id. Legacy fixture migration, worker acceptance and the

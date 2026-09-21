@@ -1,5 +1,9 @@
 # 82 — Minimal production Id: correcting the dependency direction
 
+> **Superseded integration architecture:** [Design 84](84-message-only-native-modules.md)
+> requires deleting cross-module function tables and using opaque objects and
+> Id messages throughout production. Existing lifetime/safety requirements remain.
+
 > **Status:** Architectural decision and production migration contract,
 > 2026-09-20. Written before starting the decoupling.
 > Runtime observations are against the 81CA implementation at `e928780c`;

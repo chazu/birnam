@@ -778,6 +778,8 @@ application and build driver.
   current profiles and the proposed optimization sequence.
 - [The image](docs/design/40-the-image.md) defines persistence and mapped-code
   behavior.
+- [Message-only native modules](docs/design/84-message-only-native-modules.md)
+  defines the current deletion and replacement plan for the parallel native APIs.
 - [Minimal production Id](docs/design/82-minimal-production-id.md) records why
   the Rust extractions failed to decouple Id, the required Siphon/Id boundary,
   and the production migration and acceptance criteria. This is the current
