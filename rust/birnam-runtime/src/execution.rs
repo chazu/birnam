@@ -3014,7 +3014,8 @@ impl ExecutionState {
                 .entry
                 .as_ref()
                 .ok_or(RegistrationError::StaleCapability)?;
-            if entry.lifecycle != ResumableEntryLifecycle::Live {
+            if entry.lifecycle != ResumableEntryLifecycle::Live
+                && !(entry.lifecycle == ResumableEntryLifecycle::Retiring && self.managed_turn_depth != 0) {
                 return Err(RegistrationError::EntryRetired);
             }
             if entry.explicit_generation_leases == usize::MAX {

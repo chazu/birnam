@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove a source-less portable resumable unit survives repository eviction
+# Prove source-less synchronous and resumable units survive repository eviction
 # while its Block is live, then retires after the outer Execution turn
 # ends. Separate REPL turns are load-bearing: retirement is forbidden from
 # physically unmapping native code beneath the send that requested it.
@@ -19,9 +19,10 @@ else
   printf 'portable resumable lifecycle smoke root: %s\n' "$smoke_root" >&2
 fi
 
-"$bin" --repl >"$smoke_root/repl.out" 2>"$smoke_root/repl.err" <<'EOF'
+for disposition in Synchronous Resumable; do
+"$bin" --repl >"$smoke_root/repl.out" 2>"$smoke_root/repl.err" <<EOF
 let portableLifecycleBaseline := [Tcc liveUnitCount]
-[Globals at: #PortableLifecycleBlock put: [Codegen materializeResumable: [CodeObject fromProgram: [CodeProgram parameters: #["argument"] captures: #[] statements: #[[CodeStatement expression: [CodeNode lexicalReadAt: 0]]]]] captures: #[]]]
+[Globals at: #PortableLifecycleBlock put: [Codegen materialize$disposition: [CodeObject fromProgram: [CodeProgram parameters: #["argument"] captures: #[] statements: #[[CodeStatement expression: [CodeNode lexicalReadAt: 0]]]]] captures: #[]]]
 [Tcc liveUnitCount]
 [[Globals at: #PortableLifecycleBlock] value: 73]
 [Codegen evictMaterializations]
@@ -56,4 +57,5 @@ assert int(answers[8]) == baseline + 1, answers
 PY
 
 test ! -s "$smoke_root/repl.err"
-printf 'portable-resumable-lifecycle-smoke: eviction survival and quiescent retirement passed\n'
+done
+printf 'portable-resumable-lifecycle-smoke: synchronous and resumable eviction survival and outer-turn retirement passed\n'

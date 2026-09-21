@@ -26,6 +26,11 @@ Live `StringBuilder` buffers are not portable image values. Materialize them
 with `[builder asString]` before saving, and construct fresh builders inside
 `main` when the image needs mutable text assembly.
 
+Retained `Method` instances are also process-local. Saving one in durable state
+answers `#methodNotImageable`, including when it has a private behavior. Save
+the information needed to find the method, and call `methodFor:` after boot.
+The canonical `Method` prototype is a normal named native reference.
+
 Closures still cannot serialize as ordinary values. Keep shared blocks in methods
 that answer fresh blocks, or in top-level `let` globals whose source-backed recovery
 contract can rederive them.

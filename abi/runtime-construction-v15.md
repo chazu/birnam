@@ -57,7 +57,9 @@ operand kinds and invalid descriptors before adopting owners, and returns the
 
 Id is now independently packaged with only `birnam-abi` as a Cargo dependency.
 Base Runtime constructs native Execution and Block with their completed value
-inputs. Compiler admission/catalogs and numeric/native optimization registries
+inputs. It also constructs owned Method reflection and publishes the completed
+[checked language-send entry](language-send-v1.md) before language executors load.
+Compiler admission/catalogs and numeric/native optimization registries
 remain absent until the explicit [compiler extension](runtime-compiler-v1.md)
 loads. Both entries share the Runtime image; the base does not require Codegen
 or its module initialization. All six supporting factories are loaded through Id

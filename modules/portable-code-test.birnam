@@ -296,7 +296,7 @@ let s := [TestSuite named: "Portable Code" module: #portableCode];
     [Tcc liveUnitCount]] value];
   [t expect: duringUnits equals: [beforeUnits + 1] describes: "the live Block owns exactly one materialization unit"];
   [System gc];
-  [t expect: [Tcc liveUnitCount] equals: beforeUnits describes: "the unit is reclaimed after the last Block becomes unreachable"]]];
+  [t expect: [Tcc liveUnitCount] equals: [beforeUnits + 1] describes: "synchronous code retirement waits for the enclosing Execution turn"]]];
 
 [s test: "nested source-less Blocks carry captures and retain their shared unit" do: [:t |
   [Codegen evictMaterializations];

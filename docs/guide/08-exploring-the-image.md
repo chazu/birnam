@@ -88,6 +88,31 @@ let stringVt := [Reflect vtableOf: String];
 [Reflect vtableOf: "hello"] == stringVt
 ```
 
+## Retain and invoke a method
+
+`methodFor:` asks an object's current behavior for a selector and answers a
+Method, or nil when it is absent. The Method retains that exact implementation:
+replacing or removing the binding changes future lookup, while the retained
+Method remains callable.
+
+```birnam
+let addition := [Integer methodFor: #+];
+[addition invokeOn: 3 arguments: #[4]] // => 7
+```
+
+Use `[method invokeOn: receiver]` for a method with no arguments. An argument
+sequence supplies `size` and zero-based `at:`; a Vector is the usual choice.
+`[method clone]` answers the same Method.
+
+On a vtable, `methodFor:` searches that vtable's method dictionary and its
+parents. `[vtable addMethod: method as: selector]` installs the retained entry;
+it preserves the implementation and native context. This is a low-level live
+edit, without a source-backed image recovery recipe. Use `Reflect defineMethod:`
+for authored definitions that must survive saving and rebuilding an image.
+
+Methods are process-local values. An image cannot persist a retained Method;
+perform `methodFor:` again after boot. See [image saving](04-images.md#saving).
+
 ## Enumerate the effective method protocol
 
 `Reflect allMethodsOf:` walks the receiver's vtable delegation chain and returns

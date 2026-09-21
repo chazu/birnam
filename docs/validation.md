@@ -26,6 +26,11 @@ For a focused iteration, preview
 when a task explicitly needs a different budget; expiration records a failure.
 Do not silently shrink coverage to fit a deadline.
 
+The `method-values` step checks owned callable reflection through source,
+source-free compiled modules, mapped/rebuilt images and baked executables,
+including replacement, removal, callback GC and process-local image rejection.
+For a prebuilt debug installation, run `scripts/method-values-smoke.sh PREFIX`.
+
 Each build and matrix writes progress and its log under `.cargo-target/validation`.
 Full matrix coverage is checked by the existing coordinate and semantic oracles.
 For counter-bound timing prerequisites, select only the needed matrix and workspace,

@@ -11,9 +11,9 @@ static IdApi *api;
 static const NamespaceImportV1 *imports;
 static IntegerApiV1 integer;
 static StringApiV1 string;
-static Oop roots[32];
+static Oop roots[64];
 static size_t root_count, calls, limit;
-static Oop keep(Oop object) { assert(object && root_count<32); roots[root_count++]=object; return object; }
+static Oop keep(Oop object) { assert(object && root_count<64); roots[root_count++]=object; return object; }
 static void mark(RootRegistryMarkV1 mark_one) { for(size_t i=0;i<root_count;i++) mark_one(roots[i]); }
 static Oop named(const char *name) { Oop o=namespace_import_v1(imports,name); assert(o); return o; }
 static Oop send0(Oop receiver,const char *name) { return api->send(receiver,api->intern(name),NULL,0); }
@@ -40,6 +40,53 @@ typedef struct {
     void *(*resolve)(void *,const uint8_t *,size_t);
 } RuntimeCompilerV1;
 _Static_assert(sizeof(RuntimeCompilerV1)==32,"compiler descriptor extent");
+typedef struct { Oop result; size_t calls; } MethodContext;
+static BirnamOutcome method_answer(void *context,Oop receiver,const BirnamOperand *args,size_t count) {
+    MethodContext *state=context; assert(receiver && count==2);
+    assert(args[0].kind==BIRNAM_OBJECT && number(args[0].data.object)==1);
+    assert(args[1].kind==BIRNAM_OBJECT && number(args[1].data.object)==2);
+    state->calls++;
+    api->gc_collect();
+    return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=state->result}};
+}
+static void check_methods(const BirnamProtocol *id,void *image) {
+    size_t saved_roots=root_count;
+    Oop (*language_send)(Oop,Oop,const Oop *,size_t)=dlsym(image,"birnam_runtime_send_v1");
+    assert(language_send);
+    Oop behavior=keep(api->proto(named("ObjectVt")));
+    Oop receiver=keep(api->alloc(behavior,0));
+    Oop selector=keep(api->intern("nativeMethodProbe"));
+    MethodContext first={keep(integer.make(integer.context,71)),0};
+    MethodContext second={keep(integer.make(integer.context,92)),0};
+    BirnamOperand binding[2]={{.kind=BIRNAM_OBJECT,.data.object=selector},
+        {.kind=BIRNAM_NATIVE_ENTRY,.data.entry={method_answer,&first}}};
+    assert(id->message(id->context,behavior,api->intern("addMethod"),binding,2).status==BIRNAM_LOADED);
+    Oop owned=keep(language_send(receiver,api->intern("methodFor:"),&selector,1));
+    assert(api->vtable_of(owned)==named("MethodVt"));
+    binding[1].data.entry.context=&second;
+    assert(id->message(id->context,behavior,api->intern("addMethod"),binding,2).status==BIRNAM_LOADED);
+    Oop replacement=keep(language_send(receiver,api->intern("methodFor:"),&selector,1));
+    assert(id->message(id->context,behavior,api->intern("removeMethod:"),binding,1).status==BIRNAM_LOADED);
+    assert(language_send(receiver,api->intern("methodFor:"),&selector,1)==api->nil_obj);
+    Oop vector=keep(send0(named("Vector"),"new"));
+    vector=keep(send1(vector,"add:",integer.make(integer.context,1)));
+    vector=keep(send1(vector,"add:",integer.make(integer.context,2)));
+    Oop call[]={receiver,vector};
+    assert(language_send(owned,api->intern("invokeOn:arguments:"),call,2)==first.result);
+    assert(language_send(replacement,api->intern("invokeOn:arguments:"),call,2)==second.result);
+    assert(first.calls==1 && second.calls==1);
+    Oop alias=keep(api->intern("nativeMethodAlias"));
+    Oop install[]={owned,alias};
+    Oop installed=keep(language_send(behavior,api->intern("addMethod:as:"),install,2));
+    assert(api->vtable_of(installed)==named("MethodVt"));
+    Oop operands[]={integer.make(integer.context,1),integer.make(integer.context,2)};
+    assert(language_send(receiver,alias,operands,2)==first.result && first.calls==2);
+    /* Contexts are native-owned; remove the alias and roots before they expire. */
+    binding[0].data.object=alias;
+    assert(id->message(id->context,behavior,api->intern("removeMethod:"),binding,1).status==BIRNAM_LOADED);
+    root_count=saved_roots;
+    api->gc_collect();
+}
 static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,int install) {
     assert(path->kind==BIRNAM_BYTES);
     char *name=malloc(path->data.bytes.length+1);assert(name);
@@ -55,6 +102,7 @@ static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,in
     BirnamProtocol foreign=*id;foreign.receiver=api->nil_obj;
     assert(module->initialize(&foreign,request,2).status==BIRNAM_INVALID_REQUEST && !provider());
     if(install) {
+        check_methods(id,image);
         BirnamOutcome result=module->initialize(id,request,2);
         assert(result.status==BIRNAM_LOADED && result.value.kind==BIRNAM_WORD);
         const RuntimeCompilerV1 *compiler=(const void *)result.value.data.word;

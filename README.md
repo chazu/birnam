@@ -452,6 +452,8 @@ birnam doc taskExecutor
 
 For interactive object and fact-store wayfinding, see the
 [image exploration guide](docs/guide/08-exploring-the-image.md).
+It also covers [retaining and invoking Methods](docs/guide/08-exploring-the-image.md#retain-and-invoke-a-method)
+across binding replacement and removal.
 
 ## Wrapping a Dynamic Library with Alien
 

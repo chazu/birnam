@@ -18,6 +18,17 @@ unsafe extern "C" {
 }
 
 pub(super) struct ImagePin(NonNull<c_void>);
+/// A retained image for an exposed language Method. The Runtime queues its
+/// release at an outer checkpoint rather than dropping it in a GC finalizer.
+pub(crate) struct MethodImage { _pin: ImagePin }
+impl MethodImage {
+    pub(crate) fn retain(address: *const c_void) -> Option<Self> {
+        let mut owner = DlInfo::default();
+        if unsafe { dladdr(address, &mut owner) } == 0 || owner.filename.is_null() { return None; }
+        Some(Self { _pin: ImagePin(NonNull::new(unsafe { system_dlopen(owner.filename, 0x1 | 0x4 | 0x10) })?) })
+    }
+}
+
 impl Drop for ImagePin {
     fn drop(&mut self) {
         // Every successful NOLOAD acquisition owns one reference. A selected

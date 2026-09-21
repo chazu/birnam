@@ -24,23 +24,33 @@ impl Runtime {
     pub(crate) unsafe fn invoke_native_abi_from_objects(
         &self, entry: NativeEntry, receiver: Oop, args: *const Oop, count: usize,
     ) -> Oop {
-        if let Some(legacy) = crate::legacy_method::direct_method(entry) {
+        unsafe { self.invoke_native_abi_from_objects_with_legacy_results(entry, receiver, args, count, false) }
+    }
+
+    pub(crate) unsafe fn invoke_native_abi_from_objects_with_legacy_results(
+        &self, entry: NativeEntry, receiver: Oop, args: *const Oop, count: usize, legacy_results: bool,
+    ) -> Oop {
+        if let Some(legacy) = crate::legacy_method::direct_method(entry)
+            && (legacy_results || !crate::legacy_method::returns_entry(entry)) {
             return unsafe { legacy.to_method()(receiver, args, count) };
         }
         let arguments = unsafe { crate::abi::borrowed_oop_args(args, count) }
             .expect("native invocation received invalid arguments");
-        let arguments = crate::legacy_method::native_arguments(entry, arguments, self);
+        let arguments = crate::legacy_method::native_arguments(entry, arguments, self, legacy_results);
         let outcome = unsafe {
             entry.method.expect("selected native entry has a method")(
                 entry.context, receiver, arguments.as_ptr(), arguments.len(),
             )
         };
-        crate::legacy_method::native_result(entry, outcome, self)
-            .unwrap_or_else(|| self.native_language_outcome(outcome))
+        if legacy_results {
+            if let Some(result) = crate::legacy_method::native_result(entry, outcome, self) { return result; }
+        }
+        self.native_language_outcome(outcome)
     }
 
     pub(crate) fn native_language_outcome(&self, outcome: Outcome) -> Oop {
         if outcome.status == native::LOADED {
+            if let Some(entry) = outcome.value.as_entry() { return self.retain_method(entry); }
             if let Some(object) = outcome.value.as_object() {
                 return object;
             }
@@ -337,9 +347,11 @@ mod tests {
         let bootstrap = crate::dispatch::build_bootstrap();
         let runtime = &bootstrap.runtime;
         runtime.enter(|| {
+            runtime.install_method_objects();
             assert!(runtime.payload_size(initial.vtable_vt).is_none());
-            assert_eq!(runtime.invoke_native_from_objects(lookup, initial.vtable_vt, &[selector]),
-                crate::raw::MethodAddress::from_method(identity).as_oop());
+            let method = runtime.invoke_native_from_objects(lookup, initial.vtable_vt, &[selector]);
+            assert_eq!(runtime.owned_method_entry(method), Some(expected));
+            assert!(runtime.payload_size(method).is_some());
         });
     }
 
@@ -401,8 +413,8 @@ mod tests {
         let selector = runtime.intern(b"allocate").unwrap();
         let method = unsafe { runtime.lookup_native_method_active(runtime.globals().vtable_vt, selector) }.unwrap();
         assert!(crate::legacy_method::direct_method(method).is_none());
-        let allocated = runtime.invoke_native_from_objects(method, runtime.globals().object_vt,
-            &[core::ptr::without_provenance_mut(24)]);
+        let allocated = unsafe { runtime.invoke_native_abi_from_objects_with_legacy_results(method, runtime.globals().object_vt,
+            [core::ptr::without_provenance_mut(24)].as_ptr(), 1, true) };
         assert_eq!(runtime.payload_size(allocated), Some(24));
     }
 

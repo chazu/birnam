@@ -16,6 +16,7 @@ pub(crate) struct Globals {
 }
 
 pub(crate) struct Runtime {
+    send: birnam_abi::language::Send,
     api: usize,
     finalizers: usize,
     layouts: usize,
@@ -55,7 +56,7 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
 }
 
 pub(crate) fn install(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> &'static Runtime {
-    let runtime = RUNTIME.get_or_init(|| Runtime { api: api as usize, finalizers: finalizers as usize, layouts: layouts as usize, hooks: hooks as usize, roots: roots as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
+    let runtime = RUNTIME.get_or_init(|| Runtime { send: unsafe { birnam_abi::language::select(&*api) }.expect("Portable Code requires checked language send"), api: api as usize, finalizers: finalizers as usize, layouts: layouts as usize, hooks: hooks as usize, roots: roots as usize, imports: imports as usize, exports: exports as usize, vtables: vtables as usize });
     ROOTS_REGISTERED.call_once(|| unsafe {
         birnam_abi::root_registry::register(runtime.roots as *const birnam_abi::root_registry::ApiV1, mark_roots);
     });
@@ -203,7 +204,7 @@ impl Runtime {
     }
 
     pub(crate) fn send_slice(&self, receiver: Oop, selector: Oop, arguments: &[Oop]) -> Oop {
-        unsafe { (self.api().send)(receiver, selector, arguments.as_ptr(), arguments.len()) }
+        unsafe { (self.send)(receiver, selector, arguments.as_ptr(), arguments.len()) }
     }
 
     pub(crate) unsafe fn make_string_with_finalizer_active(

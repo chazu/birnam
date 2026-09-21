@@ -93,10 +93,26 @@ unsafe extern "C" fn api_alloc(vtable: Oop, payload_size: usize) -> Oop {
 
 unsafe extern "C" fn api_send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
     let runtime = runtime();
-    runtime.enter_application(|| {
-        // SAFETY: the public wrapper forwards the IdApi argument-buffer contract.
-        unsafe { runtime.send_abi(receiver, selector, args, count) }
-    })
+    let result = runtime.enter_application(|| unsafe { runtime.send_legacy_abi(receiver, selector, args, count) });
+    // The frozen native IdApi still borrows legacy Method addresses for native
+    // lookup/mutation clients. Generated language code uses the checked entry.
+    let primitive = selector == runtime.globals().lookup;
+    if primitive {
+        if result == runtime.canonical().nil { return core::ptr::null_mut(); }
+        if let Some(entry) = runtime.owned_method_entry(result) {
+            if let Some(method) = runtime.try_decode_legacy_method(entry) { return method.as_oop(); }
+        }
+    }
+    result
+}
+
+/// Checked language send; native entry results become owned Method objects.
+/// # Safety
+/// The receiver, selector and argument slice are live language Objects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_runtime_send_v1(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
+    let runtime = runtime();
+    runtime.enter_application(|| unsafe { runtime.send_abi(receiver, selector, args, count) })
 }
 
 /// Test-only access to the exact public send wrapper while a foreign Method is
@@ -306,6 +322,7 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
     if !namespace_exists { bootstrap.runtime.publish_canonical_exports(); }
     bootstrap.runtime.install_execution_objects();
     bootstrap.runtime.install_block_objects();
+    bootstrap.runtime.install_method_objects();
 }
 
 /// Perform the one supported process-lifetime initialization transition.

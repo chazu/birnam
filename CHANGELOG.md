@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Add owned Method values for language reflection. Retain exact implementations
+  across replacement, removal and collection; preserve native contexts and
+  generated-code leases. TCC and Portable Code use checked language sends.
+  Image saving rejects process-local Methods with `methodNotImageable`.
+
 - Construct Runtime with completed Integer, Float, Word and String inputs (v15).
   Move compiler admission/catalogs and optimization registries into an explicit
   later native extension, required by Codegen. Base Machine/Block and GC work

@@ -503,6 +503,7 @@ mod runtime {
         Continuation,
         DiscardReceipt,
         ForeignAddress,
+        Method,
     }
 
     impl ImageRejectionKind {
@@ -514,6 +515,7 @@ mod runtime {
                 Self::Continuation => b"continuationNotImageable\0",
                 Self::DiscardReceipt => b"discardReceiptNotImageable\0",
                 Self::ForeignAddress => b"foreignAddressNotImageable\0",
+                Self::Method => b"methodNotImageable\0",
             }
         }
 
@@ -525,6 +527,7 @@ mod runtime {
                 Self::Continuation => "Rust Image rejected process-local Continuation",
                 Self::DiscardReceipt => "Rust Image rejected process-local DiscardReceipt",
                 Self::ForeignAddress => "Rust Image rejected process-local ForeignAddress",
+                Self::Method => "Rust Image rejected process-local Method",
             }
         }
     }
@@ -821,6 +824,9 @@ mod runtime {
         }
         if unsafe { belongs_to_exported_capability_family(api, object, DISCARD_RECEIPT_NAME) } {
             return Some(ImageRejectionKind::DiscardReceipt);
+        }
+        if unsafe { belongs_to_exported_capability_family(api, object, b"Method\0") } {
+            return Some(ImageRejectionKind::Method);
         }
         if unsafe { belongs_to_exported_capability_family(api, object, FOREIGN_ADDRESS_NAME) } {
             return Some(ImageRejectionKind::ForeignAddress);

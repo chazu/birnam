@@ -10,8 +10,9 @@
 > lookup/Integer admission. Id is independently packaged with only the ABI crate;
 > Runtime/compiler code is in a separate upper library loaded through Id. Native
 > Block and native value/control operations now precede compiler modules.
-> Compiler admission is now a later explicit extension. Owned Method consumers
-> and the full entry-level construction manifest remain open.
+> Compiler admission is now a later explicit extension. Language reflection now
+> returns owned Methods; unsafe native consumers and the full entry-level
+> construction manifest remain open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -552,7 +553,32 @@ module descriptor and identity; Runtime and compiler/artifact code live in the
 separate `birnam-runtime` crate. Both are installed and the host initializes
 Runtime through Id's loader after its predecessors. Compiler admission is an
 explicit later extension; base Execution has its value dependencies at construction.
-Owned Method consumers and the complete construction graph remain unfinished.
+Language reflection now returns owned Methods through the checked language-send
+entry used by TCC and Portable Code. Unsafe native consumers still use the frozen
+raw Method convention. Registered generated implementations retain their
+generation; native functions retain their image. Anonymous synchronous TCC
+functions without registration are currently rejected by reflection rather than
+returned as borrowed addresses; their Unit ownership still needs integration.
+That work, native consumer migration and the complete construction graph remain
+unfinished. See [the language boundary](../../abi/language-send-v1.md).
+
+The Method production check is `scripts/method-values-smoke.sh PREFIX`, also
+included as `method-values` in routine/exhaustive validation. It passes source,
+source-free compiled modules, mapped/rebuilt images and baked execution, with
+replacement, removal, aliases, custom lookup, malformed lookup results and GC.
+Both ordinary and privately customized Method instances refuse image saving.
+The native construction-prefix fixture also retains distinct native contexts,
+invokes after replacement/removal, and collects during invocation before the
+compiler extension exists. The focused Runtime/TCC/Portable Code tests pass
+324 tests (17 ignored); the installed Portable Code suite passes 114 assertions.
+
+The synchronous portable-code eviction assertion formerly required unmapping
+inside the enclosing turn; it also failed on the preceding committed build.
+It now asserts deferral like the resumable cases. The existing
+`scripts/portable-resumable-lifecycle-smoke.sh` checks both synchronous and
+resumable materializations across separate real REPL turns, proving eviction
+survival and actual subsequent native-unit release. Debug installation and the
+workspace diagnostic build pass; release validation remains waived.
 
 The host's [`Siphon`](../../rust/birnam-host/src/siphon.rs) supplies the small ad
 hoc loading protocol and invokes `birnam_native_module_v1`. The real Id descriptor

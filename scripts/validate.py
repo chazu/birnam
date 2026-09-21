@@ -36,6 +36,10 @@ def plan(suite, prefix, output):
                        PRODUCTION + ('scripts/rust-install.sh', 'docs/guide/**/*'), artifacts=(str(prefix),), timeout=300))
     result.append(step('native', ['bash', 'scripts/rust-driver-native-smoke.sh', prefix], NATIVE,
                        depends=('install',), timeout=600))
+    if suite != 'performance':
+        result.append(step('method-values', ['bash', 'scripts/method-values-smoke.sh', prefix],
+                           PRODUCTION + ('scripts/method-values-smoke.sh',),
+                           depends=('install',), timeout=600))
     result.append(step('floor-discovery', ['python3', 'scripts/floor-discovery-test.py',
                        '--prefix', prefix, '--output', output/'floor-discovery.json'],
                        PRODUCTION + ('scripts/floor-discovery-test.py', 'scripts/fixtures/floor-lookup.c',

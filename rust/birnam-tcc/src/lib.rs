@@ -205,6 +205,7 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
 
 #[derive(Clone, Copy)]
 struct Runtime {
+    send: birnam_abi::language::Send,
     api: usize,
     finalizers: usize,
     layouts: usize,
@@ -868,7 +869,7 @@ pub unsafe extern "C" fn rt_send(
     let runtime = RUNTIME
         .get()
         .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).send)(receiver, selector, args, count) }
+    unsafe { (runtime.send)(receiver, selector, args, count) }
 }
 
 /// Forward the private registration ABI into the exact selected floor while
@@ -1445,6 +1446,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             abort("TCC exports were incomplete");
         }
         Runtime {
+            send: unsafe { birnam_abi::language::select(api) }.unwrap_or_else(|| abort("TCC requires checked language send")),
             api: api_pointer as usize, finalizers: finalizers as usize,
             layouts: layouts as usize,
             hooks: hooks as usize,

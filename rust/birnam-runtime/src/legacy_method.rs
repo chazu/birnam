@@ -88,9 +88,23 @@ pub(crate) fn native_arguments(
     entry: NativeEntry,
     arguments: &[Oop],
     runtime: &crate::runtime::Runtime,
+    legacy_operands: bool,
 ) -> Vec<Operand> {
     let address = entry.method.map(|method| method as usize);
-    if address == Some(crate::runtime::id_protocol::allocate as native::Method as usize)
+    if (address == Some(crate::runtime::id_protocol::add_method as native::Method as usize)
+        || runtime.core_legacy_method(entry) == Some(MethodAddress::from_method(add_method)))
+        && let [selector, object] = arguments
+        && let Some(method) = runtime.owned_method_entry(*object)
+    {
+        // An all-Oop language implementation installed as lookup answers a
+        // Method object. Adapt that result to Id's typed entry protocol while
+        // preserving the selected underlying implementation.
+        let method = if *selector == runtime.globals().lookup {
+            direct_method(method).map_or(method, |address| runtime.encode_legacy_method(address.to_method(), true))
+        } else { method };
+        return vec![Operand::object(*selector), Operand::entry(method)];
+    }
+    if legacy_operands && address == Some(crate::runtime::id_protocol::allocate as native::Method as usize)
         && let [size] = arguments
     {
         return vec![Operand::word(size.addr())];
@@ -98,6 +112,7 @@ pub(crate) fn native_arguments(
     if (address == Some(crate::runtime::id_protocol::add_method as native::Method as usize)
         || runtime.core_legacy_method(entry) == Some(MethodAddress::from_method(add_method)))
         && let [selector, method] = arguments
+        && legacy_operands
         && let Some(method) = unsafe { MethodAddress::from_oop(*method) }
     {
         return vec![
@@ -132,6 +147,12 @@ pub(crate) fn native_result(entry: NativeEntry, outcome: Outcome, runtime: &crat
     } else {
         None
     }
+}
+
+/// These legacy functions return native entries rather than language Objects.
+pub(crate) fn returns_entry(entry: NativeEntry) -> bool {
+    entry.method.is_some_and(|method| method as usize == invoke_lookup as native::Method as usize
+        || method as usize == invoke_entry as native::Method as usize)
 }
 
 #[cfg(test)]
@@ -187,7 +208,7 @@ unsafe fn invoke(
         .iter()
         .map(|arg| {
             arg.as_object()
-                .or_else(|| arg.as_entry().map(|entry| crate::runtime::with_active(|runtime| runtime.decode_legacy_method(entry).as_oop())))
+                .or_else(|| arg.as_entry().and_then(|entry| crate::runtime::with_active(|runtime| runtime.try_decode_legacy_method(entry).map(MethodAddress::as_oop))))
         })
         .collect();
     let Some(converted) = converted else {
@@ -217,6 +238,17 @@ unsafe fn invoke_method_result(
     let scope = ResultScope::new();
     match unsafe { invoke(context, receiver, args, count) } {
         Ok(result) => {
+            if let Some(entry) = crate::runtime::with_active(|runtime| runtime.owned_method_entry(result)) {
+                return Outcome::loaded(Operand::entry(entry));
+            }
+            // A language lookup returns Method or nil. Other live objects must
+            // never be treated as executable addresses by the native adapter.
+            // Raw addresses remain the explicit unsafe native ABI contract.
+            if let Some(outcome) = crate::runtime::with_active(|runtime| {
+                if runtime.payload_size(result).is_none() { return None; }
+                Some(if result == runtime.canonical().nil { Outcome::loaded(Operand::unit()) }
+                    else { Outcome::failed(native::INVALID_REQUEST, 0) })
+            }) { return outcome; }
             let Some(method) = (unsafe { MethodAddress::from_oop(result) }) else {
                 return Outcome::loaded(Operand::unit());
             };

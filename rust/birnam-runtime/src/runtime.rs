@@ -67,6 +67,7 @@ mod guarded_dispatch;
 mod guarded_lookup;
 mod native_tier;
 mod compiler;
+mod method;
 mod numeric;
 mod integer;
 mod float;
@@ -268,6 +269,7 @@ pub(crate) struct Runtime {
     lookup_guard_cache: crate::guard_verdict::Service,
     dispatch_cache: dispatch_cache::Cache,
     compiler: core::cell::OnceCell<compiler::Compiler>,
+    methods: core::cell::RefCell<method::Methods>,
     integer: Cell<Option<integer::Binding>>,
     float: Cell<Option<float::Binding>>,
     word: Cell<Option<word::Binding>>,
@@ -485,6 +487,7 @@ impl Runtime {
             lookup_guard_cache: crate::guard_verdict::Service::with_factory(support.verdict),
             dispatch_cache: dispatch_cache::Cache::with_factory(support.cache),
             compiler: compiler::initial(),
+            methods: Default::default(),
             integer: Cell::new(None),
             float: Cell::new(None),
             word: Cell::new(None),
@@ -10615,6 +10618,45 @@ mod tests {
             ),
             "a later reader never reinterprets the retired thunk as synchronous"
         );
+    }
+
+    #[test]
+    fn reflected_registered_method_owns_its_removed_implementation_until_collection() {
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.install_execution_objects();
+        runtime.install_method_objects();
+        runtime.gc_set_precise(true);
+        RETURN_PROBE_SELECTOR.set(runtime.intern(b"returnAt:").unwrap());
+        CALL_PROBE_FORCED_GC.set(false);
+        REGISTERED_THUNK_CALLS.set(0);
+        let selector = runtime.intern(b"ownedRegisteredMethod:").unwrap();
+        let receiver = runtime.canonical().object_prototype;
+        let expected = runtime.make_integer(119);
+        let _expected = super::ScopedOopRootGuard::new(runtime, expected);
+        let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+            identity: DescriptorIdentity { implementation: 91, generation: 31, source_map: 91 },
+            program_counter_count: 1, driver_argument_count: 0, call_sites: Vec::new(),
+            step_method: call_child_step, entry_argument_count: 1, edges: vec![],
+            ..probe_spec(2,1)
+        }).unwrap();
+        runtime.register_stackless_resumable(SemanticRegistrationV1::new(
+            registered_probe_thunk, descriptor, 1, 0, 1)).unwrap();
+        runtime.add_method(runtime.globals().object_vt, selector, registered_probe_thunk);
+        let method = runtime.send_slice(runtime.globals().object_vt, runtime.globals().lookup, &[selector]);
+        let root = super::ScopedOopRootGuard::new(runtime, method);
+        assert_eq!(runtime.stackless_registration_diagnostics().explicit_generation_leases, 1);
+        runtime.remove_method(runtime.globals().object_vt, selector);
+        assert_eq!(runtime.enter_application(|| runtime.invoke_owned_method(method, receiver, &[expected])), expected);
+        assert_eq!(REGISTERED_THUNK_CALLS.get(), 0, "exact registration enters directly");
+        runtime.enter(|| runtime.gc_collect_from_native_range(0,0));
+        assert_eq!(runtime.stackless_registration_diagnostics().explicit_generation_leases, 1);
+        drop(root);
+        runtime.enter(|| runtime.gc_collect_from_native_range(0,0));
+        let diagnostics = runtime.stackless_registration_diagnostics();
+        assert_eq!(diagnostics.explicit_generation_leases, 0);
+        assert_eq!(diagnostics.retired_entries, 1);
+        assert!(runtime.owned_method_entry(method).is_none());
     }
 
     #[test]
