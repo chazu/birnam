@@ -26,6 +26,10 @@ pub(super) struct Construction {
     graph: Option<*const birnam_abi::trace_graph::GraphV2>,
     collection: Option<*const birnam_abi::collection_state::OwnedV2>,
     text_ready: bool,
+    control_ready: bool,
+    error_value: Option<*const birnam_abi::error_value::ApiV3>,
+    printing: Option<*const birnam_abi::printing::ApiV1>,
+    block_loop: Option<*const birnam_abi::block_loop::ApiV3>,
     id_protocol: Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: BootstrapRef,
@@ -58,6 +62,10 @@ impl Construction {
             graph: None,
             collection: None,
             text_ready: false,
+            control_ready: false,
+            error_value: None,
+            printing: None,
+            block_loop: None,
             runtime: None,
             support_result: None,
             values_result: None,
@@ -649,6 +657,59 @@ impl Construction {
         self.runtime = Some(pointer);
         Ok(pointer)
     }
+    fn load(&self, library: &str, args: &[Operand]) -> Result<Operand, Outcome> {
+        let path = self.source_path.with_file_name(library);
+        unsafe { self.load_native(&path_bytes(&path), args) }.into_result()
+    }
+    fn runtime_service(&mut self, name: &[u8]) -> Result<Operand, Outcome> {
+        let runtime = self.initialize_runtime()?;
+        self.load("libbirnam_runtime.dylib", &[Operand::bytes(name), Operand::word(runtime.addr())])
+    }
+    fn initialize_error_value(&mut self) -> Result<*const birnam_abi::error_value::ApiV3, Outcome> {
+        if let Some(api) = self.error_value { return Ok(api); }
+        self.initialize_error()?;
+        let value = self.load("libbirnam_error_value.dylib", &[Operand::word(self.string.unwrap().addr())])?;
+        let api = value.as_word().ok_or_else(invalid)? as *const birnam_abi::error_value::ApiV3;
+        if unsafe { birnam_abi::error_value::attach(api) } != 1 { return Err(invalid()); }
+        self.error_value = Some(api);
+        Ok(api)
+    }
+    fn initialize_printing(&mut self) -> Result<*const birnam_abi::printing::ApiV1, Outcome> {
+        if let Some(api) = self.printing { return Ok(api); }
+        let runtime = self.initialize_runtime()?;
+        let value = self.load("libbirnam_printing.dylib", &[Operand::word(runtime.addr()), Operand::word(self.string.unwrap().addr())])?;
+        let api = value.as_word().ok_or_else(invalid)? as *const birnam_abi::printing::ApiV1;
+        if unsafe { birnam_abi::printing::attach(api) } != 1 { return Err(invalid()); }
+        self.printing = Some(api);
+        Ok(api)
+    }
+    fn initialize_block_loop(&mut self) -> Result<*const birnam_abi::block_loop::ApiV3, Outcome> {
+        if let Some(api) = self.block_loop { return Ok(api); }
+        let runtime = self.initialize_runtime()?;
+        let error = self.initialize_error_value()?;
+        let presence = self.runtime_service(b"namespacePresence")?;
+        let imports = self.runtime_service(b"namespaceImport")?;
+        let value = self.load("libbirnam_block_loop.dylib", &[Operand::word(runtime.addr()), presence, imports, Operand::word(error.addr())])?;
+        let api = value.as_word().ok_or_else(invalid)? as *const birnam_abi::block_loop::ApiV3;
+        if unsafe { birnam_abi::block_loop::attach(api) } != 1 { return Err(invalid()); }
+        self.block_loop = Some(api);
+        Ok(api)
+    }
+    fn initialize_control(&mut self) -> Result<(), Outcome> {
+        if self.control_ready { return Ok(()); }
+        let runtime = self.initialize_runtime()?;
+        let error = self.initialize_error_value()?;
+        let presence = self.runtime_service(b"namespacePresence")?;
+        let imports = self.runtime_service(b"namespaceImport")?;
+        let value = self.load("libbirnam_integer.dylib", &[Operand::bytes(b"control"), Operand::word(runtime.addr()), presence, imports, Operand::word(error.addr())])?;
+        if value.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.initialize_printing()?;
+        self.initialize_block_loop()?;
+        let value = self.load("libbirnam_boolean.dylib", &[Operand::bytes(b"control"), Operand::word(runtime.addr())])?;
+        if value.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.control_ready = true;
+        Ok(())
+    }
     pub(super) fn advance(&mut self, stage: &[u8]) -> Result<Operand, Outcome> {
         macro_rules! owner {
             ($method:ident) => {
@@ -706,6 +767,10 @@ impl Construction {
                 ))
             }
             b"runtime" => Ok(Operand::word(self.initialize_runtime()?.addr())),
+            b"errorValue" => Ok(Operand::word(self.initialize_error_value()?.addr())),
+            b"printing" => Ok(Operand::word(self.initialize_printing()?.addr())),
+            b"blockLoop" => Ok(Operand::word(self.initialize_block_loop()?.addr())),
+            b"control" => { self.initialize_control()?; Ok(Operand::unit()) },
             _ => Err(invalid()),
         }
     }

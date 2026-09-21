@@ -73,6 +73,11 @@ fn construct(id: Protocol, roots: root_registry::OwnedV1, records: lifetime::Own
 }
 unsafe extern "C" fn initialize(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
     if id.is_null() { return invalid(); }
+    if let Some([request, api]) = unsafe { birnam_abi::borrowed_slice(args, count) } {
+        if request.as_bytes().and_then(|b| unsafe { birnam_abi::borrowed_bytes(b.pointer, b.length) }) == Some(b"control".as_slice()) {
+            return unsafe { super::initialize_control(id, *api) };
+        }
+    }
     let Some([roots, records]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
     let Some((roots, records)) = roots.as_word().zip(records.as_word()) else { return invalid(); };
     let roots = roots as *const root_registry::OwnedV1;

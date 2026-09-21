@@ -7,11 +7,16 @@ unsafe extern "C" fn initialize(id: *const Protocol, args: *const Operand, count
         return Outcome::failed(native::INVALID_REQUEST, 0);
     };
     if let [request, api] = args {
-        if request.as_bytes().and_then(|bytes| unsafe { birnam_abi::borrowed_bytes(bytes.pointer, bytes.length) }) == Some(b"compiler".as_slice())
-            && unsafe { native::valid_protocol(id) } {
-            if let Some(api) = api.as_word() {
-                if let Some(compiler) = crate::public_api::initialize_compiler(unsafe { &*id }, api as _) {
-                    return Outcome::loaded(Operand::word(compiler.addr()));
+        if unsafe { native::valid_protocol(id) } {
+            if let (Some(request), Some(api)) = (request.as_bytes(), api.as_word()) {
+                if let Some(name) = unsafe { birnam_abi::borrowed_bytes(request.pointer, request.length) } {
+                    if name == b"compiler" {
+                        if let Some(compiler) = crate::public_api::initialize_compiler(unsafe { &*id }, api as _) {
+                            return Outcome::loaded(Operand::word(compiler.addr()));
+                        }
+                    } else if let Some(service) = crate::public_api::construction_service(unsafe { &*id }, api as _, name) {
+                        return Outcome::loaded(Operand::word(service));
+                    }
                 }
             }
         }

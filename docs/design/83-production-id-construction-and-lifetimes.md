@@ -15,7 +15,8 @@
 > native binding references live in Lifetime above Id. Unsafe native consumers and the full entry-level
 > construction manifest remain open.
 > The loaded Bootstrap now owns the production construction sequence through
-> Runtime; host prefix requests delegate to the same implementation.
+> Runtime and the native control group; host prefix requests delegate to the
+> same implementation.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -2016,3 +2017,36 @@ rejection. Host unit tests pass 86 cases with one existing ignored case. The
 native prefix suite passes with the rebuilt host and the preceding installation's
 native libraries, all 56 of which are byte-identical to the new installation.
 The installed host source matches the worktree used for these checks.
+
+### Native control construction above Runtime
+
+Bootstrap now constructs the complete Error helper, Integer iteration,
+Object/Symbol printing, Block loops and Boolean control group. Their common
+native constructors take explicit completed inputs; the exact operands are in
+[Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md). Integer's control entry
+adds only `to:do:`; Boolean's adds only Block-taking branches and short-circuit
+operations. Base arithmetic, predicates and printing remain the lower modules'
+existing behavior. No compiler service is installed by these entries.
+
+The host requests Bootstrap's `control` stage before collections and receives
+its completed Error/printing/loop descriptors for later legacy consumers. The
+five corresponding `SCRIPT_MODULES` entries are removed. Runtime supplies its
+existing namespace presence/import views through named common-descriptor
+requests; Bootstrap does not probe private exported symbols to find them.
+
+The compiler-free native fixture now withholds collection and Store libraries,
+constructs this group with zero legacy module initializations, and exercises
+iteration, branches, printing, loops, errors, captures and collection. It then
+restores those later libraries and continues the real production sequence.
+Upper collection/Store/compiler/system construction and checked-dispatch
+consumer migration remain required.
+
+Validation on `/tmp/birnam-83-control` passes the native prefix suite, including
+absence of control selectors before construction, missing collection/Store
+libraries, and nested native Block Loop initialization from interning and method
+publication. Repeated completed construction returns the same descriptor.
+Installed, forced-source and compiled global lookup pass; Method source,
+compiled, mapped, rebuilt, baked and image-rejection checks pass. Host unit tests
+pass 86 cases with one existing ignored case; Integer's storage test also passes.
+All eleven changed Rust sources match the installed copies. Id's library is
+byte-identical to `/tmp/birnam-83-no-repeat`.

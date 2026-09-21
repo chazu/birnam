@@ -510,6 +510,9 @@ unsafe extern "C" fn initialize(
     if id.is_null() {
         return invalid();
     }
+    if count == 5 {
+        return unsafe { super::initialize_control(id, args, count) };
+    }
     let Some([roots, lifetime, values, namespace, string, error]) =
         (unsafe { birnam_abi::borrowed_slice(args, count) })
     else {

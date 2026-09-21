@@ -997,6 +997,7 @@ pub struct LoadedFloor {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleError {
+    NativeConstruction { stage: String, status: u32, detail: usize },
     EmbeddedNul,
     OpenFailed {
         path: PathBuf,
@@ -1108,12 +1109,7 @@ fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleErro
 pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_trace",
     "libbirnam_collect",
-    "libbirnam_error_value",
-    "libbirnam_integer",
     // Complete native value/control behavior before compiler-facing modules.
-    "libbirnam_printing",
-    "libbirnam_block_loop",
-    "libbirnam_boolean",
     "libbirnam_string_builder",
     "libbirnam_collection_value",
     "libbirnam_vector",
@@ -2692,10 +2688,36 @@ impl LoadedStack {
         self.load_module_handle(path).map(|_| ())
     }
 
+    /// Install the completed native control group before collections/compiler.
+    pub fn initialize_control(&mut self) -> Result<(), ModuleError> {
+        let construct = |stage: &[u8]| {
+            let invalid = || ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 };
+            self.floor.bootstrap.as_ref().ok_or_else(invalid)?.construct(stage)
+                .into_result().map_err(|failure| ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: failure.status, detail: failure.detail })
+        };
+        construct(b"control")?;
+        let pointer = |stage: &[u8]| -> Result<usize, ModuleError> {
+            construct(stage)?.as_word().filter(|value| *value != 0).ok_or_else(|| ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 })
+        };
+        let errors = pointer(b"errorValue")? as *const birnam_abi::error_value::ApiV3;
+        let printing = pointer(b"printing")? as *const birnam_abi::printing::ApiV1;
+        let loops = pointer(b"blockLoop")? as *const birnam_abi::block_loop::ApiV3;
+        unsafe {
+            assert_eq!(birnam_abi::error_value::attach(errors), 1);
+            assert_eq!(birnam_abi::printing::attach(printing), 1);
+            assert_eq!(birnam_abi::block_loop::attach(loops), 1);
+        }
+        self.error_value = errors;
+        self.printing = printing;
+        self.block_loop = loops;
+        Ok(())
+    }
+
     /// Resolve and load the canonical native stack in dependency order. TCC
     /// retains its exact override path; every other rung, including Store,
     /// comes from the one executable-relative runtime library directory.
     pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
+        self.initialize_control()?;
         let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
         let mut store_compensation_api = None;
         for name in SCRIPT_MODULES {

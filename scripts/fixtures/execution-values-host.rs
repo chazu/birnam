@@ -30,14 +30,29 @@ fn main() {
     ];
     assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &arguments) }.status, native::LOADED);
     println!("Runtime Machine works immediately at construction, before legacy module entries");
+    let later = ["string_builder", "collection_value", "vector", "range", "map", "string_collection", "id_collection", "store"];
+    for library in later {
+        let path = prefix.join(format!("libbirnam_{library}.dylib"));
+        std::fs::rename(&path, path.with_extension("later")).unwrap();
+    }
+    stack.initialize_control().unwrap();
+    assert_eq!(stack.module_count(), 0, "control used legacy module initialization");
+    let mut control_arguments = arguments;
+    control_arguments[6] = Operand::word(2);
+    assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &control_arguments) }.status, native::LOADED);
+    println!("native control and printing work while collections, Store and compiler libraries are absent");
+    for library in later {
+        let path = prefix.join(format!("libbirnam_{library}.dylib"));
+        std::fs::rename(path.with_extension("later"), &path).unwrap();
+    }
     match stack.load_script_modules(&resources) {
         Err(ModuleError::OpenFailed { path }) => assert_eq!(path, prefix.join("libbirnam_id_artifact.dylib")),
         other => panic!("expected completed native prefix before missing Artifact, got {other:?}"),
     }
     // dyld can reuse an already mapped image even after its file was moved.
     // Count the actual legacy initialization calls as well: only Trace/Collect,
-    // Error, Integer/Boolean control and the collection/Store extensions remain.
-    assert_eq!(stack.module_count(), 16, "completed lower modules initialized again");
+    // and the collection/Store extensions remain.
+    assert_eq!(stack.module_count(), 11, "completed lower modules initialized again");
     unsafe { birnam_abi::gc_settings::set_precise(stack.gc_settings(), 1) };
     let mut arguments = arguments;
     arguments[6] = Operand::word(1);
@@ -54,13 +69,13 @@ fn main() {
     assert!(!provider.is_null());
     let provider: birnam_abi::error_value::ProviderV3 = unsafe { std::mem::transmute(provider) };
     let error = unsafe { provider() };
-    for mode in [1, 2] {
+    for mode in [1, 2, 3, 4] {
         let library = scratch.join(format!("block-loop-{mode}.dylib"));
         let reentry = [arguments[0], Operand::word(stack.presence().addr()), arguments[1],
             Operand::word(error.addr()), Operand::bytes(library.as_os_str().as_bytes()), Operand::word(mode)];
         let result = unsafe { stack.load_native(scratch.join("block-loop-reentry.dylib").as_os_str().as_bytes(), &reentry) };
         assert_eq!(result.status, native::LOADED);
     }
-    println!("Block Loop retains the original execution table through first intern and binding reentry");
+    println!("Block Loop retains its original execution table; native construction rejects nested entry and repeats its completed result");
     println!("native Block, Boolean control, collections, Store and Machine work before parser/compiler modules, including errors, captures and GC; completed lower modules are not reopened");
 }

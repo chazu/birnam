@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Construct Integer/Boolean control, Block loops and printing through Bootstrap
+  with explicit completed dependencies; remove their legacy host initialization
+  entries and test the group before collection/Store/compiler libraries exist.
+
 - Remove the host's second initialization pass for fourteen completed lower
   modules and its obsolete Float/Word/String preparation path. Upper legacy
   consumers receive the values already constructed by Bootstrap.

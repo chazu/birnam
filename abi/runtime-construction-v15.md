@@ -50,7 +50,7 @@ image pinning. Runtime neither takes an `InitialObjects` Rust value nor owns an
 Id `State` box. Only explicit `ffi-test-hooks` builds of Runtime retain `id_init` for diagnostic
 fixtures. Normal Id and Runtime builds do not export that entry.
 
-The host invokes Runtime through Id's native module loader. The loader supplies
+The loaded Bootstrap module invokes Runtime through Id's native module loader. The loader supplies
 argument 1 as the native carrier; the other ten pointers are explicit `Word`
 initializer operands in the order above. The native entry rejects wrong counts,
 operand kinds and invalid descriptors before adopting owners, and returns the
@@ -65,3 +65,11 @@ remain absent until the explicit [compiler extension](runtime-compiler-v1.md)
 loads. Both entries share the Runtime image; the base does not require Codegen
 or its module initialization. All six supporting factories are loaded through Id
 before Runtime itself is opened.
+
+After construction, the same native descriptor accepts two-operand requests:
+`Bytes("namespacePresence"), Word(runtime_api)` and
+`Bytes("namespaceImport"), Word(runtime_api)`. Each returns a Word pointing to
+Runtime's already completed namespace view, using the existing presence/import
+ABI. A null or different Runtime pointer, or a mismatched Id carrier, returns
+InvalidRequest. These queries neither install compiler services nor change
+ownership. Bootstrap supplies these live views to later control constructors.

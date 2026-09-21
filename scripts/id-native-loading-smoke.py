@@ -143,7 +143,7 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
         "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(values_driver))
     run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
         "scripts/fixtures/block-loop-reentry-native.c", "-o", str(scratch / "block-loop-reentry.dylib"))
-    for mode in [1, 2]:
+    for mode in [1, 2, 3, 4]:
         shutil.copy2(prefix / "lib/libbirnam_block_loop.dylib", scratch / f"block-loop-{mode}.dylib")
     run(str(values_driver), str(values_prefix), str(scratch / "execution-values.dylib"), str(scratch))
     env = dict(os.environ, BIRNAM_NATIVE_UNLOAD_LOG=str(scratch / "unloaded"))

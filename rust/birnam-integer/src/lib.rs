@@ -554,3 +554,29 @@ birnam_abi::error_value_dependency!();
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { runtime().presence as *const birnam_abi::namespace_presence::ApiV1 }
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { runtime().imports as *const birnam_abi::namespace_import::ApiV1 }
+
+static CONTROL_COMPLETE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+unsafe fn initialize_control(id: *const birnam_abi::id_protocol::Protocol, args: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
+    use birnam_abi::id_protocol::{self as protocol, Outcome, Operand};
+    let invalid = || Outcome::failed(protocol::INVALID_REQUEST, 0);
+    if !unsafe { protocol::valid_protocol(id) } || !native::ready() { return invalid(); }
+    let Some([request, api, presence, imports, errors]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
+    if request.as_bytes().and_then(|b| unsafe { birnam_abi::borrowed_bytes(b.pointer, b.length) }) != Some(b"control".as_slice()) { return invalid(); }
+    let (Some(api), Some(presence), Some(imports), Some(errors)) = (api.as_word(), presence.as_word(), imports.as_word(), errors.as_word()) else { return invalid(); };
+    let api = api as *mut IdApi;
+    let instance = unsafe { &*INSTANCE.load(Ordering::Acquire) };
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
+        || instance.native_access().unwrap().id.context != unsafe { (*id).context }
+        || !unsafe { birnam_abi::namespace_presence::valid(presence as _) && birnam_abi::namespace_import::valid(imports as _) }
+        || unsafe { birnam_abi::error_value::attach(errors as _) } != 1 { return invalid(); }
+    if let Some(runtime) = RUNTIME.get() {
+        return if CONTROL_COMPLETE.load(Ordering::Acquire) && (runtime.api, runtime.presence, runtime.imports) == (api.addr(), presence, imports) { Outcome::loaded(Operand::unit()) } else { invalid() };
+    }
+    RUNTIME.set(Runtime { api: api.addr(), presence, imports }).ok().expect("serialized Integer construction");
+    if unsafe { native::extend_binding(instance, b"to:do:") } {
+        let selector = unsafe { ((*api).intern)(c"to:do:".as_ptr()) };
+        unsafe { ((*api).method)(instance.identities()[0], selector, integer_to_do) };
+    }
+    CONTROL_COMPLETE.store(true, std::sync::atomic::Ordering::Release);
+    Outcome::loaded(Operand::unit())
+}

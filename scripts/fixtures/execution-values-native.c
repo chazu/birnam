@@ -13,6 +13,7 @@ static IntegerApiV1 integer;
 static StringApiV1 string;
 static Oop roots[64];
 static size_t root_count, calls, limit;
+static int registered;
 static Oop keep(Oop object) { assert(object && root_count<64); roots[root_count++]=object; return object; }
 static void mark(RootRegistryMarkV1 mark_one) { for(size_t i=0;i<root_count;i++) mark_one(roots[i]); }
 static Oop named(const char *name) { Oop o=namespace_import_v1(imports,name); assert(o); return o; }
@@ -101,6 +102,16 @@ static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,in
     request[1].data.word=(size_t)api;
     BirnamProtocol foreign=*id;foreign.receiver=api->nil_obj;
     assert(module->initialize(&foreign,request,2).status==BIRNAM_INVALID_REQUEST && !provider());
+    const char *services[]={"namespacePresence","namespaceImport"};
+    for(size_t i=0;i<2;i++) {
+        BirnamOperand selected[2]={{.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)services[i],strlen(services[i])}},request[1]};
+        assert(module->initialize(&foreign,selected,2).status==BIRNAM_INVALID_REQUEST);
+        BirnamOutcome found=module->initialize(id,selected,2);
+        assert(found.status==BIRNAM_LOADED && found.value.kind==BIRNAM_WORD && found.value.data.word);
+        if(i==1) assert(found.value.data.word==(size_t)imports);
+        selected[1].data.word=0;
+        assert(module->initialize(id,selected,2).status==BIRNAM_INVALID_REQUEST);
+    }
     if(install) {
         check_methods(id,image);
         BirnamOutcome result=module->initialize(id,request,2);
@@ -125,6 +136,11 @@ static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,in
     }
     assert(!dlclose(image));
 }
+static void absent(const BirnamProtocol *id,Oop behavior,const char *name) {
+    BirnamOperand selector={.kind=BIRNAM_OBJECT,.data.object=api->intern(name)};
+    BirnamOutcome result=id->message(id->context,behavior,api->intern("lookup"),&selector,1);
+    assert(result.status==BIRNAM_LOADED && result.value.kind==BIRNAM_UNIT);
+}
 static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
     assert(count==7 && args[6].kind==BIRNAM_WORD);
     for(size_t i=0;i<5;i++) assert(args[i].kind==BIRNAM_WORD);
@@ -138,10 +154,13 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
         Oop machine=send0(named("Machine"),"new");
         assert(number(send0(machine,"liveFrameCount"))==0);
         assert(named("Block") && named("BlockVt"));
+        absent(id,api->vtable_of(api->true_obj),"ifTrue:");
+        absent(id,integer.behavior,"to:do:");
+        absent(id,named("BlockVt"),"whileTrue:");
         check_compiler(id,&args[5],0);
         return (BirnamOutcome){.status=BIRNAM_LOADED};
     }
-    root_registry_register_v1(registry,mark);
+    if(!registered) { root_registry_register_v1(registry,mark); registered=1; }
     Oop block_proto=named("Block"), block_vt=named("BlockVt");
     assert(api->vtable_of(block_proto)==block_vt && vtable_owner(api,block_vt)==block_proto);
     Oop expected=text("native capture");
@@ -151,6 +170,25 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     assert(send0(closure,"value")==expected);
     assert(send1(api->true_obj,"ifTrue:",closure)==expected);
     assert(send1(api->false_obj,"ifTrue:",closure)==api->nil_obj);
+    printed(named("Object"),"anObject");
+    printed(api->intern("nativeSymbol"),"#nativeSymbol");
+    Oop iterator=native_block("value:",visit,api->nil_obj); calls=0;
+    Oop start=keep(integer.make(integer.context,1)), end=keep(integer.make(integer.context,3));
+    Oop iteration[]={end,iterator};
+    api->send(start,api->intern("to:do:"),iteration,2); assert(calls==3);
+    Oop predicate=native_block("value",condition,api->nil_obj);
+    Oop work=native_block("value",body,api->nil_obj); calls=0; limit=3;
+    assert(send1(predicate,"whileTrue:",work)==api->nil_obj && calls==3);
+    Oop invalid=native_block("value",bad_condition,api->nil_obj);
+    Oop error=keep(send1(invalid,"whileTrue:",work));
+    assert(send0(error,"isError")==api->true_obj);
+    assert(strcmp(api->symbol_name(send0(error,"kind")),"mustBeBoolean")==0);
+    if(args[6].data.word==2) {
+        assert(!namespace_import_v1(imports,"Vector"));
+        assert(!namespace_import_v1(imports,"Globals"));
+        root_count=0;
+        return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=block_proto}};
+    }
     Oop vector=keep(send0(named("Vector"),"new"));
     Oop one=keep(integer.make(integer.context,1)), two=keep(integer.make(integer.context,2));
     vector=keep(send1(vector,"add:",one)); vector=keep(send1(vector,"add:",two));
@@ -168,13 +206,6 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     assert(number(send0(map,"size"))==1);
     Oop parts=keep(send1(text("a,b"),"split:",text(",")));
     assert(number(send0(parts,"size"))==2);
-    Oop predicate=native_block("value",condition,api->nil_obj);
-    Oop work=native_block("value",body,api->nil_obj); calls=0; limit=3;
-    assert(send1(predicate,"whileTrue:",work)==api->nil_obj && calls==3);
-    Oop invalid=native_block("value",bad_condition,api->nil_obj);
-    Oop error=keep(send1(invalid,"whileTrue:",work));
-    assert(send0(error,"isError")==api->true_obj);
-    assert(strcmp(api->symbol_name(send0(error,"kind")),"mustBeBoolean")==0);
     Oop globals=named("Globals"), key=keep(api->intern("earlyNativeValue"));
     Oop binding[]={key,expected}; api->send(globals,api->intern("at:put:"),binding,2);
     assert(send1(globals,"at:",key)==expected);

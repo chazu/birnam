@@ -42,9 +42,11 @@ Its receiver is unused. Invoke it outside module initialization; nested graph
 construction is rejected. No Bootstrap-state borrow crosses a module callback.
 
 The loaded Bootstrap module owns the dependency order and arguments from roots
-through Runtime. Stages `roots`, `lifetime`, `values`, `namespace`, `objectModel`,
+through Runtime and its control extensions. Stages `roots`, `lifetime`, `values`, `namespace`, `objectModel`,
 `string`, `integer`, `float`, `word`, `trace`, `collection`, `runtimeSupport`,
-`runtimeValues`, and `runtime` return Word pointers to completed descriptors.
+`runtimeValues`, `runtime`, `errorValue`, `printing`, and `blockLoop` return Word
+pointers to completed descriptors. `control` installs Integer/Boolean control,
+Block loops and Object/Symbol printing and returns Unit.
 `error` returns its Object; `text` and `activate` return Unit. Each constructs its
 required predecessors first. Repeated successful requests return the same owners.
 `existingRoots` returns the current root descriptor or Unit without constructing
@@ -52,7 +54,8 @@ anything. Unknown stages fail with native InvalidRequest.
 
 Host prefix entry points delegate to this same constructor; they contain no
 second dependency sequence. `begin_floor` requests the roots stage. Normal
-startup requests Runtime and retains Bootstrap until teardown. The host's later
+startup requests Runtime, then `control` before collections, and retains
+Bootstrap until teardown. The host's later
 legacy module entries and aggregate Runtime capability discovery still need
 migration; this constructor is not a claim that the entire upper graph is done.
 
@@ -73,3 +76,23 @@ scope for validation, native-boundary installation, constructor replacement and
 publication of Active. Failure keeps the existing roots and leaves collection
 disabled; production startup then fails. No callback slot is left for a future
 owner. The action and its context must remain live and must not unwind.
+
+The control constructors use the common native descriptor and these exact operands:
+
+| Library | Operands after Id | Result |
+|---|---|---|
+| Error Value | Word(String API) | Word(Error helper API v3) |
+| Integer | Bytes("control"), Word(Runtime API), Word(namespace presence), Word(namespace import), Word(Error helper API) | Unit; installs `to:do:` only |
+| Printing | Word(Runtime API), Word(String API) | Word(Printing API v1); installs Object/Symbol defaults |
+| Block Loop | Word(Runtime API), Word(namespace presence), Word(namespace import), Word(Error helper API) | Word(Block Loop API v3); installs `whileTrue:` and `whileFalse:` |
+| Boolean | Bytes("control"), Word(Runtime API) | Unit; installs Block-taking branches and short-circuit operations |
+
+Runtime's common descriptor also accepts Bytes("namespacePresence") or
+Bytes("namespaceImport") followed by its completed Runtime API pointer. These
+return the existing live namespace views after checking the Runtime/Id pair.
+They create no new namespace and have no compiler dependency. Constructor
+results and installed code follow the existing process-lifetime contracts.
+Recursive entry into an unfinished control constructor is rejected; repeated
+completed construction retains the same execution selection. Legacy native
+consumers still use their existing callable descriptors; migrating those
+consumers to checked message dispatch remains separate required work.

@@ -108,17 +108,7 @@ static API: ApiV3 = ApiV3 {
 };
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    assert!(!api.is_null(), "Block Loop received a null IdApi");
-    // Select execution before namespace/intern callbacks can reenter module_init.
-    EXECUTION_API.get_or_init(|| (api as usize, presence as usize, imports as usize));
-    let block_vt = unsafe { birnam_abi::namespace_import::import(imports, c"BlockVt".as_ptr()) };
-    assert!(!block_vt.is_null(), "Block Loop requires Runtime's Block representation");
-    READY.store(true, Ordering::Release);
-    unsafe {
-        let while_true = ((*api).intern)(c"whileTrue:".as_ptr());
-        let while_false = ((*api).intern)(c"whileFalse:".as_ptr());
-        install(api, api, presence, imports, block_vt, while_true, while_false);
-    }
+    unsafe { mount(api, presence, imports) };
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
@@ -138,3 +128,42 @@ birnam_abi::error_value_dependency!();
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { EXECUTION_API.get().expect("methods not installed").1 as *const birnam_abi::namespace_presence::ApiV1 }
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { EXECUTION_API.get().expect("module not installed").2 as *const birnam_abi::namespace_import::ApiV1 }
+
+unsafe fn mount(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
+    assert!(!api.is_null(), "Block Loop received a null IdApi");
+    // Select execution before namespace/intern callbacks can reenter module_init.
+    EXECUTION_API.get_or_init(|| (api as usize, presence as usize, imports as usize));
+    let block_vt = unsafe { birnam_abi::namespace_import::import(imports, c"BlockVt".as_ptr()) };
+    assert!(!block_vt.is_null(), "Block Loop requires Runtime's Block representation");
+    READY.store(true, Ordering::Release);
+    unsafe {
+        let while_true = ((*api).intern)(c"whileTrue:".as_ptr());
+        let while_false = ((*api).intern)(c"whileFalse:".as_ptr());
+        install(api, api, presence, imports, block_vt, while_true, while_false);
+    }
+}
+static NATIVE_BUSY: AtomicBool = AtomicBool::new(false);
+static NATIVE_COMPLETE: AtomicBool = AtomicBool::new(false);
+unsafe extern "C" fn initialize_native(id: *const birnam_abi::id_protocol::Protocol, args: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
+    use birnam_abi::id_protocol::{self as native, Operand, Outcome};
+    let invalid = || Outcome::failed(native::INVALID_REQUEST, 0);
+    if !unsafe { native::valid_protocol(id) } { return invalid(); }
+    let Some([api, presence, imports, errors]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let (Some(api), Some(presence), Some(imports), Some(errors)) = (api.as_word(), presence.as_word(), imports.as_word(), errors.as_word()) else { return invalid(); };
+    let api = api as *mut IdApi;
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
+        || EXECUTION_API.get().is_some_and(|selected| *selected != (api.addr(), presence, imports))
+        || !unsafe { birnam_abi::namespace_presence::valid(presence as _) && birnam_abi::namespace_import::valid(imports as _) }
+        || unsafe { birnam_abi::error_value::attach(errors as _) } != 1 { return invalid(); }
+    if NATIVE_COMPLETE.load(Ordering::Acquire) { return Outcome::loaded(Operand::word((&API as *const ApiV3).addr())); }
+    if NATIVE_BUSY.swap(true, Ordering::AcqRel) { return invalid(); }
+    unsafe { mount(api, presence as _, imports as _) };
+    NATIVE_COMPLETE.store(true, Ordering::Release);
+    NATIVE_BUSY.store(false, Ordering::Release);
+    Outcome::loaded(Operand::word((&API as *const ApiV3).addr()))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {
+    version: 1, byte_size: size_of::<birnam_abi::id_protocol::Module>() as u32,
+    initialize: Some(initialize_native),
+};

@@ -114,3 +114,29 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
 birnam_abi::string_dependency!();
+
+static NATIVE_BUSY: AtomicBool = AtomicBool::new(false);
+static NATIVE_COMPLETE: AtomicBool = AtomicBool::new(false);
+unsafe extern "C" fn initialize_native(id: *const birnam_abi::id_protocol::Protocol, args: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
+    use birnam_abi::id_protocol::{self as native, Operand, Outcome};
+    let invalid = || Outcome::failed(native::INVALID_REQUEST, 0);
+    if !unsafe { native::valid_protocol(id) } { return invalid(); }
+    let Some([api, string]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let (Some(api), Some(string)) = (api.as_word(), string.as_word()) else { return invalid(); };
+    let api = api as *mut IdApi;
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
+        || EXECUTION_API.get().is_some_and(|selected| *selected != api.addr())
+        || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid(); }
+    if NATIVE_COMPLETE.load(Ordering::Acquire) { return Outcome::loaded(Operand::word((&API as *const ApiV1).addr())); }
+    if NATIVE_BUSY.swap(true, Ordering::AcqRel) { return invalid(); }
+    READY.store(true, Ordering::Release);
+    unsafe { install(api, api) };
+    NATIVE_COMPLETE.store(true, Ordering::Release);
+    NATIVE_BUSY.store(false, Ordering::Release);
+    Outcome::loaded(Operand::word((&API as *const ApiV1).addr()))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {
+    version: 1, byte_size: size_of::<birnam_abi::id_protocol::Module>() as u32,
+    initialize: Some(initialize_native),
+};

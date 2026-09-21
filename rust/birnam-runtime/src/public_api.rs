@@ -956,6 +956,18 @@ pub unsafe extern "C" fn birnam_deferred_index_dependency_v1(factory: *const bir
     unsafe { birnam_abi::deferred_index::attach(factory) }
 }
 
+/// Select an existing completed service for later native construction.
+pub(crate) fn construction_service(id: &birnam_abi::id_protocol::Protocol, api: *const IdApi, name: &[u8]) -> Option<usize> {
+    if api.is_null() || api != PUBLIC_API.load(Ordering::Acquire) { return None; }
+    let runtime = runtime();
+    if !runtime.compiler_uses_id(id) { return None; }
+    match name {
+        b"namespacePresence" => Some(runtime.namespace_presence().addr()),
+        b"namespaceImport" => Some(runtime.namespace_import().addr()),
+        _ => None,
+    }
+}
+
 /// Later native extension construction; no ownership changes on rejection.
 pub(crate) fn initialize_compiler(id: &birnam_abi::id_protocol::Protocol, api: *const IdApi) -> Option<*const birnam_abi::runtime_compiler::ApiV1> {
     if api.is_null() || api != PUBLIC_API.load(Ordering::Acquire) { return None; }

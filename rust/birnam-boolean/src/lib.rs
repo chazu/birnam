@@ -267,3 +267,35 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
 }
 
 birnam_abi::string_dependency!();
+
+static CONTROL_COMPLETE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+unsafe fn initialize_control(id: *const birnam_abi::id_protocol::Protocol, api: birnam_abi::id_protocol::Operand) -> birnam_abi::id_protocol::Outcome {
+    use birnam_abi::id_protocol::{self as native, Outcome, Operand};
+    let invalid = || Outcome::failed(native::INVALID_REQUEST, 0);
+    if !unsafe { native::valid_protocol(id) } { return invalid(); }
+    let Some(api) = api.as_word() else { return invalid(); };
+    let api = api as *mut IdApi;
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver || !base::matches(&*api) } { return invalid(); }
+    if let Some(selected) = API.get() {
+        return if CONTROL_COMPLETE.load(std::sync::atomic::Ordering::Acquire) && *selected == api.addr() { Outcome::loaded(Operand::unit()) } else { invalid() };
+    }
+    API.set(api.addr()).ok().expect("serialized Boolean construction");
+    let api = unsafe { &*api };
+    let true_vt = unsafe { (api.vtableOf)(api.trueObj) };
+    let false_vt = unsafe { birnam_abi::ensure_private_vtable(api, api.falseObj) };
+    let methods: &[(&[u8], birnam_abi::Method, birnam_abi::Method)] = &[
+        (b"ifTrue:ifFalse:\0", boolean_true_if_true_if_false, boolean_false_if_true_if_false),
+        (b"ifTrue:\0", boolean_true_if_true, boolean_false_if_true),
+        (b"ifFalse:\0", boolean_true_if_false, boolean_false_if_false),
+    ];
+    for (name, when_true, when_false) in methods {
+        let selector = unsafe { intern(api, name) };
+        unsafe { (api.method)(true_vt, selector, *when_true); (api.method)(false_vt, selector, *when_false); }
+    }
+    for (name, method) in [(c"and:", boolean_and_block as birnam_abi::Method), (c"or:", boolean_or_block as birnam_abi::Method)] {
+        let selector = unsafe { (api.intern)(name.as_ptr()) };
+        unsafe { (api.method)(true_vt, selector, method) };
+    }
+    CONTROL_COMPLETE.store(true, std::sync::atomic::Ordering::Release);
+    Outcome::loaded(Operand::unit())
+}

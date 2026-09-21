@@ -8,17 +8,21 @@ static IdApi *original, selected, other;
 static const NamespacePresenceV1 *presence;
 static const NamespaceImportV1 *imports;
 static ModuleInitFn initialize_loop;
+static const BirnamModule *native_loop;
+static BirnamProtocol selected_id;
+static BirnamOperand native_args[4];
 static size_t mode, entries, sends;
 static void enter_again(void) {
     entries++;
-    initialize_loop(&other,NULL,presence,imports,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+    if(mode>=3) assert(native_loop->initialize(&selected_id,native_args,4).status==BIRNAM_INVALID_REQUEST);
+    else initialize_loop(&other,NULL,presence,imports,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
 }
 static Oop intern_selected(const char *name) {
-    if(mode==1 && !entries && !strcmp(name,"whileTrue:")) enter_again();
+    if((mode==1 || mode==3) && !entries && !strcmp(name,"whileTrue:")) enter_again();
     return original->intern(name);
 }
 static void install_selected(Oop type,Oop selector,Method implementation) {
-    if(mode==2 && !entries) enter_again();
+    if((mode==2 || mode==4) && !entries) enter_again();
     original->method(type,selector,implementation);
 }
 static Oop send_selected(Oop receiver,Oop selector,const Oop *args,size_t count) {
@@ -32,13 +36,13 @@ static Oop false_condition(Oop receiver,const Oop *args,size_t count) {
     (void)receiver;(void)args;assert(!count);return original->false_obj;
 }
 static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
-    (void)id; assert(count==6);
+    assert(count==6); selected_id=*id;
     original=(void *)args[0].data.word; presence=(void *)args[1].data.word;
     imports=(void *)args[2].data.word;
     const void *error=(void *)args[3].data.word;
     assert(args[4].kind==BIRNAM_BYTES && args[4].data.bytes.length<4096);
     char path[4096];memcpy(path,args[4].data.bytes.pointer,args[4].data.bytes.length);path[args[4].data.bytes.length]=0;
-    mode=args[5].data.word;assert(mode==1||mode==2);entries=sends=0;
+    mode=args[5].data.word;assert(mode>=1&&mode<=4);entries=sends=0;
     void *image=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(image);
     int (*attach)(const void *)=(int (*)(const void *))dlsym(image,"birnam_error_value_dependency_v3");
     assert(attach && attach(error)==1);
@@ -46,7 +50,16 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     selected=*original;other=*original;
     selected.intern=intern_selected;selected.method=install_selected;selected.send=send_selected;
     selected.nil_obj=original->true_obj;other.send=send_other;
-    initialize_loop(&selected,NULL,presence,imports,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+    if(mode>=3) {
+        native_loop=dlsym(image,"birnam_native_module_v1");assert(native_loop);
+        native_args[0]=(BirnamOperand){.kind=BIRNAM_WORD,.data.word=(size_t)&selected};
+        native_args[1]=args[1];native_args[2]=args[2];native_args[3]=args[3];
+        assert(native_loop->initialize(id,NULL,0).status==BIRNAM_INVALID_REQUEST);
+        BirnamOutcome first=native_loop->initialize(id,native_args,4);
+        assert(first.status==BIRNAM_LOADED && first.value.kind==BIRNAM_WORD);
+        BirnamOutcome again=native_loop->initialize(id,native_args,4);
+        assert(again.status==BIRNAM_LOADED && again.value.data.word==first.value.data.word);
+    } else initialize_loop(&selected,NULL,presence,imports,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
     assert(entries==1);
     Oop type=original->proto(namespace_import_v1(imports,"BlockVt"));
     original->method(type,original->intern("value"),false_condition);
