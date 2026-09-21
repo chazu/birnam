@@ -725,91 +725,25 @@ unsafe fn finish_image_load(
     system: birnam_abi::Oop,
     status: birnam_abi::Oop,
 ) -> Result<ImageLoadOutcome, ImageError> {
-    if status == api.nilObj {
+    let outcome = if status == api.trueObj {
+        ImageLoadOutcome::Mapped
+    } else if status == api.falseObj {
+        ImageLoadOutcome::SourceRecovery
+    } else if status == api.nilObj {
         return Err(ImageError::LoadRejected);
-    }
-    if status == api.trueObj {
-        // A mapped image still cannot carry native Alien trampolines. Reopen
-        // the Rust Codegen recovery boundary for the same replay/derivation
-        // hooks used by source recovery before exposing the image to the REPL.
-        // Without this, image-resident methods that call an Alien wrapper keep
-        // the stale process from the saving runtime and silently read zeros.
-        let codegen = unsafe { birnam_abi::namespace_import::import(imports, c"Codegen".as_ptr()) };
-        if codegen != api.nilObj {
-            let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
-            let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
-            if begun == api.nilObj || send_is_error(api, presence, begun) {
-                return Err(ImageError::LoadRejected);
-            }
-            // The v8 loader already admitted and published the exact portable
-            // generation. Recompile its recovered self-hosted sources into
-            // methods without introducing a new source generation.
-            let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
-            let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
-            if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, presence, rebuilt) {
-                return Err(ImageError::LoadRejected);
-            }
-            let config_surface_missing = unsafe { global_named(api, imports, "Config") }
-                .map(|config| unsafe {
-                    let loads = (api.intern)(c"loads".as_ptr());
-                    !receiver_has_selector(api, vtables, config, loads)
-                })
-                .unwrap_or(false);
-            if config_surface_missing {
-                return Err(ImageError::LoadRejected);
-            }
-            let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
-            unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
-            let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
-            unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
-            if !unsafe { reconcile_image_composition(api, presence, imports, system) } {
-                return Err(ImageError::LoadRejected);
-            }
-            let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
-            unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) };
-            let current_digest = unsafe {
-                (api.send)(
-                    codegen,
-                    (api.intern)(c"currentGenerationDigest".as_ptr()),
-                    std::ptr::null(),
-                    0,
-                )
-            };
-            if current_digest != api.nilObj && !current_digest.is_null() {
-                let sealed = unsafe {
-                    (api.send)(
-                        codegen,
-                        (api.intern)(c"sealInitialGeneration".as_ptr()),
-                        std::ptr::null(),
-                        0,
-                    )
-                };
-                if sealed != api.trueObj {
-                    return Err(ImageError::LoadRejected);
-                }
-            }
-        }
-        return Ok(ImageLoadOutcome::Mapped);
-    }
-    if status != api.falseObj {
+    } else {
         return Err(ImageError::UnexpectedStatus);
-    }
-
+    };
     let codegen = unsafe { birnam_abi::namespace_import::import(imports, c"Codegen".as_ptr()) };
     if codegen != api.nilObj {
-        // `System loadImage:rebuild:` closes the image module's internal
-        // recovery phase before returning. Rust Codegen deliberately requires
-        // replay/derivation to run inside that phase, so reopen the host-owned
-        // recovery boundary around the post-load operations within the image
-        // load transaction.
+        // Both v8 paths have admitted the exact portable generation. Recover
+        // source-defined methods and process-local Alien wrappers before any
+        // user entry, without introducing another durable generation.
         let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
         let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
-        if begun == api.nilObj || send_is_error(api, presence, begun) {
+        if begun.is_null() || begun == api.nilObj || send_is_error(api, presence, begun) {
             return Err(ImageError::LoadRejected);
         }
-        // The v8 loader has already rebuilt the exact stored PortablePrograms
-        // and selection before returning false. Recompile the recovered
-        // self-hosted sources without bootstrapping a new durable generation.
         let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
         let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
         if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, presence, rebuilt) {
@@ -826,10 +760,7 @@ unsafe fn finish_image_load(
         }
         let replay_aliens = unsafe { (api.intern)(c"replayAliens".as_ptr()) };
         unsafe { (api.send)(codegen, replay_aliens, std::ptr::null(), 0) };
-        // Source-backed block globals are intentionally not serialized as
-        // durable values. Re-derive them after code/method recovery so an
-        // ordinary image boot and an explicit rebuild expose the same globals
-        // before the REPL evaluates its first expression.
+        // Source-backed Block globals are re-derived after method recovery.
         let derive_globals = unsafe { (api.intern)(c"deriveImageGlobals".as_ptr()) };
         unsafe { (api.send)(codegen, derive_globals, std::ptr::null(), 0) };
         if !unsafe { reconcile_image_composition(api, presence, imports, system) } {
@@ -837,29 +768,18 @@ unsafe fn finish_image_load(
         }
         let end_recovery = unsafe { (api.intern)(c"endImageDispatchRecovery".as_ptr()) };
         unsafe { (api.send)(codegen, end_recovery, std::ptr::null(), 0) };
-        let current_digest = unsafe {
-            (api.send)(
-                codegen,
-                (api.intern)(c"currentGenerationDigest".as_ptr()),
-                std::ptr::null(),
-                0,
-            )
+        // Successful rebuild requires a canonical durable generation; composed
+        // adoption validates its successor. Seal that recovered system directly.
+        // currentGenerationDigest reparsed every source only to test existence;
+        // even a nil result from that query previously accepted the image.
+        let sealed = unsafe {
+            (api.send)(codegen, (api.intern)(c"sealInitialGeneration".as_ptr()), std::ptr::null(), 0)
         };
-        if current_digest != api.nilObj && !current_digest.is_null() {
-            let sealed = unsafe {
-                (api.send)(
-                    codegen,
-                    (api.intern)(c"sealInitialGeneration".as_ptr()),
-                    std::ptr::null(),
-                    0,
-                )
-            };
-            if sealed != api.trueObj {
-                return Err(ImageError::LoadRejected);
-            }
+        if sealed != api.trueObj {
+            return Err(ImageError::LoadRejected);
         }
     }
-    Ok(ImageLoadOutcome::SourceRecovery)
+    Ok(outcome)
 }
 
 /// Reify Design 47's composed executable generation after image dispatch and

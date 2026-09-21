@@ -19,8 +19,14 @@ artifact="$tmp/libtcc-smoke.dylib"
 work="$tmp/child"
 mkdir -p "$work"
 
-cat >"$src" <<'EOF'
+# Nested rewriting must preserve binary embedded bytes, including NUL and 0xff.
+# Both source-directory and context-free roots contain the same input here.
+printf 'embedded\000bytes\377\n' >"$tmp/expected.dat"
+cp "$tmp/expected.dat" "$tmp/asset.dat"
+cp "$tmp/expected.dat" "$work/asset.dat"
+cat >"$src" <<EOF
 [Module named: #tccSmoke requires: #[]];
+[System writeFile: "$work/restored.dat" contents: [[| [System embedFile: "asset.dat"]] value]];
 EOF
 
 (
@@ -30,6 +36,7 @@ EOF
     "$bin" --compile-module "$src" "$artifact"
 )
 test -s "$artifact"
+rm "$tmp/asset.dat" "$work/asset.dat"
 
 (
   cd "$work"
@@ -38,7 +45,8 @@ test -s "$artifact"
     "$bin" "$artifact" >/dev/null
 )
 
-echo "rust-tcc-artifact: separate-process AOT activation passed"
+cmp "$tmp/expected.dat" "$work/restored.dat"
+echo "rust-tcc-artifact: separate-process AOT activation and binary embedding passed"
 
 # Code and descriptor metadata must use the same parse, while each later
 # compilation observes the current parser again.

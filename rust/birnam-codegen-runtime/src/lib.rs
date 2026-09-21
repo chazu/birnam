@@ -3071,18 +3071,7 @@ fn rewrite_embedded(node: OwnedCst, source: &[u8], root: &[u8]) -> Option<OwnedC
         let bytes = read_embedded_file(root, &path)?;
         return Some(OwnedCst::embedded_string(node.start(), node.end(), bytes));
     }
-    let rule = node.rule().to_vec();
-    let start = node.start();
-    let end = node.end();
-    if let Some(bytes) = node.embedded_bytes() {
-        return Some(OwnedCst::embedded_string(start, end, bytes.to_vec()));
-    }
-    let mut children = Vec::with_capacity(node.child_count());
-    for index in 0..node.child_count() {
-        let child = node.child(index)?.to_owned();
-        children.push(rewrite_embedded(child, source, root)?);
-    }
-    Some(OwnedCst::new(&rule, start, end, children))
+    node.try_map_children(|child| rewrite_embedded(child, source, root))
 }
 
 fn collect_embedded_paths(node: &OwnedCst, source: &[u8], depth: usize, paths: &mut Vec<Vec<u8>>) {
@@ -10618,7 +10607,6 @@ unsafe extern "C" fn rust_codegen_adopt_composed_generation(
     if generation.is_null()
         || generation == api.nilObj
         || unsafe { durable_current_generation(api) } != generation
-        || !unsafe { durable_generation_is_canonical(api, generation) }
     {
         note_error(b"RustCodegen composed generation is not the durable current generation");
         return api.nilObj;
@@ -10649,6 +10637,16 @@ unsafe extern "C" fn rust_codegen_adopt_composed_generation(
         note_error(b"RustCodegen composed generation digest is unavailable");
         return api.nilObj;
     };
+    // Validate the same parsed snapshot used to reconstruct the binding ledger.
+    // A second parse could observe a different parser as well as doubling work.
+    let Some(selection) = (unsafe { durable_generation_selection_with_modules(api, generation, &modules) }) else {
+        note_error(b"RustCodegen composed generation selection is invalid");
+        return api.nilObj;
+    };
+    if generation_digest_with_selection(&modules, &selection) != Some(expected_digest) {
+        note_error(b"RustCodegen composed generation is not canonical");
+        return api.nilObj;
+    }
     let mut units = BTreeSet::new();
     let mut composed = Vec::with_capacity(entry_count);
     for (index, module) in modules.into_iter().enumerate() {

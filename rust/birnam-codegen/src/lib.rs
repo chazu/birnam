@@ -181,6 +181,13 @@ impl OwnedCst {
         }
     }
 
+    /// Transform children by value, retaining this node's span and bytes.
+    /// Rewriters can consume a tree without cloning every descendant at each level.
+    pub fn try_map_children(mut self, mut map: impl FnMut(Self) -> Option<Self>) -> Option<Self> {
+        self.children = self.children.into_iter().map(&mut map).collect::<Option<_>>()?;
+        Some(self)
+    }
+
     /// Construct a synthetic string node whose bytes came from an embedded
     /// file. The source span is retained for diagnostics and deterministic
     /// traversal, while lowering reads the owned payload through

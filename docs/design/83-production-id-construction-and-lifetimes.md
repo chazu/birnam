@@ -2646,3 +2646,52 @@ This closes obsolete production preparer/provider export removal. It does not
 close historical C fixture migration, worker startup or the complete acceptance
 audit. The last measured worker readiness remains 17.04 seconds against the
 unchanged ten-second deadline. Release validation remains waived.
+
+
+### Remove repeated work in image recovery
+
+A fresh profile of the actual image-backed worker at `6742d400` reached ready in
+19.39 seconds with sampling enabled. It exposed duplicate source parsing in
+composed-generation adoption and a further full parse in the host used only to
+decide whether to seal the recovered generation. The host's nil-digest branch
+previously accepted the image anyway; it was not an additional rejection gate.
+Successful source recovery already requires a canonical durable generation,
+and composed adoption validates the successor before sealing.
+
+Mapped and rebuilt images now share one host recovery sequence. It restores
+source-defined methods, Alien wrappers and source-backed globals, reconciles the
+composition, then seals it directly. Composed adoption validates its selection
+and digest against the same parsed module snapshot used to rebuild the binding
+ledger. Later operations still invoke the current parser; there is no persistent
+cache or relaxation of artifact authority checks. Embedded-file rewriting now
+consumes each child tree instead of repeatedly cloning its descendants.
+
+Runtime also accounts for a new allocation using the requested extent supplied
+to its retained Id primitive. It no longer queries membership, size and identity
+again merely to compute that charge. Tracking an existing allocation still
+queries its actual extent. The same header/alignment formula, permanence and
+byte-budget overflow checks apply; no allocation, collection or identity is
+elided.
+
+The first debug installation, `/tmp/birnam-83-recovery-work`, reaches worker ready
+in 13.02 seconds. Including allocation accounting,
+`/tmp/birnam-83-recovery-accounting` reaches ready in 12.58 seconds. Both pass all
+twelve exact wire replies and orderly shutdown. The unchanged ten-second
+production deadline remains unmet; this is not full worker-service acceptance.
+
+Validation on the latter installation includes the complete native construction
+suite and full portable image-v8 suite: nested source-less code, boxed identity,
+ordinary/rebuilt/baked entry, resave and boundary rejection. The image suite now
+also forges a composed generation's digest and selection, verifies both are
+rejected, restores them and verifies successful adoption in both recovery modes.
+The compiled-artifact check retains the current-parser assertions and now checks
+nested binary embedding after deleting the asset, including NUL and `0xff` bytes.
+All 527 affected library tests pass (20 ignored). Production sources match the
+installed copies. The local receipt is
+`.cargo-target/83-recovery-work-evidence.json`. Release validation remains waived.
+
+The unchanged full worker-service suite passes its mapped/rebuilt Cell checks
+(41 before collection, 42 afterward), then fails AOT worker startup with
+`#handshakeTimeout`. Its nineteen service cases are not reached. The receipt
+includes the redirected failure output; the passing wire test does not substitute
+for this outstanding acceptance requirement.

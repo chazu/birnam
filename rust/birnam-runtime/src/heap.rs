@@ -186,19 +186,30 @@ impl Heap {
 
     pub(crate) fn allocate(&mut self, payload_size: usize, permanence: Permanence) -> Oop {
         let object = self.memory.allocate(payload_size, None);
-        self.track_allocation(object, permanence);
+        // The retained Id primitive allocates exactly this requested extent.
+        // No identity or second extent lookup is needed for budget accounting.
+        self.track_allocation_size(object, permanence,
+            Self::allocation_total_size(payload_size).expect("allocated extent overflowed"));
         object
     }
 
     pub(crate) fn allocate_with_behavior(&mut self, payload_size: usize, permanence: Permanence, behavior: Oop) -> Oop {
         let object = self.memory.allocate(payload_size, Some(behavior));
-        self.track_allocation(object, permanence);
+        // The retained Id primitive allocates exactly this requested extent.
+        // No identity or second extent lookup is needed for budget accounting.
+        self.track_allocation_size(object, permanence,
+            Self::allocation_total_size(payload_size).expect("allocated extent overflowed"));
         object
     }
     pub(crate) fn uses_id_memory(&self) -> bool { matches!(self.memory, memory::Memory::Id(_)) }
 
     pub(crate) fn track_allocation(&mut self, object: Oop, permanence: Permanence) {
-        let total_size = self.memory.get(object.addr()).unwrap().total_size;
+        let total_size = self.memory.payload_size(object).expect("tracked allocation disappeared")
+            .checked_add(VTABLE_HEADER_SIZE).expect("tracked extent overflowed");
+        self.track_allocation_size(object, permanence, total_size);
+    }
+
+    fn track_allocation_size(&mut self, object: Oop, permanence: Permanence, total_size: usize) {
         self.blocks.insert(object, BlockLifetime {
             metadata: if permanence == Permanence::Permanent { 2 } else { 0 },
         });

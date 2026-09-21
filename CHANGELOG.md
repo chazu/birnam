@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove repeated source validation and subtree copying during image recovery.
+  Mapped and rebuilt images share one host recovery path; composed-generation
+  adoption validates the same parsed snapshot it uses for its binding ledger.
+  GC allocation accounting uses the known extent of freshly allocated objects.
+
 - Remove Codegen's compiler-provider discovery fallback and Runtime's final
   provider export. Compiler operations use only the completed constructor input.
   Migrate the existing selected-library discovery tests to production startup

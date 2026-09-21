@@ -113,6 +113,8 @@ let loadedNested := [loadedOuter value: 52]
 [[Globals at: #PortableV8BoundaryCall] == BoundaryCallAction]
 [[Globals at: #PortableV8BoundaryExit] == ExitBoundaryAction]
 [[db currentValue: #portableV8Boxes attr: #equalA] = [db currentValue: #portableV8Boxes attr: #equalB]]
+let adoptionChecks := [| [Codegen beginImageDispatchRecovery]; let generation := [DispatchGeneration current]; let digest := [generation baseDigest]; let selection := [generation generationSelection]; [db assert: generation attr: #baseDigest value: "0000000000000000000000000000000000000000000000000000000000000000"]; let badDigest := [[Codegen adoptComposedGeneration: generation] isNil]; [db assert: generation attr: #baseDigest value: digest]; [db assert: generation attr: #generationSelection value: "invalid selection"]; let badSelection := [[Codegen adoptComposedGeneration: generation] isNil]; [db assert: generation attr: #generationSelection value: selection]; let restored := [[Codegen adoptComposedGeneration: generation] == generation]; [Codegen endImageDispatchRecovery]; #[#adoptionChecks badDigest badSelection restored]]
+[adoptionChecks value]
 :quit
 EOF
 
@@ -134,6 +136,7 @@ for mode in ordinary rebuild; do
   grep -Fxq 'birnam> #particularBox' "$smoke_root/$mode.out"
   test "$(grep -Fxc 'birnam> true' "$smoke_root/$mode.out")" -eq 4
   grep -Fxq 'birnam> false' "$smoke_root/$mode.out"
+  grep -Fxq 'birnam> #[#adoptionChecks true true true]' "$smoke_root/$mode.out"
 done
 
 printf '[System saveImage: "%s"]\n:quit\n' "$resaved" \
