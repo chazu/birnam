@@ -1,5 +1,8 @@
 # Native live graph v1
 
+Historical descriptor. Production now uses [v2](trace-graph-v2.md), which adds
+inspection and participates in collector activation before Runtime.
+
 `libbirnam_trace.dylib:birnam_native_module_v1` constructs a usable live graph
 before Runtime, Block or compiler construction. The initializer takes four Word
 operands: the completed root-registry `OwnedV1`, Lifetime `OwnedV1`, Object Model

@@ -3180,7 +3180,7 @@ pub struct InitialFloor {
     integer: Option<*mut birnam_abi::integer::IntegerApiV1>,
     float: Option<*mut birnam_abi::float::FloatApiV1>,
     word: Option<*mut birnam_abi::word::WordApiV1>,
-    graph: Option<*const birnam_abi::trace_graph::GraphV1>,
+    graph: Option<*const birnam_abi::trace_graph::GraphV2>,
     collection: Option<*const birnam_abi::collection_state::OwnedV2>,
     text_ready: bool,
     id_protocol: birnam_abi::id_protocol::Protocol,
@@ -3397,7 +3397,7 @@ impl InitialFloor {
         Ok(())
     }
     /// Construct live graph access from completed lower owners, before Runtime.
-    pub fn initialize_trace(&mut self) -> Result<Option<*const birnam_abi::trace_graph::GraphV1>, FloorError> {
+    pub fn initialize_trace(&mut self) -> Result<Option<*const birnam_abi::trace_graph::GraphV2>, FloorError> {
         if self.runtime_init.is_none() || self.graph.is_some() { return Ok(self.graph); }
         self.initialize_text()?;
         self.initialize_word()?;
@@ -3409,7 +3409,7 @@ impl InitialFloor {
         let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize), Operand::word(self.model.unwrap() as usize), mark.value];
         let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
         if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let graph = answer.value.as_word().unwrap_or(0) as *const birnam_abi::trace_graph::GraphV1;
+        let graph = answer.value.as_word().unwrap_or(0) as *const birnam_abi::trace_graph::GraphV2;
         if !unsafe { birnam_abi::trace_graph::valid(graph) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
         self.graph = Some(graph);
         Ok(self.graph)
@@ -3596,7 +3596,7 @@ impl InitialFloor {
             }
         };
         let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values), Some(namespace), Some(model), Some(graph), Some(collection)) = (runtime_init, roots, lifetime, base_values, namespace, model, graph, collection) {
-            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1, *const birnam_abi::trace_graph::GraphV1, *const birnam_abi::collection_state::OwnedV2) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
+            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1, *const birnam_abi::trace_graph::GraphV2, *const birnam_abi::collection_state::OwnedV2) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
             unsafe { initialize(roots, lifetime, values, namespace, model, graph, collection) }
         } else {
             let initialize: IdInitFn = unsafe { std::mem::transmute(init.as_ptr()) };

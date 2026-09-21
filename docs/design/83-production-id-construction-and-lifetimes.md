@@ -812,7 +812,7 @@ are still open. Native Integer/compiler admission is described above.
 The live graph portion of step 9 now constructs before Runtime as well.
 `InitialFloor::initialize_trace` loads Native Mark through Id, then constructs
 Trace with completed root-registry, Lifetime, Object Model and Native Mark
-inputs. Its [56-byte descriptor](../../abi/trace-graph-v1.md) owns root discovery,
+inputs. Its [64-byte descriptor](../../abi/trace-graph-v2.md) owns root discovery,
 Id/owner edges, payload scanning and inherited-hook selection without a Runtime,
 Machine or compiler input. Production Runtime borrows that same completed graph;
 its mark admission, Execution roots and retirement policy remain upper inputs.
@@ -1296,3 +1296,42 @@ failure in [Design 81BE](81be-production-namespace-import.md). This establishes
 working worker image recovery and transfer, not acceptance of the nineteen-case
 worker-service suite. That suite and the full architectural acceptance above
 remain open. No production timeout was changed or release validation run.
+
+### Diagnostic storage inventory through completed Trace
+
+[Trace graph v2](../../abi/trace-graph-v2.md) now produces the allocation,
+representation and core-edge portion of the production diagnostic storage view.
+It uses the same selected Id operations as live tracing, with completed Lifetime
+and Object Model records. It reports Id roots and Symbols without exposing Id's
+registries. Inspection reads no ordinary payload words and invokes no root
+provider, trace hook or finalizer. Its callback receives copied scratch arrays;
+no Id or representation-record borrow survives into the callback.
+
+Runtime obtains that snapshot outside its state borrow, then adds Collect's
+permanence flags, its current upper roots, optional compatibility Symbol roots,
+provider declarations and deferred-journal counts/bytes. Permanent-object roots
+are derived from the reported core edges. It no longer re-enumerates Id storage
+just to subtract physical bytes from total accounting. Observation admission,
+ordinary lookup of `withStorageView:`, epochs, coverage gaps and failure cleanup
+retain their existing contracts. The local/legacy constructor still has a
+fallback inventory; it is not a second production storage authority.
+
+This removes direct allocation/header/classification/dictionary reads from the
+production diagnostic inventory. Runtime's allocation construction, Symbol
+compatibility management, behavior mutation and aggregate ownership handoff are
+still coupled to Id's Rust types and remain part of the package separation.
+
+Validation passes 350 ABI/Trace/Collect/Id unit tests (15 ignored). The shared
+root-building helper preserves the existing collector root order. The
+installed native-loading harness passes the eighteen-library graph prefix,
+activated construction and post-adoption cases. Independent inspection checks
+cover sorted identities, extents, core flags, owner edges, inherited hook and
+finalizer declarations, no provider/hook/finalizer invocation, visitor failure
+propagation and replacement of Id fact methods after graph construction.
+
+The protected storage-observation script passes source, source-free compiled,
+mapped, rebuilt and baked execution. Final-prefix host checks also pass compiled,
+mapped, rebuilt and baked observations with epochs, nested rejection, failure
+cleanup, aliases and post-GC allocation identity. Id, Trace and Collect exports
+match their manifests. No release validation was run. This closes the production
+diagnostic inventory migration, not the remaining Runtime/package separation.

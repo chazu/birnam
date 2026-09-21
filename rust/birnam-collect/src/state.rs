@@ -236,7 +236,7 @@ unsafe extern "C" fn initialize(
         return invalid();
     }
     let (Some(graph), Some(lifetime), Some(model)) = (graph.as_word(), lifetime.as_word(), model.as_word()) else { return invalid(); };
-    let graph = graph as *const birnam_abi::trace_graph::GraphV1;
+    let graph = graph as *const birnam_abi::trace_graph::GraphV2;
     let lifetime = lifetime as *const birnam_abi::lifetime::OwnedV1;
     let model = model as *const birnam_abi::object_model::OwnedV1;
     if !unsafe { birnam_abi::trace_graph::valid(graph) && birnam_abi::lifetime::valid(lifetime) && birnam_abi::object_model::valid(model) } { return invalid(); }

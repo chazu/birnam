@@ -712,7 +712,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-collect/` — [collection records and controls](abi/collection-state-v2.md), initialized before Runtime and shared with its collector, plus the collection coordinator.
 - [Collector v3](abi/collector-v3.md): heap activation and collecting constructors before Runtime.
 - [Native Stack factory v4](abi/native-stack-v4.md): native register capture and root scanning before Runtime.
-- `rust/birnam-trace/` — [live graph traversal](abi/trace-graph-v1.md), constructed before Runtime from Id storage facts and completed lifetime owners.
+- `rust/birnam-trace/` — [live graph traversal](abi/trace-graph-v2.md), constructed before Runtime from Id storage facts and completed lifetime owners.
 - `rust/birnam-lifetime/` — payload descriptions, trace hooks and finalizer records, initialized through Id and adopted by Runtime; see [the native contract](abi/fixtures/lifetime-v1/README.md).
 - `rust/birnam-namespace/` — early publication/import, reverse aliases and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/namespace-owner-v1/README.md).
 - `rust/birnam-object-model/` — early private-behavior ownership/construction and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/object-model-owner-v1/README.md).

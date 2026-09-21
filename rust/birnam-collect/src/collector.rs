@@ -8,7 +8,7 @@ use birnam_abi::{
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
     lifetime, object_model,
     storage::{BUSY, INVALID, OK, Status},
-    trace_graph::{CORE_ONLY, GraphV1, PRECISE},
+    trace_graph::{CORE_ONLY, GraphV2, PRECISE},
     trace_live::{SinkV1, SourceV1},
 };
 use core::{cell::Cell, ffi::c_void, ptr};
@@ -18,7 +18,7 @@ pub(super) struct Collector {
     construction: construction::Construction,
     extension: Cell<Option<ExtensionV1>>,
     state: OwnedV2,
-    graph: GraphV1,
+    graph: GraphV2,
     lifetime: lifetime::OwnedV1,
     model: object_model::OwnedV1,
     receiver: Oop,
@@ -41,7 +41,7 @@ impl Collector {
     pub(super) unsafe fn new(
         id: Protocol,
         state: OwnedV2,
-        graph: GraphV1,
+        graph: GraphV2,
         lifetime: lifetime::OwnedV1,
         model: object_model::OwnedV1,
     ) -> Result<Box<Self>, Outcome> {

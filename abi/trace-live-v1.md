@@ -23,7 +23,7 @@ int birnam_trace_live_v1(const TraceLiveSourceV1 *source);
 ```
 
 Id exports `birnam_trace_dependency_v1(const TraceLiveApiV1 *) -> int`.
-Current production constructs the [native graph](trace-graph-v1.md) before
+Current production constructs the [native graph](trace-graph-v2.md) before
 Runtime and adopts its traversal entry with the completed graph. Later mounting
 repeats this attachment idempotently before mounting the collection coordinator.
 Legacy embedders attach the provider explicitly. The canonical tracer module must publish a

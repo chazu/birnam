@@ -320,7 +320,7 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
 pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
     build_bootstrap_with(initial, None, None, None, None, None, None, None)
 }
-pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV1>, collection: Option<crate::collection_state::Shared>) -> Bootstrap {
+pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
         memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,

@@ -219,10 +219,13 @@ impl Heap {
         let physical = self.block_views().fold(0usize, |total, block| {
             total.saturating_add(block.total_size)
         });
+        physical.saturating_add(self.deferred_bytes())
+    }
+
+    /// Upper journals only; does not enumerate or borrow Id's allocations.
+    pub(crate) fn deferred_bytes(&self) -> usize {
         self.dead_allocations.iter().fold(
-            self.numeric_allocated_bytes()
-                .saturating_add(self.counted_frame_index_bytes())
-                .saturating_add(physical),
+            self.numeric_allocated_bytes().saturating_add(self.counted_frame_index_bytes()),
             |total, allocation| total.saturating_add(allocation.total_size()),
         )
     }

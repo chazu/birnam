@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Produce diagnostic allocation and representation snapshots in native Trace
+  through Id's message protocol. Runtime joins these facts with its own roots,
+  collection permanence and deferred journals without reading Id's private
+  storage records. Publish Trace graph v2 with callback-scoped inspection.
+
 - Activate production collection before Runtime: pause Bootstrap publication,
   validate the existing heap, establish a lasting stack boundary and install
   collecting allocation, delegation, interning and clone methods through Id.

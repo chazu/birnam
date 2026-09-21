@@ -309,7 +309,7 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
 pub(crate) fn initialize_once() -> *mut IdApi {
     initialize_with_owners(None, None, None, None, None, None, None)
 }
-pub(crate) fn initialize_with_owners(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV1>, collection: Option<crate::collection_state::Shared>) -> *mut IdApi {
+pub(crate) fn initialize_with_owners(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>) -> *mut IdApi {
     let namespace_exists = namespace.is_some();
     let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(crate::native_id::take_initial_objects(), roots, lifetime, values, namespace, model, graph, collection));
     let construction_roots = bootstrap.runtime.retain_construction_roots();

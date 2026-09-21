@@ -35,5 +35,5 @@ The implementation descriptor is not a replacement public IdApi entry.
 
 The same complete descriptor is available through
 `libbirnam_native_mark.dylib:birnam_native_module_v1` with zero operands. Its Word
-result is an input to the [early live Trace graph](trace-graph-v1.md), before any
+result is an input to the [early live Trace graph](trace-graph-v2.md), before any
 Runtime is constructed. Existing factory/provider consumers remain supported.

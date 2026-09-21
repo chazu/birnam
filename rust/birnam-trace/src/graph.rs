@@ -4,8 +4,8 @@ use birnam_abi::{
     MarkFn, Oop, SLOT_OOP, TraceHook, borrowed_slice,
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
     lifetime, native_mark, object_model, root_registry,
-    storage::{BUSY, INCOMPLETE, INVALID, OK, Status},
-    trace_graph::{CORE_ONLY, GraphV1, PRECISE},
+    storage::{AllocationV1, EdgeV1, CORE_PAYLOAD, HAS_FINALIZER, HAS_GC_LAYOUT, BUSY, INCOMPLETE, INVALID, OK, Status},
+    trace_graph::{CORE_ONLY, GraphV2, InspectV1, SnapshotV1, PRECISE},
     trace_hooks,
     trace_live::SinkV1,
 };
@@ -13,7 +13,7 @@ use core::{cell::Cell, ffi::c_void, ptr};
 use std::collections::HashSet;
 
 struct Graph {
-    api: GraphV1,
+    api: GraphV2,
     id: Protocol,
     roots: root_registry::OwnedV1,
     lifetime: lifetime::OwnedV1,
@@ -310,6 +310,60 @@ unsafe extern "C" fn validate(context: *mut c_void) -> Status {
     .map_or_else(|error| error, |()| OK)
 }
 
+unsafe extern "C" fn inspect(
+    context: *mut c_void,
+    visitor_context: *mut c_void,
+    visitor: Option<InspectV1>,
+) -> Status {
+    (|| {
+        let graph = unsafe { graph(context)? };
+        let visitor = visitor.ok_or(INVALID)?;
+        let inventory = graph.allocations()?;
+        let addresses: HashSet<_> = inventory.iter().map(|entry| entry.0.addr()).collect();
+        let mut allocations = Vec::with_capacity(inventory.len());
+        let mut edges = Vec::new();
+        let mut symbols = Vec::new();
+        for (object, requested_size, identity) in inventory {
+            let (kind, mut references) = graph.references(object)?;
+            let behavior = references[0];
+            if kind == 1 {
+                references.insert(2, unsafe { graph.model.owner.unwrap()(graph.model.context, object) });
+            } else if kind == 2 {
+                symbols.push(object);
+            }
+            edges.extend(references.into_iter()
+                .filter(|to| addresses.contains(&to.addr()))
+                .map(|to| EdgeV1 { from: object, to }));
+            let padded_size = requested_size.checked_add(size_of::<usize>() - 1)
+                .map(|size| size & !(size_of::<usize>() - 1)).ok_or(INVALID)?;
+            let layout = unsafe { (graph.lifetime.layout)(graph.lifetime.context, behavior) };
+            let has_layout = unsafe { (*graph.lifetime.layout_factory).has_layout.unwrap()(layout) } != 0;
+            let finalizer = unsafe { (graph.lifetime.finalizer)(graph.lifetime.context, object) };
+            allocations.push(AllocationV1 {
+                object, identity: identity as u64, requested_size, padded_size,
+                allocation_bytes: padded_size.checked_add(size_of::<Oop>()).ok_or(INVALID)?,
+                behavior,
+                flags: if kind != 0 { CORE_PAYLOAD } else { 0 }
+                    | if has_layout { HAS_GC_LAYOUT } else { 0 }
+                    | if finalizer.callback.is_some() { HAS_FINALIZER } else { 0 },
+                trace_hook: graph.hook(behavior),
+            });
+        }
+        allocations.sort_unstable_by_key(|entry| entry.identity);
+        let mut roots = Vec::new();
+        graph.invoke(graph.id_roots, &[Operand::entry(NativeEntry::new(visit_object, (&raw mut roots).cast()))])?;
+        let snapshot = SnapshotV1 {
+            allocations: allocations.as_ptr(), allocation_count: allocations.len(),
+            roots: roots.as_ptr(), root_count: roots.len(),
+            edges: edges.as_ptr(), edge_count: edges.len(),
+            symbols: symbols.as_ptr(), symbol_count: symbols.len(),
+        };
+        // Every Id/Lifetime view has ended. The callback borrows only scratch
+        // arrays; no native provider or trace hook is invoked for inspection.
+        Ok(unsafe { visitor(visitor_context, &snapshot) })
+    })().unwrap_or_else(|status| status)
+}
+
 unsafe extern "C" fn initialize(
     id: *const Protocol,
     args: *const Operand,
@@ -362,14 +416,15 @@ unsafe extern "C" fn initialize(
             .ok_or(INVALID)
         };
         let mut graph = Box::new(Graph {
-            api: GraphV1 {
-                version: 1,
-                byte_size: size_of::<GraphV1>(),
+            api: GraphV2 {
+                version: 2,
+                byte_size: size_of::<GraphV2>(),
                 context: ptr::null_mut(),
                 roots: self::roots,
                 edges,
                 validate,
                 trace: crate::live::birnam_trace_live_v1,
+                inspect,
             },
             id,
             roots: unsafe { *roots },

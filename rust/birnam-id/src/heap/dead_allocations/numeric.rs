@@ -104,7 +104,7 @@ impl Heap {
         Some(identity)
     }
 
-    pub(in crate::heap) fn dead_allocation_count(&self) -> usize {
+    pub(crate) fn dead_allocation_count(&self) -> usize {
         self.dead_allocations.len()
             + self.numeric_allocations.len()
             + self.counted_frame_index_count()

@@ -222,7 +222,7 @@ struct BlockVtableCatalogEntry {
 /// One runtime owned by the thread that constructed it.
 pub(crate) struct Runtime {
     id_storage: Option<id_storage::Storage>,
-    trace_graph: Option<birnam_abi::trace_graph::GraphV1>,
+    trace_graph: Option<birnam_abi::trace_graph::GraphV2>,
     collection_owner: Option<crate::collection_state::Shared>,
     owner: u64,
     observation: storage::ObservationState,
@@ -432,7 +432,7 @@ impl Runtime {
         roots: Option<crate::root_registry::Service>,
         namespace: Option<Environment>,
         model: Option<crate::object_model::Shared>,
-        trace_graph: Option<birnam_abi::trace_graph::GraphV1>,
+        trace_graph: Option<birnam_abi::trace_graph::GraphV2>,
         collection_owner: Option<crate::collection_state::Shared>,
     ) -> Self {
         let id_storage = if collection_owner.is_none() { id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol)) } else { None };
@@ -4754,7 +4754,7 @@ impl Runtime {
     }
 }
 
-fn upper_roots(state: &RuntimeState) -> Vec<Oop> {
+fn upper_roots_with_symbols(state: &RuntimeState, compatibility_symbols: impl IntoIterator<Item = Oop>) -> Vec<Oop> {
     let mut roots = state.root_registry.retained_roots();
     let export_roots = state.environment.roots();
     let globals = state.globals.roots();
@@ -4767,14 +4767,6 @@ fn upper_roots(state: &RuntimeState) -> Vec<Oop> {
         .objects()
         .into_iter()
         .flat_map(ExecutionObjects::roots);
-    let compatibility_symbols = (!state.symbol_compaction_enabled)
-        .then(|| {
-            (0..state.symbols.count())
-                .map(|index| state.symbols.at(index))
-                .collect::<Vec<_>>()
-        })
-        .into_iter()
-        .flatten();
     for root in export_roots
         .into_iter()
         .chain(globals)
@@ -4796,8 +4788,14 @@ fn upper_roots(state: &RuntimeState) -> Vec<Oop> {
     roots
 }
 
-// Diagnostic snapshots still use their separately admitted storage view. The
-// live collector obtains the Id portion through its native message protocol.
+fn upper_roots(state: &RuntimeState) -> Vec<Oop> {
+    let symbols = (!state.symbol_compaction_enabled).then(||
+        (0..state.symbols.count()).map(|index| state.symbols.at(index)).collect::<Vec<_>>()
+    ).unwrap_or_default();
+    upper_roots_with_symbols(state, symbols)
+}
+
+// Legacy diagnostic and test roots; production inspection gets Id facts from Trace.
 fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
     let mut roots = upper_roots(state);
     roots.extend(state.id_protocol.as_ref().into_iter().flat_map(|id| id.roots()));
