@@ -1,10 +1,11 @@
 {
   "schema_version": 1,
-  "scope": "System direct native-module loader installed by Prelude",
+  "scope": "System direct native-module loader constructed through Bootstrap",
   "install_name": "@rpath/libbirnam_native_loader.dylib",
   "exported_symbols": [
     "birnam_error_value_dependency_v3",
     "birnam_native_loader_provider_v12",
+    "birnam_native_module_v1",
     "birnam_symbol_borrow_v1",
     "birnam_text_view_dependency_v1",
     "module_init"

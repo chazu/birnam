@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
-  "scope": "System GC control methods installed by Prelude",
+  "scope": "System GC control methods constructed through Bootstrap",
   "install_name": "@rpath/libbirnam_system_gc.dylib",
   "exported_symbols": [
     "birnam_integer_dependency_v1",
+    "birnam_native_module_v1",
     "birnam_symbol_borrow_v1",
     "birnam_system_gc_provider_v2",
     "module_init"

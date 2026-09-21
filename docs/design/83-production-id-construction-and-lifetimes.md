@@ -15,7 +15,7 @@
 > native binding references live in Lifetime above Id. Unsafe native consumers and the full entry-level
 > construction manifest remain open.
 > The loaded Bootstrap now owns the production construction sequence through
-> Runtime, control, collections, Store, parsers and compiler construction; host
+> Runtime, control, collections, Store, parsers, compilers and System; host
 > prefix requests delegate to the
 > same implementation.
 > Resolves the four adversarial-review findings against
@@ -2184,3 +2184,31 @@ the sixteen checked native export sets and Codegen install name match their
 manifests. Release validation remains waived. System/application construction,
 legacy consumer removal, the complete construction manifest, worker readiness
 and final architecture acceptance remain open.
+
+### Complete System operation construction
+
+Prelude's common native entry now constructs only the rooted System object.
+The System GC, IO, environment, file and loader modules install their own
+operations during native construction. Text View receives completed String
+storage; Source Loader receives completed Codegen. Bootstrap owns this sequence,
+and nine more legacy host rows are removed. The IO prefix requires neither
+collections/Store nor parser/compiler libraries; `load:` is absent until Codegen
+exists. The exact inputs and stage results are in
+[Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md).
+
+This construction change preserves the existing System language protocols.
+`loadModule:` itself still invokes the old native-module ABI, and legacy direct
+consumer entry points remain. Their migration, application constructors, the
+complete manifest and final acceptance are still required.
+
+Validation on `/tmp/birnam-83-system` passes the complete native suite, including
+System IO with collections, Store and parser/compiler libraries physically
+unavailable, absent source loading, real file/environment operations, GC,
+native-load failure and repeated construction. Installed, forced-source and
+compiled global lookup pass. System output and source-loader startup, compiled,
+mapped-image and baked execution pass with precise GC, aliases, retained values,
+live method/factory replacement and error cases. Selected unit tests pass 92
+cases with two existing ignored cases. All eleven changed Rust sources match
+the installation; all twenty-four checked native export sets match their
+manifests. Application constructors, legacy consumers, the complete manifest,
+worker readiness and final architecture acceptance remain open.

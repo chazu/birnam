@@ -42,6 +42,8 @@ pub(super) struct Construction {
     tcc: Option<birnam_abi::Oop>,
     portable_ready: bool,
     codegen: Option<birnam_abi::Oop>,
+    system: Option<birnam_abi::Oop>,
+    system_services: std::collections::BTreeMap<&'static str, usize>,
 
     error_value: Option<*const birnam_abi::error_value::ApiV3>,
     printing: Option<*const birnam_abi::printing::ApiV1>,
@@ -94,6 +96,8 @@ impl Construction {
             tcc: None,
             portable_ready: false,
             codegen: None,
+            system: None,
+            system_services: std::collections::BTreeMap::new(),
 
             error_value: None,
             printing: None,
@@ -959,6 +963,72 @@ impl Construction {
         self.codegen = Some(object);
         Ok(object)
     }
+    fn initialize_system_base(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(system) = self.system { return Ok(system); }
+        let mut args = self.family_arguments()?;
+        args.pop(); // System has no payload; the base needs only namespace and roots.
+        let result = self.load("libbirnam_id_prelude.dylib", &args)?;
+        let system = self.published_object(result)?;
+        self.system = Some(system);
+        Ok(system)
+    }
+    fn initialize_system_service(&mut self, name: &'static str) -> Result<usize, Outcome> {
+        if let Some(value) = self.system_services.get(name) { return Ok(*value); }
+        if name == "textView" {
+            self.initialize_string()?;
+            let result = self.load("libbirnam_text_view.dylib", &[Operand::word(self.string.unwrap().addr())])?;
+            let pointer = result.as_word().filter(|p| *p != 0).ok_or_else(invalid)?;
+            self.system_services.insert(name, pointer);
+            return Ok(pointer);
+        }
+        let system = self.initialize_system_base()?;
+        let mut args = vec![Operand::word(self.runtime.unwrap().addr()), Operand::word(self.roots.unwrap().addr()), Operand::object(system)];
+        let library = match name {
+            "systemGc" => {
+                args.extend([Operand::word(unsafe { (*self.collection.unwrap()).settings }.addr()), Operand::word(self.integer.unwrap().addr())]);
+                "libbirnam_system_gc.dylib"
+            },
+            "systemOutput" => {
+                args.push(Operand::word(self.initialize_system_service("textView")?));
+                "libbirnam_system_output.dylib"
+            },
+            "systemInput" | "environment" | "fileIo" | "sourceLoader" => {
+                let errors = self.initialize_error_value()?;
+                args.extend([self.runtime_service(b"namespacePresence")?, self.runtime_service(b"namespaceImport")?]);
+                if name == "sourceLoader" { args.push(Operand::word(self.integer.unwrap().addr())); }
+                args.extend([Operand::word(self.string.unwrap().addr()), Operand::word(errors.addr())]);
+                if name != "systemInput" { args.push(Operand::word(self.initialize_system_service("textView")?)); }
+                match name {
+                    "systemInput" => "libbirnam_system_input.dylib",
+                    "environment" => "libbirnam_environment.dylib",
+                    "fileIo" => "libbirnam_file_io.dylib",
+                    _ => { args.push(Operand::object(self.initialize_codegen()?)); "libbirnam_source_loader.dylib" },
+                }
+            },
+            "nativeLoader" => {
+                let errors = self.initialize_error_value()?;
+                args.extend([self.runtime_service(b"namespacePresence")?, self.runtime_service(b"namespaceImport")?,
+                    self.runtime_service(b"namespaceExport")?, self.runtime_service(b"vtables")?, self.runtime_service(b"methodObservation")?,
+                    Operand::word(unsafe { (*self.collection.unwrap()).settings }.addr()),
+                    Operand::word(unsafe { (*self.lifetime.unwrap()).layouts }.addr()),
+                    Operand::word(unsafe { (*self.lifetime.unwrap()).hooks }.addr()),
+                    Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
+                    Operand::word(errors.addr()), Operand::word(self.initialize_system_service("textView")?)]);
+                "libbirnam_native_loader.dylib"
+            },
+            _ => return Err(invalid()),
+        };
+        let result = self.load(library, &args)?;
+        let pointer = result.as_word().filter(|p| *p != 0).ok_or_else(invalid)?;
+        self.system_services.insert(name, pointer);
+        Ok(pointer)
+    }
+    fn initialize_system_io(&mut self) -> Result<(), Outcome> {
+        for name in ["systemGc", "systemOutput", "systemInput", "environment", "fileIo", "nativeLoader"] {
+            self.initialize_system_service(name)?;
+        }
+        Ok(())
+    }
     pub(super) fn advance(&mut self, stage: &[u8]) -> Result<Operand, Outcome> {
         macro_rules! owner {
             ($method:ident) => {
@@ -1030,6 +1100,21 @@ impl Construction {
             b"compilerAdmission" => Ok(Operand::word(self.initialize_compiler_admission()?.addr())),
             b"tcc" => Ok(Operand::object(self.initialize_tcc()?)),
             b"portable" => { self.initialize_portable()?; Ok(Operand::unit()) },
+            b"systemBase" => Ok(Operand::object(self.initialize_system_base()?)),
+            b"systemIo" => { self.initialize_system_io()?; Ok(Operand::unit()) },
+            b"system" => {
+                self.initialize_system_io()?;
+                self.initialize_system_service("sourceLoader")?;
+                Ok(Operand::object(self.system.unwrap()))
+            },
+            b"textView" => Ok(Operand::word(self.initialize_system_service("textView")?)),
+            b"systemGc" => Ok(Operand::word(self.initialize_system_service("systemGc")?)),
+            b"systemOutput" => Ok(Operand::word(self.initialize_system_service("systemOutput")?)),
+            b"systemInput" => Ok(Operand::word(self.initialize_system_service("systemInput")?)),
+            b"environment" => Ok(Operand::word(self.initialize_system_service("environment")?)),
+            b"fileIo" => Ok(Operand::word(self.initialize_system_service("fileIo")?)),
+            b"nativeLoader" => Ok(Operand::word(self.initialize_system_service("nativeLoader")?)),
+            b"sourceLoader" => Ok(Operand::word(self.initialize_system_service("sourceLoader")?)),
             b"codegen" => Ok(Operand::object(self.initialize_codegen()?)),
             b"artifact" => Ok(Operand::object(self.initialize_artifact()?)),
             b"peg" => Ok(Operand::object(self.initialize_peg()?)),

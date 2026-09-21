@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Construct System and its IO, GC and loading operations through Bootstrap,
+  removing nine legacy host initialization rows. Each constructor installs its
+  operations with complete dependencies; System IO can precede collections and
+  compilers, while source loading requires completed Codegen.
+
 - Construct TCC, Portable Code and Codegen through Bootstrap. Complete admission
   and Portable Code before their consumers, and supply Store compensation before
   publishing Codegen methods. Remove the three legacy host initialization rows

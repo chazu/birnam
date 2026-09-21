@@ -41,6 +41,25 @@ fn main() {
     control_arguments[6] = Operand::word(2);
     assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &control_arguments) }.status, native::LOADED);
     println!("native control and printing work while collections, Store and compiler libraries are absent");
+    if args.get(5).is_some_and(|mode| mode == "system") {
+        for library in ["id_prelude", "text_view", "system_gc", "system_output", "system_input", "environment", "file_io", "native_loader"] {
+            let file = format!("libbirnam_{library}.dylib");
+            std::fs::copy(Path::new(&args[4]).join(&file), prefix.join(&file)).unwrap();
+        }
+        unsafe {
+            std::env::set_var("BIRNAM_83_SYSTEM_VALUE", "native-system");
+            std::env::set_var("BIRNAM_83_SYSTEM_FILE", prefix.join("system-io.txt"));
+        }
+        stack.initialize_system_io().unwrap();
+        assert_eq!(stack.module_count(), 0, "System IO used legacy initialization");
+        let system = unsafe { birnam_abi::namespace_import::import(stack.imports(), c"System".as_ptr()) };
+        control_arguments[6] = Operand::word(6);
+        assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &control_arguments) }.status, native::LOADED);
+        stack.initialize_system_io().unwrap();
+        assert_eq!(unsafe { birnam_abi::namespace_import::import(stack.imports(), c"System".as_ptr()) }, system);
+        println!("System IO, GC, native-load failure and environment/file operations work before collections, Store, parsers and compilers; source loading is absent");
+        return;
+    }
     for library in later {
         let path = prefix.join(format!("libbirnam_{library}.dylib"));
         std::fs::rename(path.with_extension("later"), &path).unwrap();

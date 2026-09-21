@@ -1,4 +1,4 @@
-//! System's existing direct native-module loader, installed by Prelude (81AU).
+//! System's existing direct native-module loader, constructed through Bootstrap (81AU).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::error_value::numeric_error;
 use birnam_abi::native_loader::ApiV12;
@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static READY: AtomicBool = AtomicBool::new(false);
-// Prelude supplies its original selection, even when registration reenters
+// Construction supplies the original selection, even when registration reenters
 // with another table before the first native loader installation. The host pins it.
 #[derive(Clone, Copy)]
 struct Runtime {
@@ -125,3 +125,64 @@ birnam_abi::text_view_dependency!();
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { runtime().presence as *const birnam_abi::namespace_presence::ApiV1 }
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { runtime().imports as *const birnam_abi::namespace_import::ApiV1 }
+
+// The native constructor returns only after the System methods are installed.
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static NATIVE_SELECTION: OnceLock<(usize, usize)> = OnceLock::new();
+fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+    let Some([api, roots, system, presence, imports, exports, vtables, observation, settings, layouts, hooks, finalizers, errors, text]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+    let Some(api) = api.as_word() else { return invalid_native(); };
+    let Some(roots) = roots.as_word() else { return invalid_native(); };
+    let Some(presence) = presence.as_word() else { return invalid_native(); };
+    let Some(imports) = imports.as_word() else { return invalid_native(); };
+    let Some(exports) = exports.as_word() else { return invalid_native(); };
+    let Some(vtables) = vtables.as_word() else { return invalid_native(); };
+    let Some(observation) = observation.as_word() else { return invalid_native(); };
+    let Some(settings) = settings.as_word() else { return invalid_native(); };
+    let Some(layouts) = layouts.as_word() else { return invalid_native(); };
+    let Some(hooks) = hooks.as_word() else { return invalid_native(); };
+    let Some(finalizers) = finalizers.as_word() else { return invalid_native(); };
+    let Some(errors) = errors.as_word() else { return invalid_native(); };
+    let Some(text) = text.as_word() else { return invalid_native(); };
+    let api = api as *const IdApi;
+    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
+    let Some(system) = system.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver || !birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
+    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
+    if !unsafe { birnam_abi::namespace_presence::valid(presence) } { return invalid_native(); }
+    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
+    if !unsafe { birnam_abi::namespace_import::valid(imports) } { return invalid_native(); }
+    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
+    if !unsafe { birnam_abi::namespace_export::valid(exports) } { return invalid_native(); }
+    let vtables = vtables as *const birnam_abi::vtable_enumeration::ApiV2;
+    if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } { return invalid_native(); }
+    let observation = observation as *const birnam_abi::method_observation::ApiV1;
+    if !unsafe { birnam_abi::method_observation::valid(observation) } { return invalid_native(); }
+    let settings = settings as *const birnam_abi::gc_settings::ApiV1;
+    if !unsafe { birnam_abi::gc_settings::valid(settings) } { return invalid_native(); }
+    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
+    if !unsafe { birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
+    let hooks = hooks as *const birnam_abi::trace_hooks::ApiV1;
+    if !unsafe { birnam_abi::trace_hooks::valid(hooks) } { return invalid_native(); }
+    let finalizers = finalizers as *const birnam_abi::finalizers::ApiV1;
+    if !unsafe { birnam_abi::finalizers::valid(finalizers) } { return invalid_native(); }
+    if unsafe { birnam_abi::error_value::attach(errors as _) } != 1 { return invalid_native(); }
+    if unsafe { birnam_abi::text_view::attach(text as _) } != 1 { return invalid_native(); }
+    if NATIVE_SELECTION.get().is_some_and(|selected| *selected != (api.addr(), system.addr())) { return invalid_native(); }
+    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::word((&API as *const _ as *const c_void).addr())), _ => return invalid_native(),
+    }
+    assert!(NATIVE_SELECTION.set((api.addr(), system.addr())).is_ok());
+    READY.store(true, Ordering::Release);
+    let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
+    let system_vt = unsafe { ((*api).vtableOf)(system) };
+    let s0 = unsafe { retained.keep(((*api).intern)(c"loadModule:".as_ptr())) };
+    unsafe { install(api, api, presence, imports, exports, vtables, observation, (*roots).api, settings, layouts, hooks, finalizers, system_vt, s0) };
+    NATIVE_PHASE.store(2, Ordering::Release);
+    Outcome::loaded(Operand::word((&API as *const _ as *const c_void).addr()))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

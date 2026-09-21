@@ -19,7 +19,8 @@ def run(*args, **kwargs):
 # Check the installed images, not just source-level module visibility.
 for stem in ("id", "bootstrap", "runtime", "method-observation", "storage", "dispatch-cache",
              "block-loop", "collection-value", "error-value", "map", "printing", "range",
-             "string-builder", "string-collection", "vector", "codegen"):
+             "string-builder", "string-collection", "vector", "codegen", "text-view", "system-gc",
+             "system-output", "system-input", "environment", "file-io", "native-loader", "source-loader"):
     library = prefix / ("lib/libbirnam_" + ("id_codegen" if stem == "codegen" else stem.replace("-", "_")) + ".dylib")
     manifest = json.loads((root / f"abi/rust-{stem}-dylib-v1.json").read_text())
     exports = set(run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines())
@@ -151,6 +152,9 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     shutil.copytree(values_prefix, parser_prefix)
     compiler_prefix = scratch / "compiler-prefix"
     shutil.copytree(values_prefix, compiler_prefix)
+    system_prefix = scratch / "system-prefix"
+    shutil.copytree(values_prefix, system_prefix)
+    run(str(values_driver), str(system_prefix), str(scratch / "execution-values.dylib"), str(scratch), str(prefix / "lib"), "system")
     run(str(values_driver), str(values_prefix), str(scratch / "execution-values.dylib"), str(scratch))
     run(str(values_driver), str(parser_prefix), str(scratch / "execution-values.dylib"), str(scratch), str(prefix / "lib"))
     run(str(values_driver), str(compiler_prefix), str(scratch / "execution-values.dylib"), str(scratch), str(prefix / "lib"), "compiler")

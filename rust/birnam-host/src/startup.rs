@@ -1098,15 +1098,6 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_collect",
     // Remaining compatibility attachments before compiler-facing modules.
     "libbirnam_id_error",
-    "libbirnam_system_gc",
-    "libbirnam_text_view",
-    "libbirnam_system_output",
-    "libbirnam_system_input",
-    "libbirnam_environment",
-    "libbirnam_file_io",
-    "libbirnam_native_loader",
-    "libbirnam_source_loader",
-    "libbirnam_id_prelude",
     "libbirnam_id_isolate",
     "libbirnam_id_relational",
     "libbirnam_id_alien",
@@ -1607,7 +1598,7 @@ pub fn self_hosted_boot_order() -> Result<Vec<&'static str>, BootstrapOrderError
                 // The source declaration names a non-self-hosted module. Keep
                 // the distinction explicit so a typo cannot silently reorder
                 // the self-hosted layer.
-                let is_kernel = matches!(dependency.as_str(), "store" | "collection" | "artifact" | "peg" | "lang" | "tcc" | "codegen" | "portable_code") || SCRIPT_MODULES.iter().any(|name| {
+                let is_kernel = matches!(dependency.as_str(), "store" | "collection" | "artifact" | "peg" | "lang" | "tcc" | "codegen" | "portable_code" | "prelude") || SCRIPT_MODULES.iter().any(|name| {
                     name.strip_prefix("libbirnam_id_")
                         .is_some_and(|kernel| kernel == dependency)
                 });
@@ -2697,6 +2688,34 @@ impl LoadedStack {
         Ok(())
     }
 
+    /// Construct System IO without parser/compiler/application libraries.
+    pub fn initialize_system_io(&mut self) -> Result<(), ModuleError> {
+        self.initialize_control()?;
+        self.construct(b"systemIo")?;
+        self.system_gc = self.construction_word(b"systemGc")? as _;
+        assert_eq!(unsafe { birnam_abi::system_gc::attach(self.system_gc) }, 1);
+        self.text_view = self.construction_word(b"textView")? as _;
+        assert_eq!(unsafe { birnam_abi::text_view::attach(self.text_view) }, 1);
+        self.system_output = self.construction_word(b"systemOutput")? as _;
+        assert_eq!(unsafe { birnam_abi::system_output::attach(self.system_output) }, 1);
+        self.system_input = self.construction_word(b"systemInput")? as _;
+        assert_eq!(unsafe { birnam_abi::system_input::attach(self.system_input) }, 1);
+        self.environment = self.construction_word(b"environment")? as _;
+        assert_eq!(unsafe { birnam_abi::environment::attach(self.environment) }, 1);
+        self.file_io = self.construction_word(b"fileIo")? as _;
+        assert_eq!(unsafe { birnam_abi::file_io::attach(self.file_io) }, 1);
+        self.native_loader = self.construction_word(b"nativeLoader")? as _;
+        assert_eq!(unsafe { birnam_abi::native_loader::attach(self.native_loader) }, 1);
+        Ok(())
+    }
+    pub fn initialize_system(&mut self) -> Result<(), ModuleError> {
+        self.initialize_compiler()?;
+        self.initialize_system_io()?;
+        self.source_loader = self.construction_word(b"sourceLoader")? as _;
+        assert_eq!(unsafe { birnam_abi::source_loader::attach(self.source_loader) }, 1);
+        Ok(())
+    }
+
     pub fn initialize_compiler(&mut self) -> Result<(), ModuleError> {
         self.initialize_parsers()?;
         self.construct(b"codegen")?;
@@ -2724,7 +2743,7 @@ impl LoadedStack {
     /// retains its exact override path; every other rung, including Store,
     /// comes from the one executable-relative runtime library directory.
     pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
-        self.initialize_compiler()?;
+        self.initialize_system()?;
         for name in SCRIPT_MODULES {
             let path = resources.lib_dir.join(format!("{name}.dylib"));
             let handle = self.load_module_handle(&path)?;

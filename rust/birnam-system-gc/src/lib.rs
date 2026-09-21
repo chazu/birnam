@@ -1,4 +1,4 @@
-//! System's existing GC control methods, installed by Prelude (81AJ).
+//! System's existing GC control methods, constructed through Bootstrap (81AJ).
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::system_gc::ApiV2;
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static READY: AtomicBool = AtomicBool::new(false);
-// Prelude supplies its original selection, even when registration reenters
+// Construction supplies the original selection, even when registration reenters
 // with another table before the first GC control installation. The host pins it.
 static EXECUTION_API: OnceLock<(usize, usize)> = OnceLock::new();
 
@@ -121,3 +121,41 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
 birnam_abi::integer_dependency!();
+
+// The native constructor returns only after the System methods are installed.
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static NATIVE_SELECTION: OnceLock<(usize, usize)> = OnceLock::new();
+fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+    let Some([api, roots, system, settings, integer]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+    let Some(api) = api.as_word() else { return invalid_native(); };
+    let Some(roots) = roots.as_word() else { return invalid_native(); };
+    let Some(settings) = settings.as_word() else { return invalid_native(); };
+    let Some(integer) = integer.as_word() else { return invalid_native(); };
+    let api = api as *const IdApi;
+    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
+    let Some(system) = system.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver || !birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
+    let settings = settings as *const birnam_abi::gc_settings::ApiV1;
+    if !unsafe { birnam_abi::gc_settings::valid(settings) } { return invalid_native(); }
+    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 { return invalid_native(); }
+    if NATIVE_SELECTION.get().is_some_and(|selected| *selected != (api.addr(), system.addr())) { return invalid_native(); }
+    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::word((&API as *const _ as *const c_void).addr())), _ => return invalid_native(),
+    }
+    assert!(NATIVE_SELECTION.set((api.addr(), system.addr())).is_ok());
+    READY.store(true, Ordering::Release);
+    let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
+    let system_vt = unsafe { ((*api).vtableOf)(system) };
+    let s0 = unsafe { retained.keep(((*api).intern)(c"gc".as_ptr())) };
+    let s1 = unsafe { retained.keep(((*api).intern)(c"liveObjects".as_ptr())) };
+    let s2 = unsafe { retained.keep(((*api).intern)(c"autoGc:".as_ptr())) };
+    let s3 = unsafe { retained.keep(((*api).intern)(c"preciseGc:".as_ptr())) };
+    unsafe { install(api, api, settings, system_vt, s0, s1, s2, s3) };
+    NATIVE_PHASE.store(2, Ordering::Release);
+    Outcome::loaded(Operand::word((&API as *const _ as *const c_void).addr()))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

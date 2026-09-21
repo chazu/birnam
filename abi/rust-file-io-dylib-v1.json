@@ -1,10 +1,11 @@
 {
   "schema_version": 1,
-  "scope": "System file IO methods installed by Prelude",
+  "scope": "System file IO methods constructed through Bootstrap",
   "install_name": "@rpath/libbirnam_file_io.dylib",
   "exported_symbols": [
     "birnam_error_value_dependency_v3",
     "birnam_file_io_provider_v3",
+    "birnam_native_module_v1",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
     "birnam_text_view_dependency_v1",

@@ -81,3 +81,16 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
 birnam_abi::string_dependency!();
+
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    let invalid = || Outcome::failed(native::INVALID_REQUEST, 0);
+    if !unsafe { native::valid_protocol(id) } { return invalid(); }
+    let Some([string]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let Some(string) = string.as_word() else { return invalid(); };
+    if unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid(); }
+    READY.store(true, Ordering::Release);
+    Outcome::loaded(Operand::word((&API as *const ApiV1).addr()))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

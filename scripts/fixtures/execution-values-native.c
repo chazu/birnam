@@ -148,6 +148,39 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     api=(void *)args[0].data.word; imports=(void *)args[1].data.word;
     const RootRegistryV1 *registry=(void *)args[2].data.word;
     integer=*(IntegerApiV1 *)args[3].data.word; string=*(StringApiV1 *)args[4].data.word;
+    if(args[6].data.word==6) {
+        if(!registered) { root_registry_register_v1(registry,mark); registered=1; }
+        assert(!namespace_import_v1(imports,"Vector"));
+        assert(!namespace_import_v1(imports,"Store"));
+        assert(!namespace_import_v1(imports,"Lang"));
+        assert(!namespace_import_v1(imports,"Tcc"));
+        assert(!namespace_import_v1(imports,"Codegen"));
+        check_compiler(id,&args[5],0);
+        Oop system=named("System");
+        absent(id,api->vtable_of(system),"load:");
+        Oop value=keep(send1(system,"getEnv:",text("BIRNAM_83_SYSTEM_VALUE")));
+        size_t length=0; const uint8_t *bytes=string.bytes(string.context,value,&length);
+        assert(length==13 && !memcmp(bytes,"native-system",13));
+        Oop path=text(getenv("BIRNAM_83_SYSTEM_FILE"));
+        Oop payload=text("native file contents"), write_args[]={path,payload};
+        assert(api->send(system,api->intern("writeFile:contents:"),write_args,2)==system);
+        value=keep(send1(system,"readFile:",path));
+        bytes=string.bytes(string.context,value,&length);
+        assert(length==20 && !memcmp(bytes,"native file contents",20));
+        assert(remove(getenv("BIRNAM_83_SYSTEM_FILE"))==0);
+        Oop error=keep(send1(system,"readFile:",path));
+        assert(send0(error,"kind")==api->intern("ioError"));
+        error=keep(send1(system,"loadModule:",path));
+        assert(send0(error,"kind")==api->intern("ioError"));
+        assert(send1(system,"readLine",api->nil_obj)==api->nil_obj);
+        assert(send1(system,"print:",text(""))==system);
+        assert(number(send0(system,"liveObjects"))>0);
+        assert(send1(system,"preciseGc:",api->true_obj)==system);
+        assert(number(send0(system,"gc"))>=0);
+        assert(send1(system,"preciseGc:",api->false_obj)==system);
+        root_count=0;
+        return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=system}};
+    }
     if(args[6].data.word==5) {
         if(!registered) { root_registry_register_v1(registry,mark); registered=1; }
         assert(!namespace_import_v1(imports,"System"));
