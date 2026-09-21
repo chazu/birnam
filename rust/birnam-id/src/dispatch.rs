@@ -318,6 +318,9 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     build_bootstrap_from(crate::initial_objects::InitialObjects::new())
 }
 pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
+    build_bootstrap_with_roots(initial, None)
+}
+pub(crate) fn build_bootstrap_with_roots(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
         memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
@@ -350,7 +353,7 @@ pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjec
         identical: static_selector(&mut symbols, &mut heap, symbol_vt, b"=="),
     };
 
-    let runtime = Runtime::new(
+    let runtime = Runtime::new_with_roots(
         heap,
         vtables,
         symbols,
@@ -362,6 +365,7 @@ pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjec
             lookup: selectors.lookup,
             does_not_understand: selectors.does_not_understand,
         },
+        roots,
     );
     runtime.install_internal_dictionaries(symbol_list, environment);
 

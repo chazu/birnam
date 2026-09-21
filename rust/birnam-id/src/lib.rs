@@ -88,6 +88,15 @@ pub extern "C" fn id_init() -> *mut core::ffi::c_void {
     public_api::initialize_once().cast()
 }
 
+/// Upper Runtime construction with an already initialized root owner.
+/// # Safety
+/// Transfer the live native owner exactly once; its module remains pinned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn birnam_runtime_init_v1(roots: *const birnam_abi::root_registry::OwnedV1) -> *mut core::ffi::c_void {
+    if !unsafe { birnam_abi::root_registry::valid_owned(roots) } { return core::ptr::null_mut(); }
+    public_api::initialize_with_roots(Some(unsafe { root_registry::Service::adopt(roots) })).cast()
+}
+
 /// Private host/floor admission seam for Design 60J Symbol compaction.
 ///
 /// This is deliberately outside the IdApi table. `enabled != 0` admits weak

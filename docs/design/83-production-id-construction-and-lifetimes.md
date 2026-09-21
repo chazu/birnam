@@ -542,9 +542,39 @@ entered images, including failed initializers with partial publication.
 
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
-slot is retargeted. Seventeen upper factory preparations still run in the host
-after real Id initialization and feed the aggregate Runtime constructor. That
+slot is retargeted. Sixteen upper factory preparations still run in the host
+after native Id/root-registry initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
+
+The first actual upper native entry is now
+`libbirnam_root_registry.dylib:birnam_native_module_v1`. Its only predecessor is
+Id. Initial Object arguments are retained before it publishes a Word pointing to
+its complete [root owner descriptor](../../abi/fixtures/root-registry-owner-v1/README.md).
+Native registration, retain/release and root enumeration work without Runtime or
+GC, including their failure paths. Admission checks the native owner's thread;
+there is no future Runtime callback. After Runtime is complete, it replaces that
+working mutation policy with its storage-observation admission. Canonical root
+queries still work during collection/observation. Existing root-provider ABI v1
+remains intact.
+
+The host's `begin_floor` initializes Id and this root owner; `InitialFloor::finish`
+constructs the remaining Runtime with that same owner. Ordinary `load_floor` and
+`start` use this path, while `start_with_floor` continues an explicitly constructed
+prefix. `birnam_runtime_init_v1` is an upper construction entry taking the completed
+owner, temporarily packaged in the Id library along with Runtime. The old
+`id_init`/factory preparation path remains for legacy consumers and fixtures; it
+is not used by the current production host with the current Id. Remove it with
+those consumers during the ownership cutover. The production path no longer
+prepares a root-registry factory inside Id or constructs a second registry.
+
+Retained root records transfer with the registry into Runtime and are included
+in actual GC and diagnostic roots. Releasing a record removes its reference;
+tokens are local to the registry and never reused. Released records are removed,
+so native storage tracks live roots rather than cumulative registrations. The returned root view is
+borrowed until registry mutation and must be copied before invoking callbacks.
+This implements the early root-owner portion of Lifetime. Payload descriptions,
+finalizer declarations, complete Bootstrap result ownership and staged collector
+activation still require their production construction changes.
 
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/finalizer
 records, budget accounting and deferred allocations. Allocation records use
@@ -578,7 +608,8 @@ still access internal Rust storage. Production index retirement, allocation
 detachment and release now use the native storage callables. Upper behavior
 metadata and per-allocation finalizer records retire separately; the coordinator
 keeps detached payloads readable until their finalizers return. A separate
-Lifetime/GC module and the adoption cutover are not yet implemented.
+Lifetime/GC construction and the full adoption cutover are not yet implemented;
+early retained roots now transfer through the initialized root registry.
 
 Ordinary binding, inherited caching and Machine synchronous targets carry the
 complete native function/context pair. Context-only replacement is observable.
@@ -624,7 +655,17 @@ Current debug evidence:
   ordinary Object arguments to the native destruction operations. After upper adoption it
   supplies completed roots/collector explicitly and verifies actual collection
   preserves the rooted object's identity and payload. Ordinary typed sends and
-  native-to-language Error outcomes also pass.
+  native-to-language Error outcomes also pass. With only Id and root-registry
+  libraries available, a second C module retains a new object before Runtime
+  exists. The same retained record survives adoption and precise collection;
+  release then permits reclamation. Repeated retain/release removes records
+  without reusing tokens. Invalid initializer operands fail before publication.
+- The root-registry image workload passes for source, source-free compiled,
+  native Code images and baked execution, including duplicate provider order,
+  callback-time append, nested collection, roots, aliases and reload. Debug unit
+  checks pass for ABI (24), host (86), Id (308) and root registry (5). The installed
+  root-registry exports match its manifest; Id has the declared exports plus the
+  installer's existing `module_init` and `birnam_symbol_borrow_v1` wrappers.
 - `scripts/allocation-identity-image-smoke.sh PREFIX` exercises source, source-free
   compiled, mapped/rebuilt native images and baked execution, with identity,
   dictionary replacement, finalization, active Frames, aliases, GC and reload.
@@ -639,8 +680,9 @@ Remaining architectural acceptance requires all of the following:
 
 1. Move Runtime, compiler/artifact dependencies and upper ownership out of Id;
    remove temporary forwarding exports and migrate native/reflective consumers.
-2. Construct Bootstrap and Lifetime as working upper modules. Retain early module
-   roots and initializer results before publication, then transfer them explicitly.
+2. Complete Bootstrap and Lifetime construction beyond the initialized root
+   registry: payload/finalizer ownership and automatic retention of initializer
+   results, with explicit transfer before collection becomes active.
 3. Finish storage-consumer migration in adoption, diagnostics, compatibility and
    Execution accounting. Collection now uses Id's native retirement/release path;
    the remaining Rust allocation/registry handoff must not become a permanent

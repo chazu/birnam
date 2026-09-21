@@ -65,6 +65,7 @@
     "birnam_vtable_enumeration_dependency_v2",
     "birnam_vtable_enumeration_provider_v2",
     "birnam_word_dependency_v1",
+    "birnam_runtime_init_v1",
     "id_init",
     "birnam_deferred_identity_dependency_v1",
     "birnam_deferred_index_dependency_v1"

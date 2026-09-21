@@ -419,6 +419,16 @@ impl Runtime {
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
     ) -> Self {
+        Self::new_with_roots(heap, vtables, symbols, id_protocol, globals, None)
+    }
+    pub(crate) fn new_with_roots(
+        heap: Heap,
+        vtables: Behaviors,
+        symbols: crate::owned::Owned<Symbols>,
+        id_protocol: Option<Box<crate::native_id::State>>,
+        globals: DispatchGlobals,
+        roots: Option<crate::root_registry::Service>,
+    ) -> Self {
         let id_storage = id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol));
         Self {
             id_storage,
@@ -462,7 +472,7 @@ impl Runtime {
             read_reuse_gc_epoch: Cell::new(0),
             state: UnsafeCell::new(RuntimeState {
                 method_observation: crate::method_observation::Service::new(),
-                root_registry: crate::root_registry::Service::new(),
+                root_registry: roots.unwrap_or_else(crate::root_registry::Service::new),
                 vtable_enumeration: crate::vtable_enumeration::Service::new(),
                 symbols,
                 id_protocol,
@@ -4699,7 +4709,7 @@ impl Runtime {
 }
 
 fn upper_roots(state: &RuntimeState) -> Vec<Oop> {
-    let mut roots = Vec::new();
+    let mut roots = state.root_registry.retained_roots();
     let export_roots = state.environment.roots();
     let globals = state.globals.roots();
     let canonical = state

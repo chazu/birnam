@@ -304,7 +304,10 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap) {
 
 /// Perform the one supported process-lifetime initialization transition.
 pub(crate) fn initialize_once() -> *mut IdApi {
-    let bootstrap = Box::new(crate::dispatch::build_bootstrap_from(crate::native_id::take_initial_objects()));
+    initialize_with_roots(None)
+}
+pub(crate) fn initialize_with_roots(roots: Option<crate::root_registry::Service>) -> *mut IdApi {
+    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with_roots(crate::native_id::take_initial_objects(), roots));
     bootstrap.runtime.install_id_runtime_extensions();
     install_bootstrap_metadata(&bootstrap);
     let mut api = Box::new(table_for(&bootstrap));

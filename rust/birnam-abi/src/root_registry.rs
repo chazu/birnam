@@ -28,6 +28,37 @@ pub struct SnapshotV1 {
     pub count: usize,
     pub entries: [Option<RootProvider>; CAPACITY],
 }
+/// Complete native owner returned by the root registry's module initializer.
+/// Its operations work before Runtime/GC. Adopt once; destroy through factory.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OwnedV1 {
+    pub version: u32,
+    pub byte_size: usize,
+    pub api: *mut ApiV1,
+    pub factory: *const FactoryV1,
+    pub context: *mut c_void,
+    pub retain: Option<unsafe extern "C" fn(*mut c_void, crate::Oop) -> usize>,
+    pub release: Option<unsafe extern "C" fn(*mut c_void, usize) -> c_int>,
+    pub roots: Option<unsafe extern "C" fn(*mut c_void) -> RootsV1>,
+    pub set_admission: Option<unsafe extern "C" fn(*mut c_void, *const FloorV1) -> c_int>,
+}
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct RootsV1 {
+    pub entries: *const crate::Oop,
+    pub count: usize,
+}
+const _: () = assert!(size_of::<OwnedV1>() == 72 && size_of::<RootsV1>() == 16);
+/// # Safety
+/// A readable descriptor returned by the native initializer, with live code.
+pub unsafe fn valid_owned(pointer: *const OwnedV1) -> bool {
+    if pointer.is_null() { return false; }
+    let owned = unsafe { *pointer };
+    owned.version == 1 && owned.byte_size == size_of::<OwnedV1>()
+        && !owned.context.is_null() && unsafe { valid(owned.api) && valid_factory(owned.factory) }
+        && owned.retain.is_some() && owned.release.is_some() && owned.roots.is_some() && owned.set_admission.is_some()
+}
 pub type AppendV1 = unsafe extern "C" fn(*mut ApiV1, RootProvider) -> c_int;
 pub type SnapshotFnV1 = unsafe extern "C" fn(*const ApiV1) -> SnapshotV1;
 #[repr(C)]

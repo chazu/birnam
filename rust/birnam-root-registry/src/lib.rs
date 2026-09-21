@@ -1,5 +1,5 @@
 //! The existing ordered native root-provider registry, independently owned.
-use birnam_abi::root_registry::{ApiV1, CAPACITY, FactoryV1, FloorV1, SnapshotV1};
+use birnam_abi::root_registry::{ApiV1, CAPACITY, FactoryV1, FloorV1, SnapshotV1, OwnedV1, RootsV1};
 use birnam_abi::RootProvider;
 use core::ffi::{c_int, c_void};
 use core::ptr;
@@ -9,6 +9,11 @@ struct Registry {
     api: ApiV1,
     floor: FloorV1,
     providers: Vec<RootProvider>,
+    owned: OwnedV1,
+    retained: Vec<birnam_abi::Oop>,
+    root_tokens: Vec<usize>,
+    next_root: usize,
+    owner: std::thread::ThreadId,
 }
 unsafe extern "C" fn append(api: *mut ApiV1, provider: RootProvider) -> c_int {
     let registry = unsafe { &mut *api.cast::<Registry>() };
@@ -39,9 +44,13 @@ unsafe extern "C" fn create(floor: *const FloorV1) -> *mut ApiV1 {
     }
     let mut owned = Box::new(Registry {
         api: ApiV1 { version: 1, byte_size: size_of::<ApiV1>(), context: ptr::null_mut(), register: Some(register) },
-        floor, providers: Vec::new(),
+        floor, providers: Vec::new(), retained: Vec::new(), root_tokens: Vec::new(), next_root: 0, owner: std::thread::current().id(),
+        owned: OwnedV1 { version: 1, byte_size: size_of::<OwnedV1>(), api: ptr::null_mut(), factory: &FACTORY,
+            context: ptr::null_mut(), retain: Some(retain), release: Some(release), roots: Some(roots), set_admission: Some(set_admission) },
     });
     owned.api.context = ptr::from_mut(owned.as_mut()).cast();
+    owned.owned.context = owned.api.context;
+    owned.owned.api = ptr::from_mut(&mut owned.api);
     Box::into_raw(owned).cast()
 }
 unsafe extern "C" fn destroy(api: *mut ApiV1) {
@@ -50,6 +59,68 @@ unsafe extern "C" fn destroy(api: *mut ApiV1) {
 static FACTORY: FactoryV1 = FactoryV1 {
     version: 1, byte_size: size_of::<FactoryV1>(), create: Some(create), destroy: Some(destroy),
     append: Some(append), snapshot: Some(snapshot),
+};
+
+unsafe extern "C" fn admit_native(context: *mut c_void) {
+    assert_eq!(unsafe { (*context.cast::<Registry>()).owner }, std::thread::current().id(), "root registry used from another thread");
+}
+unsafe extern "C" fn overflow_native(_: *mut c_void) -> ! {
+    eprintln!("gc: too many root providers");
+    std::process::abort()
+}
+unsafe extern "C" fn retain(context: *mut c_void, object: birnam_abi::Oop) -> usize {
+    unsafe { admit_mutation(context) };
+    if object.is_null() { return 0; }
+    let registry = unsafe { &mut *context.cast::<Registry>() };
+    registry.next_root = registry.next_root.checked_add(1).expect("root token space exhausted");
+    registry.retained.push(object);
+    registry.root_tokens.push(registry.next_root);
+    registry.next_root
+}
+unsafe extern "C" fn release(context: *mut c_void, token: usize) -> c_int {
+    unsafe { admit_mutation(context) };
+    let registry = unsafe { &mut *context.cast::<Registry>() };
+    let Some(index) = registry.root_tokens.iter().position(|candidate| *candidate == token) else { return 0; };
+    registry.root_tokens.swap_remove(index);
+    registry.retained.swap_remove(index);
+    1
+}
+unsafe extern "C" fn roots(context: *mut c_void) -> RootsV1 {
+    unsafe { admit_native(context) };
+    let registry = unsafe { &*context.cast::<Registry>() };
+    RootsV1 { entries: registry.retained.as_ptr(), count: registry.retained.len() }
+}
+unsafe fn admit_mutation(context: *mut c_void) {
+    let floor = unsafe { (*context.cast::<Registry>()).floor };
+    // The current working admission policy may reenter. Borrow records afterward.
+    unsafe { floor.admit.unwrap()(floor.context) };
+}
+unsafe extern "C" fn set_admission(context: *mut c_void, floor: *const FloorV1) -> c_int {
+    unsafe { admit_native(context) };
+    if floor.is_null() { return 0; }
+    let floor = unsafe { *floor };
+    if floor.version != 1 || floor.byte_size != size_of::<FloorV1>() || floor.admit.is_none() || floor.overflow.is_none() { return 0; }
+    unsafe { (*context.cast::<Registry>()).floor = floor };
+    1
+}
+
+unsafe extern "C" fn initialize_native(id: *const birnam_abi::id_protocol::Protocol, args: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
+    use birnam_abi::id_protocol::{self as native, Operand, Outcome};
+    if id.is_null() { return Outcome::failed(native::INVALID_REQUEST, 0); }
+    let Some(args) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let Some(initial): Option<Vec<_>> = args.iter().map(|arg| arg.as_object()).collect() else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let floor = FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: ptr::null_mut(), admit: Some(admit_native), overflow: Some(overflow_native) };
+    let api = unsafe { create(&floor) };
+    let registry = api.cast::<Registry>();
+    // Complete the native owner's self-reference before publishing it. No
+    // operation needs a later Runtime, collector or prepared callback.
+    unsafe { (*registry).floor.context = registry.cast() };
+    for object in initial { unsafe { retain(registry.cast(), object) }; }
+    Outcome::loaded(Operand::word(unsafe { &raw const (*registry).owned } as usize))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {
+    version: birnam_abi::id_protocol::VERSION, byte_size: size_of::<birnam_abi::id_protocol::Module>() as u32, initialize: Some(initialize_native),
 };
 /// # Safety
 /// Owner-thread operations require the declared descriptor and code lifetimes.

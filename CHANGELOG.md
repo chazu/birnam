@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Initialize the production root registry through Id before Runtime (Design 83).
+  Its native retained-root records and registration operations work without GC or
+  Runtime callbacks. Host construction now adopts that exact owner; early native
+  module roots participate in later collection and can be released. The rest of
+  Lifetime ownership and staged collector activation remain unfinished.
+
 - Move production collection's Id index retirement, allocation detachment and
   release onto the native storage protocol (Design 83). Upper GC metadata retires
   separately; finalizers retain readable detached payloads until the collector

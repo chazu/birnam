@@ -26,6 +26,7 @@ pub use startup::{
     IsolateHookError,
     IsolateHooks,
     LoadedFloor,
+    InitialFloor,
     LoadedSelfHostedModule,
     LoadedStack,
     MAX_SCRIPT_BYTES,
@@ -60,6 +61,7 @@ pub use startup::{
     eval_script,
     host_target_identity,
     load_floor,
+    begin_floor,
     load_image,
     load_image_bytes,
     load_selected_floor,
@@ -72,6 +74,7 @@ pub use startup::{
     self_hosted_boot_order,
     self_hosted_requires,
     start,
+    start_with_floor,
     start_from_environment,
 };
 use startup::{bridge_string, error_diagnostic, global_named, mark_module_loaded, native_os_string_vector, path_bytes, read_artifact_bytes, send_is_error};

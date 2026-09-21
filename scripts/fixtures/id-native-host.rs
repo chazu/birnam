@@ -99,10 +99,28 @@ fn main() {
         "actual Id loads and sends without upper libraries; admission and failure pinning pass"
     );
 
-    // Only now make the upper libraries available, and use normal host startup.
+    // Construct the real root owner while every other upper library is absent.
+    symlink(prefix.join("lib/libbirnam_root_registry.dylib"), isolated.join("libbirnam_root_registry.dylib")).unwrap();
+    let root_path = isolated.join("libbirnam_root_registry.dylib");
+    assert_eq!(send(&id, id.load, &[Operand::bytes(root_path.as_os_str().as_bytes()), Operand::word(83)]).status, native::INVALID_REQUEST);
+    let initial = birnam_host::begin_floor(&id_path, None, None).unwrap();
+    assert_eq!(initial.id_protocol().context, id.context);
+    let roots = initial.roots().expect("production initialized root owner");
+    let root_path = scratch.join("early-root.dylib");
+    let retained = send(&id, id.load, &[
+        Operand::bytes(root_path.as_os_str().as_bytes()), Operand::word(roots as usize),
+    ]);
+    assert_eq!(retained.status, native::LOADED);
+    assert!(retained.value.as_word().unwrap() > 0);
+    let root_identity = intern(&id, b"earlyRootIdentity");
+    let release_root = intern(&id, b"releaseEarlyRoot");
+    let early_identity = send(&id, root_identity, &[]).value.as_word().unwrap();
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 2);
+    // Only now make the remaining upper libraries available and continue the
+    // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
         let entry = entry.unwrap();
-        if entry.file_name() != "libbirnam_id.dylib" {
+        if entry.file_name() != "libbirnam_id.dylib" && entry.file_name() != "libbirnam_root_registry.dylib" {
             symlink(entry.path(), isolated.join(entry.file_name())).unwrap();
         }
     }
@@ -115,9 +133,17 @@ fn main() {
     )
     .unwrap();
     let runtime =
-        unsafe { birnam_host::start(resources, StartupPolicy::from_flags(false, false)) }.unwrap();
+        unsafe { birnam_host::start_with_floor(resources, StartupPolicy::from_flags(false, false), initial.finish().unwrap()) }.unwrap();
     let mut anchor = 0usize;
     unsafe { runtime.prepare_execution(&mut anchor) };
+    let settings = runtime.stack.gc_settings();
+    unsafe { birnam_abi::gc_settings::set_precise(settings, 1); (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, root_identity, &[]).value.as_word(), Some(early_identity));
+    assert_eq!(send(&id, release_root, &[]).value.as_word(), Some(1));
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, root_identity, &[]).value.kind(), native::UNIT);
+    assert_eq!(send(&id, release_root, &[]).value.as_word(), Some(0));
+    println!("native module root registered before Runtime survives adoption/GC and is reclaimed after release");
     let adopted = runtime.stack.id_protocol();
     assert_eq!(
         (
