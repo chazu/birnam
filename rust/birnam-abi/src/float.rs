@@ -44,9 +44,9 @@ static DEPENDENCY: AtomicPtr<FloatApiV1> = AtomicPtr::new(core::ptr::null_mut())
 /// # Safety
 /// The selected Float table, its context/code, and this consumer remain live
 /// for the process. Mounting runs on the floor owner thread before publication.
-pub unsafe fn attach(pointer: *mut FloatApiV1) -> c_int {
+pub unsafe fn valid(pointer: *const FloatApiV1) -> bool {
     if pointer.is_null() {
-        return 0;
+        return false;
     }
     let value = unsafe { pointer.read() };
     if value.version != FLOAT_ABI_VERSION
@@ -56,7 +56,7 @@ pub unsafe fn attach(pointer: *mut FloatApiV1) -> c_int {
         || value.prototype.is_null()
         || value.storage.is_null()
     {
-        return 0;
+        return false;
     }
     let storage = unsafe { value.storage.read() };
     if storage.version != 1
@@ -65,8 +65,15 @@ pub unsafe fn attach(pointer: *mut FloatApiV1) -> c_int {
         || !storage.payload_alignment.is_power_of_two()
         || storage.payload_alignment > align_of::<Oop>()
     {
-        return 0;
+        return false;
     }
+    true
+}
+
+/// # Safety
+/// The selected table and all of its context/code remain live on the owner thread.
+pub unsafe fn attach(pointer: *mut FloatApiV1) -> c_int {
+    if !unsafe { valid(pointer) } { return 0; }
     match DEPENDENCY.compare_exchange(
         core::ptr::null_mut(),
         pointer,

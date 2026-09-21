@@ -732,11 +732,10 @@ the current Id method and checks actual size/behavior before writing. Equality
 and ordered comparison retain their existing semantics, including double-precision
 rounding in ordered comparisons.
 
-This completes step 7's Integer base. Late mounting reuses its actual operations
+This completes step 7's Integer base. Later entries reuse its actual operations
 table and identities; mixed-number methods replace only original base entries,
 preserving early replacements. Float conversion and Block iteration are absent
-until those dependencies exist. Their native extension entries, Float/Word
-construction, collector activation and upper/package separation remain open.
+until those dependencies exist.
 The old numeric compiler declaration assumes direct allocation and therefore
 returns zero for this message-based constructor. Native-aware compiler admission
 must still be implemented; this fallback is not the completed compiler design.
@@ -744,6 +743,30 @@ must still be implemented; this fallback is not the completed compiler design.
 String, Error and Integer root their cached selectors and predecessor references.
 Removing a method binding must not collect a selector still held by a native
 context; the same selector can be used to restore the method after collection.
+
+`InitialFloor::initialize_float` constructs Float after Integer through Bootstrap.
+Its [native entry](../../abi/float-v1.md#production-construction) takes the completed
+predecessors and Integer table, owns the existing IEEE bits representation, and
+publishes the canonical identities and seventeen existing methods. `fromBits:`
+and `bits` use native Words and preserve the full payload, including signed zero
+and NaN payloads. Construction sends the current Id allocator and checks actual
+allocation size/behavior before writing. Conversion errors, arithmetic, printing
+and live Error/ErrorVt lookup work without Word, Block or Runtime.
+
+Once Float is complete, it sends Integer `installFloat:` with its table as a
+native Word. This is an explicit extension entry on the existing Integer object.
+It creates a separate complete context, installs mixed arithmetic/comparisons and
+`asFloat`, and preserves original-base replacements. Copied Integer methods keep
+their existing mixed receiver behavior. Integer's base has no future Float slot.
+Late mounting preserves these entries and adds only the remaining Block iteration.
+Production skips Float's legacy preparation and adopts the identical operations
+table into upper consumers; legacy preparation now returns that table if called
+on the same native Id. The legacy-only constructor remains for native clients.
+
+This delivers Float and the mixed-number part of step 8. Word construction,
+String numeric/text extensions and Nil/Boolean printing still need native entries.
+Collector activation, Execution/Block, native-aware compiler admission and the
+remaining upper/package separation are still open.
 
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
@@ -910,6 +933,19 @@ Current debug evidence:
   saved-image and baked-image workload passes. Integer (1), Id (308) and host (86)
   debug units pass. The installed Integer exports match its nine-symbol manifest
   and link only the platform library. The private Runtime v5 bridge is unchanged.
+- The fifteen-library prefix constructs Float and installs Integer's mixed-number
+  extension with Word/Block/Runtime absent. Independent C checks 1,164 arithmetic
+  cases, IEEE comparisons, signed zero/NaN payloads, conversion limits, printing,
+  live ErrorVt replacement, copied Integer methods and allocation bounds. The
+  fixture repeats after adoption with precise GC; native method/context
+  replacements and retained payload bits survive, and released objects are
+  reclaimed. Float (1), Integer (1), host (86) and Id (308) debug units pass.
+  The legacy Float client passes 676 arithmetic cases plus conversion, publication,
+  replacement and GC checks. Installed Float has its eight manifest exports and
+  links only the platform library. Float's source, source-free compiled, saved-image
+  and baked-image workloads pass, including live arithmetic replacement and Error
+  factory rebinding. Integer's error-value image workload also passes with the
+  native mixed extension installed. The Runtime v5 bridge is unchanged.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.

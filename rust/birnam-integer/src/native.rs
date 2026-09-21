@@ -229,6 +229,15 @@ unsafe fn binary(
         };
         return error(access, b"typeMismatch", message);
     };
+    unsafe { calculate(instance, access, left, right, operation) }
+}
+unsafe fn calculate(
+    instance: &Instance,
+    access: Access,
+    left: i64,
+    right: i64,
+    operation: u8,
+) -> Result<Oop, Outcome> {
     if (operation == 3 || operation == 4) && right == 0 {
         return error(access, b"zeroDivide", b"division by zero");
     }
@@ -363,6 +372,7 @@ const METHODS: &[(&[u8], native::Method)] = &[
     (b"printString", print),
     (b"fromWord:", from_word),
     (b"word", word),
+    (b"installFloat:", install_float),
 ];
 pub(crate) unsafe fn extend_binding(instance: &Instance, name: &[u8]) -> bool {
     if matches!(name, b"mod:" | b"=" | b"printString") {
@@ -551,3 +561,213 @@ pub static birnam_native_module_v1: native::Module = native::Module {
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };
+
+// A separate, complete owner created only after Float is constructed. The
+// Integer base has no Float slot waiting to be filled.
+struct FloatExtension {
+    integer: *const Instance,
+    float: *mut birnam_abi::float::FloatApiV1,
+}
+static FLOAT_EXTENSION: std::sync::atomic::AtomicPtr<FloatExtension> =
+    std::sync::atomic::AtomicPtr::new(ptr::null_mut());
+unsafe fn floating_value(extension: &FloatExtension, access: Access, object: Oop) -> Option<f64> {
+    let float = unsafe { *extension.float };
+    if unsafe { (float.is_exact)(float.context, object) } == 0
+        || fact(access, access.allocation_size, object)
+            .ok()?
+            .as_word()?
+            < 8
+        || fact(access, access.behavior_of, object).ok()?.as_object()? != float.behavior
+    {
+        return None;
+    }
+    Some(unsafe { (float.read)(float.context, object) })
+}
+unsafe fn mixed(
+    extension: &FloatExtension,
+    receiver: Oop,
+    right: Option<Oop>,
+    operation: u8,
+) -> Result<Oop, Outcome> {
+    let instance = unsafe { &*extension.integer };
+    let access = instance.native_access().unwrap();
+    if !known(access, receiver) || right.is_some_and(|value| !known(access, value)) {
+        return Err(invalid());
+    }
+    let _receiver = Root::new(access.roots, receiver);
+    let _right = right.map(|value| Root::new(access.roots, value));
+    let left_integer = unsafe { integer(instance, access, receiver) };
+    let Some(right) = right else {
+        let Some(left) = left_integer else {
+            return Ok(access.values.nil);
+        };
+        let float = unsafe { *extension.float };
+        return Ok(unsafe { (float.make)(float.context, left as f64) });
+    };
+    // Existing mixed methods also work when copied to a Float receiver.
+    let left = match left_integer {
+        Some(value) => value as f64,
+        None => match unsafe { floating_value(extension, access, receiver) } {
+            Some(value) => value,
+            None => return Ok(access.values.nil),
+        },
+    };
+    if is_error(access, right)? {
+        return Ok(right);
+    }
+    let right_integer = unsafe { integer(instance, access, right) };
+    if let (Some(left), Some(right)) = (left_integer, right_integer) {
+        return unsafe { calculate(instance, access, left, right, operation) };
+    }
+    let right = match right_integer {
+        Some(value) => value as f64,
+        None => match unsafe { floating_value(extension, access, right) } {
+            Some(value) => value,
+            None => {
+                return error(
+                    access,
+                    b"typeMismatch",
+                    if operation > 5 {
+                        b"comparison needs a number"
+                    } else {
+                        b"Integer arithmetic needs a number"
+                    },
+                );
+            }
+        },
+    };
+    if operation == 3 && right == 0.0 {
+        return error(access, b"zeroDivide", b"division by zero");
+    }
+    let float = unsafe { *extension.float };
+    Ok(match operation {
+        0 => unsafe { (float.make)(float.context, left + right) },
+        1 => unsafe { (float.make)(float.context, left - right) },
+        2 => unsafe { (float.make)(float.context, left * right) },
+        3 => unsafe { (float.make)(float.context, left / right) },
+        6 => boolean(access, left < right),
+        7 => boolean(access, left <= right),
+        8 => boolean(access, left > right),
+        9 => boolean(access, left >= right),
+        _ => unreachable!(),
+    })
+}
+macro_rules! mixed_entry {
+    ($name:ident, $operation:expr) => {
+        unsafe extern "C" fn $name(
+            context: *mut c_void,
+            receiver: Oop,
+            args: *const Operand,
+            count: usize,
+        ) -> Outcome {
+            let Some(args) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
+                return invalid();
+            };
+            let right = if $operation == 10 {
+                if !args.is_empty() {
+                    return invalid();
+                }
+                None
+            } else {
+                let [arg] = args else {
+                    return invalid();
+                };
+                let Some(object) = arg.as_object() else {
+                    return invalid();
+                };
+                Some(object)
+            };
+            answer(unsafe {
+                mixed(
+                    &*context.cast::<FloatExtension>(),
+                    receiver,
+                    right,
+                    $operation,
+                )
+            })
+        }
+    };
+}
+mixed_entry!(mixed_add, 0);
+mixed_entry!(mixed_sub, 1);
+mixed_entry!(mixed_mul, 2);
+mixed_entry!(mixed_div, 3);
+mixed_entry!(mixed_lt, 6);
+mixed_entry!(mixed_le, 7);
+mixed_entry!(mixed_gt, 8);
+mixed_entry!(mixed_ge, 9);
+mixed_entry!(as_float, 10);
+unsafe extern "C" fn install_float(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let instance = unsafe { &*context.cast::<Instance>() };
+    if receiver != instance.identities()[1] || !FLOAT_EXTENSION.load(Ordering::Acquire).is_null() {
+        return invalid();
+    }
+    let Some([arg]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Some(word) = arg.as_word() else {
+        return invalid();
+    };
+    let float = word as *mut birnam_abi::float::FloatApiV1;
+    if !unsafe { birnam_abi::float::valid(float) } {
+        return invalid();
+    }
+    let access = instance.native_access().unwrap();
+    let table = unsafe { *float };
+    // The supplied descriptor must name objects in this Id, not another floor.
+    if !known(access, table.behavior)
+        || !known(access, table.prototype)
+        || fact(access, access.behavior_of, table.prototype)
+            .ok()
+            .and_then(|value| value.as_object())
+            != Some(table.behavior)
+    {
+        return invalid();
+    }
+    if unsafe { birnam_abi::float::attach(float) } != 1 {
+        return invalid();
+    }
+    let extension = Box::into_raw(Box::new(FloatExtension {
+        integer: instance,
+        float,
+    }));
+    FLOAT_EXTENSION.store(extension, Ordering::Release);
+    let result = (|| {
+        let add_method = intern(access.id, b"addMethod")?;
+        let methods: &[(&[u8], native::Method)] = &[
+            (b"+", mixed_add),
+            (b"-", mixed_sub),
+            (b"*", mixed_mul),
+            (b"/", mixed_div),
+            (b"<", mixed_lt),
+            (b"<=", mixed_le),
+            (b">", mixed_gt),
+            (b">=", mixed_ge),
+            (b"asFloat", as_float),
+        ];
+        for (name, method) in methods {
+            if !unsafe { extend_binding(instance, name) } {
+                continue;
+            }
+            send(
+                access.id,
+                instance.identities()[0],
+                add_method,
+                &[
+                    Operand::object(intern(access.id, name)?),
+                    Operand::entry(NativeEntry::new(*method, extension.cast())),
+                ],
+            )?;
+        }
+        Ok(Operand::unit())
+    })();
+    match result {
+        Ok(value) => Outcome::loaded(value),
+        Err(error) => error,
+    }
+}

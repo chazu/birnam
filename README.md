@@ -735,7 +735,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-boolean/` — early Nil/Boolean identities and basic operations, followed by printing and Block control; see [base values](abi/fixtures/base-values-v1/README.md).
 - `rust/birnam-word/` — independently loaded Word representation and methods;
   [native dependency contract](abi/word-v1.md).
-- `rust/birnam-float/` — independently loaded Float representation and behavior;
+- `rust/birnam-float/` — Float construction and operations before Runtime, followed by Integer's mixed-number extension;
   [native dependency contract](abi/float-v1.md).
 - `rust/birnam-integer/` — Integer construction and arithmetic through Id before Float/Runtime, followed by mixed-number and Block extensions;
   [native dependency contract](abi/integer-v1.md).

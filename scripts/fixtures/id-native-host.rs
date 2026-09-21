@@ -233,6 +233,21 @@ fn main() {
     let integer_check = intern(&id, b"earlyIntegerCheck");
     let integer_release = intern(&id, b"releaseEarlyInteger");
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 14);
+    symlink(prefix.join("lib/libbirnam_float.dylib"), isolated.join("libbirnam_float.dylib")).unwrap();
+    let float_path = isolated.join("libbirnam_float.dylib");
+    assert_eq!(unsafe { initial.load_native(float_path.as_os_str().as_bytes(), &[]) }.status, native::INVALID_REQUEST);
+    let float = initial.initialize_float().unwrap().unwrap();
+    assert_eq!(initial.initialize_float().unwrap(), Some(float));
+    let repeated = [Operand::word(roots as usize), Operand::word(records as usize), Operand::word(values as usize), Operand::word(namespace as usize), Operand::word(string as usize), Operand::object(error), Operand::word(integer as usize)];
+    assert_eq!(unsafe { initial.load_native(float_path.as_os_str().as_bytes(), &repeated) }.status, native::INVALID_REQUEST);
+    let float_fixture = scratch.join("early-float.dylib");
+    let float_arguments = [Operand::word(roots as usize), Operand::word(namespace as usize), Operand::word(values as usize), Operand::word(string as usize), Operand::word(integer as usize), Operand::word(float as usize), Operand::word(0), Operand::word(0)];
+    let result = unsafe { initial.load_native(float_fixture.as_os_str().as_bytes(), &float_arguments) };
+    assert_eq!(result.status, native::LOADED);
+    let float_identity = result.value.as_word().unwrap();
+    let float_check = intern(&id, b"earlyFloatCheck");
+    let float_release = intern(&id, b"releaseEarlyFloat");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 15);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -318,6 +333,24 @@ fn main() {
     unsafe { (runtime.stack.api().gcCollect)(); }
     assert_eq!(send(&id, error_check, &[]).value.kind(), native::UNIT);
     println!("Error constructs and propagates before numbers; factory replacements, payload roots and DNU survive adoption/GC");
+    let adopted_float = unsafe { birnam_abi::float::operations() };
+    assert_eq!((adopted_float.context, adopted_float.behavior, adopted_float.prototype),
+        unsafe { ((*float).context, (*float).behavior, (*float).prototype) });
+    assert_eq!(send(&id, float_check, &[]).value.as_word(), Some(float_identity));
+    assert_eq!(send(&id, float_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, float_check, &[]).value.kind(), native::UNIT);
+    let mut later_arguments = float_arguments; later_arguments[6] = Operand::word(1);
+    later_arguments[7] = Operand::word(runtime.stack.api().gcCollect as usize);
+    let later = unsafe { runtime.stack.load_native(float_fixture.as_os_str().as_bytes(), &later_arguments) };
+    assert_eq!(later.status, native::LOADED);
+    let later_identity = later.value.as_word().unwrap(); assert_ne!(later_identity, float_identity);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, float_check, &[]).value.as_word(), Some(later_identity));
+    assert_eq!(send(&id, float_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, float_check, &[]).value.kind(), native::UNIT);
+    println!("Float and mixed Integer operations work before Word/Block/Runtime; bits and native replacements survive adoption/GC");
     let adopted_integer = unsafe { birnam_abi::integer::operations() };
     assert_eq!((adopted_integer.context, adopted_integer.behavior, adopted_integer.prototype),
         unsafe { ((*integer).context, (*integer).behavior, (*integer).prototype) });

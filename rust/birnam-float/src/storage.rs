@@ -40,14 +40,21 @@ struct Roots {
     prototype: Oop,
 }
 
-/// One mounting. Tests use the same implementation with their explicit Id
-/// adapter. The opaque context does not contain a Runtime/Heap pointer.
+#[derive(Clone, Copy)]
+enum Construction {
+    Native(crate::native::Access),
+    Legacy {
+        api: *mut IdApi,
+        presence: *const birnam_abi::namespace_presence::ApiV1,
+        imports: *const birnam_abi::namespace_import::ApiV1,
+        exports: *const birnam_abi::namespace_export::ApiV1,
+        layouts: *const birnam_abi::payload_layout::ApiV1,
+    },
+}
+
+/// One mounting, with completed native inputs or a legacy IdApi adapter.
 pub struct Instance {
-    api: *mut IdApi,
-    presence: *const birnam_abi::namespace_presence::ApiV1,
-    imports: *const birnam_abi::namespace_import::ApiV1,
-    exports: *const birnam_abi::namespace_export::ApiV1,
-    layouts: *const birnam_abi::payload_layout::ApiV1,
+    construction: Construction,
     roots: UnsafeCell<Roots>,
     operations: UnsafeCell<FloatApiV1>,
 }
@@ -56,14 +63,28 @@ impl Instance {
     /// Allocate native state before registering its partially initialized roots.
     /// # Safety
     /// The API lives until this instance and all installed consumers are gone.
-    pub unsafe fn empty(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> Box<Self> {
+    pub unsafe fn empty(
+        api: *mut IdApi,
+        presence: *const birnam_abi::namespace_presence::ApiV1,
+        imports: *const birnam_abi::namespace_import::ApiV1,
+        exports: *const birnam_abi::namespace_export::ApiV1,
+        layouts: *const birnam_abi::payload_layout::ApiV1,
+    ) -> Box<Self> {
         assert!(!api.is_null());
-        let result = Box::new(Self {
+        Self::new(Construction::Legacy {
             api,
             presence,
             imports,
             exports,
             layouts,
+        })
+    }
+    pub(crate) fn native(access: crate::native::Access) -> Box<Self> {
+        Self::new(Construction::Native(access))
+    }
+    fn new(construction: Construction) -> Box<Self> {
+        let result = Box::new(Self {
+            construction,
             roots: UnsafeCell::new(Roots::default()),
             operations: UnsafeCell::new(FloatApiV1 {
                 version: 1,
@@ -88,21 +109,25 @@ impl Instance {
     /// # Safety
     /// Owner-thread initialization, exactly once on the selected live Id.
     pub unsafe fn prepare(&self) {
-        let api = self.api;
-        let (proto, alloc, layout, object_vt) = unsafe {
-            (
-                (*api).proto,
-                (*api).alloc,
-                *self.layouts,
-                (*api).object_vt,
-            )
+        let Construction::Legacy { api, layouts, .. } = self.construction else {
+            unreachable!()
         };
+        let (proto, alloc, layout, object_vt) =
+            unsafe { ((*api).proto, (*api).alloc, *layouts, (*api).object_vt) };
         let behavior = unsafe { proto(object_vt) };
         assert!(!behavior.is_null());
         unsafe {
             (*self.roots.get()).behavior = behavior;
         }
-        unsafe { layout.set.unwrap()(layout.context, behavior, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+        unsafe {
+            layout.set.unwrap()(
+                layout.context,
+                behavior,
+                ptr::null(),
+                0,
+                birnam_abi::SLOT_RAW,
+            )
+        };
         let prototype = unsafe { alloc(behavior, STORAGE.payload_size) };
         assert!(!prototype.is_null());
         unsafe { initialize(prototype.cast(), 0) };
@@ -119,22 +144,55 @@ impl Instance {
     /// # Safety
     /// Owner-thread activation, after preparation, exactly once.
     pub unsafe fn publish(&self) {
-        let api = self.api;
+        let Construction::Legacy { api, exports, .. } = self.construction else {
+            unreachable!()
+        };
         let [behavior, prototype] = self.identities();
         unsafe {
             birnam_abi::set_vtable_owner(&*api, behavior, prototype);
-            birnam_abi::namespace_export::export(self.exports, c"Float".as_ptr(), prototype);
-            birnam_abi::namespace_export::export(self.exports, c"FloatVt".as_ptr(), behavior);
+            birnam_abi::namespace_export::export(exports, c"Float".as_ptr(), prototype);
+            birnam_abi::namespace_export::export(exports, c"FloatVt".as_ptr(), behavior);
         }
     }
 
+    pub(crate) fn native_access(&self) -> Option<crate::native::Access> {
+        match self.construction {
+            Construction::Native(access) => Some(access),
+            _ => None,
+        }
+    }
+    pub(crate) unsafe fn set_behavior(&self, behavior: Oop) {
+        unsafe {
+            (*self.roots.get()).behavior = behavior;
+            (*self.operations.get()).behavior = behavior;
+        }
+    }
+    pub(crate) unsafe fn set_prototype(&self, prototype: Oop) {
+        unsafe {
+            (*self.roots.get()).prototype = prototype;
+            (*self.operations.get()).prototype = prototype;
+        }
+    }
     pub fn operations(&self) -> *mut FloatApiV1 {
         self.operations.get()
     }
-    pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.imports }
-    pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.presence }
+    pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 {
+        match self.construction {
+            Construction::Legacy { imports, .. } => imports,
+            _ => ptr::null(),
+        }
+    }
+    pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 {
+        match self.construction {
+            Construction::Legacy { presence, .. } => presence,
+            _ => ptr::null(),
+        }
+    }
     pub fn api(&self) -> *mut IdApi {
-        self.api
+        match self.construction {
+            Construction::Legacy { api, .. } => api,
+            _ => ptr::null_mut(),
+        }
     }
     pub fn identities(&self) -> [Oop; 2] {
         let roots = unsafe { *self.roots.get() };
@@ -143,7 +201,12 @@ impl Instance {
     /// # Safety
     /// Called only from this runtime's marking phase. MarkFn does not collect.
     pub unsafe fn trace(&self, mark: MarkFn) {
-        for object in self.identities() {
+        let references = self.native_access().map(|access| access.references());
+        for object in self
+            .identities()
+            .into_iter()
+            .chain(references.into_iter().flatten())
+        {
             if !object.is_null() {
                 unsafe { mark(object) };
             }
@@ -154,7 +217,11 @@ impl Instance {
 unsafe extern "C" fn make(context: *mut c_void, value: f64) -> Oop {
     // Copy context data before the allocator can invoke arbitrary native code.
     let instance = context.cast::<Instance>();
-    let (api, behavior) = unsafe { ((*instance).api, (*(*instance).roots.get()).behavior) };
+    if let Some(access) = unsafe { (*instance).native_access() } {
+        return unsafe { crate::native::make(&*instance, access, value.to_bits()) }
+            .unwrap_or_else(|_| crate::abort("native Float construction failed"));
+    }
+    let (api, behavior) = unsafe { ((*instance).api(), (*(*instance).roots.get()).behavior) };
     let allocate = unsafe { (*api).alloc };
     let object = unsafe { allocate(behavior, STORAGE.payload_size) };
     assert!(!object.is_null());
@@ -167,7 +234,10 @@ unsafe extern "C" fn read(_: *mut c_void, object: Oop) -> f64 {
 }
 unsafe extern "C" fn is_exact(context: *mut c_void, object: Oop) -> c_int {
     let instance = context.cast::<Instance>();
-    let (api, behavior) = unsafe { ((*instance).api, (*(*instance).roots.get()).behavior) };
+    if let Some(access) = unsafe { (*instance).native_access() } {
+        return c_int::from(unsafe { crate::native::exact(&*instance, access, object) });
+    }
+    let (api, behavior) = unsafe { ((*instance).api(), (*(*instance).roots.get()).behavior) };
     let behavior_of = unsafe { (*api).vtableOf };
     c_int::from(unsafe { behavior_of(object) } == behavior)
 }

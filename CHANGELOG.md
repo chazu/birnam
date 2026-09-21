@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Construct production Float through Id after Integer and before Word, Block or
+  Runtime (Design 83). Install Float arithmetic, comparison, conversion and
+  printing using completed predecessors, then add Integer's mixed-number methods
+  through an explicit native extension entry. Preserve early replacements and
+  copied-method behavior. Reuse the existing bits codec and tables, skip legacy
+  Float preparation in production, and adopt the same objects into Runtime/GC.
 - Construct production Integer through Id before Float, Word, Block or Runtime
   (Design 83), with working arithmetic, comparison, printing and Error propagation.
   Adopt the same identities and storage into upper consumers; preserve early

@@ -8,6 +8,7 @@ use core::ffi::{c_char, c_void};
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 pub mod storage;
+mod native;
 
 static INSTANCE: AtomicPtr<storage::Instance> = AtomicPtr::new(ptr::null_mut());
 // 0 unprepared, 1 preparing, 2 prepared, 3 activating, 4 active.
@@ -31,7 +32,7 @@ unsafe extern "C" fn float_roots(mark: birnam_abi::MarkFn) {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_float_provider_v1() -> *mut birnam_abi::float::FloatApiV1 {
-    if PHASE.load(Ordering::Acquire) < 2 {
+    if !native::ready() && PHASE.load(Ordering::Acquire) < 2 {
         return ptr::null_mut();
     }
     unsafe { (*INSTANCE.load(Ordering::Acquire)).operations() }
@@ -44,6 +45,11 @@ pub unsafe extern "C" fn birnam_float_prepare_v6(
     exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) -> *mut birnam_abi::float::FloatApiV1 {
     if api.is_null() {
         abort("preparation received a null IdApi");
+    }
+    if native::ready() {
+        let instance = INSTANCE.load(Ordering::Acquire);
+        assert_eq!(unsafe { (*instance).native_access().unwrap().id.receiver }, unsafe { (*api).vtable_vt }, "Float prepared on another Id");
+        return unsafe { (*instance).operations() };
     }
     if PHASE.load(Ordering::Acquire) != 0 {
         let instance = INSTANCE.load(Ordering::Acquire);
@@ -361,6 +367,12 @@ unsafe extern "C" fn float_print_string(self_object: Oop, _args: *const Oop, cou
 /// Install the existing Float protocol on this module's canonical behavior.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
+    if native::ready() {
+        let instance = INSTANCE.load(Ordering::Acquire);
+        assert!(!api_pointer.is_null());
+        assert_eq!(unsafe { (*instance).native_access().unwrap().id.receiver }, unsafe { (*api_pointer).vtable_vt }, "Float mounted on another Id");
+        return ptr::null_mut();
+    }
     let operations = unsafe { birnam_float_prepare_v6(api_pointer, presence, imports, exports, roots, layouts) };
     let previous = PHASE.swap(3, Ordering::AcqRel);
     if previous != 2 && previous != 4 {

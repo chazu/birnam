@@ -23,11 +23,14 @@ propagation, and exact Integer equality. Ordered comparison preserves the
 existing conversion to double precision. Errors use the current Namespace
 Error/ErrorVt bindings and String/ Error factory messages.
 
-`asFloat` and `to:do:` are absent until their dependencies mount. The current
-late `module_init` reuses the completed Integer table and adds mixed Float
-arithmetic and Block iteration. It replaces only the original base arithmetic
-entries and preserves early replacements, `mod:`, `=` and `printString`.
-Migrating this late extension off Runtime remains part of Design 83.
+`asFloat` and `to:do:` are absent until their dependencies mount. Once Float is
+constructed, it sends Integer `installFloat:` with its completed operations
+table as a native Word. This creates a separate extension context and installs
+mixed arithmetic/comparisons and `asFloat`, replacing only original base entries
+and preserving early replacements, `mod:`, `=` and `printString`. The base has no
+future Float slot. Repeated or malformed extension installation is rejected.
+The later `module_init` reuses the table and adds only the remaining Block
+iteration; its native Execution extension is still part of Design 83.
 
 Upper consumers obtain the identical table through
 `birnam_integer_provider_v1()`. The host passes it to each consumer's optional
@@ -84,7 +87,7 @@ retained as evidence, not compatibility shims. The independent C fixture checks
 bare Id, arithmetic with a signed-128-bit oracle, errors, fresh identity, mixed
 Float behavior, replacement, reassociation, namespace rebinding, and collection.
 
-Float must be attached before the late mixed-number extension, or before legacy
+Float must be complete before `installFloat:`, or attached before legacy
 IdApi initialization; see the [Float mounting protocol](float-v1.md).
 
 The [nine-symbol export inventory](rust-integer-dylib-v1.json) includes the native
