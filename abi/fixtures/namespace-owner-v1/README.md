@@ -41,7 +41,7 @@ names. It initializes its legacy weak dictionary view from the early bindings
 and replaces the native publication method with completed Runtime observation
 and mirror policy. That method continues to write the same native table. The
 native reads and root provider continue unchanged. The temporary Runtime bridge
-is now v4; the v3 bridge is removed. This is still an intermediate aggregate
+is now v5 and also receives Object Model; the v4 bridge is removed. This is still an intermediate aggregate
 Runtime constructor, not the final package boundary.
 
 The installed native-loading test exercises this actual prefix with String,

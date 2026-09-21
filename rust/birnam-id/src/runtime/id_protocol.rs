@@ -106,6 +106,12 @@ impl Runtime {
         for (name, method) in [
             (b"allocate".as_slice(), allocate as native::Method),
             (b"delegated".as_slice(), delegated as native::Method),
+            (b"prepareBehaviorMutationOf:".as_slice(), prepare_behavior as native::Method),
+            (b"reassociateBehaviorOf:with:".as_slice(), reassociate_behavior as native::Method),
+            (b"ownerOf:".as_slice(), owner_of as native::Method),
+            (b"ownerOf:put:".as_slice(), owner_put as native::Method),
+            (b"parentOf:".as_slice(), parent_of as native::Method),
+            (b"parentOf:put:".as_slice(), parent_put as native::Method),
         ] {
             let selector = state.symbols.existing(name).unwrap();
             dictionaries.add_method(
@@ -164,6 +170,53 @@ pub(crate) unsafe extern "C" fn delegated(
     });
     Outcome::loaded(Operand::object(behavior))
 }
+
+// Complete upper policy carries its Runtime explicitly. Raw Id callers need no
+// thread-local active Runtime merely to invoke these installed native entries.
+unsafe extern "C" fn prepare_behavior(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([object]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let Some(object) = object.as_object() else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let runtime = unsafe { &*context.cast::<Runtime>() };
+    if runtime.checked_vtable_of(object).is_null() { return Outcome::failed(native::INVALID_REQUEST, 0); }
+    let behavior = runtime.enter_application(|| {
+        let _object = super::ScopedOopRootGuard::new(runtime, object);
+        runtime.prepare_behavior_mutation(object)
+    });
+    Outcome::loaded(Operand::object(behavior))
+}
+unsafe extern "C" fn reassociate_behavior(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([object, behavior]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let (Some(object), Some(behavior)) = (object.as_object(), behavior.as_object()) else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let runtime = unsafe { &*context.cast::<Runtime>() };
+    if runtime.payload_size(object).is_none() || runtime.payload_size(behavior).is_none() { return Outcome::failed(native::INVALID_REQUEST, 0); }
+    runtime.reassociate_behavior(object, behavior);
+    Outcome::loaded(Operand::object(object))
+}
+unsafe fn relation(context: *mut c_void, args: *const Operand, count: usize, owner: bool) -> Outcome {
+    let Some([behavior]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let Some(behavior) = behavior.as_object() else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let runtime = unsafe { &*context.cast::<Runtime>() };
+    // Preserve the legacy all-Oop query's null sentinel until its consumers
+    // migrate. Canonical owner records still distinguish null from actual Nil.
+    Outcome::loaded(Operand::object(if owner { runtime.vtable_owner(behavior) } else { runtime.vtable_parent(behavior) }))
+}
+unsafe extern "C" fn owner_of(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { relation(context, args, count, true) } }
+unsafe extern "C" fn parent_of(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { relation(context, args, count, false) } }
+unsafe fn put_relation(context: *mut c_void, args: *const Operand, count: usize, owner: bool) -> Outcome {
+    let Some([behavior, value]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let Some(behavior) = behavior.as_object() else { return Outcome::failed(native::INVALID_REQUEST, 0); };
+    let value = if value.kind() == native::UNIT { core::ptr::null_mut() }
+        else { let Some(value) = value.as_object() else { return Outcome::failed(native::INVALID_REQUEST, 0); }; value };
+    let runtime = unsafe { &*context.cast::<Runtime>() };
+    runtime.assert_owner();
+    let valid = unsafe { (*runtime.state.get()).vtables.is_registered(behavior)
+        && (owner || value.is_null() || (*runtime.state.get()).vtables.is_registered(value)) };
+    if !valid { return Outcome::failed(native::INVALID_REQUEST, 0); }
+    if owner { runtime.set_vtable_owner(behavior, value); } else { runtime.set_vtable_parent(behavior, value); }
+    Outcome::loaded(Operand::object(behavior))
+}
+unsafe extern "C" fn owner_put(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { put_relation(context, args, count, true) } }
+unsafe extern "C" fn parent_put(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { put_relation(context, args, count, false) } }
 
 unsafe extern "C" fn intern(
     context: *mut c_void,

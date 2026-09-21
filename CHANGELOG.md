@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Construct Object Model ownership, private behaviors and native enumeration
+  through Id before Runtime (Design 83). Adopt the same weak owner records into
+  collection, retain the actual native private-construction entry, and remove
+  Object Model's production factory preparation. Give upper construction methods
+  explicit Runtime contexts for calls through Id. Runtime's temporary constructor
+  is now v5; value staging, collector activation and package separation remain.
+
 - Construct the production Namespace through Id after Lifetime/base values and
   before String or Runtime (Design 83). Retain bindings through its native root
   provider, adopt the same table in upper startup, and preserve early names and

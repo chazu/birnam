@@ -12,6 +12,12 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
             object_prototype as native::Method,
         ),
         (b"behaviorOf:".as_slice(), behavior_of as native::Method),
+        (b"reassociateBehaviorOf:with:".as_slice(), reassociate as native::Method),
+        (b"behaviorCount".as_slice(), behavior_count as native::Method),
+        (b"behaviorAt:".as_slice(), behavior_at as native::Method),
+        (b"selectorAt:in:".as_slice(), selector_at as native::Method),
+        (b"parentOf:".as_slice(), parent_of as native::Method),
+        (b"parentOf:put:".as_slice(), parent_put as native::Method),
         (
             b"allocationSizeOf:".as_slice(),
             allocation_size as native::Method,
@@ -172,4 +178,52 @@ unsafe extern "C" fn symbol_bytes(
     // The caller retains the Symbol for the complete borrowed-byte lifetime.
     let bytes = unsafe { (&*state.symbols).bytes_of(object) };
     Outcome::loaded(bytes.map(Operand::bytes).unwrap_or_else(Operand::unit))
+}
+
+unsafe extern "C" fn reassociate(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([object, behavior]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let (Some(object), Some(behavior)) = (object.as_object(), behavior.as_object()) else { return invalid(); };
+    let state = unsafe { &*context.cast::<State>() };
+    let memory = unsafe { &mut *state.memory };
+    if memory.get(behavior.addr()).is_none() || !memory.set_vtable(object, behavior) { return invalid(); }
+    unsafe { (&mut *state.dictionaries).note_mutation() };
+    Outcome::loaded(Operand::object(object))
+}
+unsafe extern "C" fn behavior_count(context: *mut c_void, _: Oop, _: *const Operand, count: usize) -> Outcome {
+    if count != 0 { return invalid(); }
+    let state = unsafe { &*context.cast::<State>() };
+    Outcome::loaded(Operand::word(unsafe { (&*state.dictionaries).count() }))
+}
+unsafe extern "C" fn behavior_at(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([index]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let Some(index) = index.as_word() else { return invalid(); };
+    let state = unsafe { &*context.cast::<State>() };
+    let object = unsafe { (&*state.dictionaries).at(index) };
+    Outcome::loaded(if object.is_null() { Operand::unit() } else { Operand::object(object) })
+}
+unsafe extern "C" fn selector_at(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([index, behavior]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let (Some(index), Some(behavior)) = (index.as_word(), behavior.as_object()) else { return invalid(); };
+    let state = unsafe { &*context.cast::<State>() };
+    let dictionaries = unsafe { &*state.dictionaries };
+    if !dictionaries.is_registered(behavior) { return invalid(); }
+    let selector = dictionaries.selector_at(behavior, index);
+    Outcome::loaded(if selector.is_null() { Operand::unit() } else { Operand::object(selector) })
+}
+unsafe extern "C" fn parent_of(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some(behavior) = (unsafe { candidate(args, count) }) else { return invalid(); };
+    let state = unsafe { &*context.cast::<State>() };
+    let parent = unsafe { (&*state.dictionaries).parent_of(behavior) };
+    Outcome::loaded(if parent.is_null() { Operand::unit() } else { Operand::object(parent) })
+}
+unsafe extern "C" fn parent_put(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([behavior, parent]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let Some(behavior) = behavior.as_object() else { return invalid(); };
+    let parent = if parent.kind() == native::UNIT { core::ptr::null_mut() }
+        else { let Some(parent) = parent.as_object() else { return invalid(); }; parent };
+    let state = unsafe { &*context.cast::<State>() };
+    let dictionaries = unsafe { &mut *state.dictionaries };
+    if !dictionaries.is_registered(behavior) || (!parent.is_null() && !dictionaries.is_registered(parent)) { return invalid(); }
+    dictionaries.set_parent(behavior, parent);
+    Outcome::loaded(Operand::object(behavior))
 }

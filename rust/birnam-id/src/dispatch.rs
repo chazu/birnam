@@ -318,9 +318,9 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     build_bootstrap_from(crate::initial_objects::InitialObjects::new())
 }
 pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
-    build_bootstrap_with(initial, None, None, None, None)
+    build_bootstrap_with(initial, None, None, None, None, None)
 }
-pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>) -> Bootstrap {
+pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
         memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
@@ -329,7 +329,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
     // Only completed Id objects cross this boundary. No allocation is copied.
     let mut heap = Heap::adopt_with_finalizers(memory, lifetime.clone().map(crate::finalizers::Service::from_lifetime));
     heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
-    let mut vtables = Behaviors::adopt_with_lifetime(dictionaries, lifetime);
+    let mut vtables = Behaviors::adopt_with(dictionaries, lifetime, model.clone());
     vtables.set_legacy_lookup(lookup);
 
     let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
@@ -361,6 +361,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
         identical: static_selector(&mut symbols, &mut heap, symbol_vt, b"=="),
     };
 
+    let model_exists = model.is_some();
     let runtime = Runtime::new_with_owners(
         heap,
         vtables,
@@ -375,6 +376,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
         },
         roots,
         namespace,
+        model,
     );
     runtime.install_internal_dictionaries(symbol_list, environment);
 
@@ -434,7 +436,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
         (nil_vt, nil),
         (bool_vt, true_object),
     ] {
-        runtime.set_vtable_owner(vtable, owner);
+        if !model_exists { runtime.set_vtable_owner(vtable, owner); }
     }
 
     for (name, method) in [
@@ -852,7 +854,7 @@ mod tests {
         }
 
         // Initial Id names exist before the upper runtime installs methods.
-        let selector_names: [&[u8]; 37] = [
+        let selector_names: [&[u8]; 40] = [
             b"lookup",
             b"doesNotUnderstand:",
             b"Symbol",
@@ -864,6 +866,12 @@ mod tests {
             b"delegated",
             b"objectPrototype",
             b"behaviorOf:",
+            b"reassociateBehaviorOf:with:",
+            b"behaviorCount",
+            b"behaviorAt:",
+            b"selectorAt:in:",
+            b"parentOf:",
+            b"parentOf:put:",
             b"allocationSizeOf:",
             b"identityOf:",
             b"symbolBytesOf:",
@@ -876,11 +884,8 @@ mod tests {
             b"new",
             b"==",
             b"prepareBehaviorMutationOf:",
-            b"reassociateBehaviorOf:with:",
             b"ownerOf:",
             b"ownerOf:put:",
-            b"parentOf:",
-            b"parentOf:put:",
             b"withStorageView:",
             b"String",
             b"StringVt",
@@ -920,6 +925,12 @@ mod tests {
             bootstrap.selectors.delegated,
             runtime.intern(b"objectPrototype").unwrap(),
             runtime.intern(b"behaviorOf:").unwrap(),
+            runtime.intern(b"reassociateBehaviorOf:with:").unwrap(),
+            runtime.intern(b"behaviorCount").unwrap(),
+            runtime.intern(b"behaviorAt:").unwrap(),
+            runtime.intern(b"selectorAt:in:").unwrap(),
+            runtime.intern(b"parentOf:").unwrap(),
+            runtime.intern(b"parentOf:put:").unwrap(),
             runtime.intern(b"allocationSizeOf:").unwrap(),
             runtime.intern(b"identityOf:").unwrap(),
             runtime.intern(b"symbolBytesOf:").unwrap(),
@@ -929,11 +940,8 @@ mod tests {
             runtime.intern(b"retireIndexesFor:").unwrap(),
             runtime.intern(b"detachAllocationAt:").unwrap(),
             runtime.intern(b"prepareBehaviorMutationOf:").unwrap(),
-            runtime.intern(b"reassociateBehaviorOf:with:").unwrap(),
             runtime.intern(b"ownerOf:").unwrap(),
             runtime.intern(b"ownerOf:put:").unwrap(),
-            runtime.intern(b"parentOf:").unwrap(),
-            runtime.intern(b"parentOf:put:").unwrap(),
             runtime.intern(b"withStorageView:").unwrap(),
         ];
         for (index, selector) in meta_selectors.into_iter().enumerate() {

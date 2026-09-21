@@ -1,13 +1,14 @@
-//! Private-behavior convenience above Id. The association field and its GC
-//! semantics remain in the existing default-vtable representation.
+//! Private-behavior ownership and construction above Id. The native entry owns
+//! associations; upper collection follows the same owner records.
 use birnam_abi::{IdApi, Oop};
 use core::ffi::{c_char, c_void};
 use std::sync::OnceLock;
 
 pub mod enumeration;
+mod native;
 
 /// Rust adapter for the existing Id operations; no new native table or state.
-/// The production adapter uses IdApi and ordinary seed messages. Floor unit
+/// The production adapter uses IdApi and ordinary Id messages. Floor unit
 /// tests use the same algorithm with their independently constructed runtime.
 pub trait BehaviorAccess {
     fn prepare(&self, object: Oop) -> Oop;
@@ -85,6 +86,7 @@ unsafe extern "C" fn ensure(_: Oop, args: *const Oop, count: usize) -> Oop {
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
     assert!(!api.is_null());
     let id = unsafe { &*api };
+    if native::active_for(id) { return core::ptr::null_mut(); }
     let access = ACCESS.get_or_init(|| NativeAccess {
         api: api as usize,
         prepare: unsafe { (id.intern)(c"prepareBehaviorMutationOf:".as_ptr()) } as usize,

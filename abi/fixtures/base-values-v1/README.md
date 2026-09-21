@@ -25,9 +25,9 @@ failures return InvalidRequest. Printing and Block control are absent here.
 The later `module_init` entries add those higher operations once their complete
 inputs exist; in production they leave the base bindings intact.
 
-The temporary upper Runtime constructor `birnam_runtime_init_v4` takes completed
-roots, Lifetime, this descriptor and Namespace. It adopts the same identities and layouts.
-This replaces the intermediate v1/v2/v3 Runtime bridges; legacy `id_init` remains
+The temporary upper Runtime constructor `birnam_runtime_init_v5` takes completed
+roots, Lifetime, this descriptor, Namespace and Object Model. It adopts the same identities and layouts.
+This replaces the intermediate v1/v2/v3/v4 Runtime bridges; legacy `id_init` remains
 only for consumers still awaiting migration. This constructor is temporarily
 packaged with Runtime in Id and is not part of Id's minimal protocol.
 

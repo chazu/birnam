@@ -20,18 +20,15 @@ impl AddMethod {
 use crate::legacy_method;
 use crate::boundary;
 use crate::heap::{Heap, Permanence};
-use crate::raw::{AddressMap, MethodAddress};
+use crate::raw::MethodAddress;
 use crate::vtable::Vtables;
 #[cfg(test)]
 use crate::abi::SLOT_UNKNOWN;
 
-struct Metadata {
-    owner: Oop,
-}
 pub(crate) struct Behaviors {
     dictionaries: crate::owned::Owned<Vtables>,
     legacy_lookup: Oop,
-    metadata: AddressMap<Metadata>,
+    owners: crate::object_model::Records,
     layouts: crate::payload_layout::Service,
     hooks: crate::trace_hooks::Service,
 }
@@ -81,16 +78,14 @@ impl Behaviors {
 
     /// Add upper metadata without replacing existing behavior objects or keys.
     pub(crate) fn adopt(dictionaries: crate::owned::Owned<Vtables>) -> Self {
-        Self::adopt_with_lifetime(dictionaries, None)
+        Self::adopt_with(dictionaries, None, None)
     }
-    pub(crate) fn adopt_with_lifetime(dictionaries: crate::owned::Owned<Vtables>, lifetime: Option<crate::lifetime::Shared>) -> Self {
+    pub(crate) fn adopt_with(dictionaries: crate::owned::Owned<Vtables>, lifetime: Option<crate::lifetime::Shared>, model: Option<crate::object_model::Shared>) -> Self {
         let layouts = lifetime.clone().map(crate::payload_layout::Service::from_lifetime).unwrap_or_else(crate::payload_layout::Service::new);
         let hooks = lifetime.map(crate::trace_hooks::Service::from_lifetime).unwrap_or_else(crate::trace_hooks::Service::new);
-        let metadata = dictionaries.ordered.iter().map(|object| (object.addr(), Metadata {
-            owner: core::ptr::null_mut(),
-        })).collect();
-        Self { dictionaries, legacy_lookup: core::ptr::null_mut(), metadata, layouts, hooks }
+        Self { dictionaries, legacy_lookup: core::ptr::null_mut(), owners: crate::object_model::Records::new(model), layouts, hooks }
     }
+
     pub(crate) fn create(&mut self, heap: &mut Heap, parent: Oop, metavtable: Oop) -> Oop {
         self.create_with_permanence(heap, parent, metavtable, Permanence::Permanent)
     }
@@ -117,16 +112,10 @@ impl Behaviors {
         boundary::require_invariant(heap.set_vtable(object, metavtable), "new vtable block was not registered");
         // SAFETY: Heap retains this fresh behavior payload until collection.
         unsafe { self.dictionaries.register(object, parent) };
-        self.metadata.insert(object.addr(), Metadata {
-            owner: core::ptr::null_mut(),
-        });
         object
     }
-    fn record(&self, object: Oop) -> &Metadata {
-        self.metadata.get(&object.addr()).unwrap_or_else(|| boundary::fatal_invariant("unregistered vtable"))
-    }
-    fn record_mut(&mut self, object: Oop) -> &mut Metadata {
-        self.metadata.get_mut(&object.addr()).unwrap_or_else(|| boundary::fatal_invariant("unregistered vtable"))
+    fn require_registered(&self, object: Oop) {
+        boundary::require_invariant(self.dictionaries.is_registered(object), "unregistered vtable");
     }
     pub(crate) fn strong_edges(&self, vtable: Oop) -> Vec<Oop> {
         let mut edges = self.dictionaries.strong_edges(vtable);
@@ -172,12 +161,8 @@ impl Behaviors {
                     && heap.is_marked(*vtable) == Some(false)
             })
             .collect::<Vec<_>>();
-        for vtable in &dead {
-            self.metadata.remove(&vtable.addr()).unwrap_or_else(|| {
-                boundary::fatal_invariant("dead vtable registry record disappeared")
-            });
-        }
         let addresses: Vec<_> = dead.iter().map(|object| object.addr()).collect();
+        self.owners.retire(&addresses);
         self.layouts.retire(&addresses);
         self.hooks.retire_local(&addresses);
         self.dictionaries.remove_objects(&dead);
@@ -186,26 +171,21 @@ impl Behaviors {
     /// Retire upper layout/hook/owner records only. Id retires its dictionaries
     /// separately through the storage protocol, after this borrow ends.
     pub(crate) fn retire_metadata(&mut self, addresses: &[usize]) {
-        for address in addresses { self.metadata.remove(address); }
+        self.owners.retire(addresses);
         self.layouts.retire(addresses);
         self.hooks.retire_local(addresses);
     }
-    pub(crate) fn owner_of(&self, candidate: Oop) -> Oop {
-        self.metadata
-            .get(&candidate.addr())
-            .map(|record| record.owner)
-            .unwrap_or(core::ptr::null_mut())
-    }
+    pub(crate) fn owner_of(&self, candidate: Oop) -> Oop { self.owners.get(candidate) }
     pub(crate) fn set_owner(&mut self, vtable: Oop, owner: Oop) {
-        let record = self.record_mut(vtable);
-        record.owner = owner;
+        self.require_registered(vtable);
+        self.owners.set(vtable, owner);
     }
     pub(crate) fn set_trace_hook(&mut self, vtable: Oop, hook: TraceHook) {
         let slot = self.hooks.slot(hook);
         self.replace_trace_hook(vtable, slot);
     }
     pub(crate) fn replace_trace_hook(&mut self, vtable: Oop, slot: birnam_abi::trace_hooks::SlotV1) {
-        self.record(vtable);
+        self.require_registered(vtable);
         self.hooks.replace(vtable, slot);
     }
     pub(crate) fn trace_hooks_api(&self) -> *mut birnam_abi::trace_hooks::ApiV1 {
@@ -228,15 +208,15 @@ impl Behaviors {
         // Keep copying before the exact membership lookup, including when the
         // supplied bytes are the current record's own borrowed prefix.
         let owned = self.layouts.copy(kinds, count, rest);
-        self.record(vtable);
+        self.require_registered(vtable);
         self.layouts.replace(vtable, owned.into_carrier());
     }
     pub(crate) fn replace_layout(&mut self, vtable: Oop, owned: birnam_abi::payload_layout::OwnedV1) {
-        self.record(vtable);
+        self.require_registered(vtable);
         self.layouts.replace(vtable, owned);
     }
     pub(crate) fn layout_view(&self, vtable: Oop) -> birnam_abi::payload_layout::ViewV1 {
-        self.record(vtable);
+        self.require_registered(vtable);
         self.layouts.view(vtable)
     }
     pub(crate) fn lifetime_owner(&self) -> Option<birnam_abi::lifetime::OwnedV1> { self.layouts.native_owner() }

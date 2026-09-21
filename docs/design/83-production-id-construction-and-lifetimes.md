@@ -290,6 +290,12 @@ Id-registered behavior object.
 | `allocationSizeOf:` | Id, Object candidate | Requested payload bytes as Word, excluding header/padding; Unit if unknown |
 | `identityOf:` | Id, Object candidate | Stable allocation identity as Word; Unit if unknown |
 | `symbolBytesOf:` | Id, Object candidate | Borrowed name bytes without the trailing NUL; Unit for a non-Symbol |
+| `reassociateBehaviorOf:with:` | Id, Object receiver and allocated Object behavior | Updates the header and dictionary mutation epoch; returns receiver |
+| `behaviorCount` | Id, no arguments | Registered behavior count as Word |
+| `behaviorAt:` | Id, Word index | Behavior Object, or Unit beyond the registry |
+| `selectorAt:in:` | Id, Word index and Object registered behavior | Direct selector Object, or Unit beyond that dictionary |
+| `parentOf:` | Id, Object candidate | Parent Object, or Unit for absent/unknown parent |
+| `parentOf:put:` | Id, Object registered behavior and Object parent (or Unit/null to clear) | Updates delegation and mutation epoch; returns behavior |
 
 Wrong operand kinds/counts and invalid allocation sizes return InvalidRequest.
 The fact queries check exact registry membership; candidate queries may return
@@ -542,8 +548,8 @@ entered images, including failed initializers with partial publication.
 
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
-slot is retargeted. Twelve upper factory preparations still run in the host
-after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace initialization and feed the aggregate Runtime constructor. That
+slot is retargeted. Eleven upper factory preparations still run in the host
+after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace/Object-Model initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
 
 The first upper native entry is now
@@ -573,9 +579,9 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v4` is an upper construction entry taking the completed
-root and representation owners plus completed base values and Namespace, temporarily packaged in the Id library along with
-Runtime. The intermediate v1/v2/v3 Runtime bridges are removed. The old `id_init` and factory preparation path remain
+prefix. `birnam_runtime_init_v5` is an upper construction entry taking the completed
+root and representation owners plus completed base values, Namespace and Object Model, temporarily packaged in the Id library along with
+Runtime. The intermediate v1/v2/v3/v4 Runtime bridges are removed. The old `id_init` and factory preparation path remain
 for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
@@ -595,7 +601,7 @@ admission, membership and record operations. They do not point forward to Runtim
 
 [`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
-that owner through `birnam_runtime_init_v4`; its behavior/heap tables retain no
+that owner through `birnam_runtime_init_v5`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
 same records through the native boundary. Public APIs retain their existing ABI
 and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
@@ -647,16 +653,44 @@ view from them. The native publication method gains completed Runtime observatio
 and mirror policy; subsequent native and upper publication still use one table.
 The former Namespace preparation is skipped in production. Native destruction
 clears the root provider's selection and releases its owned storage; the provider
-then reports no roots. Object Model and the remaining construction stages still
+then reports no roots. The remaining value/construction stages still
 need migration, and the legacy weak dictionary mirror remains to be retired
 with its consumers.
+
+`InitialFloor::initialize_object_model` loads Object Model with completed roots,
+Namespace and base values. Its
+[native owner](../../abi/fixtures/object-model-owner-v1/README.md) contains the
+actual private-behavior associations and complete Enumeration v2 interface.
+Private behavior construction sends existing Id protocols, roots the new behavior
+until attachment, and works before String, numbers, GC or Runtime. Native
+malformed operands, non-behavior ownership targets and enumeration bounds have
+complete early outcomes. Enumeration calls Id facts acquired through lookup;
+it retains no Runtime view callback or copied dictionary registry.
+
+Runtime shares that owner between behavior tracing and enumeration. Its old
+per-behavior owner field and empty metadata records are removed. A live behavior
+contributes its actual owner edge; dead-behavior retirement removes the native
+association before Id detaches the allocation. The native private-construction
+method survives adoption and later Object Model mounting. Canonical associations
+are established early and are not overwritten during adoption. Object Model's
+production enumeration-factory preparation is removed.
+
+Runtime installs completed preparation, reassignment and owner/parent adapters
+with explicit contexts. This avoids the legacy active-runtime requirement when
+an early native method invokes them through Id after adoption. The owner/parent
+query adapters temporarily preserve the old all-Oop null sentinel; converting
+those remaining native consumers to the typed Unit contract is still required.
+Legacy local owner records and enumeration factories remain only for unmigrated
+`id_init` consumers and local harnesses. These changes complete the current
+Namespace/Object Model construction prefix, not the remaining value and GC
+stages or the Runtime/compiler package separation.
 
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
 three native words and GC records one, in separate maps; Lifetime owns the
 separate finalizer entries. This metadata overhead is outside payload-byte
 accounting. `Vtables` and `Symbols` require only Id allocation and their own
-indexes. `Behaviors` adds private-owner metadata and accesses Lifetime descriptions. The obsolete allocation-identity, dictionary-index and
+indexes. `Behaviors` accesses Object Model owner records and Lifetime descriptions. The obsolete allocation-identity, dictionary-index and
 mutation-counter factories and their host preparations are removed.
 
 The current behavior payload is five words (40 bytes): capacity, tally, keys,
@@ -759,7 +793,7 @@ Current debug evidence:
   image and baked execution, including live method replacement. The debug
   ABI/host/Id suites pass 24/86/308 tests (plus four host binary tests).
   Installed Boolean/Nil exports match their manifests and link only the platform
-  library; Id exports only the current v4 Runtime bridge.
+  library; Id exports only the current v5 Runtime bridge.
 - With only ten predecessor libraries available, Namespace's independent C
   consumer verifies publication/import, ordered native enumeration, first reverse
   alias, malformed operands and bounds with String/Integer/Block/Error absent.
@@ -771,6 +805,23 @@ Current debug evidence:
   Namespace (20). The installed Namespace exports match its manifest and it
   links only the platform library. The v4 Runtime bridge replaces v3; production
   no longer prepares Namespace's factory inside Id.
+- The eleven-library prefix includes Object Model's actual installed native
+  entry. Independent C constructs a private behavior before successor modules,
+  exercises native enumeration and argument/target failures, and roots only that
+  behavior. The same owner edge retains the object after Runtime adoption and
+  precise collection. Releasing the root permits both allocations to be reclaimed
+  and removes the weak record. The same construction/release check passes after
+  Runtime exists, with the original native ensure entry still selected. The
+  fixture uses an inherited probe method so Store backfill does not add a second
+  root to the private behavior under test.
+- Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
+  (24). The combined multi-package command encountered Cargo's existing
+  abort/unwind artifact filename collision; separate package runs passed.
+  The final installed Enumeration and Allocation Identity workloads pass source,
+  compiled, native image and baked execution, including independent host proof
+  of mapped/rebuilt images, parent/behavior replacement, method lookup, active
+  Frame access, identity and finalization. Object Model's installed exports match
+  its manifest and its only dynamic dependency is the platform library.
 - The root-registry image workload passes for source, source-free compiled,
   native Code images and baked execution, including duplicate provider order,
   callback-time append, nested collection, roots, aliases and reload. Debug unit

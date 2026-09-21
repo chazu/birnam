@@ -175,6 +175,19 @@ fn main() {
     let namespace_check = intern(&id, b"earlyNamespaceCheck");
     let namespace_release = intern(&id, b"releaseEarlyNamespaceAlias");
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 10);
+    symlink(prefix.join("lib/libbirnam_object_model.dylib"), isolated.join("libbirnam_object_model.dylib")).unwrap();
+    let model_path = isolated.join("libbirnam_object_model.dylib");
+    assert_eq!(unsafe { initial.load_native(model_path.as_os_str().as_bytes(), &[]) }.status, native::INVALID_REQUEST);
+    let model = initial.initialize_object_model().unwrap().unwrap();
+    assert_eq!(initial.initialize_object_model().unwrap(), Some(model));
+    let model_fixture = scratch.join("early-object-model.dylib");
+    let model_arguments = [Operand::word(roots as usize), Operand::word(model as usize), Operand::word(0)];
+    let result = unsafe { initial.load_native(model_fixture.as_os_str().as_bytes(), &model_arguments) };
+    assert_eq!(result.status, native::LOADED);
+    let model_identity = result.value.as_word().unwrap();
+    let model_check = intern(&id, b"earlyObjectModelCheck");
+    let model_release = intern(&id, b"releaseEarlyPrivateBehavior");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 11);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -214,6 +227,20 @@ fn main() {
     assert_eq!(send(&id, namespace_check, &[]).value.kind(), native::UNIT);
     assert!(unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"earlyNamespaceSecond".as_ptr()) }.is_null());
     println!("Namespace binds/enumerates before successors; aliases survive adoption and release permits reclamation");
+    assert_eq!(send(&id, model_check, &[]).value.as_word(), Some(model_identity));
+    assert_eq!(send(&id, model_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, model_check, &[]).value.kind(), native::UNIT);
+    let later_arguments = [model_arguments[0], model_arguments[1], Operand::word(1)];
+    let later = unsafe { runtime.stack.load_native(model_fixture.as_os_str().as_bytes(), &later_arguments) };
+    assert_eq!(later.status, native::LOADED);
+    let later_identity = later.value.as_word().unwrap(); assert_ne!(later_identity, model_identity);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, model_check, &[]).value.as_word(), Some(later_identity));
+    assert_eq!(send(&id, model_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, model_check, &[]).value.kind(), native::UNIT);
+    println!("Object Model constructs private behaviors early; adopted owner edges retain objects and retire after release");
     assert_eq!(send(&id, root_identity, &[]).value.as_word(), Some(early_identity));
     assert_eq!(send(&id, release_root, &[]).value.as_word(), Some(1));
     unsafe { (runtime.stack.api().gcCollect)(); }

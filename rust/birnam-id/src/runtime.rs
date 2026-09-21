@@ -419,7 +419,7 @@ impl Runtime {
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
     ) -> Self {
-        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None)
+        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None)
     }
     pub(crate) fn new_with_owners(
         heap: Heap,
@@ -429,6 +429,7 @@ impl Runtime {
         globals: DispatchGlobals,
         roots: Option<crate::root_registry::Service>,
         namespace: Option<Environment>,
+        model: Option<crate::object_model::Shared>,
     ) -> Self {
         let id_storage = id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol));
         Self {
@@ -474,7 +475,7 @@ impl Runtime {
             state: UnsafeCell::new(RuntimeState {
                 method_observation: crate::method_observation::Service::new(),
                 root_registry: roots.unwrap_or_else(crate::root_registry::Service::new),
-                vtable_enumeration: crate::vtable_enumeration::Service::new(),
+                vtable_enumeration: model.map(crate::vtable_enumeration::Service::from_model).unwrap_or_else(crate::vtable_enumeration::Service::new),
                 symbols,
                 id_protocol,
                 vtables,

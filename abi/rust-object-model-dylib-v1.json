@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
-  "scope": "Private behavior, Vtable enumeration, per-registry mutation-epoch and derived key-index storage",
+  "scope": "Private-behavior records and construction, with native Id-backed behavior and selector enumeration",
   "exported_symbols": [
+    "birnam_native_module_v1",
     "birnam_object_model_rust_identity",
     "birnam_symbol_borrow_v1",
     "birnam_vtable_enumeration_factory_v2",

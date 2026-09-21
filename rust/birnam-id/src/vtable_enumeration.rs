@@ -4,7 +4,8 @@ use core::ptr::NonNull;
 
 pub(crate) struct Service {
     api: NonNull<ApiV2>,
-    factory: FactoryV2,
+    factory: Option<FactoryV2>,
+    _model: Option<crate::object_model::Shared>,
     canonical: ApiV2,
 }
 impl Service {
@@ -17,13 +18,17 @@ impl Service {
         let api = NonNull::new(unsafe { factory.create.unwrap()(&floor) })
             .expect("vtable enumeration creation failed");
         let canonical = unsafe { *api.as_ptr() };
-        Self { api, factory, canonical }
+        Self { api, factory: Some(factory), _model: None, canonical }
+    }
+    pub(crate) fn from_model(owner: crate::object_model::Shared) -> Self {
+        let api = NonNull::new(owner.native.enumeration).unwrap();
+        Self { api, factory: None, canonical: unsafe { *api.as_ptr() }, _model: Some(owner) }
     }
     pub(crate) fn api(&self) -> *mut ApiV2 { self.api.as_ptr() }
     pub(crate) fn canonical(&self) -> ApiV2 { self.canonical }
 }
 impl Drop for Service {
     fn drop(&mut self) {
-        unsafe { self.factory.destroy.unwrap()(self.api.as_ptr()) };
+        if let Some(factory) = self.factory { unsafe { factory.destroy.unwrap()(self.api.as_ptr()) }; }
     }
 }

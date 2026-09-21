@@ -307,11 +307,11 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
 
 /// Perform the one supported process-lifetime initialization transition.
 pub(crate) fn initialize_once() -> *mut IdApi {
-    initialize_with_owners(None, None, None, None)
+    initialize_with_owners(None, None, None, None, None)
 }
-pub(crate) fn initialize_with_owners(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>) -> *mut IdApi {
+pub(crate) fn initialize_with_owners(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>) -> *mut IdApi {
     let namespace_exists = namespace.is_some();
-    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(crate::native_id::take_initial_objects(), roots, lifetime, values, namespace));
+    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(crate::native_id::take_initial_objects(), roots, lifetime, values, namespace, model));
     bootstrap.runtime.install_id_runtime_extensions();
     bootstrap.runtime.install_namespace_runtime_extension();
     install_bootstrap_metadata(&bootstrap, values.is_some(), namespace_exists);
