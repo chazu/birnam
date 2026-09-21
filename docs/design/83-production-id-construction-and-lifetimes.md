@@ -14,7 +14,7 @@
 > returns owned Methods, including anonymous synchronous/resumable Units;
 > native binding references live in Lifetime above Id. All upper message sends
 > now use checked Method results, including Object-valued C lookup callbacks.
-> Old native exports and direct C consumers still need cleanup. The [construction manifest](../../abi/production-construction-v1.json)
+> Remaining factory/provider exports and direct C fixture consumers still need cleanup. The [construction manifest](../../abi/production-construction-v1.json)
 > records the native entry graph; installer checks cover its structure and library inventory.
 > The loaded Bootstrap now owns the production construction sequence through
 > Runtime, control, collections, Store, parsers, compilers, System and applications; host
@@ -205,8 +205,8 @@ and mirrored by [`id_protocol.rs`](../../rust/birnam-abi/src/id_protocol.rs).
 The current production Id dictionaries and core dispatch use these typed
 operands. The common descriptor loader and production Siphon handoff are wired.
 Upper modules now construct through this protocol with explicit predecessors.
-The production host and System no longer call the twelve-argument initializer;
-remaining old exports and direct fixtures still require cleanup.
+The twelve-argument initializer and dependency-setter exports are removed.
+Remaining factory/provider exports and old direct fixtures still require cleanup.
 
 On the supported 64-bit target, an operand is a 32-bit kind, 32 reserved zero
 bits and a 16-byte union (24 bytes total). A native entry is a function and native
@@ -2485,3 +2485,61 @@ pass (333 total, 15 ignored); Lifetime has no Rust unit tests in this run. The
 complete native suite passes, including early Lifetime/collection and independent
 Id startup. All six changed Rust files match installed sources. Evidence is
 `.cargo-target/83-address-indexes-evidence.json`. Release validation remains waived.
+
+
+### Retire the aggregate native initialization interface
+
+The production sources no longer define `module_init`. All 48 aggregate
+initializers are deleted, along with 22 Runtime dependency setters and 21 ABI
+macros that generated setters at 93 module call sites. The 37 affected export
+inventories remove 106 obsolete symbol entries. The native integration gate now
+checks every installed library, including those outside its exact-export
+inventory, for absence of aggregate initializers and dependency setters.
+
+Removing that path exposed unused duplicate Boolean, Nil, Error, Integer, Float,
+Word and String operations, the old Object Model adapter, and the old Collection
+and Prelude initialization sequences. Those implementations are deleted;
+production continues to use the completed native constructors and typed methods.
+Compiler diagnostics identified the unused bodies, and the independent native
+oracles remain the behavioral check. This removes roughly 2,800 lines rather
+than hiding the old interface behind a feature flag.
+
+The Codegen finalizer test now invokes its internal setup directly instead of
+the deleted aggregate wrapper. Diagnostic closure/numeric probes attach after
+completed Runtime construction, preserving their explicit opt-in environment
+flags without an Integer dependency-setter callback. Test-only imports and a
+numeric-declaration negative case are adjusted to avoid relying on removed code.
+
+Design 82's current-state paragraph and the ABI overview now distinguish the
+historical failure from the production implementation. Old direct C fixture
+harnesses and remaining factory/provider exports still require their own
+migration/retirement audit; this change does not claim those consumers pass.
+
+Validation of this removal uses `/tmp/birnam-83-native-entries-final`. The whole
+workspace library suite passes: 809 tests passed, 28 ignored. Diagnostic Runtime
+also compiles with `ffi-test-hooks` and its required abort panic strategy. The
+source-global lookup suite passes in installed, forced-source and compiled modes.
+The owned Method suite passes source, compiled, mapped/rebuilt image and baked
+execution, including aliases, replacement/removal, GC and image rejection.
+
+The installed checks exposed a Block Loop fixture still calling the deleted
+initializer. It now exercises both nested-initialization triggers (interning and
+method publication) through the common entry, retaining rejection, completed
+reload and original execution-table assertions. The Artifact authority check
+and TCC export audit now describe current production entries and checked host
+activation rather than requiring the retired initializer.
+
+The complete native suite passes, including independent Id startup, construction
+prefixes with successors absent, collector adoption and installed export checks.
+All changed Rust production sources match this installed prefix. The local
+receipt is `.cargo-target/83-native-entries-evidence.json`. This does not close
+legacy fixture migration or the outstanding worker-service acceptance.
+
+On this same installation, `isolate-image-wire-test.py` reaches ready in 20.99
+seconds and passes all twelve exact replies and orderly stop. The unchanged
+`worker-service-smoke.sh` passes its mapped/rebuilt Cell image checks but fails
+starting the AOT worker with `handshakeTimeout`, before its nineteen service
+cases execute. A five-second sample of that failing worker includes substantial
+authored-module bootstrap work as well as image loading; the startup delay is
+not confined to post-load recovery. The ten-second production deadline is
+unchanged. Full worker acceptance remains open.

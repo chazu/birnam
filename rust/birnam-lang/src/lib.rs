@@ -5,8 +5,7 @@
 //! transient CST remain in the dynamically replaceable PEG rung.
 
 use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
-use core::ffi::{c_char, c_void};
-use core::ptr;
+use core::ffi::c_char;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -51,11 +50,11 @@ fn abort(message: &str) -> ! {
 fn runtime() -> &'static Runtime {
     RUNTIME
         .get()
-        .unwrap_or_else(|| abort("module_init was not called"))
+        .unwrap_or_else(|| abort("module is not initialized"))
 }
 
 unsafe fn runtime_api(runtime: &Runtime) -> &'static IdApi {
-    // SAFETY: module_init records the process-owned table for the process life.
+    // SAFETY: native construction records the process-owned table for the process life.
     unsafe { &*(runtime.api as *const IdApi) }
 }
 
@@ -714,7 +713,7 @@ unsafe extern "C" fn lang_furthest_fail(
 
 unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1, predecessor: Oop) {
     if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
+        abort("native construction received a null IdApi");
     }
     let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
     let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
@@ -779,17 +778,6 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
     1
 }
 
-/// Initialize the Rust grammar facade over the process-owned IdApi and PEG.
-///
-/// # Safety
-///
-/// `api` is the live host IdApi table or null for the documented fatal boundary.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, roots, ptr::null(), ptr::null_mut()) };
-    ptr::null_mut()
-}
-
 #[cfg(test)]
 mod tests {
     use super::{RUST_LANG_IDENTITY, birnam_lang_rust_identity};
@@ -802,10 +790,6 @@ mod tests {
         assert_eq!(identity.to_bytes_with_nul(), RUST_LANG_IDENTITY);
     }
 }
-
-birnam_abi::integer_dependency!();
-
-birnam_abi::string_dependency!();
 
 use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
 static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);

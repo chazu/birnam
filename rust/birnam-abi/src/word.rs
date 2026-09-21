@@ -117,21 +117,5 @@ pub unsafe fn behavior() -> Oop {
     unsafe { operations().behavior }
 }
 
-/// Each consumer opts in explicitly. The loader injects the dependency before
-/// calling module_init. This does not alter module_init's opaque state contract.
-#[macro_export]
-macro_rules! word_dependency {
-    () => {
-        /// # Safety
-        /// The dependency obeys the process-lifetime Word mounting contract.
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_word_dependency_v1(
-            dependency: *mut $crate::word::WordApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::word::attach(dependency) }
-        }
-    };
-}
-
 pub type WordPrepareV6 = unsafe extern "C" fn(*mut crate::IdApi, *const crate::namespace_presence::ApiV1, *const crate::namespace_import::ApiV1, *const crate::namespace_export::ApiV1, *const crate::root_registry::ApiV1, *const crate::payload_layout::ApiV1) -> *mut WordApiV1;
 pub type WordProviderV1 = unsafe extern "C" fn() -> *mut WordApiV1;

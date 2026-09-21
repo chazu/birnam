@@ -3,8 +3,7 @@
 //! inputs and payload reads. Neither owns heap marks, GC policy or reclamation.
 use birnam_abi::storage::{self, DescribedViewV1, INCOMPLETE, INVALID, Status};
 use birnam_abi::trace::{AllocationRefV1, ReportV1, RequestV1, VERSION};
-use birnam_abi::{IdApi, borrowed_slice};
-use core::ffi::c_void;
+use birnam_abi::borrowed_slice;
 use std::collections::BTreeMap;
 
 pub mod live;
@@ -157,14 +156,6 @@ pub unsafe extern "C" fn birnam_trace_described_v1(
         coverage_gaps: gaps,
     };
     unsafe { visitor(request.context, &report) }
-}
-
-/// Stateless module: the caller supplies each scoped description explicitly.
-/// # Safety
-/// The loader obeys the usual native module lifetime contract.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(_: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    core::ptr::null_mut()
 }
 
 #[unsafe(no_mangle)]

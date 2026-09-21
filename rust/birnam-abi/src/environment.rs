@@ -61,14 +61,3 @@ pub unsafe fn install(
     );
     unsafe { (*pointer).install.unwrap()(registration, execution, presence, imports, system_vt, get_env) };
 }
-#[macro_export]
-macro_rules! environment_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_environment_dependency_v3(
-            api: *const $crate::environment::ApiV3,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::environment::attach(api) }
-        }
-    };
-}

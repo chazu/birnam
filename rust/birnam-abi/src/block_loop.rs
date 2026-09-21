@@ -62,14 +62,3 @@ pub unsafe fn install(
     );
     unsafe { (*pointer).install.unwrap()(registration, execution, presence, imports, block_vt, while_true, while_false) };
 }
-#[macro_export]
-macro_rules! block_loop_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_block_loop_dependency_v3(
-            api: *const $crate::block_loop::ApiV3,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::block_loop::attach(api) }
-        }
-    };
-}

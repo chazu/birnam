@@ -1,3 +1,4 @@
+use core::ffi::c_void;
 use super::*;
 
 struct Fixture {

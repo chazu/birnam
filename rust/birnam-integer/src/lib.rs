@@ -106,12 +106,12 @@ fn abort(message: &str) -> ! {
 fn runtime() -> &'static Runtime {
     RUNTIME
         .get()
-        .unwrap_or_else(|| abort("module_init was not called"))
+        .unwrap_or_else(|| abort("module is not initialized"))
 }
 
 unsafe fn api_ref() -> &'static IdApi {
     let runtime = runtime();
-    // SAFETY: module_init records the process-owned IdApi address and the host
+    // SAFETY: native construction records the process-owned IdApi address and the host
     // retains the selected floor for the process lifetime.
     unsafe { &*(runtime.api as *const IdApi) }
 }
@@ -315,103 +315,6 @@ unsafe extern "C" fn integer_mod(self_object: Oop, args: *const Oop, count: usiz
     unsafe { result(api, (left as i128) % (right as i128)) }
 }
 
-unsafe fn compare(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-    predicate: impl FnOnce(f64, f64) -> bool,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(left) = (unsafe { numeric(api, self_object) }) else {
-        return api.nilObj;
-    };
-    let Some(right_object) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { is_error(api, execution_presence(), execution_imports(), right_object) } {
-        return right_object;
-    }
-    let Some(right) = (unsafe { numeric(api, right_object) }) else {
-        return unsafe { numeric_error(api, execution_presence(), execution_imports(), b"typeMismatch\0", b"comparison needs a number") };
-    };
-    let matches = match (left, right) {
-        (Numeric::Integer(left), Numeric::Integer(right)) => predicate(left as f64, right as f64),
-        (Numeric::Integer(left), Numeric::Float(right)) => predicate(left as f64, right),
-        (Numeric::Float(left), Numeric::Integer(right)) => predicate(left, right as f64),
-        (Numeric::Float(left), Numeric::Float(right)) => predicate(left, right),
-    };
-    if matches { api.trueObj } else { api.falseObj }
-}
-
-unsafe extern "C" fn integer_eq(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(left) = (unsafe { integer(api, self_object) }) else {
-        return api.nilObj;
-    };
-    let Some(right_object) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(right) = (unsafe { integer(api, right_object) }) else {
-        return api.falseObj;
-    };
-    if left == right {
-        api.trueObj
-    } else {
-        api.falseObj
-    }
-}
-
-unsafe extern "C" fn integer_lt(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { compare(self_object, args, count, |left, right| left < right) }
-}
-
-unsafe extern "C" fn integer_le(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { compare(self_object, args, count, |left, right| left <= right) }
-}
-
-unsafe extern "C" fn integer_gt(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { compare(self_object, args, count, |left, right| left > right) }
-}
-
-unsafe extern "C" fn integer_ge(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { compare(self_object, args, count, |left, right| left >= right) }
-}
-
-unsafe extern "C" fn integer_print_string(
-    self_object: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { integer(api, self_object) }) else {
-        return api.nilObj;
-    };
-    let text = value.to_string();
-    // SAFETY: `text` remains alive for the duration of mkString's copy.
-    unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
-}
-
-unsafe extern "C" fn integer_as_float(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { integer(api, self_object) }) else {
-        return api.nilObj;
-    };
-    // SAFETY: the mounted Float module owns the boxed constructor.
-    unsafe { (birnam_abi::float::make)(value as f64) }
-}
-
 unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
     let api = unsafe { api_ref() };
     if count != 2 {
@@ -442,71 +345,6 @@ unsafe extern "C" fn integer_to_do(self_object: Oop, args: *const Oop, count: us
     self_object
 }
 
-/// The host retains the floor and this library for the process lifetime.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
-    }
-    let api = unsafe { &*api_pointer };
-    if let Some(runtime) = RUNTIME.get() {
-        assert_eq!(
-            runtime.api, api_pointer as usize,
-            "Integer mounted on another API"
-        );
-        return ptr::null_mut();
-    }
-    RUNTIME
-        .set(Runtime {
-            api: api_pointer as usize,
-            presence: presence as usize,
-            imports: imports as usize,
-        })
-        .ok()
-        .expect("Integer initialization serialized");
-    let native = native::ready();
-    let instance = if native {
-        let instance = INSTANCE.load(Ordering::Acquire);
-        assert_eq!(unsafe { (*instance).native_access().unwrap().id.receiver }, api.vtable_vt, "Integer mounted on another Id");
-        let _ = unsafe { birnam_abi::float::operations() };
-        instance
-    } else {
-        let instance = Box::into_raw(unsafe { storage::Instance::empty(api_pointer, exports, layouts) });
-        INSTANCE.store(instance, Ordering::Release);
-        unsafe { birnam_abi::root_registry::register(roots, integer_roots); (*instance).populate(); }
-        instance
-    };
-    assert_eq!(
-        unsafe { birnam_abi::integer::attach((*instance).operations()) },
-        1
-    );
-    let integer_vt = unsafe { birnam_abi::integer::behavior() };
-    let methods: &[(&[u8], birnam_abi::Method)] = &[
-        (b"+\0", integer_add),
-        (b"-\0", integer_sub),
-        (b"*\0", integer_mul),
-        (b"/\0", integer_div),
-        (b"mod:\0", integer_mod),
-        (b"=\0", integer_eq),
-        (b"<\0", integer_lt),
-        (b"<=\0", integer_le),
-        (b">\0", integer_gt),
-        (b">=\0", integer_ge),
-        (b"printString\0", integer_print_string),
-        (b"asFloat\0", integer_as_float),
-        (b"to:do:\0", integer_to_do),
-    ];
-    for (selector, method) in methods {
-        // The native base already implements these without successor inputs.
-        // Mixed operations replace only our own base binding, preserving an
-        // application's earlier method replacement.
-        if native && !unsafe { native::extend_binding(&*instance, &selector[..selector.len()-1]) } { continue; }
-        let symbol = unsafe { intern(api, selector) };
-        // SAFETY: integer_vt and each method are live for the process lifetime.
-        unsafe { (api.method)(integer_vt, symbol, *method) };
-    }
-    ptr::null_mut()
-}
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_integer_rust_identity() -> *const c_char {
     c"rust-integer-v1".as_ptr()
@@ -540,16 +378,10 @@ mod tests {
                 0
             );
         }
-        assert_eq!(declared_numeric_operator(integer_eq as *const c_void), 0);
+        assert_eq!(declared_numeric_operator(integer_to_do as *const c_void), 0);
         assert_eq!(declared_numeric_operator(ptr::null()), 0);
     }
 }
-
-birnam_abi::float_dependency!();
-
-birnam_abi::string_dependency!();
-
-birnam_abi::error_value_dependency!();
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { runtime().presence as *const birnam_abi::namespace_presence::ApiV1 }
 

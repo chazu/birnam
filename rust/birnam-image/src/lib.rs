@@ -1237,11 +1237,11 @@ mod runtime {
     fn runtime() -> &'static Runtime {
         RUNTIME
             .get()
-            .unwrap_or_else(|| abort("module_init was not called"))
+            .unwrap_or_else(|| abort("module is not initialized"))
     }
 
     unsafe fn api_ref() -> &'static IdApi {
-        // SAFETY: module_init records the process-owned IdApi address and the host
+        // SAFETY: native construction records the process-owned IdApi address and the host
         // retains that table for the loaded floor's lifetime.
         unsafe { &*(runtime().api as *const IdApi) }
     }
@@ -3070,7 +3070,7 @@ mod runtime {
 
     unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1, system: Option<Oop>) {
         if api.is_null() {
-            abort("module_init received a null IdApi");
+            abort("native construction received a null IdApi");
         }
         let mut retained = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
         let mut retain = |object| { if let Some(roots) = &mut retained { unsafe { roots.keep(object) } } else { object } };
@@ -3210,16 +3210,6 @@ mod runtime {
         1
     }
 
-    /// Initialize the Rust Image shell against the process floor.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-        let _ = state;
-        if RUNTIME.get().is_none() {
-            unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts, ptr::null(), None) };
-        }
-        ptr::null_mut()
-    }
-
     use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
     static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
     static NATIVE_RESULT: OnceLock<usize> = OnceLock::new();
@@ -3284,13 +3274,3 @@ mod runtime {
     pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
 
 }
-
-birnam_abi::integer_dependency!();
-
-birnam_abi::float_dependency!();
-
-birnam_abi::word_dependency!();
-
-birnam_abi::string_dependency!();
-
-birnam_abi::namespace_names_dependency!();

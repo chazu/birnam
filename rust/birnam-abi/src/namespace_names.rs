@@ -80,17 +80,6 @@ pub unsafe fn name_of(value: Oop) -> *const c_char {
     let ops = unsafe { operations() };
     unsafe { ops.name_of.unwrap()(ops.context, value) }
 }
-#[macro_export]
-macro_rules! namespace_names_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_namespace_names_dependency_v1(
-            api: *mut $crate::namespace_names::ApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::namespace_names::attach(api) }
-        }
-    };
-}
 
 #[cfg(test)]
 mod tests {

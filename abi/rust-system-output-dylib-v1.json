@@ -5,8 +5,6 @@
   "exported_symbols": [
     "birnam_native_module_v1",
     "birnam_symbol_borrow_v1",
-    "birnam_system_output_provider_v1",
-    "birnam_text_view_dependency_v1",
-    "module_init"
+    "birnam_system_output_provider_v1"
   ]
 }

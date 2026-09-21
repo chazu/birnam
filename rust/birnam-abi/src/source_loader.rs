@@ -61,14 +61,3 @@ pub unsafe fn install(
     );
     unsafe { (*pointer).install.unwrap()(registration, execution, presence, imports, system_vt, load) };
 }
-#[macro_export]
-macro_rules! source_loader_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_source_loader_dependency_v3(
-            api: *const $crate::source_loader::ApiV3,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::source_loader::attach(api) }
-        }
-    };
-}

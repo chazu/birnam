@@ -189,14 +189,3 @@ pub unsafe fn operations() -> ApiV8 {
     );
     unsafe { *pointer }
 }
-#[macro_export]
-macro_rules! namespace_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_namespace_dependency_v8(
-            api: *const $crate::namespace::ApiV8,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::namespace::attach(api) }
-        }
-    };
-}

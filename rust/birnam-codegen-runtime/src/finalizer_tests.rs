@@ -108,16 +108,16 @@ fn mapped_commit_retains_first_finalizers_reads_live_selection_and_preserves_com
         version: 1, byte_size: 32, context: oop(99), set: Some(forbidden),
     }));
     let mount = |table, capability| unsafe {
-        module_init(table, ptr::null_mut(), presence, imports, exports, ptr::null(), ptr::null(), roots,
-            ptr::null(), layouts, ptr::null(), capability)
+        bring_up(table, presence, imports, exports, ptr::null(), roots,
+            ptr::null(), layouts, capability, ptr::null(), None)
     };
-    assert!(mount(api, selected).is_null());
+    mount(api, selected);
     let mut payload = PortableMappedUnitPayload { handle: 0, code_generation_identity: 0 };
     let owner = ptr::from_mut(&mut payload).cast();
     for round in 0..3 {
         if round != 0 {
             unsafe { (*selected).context = oop(12); (*selected).set = Some(saved); }
-            assert!(mount(other, incoming).is_null());
+            mount(other, incoming);
         }
         stage(owner, 0);
         assert_eq!(unsafe { rust_codegen_finish_portable_image_unit(oop(10), ptr::null(), 0) }, oop(1));

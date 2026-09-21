@@ -306,11 +306,6 @@ static IMAGE_PREVIOUS_PHASE: AtomicU8 = AtomicU8::new(0);
 static ACTIVE_GENERATION: AtomicUsize = AtomicUsize::new(0);
 static METHOD_OP_PRESENT: AtomicBool = AtomicBool::new(false);
 
-
-
-
-
-
 fn canonical_exports_requested() -> bool {
     // The canonical dynamic name is the production Rust Codegen path after
     // C1.6. Fixture tests can still exercise the private Rust surface by
@@ -508,7 +503,7 @@ fn abort(message: &str) -> ! {
 fn runtime() -> &'static Runtime {
     RUNTIME
         .get()
-        .unwrap_or_else(|| abort("module_init was not called"))
+        .unwrap_or_else(|| abort("module is not initialized"))
 }
 
 fn clear_error() {
@@ -2897,7 +2892,7 @@ impl Drop for EvaluationRoots {
 }
 
 unsafe fn api(runtime: &Runtime) -> &'static IdApi {
-    // SAFETY: module_init records the process-owned IdApi for process life.
+    // SAFETY: native construction records the process-owned IdApi for process life.
     unsafe { &*(runtime.api as *const IdApi) }
 }
 
@@ -6094,12 +6089,6 @@ fn issue_materialization_namespace() -> Option<u32> {
         .filter(|value| *value != 0)
 }
 
-
-
-
-
-
-
 unsafe fn compile_synchronous_materialization(
     api: &IdApi,
     program: &[u8],
@@ -7341,16 +7330,6 @@ unsafe fn unit_symbol_address(api: &IdApi, unit: Oop, name: &[u8]) -> Option<usi
     unsafe { foreign_address_value(api, symbol) }.filter(|address| *address != 0)
 }
 
-
-
-
-
-
-
-
-
-
-
 #[allow(clippy::too_many_arguments)]
 unsafe fn compile_portable_named_materialization(
     api: &IdApi,
@@ -7820,13 +7799,6 @@ unsafe extern "C" fn rust_codegen_materialize_resumable(
     };
     block
 }
-
-
-
-
-
-
-
 
 unsafe extern "C" fn rust_codegen_eval_persisting(
     self_object: Oop,
@@ -12975,7 +12947,7 @@ unsafe extern "C" fn rust_reflect_collect_fact(
 
 unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1, predecessors: Option<[Oop; 3]>) {
     if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
+        abort("native construction received a null IdApi");
     }
     let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
     let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
@@ -13805,17 +13777,6 @@ pub extern "C" fn birnam_codegen_rust_identity() -> *const c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
     1
-}
-
-#[unsafe(no_mangle)]
-///
-/// # Safety
-///
-/// `api` must point to the live process-owned IdApi table for the duration of
-/// the module lifetime, as required by the module ABI.
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts, finalizers, ptr::null(), None) };
-    ptr::null_mut()
 }
 
 #[cfg(test)]
@@ -14710,12 +14671,6 @@ fn floor_lookup_contract() {
 
 #[cfg(test)]
 mod state_contract;
-
-birnam_abi::integer_dependency!();
-
-birnam_abi::string_dependency!();
-
-birnam_abi::namespace_names_dependency!();
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
 

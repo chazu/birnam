@@ -68,14 +68,3 @@ pub unsafe fn same_value(api: &IdApi, left: Oop, right: Oop) -> bool {
 pub unsafe fn key_hash(api: &IdApi, key: Oop) -> u32 {
     unsafe { operations().key_hash.unwrap()(api, key) }
 }
-#[macro_export]
-macro_rules! collection_value_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_collection_value_dependency_v1(
-            api: *const $crate::collection_value::ApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::collection_value::attach(api) }
-        }
-    };
-}

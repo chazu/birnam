@@ -63,20 +63,6 @@ static FACTORY: FactoryV1 = FactoryV1 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_gc_settings_factory_v1() -> *const FactoryV1 { &FACTORY }
 
-/// # Safety
-/// All descriptors/code have the native initialization lifetime.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(
-    api: *mut birnam_abi::IdApi, _: *mut c_void,
-    _: *const birnam_abi::namespace_presence::ApiV1,
-    _: *const birnam_abi::namespace_import::ApiV1,
-    _: *const birnam_abi::namespace_export::ApiV1,
-    _: *const birnam_abi::vtable_enumeration::ApiV2,
-    _: *const birnam_abi::method_observation::ApiV1,
-    _: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    assert!(!api.is_null(), "GC Settings received a null IdApi");
-    ptr::null_mut()
-}
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }
 

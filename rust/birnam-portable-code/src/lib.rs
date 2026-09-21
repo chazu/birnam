@@ -8,8 +8,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 use birnam_abi::IdApi;
-use core::ffi::{c_char, c_void};
-use core::ptr;
+use core::ffi::c_char;
 
 mod abi {
     pub use birnam_abi::{MarkFn, Method, Oop, SLOT_RAW};
@@ -43,11 +42,6 @@ mod portable_code;
 
 const IDENTITY: &[u8] = b"rust-portable-code-k1\0";
 
-fn abort(message: &str) -> ! {
-    eprintln!("birnam Portable Code: {message}");
-    std::process::abort();
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_portable_code_rust_identity() -> *const c_char {
     IDENTITY.as_ptr().cast()
@@ -57,28 +51,6 @@ pub extern "C" fn birnam_portable_code_rust_identity() -> *const c_char {
 pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
     1
 }
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    let _ = state;
-    if api.is_null() {
-        abort("module_init received a null IdApi");
-    }
-    for dependency in [c"Vector", c"VectorVt", c"Error", c"ErrorVt"] {
-        if unsafe { birnam_abi::namespace_presence::contains(presence, dependency.as_ptr()) } == 0 {
-            abort("Collection and Error must load before Portable Code");
-        }
-    }
-    let runtime = runtime::install(api, imports, exports, vtables, roots, layouts, hooks, finalizers);
-    runtime.install_portable_code_objects();
-    ptr::null_mut()
-}
-
-birnam_abi::integer_dependency!();
-
-birnam_abi::string_dependency!();
-
-birnam_abi::namespace_names_dependency!();
 
 use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
 static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);

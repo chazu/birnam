@@ -142,14 +142,3 @@ pub unsafe fn inject(vector: Oop, args: *const Oop, count: usize) -> Oop {
 pub unsafe fn behavior() -> Oop {
     unsafe { operations().behavior.unwrap()() }
 }
-#[macro_export]
-macro_rules! vector_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_vector_dependency_v6(
-            api: *const $crate::vector::ApiV6,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::vector::attach(api) }
-        }
-    };
-}

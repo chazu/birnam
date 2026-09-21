@@ -5,7 +5,6 @@
   "exported_symbols": [
     "birnam_native_module_v1",
     "birnam_symbol_borrow_v1",
-    "birnam_allocation_budget_factory_v1",
-    "module_init"
+    "birnam_allocation_budget_factory_v1"
   ]
 }

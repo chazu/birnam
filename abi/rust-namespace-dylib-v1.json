@@ -6,7 +6,6 @@
     "birnam_namespace_lookup_semantics_v1",
     "birnam_namespace_provider_v8",
     "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1",
-    "module_init"
+    "birnam_symbol_borrow_v1"
   ]
 }

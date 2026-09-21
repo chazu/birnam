@@ -1,7 +1,7 @@
 //! Existing StringBuilder representation and protocol, extracted from Collection.
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
-use core::ffi::{c_char, c_void};
+use core::ffi::c_char;
 use core::mem::size_of;
 use core::ptr;
 use std::alloc::{Layout, alloc, dealloc};
@@ -49,7 +49,7 @@ fn abort(message: &str) -> ! {
 fn runtime() -> &'static Runtime {
     RUNTIME
         .get()
-        .unwrap_or_else(|| abort("module_init was not called"))
+        .unwrap_or_else(|| abort("module is not initialized"))
 }
 unsafe fn api_ref() -> &'static IdApi {
     // The host pins this module and the selected Id table for process life.
@@ -251,23 +251,15 @@ unsafe extern "C" fn string_builder_as_string(
     unsafe { (birnam_abi::string::make)(bytes, length) }
 }
 
-/// Initialize this native family using its existing adoption/publication rules.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    unsafe { construct(api_pointer, presence, imports, exports, roots, layouts, finalizers) };
-    ptr::null_mut()
-}
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-birnam_abi::integer_dependency!();
-birnam_abi::string_dependency!();
 
 unsafe fn construct(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) {
 
     if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
+        abort("native construction received a null IdApi");
     }
     let api = unsafe { &*api_pointer };
     ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });

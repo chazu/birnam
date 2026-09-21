@@ -4,11 +4,7 @@
   "install_name": "@rpath/libbirnam_collection_value.dylib",
   "exported_symbols": [
     "birnam_collection_value_provider_v1",
-    "birnam_float_dependency_v1",
-    "birnam_integer_dependency_v1",
     "birnam_native_module_v1",
-    "birnam_string_dependency_v1",
-    "birnam_symbol_borrow_v1",
-    "module_init"
+    "birnam_symbol_borrow_v1"
   ]
 }

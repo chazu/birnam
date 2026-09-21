@@ -89,14 +89,3 @@ pub unsafe fn publish(api: *mut IdApi, exports: *const crate::namespace_export::
 pub unsafe fn install(api: *mut IdApi, value: Oop, value2: Oop, print_string: Oop) {
     unsafe { operations().install.unwrap()(api, value, value2, print_string) }
 }
-#[macro_export]
-macro_rules! map_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_map_dependency_v6(
-            api: *const $crate::map::ApiV6,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::map::attach(api) }
-        }
-    };
-}

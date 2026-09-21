@@ -44,12 +44,6 @@ unsafe extern "C" fn initialize(id: *const Protocol, args: *const Operand, count
     };
     match install() { Ok(()) => { BASE.store(state, Ordering::Release); Outcome::loaded(Operand::unit()) }, Err(error) => error }
 }
-pub(super) fn matches(api: &birnam_abi::IdApi) -> bool {
-    let base = BASE.load(Ordering::Acquire);
-    if base.is_null() { return false; }
-    let base = unsafe { *(*base).values };
-    (base.nil, base.true_object, base.false_object) == (api.nilObj, api.trueObj, api.falseObj)
-}
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize) };
 

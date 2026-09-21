@@ -156,9 +156,5 @@ unsafe extern "C" fn initialize(id: *const Protocol, args: *const Operand, count
         Ok(owner) => Outcome::loaded(Operand::word(owner as usize)), Err(error) => error,
     }
 }
-pub(super) fn active_for(api: &birnam_abi::IdApi) -> bool {
-    let model = MODEL.load(Ordering::Acquire);
-    !model.is_null() && unsafe { (*model).id.receiver == api.vtable_vt }
-}
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize) };

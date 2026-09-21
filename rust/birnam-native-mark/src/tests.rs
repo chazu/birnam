@@ -1,3 +1,4 @@
+use core::ptr;
 use super::*;
 use core::cell::{Cell, RefCell};
 

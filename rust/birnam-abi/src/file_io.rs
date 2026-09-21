@@ -62,14 +62,3 @@ pub unsafe fn install(
     );
     unsafe { (*pointer).install.unwrap()(registration, execution, presence, imports, system_vt, read_file, write_file) };
 }
-#[macro_export]
-macro_rules! file_io_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_file_io_dependency_v3(
-            api: *const $crate::file_io::ApiV3,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::file_io::attach(api) }
-        }
-    };
-}

@@ -123,22 +123,6 @@ pub unsafe fn behavior() -> Oop {
     unsafe { operations().behavior }
 }
 
-/// Each consumer opts in explicitly. The loader injects the dependency before
-/// calling module_init. This does not alter module_init's opaque state contract.
-#[macro_export]
-macro_rules! integer_dependency {
-    () => {
-        /// # Safety
-        /// The dependency obeys the process-lifetime Integer mounting contract.
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_integer_dependency_v1(
-            dependency: *mut $crate::integer::IntegerApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::integer::attach(dependency) }
-        }
-    };
-}
-
 impl IntegerApiV1 {
     /// Compare declarations without invoking any instrumentable operation.
     pub fn same_contract(&self, other: &Self) -> bool {

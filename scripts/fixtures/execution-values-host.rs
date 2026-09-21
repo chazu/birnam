@@ -139,7 +139,7 @@ fn main() {
     assert!(!provider.is_null());
     let provider: birnam_abi::error_value::ProviderV3 = unsafe { std::mem::transmute(provider) };
     let error = unsafe { provider() };
-    for mode in [1, 2, 3, 4] {
+    for mode in [1, 2] {
         let library = scratch.join(format!("block-loop-{mode}.dylib"));
         let reentry = [arguments[0], Operand::word(stack.presence().addr()), arguments[1],
             Operand::word(error.addr()), Operand::bytes(library.as_os_str().as_bytes()), Operand::word(mode)];

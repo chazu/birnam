@@ -3,7 +3,7 @@
 use crate as parser;
 use crate::Descriptor as ParsedDescriptor;
 use birnam_abi as abi;
-use core::ffi::{c_char, c_void};
+use core::ffi::c_char;
 use core::mem::size_of;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
@@ -76,11 +76,11 @@ fn abort(message: &str) -> ! {
 fn runtime() -> &'static Runtime {
     RUNTIME
         .get()
-        .unwrap_or_else(|| abort("module_init was not called"))
+        .unwrap_or_else(|| abort("module is not initialized"))
 }
 
 fn api(state: &Runtime) -> &'static abi::IdApi {
-    // SAFETY: module_init stores the process-owned, live IdApi table and the
+    // SAFETY: native construction stores the process-owned, live IdApi table and the
     // host keeps that floor dylib loaded for the process lifetime.
     unsafe { &*(state.api as *const abi::IdApi) }
 }
@@ -690,12 +690,12 @@ fn register_methods(state: &Runtime) {
 
 pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) {
     if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
+        abort("native construction received a null IdApi");
     }
     let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
     let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
     let state = RUNTIME.get_or_init(|| {
-        // SAFETY: module_init's caller supplies the live floor table.
+        // SAFETY: native initializer's caller supplies the live floor table.
         let api = unsafe { &*api_pointer };
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ARTIFACT_NAME.as_ptr().cast()) != 0 };
         let (artifact_vt, artifact_obj, descriptor_vt) = if reloading {
@@ -749,16 +749,6 @@ pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
     1
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(
-    api_pointer: *mut abi::IdApi,
-    _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    // SAFETY: the host owns the IdApi pointer and calls this entrypoint before
-    // dispatching any artifact protocol method.
-    unsafe { bring_up(api_pointer, presence, imports, exports, roots, layouts, core::ptr::null()) };
-    core::ptr::null_mut()
 }
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }

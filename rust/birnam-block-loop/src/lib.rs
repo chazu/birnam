@@ -3,7 +3,7 @@
 use birnam_abi::block_loop::ApiV3;
 use birnam_abi::error_value::{is_error, numeric_error};
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use core::ffi::{c_char, c_void};
+use core::ffi::c_char;
 use core::ptr;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -107,11 +107,6 @@ static API: ApiV3 = ApiV3 {
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    unsafe { mount(api, presence, imports) };
-    ptr::null_mut()
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_block_loop_provider_v3() -> *const ApiV3 {
     if READY.load(Ordering::Acquire) {
         &API
@@ -123,7 +118,6 @@ pub extern "C" fn birnam_block_loop_provider_v3() -> *const ApiV3 {
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-birnam_abi::error_value_dependency!();
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { EXECUTION_API.get().expect("methods not installed").1 as *const birnam_abi::namespace_presence::ApiV1 }
 
@@ -131,7 +125,7 @@ fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { EXECUTION
 
 unsafe fn mount(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
     assert!(!api.is_null(), "Block Loop received a null IdApi");
-    // Select execution before namespace/intern callbacks can reenter module_init.
+    // Select execution before namespace/intern callbacks can reenter native construction.
     EXECUTION_API.get_or_init(|| (api as usize, presence as usize, imports as usize));
     let block_vt = unsafe { birnam_abi::namespace_import::import(imports, c"BlockVt".as_ptr()) };
     assert!(!block_vt.is_null(), "Block Loop requires Runtime's Block representation");

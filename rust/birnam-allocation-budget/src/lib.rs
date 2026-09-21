@@ -1,7 +1,6 @@
 //! Allocation charges since collection, independent of storage and GC policy.
 use birnam_abi::allocation_budget::FactoryV1;
 use core::ffi::{c_int, c_void};
-use core::ptr;
 
 struct Budget {
     bytes: usize,
@@ -49,26 +48,6 @@ pub unsafe extern "C" fn birnam_allocation_budget_factory_v1() -> *const Factory
     &FACTORY
 }
 
-/// # Safety
-/// All descriptors and code have the native initialization lifetime.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(
-    api: *mut birnam_abi::IdApi,
-    _: *mut c_void,
-    _: *const birnam_abi::namespace_presence::ApiV1,
-    _: *const birnam_abi::namespace_import::ApiV1,
-    _: *const birnam_abi::namespace_export::ApiV1,
-    _: *const birnam_abi::vtable_enumeration::ApiV2,
-    _: *const birnam_abi::method_observation::ApiV1,
-    _: *const birnam_abi::root_registry::ApiV1,
-    _: *const birnam_abi::gc_settings::ApiV1,
-    _: *const birnam_abi::payload_layout::ApiV1,
-    _: *const birnam_abi::trace_hooks::ApiV1,
-    _: *const birnam_abi::finalizers::ApiV1,
-) -> *mut c_void {
-    assert!(!api.is_null(), "Allocation Budget received a null IdApi");
-    ptr::null_mut()
-}
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int {
     1

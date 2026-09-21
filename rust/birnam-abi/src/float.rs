@@ -121,21 +121,5 @@ pub unsafe fn behavior() -> Oop {
     unsafe { operations().behavior }
 }
 
-/// Each consumer opts in explicitly. The loader injects the dependency before
-/// calling module_init. This does not alter module_init's opaque state contract.
-#[macro_export]
-macro_rules! float_dependency {
-    () => {
-        /// # Safety
-        /// The dependency obeys the process-lifetime Float mounting contract.
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_float_dependency_v1(
-            dependency: *mut $crate::float::FloatApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::float::attach(dependency) }
-        }
-    };
-}
-
 pub type FloatPrepareV6 = unsafe extern "C" fn(*mut crate::IdApi, *const crate::namespace_presence::ApiV1, *const crate::namespace_import::ApiV1, *const crate::namespace_export::ApiV1, *const crate::root_registry::ApiV1, *const crate::payload_layout::ApiV1) -> *mut FloatApiV1;
 pub type FloatProviderV1 = unsafe extern "C" fn() -> *mut FloatApiV1;

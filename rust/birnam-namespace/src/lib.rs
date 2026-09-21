@@ -11,7 +11,7 @@ mod export;
 mod publication;
 mod state;
 use birnam_abi::namespace::{ApiV8, ViewV1};
-use birnam_abi::{IdApi, Oop};
+use birnam_abi::Oop;
 use core::ffi::c_void;
 use state::Environment;
 unsafe extern "C" fn create() -> *mut c_void {
@@ -66,12 +66,6 @@ static API: ApiV8 = ApiV8 {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_namespace_provider_v8() -> *const ApiV8 {
     &API
-}
-/// Normal mounting must not recreate any already-constructed namespace.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    assert!(!api.is_null(), "Namespace received a null IdApi");
-    core::ptr::null_mut()
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {

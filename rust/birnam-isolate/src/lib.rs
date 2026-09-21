@@ -1363,8 +1363,8 @@ unsafe fn close_fd(fd: c_int) -> c_int {
 }
 
 fn runtime_api() -> &'static IdApi {
-    let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
-    // SAFETY: module_init records the process-owned IdApi pointer for the
+    let runtime = RUNTIME.get().expect("Rust Isolate is not initialized");
+    // SAFETY: native construction records the process-owned IdApi pointer for the
     // process lifetime; all dynamic methods are synchronous borrows.
     unsafe { &*(runtime.api as *const IdApi) }
 }
@@ -1383,7 +1383,7 @@ fn make_failure_objects(
     exit_status: Oop,
     request_id: Oop,
 ) -> Oop {
-    let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
+    let runtime = RUNTIME.get().expect("Rust Isolate is not initialized");
     let value = unsafe { (api.alloc)(runtime.failure_vt as Oop, std::mem::size_of::<Failure>()) };
     if value.is_null() {
         return api.nilObj;
@@ -1505,7 +1505,7 @@ fn new_handle(api: &IdApi, mut entry: Entry) -> Oop {
         );
     }
     registry_lock().insert(token, Arc::new(Mutex::new(entry)));
-    let runtime = RUNTIME.get().expect("Rust Isolate module_init missing");
+    let runtime = RUNTIME.get().expect("Rust Isolate is not initialized");
     let value = unsafe { (api.alloc)(runtime.handle_vt as Oop, std::mem::size_of::<Handle>()) };
     if value.is_null() {
         let entry = registry_lock().remove(&token);
@@ -1948,22 +1948,11 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
     1
 }
 
-/// Initialize the process-global isolate service until owner-thread and
-/// registry/timeout ownership is ported.
-///
-/// # Safety
-///
-/// `api` must point to a live process-owned `IdApi` table for the duration of
-/// initialization. The returned module state is null and no caller memory is
-/// retained beyond the process-owned API table.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void { unsafe { bring_up(api, presence, imports, exports, roots, layouts, finalizers, ptr::null()) } }
-
 unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) -> *mut c_void {
     if api.is_null() {
         return ptr::null_mut();
     }
-    // SAFETY: the caller owns a live process IdApi table for module_init.
+    // SAFETY: the caller owns a live process IdApi table for native construction.
     let mut retained = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
     let mut retain = |object| { if let Some(roots) = &mut retained { unsafe { roots.keep(object) } } else { object } };
     let api_ref = unsafe { &*api };
@@ -2752,13 +2741,7 @@ mod tests {
     }
 }
 
-birnam_abi::integer_dependency!();
-
-birnam_abi::float_dependency!();
-
-birnam_abi::string_dependency!();
-
-fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("Rust Isolate module_init missing").imports as *const birnam_abi::namespace_import::ApiV1 }
+fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("Rust Isolate is not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
 
 use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
 static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);

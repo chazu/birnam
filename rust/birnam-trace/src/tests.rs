@@ -1,3 +1,4 @@
+use core::ffi::c_void;
 use super::*;
 use birnam_abi::Oop;
 use storage::{AllocationV1, EdgeV1, OK, ViewV1};

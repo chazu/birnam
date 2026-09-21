@@ -3,12 +3,9 @@
   "scope": "Native String storage and text extensions before Runtime; legacy IdApi adapters",
   "install_name": "@rpath/libbirnam_string.dylib",
   "exported_symbols": [
-    "birnam_float_dependency_v1",
-    "birnam_integer_dependency_v1",
     "birnam_native_module_v1",
     "birnam_string_prepare_v4",
     "birnam_string_provider_v1",
-    "birnam_symbol_borrow_v1",
-    "module_init"
+    "birnam_symbol_borrow_v1"
   ]
 }

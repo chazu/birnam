@@ -29,7 +29,7 @@ fn abort(message: &str) -> ! {
 
 unsafe fn bring_up(api: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
     if api.is_null() {
-        abort("module_init received a null IdApi");
+        abort("native construction received a null IdApi");
     }
     let address = api as usize;
     match API.get() {
@@ -346,7 +346,7 @@ unsafe extern "C" fn rust_entity(_self_object: Oop, _args: *const Oop, _count: u
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(vtable) = ENTITY_VT.get() else {
         return ptr::null_mut();
@@ -377,7 +377,7 @@ unsafe fn rust_find_all_window(store: Oop, args: *const Oop, count: usize, mode:
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
@@ -502,7 +502,7 @@ unsafe fn rust_aggregate(store: Oop, args: *const Oop, count: usize, kind: u8) -
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let values = unsafe { rust_find_all_window(store, args, count, 0) };
     if values.is_null() || values == api.nilObj {
@@ -594,7 +594,7 @@ unsafe extern "C" fn rust_group_by(_self_object: Oop, args: *const Oop, count: u
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
@@ -852,7 +852,7 @@ unsafe extern "C" fn rust_pull(_self_object: Oop, args: *const Oop, count: usize
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
@@ -883,7 +883,7 @@ unsafe extern "C" fn rust_define_rule(self_object: Oop, args: *const Oop, count:
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
         return api.nilObj;
@@ -937,7 +937,7 @@ unsafe extern "C" fn rust_rebuild_rules(self_object: Oop, _args: *const Oop, cou
     let Some(api_address) = API.get() else {
         return ptr::null_mut();
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     if count != 0 || self_object.is_null() {
         return api.nilObj;
@@ -1031,7 +1031,7 @@ pub extern "C" fn birnam_relational_rust_identity() -> *const c_char {
 
 /// Classifies one floor object into the pointer-free probe record.
 ///
-/// Return values: `0` success, `-1` null output, `-2` before `module_init`,
+/// Return values: `0` success, `-1` null output, `-2` before native construction,
 /// `-3` malformed/unsupported object, and `-4` output byte capacity too small.
 ///
 /// # Safety
@@ -1052,7 +1052,7 @@ pub unsafe extern "C" fn birnam_relational_rust_classify(
     let Some(api_address) = API.get() else {
         return -2;
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     // SAFETY: object is borrowed for this call under the module probe contract.
     let Some(value) = (unsafe { oop::classify(api, object) }) else {
@@ -1140,7 +1140,6 @@ pub struct PullSpecNode {
 /// contains the attribute path from the requested root to the leaf, in source
 /// spec order. The fixed bound keeps the C ABI independent of Rust allocations.
 
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct PulledRecord {
@@ -1191,7 +1190,7 @@ unsafe extern "C" fn collect_live_triple(self_object: Oop, args: *const Oop, cou
         collector.status = -5;
         return unsafe { (*collector.api).nilObj };
     }
-    // SAFETY: module_init records the process-owned IdApi for the module life.
+    // SAFETY: native construction records the process-owned IdApi for the module life.
     let api = unsafe { &*collector.api };
     let Some(entity) = (unsafe { oop::classify(api, args[0]) }) else {
         collector.status = -4;
@@ -1256,7 +1255,7 @@ unsafe extern "C" fn collect_project_triple(
         collector.status = -5;
         return unsafe { (*collector.api).nilObj };
     }
-    // SAFETY: module_init records the process-owned IdApi for the module life.
+    // SAFETY: native construction records the process-owned IdApi for the module life.
     let api = unsafe { &*collector.api };
     let Some(entity) = (unsafe { oop::classify(api, args[0]) }) else {
         collector.status = -4;
@@ -1296,7 +1295,7 @@ unsafe fn collect_window(
     let Some(api_address) = API.get() else {
         return -2;
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let callback_vt = unsafe { (api.proto)(api.object_vt) };
     if callback_vt.is_null() {
@@ -1375,7 +1374,7 @@ unsafe fn collect_project_facts_window_with_rules(
     let Some(api_address) = API.get() else {
         return Err(-2);
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let callback_vt = unsafe { (api.proto)(api.object_vt) };
     if callback_vt.is_null() {
@@ -1843,7 +1842,7 @@ unsafe fn aggregate_live(
 
 /// Enumerate the current Store snapshot through the frozen callback protocol.
 ///
-/// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store or
+/// Return values: `0` success, `-2` before native construction, `-3` invalid Store or
 /// output pointers, `-4` an unsupported/malformed Oop, `-5` insufficient output
 /// capacity, and `-6` failure to allocate the temporary callback object.
 ///
@@ -1894,7 +1893,7 @@ pub unsafe extern "C" fn birnam_relational_rust_collect_window(
 /// non-null terms are classified constants. This is an explicit migration probe,
 /// not yet the canonical Store `findAll:where:` method.
 ///
-/// Return values: `0` success, `-2` before `module_init`, `-3` invalid pointers
+/// Return values: `0` success, `-2` before native construction, `-3` invalid pointers
 /// or Store, `-4` malformed terms, `-5` insufficient output capacity, `-6`
 /// callback allocation failure, and `-7` invalid projection index.
 ///
@@ -1982,7 +1981,7 @@ pub unsafe extern "C" fn birnam_relational_rust_project_join_live(
 /// runs after the single binder; this is an explicit migration probe, not the
 /// canonical Store `findAll:where:` method.
 ///
-/// Return values: `0` success, `-2` before `module_init`, `-3` invalid pointers
+/// Return values: `0` success, `-2` before native construction, `-3` invalid pointers
 /// or Store, `-4` malformed terms or right operand, `-5` insufficient output
 /// capacity, `-6` callback allocation failure, and `-7` invalid projection,
 /// predicate position/operator, or a predicate position that is constant.
@@ -2029,7 +2028,7 @@ pub unsafe extern "C" fn birnam_relational_rust_project_predicate_live(
 /// This is an explicit migration probe, not the canonical Store
 /// `findAll:where:` method.
 ///
-/// Return values: `0` success, `-2` before `module_init`, `-3` invalid pointers
+/// Return values: `0` success, `-2` before native construction, `-3` invalid pointers
 /// or Store, `-4` malformed terms, `-5` insufficient output capacity, `-6`
 /// callback allocation failure, and `-7` invalid projection index.
 ///
@@ -2135,7 +2134,7 @@ pub unsafe extern "C" fn birnam_relational_rust_aggregate_live(
 /// read from Store's `cardinality:` schema for each attribute. This is an
 /// explicit migration probe, not the canonical `pull:spec:` installation.
 ///
-/// Return values: `0` success, `-2` before `module_init`, `-3` invalid Store,
+/// Return values: `0` success, `-2` before native construction, `-3` invalid Store,
 /// root, spec, or output pointers, `-4` malformed Oops/schema, `-5` output
 /// capacity too small, `-6` Store callback failure, and `-7` malformed shape,
 /// unknown node kind, excessive depth, or excessive node count.
@@ -2326,28 +2325,6 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
     1
 }
 
-/// Initialize the explicit Rust Relational probe against the process IdApi.
-///
-/// # Safety
-///
-/// `api` must be the process-owned IdApi table supplied by the host, and the
-/// host must keep that table and its floor dylib alive for the module lifetime.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    // SAFETY: forwarded frozen host initialization contract.
-    unsafe { bring_up(api, imports, layouts) };
-    // Publish the complete shared relational object contract before exposing
-    // the Store as `db`; this is safe to repeat across reloads.
-    unsafe { ensure_relational_contract(&*api, layouts, imports, exports, None) };
-    // SAFETY: module_init received the process-owned IdApi used to install the
-    // Store-facing entity constructor.
-    unsafe { install_entity_method(&*api, imports, exports, None) };
-    // SAFETY: module_init received the same process-owned IdApi recorded above.
-    register_probe_root(roots);
-    ptr::null_mut()
-}
-
-
 /// Pointer-free input records for the bounded rule-engine probe. A term is a
 /// constant when `kind == 0` (and `object` is classified) or a local variable
 /// when `kind == 1` (using `variable`).
@@ -2413,9 +2390,7 @@ pub struct RuleTreeDefinitionNode {
     pub reserved_body: u32,
 }
 
-
 const MAX_PULL_NODES: usize = 4_096;
-
 
 unsafe fn parse_pull_specs(
     api: &IdApi,
@@ -2503,7 +2478,7 @@ unsafe fn pull_live(
     let Some(api_address) = API.get() else {
         return -2;
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let (facts, collected_api) = match unsafe { collect_project_facts(store) } {
         Ok(snapshot) => snapshot,
@@ -3206,7 +3181,7 @@ unsafe fn project_rule_store_live(
     let Some(api_address) = API.get() else {
         return -2;
     };
-    // SAFETY: module_init stores only the process-owned IdApi address.
+    // SAFETY: native construction stores only the process-owned IdApi address.
     let api = unsafe { &*(api_address.0 as *const IdApi) };
     let rule_name = unsafe { (api.intern)(c"__rule-name__".as_ptr()) };
     let (facts, pairs, api_address) =
@@ -3239,7 +3214,6 @@ unsafe fn project_rule_store_live(
     );
     unsafe { write_projected_values(&values, output, capacity, written) }
 }
-
 
 #[cfg(test)]
 #[path = "native_output.rs"]

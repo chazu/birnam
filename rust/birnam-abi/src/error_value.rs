@@ -94,14 +94,3 @@ pub unsafe fn numeric_error(
         )
     }
 }
-#[macro_export]
-macro_rules! error_value_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_error_value_dependency_v3(
-            api: *const $crate::error_value::ApiV3,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::error_value::attach(api) }
-        }
-    };
-}

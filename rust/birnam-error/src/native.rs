@@ -482,21 +482,6 @@ unsafe extern "C" fn initialize(
         unsafe { *string },
     ))
 }
-pub(super) fn active_for(api: *const birnam_abi::IdApi) -> bool {
-    let state = STATE.load(Ordering::Acquire);
-    if state.is_null() {
-        return false;
-    }
-    assert!(
-        READY.load(Ordering::Acquire),
-        "recursive Error initialization"
-    );
-    assert!(
-        !api.is_null() && unsafe { (*api).vtable_vt == (*state).id.receiver },
-        "Error mounted against another Id"
-    );
-    true
-}
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module {
     version: 1,

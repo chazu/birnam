@@ -140,7 +140,7 @@ fn positive_config(name: &str, default: usize) -> usize {
 fn runtime() -> &'static Runtime {
     RUNTIME
         .get()
-        .unwrap_or_else(|| abort("module_init was not called"))
+        .unwrap_or_else(|| abort("module is not initialized"))
 }
 
 fn as_oop(value: usize) -> birnam_abi::Oop {
@@ -152,7 +152,7 @@ fn oop_address(value: birnam_abi::Oop) -> usize {
 }
 
 unsafe fn api(runtime: &Runtime) -> &'static IdApi {
-    // SAFETY: module_init records the process-owned IdApi table and the host
+    // SAFETY: native construction records the process-owned IdApi table and the host
     // keeps the selected floor dylib loaded for the process lifetime.
     unsafe { &*(runtime.api as *const IdApi) }
 }
@@ -2160,7 +2160,7 @@ unsafe fn register_globals_methods(runtime: &Runtime) {
 
 unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) {
     if api_pointer.is_null() {
-        abort("module_init received a null IdApi");
+        abort("native construction received a null IdApi");
     }
     let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
     let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
@@ -2270,21 +2270,6 @@ pub extern "C" fn birnam_store_rust_identity() -> *const c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
     1
-}
-
-/// Initialize the Rust Store module against the one process-owned IdApi table.
-///
-/// # Safety
-///
-/// `api` must be the live process-owned `IdApi` table supplied by the host, or
-/// null to request the documented fatal boundary. `_state` is an opaque host
-/// token and is not retained by this rung.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    // SAFETY: forwarded host contract; bring_up performs the null check and
-    // retains only the process-owned table address.
-    unsafe { bring_up(api, presence, imports, exports, vtables, observation, roots, layouts, hooks, ptr::null()) };
-    ptr::null_mut()
 }
 
 #[cfg(test)]
@@ -2595,8 +2580,6 @@ mod tests {
         assert_eq!(reserved_compensation_fact_count(&state), 1);
     }
 }
-
-birnam_abi::integer_dependency!();
 
 use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
 static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);

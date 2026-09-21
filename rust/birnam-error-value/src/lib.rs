@@ -4,7 +4,7 @@ use birnam_abi::error_value::ApiV3;
 use birnam_abi::namespace_import::{self, ApiV1 as ImportV1};
 use birnam_abi::namespace_presence::{self, ApiV1 as PresenceV1};
 use birnam_abi::{IdApi, Oop};
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{c_char, c_int};
 use core::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 static READY: AtomicBool = AtomicBool::new(false);
@@ -104,17 +104,6 @@ static API: ApiV3 = ApiV3 {
     from_bytes: Some(from_bytes),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(
-    api: *mut IdApi,
-    _: *mut c_void,
-    _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1,
-    _vtables: *const birnam_abi::vtable_enumeration::ApiV2,
-    _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    assert!(!api.is_null(), "Error value received a null IdApi");
-    READY.store(true, Ordering::Release);
-    ptr::null_mut()
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_error_value_provider_v3() -> *const ApiV3 {
     if READY.load(Ordering::Acquire) {
         &API
@@ -126,7 +115,6 @@ pub extern "C" fn birnam_error_value_provider_v3() -> *const ApiV3 {
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-birnam_abi::string_dependency!();
 
 unsafe extern "C" fn initialize_native(id: *const birnam_abi::id_protocol::Protocol, args: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
     use birnam_abi::id_protocol::{self as native, Operand, Outcome};

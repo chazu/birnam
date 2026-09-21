@@ -51,14 +51,3 @@ pub unsafe fn install(registration: *mut IdApi, execution: *const IdApi) {
     );
     unsafe { (*pointer).install.unwrap()(registration, execution) };
 }
-#[macro_export]
-macro_rules! string_collection_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_string_collection_dependency_v1(
-            api: *const $crate::string_collection::ApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::string_collection::attach(api) }
-        }
-    };
-}

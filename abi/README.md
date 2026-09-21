@@ -14,9 +14,10 @@ conversion, overflow errors, printing and equality before Block/Runtime.
 String's native text/numeric extension and Nil/Boolean printing complete this
 value layer before Runtime. [Collector activation](collector-v3.md) validates that
 heap and installs collecting constructors before Runtime/Execution construction.
-The remaining aggregate Runtime and module interfaces below are migration
-boundaries. Earlier descriptions of factory preparation before `id_init` apply
-to the legacy path; current startup loads the real Id first. See
+The aggregate `module_init` entry and dependency-setter exports have been
+removed from all production modules. Earlier descriptions of factory preparation
+before `id_init` record a retired construction path; current startup loads the
+real Id first. See
 [Design 83](../docs/design/83-production-id-construction-and-lifetimes.md#implementation-evidence-and-remaining-boundary)
 for the current construction and remaining package separation.
 
@@ -29,8 +30,10 @@ moves native finalizer registration and inline callback construction into
 Production native modules use Id's common descriptor and explicit constructor
 operands; the host and System no longer call the aggregate `module_init` ABI.
 [System native loading](native-loading.md) exposes that same protocol to language
-callers. Remaining old module exports and their direct test clients are migration
-work, not a second supported production loader.
+callers. The installed native gate rejects any library that reintroduces
+`module_init` or a `birnam_*_dependency_v*` export. Remaining factory/provider
+exports and old direct test clients are migration work, not another supported
+production loader.
 [IdApi v20 manifest](idapi-v20.json) and the
 [C fixture](fixtures/idapi-v20/README.md) describe the current boundary.
 
@@ -42,7 +45,7 @@ Design 81BG removes `vtableCount` and `vtableAt` into [Object Model enumeration]
 Design 81BF removes `exportObj` into the explicit [Namespace export capability](namespace-export-v1.md).
 Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
 following 81BB's [presence capability](namespace-presence-v1.md).
-The earlier aggregate initialization signature is retained only by unmigrated native exports and fixtures.
+The earlier aggregate initialization signature survives only in unmigrated fixture sources.
 Native modules use the common Id loading protocol and declare their completed
 inputs in the [production construction manifest](production-construction-v1.json).
 Bootstrap constructs the dependencies, then passes each module its required
@@ -75,9 +78,12 @@ Its fingerprint matches the independent v20 manifest. The v20 fingerprint algori
 is SHA-256 over compact, key-sorted UTF-8 JSON, excluding the `fingerprint` member.
 The workspace tests verify that fingerprint and every compiled field offset.
 
-`fixtures/idapi-v20/idapi_v20.h` is the current independent C header. The routine
-native gate compiles the v20 client/module and checks the table and separately
-loaded String, Integer, Float, Word and object-model implementations. Other active foreign fixtures use this header.
+`fixtures/idapi-v20/idapi_v20.h` is the independent C header for that table.
+The routine `id-native-loading-smoke.py` gate uses real production construction
+and independent C modules to exercise Id, values, owners and upper adoption.
+Older clients using the v20 table still need their loading code migrated if they
+call the removed `id_init`, `module_init` or dependency-setter entry points;
+table layout alone does not make those clients current.
 
 `idapi-v1.json` and `fixtures/idapi-v1` preserve the historical 54-field ABI and
 its frozen binary evidence. They are not changed to match v20. Their old opt-in

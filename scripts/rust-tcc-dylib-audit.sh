@@ -13,6 +13,7 @@ trap 'rm -f "$expected" "$actual" "$deps"' EXIT
 cat >"$expected" <<'EOF'
 birnam_alloc
 birnam_blockVt
+birnam_block_captures_valid
 birnam_cstr
 birnam_ensurePrivateVtable
 birnam_enter_resumable_v1
@@ -29,20 +30,21 @@ birnam_mkForeignAddress
 birnam_mkSmallInt
 birnam_mkString
 birnam_mkWord
+birnam_native_module_v1
 birnam_nil
 birnam_objectVt
+birnam_owned_method
 birnam_proto
+birnam_register_method_owner
 birnam_register_resumable_v1
 birnam_register_resumable_v2
 birnam_send
 birnam_smallIntValue
 birnam_symbol_borrow_v1
-birnam_integer_dependency_v1
 birnam_tcc_rust_identity
 birnam_true
 birnam_uintValue
 birnam_wordValue
-module_init
 EOF
 nm -gU "$dylib" | awk '{print $3}' | sed 's/^_//' | sort -u >"$actual"
 diff -u "$expected" "$actual"

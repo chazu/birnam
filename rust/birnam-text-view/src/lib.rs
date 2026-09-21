@@ -2,7 +2,7 @@
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::text_view::{ApiV1, BytesV1};
 use birnam_abi::{IdApi, Oop};
-use core::ffi::{c_char, c_void};
+use core::ffi::c_char;
 use core::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 static READY: AtomicBool = AtomicBool::new(false);
@@ -63,12 +63,6 @@ static API: ApiV1 = ApiV1 {
     printable: Some(printable),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    assert!(!api.is_null(), "text view received a null IdApi");
-    READY.store(true, Ordering::Release);
-    ptr::null_mut()
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_text_view_provider_v1() -> *const ApiV1 {
     if READY.load(Ordering::Acquire) {
         &API
@@ -80,7 +74,6 @@ pub extern "C" fn birnam_text_view_provider_v1() -> *const ApiV1 {
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-birnam_abi::string_dependency!();
 
 use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
 unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {

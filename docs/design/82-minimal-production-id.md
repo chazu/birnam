@@ -49,18 +49,20 @@ to undo an extraction when it made the intended dependency direction worse.
 
 ## 2. The production evidence
 
-The table records the pre-migration failure at `e928780c`. Production now enters
-Id through the common native protocol, then constructs Bootstrap and its upper
-root/Lifetime owners, Nil/Boolean base values, Namespace, Object Model, String storage,
-Error values, Integer/Float/Word, text methods, base-value printing and the live
-Trace graph and collection records/controls before the remaining six preparations. Bootstrap owns
-native initialization results and transfers its early roots to the root registry. Normal startup adopts that
-same initial graph and those native records. The installed
-Id has been exercised with upper libraries absent. Compiler code and aggregate
-Runtime ownership still reside in its crate, so that first-entry result does not
-satisfy the complete independence requirement. See
-[83 implementation evidence](83-production-id-construction-and-lifetimes.md#implementation-evidence-and-remaining-boundary)
-for current progress and remaining construction/ownership work.
+The table records the pre-migration failure at `e928780c`; it is a failure
+record, not a description of current startup. Production now loads independently
+packaged Id first, with only the ABI crate as its Rust dependency. Loaded
+Bootstrap constructs the upper owners, values, collector, Runtime, compilers and
+application modules through Id's common native protocol. Runtime and compiler
+implementation live in separate upper libraries. No production module retains
+the aggregate `module_init` entry or exported dependency setters.
+
+The installed native gate exercises Id with upper libraries absent, the native
+construction prefixes and normal production startup. These facts establish the
+construction/dependency changes, not completion of the entire design: remaining
+factory/provider cleanup, old direct fixture consumers, worker readiness and the
+full lifetime/image acceptance audit are tracked in
+[83](83-production-id-construction-and-lifetimes.md).
 
 | Evidence | What it establishes |
 |---|---|

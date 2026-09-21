@@ -58,14 +58,3 @@ pub unsafe fn install(
     );
     unsafe { (*pointer).install.unwrap()(registration, execution, system_vt, print, println) };
 }
-#[macro_export]
-macro_rules! system_output_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_system_output_dependency_v1(
-            api: *const $crate::system_output::ApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::system_output::attach(api) }
-        }
-    };
-}

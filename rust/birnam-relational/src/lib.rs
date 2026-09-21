@@ -67,11 +67,4 @@ pub use adapter::{
     birnam_relational_rust_project_window_live,
     birnam_relational_rust_pull_live,
     birnam_symbol_borrow_v1,
-    module_init,
 };
-
-birnam_abi::integer_dependency!();
-
-birnam_abi::float_dependency!();
-
-birnam_abi::string_dependency!();

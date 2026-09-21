@@ -371,5 +371,3 @@ pub unsafe extern "C" fn birnam_id_observe_storage_v1(
 ) -> abi::storage::Status {
     unsafe { public_api::observe_storage(request) }
 }
-
-birnam_abi::namespace_dependency!();

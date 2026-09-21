@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove every aggregate native `module_init` entry and exported dependency
+  setter, together with duplicate value methods and obsolete Collection,
+  Prelude and Object Model initialization code. Native construction now has one
+  entry protocol; the installed gate rejects retired exports in every library.
+
 - Share the existing address hasher between Id, Runtime, Collect and Lifetime;
   remove duplicate implementations and general-purpose hashing from GC address
   indexes. Native interfaces and string-keyed hashing are unchanged.

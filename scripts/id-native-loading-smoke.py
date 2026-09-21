@@ -21,6 +21,16 @@ for path in ("rust/birnam-host/src/startup.rs", "rust/birnam-native-loader/src/l
     source = (root / path).read_text()
     assert "ModuleInitFn" not in source and 'c"module_init"' not in source, path
 
+# No installed native or stage-1 image may retain the aggregate initializer or
+# dependency setters. Check binaries, including modules outside the exact-export
+# inventories below, so obsolete entry points cannot return unnoticed.
+for library in sorted((prefix / "lib").glob("libbirnam_*.dylib")):
+    exports = run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines()
+    forbidden = [symbol for symbol in exports
+                 if symbol == "_module_init" or "_dependency_v" in symbol]
+    assert not forbidden, (library.name, forbidden)
+print("all installed libraries reject the retired aggregate initialization ABI")
+
 # Check the installed images, not just source-level module visibility.
 for stem in ("id", "bootstrap", "runtime", "method-observation", "storage", "dispatch-cache",
              "block-loop", "collection-value", "error-value", "map", "printing", "range",
@@ -154,7 +164,7 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
         "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(values_driver))
     run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
         "scripts/fixtures/block-loop-reentry-native.c", "-o", str(scratch / "block-loop-reentry.dylib"))
-    for mode in [1, 2, 3, 4]:
+    for mode in [1, 2]:
         shutil.copy2(prefix / "lib/libbirnam_block_loop.dylib", scratch / f"block-loop-{mode}.dylib")
     parser_prefix = scratch / "parser-prefix"
     shutil.copytree(values_prefix, parser_prefix)

@@ -15,7 +15,7 @@ IMAGE_PROVIDER = REPO / "rust/birnam-image/src/lib.rs"
 IMAGE_V8 = REPO / "rust/birnam-image/src/v8.rs"
 ARTIFACT_CODEC_MANIFEST = REPO / "rust/birnam-artifact-codec/Cargo.toml"
 CODEGEN_RUNTIME_MANIFEST = REPO / "rust/birnam-codegen-runtime/Cargo.toml"
-HOST = REPO / "rust/birnam-host/src/lib.rs"
+HOST = REPO / "rust/birnam-host/src/startup.rs"
 POLICY = REPO / "src/id/modules.birnam"
 
 
@@ -71,37 +71,40 @@ def main() -> None:
 
     # Image's dynamic provider remains the owner of its initializer and
     # identity; the codec wrapper above must not become that owner.
-    require(image_provider, "pub unsafe extern \"C\" fn module_init", "Image provider")
+    require(image_provider, "pub static birnam_native_module_v1", "Image provider")
     require(image_provider, "birnam_image_rust_identity", "Image provider")
 
     # Only the dynamic artifact projection may export Artifact/ArtifactVt and
-    # the frozen module_init entrypoint.
+    # its common native entrypoint.
     for marker in (
         "const ARTIFACT_VT_NAME",
-        "(api.exportObj)",
-        "pub unsafe extern \"C\" fn module_init",
+        "birnam_abi::namespace_export::export(exports, ARTIFACT_VT_NAME",
+        "pub static birnam_native_module_v1",
     ):
         require(projection, marker, "ArtifactVt projection")
-    if len(re.findall(r"pub unsafe extern \"C\" fn module_init", projection)) != 1:
-        fail("ArtifactVt projection does not have exactly one module_init")
+    if len(re.findall(r"pub static birnam_native_module_v1", projection)) != 1:
+        fail("ArtifactVt projection does not have exactly one common native entry")
 
-    # The host may load higher-rung module_init symbols through the selected
-    # floor, but it must not export an artifact projection or activate before
-    # preflight completes.
-    for marker in ("pub fn preflight_artifact", "pub unsafe fn activate_artifact", 'c"loadArtifact:"'):
+    # The host activates the checked dependency plan through Codegen and
+    # preserves Module bookkeeping; it must not export an artifact projection.
+    for marker in ("pub fn preflight_artifact", "pub unsafe fn activate_artifact", 'c"markLoaded:"'):
         require(host, marker, "Rust host")
     if "ArtifactVt" in host:
         fail("Rust host names the ArtifactVt projection")
-    if re.search(r"(?m)^\s*#\[unsafe\(no_mangle\)\].*\n\s*pub unsafe extern \"C\" fn module_init", host):
-        fail("Rust host exports module_init")
-    if host.index("preflight_artifact(path") > host.index('c"loadArtifact:"'):
-        fail("Rust host sends loadArtifact: before preflight")
+    if re.search(r"(?m)^\s*#\[unsafe\(no_mangle\)\].*\n\s*pub static birnam_native_module_v1", host):
+        fail("Rust host exports a native module initializer")
+    activation = host.split("pub unsafe fn activate_artifact(", 1)[1].split("\n}\n", 1)[0]
+    if activation.index("preflight_artifact(path") > activation.index("activate_preflighted_artifact(runtime"):
+        fail("Rust host activates before preflight")
+    for role, source in (("Image", image_provider), ("Artifact", projection)):
+        if re.search(r'pub unsafe extern "C" fn module_init', source):
+            fail(f"{role} exports the retired aggregate initializer")
 
-    # Runtime activation/publication stays in the native Birnam Module policy.
+    # Language-directed artifact loading retains its Module policy entry.
     require(policy, "defineMethod: #loadArtifact: on: Module", "native Module policy")
 
     print(
-        "rust-artifact-authority: codec=pointer-free projection=single-module-init "
+        "rust-artifact-authority: codec=pointer-free projection=common-native-entry "
         "host=preflight-before-activation policy=native-loadArtifact"
     )
 

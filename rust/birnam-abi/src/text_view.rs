@@ -99,14 +99,3 @@ pub unsafe fn string_bytes(api: &IdApi, value: Oop) -> Option<&[u8]> {
 pub unsafe fn printable_string(api: &IdApi, value: Oop) -> Option<&[u8]> {
     unsafe { decode(operations().printable.unwrap()(api, value)) }
 }
-#[macro_export]
-macro_rules! text_view_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_text_view_dependency_v1(
-            api: *const $crate::text_view::ApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::text_view::attach(api) }
-        }
-    };
-}

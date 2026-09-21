@@ -206,9 +206,6 @@ unsafe extern "C" fn api_vtable_of(object: Oop) -> Oop {
     runtime().checked_vtable_of(object)
 }
 
-
-
-
 unsafe extern "C" fn api_gc_collect() -> usize {
     runtime().gc_collect()
 }
@@ -216,7 +213,6 @@ unsafe extern "C" fn api_gc_collect() -> usize {
 unsafe extern "C" fn api_gc_live_count() -> usize {
     runtime().gc_live_count()
 }
-
 
 unsafe extern "C" fn api_object_payload_size(object: Oop) -> usize {
     runtime().payload_size(object).unwrap_or(0)
@@ -376,6 +372,17 @@ pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, root
         birnam_namespace_name_at_v1.publish(&enumeration.name_at);
     }
     PUBLIC_API.store(api_pointer, Ordering::Release);
+    // Diagnostic modules now attach after completed Runtime construction;
+    // they no longer depend on a second Integer dependency-setter call.
+    #[cfg(feature = "ffi-test-hooks")]
+    {
+        if std::env::var_os("BIRNAM_TEST_CLOSURE_CONTROL").is_some_and(|v| v == "1") {
+            runtime().install_closure_control_probe(api_pointer);
+        }
+        if std::env::var_os("BIRNAM_TEST_UNBOXED_NUMERIC").is_some_and(|v| v == "1") {
+            runtime().install_unboxed_numeric_probe();
+        }
+    }
     api_pointer
 }
 
@@ -470,43 +477,6 @@ mod tests {
     }
 }
 
-/// Explicit dependency on the loaded collection coordinator.
-/// # Safety
-/// The readable table supplies code pinned for the runtime's entire lifetime.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_collect_dependency_v1(
-    api: *const birnam_abi::collect::ApiV1,
-) -> c_int {
-    c_int::from(unsafe { runtime().attach_collect(api) })
-}
-
-/// Explicit traversal dependency of the still-combined collector.
-/// # Safety
-/// The readable table supplies code pinned for the runtime's entire lifetime.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_trace_dependency_v1(
-    api: *const birnam_abi::trace_live::ApiV1,
-) -> c_int {
-    c_int::from(unsafe { runtime().attach_trace(api) })
-}
-
-/// Explicit dependency of the still-combined Machine/optimizer layer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_integer_dependency_v1(ops: *mut birnam_abi::integer::IntegerApiV1) -> c_int {
-    let attached = runtime().integer_dependency_attached();
-    if !unsafe { runtime().attach_integer(ops) } { return 0; }
-    if attached { return 1; }
-    #[cfg(feature = "ffi-test-hooks")]
-    if std::env::var_os("BIRNAM_TEST_CLOSURE_CONTROL").is_some_and(|v| v == "1") {
-        runtime().install_closure_control_probe(PUBLIC_API.load(Ordering::Acquire));
-    }
-    #[cfg(feature = "ffi-test-hooks")]
-    if std::env::var_os("BIRNAM_TEST_UNBOXED_NUMERIC").is_some_and(|v| v == "1") {
-        runtime().install_unboxed_numeric_probe();
-    }
-    1
-}
-
 #[cfg(test)]
 pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
     use crate::runtime::with_active;
@@ -531,23 +501,6 @@ pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
 
 pub(crate) fn canonical_allocator() -> usize { canonical_numeric_functions().alloc as usize }
 
-/// Explicit dependency of the still-combined Machine and recovery layer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_float_dependency_v1(ops: *mut birnam_abi::float::FloatApiV1) -> c_int {
-    c_int::from(unsafe { runtime().attach_float(ops) })
-}
-
-/// Explicit dependency of the still-combined Machine layer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_word_dependency_v1(ops: *mut birnam_abi::word::WordApiV1) -> c_int {
-    c_int::from(unsafe { runtime().attach_word(ops) })
-}
-
-/// Explicit dependency of internal String construction and retirement checks.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_string_dependency_v1(ops: *mut birnam_abi::string::StringApiV1) -> c_int {
-    c_int::from(unsafe { runtime().attach_string(ops) })
-}
 static NATIVE_ALLOCATION: AtomicPtr<birnam_abi::native_allocation::NativeAllocationV1> = AtomicPtr::new(core::ptr::null_mut());
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_native_allocation_provider_v1() -> *const birnam_abi::native_allocation::NativeAllocationV1 {
@@ -582,7 +535,6 @@ pub(crate) fn namespace_name_access() -> birnam_abi::namespace_names::FloorV1 {
         symbol_name: Some(symbol_name),
     }
 }
-
 
 use birnam_abi::namespace_enumeration::{CountV1, NameAtV1, PublicationV1};
 #[unsafe(no_mangle)]
@@ -633,7 +585,6 @@ pub(crate) fn namespace_import_access() -> birnam_abi::namespace_import::FloorV1
     }
 }
 
-
 pub(crate) fn namespace_export_access() -> birnam_abi::namespace_export::FloorV1 {
     unsafe extern "C" fn access(_: *mut c_void) -> *mut c_void {
         #[cfg(not(test))]
@@ -649,7 +600,6 @@ pub(crate) fn namespace_export_access() -> birnam_abi::namespace_export::FloorV1
         mirror: Some(crate::runtime::namespace_mirror),
     }
 }
-
 
 pub(crate) fn vtable_enumeration_access() -> birnam_abi::vtable_enumeration::FloorV2 {
     unsafe extern "C" fn view(_: *mut c_void) -> birnam_abi::vtable_enumeration::ViewV1 {
@@ -669,12 +619,6 @@ pub(crate) fn vtable_enumeration_access() -> birnam_abi::vtable_enumeration::Flo
         context: core::ptr::null_mut(), view: Some(view), selectors: Some(selectors),
     }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_vtable_enumeration_dependency_v2(
-    factory: *const birnam_abi::vtable_enumeration::FactoryV2,
-) -> c_int {
-    unsafe { birnam_abi::vtable_enumeration::attach(factory) }
-}
 
 pub(crate) fn method_observation_access() -> birnam_abi::method_observation::FloorV1 {
     unsafe extern "C" fn admit(_: *mut c_void) {
@@ -688,14 +632,6 @@ pub(crate) fn method_observation_access() -> birnam_abi::method_observation::Flo
         context: core::ptr::null_mut(), admit: Some(admit),
     }
 }
-#[unsafe(no_mangle)]
-#[cfg(feature = "ffi-test-hooks")]
-pub unsafe extern "C" fn birnam_method_observation_dependency_v1(
-    factory: *const birnam_abi::method_observation::FactoryV1,
-) -> c_int {
-    unsafe { birnam_abi::method_observation::attach(factory) }
-}
-
 
 pub(crate) fn root_registry_access() -> birnam_abi::root_registry::FloorV1 {
     unsafe extern "C" fn admit(_: *mut c_void) {
@@ -712,12 +648,6 @@ pub(crate) fn root_registry_access() -> birnam_abi::root_registry::FloorV1 {
         context: core::ptr::null_mut(), admit: Some(admit), overflow: Some(overflow),
     }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_root_registry_dependency_v1(
-    factory: *const birnam_abi::root_registry::FactoryV1,
-) -> c_int {
-    unsafe { birnam_abi::root_registry::attach(factory) }
-}
 
 pub(crate) fn gc_settings_access() -> birnam_abi::gc_settings::FloorV1 {
     unsafe extern "C" fn admit(_: *mut c_void) {
@@ -730,12 +660,6 @@ pub(crate) fn gc_settings_access() -> birnam_abi::gc_settings::FloorV1 {
         version:1, byte_size:size_of::<birnam_abi::gc_settings::FloorV1>(),
         context:core::ptr::null_mut(), admit:Some(admit),
     }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_gc_settings_dependency_v1(
-    factory: *const birnam_abi::gc_settings::FactoryV1,
-) -> c_int {
-    unsafe { birnam_abi::gc_settings::attach(factory) }
 }
 
 pub(crate) fn payload_layout_access() -> birnam_abi::payload_layout::FloorV1 {
@@ -761,12 +685,6 @@ pub(crate) fn payload_layout_access() -> birnam_abi::payload_layout::FloorV1 {
     FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: core::ptr::null_mut(),
         admit: Some(admit), replace: Some(replace), view: Some(view) }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_payload_layout_dependency_v1(
-    factory: *const birnam_abi::payload_layout::FactoryV1,
-) -> c_int {
-    unsafe { birnam_abi::payload_layout::attach(factory) }
-}
 
 pub(crate) fn trace_hooks_access() -> birnam_abi::trace_hooks::FloorV1 {
     use birnam_abi::trace_hooks::{FloorV1, SlotV1};
@@ -784,10 +702,6 @@ pub(crate) fn trace_hooks_access() -> birnam_abi::trace_hooks::FloorV1 {
     }
     FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: core::ptr::null_mut(),
         admit: Some(admit), replace: Some(replace) }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_trace_hooks_dependency_v1(factory: *const birnam_abi::trace_hooks::FactoryV1) -> c_int {
-    unsafe { birnam_abi::trace_hooks::attach(factory) }
 }
 
 pub(crate) fn finalizers_access() -> birnam_abi::finalizers::FloorV1 {
@@ -816,10 +730,6 @@ pub(crate) fn finalizers_access() -> birnam_abi::finalizers::FloorV1 {
     FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: core::ptr::null_mut(),
         admit: Some(admit), read_permanent: Some(read_permanent), replace: Some(replace) }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_finalizers_dependency_v1(factory: *const birnam_abi::finalizers::FactoryV1) -> c_int {
-    unsafe { birnam_abi::finalizers::attach(factory) }
-}
 
 pub(crate) fn native_stack_access() -> birnam_abi::native_stack::FloorV1 {
     unsafe extern "C" fn admit(_: *mut c_void) {
@@ -832,67 +742,6 @@ pub(crate) fn native_stack_access() -> birnam_abi::native_stack::FloorV1 {
         version: 1, byte_size: size_of::<birnam_abi::native_stack::FloorV1>(),
         context: core::ptr::null_mut(), admit: Some(admit),
     }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_stack_dependency_v4(factory: *const birnam_abi::native_stack::FactoryV4) -> c_int {
-    unsafe { birnam_abi::native_stack::attach(factory) }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_mark_dependency_v1(api: *const birnam_abi::native_mark::ApiV1) -> c_int {
-    unsafe { birnam_abi::native_mark::attach(api) }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_allocation_budget_dependency_v1(factory: *const birnam_abi::allocation_budget::FactoryV1) -> c_int {
-    unsafe { birnam_abi::allocation_budget::attach(factory) }
-}
-
-/// # Safety
-/// Prepare before Id initialization; descriptor and code stay pinned.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_collection_phase_dependency_v1(factory: *const birnam_abi::collection_phase::FactoryV1) -> c_int {
-    unsafe { birnam_abi::collection_phase::attach(factory) }
-}
-
-/// # Safety
-/// Prepare before Id initialization; descriptor and code stay pinned.
-#[unsafe(no_mangle)]
-#[cfg(feature = "ffi-test-hooks")]
-pub unsafe extern "C" fn birnam_storage_observation_dependency_v1(factory: *const birnam_abi::storage_observation::FactoryV1) -> c_int {
-    unsafe { birnam_abi::storage_observation::attach(factory) }
-}
-
-/// # Safety
-/// Prepare before Id initialization; descriptor and code stay pinned.
-#[unsafe(no_mangle)]
-#[cfg(feature = "ffi-test-hooks")]
-pub unsafe extern "C" fn birnam_dispatch_cache_dependency_v2(factory: *const birnam_abi::dispatch_cache::FactoryV2) -> c_int {
-    unsafe { birnam_abi::dispatch_cache::attach(factory) }
-}
-
-/// # Safety
-/// Prepare before Id initialization; descriptor and code stay pinned.
-#[unsafe(no_mangle)]
-#[cfg(feature = "ffi-test-hooks")]
-pub unsafe extern "C" fn birnam_guard_verdict_dependency_v1(factory: *const birnam_abi::guard_verdict::FactoryV1) -> c_int {
-    unsafe { birnam_abi::guard_verdict::attach(factory) }
-}
-
-/// # Safety
-/// Prepare before Id initialization; descriptor and code stay pinned.
-#[unsafe(no_mangle)]
-#[cfg(feature = "ffi-test-hooks")]
-pub unsafe extern "C" fn birnam_deferred_identity_dependency_v1(factory: *const birnam_abi::deferred_identity::FactoryV1) -> c_int {
-    unsafe { birnam_abi::deferred_identity::attach(factory) }
-}
-
-/// # Safety
-/// Prepare before Id initialization; descriptor and code stay pinned.
-#[unsafe(no_mangle)]
-#[cfg(feature = "ffi-test-hooks")]
-pub unsafe extern "C" fn birnam_deferred_index_dependency_v1(factory: *const birnam_abi::deferred_index::FactoryV1) -> c_int {
-    unsafe { birnam_abi::deferred_index::attach(factory) }
 }
 
 /// Select an existing completed service for later native construction.

@@ -72,14 +72,3 @@ pub unsafe fn install(
         )
     };
 }
-#[macro_export]
-macro_rules! system_gc_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_system_gc_dependency_v2(
-            api: *const $crate::system_gc::ApiV2,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::system_gc::attach(api) }
-        }
-    };
-}

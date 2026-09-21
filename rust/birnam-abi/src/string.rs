@@ -116,16 +116,3 @@ pub unsafe fn bytes(object: Oop, length: *mut usize) -> *const u8 {
 pub unsafe fn behavior() -> Oop {
     unsafe { operations().behavior }
 }
-#[macro_export]
-macro_rules! string_dependency {
-    () => {
-        /// # Safety
-        /// The process-lifetime native String dependency contract applies.
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_string_dependency_v1(
-            dependency: *mut $crate::string::StringApiV1,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::string::attach(dependency) }
-        }
-    };
-}

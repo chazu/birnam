@@ -98,14 +98,3 @@ pub unsafe fn install(
 pub unsafe fn publish(api: *mut IdApi, exports: *const crate::namespace_export::ApiV1) {
     unsafe { operations().publish.unwrap()(api, exports) };
 }
-#[macro_export]
-macro_rules! range_dependency {
-    () => {
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn birnam_range_dependency_v6(
-            api: *const $crate::range::ApiV6,
-        ) -> core::ffi::c_int {
-            unsafe { $crate::range::attach(api) }
-        }
-    };
-}

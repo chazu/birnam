@@ -27,3 +27,8 @@ The Native Loader constructor receives the completed Runtime, roots, System,
 namespace presence/import, Integer, Error helpers and Text View dependencies.
 It returns System after registering both methods. Its only exported symbol is
 the common descriptor. This replaces Native Loader v12's provider/installer ABI.
+
+The aggregate `module_init` entry and exported dependency setters are retired.
+Every native module is constructed through `birnam_native_module_v1` with its
+explicit completed inputs. The installed native gate checks every library for
+absence of those obsolete exports, in addition to the exact module inventories.

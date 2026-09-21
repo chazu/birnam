@@ -22,9 +22,6 @@ struct Text {
 }
 static TEXT: AtomicPtr<Text> = AtomicPtr::new(ptr::null_mut());
 static READY: AtomicBool = AtomicBool::new(false);
-pub(crate) fn ready() -> bool {
-    READY.load(Ordering::Acquire)
-}
 unsafe extern "C" fn roots(mark: birnam_abi::MarkFn) {
     let text = TEXT.load(Ordering::Acquire);
     if text.is_null() {

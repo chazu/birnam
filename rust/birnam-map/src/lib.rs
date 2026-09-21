@@ -2,7 +2,7 @@
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::map::{ApiV6, BehaviorsV1};
 use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
-use core::ffi::{c_char, c_void};
+use core::ffi::c_char;
 use core::ptr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Once, OnceLock};
@@ -876,14 +876,6 @@ static API: ApiV6 = ApiV6 {
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    if api.is_null() {
-        abort("module_init received a null IdApi");
-    }
-    READY.store(true, Ordering::Release);
-    ptr::null_mut()
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_map_provider_v6() -> *const ApiV6 {
     if READY.load(Ordering::Acquire) {
         &API
@@ -895,11 +887,6 @@ pub extern "C" fn birnam_map_provider_v6() -> *const ApiV6 {
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-birnam_abi::collection_value_dependency!();
-
-birnam_abi::integer_dependency!();
-birnam_abi::string_dependency!();
-birnam_abi::vector_dependency!();
 
 use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
 static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
