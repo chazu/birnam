@@ -70,9 +70,12 @@ under an unfinished dispatch. No executable ownership is added to Id.
 Synchronous portable Block entries check arity and require sufficiently large,
 traced object slots for captures before reading the receiver's payload.
 
-Language lookup results accept Method and nil. Another live object is an
-invalid result, never an executable address. Runtime-internal C method adaptation still has legacy registration/lookup
-conventions to remove; they are no longer accepted by `IdApi.send`. Image saving rejects
+Language and Object-valued C lookup implementations return Method or nil.
+All other answers, including raw function addresses, are invalid. The bridge
+into Id extracts the exact native function/context from the Method; it uses no
+address-recovery stack. C methods accept Object operands only. Native authors
+that need Word or NativeEntry operands use Id's typed protocol directly.
+Image saving rejects
 Method instances as `methodNotImageable`; the native Method prototype remains
 a named reference.
 

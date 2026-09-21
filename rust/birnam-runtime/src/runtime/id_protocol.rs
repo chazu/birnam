@@ -7,8 +7,8 @@ use crate::abi::{
 use core::ffi::c_void;
 
 impl Runtime {
-    /// Adapt the existing all-Oop send boundary, including its legacy primitive
-    /// operands. Native methods receive the exact selected function/context pair.
+    /// Adapt Object arguments to the exact selected native function/context.
+    /// Method installation unwraps an owned Method into a typed native entry.
     pub(crate) fn invoke_native_from_objects(
         &self,
         entry: NativeEntry,

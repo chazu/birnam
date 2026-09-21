@@ -5,7 +5,6 @@ use crate::abi::Oop;
 use crate::boundary;
 use crate::execution::{ExecutionError, StacklessTarget};
 use crate::heap::{Heap, Permanence};
-use crate::raw::MethodAddress;
 use crate::runtime::{CanonicalObjects, DispatchGlobals, Runtime, with_active};
 use crate::id_registries::Symbols;
 use crate::values::allocate_empty;
@@ -165,38 +164,6 @@ impl Runtime {
 }
 
 pub(crate) use crate::legacy_method::lookup_method as vtable_lookup_method;
-
-pub(crate) unsafe extern "C" fn vtable_add_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    if count < 2 || args.is_null() {
-        boundary::fatal_invariant("vtable addMethod requires selector and method");
-    }
-    // SAFETY: the Method ABI promises at least count entries and count >= 2.
-    let selector = unsafe { args.read() };
-    // SAFETY: the second entry is within the same live argument buffer.
-    let encoded_method = unsafe { args.add(1).read() };
-    // SAFETY: bootstrap and later IdApi.method callers encode a Method address.
-    let method = unsafe { MethodAddress::from_oop(encoded_method) }
-        .unwrap_or_else(|| boundary::fatal_invariant("vtable addMethod received null method"))
-        .to_method();
-    with_active(|runtime| {
-        let _ = runtime.add_method(receiver, selector, method);
-    });
-    encoded_method
-}
-
-pub(crate) unsafe extern "C" fn vtable_remove_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    if count == 0 || args.is_null() {
-        boundary::fatal_invariant("vtable removeMethod: requires one selector");
-    }
-    // SAFETY: the Method ABI promises at least count entries and count > 0.
-    let selector = unsafe { args.read() };
-    with_active(|runtime| {
-        runtime
-            .remove_method(receiver, selector)
-            .map(MethodAddress::as_oop)
-            .unwrap_or(core::ptr::null_mut())
-    })
-}
 
 pub(crate) unsafe extern "C" fn vtable_allocate(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     if count == 0 || args.is_null() {
@@ -388,17 +355,8 @@ pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, 
     );
     runtime.install_internal_dictionaries(symbol_list, environment);
 
-    for (selector, previous, replacement) in [
-        (selectors.add_method, crate::legacy_method::add_method as crate::abi::Method, vtable_add_method as crate::abi::Method),
-        (selectors.remove_method, crate::legacy_method::remove_method as crate::abi::Method, vtable_remove_method as crate::abi::Method),
-    ] {
-        boundary::require_invariant(
-            runtime.add_method(vtable_vt, selector, replacement)
-                == crate::behaviors::AddMethod::Overwrote(MethodAddress::from_method(previous)),
-            "upper mutation implementation did not replace the Id primitive",
-        );
-    }
-
+    // Id's typed mutation operations serve construction. Runtime installs its
+    // completed mutation/lifetime policy after it has a stable owner address.
     runtime.enter(|| {
         for (vtable, selector, method) in [
             (
@@ -534,6 +492,7 @@ pub(crate) fn build_harness() -> DispatchHarness {
     let does_not_understand = heap.intern_symbol(&mut symbols, symbol_vtable, b"doesNotUnderstand:")
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
 
+    let dictionaries = vtables.local_pointer().unwrap();
     let runtime = Runtime::new(
         heap,
         vtables,
@@ -547,9 +506,12 @@ pub(crate) fn build_harness() -> DispatchHarness {
             does_not_understand,
         },
     );
+    // The minimal harness uses Id's actual typed lookup, without Method objects
+    // or upper Execution services that this fixture deliberately omits.
     assert_eq!(
-        runtime.add_method(meta, lookup, vtable_lookup_method),
-        crate::behaviors::AddMethod::Added
+        runtime.add_native_method(meta, lookup, crate::abi::id_protocol::NativeEntry::new(
+            crate::id_dispatch::vtable_lookup_method, dictionaries.cast())),
+        crate::id_registries::AddMethod::Added
     );
     DispatchHarness {
         runtime,

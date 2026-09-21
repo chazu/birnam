@@ -324,7 +324,6 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
     if !namespace_exists { bootstrap.runtime.publish_canonical_exports(); }
     bootstrap.runtime.install_execution_objects();
     bootstrap.runtime.install_block_objects();
-    bootstrap.runtime.install_method_objects();
 }
 
 /// Perform the one supported process-lifetime initialization transition.

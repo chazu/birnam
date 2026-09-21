@@ -581,16 +581,6 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.lookup(vtable, selector) }
     }
 
-    /// Lookup after `enter` has already established owner-thread authority.
-    pub(crate) unsafe fn lookup_method_active(
-        &self,
-        vtable: Oop,
-        selector: Oop,
-    ) -> Option<MethodAddress> {
-        // SAFETY: the active-runtime guard serializes access to RuntimeState.
-        unsafe { (*self.state.get()).vtables.lookup(vtable, selector) }
-    }
-
     pub(crate) unsafe fn lookup_native_method_active(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         unsafe { (*self.state.get()).vtables.native_lookup(vtable, selector) }
     }
@@ -600,9 +590,9 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.encode_legacy(method, lookup) }
     }
 
-    pub(crate) fn core_legacy_method(&self, entry: NativeEntry) -> Option<MethodAddress> {
+    pub(crate) fn is_id_add_method(&self, entry: NativeEntry) -> bool {
         self.assert_owner();
-        unsafe { (*self.state.get()).vtables.core_legacy_method(entry) }
+        unsafe { (*self.state.get()).vtables.is_id_add_method(entry) }
     }
     pub(crate) fn try_decode_legacy_method(&self, entry: NativeEntry) -> Option<MethodAddress> {
         self.assert_owner();
@@ -1214,6 +1204,9 @@ impl Runtime {
     }
 
     pub(crate) fn install_execution_objects(&self) {
+        // Effectful language lookup returns owned Methods. Construct that
+        // representation before Execution can invoke such lookup behavior.
+        self.install_method_objects();
         self.assert_owner();
         let globals = self.globals();
         let machine_vtable = self.create_vtable(globals.object_vt);
@@ -5707,9 +5700,7 @@ mod tests {
                 return CUSTOM_LOOKUP_RESULT.get();
             }
             // SAFETY: the custom lookup is invoked inside Runtime::enter.
-            unsafe { runtime.lookup_method_active(receiver, selector) }
-                .map(crate::raw::MethodAddress::as_oop)
-                .unwrap_or(core::ptr::null_mut())
+            unsafe { crate::dispatch::vtable_lookup_method(receiver, args, count) }
         })
         .unwrap_or(core::ptr::null_mut())
     }
@@ -8500,7 +8491,7 @@ mod tests {
         RETURN_PROBE_SELECTOR.set(runtime.intern(b"returnAt:").unwrap());
         let selector = runtime.intern(b"missingOnce:").unwrap();
         CUSTOM_LOOKUP_SELECTOR.set(selector);
-        CUSTOM_LOOKUP_RESULT.set(core::ptr::null_mut());
+        CUSTOM_LOOKUP_RESULT.set(runtime.canonical().nil);
         runtime.add_method(runtime.globals().vtable_vt, runtime.globals().lookup, late_bound_custom_lookup);
         runtime.add_method(runtime.globals().object_vt, runtime.globals().does_not_understand, synchronous_second_argument);
         let receiver = runtime.canonical().object_prototype;
@@ -10315,8 +10306,9 @@ mod tests {
             | LateBoundMicrocodeMutation::CustomLookup => return_selector,
         };
         CUSTOM_LOOKUP_SELECTOR.set(microcode_selector);
-        CUSTOM_LOOKUP_RESULT
-            .set(crate::raw::MethodAddress::from_method(late_bound_return_b).as_oop());
+        let lookup_result = runtime.retain_method(runtime.encode_legacy_method(late_bound_return_b, false));
+        let _lookup_root = super::ScopedOopRootGuard::new(runtime, lookup_result);
+        CUSTOM_LOOKUP_RESULT.set(lookup_result);
         CALL_SITE_PROBE_SELECTOR.set(runtime.intern(b"callSite:").expect("static selector"));
         RETURN_PROBE_SELECTOR.set(microcode_selector);
 
@@ -10731,7 +10723,9 @@ mod tests {
         assert_eq!(lease_observer.holder_count(), 3);
 
         CUSTOM_LOOKUP_SELECTOR.set(selector);
-        CUSTOM_LOOKUP_RESULT.set(method.as_oop());
+        let lookup_result = runtime.retain_method(runtime.encode_legacy_method(method.to_method(), false));
+        let lookup_root = super::ScopedOopRootGuard::new(runtime, lookup_result);
+        CUSTOM_LOOKUP_RESULT.set(lookup_result);
         let _ = runtime.add_method(
             runtime.globals().vtable_vt,
             runtime.globals().lookup,
@@ -10746,7 +10740,7 @@ mod tests {
         let diagnostics = runtime.stackless_registration_diagnostics();
         assert_eq!(diagnostics.direct_binding_references, 0);
         assert_eq!(diagnostics.live_entries, 1);
-        assert_eq!(diagnostics.explicit_generation_leases, 1);
+        assert_eq!(diagnostics.explicit_generation_leases, 2);
 
         assert_eq!(
             runtime.enter(|| runtime.send_slice(receiver, selector, &[expected])),
@@ -10761,11 +10755,17 @@ mod tests {
         let diagnostics = runtime.stackless_registration_diagnostics();
         assert_eq!(diagnostics.acquired_entries, 0);
         assert_eq!(diagnostics.active_frame_pins, 0);
-        assert_eq!(diagnostics.explicit_generation_leases, 1);
+        assert_eq!(diagnostics.explicit_generation_leases, 2);
 
         runtime
             .release_stackless_generation_lease(cache_lease)
             .expect("cache releases its explicit generation lease");
+        assert_eq!(runtime.stackless_registration_diagnostics().explicit_generation_leases, 1,
+            "the owned lookup Method still owns its implementation");
+        assert_eq!(runtime.send_slice(receiver, selector, &[expected]), expected);
+        CUSTOM_LOOKUP_RESULT.set(runtime.canonical().nil);
+        drop(lookup_root);
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
         let diagnostics = runtime.stackless_registration_diagnostics();
         assert_eq!(diagnostics.live_entries, 0);
         assert_eq!(diagnostics.retired_entries, 1);
@@ -10778,16 +10778,9 @@ mod tests {
             "generation lease capabilities are one-shot"
         );
 
-        let stale = runtime.enter(|| runtime.resolve_stackless_target(receiver, selector));
-        assert!(
-            matches!(
-                stale,
-                Err(crate::execution::ExecutionError::Registration(
-                    crate::execution::RegistrationError::EntryRetired
-                ))
-            ),
-            "the same unleased cache is stale, never synchronous"
-        );
+        assert_eq!(runtime.try_acquire_stackless_generation_lease(method),
+            Err(crate::execution::RegistrationError::EntryRetired),
+            "a retired native cache entry cannot regain ownership");
         assert_eq!(CUSTOM_LOOKUP_CALLS.get(), 2);
     }
 

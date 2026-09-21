@@ -13,8 +13,8 @@
 > Compiler admission is now a later explicit extension. Language reflection now
 > returns owned Methods, including anonymous synchronous/resumable Units;
 > native binding references live in Lifetime above Id. All upper message sends
-> now use checked Method results. Internal C lookup adapters and legacy native
-> initialization remain open. The [construction manifest](../../abi/production-construction-v1.json)
+> now use checked Method results, including Object-valued C lookup callbacks.
+> Old native exports and direct C consumers still need cleanup. The [construction manifest](../../abi/production-construction-v1.json)
 > records the native entry graph; installer checks cover its structure and library inventory.
 > The loaded Bootstrap now owns the production construction sequence through
 > Runtime, control, collections, Store, parsers, compilers, System and applications; host
@@ -2355,3 +2355,40 @@ The evidence receipt is `.cargo-target/83-native-loader-evidence.json`. Remainin
 work includes the old C consumers and internal raw lookup adapters, obsolete
 module exports/factories, worker readiness, and the complete Design 82/83
 acceptance audit and documentation consolidation. Release validation is waived.
+
+
+### Remove raw C lookup results
+
+Object-valued C lookup callbacks now return owned Method or nil, just like
+language lookup. The upper bridge extracts the exact typed entry from that
+Method. The address-recovery stack, nested result scopes, context-ambiguity
+heuristic and raw function-address fallback are removed. Native methods using
+the Object ABI accept only Object operands; callers requiring typed native
+operands use Id's protocol. The bridge between the two calling conventions
+remains necessary, but does not invent or recover missing callable ownership.
+
+Runtime construction uses Id's original typed mutation entries until Runtime
+can install completed lifetime-aware operations at its stable address. The
+temporary pointer-encoded add/remove wrappers and their bootstrap replacement
+pass are removed. Execution constructs Method representation before accepting
+effectful language lookup. Minimal dispatch fixtures instead invoke Id's actual
+typed lookup and require no Method/Execution construction. Diagnostic lookup
+callbacks are migrated to the same owned-result rule as production.
+
+Validation uses `/tmp/birnam-83-owned-lookup`: 323 Runtime tests pass (15
+ignored), including nested lookup with replacement/GC, exact contexts for the
+same native function and raw-address rejection. The cache lifetime witness now
+roots a Method before removing its binding, proves that it survives release of
+a separate generation lease, then drops it and checks retirement after GC.
+
+The complete native suite passes, including a foreign C lookup that performs a
+nested send and collection before returning a Method, and returns an Error
+without invoking a raw-address answer. Source globals pass installed/source/compiled
+modes. Method values pass source, source-free compiled modules, mapped/rebuilt
+images and baked execution, with replacement, aliases, GC and image rejection.
+All six changed production Rust sources and both changed Rust test files match
+the installation byte for byte. Evidence: `.cargo-target/83-owned-lookup-evidence.json`.
+
+Internal C-address aliases for typed allocation/delegation, old native exports
+and direct C fixture consumers still require cleanup. Worker readiness and the
+complete acceptance/documentation audit remain open. Release validation is waived.

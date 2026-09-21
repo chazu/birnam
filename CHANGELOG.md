@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Require owned Method or nil from Object-valued C lookup callbacks. Remove raw
+  address recovery, nested result scopes and temporary bootstrap mutation wrappers;
+  retain exact native function/context pairs throughout lookup.
+
+
 - System native loading now uses Id's common descriptor message. Explicit
   `loadModule:arguments:` supplies only caller-selected Objects; the twelve-service
   initializer bundle and Native Loader provider/installer exports are removed.

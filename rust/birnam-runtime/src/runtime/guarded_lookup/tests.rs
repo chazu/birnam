@@ -177,7 +177,7 @@ fn guarded_lookup_preserves_dictionary_changes_and_lookup_effects() {
 unsafe extern "C" fn lookup_step(machine: Oop, _: *const Oop, count: usize) -> Oop {
     assert_eq!(count, 0);
     with_active(|runtime| {
-        let method = MethodAddress::from_method(two).as_oop();
+        let method = runtime.retain_method(runtime.encode_legacy_method(two, false));
         runtime.stackless_oop_at_put(machine, 0, method).unwrap();
         runtime.stackless_return_at(machine, 0).unwrap()
     })

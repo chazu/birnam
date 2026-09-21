@@ -85,6 +85,14 @@ static BirnamOutcome method_answer(void *context,Oop receiver,const BirnamOperan
     api->gc_collect();
     return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=state->result}};
 }
+static Oop lookup_answer;
+static Oop object_lookup(Oop self,const Oop *args,size_t count) {
+    (void)self;(void)args;assert(count==1);
+    /* A nested ordinary send and collection must preserve the owned answer. */
+    assert(send0(api->nil_obj,"isNil")==api->true_obj);
+    api->gc_collect();
+    return lookup_answer;
+}
 static void check_methods(const BirnamProtocol *id) {
     size_t saved_roots=root_count;
     Oop (*language_send)(Oop,Oop,const Oop *,size_t)=api->send;
@@ -134,6 +142,18 @@ static void check_methods(const BirnamProtocol *id) {
     /* Contexts are native-owned; remove the alias and roots before they expire. */
     binding[0].data.object=alias;
     assert(id->message(id->context,behavior,api->intern("removeMethod:"),binding,1).status==BIRNAM_LOADED);
+    Oop meta=keep(api->proto(api->vtable_vt));
+    api->method(meta,api->intern("lookup"),object_lookup);
+    Oop reassociate[]={behavior,meta};
+    api->send(api->vtable_vt,api->intern("reassociateBehaviorOf:with:"),reassociate,2);
+    lookup_answer=callable;
+    before=calls;
+    assert(api->send(receiver,plain,NULL,0)==api->nil_obj && calls==before+1);
+    lookup_answer=(Oop)body;
+    rejected=keep(api->send(receiver,plain,NULL,0));
+    assert(send0(rejected,"kind")==api->intern("nativeInvalidRequest"));
+    assert(calls==before+1); /* The address was rejected, never invoked. */
+    lookup_answer=api->nil_obj;
     root_count=saved_roots;
     api->gc_collect();
 }

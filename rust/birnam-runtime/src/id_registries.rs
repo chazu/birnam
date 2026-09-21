@@ -253,37 +253,25 @@ impl Dictionaries {
         }
     }
     pub(crate) fn encode_legacy(&self, method: crate::abi::Method, lookup: bool) -> NativeEntry {
-        if let Some(primitives) = self.primitives() {
-            for (legacy, entry) in [
-                (crate::legacy_method::lookup_method as crate::abi::Method, primitives.lookup),
-                (crate::legacy_method::add_method as crate::abi::Method, primitives.add_method),
-                (crate::legacy_method::remove_method as crate::abi::Method, primitives.remove_method),
-            ] {
-                if method as usize == legacy as usize { return entry; }
-            }
+        if let Some(primitives) = self.primitives()
+            && method as usize == crate::legacy_method::lookup_method as crate::abi::Method as usize {
+            return primitives.lookup;
         }
         crate::legacy_method::encode(method, lookup)
     }
     pub(crate) fn primitives(&self) -> Option<birnam_abi::id_primitives::PrimitivesV1> {
         match self { Self::Id(id) => Some(id.primitives), #[cfg(any(test, feature = "ffi-test-hooks"))] Self::Local(_) => None }
     }
+    pub(crate) fn is_id_add_method(&self, entry: NativeEntry) -> bool {
+        self.primitives().is_some_and(|primitives| entry.method.map(|f| f as usize)
+            == primitives.add_method.method.map(|f| f as usize))
+    }
     pub(crate) fn core_legacy_method(&self, entry: NativeEntry) -> Option<crate::raw::MethodAddress> {
         let primitives = self.primitives()?;
-        let mappings = [
-            (primitives.lookup, crate::legacy_method::lookup_method as crate::abi::Method),
-            (primitives.add_method, crate::legacy_method::add_method as crate::abi::Method),
-            (primitives.remove_method, crate::legacy_method::remove_method as crate::abi::Method),
-        ];
-        if let Some((_, legacy)) = mappings.iter().find(|(expected, _)| entry == *expected) {
-            return Some(crate::raw::MethodAddress::from_method(*legacy));
-        }
-        // Saved entries from another Id may share the implementation but carry
-        // a different dictionary. Recognize only an unambiguous convention;
-        // always invoke that entry's context, never the current Id's context.
-        let mut matches = mappings.iter().filter(|(expected, _)|
-            entry.method.map(|f| f as usize) == expected.method.map(|f| f as usize));
-        let (_, legacy) = matches.next()?;
-        matches.next().is_none().then(|| crate::raw::MethodAddress::from_method(*legacy))
+        // Identify the calling convention even for an entry from another Id;
+        // invocation always preserves that entry's own dictionary context.
+        (entry.method.map(|f| f as usize) == primitives.lookup.method.map(|f| f as usize))
+            .then(|| crate::raw::MethodAddress::from_method(crate::legacy_method::lookup_method))
     }
     pub(crate) fn try_decode(&self, entry: NativeEntry) -> Option<crate::raw::MethodAddress> {
         self.core_legacy_method(entry).or_else(|| crate::legacy_method::try_decode(entry))

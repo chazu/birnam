@@ -59,9 +59,7 @@ unsafe extern "C" fn lookup_override(receiver: Oop, args: *const Oop, count: usi
         } else if selector == objects.oop_at_put {
             EFFECTS.with_borrow_mut(|effects| effects.push("lookup-write"));
         }
-        unsafe { runtime.lookup_method_active(receiver, selector) }
-            .map(crate::raw::MethodAddress::as_oop)
-            .unwrap_or(core::ptr::null_mut())
+        unsafe { crate::dispatch::vtable_lookup_method(receiver, args, count) }
     })
 }
 
