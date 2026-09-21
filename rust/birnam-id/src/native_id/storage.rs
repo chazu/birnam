@@ -19,6 +19,7 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
         assert_eq!(
             unsafe {
                 id_dispatch::send(
+                    state.dispatch_context(),
                     state.protocol.receiver,
                     add,
                     &[

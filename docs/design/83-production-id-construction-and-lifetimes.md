@@ -1463,3 +1463,59 @@ custom lookup effects, mutation, shadow removal, GC, aliases and failure cleanup
 The deferred-identity image suite passes with actual writes `(386, 150)` normally
 and `(386, 75)` under forced recovery in all three image modes. No release
 validation was run. The full construction/package acceptance remains open.
+
+
+### Saved Id entries and explicit dispatch context
+
+Id's `lookup`, `addMethod` and `removeMethod:` primitives now carry their own
+Id dictionary reference in the existing `NativeEntry.context` field. A native
+consumer can select one through a lookup message and invoke it after that message
+returns, while retaining the Id owner. Previously these entries had null contexts
+and consulted a hidden thread-local dispatch scope, so an otherwise valid saved
+primitive could abort outside `message` or use the wrong active Id.
+
+The fixed bridge now passes its four existing Id facts explicitly through binding,
+nested lookup and DNU dispatch. There is no Id thread-local context, enter/leave
+guard, or Runtime-owned dispatch scope. The first two bootstrap bindings carry
+the already-created dictionary reference; subsequent bindings still use Id's
+message protocol. No public carrier, selector inventory or native export changes.
+
+The upper all-Oop bridge distinguishes an actual legacy function adapter from a
+native function merely recognized by legacy reflection. It invokes native entries
+with their selected context, adapting the old allocation/mutation operands and
+representable method results at that boundary. Recognizing a native equivalent
+no longer authorizes invoking a different function against the active Runtime.
+Canonical lookup guards compare the complete primitive retained from completed
+Id. Restoring a legacy primitive address recovers that original native entry,
+including its context. The guard also rejects lookup replaced before Runtime
+construction; capturing a replacement does not make it canonical. Installing a
+legacy lookup wrapper in the primitive's place would
+prevent Id queries from returning native entries without legacy equivalents.
+
+This removes a hidden dispatch prerequisite and fixes invocation context. It does
+not finish language Method ownership: the legacy representable method-result
+convention still exists, arbitrary native entries still require a checked wrapper,
+and the upper adapter still recognizes primitive function identities. Owned
+callables, native Execution construction and the package split remain open.
+
+
+Validation: 316 Id unit tests pass (15 ignored), including direct saved primitive
+calls across distinct Id registries, invocation against the selected native
+context while another Runtime is active, allocation without an ambient Runtime,
+restoration of the complete primitive, and effectful lookup installed before
+Runtime construction. The fresh debug installation passes the independent native
+loading harness and the dispatch-cache source/compiled/mapped/rebuilt/baked suite,
+including the host checks. All 68 installed Id exports match the existing manifest
+and installer wrappers. Runtime v11 and the native carrier ABI are unchanged.
+
+The independent native Integer admission test also passes all eight replacement
+paths with matching optimization-disabled/enabled effects. This covers allocator,
+lookup, Namespace, interning, Symbol validation, owner/parent and arithmetic
+replacements after the lookup guard changes.
+
+The deferred-identity suite passes source, compiled, mapped/rebuilt image and baked
+execution, including host observations and forced recovery. Actual writes remain
+`(386, 150)` normally and `(386, 75)` under forced recovery in all image modes.
+No release validation was run. The remaining Rust `InitialObjects` handoff,
+legacy Method adaptation, native Execution construction and independent Id
+packaging are still architectural work, not acceptance established by these tests.

@@ -72,39 +72,31 @@ impl State {
         let context = core::ptr::from_mut(state.as_mut()).cast();
         state.protocol.context = context;
         unsafe {
-            id_dispatch::enter(
-                dictionaries,
-                metavtable,
-                lookup,
-                does_not_understand,
-                || {
-                    for (selector, method) in [
-                        (intern, intern_bytes as native::Method),
-                        (load, load_module as native::Method),
-                    ] {
-                        assert_eq!(
-                            id_dispatch::send(
-                                metavtable,
-                                add,
-                                &[
-                                    Operand::object(selector),
-                                    Operand::entry(NativeEntry::new(method, context))
-                                ]
-                            )
-                            .status,
-                            native::LOADED
-                        );
-                    }
-                    objects::install(&state, context, add);
-                    storage::install(&state, context, add);
-                    registries::install(&state, context, add);
-                },
-            )
-        };
+            for (selector, method) in [
+                (intern, intern_bytes as native::Method),
+                (load, load_module as native::Method),
+            ] {
+                assert_eq!(
+                    id_dispatch::send(
+                        state.dispatch_context(), metavtable, add,
+                        &[Operand::object(selector), Operand::entry(NativeEntry::new(method, context))],
+                    ).status,
+                    native::LOADED,
+                );
+            }
+            objects::install(&state, context, add);
+            storage::install(&state, context, add);
+            registries::install(&state, context, add);
+        }
         state
     }
-    pub(crate) unsafe fn enter<R>(&self, operation: impl FnOnce() -> R) -> R {
-        unsafe { id_dispatch::enter(self.dictionaries, self.protocol.receiver, self.lookup, self.does_not_understand, operation) }
+    pub(crate) fn dispatch_context(&self) -> id_dispatch::Context {
+        id_dispatch::Context {
+            dictionaries: self.dictionaries,
+            metavtable: self.protocol.receiver,
+            lookup: self.lookup,
+            does_not_understand: self.does_not_understand,
+        }
     }
     #[cfg(test)]
     pub(crate) unsafe fn exhaust_epoch(context: *mut c_void) {
@@ -139,19 +131,8 @@ unsafe extern "C" fn message(
     let Some(args) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
         return Outcome::failed(native::INVALID_REQUEST, 0);
     };
-    // Copy Id facts out before invoking arbitrary code; no registry reference
-    // is held across a nested message or module initializer.
-    let (dictionaries, meta, lookup, dnu) = (
-        state.dictionaries,
-        state.protocol.receiver,
-        state.lookup,
-        state.does_not_understand,
-    );
-    unsafe {
-        id_dispatch::enter(dictionaries, meta, lookup, dnu, || {
-            id_dispatch::send(receiver, selector, args)
-        })
-    }
+    // No registry reference spans a callback or nested message.
+    unsafe { id_dispatch::send(state.dispatch_context(), receiver, selector, args) }
 }
 unsafe extern "C" fn intern_bytes(
     context: *mut c_void,

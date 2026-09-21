@@ -11,6 +11,11 @@ use core::ffi::{c_char, c_void};
 use std::rc::Rc;
 pub(crate) struct Client {
     id: Protocol,
+    // Captured before Runtime installs its upper mutations. Lookup guards also
+    // verify primitive identity, since an earlier module may replace lookup.
+    initial_lookup: NativeEntry,
+    primitive_add: NativeEntry,
+    primitive_remove: NativeEntry,
     retire: NativeEntry,
     symbol_named: NativeEntry,
     symbol_count: NativeEntry,
@@ -61,6 +66,9 @@ impl Client {
         };
         Rc::new(Self {
             id,
+            initial_lookup: select(b"lookup"),
+            primitive_add: select(b"addMethod"),
+            primitive_remove: select(b"removeMethod:"),
             retire: select(b"retireIndexesFor:"),
             symbol_named: select(b"symbolNamed:"),
             symbol_count: select(b"symbolCount"),
@@ -227,6 +235,26 @@ impl Dictionaries {
             Self::Local(_) => None,
             Self::Id(id) => Some(id.clone()),
         }
+    }
+    pub(crate) fn encode_legacy(&self, method: crate::abi::Method, lookup: bool) -> NativeEntry {
+        if let Self::Id(id) = self {
+            for (legacy, entry) in [
+                (crate::legacy_method::lookup_method as crate::abi::Method, id.initial_lookup),
+                (crate::legacy_method::add_method as crate::abi::Method, id.primitive_add),
+                (crate::legacy_method::remove_method as crate::abi::Method, id.primitive_remove),
+            ] {
+                if method as usize == legacy as usize { return entry; }
+            }
+        }
+        crate::legacy_method::encode(method, lookup)
+    }
+    pub(crate) fn is_default_lookup(&self, entry: Option<NativeEntry>) -> bool {
+        let expected = self.encode_legacy(crate::legacy_method::lookup_method, true);
+        entry == Some(expected)
+            && match self {
+                Self::Local(_) => true,
+                Self::Id(_) => crate::legacy_method::is_id_lookup(expected),
+            }
     }
     pub(crate) fn local_pointer(&self) -> Option<*mut Vtables> {
         match self {

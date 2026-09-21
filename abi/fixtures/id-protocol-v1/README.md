@@ -71,3 +71,10 @@ snapshot visitation with nested mutation and failure propagation, before and
 after Runtime. Raw registry mutations reject all-Object arguments before changing
 state; their Word addresses distinguish them from ordinary language sends. The
 carrier ABI remains version 1.
+
+
+Saved primitive entries retain their own Id dictionary context. The host fixture
+selects lookup/add/remove, calls them after `message` returns, installs and removes
+an alias of the independent C method, and reuses the original lookup after Runtime
+adoption. This exercises direct native invocation without an ambient Id scope;
+the native carrier remains version 1.

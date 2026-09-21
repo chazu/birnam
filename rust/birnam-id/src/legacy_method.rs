@@ -57,28 +57,12 @@ impl Drop for ResultScope {
 
 pub(crate) fn encode(method: Method, lookup: bool) -> NativeEntry {
     let address = method as usize;
-    for (old, new) in [
-        (
-            lookup_method as Method,
-            id_dispatch::vtable_lookup_method as native::Method,
-        ),
-        (
-            add_method as Method,
-            id_dispatch::vtable_add_method as native::Method,
-        ),
-        (
-            remove_method as Method,
-            id_dispatch::vtable_remove_method as native::Method,
-        ),
-    ] {
-        if address == old as usize {
-            return id_dispatch::entry(new);
-        }
-    }
-    let invoke = if lookup {
+    let invoke = if lookup || address == lookup_method as Method as usize {
         invoke_lookup as native::Method
     } else if address == crate::dispatch::vtable_add_method as *const () as usize
         || address == crate::dispatch::vtable_remove_method as *const () as usize
+        || address == add_method as Method as usize
+        || address == remove_method as Method as usize
     {
         invoke_entry as native::Method
     } else {
@@ -86,6 +70,79 @@ pub(crate) fn encode(method: Method, lookup: bool) -> NativeEntry {
     };
     NativeEntry::new(invoke, MethodAddress::from_method(method).as_oop())
 }
+/// Only these adapters contain an actual all-Oop function in their context.
+/// `try_decode` also recognizes native equivalents for legacy reflection and
+/// registration, and must never be used to choose which function to invoke.
+pub(crate) fn direct_method(entry: NativeEntry) -> Option<MethodAddress> {
+    let address = entry.method.map(|method| method as usize);
+    [invoke_object as native::Method, invoke_lookup, invoke_entry]
+        .iter()
+        .any(|method| address == Some(*method as usize))
+        .then(|| unsafe { MethodAddress::from_oop(entry.context) })
+        .flatten()
+}
+
+/// Temporary argument adaptation at the old all-Oop boundary. The selected
+/// native function and context are retained; only the operand carrier changes.
+pub(crate) fn native_arguments(
+    entry: NativeEntry,
+    arguments: &[Oop],
+    runtime: &crate::runtime::Runtime,
+) -> Vec<Operand> {
+    let address = entry.method.map(|method| method as usize);
+    if address == Some(crate::runtime::id_protocol::allocate as native::Method as usize)
+        && let [size] = arguments
+    {
+        return vec![Operand::word(size.addr())];
+    }
+    if (address == Some(crate::runtime::id_protocol::add_method as native::Method as usize)
+        || address == Some(id_dispatch::vtable_add_method as native::Method as usize))
+        && let [selector, method] = arguments
+        && let Some(method) = unsafe { MethodAddress::from_oop(*method) }
+    {
+        return vec![
+            Operand::object(*selector),
+            Operand::entry(
+                runtime.encode_legacy_method(
+                    method.to_method(),
+                    *selector == runtime.globals().lookup,
+                ),
+            ),
+        ];
+    }
+    arguments.iter().copied().map(Operand::object).collect()
+}
+
+/// Preserve the old lookup/mutation result convention only for representable
+/// entries. Arbitrary native entries go through the checked language boundary.
+pub(crate) fn native_result(entry: NativeEntry, outcome: Outcome) -> Option<Oop> {
+    let address = entry.method.map(|method| method as usize);
+    let old_entry_result = [
+        id_dispatch::vtable_lookup_method as native::Method,
+        id_dispatch::vtable_add_method,
+        id_dispatch::vtable_remove_method,
+        crate::runtime::id_protocol::add_method,
+        crate::runtime::id_protocol::remove_method,
+    ]
+    .iter()
+    .any(|method| address == Some(*method as usize));
+    if old_entry_result
+        && outcome.status == native::LOADED
+        && (outcome.value.kind() == native::UNIT
+            || outcome.value.as_entry().and_then(try_decode).is_some())
+    {
+        Some(old_result(outcome))
+    } else {
+        None
+    }
+}
+
+pub(crate) fn is_id_lookup(entry: NativeEntry) -> bool {
+    entry.method.map(|method| method as usize)
+        == Some(id_dispatch::vtable_lookup_method as native::Method as usize)
+        && !entry.context.is_null()
+}
+
 pub(crate) fn decode(entry: NativeEntry) -> MethodAddress {
     try_decode(entry).unwrap_or_else(|| {
         boundary::fatal_invariant("typed native entry has no legacy Method adapter")
@@ -93,10 +150,8 @@ pub(crate) fn decode(entry: NativeEntry) -> MethodAddress {
 }
 pub(crate) fn try_decode(entry: NativeEntry) -> Option<MethodAddress> {
     let address = entry.method.map(|method| method as usize);
-    for method in [invoke_object as native::Method, invoke_lookup, invoke_entry] {
-        if address == Some(method as usize) {
-            return unsafe { MethodAddress::from_oop(entry.context) };
-        }
+    if let Some(method) = direct_method(entry) {
+        return Some(method);
     }
     for (new, old) in [
         (
@@ -134,7 +189,7 @@ pub(crate) fn try_decode(entry: NativeEntry) -> Option<MethodAddress> {
             remove_method as Method,
         ),
     ] {
-        if address == Some(new as usize) && entry.context.is_null() {
+        if address == Some(new as usize) && !entry.context.is_null() {
             return Some(MethodAddress::from_method(old));
         }
     }
@@ -192,9 +247,11 @@ unsafe fn invoke_method_result(
                 return Outcome::loaded(Operand::unit());
             };
             match scope.selected(method) {
-                Ok(entry) => Outcome::loaded(Operand::entry(
-                    entry.unwrap_or_else(|| encode(method.to_method(), lookup)),
-                )),
+                Ok(entry) => Outcome::loaded(Operand::entry(entry.unwrap_or_else(|| {
+                    crate::runtime::with_active(|runtime| {
+                        runtime.encode_legacy_method(method.to_method(), lookup)
+                    })
+                }))),
                 Err(error) => error,
             }
         }
@@ -261,11 +318,12 @@ pub(crate) unsafe extern "C" fn add_method(receiver: Oop, args: *const Oop, coun
     }
     let method = unsafe { MethodAddress::from_oop(args.add(1).read()) }.expect("null method");
     let selector = unsafe { args.read() };
-    let entry = encode(method.to_method(), false);
     crate::runtime::with_active(|runtime| {
+        let entry =
+            runtime.encode_legacy_method(method.to_method(), selector == runtime.globals().lookup);
         runtime.primitive_add_method(receiver, selector, entry);
-    });
-    old_result(Outcome::loaded(Operand::entry(entry)))
+        old_result(Outcome::loaded(Operand::entry(entry)))
+    })
 }
 pub(crate) unsafe extern "C" fn remove_method(
     receiver: Oop,

@@ -1,6 +1,6 @@
 //! The initial Id object graph, constructed before any upper runtime service.
 use crate::abi::{Oop, id_protocol::{Operand, LOADED}};
-use crate::id_dispatch::entry;
+use crate::abi::id_protocol::NativeEntry;
 use crate::object_memory::ObjectMemory;
 use crate::symbol::Symbols;
 use crate::vtable::Vtables;
@@ -33,15 +33,19 @@ impl InitialObjects {
         let symbol_prototype = symbols.intern(&mut memory, symbol_vt, b"Symbol").unwrap();
         let add_method = symbols.intern(&mut memory, symbol_vt, b"addMethod").unwrap();
         let remove_method = symbols.intern(&mut memory, symbol_vt, b"removeMethod:").unwrap();
+        let context = crate::id_dispatch::Context {
+            dictionaries: dictionaries.pointer(), metavtable: vtable_vt,
+            lookup, does_not_understand,
+        };
+        let entry = |method| NativeEntry::new(method, context.dictionaries.cast());
         dictionaries.add_method(vtable_vt, lookup, entry(crate::id_dispatch::vtable_lookup_method));
         dictionaries.add_method(vtable_vt, add_method, entry(crate::id_dispatch::vtable_add_method));
-        // The first two bindings terminate the metacircular construction. Use
-        // Id's own message path for the next binding, before any Runtime exists.
-        unsafe { crate::id_dispatch::enter(&mut *dictionaries, vtable_vt, lookup, does_not_understand, || {
-            assert_eq!(crate::id_dispatch::send(vtable_vt, add_method, &[
+        // Only the first two bindings are ad hoc. The next uses Id's message path.
+        unsafe {
+            assert_eq!(crate::id_dispatch::send(context, vtable_vt, add_method, &[
                 Operand::object(remove_method), Operand::entry(entry(crate::id_dispatch::vtable_remove_method)),
             ]).status, LOADED);
-        }) };
+        }
         let protocol = unsafe { crate::native_id::State::new(memory, dictionaries, symbols, vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
         Self { protocol, vtable_vt, object_vt, symbol_vt,
             lookup, does_not_understand, object_prototype, symbol_prototype }

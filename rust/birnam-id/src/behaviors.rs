@@ -43,7 +43,7 @@ impl Behaviors {
     pub(crate) fn native_lookup(&self, vtable: Oop, selector: Oop) -> Option<crate::abi::id_protocol::NativeEntry> { self.dictionaries.lookup(vtable, selector) }
     pub(crate) fn set_legacy_lookup(&mut self, selector: Oop) { self.legacy_lookup = selector; }
     pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
-        AddMethod::from_native(self.dictionaries.add_method(vtable, selector, legacy_method::encode(method, selector == self.legacy_lookup)))
+        AddMethod::from_native(self.dictionaries.add_method(vtable, selector, self.dictionaries.encode_legacy(method, selector == self.legacy_lookup)))
     }
     pub(crate) fn add_native_method(&mut self, vtable: Oop, selector: Oop, entry: crate::abi::id_protocol::NativeEntry) -> NativeAddMethod {
         self.dictionaries.add_method(vtable, selector, entry)

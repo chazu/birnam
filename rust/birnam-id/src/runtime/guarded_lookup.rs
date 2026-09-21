@@ -31,10 +31,8 @@ impl Runtime {
         } else {
             let verified = Behaviors::checked_vtable_of(&state.heap, globals.vtable_vt)
                 == globals.vtable_vt
-                && state
-                    .vtables
-                    .native_direct_lookup(globals.vtable_vt, globals.lookup)
-                    == Some(crate::legacy_method::encode(canonical.to_method(), true));
+                && state.vtables.is_default_lookup(
+                    state.vtables.native_direct_lookup(globals.vtable_vt, globals.lookup));
             self.lookup_guard_cache.set((epoch, verified));
             verified
         };

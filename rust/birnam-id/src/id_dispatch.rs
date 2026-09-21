@@ -3,53 +3,20 @@ use crate::abi::{
     Oop,
     id_protocol::{self as native, NativeEntry, Operand, Outcome},
 };
-use crate::boundary;
 use crate::object_memory::ObjectMemory;
 use crate::vtable::Vtables;
-use core::cell::Cell;
 use core::ffi::c_void;
 
+/// Copied Id facts for one dispatch. Each nested send carries its own context;
+/// saved methods carry their registry separately in NativeEntry::context.
 #[derive(Clone, Copy)]
-struct Context {
-    dictionaries: *mut Vtables,
-    metavtable: Oop,
-    lookup: Oop,
-    does_not_understand: Oop,
+pub(crate) struct Context {
+    pub(crate) dictionaries: *mut Vtables,
+    pub(crate) metavtable: Oop,
+    pub(crate) lookup: Oop,
+    pub(crate) does_not_understand: Oop,
 }
-thread_local! {
-    static ACTIVE: Cell<Option<Context>> = const { Cell::new(None) };
-}
-struct Scope(Option<Context>);
-impl Drop for Scope {
-    fn drop(&mut self) {
-        ACTIVE.set(self.0);
-    }
-}
-
-/// # Safety
-/// The caller serializes this live registry on its owning thread. No reference
-/// into it may span native invocation. The registry remains live in this scope.
-pub(crate) unsafe fn enter<R>(
-    dictionaries: *mut Vtables,
-    metavtable: Oop,
-    lookup: Oop,
-    does_not_understand: Oop,
-    operation: impl FnOnce() -> R,
-) -> R {
-    let previous = ACTIVE.replace(Some(Context {
-        dictionaries,
-        metavtable,
-        lookup,
-        does_not_understand,
-    }));
-    let _scope = Scope(previous);
-    operation()
-}
-fn context() -> Context {
-    ACTIVE
-        .get()
-        .unwrap_or_else(|| boundary::fatal_invariant("Id dispatch used outside its entry scope"))
-}
+#[cfg(test)]
 pub(crate) const fn entry(method: native::Method) -> NativeEntry {
     NativeEntry::new(method, core::ptr::null_mut())
 }
@@ -61,10 +28,13 @@ fn answer(method: Option<NativeEntry>) -> Outcome {
 }
 
 /// # Safety
-/// An Id entry scope and live receiver/selector are required. Native methods
+/// A live owner-thread context and receiver/selector are required. Native methods
 /// and their contexts must remain live through the caller's invocation extent.
-pub(crate) unsafe fn bind(receiver: Oop, selector: Oop) -> Result<Option<NativeEntry>, Outcome> {
-    let context = context();
+pub(crate) unsafe fn bind(
+    context: Context,
+    receiver: Oop,
+    selector: Oop,
+) -> Result<Option<NativeEntry>, Outcome> {
     let behavior = unsafe { ObjectMemory::vtable_of_valid_object(receiver) };
     if behavior.is_null() {
         return Ok(None);
@@ -72,8 +42,15 @@ pub(crate) unsafe fn bind(receiver: Oop, selector: Oop) -> Result<Option<NativeE
     if behavior == context.metavtable && selector == context.lookup {
         return Ok(unsafe { (&*context.dictionaries).lookup(context.metavtable, context.lookup) });
     }
-    let result =
-        unsafe { send(behavior, context.lookup, &[Operand::object(selector)]) }.into_result()?;
+    let result = unsafe {
+        send(
+            context,
+            behavior,
+            context.lookup,
+            &[Operand::object(selector)],
+        )
+    }
+    .into_result()?;
     if result.kind() == native::UNIT {
         return Ok(None);
     }
@@ -85,10 +62,15 @@ pub(crate) unsafe fn bind(receiver: Oop, selector: Oop) -> Result<Option<NativeE
 }
 
 /// # Safety
-/// The entry scope and native Method contracts apply. Upper callers retain
+/// The owner-thread context and native Method contracts apply. Upper callers retain
 /// reclaimable code for the complete call; Id owns no execution turns.
-pub(crate) unsafe fn send(receiver: Oop, selector: Oop, arguments: &[Operand]) -> Outcome {
-    let method = match unsafe { bind(receiver, selector) } {
+pub(crate) unsafe fn send(
+    context: Context,
+    receiver: Oop,
+    selector: Oop,
+    arguments: &[Operand],
+) -> Outcome {
+    let method = match unsafe { bind(context, receiver, selector) } {
         Ok(method) => method,
         Err(failure) => return failure,
     };
@@ -102,14 +84,13 @@ pub(crate) unsafe fn send(receiver: Oop, selector: Oop, arguments: &[Operand]) -
             )
         };
     }
-    let context = context();
     if selector == context.does_not_understand
         || (selector == context.lookup
             && unsafe { ObjectMemory::vtable_of_valid_object(receiver) } == context.metavtable)
     {
         return Outcome::failed(native::UNBOUND, 0);
     }
-    let handler = match unsafe { bind(receiver, context.does_not_understand) } {
+    let handler = match unsafe { bind(context, receiver, context.does_not_understand) } {
         Ok(Some(handler)) => handler,
         Ok(None) => return Outcome::failed(native::UNBOUND, 0),
         Err(failure) => return failure,
@@ -122,26 +103,26 @@ pub(crate) unsafe fn send(receiver: Oop, selector: Oop, arguments: &[Operand]) -
 }
 
 pub(crate) unsafe extern "C" fn vtable_lookup_method(
-    _: *mut c_void,
+    context: *mut c_void,
     receiver: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    if count != 1 || args.is_null() {
+    if context.is_null() || count != 1 || args.is_null() {
         return invalid();
     }
     let Some(selector) = (unsafe { args.read() }).as_object() else {
         return invalid();
     };
-    answer(unsafe { (&*context().dictionaries).lookup(receiver, selector) })
+    answer(unsafe { (&*context.cast::<Vtables>()).lookup(receiver, selector) })
 }
 pub(crate) unsafe extern "C" fn vtable_add_method(
-    _: *mut c_void,
+    context: *mut c_void,
     receiver: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    if count != 2 || args.is_null() {
+    if context.is_null() || count != 2 || args.is_null() {
         return invalid();
     }
     let Some(selector) = (unsafe { args.read() }).as_object() else {
@@ -153,22 +134,22 @@ pub(crate) unsafe extern "C" fn vtable_add_method(
     else {
         return invalid();
     };
-    unsafe { (&mut *context().dictionaries).add_method(receiver, selector, method) };
+    unsafe { (&mut *context.cast::<Vtables>()).add_method(receiver, selector, method) };
     Outcome::loaded(Operand::entry(method))
 }
 pub(crate) unsafe extern "C" fn vtable_remove_method(
-    _: *mut c_void,
+    context: *mut c_void,
     receiver: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    if count != 1 || args.is_null() {
+    if context.is_null() || count != 1 || args.is_null() {
         return invalid();
     }
     let Some(selector) = (unsafe { args.read() }).as_object() else {
         return invalid();
     };
-    answer(unsafe { (&mut *context().dictionaries).remove_method(receiver, selector) })
+    answer(unsafe { (&mut *context.cast::<Vtables>()).remove_method(receiver, selector) })
 }
 
 #[cfg(test)]
@@ -177,7 +158,15 @@ mod tests {
     use crate::initial_objects::InitialObjects;
     fn intern(id: &InitialObjects, bytes: &[u8]) -> Oop {
         let protocol = id.protocol.protocol;
-        let answer = unsafe { protocol.message.unwrap()(protocol.context, protocol.receiver, protocol.intern, &Operand::bytes(bytes), 1) };
+        let answer = unsafe {
+            protocol.message.unwrap()(
+                protocol.context,
+                protocol.receiver,
+                protocol.intern,
+                &Operand::bytes(bytes),
+                1,
+            )
+        };
         assert_eq!(answer.status, native::LOADED);
         answer.value.as_object().unwrap()
     }
@@ -200,6 +189,77 @@ mod tests {
         Outcome::loaded(unsafe { args.add(1).read() })
     }
     #[test]
+    fn saved_primitives_work_without_an_active_message_and_keep_their_registry() {
+        let first = InitialObjects::new();
+        let second = InitialObjects::new();
+        let select = |id: &InitialObjects, name: &[u8]| unsafe {
+            let selector = intern(id, name);
+            super::send(
+                id.protocol.dispatch_context(),
+                id.vtable_vt,
+                id.lookup,
+                &[Operand::object(selector)],
+            )
+            .value
+            .as_entry()
+            .unwrap()
+        };
+        let first_lookup = select(&first, b"lookup");
+        let second_lookup = select(&second, b"lookup");
+        assert_eq!(
+            first_lookup.method.map(|f| f as usize),
+            second_lookup.method.map(|f| f as usize)
+        );
+        assert_ne!(first_lookup.context, second_lookup.context);
+        let add = select(&first, b"addMethod");
+        let remove = select(&first, b"removeMethod:");
+        let selector = intern(&first, b"savedPrimitiveProbe");
+        let selected = entry(identity);
+        let invoke = |method: NativeEntry, receiver, args: &[Operand]| unsafe {
+            method.method.unwrap()(method.context, receiver, args.as_ptr(), args.len())
+        };
+        assert_eq!(
+            invoke(
+                add,
+                first.object_vt,
+                &[Operand::object(selector), Operand::entry(selected)]
+            )
+            .value
+            .as_entry(),
+            Some(selected)
+        );
+        // No enclosing message or ambient context exists for these calls.
+        assert_eq!(
+            invoke(first_lookup, first.object_vt, &[Operand::object(selector)])
+                .value
+                .as_entry(),
+            Some(selected)
+        );
+        assert_eq!(
+            invoke(
+                second_lookup,
+                second.object_vt,
+                &[Operand::object(selector)]
+            )
+            .value
+            .kind(),
+            native::UNIT
+        );
+        assert_eq!(
+            invoke(remove, first.object_vt, &[Operand::object(selector)])
+                .value
+                .as_entry(),
+            Some(selected)
+        );
+        assert_eq!(
+            invoke(first_lookup, first.object_vt, &[Operand::object(selector)])
+                .value
+                .kind(),
+            native::UNIT
+        );
+    }
+
+    #[test]
     fn actual_initial_graph_installs_invokes_and_forwards_without_runtime() {
         let id = InitialObjects::new();
         let add = intern(&id, b"addMethod");
@@ -207,52 +267,52 @@ mod tests {
         let selector = intern(&id, b"identity");
         let missing = intern(&id, b"missing:");
         unsafe {
-            id.protocol.enter(|| {
-                    assert_eq!(
-                        send(
-                            id.object_vt,
-                            add,
-                            &[Operand::object(selector), Operand::entry(entry(identity))]
-                        )
-                        .status,
-                        native::LOADED
-                    );
-                    assert_eq!(
-                        send(id.object_prototype, selector, &[]).value.as_object(),
-                        Some(id.object_prototype)
-                    );
-                    assert_eq!(
-                        send(id.object_prototype, missing, &[]).status,
-                        native::UNBOUND
-                    );
-                    assert_eq!(
-                        send(
-                            id.object_vt,
-                            add,
-                            &[
-                                Operand::object(id.does_not_understand),
-                                Operand::entry(entry(dnu))
-                            ]
-                        )
-                        .status,
-                        native::LOADED
-                    );
-                    assert_eq!(
-                        send(id.object_prototype, missing, &[Operand::word(73)])
-                            .value
-                            .as_word(),
-                        Some(73)
-                    );
-                    assert_eq!(
-                        send(id.vtable_vt, remove, &[Operand::object(id.lookup)]).status,
-                        native::LOADED
-                    );
-                    assert_eq!(
-                        send(id.object_prototype, selector, &[]).status,
-                        native::UNBOUND
-                    );
-                },
-            )
+            let send = |receiver, selector, args: &[Operand]| {
+                super::send(id.protocol.dispatch_context(), receiver, selector, args)
+            };
+            assert_eq!(
+                send(
+                    id.object_vt,
+                    add,
+                    &[Operand::object(selector), Operand::entry(entry(identity))]
+                )
+                .status,
+                native::LOADED
+            );
+            assert_eq!(
+                send(id.object_prototype, selector, &[]).value.as_object(),
+                Some(id.object_prototype)
+            );
+            assert_eq!(
+                send(id.object_prototype, missing, &[]).status,
+                native::UNBOUND
+            );
+            assert_eq!(
+                send(
+                    id.object_vt,
+                    add,
+                    &[
+                        Operand::object(id.does_not_understand),
+                        Operand::entry(entry(dnu))
+                    ]
+                )
+                .status,
+                native::LOADED
+            );
+            assert_eq!(
+                send(id.object_prototype, missing, &[Operand::word(73)])
+                    .value
+                    .as_word(),
+                Some(73)
+            );
+            assert_eq!(
+                send(id.vtable_vt, remove, &[Operand::object(id.lookup)]).status,
+                native::LOADED
+            );
+            assert_eq!(
+                send(id.object_prototype, selector, &[]).status,
+                native::UNBOUND
+            );
         };
     }
     #[test]
@@ -305,29 +365,29 @@ mod tests {
             Operand::protocol(&protocol),
         ];
         unsafe {
-            id.protocol.enter(|| {
-                    assert_eq!(
-                        send(
-                            id.object_vt,
-                            add,
-                            &[Operand::object(echo), Operand::entry(foreign)]
-                        )
-                        .status,
-                        native::LOADED
-                    );
-                    for operand in operands {
-                        let answer = send(id.object_prototype, echo, &[operand]);
-                        assert_eq!(answer.status, native::LOADED);
-                        assert_eq!(answer.value, operand);
-                    }
-                    let error = send(
-                        id.object_prototype,
-                        echo,
-                        &[Operand::unit(), Operand::unit()],
-                    );
-                    assert_eq!((error.status, error.detail), (native::INVALID_REQUEST, 2));
-                },
-            )
+            let send = |receiver, selector, args: &[Operand]| {
+                super::send(id.protocol.dispatch_context(), receiver, selector, args)
+            };
+            assert_eq!(
+                send(
+                    id.object_vt,
+                    add,
+                    &[Operand::object(echo), Operand::entry(foreign)]
+                )
+                .status,
+                native::LOADED
+            );
+            for operand in operands {
+                let answer = send(id.object_prototype, echo, &[operand]);
+                assert_eq!(answer.status, native::LOADED);
+                assert_eq!(answer.value, operand);
+            }
+            let error = send(
+                id.object_prototype,
+                echo,
+                &[Operand::unit(), Operand::unit()],
+            );
+            assert_eq!((error.status, error.detail), (native::INVALID_REQUEST, 2));
         };
         std::fs::remove_dir_all(directory).unwrap();
     }

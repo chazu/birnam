@@ -39,6 +39,7 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
         assert_eq!(
             unsafe {
                 id_dispatch::send(
+                    state.dispatch_context(),
                     state.protocol.receiver,
                     add,
                     &[
@@ -318,10 +319,10 @@ unsafe extern "C" fn bind(
     objects!(selector, receiver);
     let state = unsafe { &*context.cast::<State>() };
     unsafe {
-        state.enter(|| match id_dispatch::bind(receiver, selector) {
+        match id_dispatch::bind(state.dispatch_context(), receiver, selector) {
             Ok(answer) => entry(answer),
             Err(failure) => failure,
-        })
+        }
     }
 }
 unsafe extern "C" fn bindings(

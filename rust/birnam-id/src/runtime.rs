@@ -562,15 +562,30 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.native_lookup(vtable, selector) }
     }
 
+    pub(crate) fn encode_legacy_method(&self, method: Method, lookup: bool) -> NativeEntry {
+        self.assert_owner();
+        unsafe { (*self.state.get()).vtables.encode_legacy(method, lookup) }
+    }
+
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
-        let entry = crate::legacy_method::encode(method, selector == self.globals().lookup);
+        let entry = self.encode_legacy_method(method, selector == self.globals().lookup);
         AddMethod::from_native(self.add_native_method(vtable, selector, entry))
     }
 
     pub(crate) unsafe fn bind_through_id(&self, receiver: Oop, selector: Oop) -> Result<Option<NativeEntry>, crate::abi::id_protocol::Outcome> {
         let client = unsafe { (*self.state.get()).vtables.client() };
         if let Some(client) = client { client.bind(receiver, selector) }
-        else { unsafe { crate::id_dispatch::bind(receiver, selector) } }
+        else {
+            let context = unsafe {
+                let state = &*self.state.get();
+                crate::id_dispatch::Context {
+                    dictionaries: state.vtables.local_pointer().expect("local dictionaries"),
+                    metavtable: state.globals.vtable_vt, lookup: state.globals.lookup,
+                    does_not_understand: state.globals.does_not_understand,
+                }
+            };
+            unsafe { crate::id_dispatch::bind(context, receiver, selector) }
+        }
     }
     // Legacy primitive adapters bypass upper notifications just as their Id
     // predecessors did, while leaving all registry access behind native entries.
@@ -4331,15 +4346,7 @@ impl Runtime {
                 active,
                 previous: current,
             };
-            let (local, globals) = unsafe {
-                let state = &*self.state.get();
-                (state.vtables.local_pointer(), state.globals)
-            };
-            let result = if let Some(dictionaries) = local {
-                // Only isolated local harnesses need a directly established scope.
-                unsafe { crate::id_dispatch::enter(dictionaries,
-                    globals.vtable_vt, globals.lookup, globals.does_not_understand, operation) }
-            } else { operation() };
+            let result = operation();
             drop(guard);
             result
         })
@@ -4514,8 +4521,12 @@ impl Runtime {
             if state.id_protocol.is_some() { NativeEntry::new(native, context) }
             else { crate::legacy_method::encode(legacy, false) }
         };
+        if !state.vtables.is_default_lookup(state.vtables.native_direct_lookup(meta, state.globals.lookup))
+            || state.execution.has_resumable_thunk(MethodAddress::from_method(crate::dispatch::vtable_lookup_method))
+        {
+            return None;
+        }
         for (selector, entry) in [
-            (state.globals.lookup, crate::legacy_method::encode(crate::dispatch::vtable_lookup_method, true)),
             (state.symbols.existing(b"ownerOf:")?, relation(crate::dispatch::vtable_owner_of, id_protocol::owner_of)),
             (state.symbols.existing(b"parentOf:")?, relation(crate::dispatch::vtable_parent_of, id_protocol::parent_of)),
         ] {

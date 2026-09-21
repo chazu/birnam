@@ -60,6 +60,23 @@ fn main() {
         send(&id, early, &[Operand::word(83)]).value.as_word(),
         Some(83)
     );
+    // Save the actual primitive entries, then call them after message() has
+    // returned. They must not depend on a hidden active Id scope.
+    let lookup_name = intern(&id, b"lookup");
+    let selected = |name| send(&id, lookup_name, &[Operand::object(intern(&id, name))]).value.as_entry().unwrap();
+    let saved_lookup = selected(b"lookup");
+    let saved_add = selected(b"addMethod");
+    let saved_remove = selected(b"removeMethod:");
+    let invoke = |entry: native::NativeEntry, arguments: &[Operand]| unsafe {
+        entry.method.unwrap()(entry.context, id.receiver, arguments.as_ptr(), arguments.len())
+    };
+    let echo = invoke(saved_lookup, &[Operand::object(early)]).value.as_entry().unwrap();
+    let alias = intern(&id, b"savedEntryAlias:");
+    assert_eq!(invoke(saved_add, &[Operand::object(alias), Operand::entry(echo)]).value.as_entry(), Some(echo));
+    assert_eq!(send(&id, alias, &[Operand::word(86)]).value.as_word(), Some(86));
+    assert_eq!(invoke(saved_remove, &[Operand::object(alias)]).value.as_entry(), Some(echo));
+    assert_eq!(invoke(saved_lookup, &[Operand::object(alias)]).value.kind(), native::UNIT);
+    println!("saved Id primitives invoke outside message scope with their selected context");
     let failed = load(&id, &scratch.join("1.dylib"), b"failedNativeEcho:");
     assert_eq!(
         (failed.status, failed.detail),
@@ -551,6 +568,8 @@ fn main() {
             .as_word(),
         Some(85)
     );
+    assert_eq!(invoke(saved_lookup, &[Operand::object(early)]).value.as_entry(), Some(echo));
+    println!("saved Id lookup remains directly callable after Runtime adoption");
     // Ordinary language sends must invoke the same typed entry and context.
     let api = runtime.stack.api();
     assert_eq!(

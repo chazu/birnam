@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Make saved Id lookup/add/remove entries independently callable with their own
+  dictionary context. Remove Id's thread-local dispatch scope and preserve the
+  exact native function/context through the upper legacy invocation bridge.
+  Restoring a legacy primitive recovers its complete captured Id entry.
+
 - Keep Symbol names and method dictionaries owned by Id through upper construction.
   Runtime uses completed native registry operations and asks Id to perform
   effectful binding without supplying a raw dictionary pointer. Preserve exact

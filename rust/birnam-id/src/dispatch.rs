@@ -142,13 +142,7 @@ impl Runtime {
                 // No Rust state reference or collection guard survives this
                 // call. The surrounding managed turn protects the
                 // dictionary-proven Method for the invocation extent.
-                if let Some(legacy) = crate::legacy_method::try_decode(method) {
-                    // Preserve the old raw-buffer contract, including a caller's
-                    // choice of null versus non-null for a zero argument count.
-                    unsafe { legacy.to_method()(receiver, args, count) }
-                } else {
-                    self.invoke_native_from_objects(method, receiver, arguments)
-                }
+                unsafe { self.invoke_native_abi_from_objects(method, receiver, args, count) }
             }
             StacklessTarget::NativeFailure(outcome) => self.native_language_outcome(outcome),
             StacklessTarget::Unbound => {

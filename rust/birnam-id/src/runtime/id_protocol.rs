@@ -7,33 +7,36 @@ use crate::abi::{
 use core::ffi::c_void;
 
 impl Runtime {
-    /// The existing language send boundary supplies only Object operands.
-    /// Legacy entries keep their old calling convention during migration;
-    /// native modules receive the exact selected function/context pair.
+    /// Adapt the existing all-Oop send boundary, including its legacy primitive
+    /// operands. Native methods receive the exact selected function/context pair.
     pub(crate) fn invoke_native_from_objects(
         &self,
         entry: NativeEntry,
         receiver: Oop,
         arguments: &[Oop],
     ) -> Oop {
-        if let Some(legacy) = crate::legacy_method::try_decode(entry) {
-            let args = if arguments.is_empty() {
-                core::ptr::null()
-            } else {
-                arguments.as_ptr()
-            };
-            return unsafe { legacy.to_method()(receiver, args, arguments.len()) };
+        let args = if arguments.is_empty() { core::ptr::null() } else { arguments.as_ptr() };
+        unsafe { self.invoke_native_abi_from_objects(entry, receiver, args, arguments.len()) }
+    }
+
+    /// Invoke the exact selected entry, preserving the legacy zero-count buffer
+    /// convention only when the entry actually wraps an all-Oop function.
+    pub(crate) unsafe fn invoke_native_abi_from_objects(
+        &self, entry: NativeEntry, receiver: Oop, args: *const Oop, count: usize,
+    ) -> Oop {
+        if let Some(legacy) = crate::legacy_method::direct_method(entry) {
+            return unsafe { legacy.to_method()(receiver, args, count) };
         }
-        let arguments: Vec<_> = arguments.iter().copied().map(Operand::object).collect();
+        let arguments = unsafe { crate::abi::borrowed_oop_args(args, count) }
+            .expect("native invocation received invalid arguments");
+        let arguments = crate::legacy_method::native_arguments(entry, arguments, self);
         let outcome = unsafe {
             entry.method.expect("selected native entry has a method")(
-                entry.context,
-                receiver,
-                arguments.as_ptr(),
-                arguments.len(),
+                entry.context, receiver, arguments.as_ptr(), arguments.len(),
             )
         };
-        self.native_language_outcome(outcome)
+        crate::legacy_method::native_result(entry, outcome)
+            .unwrap_or_else(|| self.native_language_outcome(outcome))
     }
 
     pub(crate) fn native_language_outcome(&self, outcome: Outcome) -> Oop {
@@ -321,6 +324,91 @@ pub(crate) unsafe extern "C" fn remove_method(
 mod tests {
     use super::*;
     #[test]
+    fn legacy_language_bridge_invokes_the_native_context_not_the_active_runtime() {
+        let initial = crate::initial_objects::InitialObjects::new();
+        let protocol = initial.protocol.protocol;
+        let call = |selector, arguments: &[Operand]| unsafe {
+            protocol.message.unwrap()(protocol.context, protocol.receiver, selector, arguments.as_ptr(), arguments.len())
+        };
+        let selector = call(protocol.intern, &[Operand::bytes(b"foreignRegistryAnswer")]).value.as_object().unwrap();
+        let add = call(protocol.intern, &[Operand::bytes(b"addMethod")]).value.as_object().unwrap();
+        unsafe extern "C" fn identity(receiver: Oop, _: *const Oop, _: usize) -> Oop { receiver }
+        let expected = crate::legacy_method::encode(identity, false);
+        assert_eq!(call(add, &[Operand::object(selector), Operand::entry(expected)]).status, native::LOADED);
+        let lookup = call(initial.lookup, &[Operand::object(initial.lookup)]).value.as_entry().unwrap();
+        let bootstrap = crate::dispatch::build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.enter(|| {
+            assert!(runtime.payload_size(initial.vtable_vt).is_none());
+            assert_eq!(runtime.invoke_native_from_objects(lookup, initial.vtable_vt, &[selector]),
+                crate::raw::MethodAddress::from_method(identity).as_oop());
+        });
+    }
+
+    #[test]
+    fn lookup_replaced_before_runtime_construction_is_not_admitted_as_canonical() {
+        struct CustomLookup { original: NativeEntry, calls: core::cell::Cell<usize> }
+        unsafe extern "C" fn lookup(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
+            let custom = unsafe { &*context.cast::<CustomLookup>() };
+            custom.calls.set(custom.calls.get() + 1);
+            unsafe { custom.original.method.unwrap()(custom.original.context, receiver, args, count) }
+        }
+        let initial = crate::initial_objects::InitialObjects::new();
+        let protocol = initial.protocol.protocol;
+        let original = unsafe { protocol.message.unwrap()(protocol.context, protocol.receiver,
+            initial.lookup, &Operand::object(initial.lookup), 1) }.value.as_entry().unwrap();
+        let custom = CustomLookup { original, calls: core::cell::Cell::new(0) };
+        let add = unsafe { protocol.message.unwrap()(protocol.context, protocol.receiver,
+            protocol.intern, &Operand::bytes(b"addMethod"), 1) }.value.as_object().unwrap();
+        let args = [Operand::object(initial.lookup), Operand::entry(NativeEntry::new(lookup, core::ptr::from_ref(&custom).cast_mut().cast()))];
+        assert_eq!(unsafe { protocol.message.unwrap()(protocol.context, protocol.receiver, add, args.as_ptr(), args.len()) }.status, native::LOADED);
+        let bootstrap = Box::new(crate::dispatch::build_bootstrap_from(initial));
+        let runtime = &bootstrap.runtime;
+        let selector = runtime.intern(b"contextLookupProbe").unwrap();
+        unsafe extern "C" fn identity(receiver: Oop, _: *const Oop, _: usize) -> Oop { receiver }
+        runtime.add_method(runtime.globals().object_vt, selector, identity);
+        custom.calls.set(0);
+        let receiver = runtime.canonical().object_prototype;
+        assert_eq!(runtime.send_slice(receiver, selector, &[]), receiver);
+        assert!(custom.calls.get() > 0, "construction must not bless an effectful replacement as the primitive");
+    }
+
+    #[test]
+    fn restoring_legacy_lookup_recovers_the_complete_native_primitive() {
+        let initial = crate::initial_objects::InitialObjects::new();
+        let protocol = initial.protocol.protocol;
+        let bootstrap = Box::new(crate::dispatch::build_bootstrap_from(initial));
+        let runtime = &bootstrap.runtime;
+        runtime.install_id_runtime_extensions();
+        let meta = runtime.globals().vtable_vt;
+        let lookup = runtime.globals().lookup;
+        let original = unsafe { runtime.lookup_native_method_active(meta, lookup) }.unwrap();
+        let legacy = runtime.lookup_method(meta, lookup).unwrap();
+        runtime.remove_native_method(meta, lookup);
+        runtime.add_method(meta, lookup, legacy.to_method());
+        assert_eq!(unsafe { runtime.lookup_native_method_active(meta, lookup) }, Some(original));
+        // This native operation has no all-Oop Method equivalent. Restoring a
+        // legacy lookup adapter instead of the primitive would fail to bind it.
+        let count = runtime.intern(b"allocationCount").unwrap();
+        let result = unsafe { protocol.message.unwrap()(protocol.context, meta, count, core::ptr::null(), 0) };
+        assert_eq!(result.status, native::LOADED);
+        assert!(result.value.as_word().unwrap() > 0);
+    }
+
+    #[test]
+    fn native_allocator_language_adaptation_preserves_its_context_without_ambient_runtime() {
+        let bootstrap = Box::new(crate::dispatch::build_bootstrap_from(crate::initial_objects::InitialObjects::new()));
+        let runtime = &bootstrap.runtime;
+        runtime.install_id_runtime_extensions();
+        let selector = runtime.intern(b"allocate").unwrap();
+        let method = unsafe { runtime.lookup_native_method_active(runtime.globals().vtable_vt, selector) }.unwrap();
+        assert!(crate::legacy_method::direct_method(method).is_none());
+        let allocated = runtime.invoke_native_from_objects(method, runtime.globals().object_vt,
+            &[core::ptr::without_provenance_mut(24)]);
+        assert_eq!(runtime.payload_size(allocated), Some(24));
+    }
+
+    #[test]
     fn block_constructor_guard_checks_native_relation_contexts_without_invoking_them() {
         let bootstrap = Box::new(crate::dispatch::build_bootstrap_from(crate::initial_objects::InitialObjects::new()));
         let other = crate::dispatch::build_bootstrap();
@@ -331,7 +419,7 @@ mod tests {
         let owner = runtime.allocate_instance(runtime.globals().object_vt, 0);
         runtime.set_vtable_owner(block, owner);
         assert_eq!(runtime.default_block_behavior_owner(block), Some(owner));
-        for name in [b"ownerOf:".as_slice(), b"parentOf:"] {
+        for name in [b"lookup".as_slice(), b"ownerOf:", b"parentOf:"] {
             let selector = runtime.intern(name).unwrap();
             let original = unsafe { runtime.lookup_native_method_active(runtime.globals().vtable_vt, selector) }.unwrap();
             let different = NativeEntry { context: core::ptr::from_ref(&other.runtime).cast_mut().cast(), ..original };
