@@ -126,7 +126,11 @@ unsafe extern "C" fn retire_metadata(context: *mut c_void) {
             let dead = state.heap.dead_collectable_addresses();
             if source.runtime.collection_owner.is_none() { state.vtables.retire_metadata(&dead); }
             if let Some(admission) = &mut state.admission {
-                admission.block_vtable_catalog.retain(|entry| !dead.contains(&entry.vtable.addr()));
+                // Collection can retire a large parser heap at once. Index the
+                // dead addresses once instead of scanning them for every Block.
+                let dead_index: crate::raw::AddressMap<()> =
+                    dead.iter().map(|address| (*address, ())).collect();
+                admission.block_vtable_catalog.retain(|entry| !dead_index.contains_key(&entry.vtable.addr()));
             }
             source.runtime.collection_owner.is_none().then_some(dead)
         } else {

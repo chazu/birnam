@@ -2426,3 +2426,44 @@ the construction manifest hash matches the installation receipt. Evidence is
 recorded in `.cargo-target/83-completed-services-evidence.json`. Release validation
 remains waived. Worker readiness and the full Design 82/83 acceptance audit
 remain open.
+
+
+### Worker recovery: remove repeated parsing and catalog scans
+
+The real image-backed worker wire check reproduced a 44.71-second readiness time
+against `/tmp/birnam-83-completed-services`. Sampling showed image recovery
+rebuilding source code, repeatedly parsing the retained generation, then
+collecting the resulting temporary parser heap. The mapped-image recovery step
+still restores required source-defined behavior and is retained.
+
+Generation canonicality now validates selection against the module projection
+it just parsed. Image-code compilation uses one parsed projection for the
+selection, authority, recorded digest and generated artifact. Each new operation
+still reads live sources and invokes the current parser; there is no persistent
+metadata cache. The stored generation digest and selection remain mandatory.
+The portable-image suite now checks that forged digests and malformed selections
+return nil, report the expected script failure and publish no native artifact.
+
+With this change alone, the same worker became ready in 26.83 seconds and passed
+all twelve exact wire round trips and orderly shutdown. This is an improvement,
+not satisfaction of the production ten-second handshake requirement. A follow-up
+profile found that upper GC retirement scanned every dead allocation for each
+Block vtable. It now builds one address index and retains catalog entries with
+constant-time membership queries. Collection order and lifetime decisions are
+unchanged.
+
+The final `/tmp/birnam-83-image-recovery` installation becomes ready in 24.91
+seconds, with all twelve exact wire round trips and orderly stop passing.
+Runtime tests pass (323, with 15 ignored), as do Codegen tests (22, with four
+ignored) and the complete native loading suite. The portable-image suite passed
+for `/tmp/birnam-83-image-projection`, whose Codegen source is identical to the
+final installation: forged-authority rejection, mapped/rebuilt recovery, boxed
+identity, nested source-less Code, resave, application entry and baked execution.
+That image-suite installation predates only the separate GC catalog-index
+change. Both changed production Rust files match the final installed sources.
+
+Evidence is `.cargo-target/83-image-recovery-evidence.json`. The ten-second
+production worker requirement remains unsatisfied; the nineteen-case service
+acceptance is not claimed. The broader obsolete-interface/fixture cleanup and
+complete Design 82/83 acceptance audit also remain open. Release validation
+remains waived.

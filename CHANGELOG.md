@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reuse one parsed source snapshot within generation validation and image-code
+  compilation. Preserve authority/digest checks while avoiding repeated parser
+  heaps. Index dead allocation addresses once when retiring Block vtables.
+
 - Select completed Runtime services through Bootstrap and Id during host startup.
   Remove twelve private service-provider exports and their host symbol discovery;
   document the native requests and extend the construction manifest.

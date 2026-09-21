@@ -4430,6 +4430,17 @@ unsafe fn durable_generation_selection(api: &IdApi, generation: Oop) -> Option<V
         )
     };
     let modules = unsafe { generation_modules(api, source_map) }?;
+    unsafe { durable_generation_selection_with_modules(api, generation, &modules) }
+}
+
+// Reuse this operation's parsed source snapshot when validating its selection.
+// This is not a cache: the next operation reads and parses the live sources anew.
+unsafe fn durable_generation_selection_with_modules(
+    api: &IdApi,
+    generation: Oop,
+    modules: &[GenerationModuleProjection],
+) -> Option<Vec<u8>> {
+    let store = runtime().store as Oop;
     let recorded = unsafe {
         send(
             api,
@@ -4440,14 +4451,14 @@ unsafe fn durable_generation_selection(api: &IdApi, generation: Oop) -> Option<V
     };
     if !recorded.is_null() && recorded != api.nilObj {
         let bytes = unsafe { string_bytes(api, recorded) }?;
-        dispatch_generation_authority(&modules, &bytes)?;
+        dispatch_generation_authority(modules, &bytes)?;
         return Some(bytes);
     }
     // Transitional G0 values predate the S2 carrier. Their only admissible
     // projection is the complete all-synchronous inventory derived from their
     // exact retained SourceRevisions. Once a v2 generation is published the
     // canonicality check below requires the retained bytes.
-    all_synchronous_generation_selection(&modules)
+    all_synchronous_generation_selection(modules)
 }
 
 /// Recover module source pairs from the durable generation projection after an
@@ -4516,7 +4527,7 @@ unsafe fn durable_generation_is_canonical(api: &IdApi, generation: Oop) -> bool 
     let Some(modules) = (unsafe { generation_modules(api, source_map) }) else {
         return false;
     };
-    let Some(selection) = (unsafe { durable_generation_selection(api, generation) }) else {
+    let Some(selection) = (unsafe { durable_generation_selection_with_modules(api, generation, &modules) }) else {
         return false;
     };
     let Some(actual) = generation_digest_with_selection(&modules, &selection) else {
@@ -4524,15 +4535,6 @@ unsafe fn durable_generation_is_canonical(api: &IdApi, generation: Oop) -> bool 
     };
     unsafe { string_bytes(api, recorded) }
         .is_some_and(|digest| digest.as_slice() == actual.as_slice())
-}
-
-unsafe fn image_generation_matches_durable(api: &IdApi) -> bool {
-    let durable = unsafe { durable_current_generation(api) };
-    if durable == api.nilObj {
-        return true;
-    }
-    let active = ACTIVE_GENERATION.load(Ordering::Acquire) as Oop;
-    active == durable && unsafe { durable_generation_is_canonical(api, durable) }
 }
 
 unsafe fn durable_generation_entry(api: &IdApi, generation: Oop, name: Oop) -> Option<Oop> {
@@ -5157,14 +5159,15 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
         }
     }
     let _auto_gc = AutoGc(execution_settings());
-    let recovery_generation_available = IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
-        && RUNTIME_PHASE.load(Ordering::Acquire) == PHASE_IMAGE_RECOVERY
-        && unsafe { durable_generation_is_canonical(api, durable_current_generation(api)) };
-    if !unsafe { image_generation_matches_durable(api) } && !recovery_generation_available {
+    let generation = unsafe { durable_current_generation(api) };
+    let recovering = IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        && RUNTIME_PHASE.load(Ordering::Acquire) == PHASE_IMAGE_RECOVERY;
+    if generation.is_null() || generation == api.nilObj
+        || (!recovering && ACTIVE_GENERATION.load(Ordering::Acquire) as Oop != generation)
+    {
         note_error(b"RustCodegen image generation is stale");
         return api.nilObj;
     }
-    let generation = unsafe { durable_current_generation(api) };
     let source_map = unsafe {
         send(
             api,
@@ -5185,11 +5188,19 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
         note_error(b"RustCodegen image has no generation sources");
         return api.nilObj;
     }
-    let Some(generation_selection) = (unsafe { durable_generation_selection(api, generation) })
+    let Some(generation_selection) = (unsafe { durable_generation_selection_with_modules(api, generation, &modules) })
     else {
         note_error(b"RustCodegen image generation selection is unavailable");
         return api.nilObj;
     };
+    // Validate the same snapshot used below for code and manifest construction.
+    // Re-parsing here multiplied temporary CST allocation during image recovery.
+    let actual_digest = generation_digest_with_selection(&modules, &generation_selection);
+    let recorded_digest = unsafe { durable_generation_base_digest(api, generation) };
+    if actual_digest.is_none() || actual_digest != recorded_digest {
+        note_error(b"RustCodegen image generation is stale");
+        return api.nilObj;
+    }
     let Some(authority) = dispatch_generation_authority(&modules, &generation_selection) else {
         note_error(b"RustCodegen image generation selection is not authoritative");
         return api.nilObj;

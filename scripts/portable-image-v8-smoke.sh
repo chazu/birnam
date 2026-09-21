@@ -16,6 +16,31 @@ else
   printf 'portable image-v8 smoke root: %s\n' "$smoke_root" >&2
 fi
 
+# Recovery compilation must still reject forged authority after parsing a
+# generation only once. These exercise the production Codegen/Store boundary.
+cat >"$smoke_root/authority.birnam" <<EOF
+[DispatchGeneration initializeCurrent];
+let generation := [DispatchGeneration current];
+let digest := [generation baseDigest];
+[db assert: generation attr: #baseDigest value: "0000000000000000000000000000000000000000000000000000000000000000"];
+[System println: [[Codegen compileImageCode: "$smoke_root/rejected-digest.dylib"] isNil]];
+[db assert: generation attr: #baseDigest value: digest];
+let selection := [generation generationSelection];
+[db assert: generation attr: #generationSelection value: "invalid selection"];
+[System println: [[Codegen compileImageCode: "$smoke_root/rejected-selection.dylib"] isNil]];
+[db assert: generation attr: #generationSelection value: selection]
+EOF
+# Codegen's expected lastError also makes the enclosing script fail at exit.
+authority_status=0
+"$bin" "$smoke_root/authority.birnam" >"$smoke_root/authority.out" 2>"$smoke_root/authority.err" || authority_status=$?
+test "$authority_status" -eq 1
+printf 'true\ntrue\n' >"$smoke_root/authority.expected"
+cmp "$smoke_root/authority.expected" "$smoke_root/authority.out"
+printf 'birnam: script: EvaluationRejected\n' >"$smoke_root/authority-error.expected"
+cmp "$smoke_root/authority-error.expected" "$smoke_root/authority.err"
+test ! -e "$smoke_root/rejected-digest.dylib"
+test ! -e "$smoke_root/rejected-selection.dylib"
+
 image="$smoke_root/portable.image"
 resaved="$smoke_root/resaved.image"
 
