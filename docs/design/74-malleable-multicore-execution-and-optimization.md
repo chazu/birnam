@@ -122,14 +122,14 @@ registry mutex. Existing independent handles do not make sequential calls into
 overlapping jobs. An asynchronous transport must change that ownership and wait
 structure; calling the existing API from foreign threads is not a solution.
 
-[Runtime](../../rust/birnam-id/src/runtime.rs) enforces owner-thread entry.
+[Runtime](../../rust/birnam-runtime/src/runtime.rs) enforces owner-thread entry.
 `run_stackless_loop` drives execution until a terminal result or explicit
 suspension/capture; it does not provide a general timeslice budget. Machines
 share their Runtime's heap, Store, and dispatch environment. They are not
 separate isolated heaps. Native synchronous callbacks can establish entry
 barriers that prevent suspension through their activations.
 
-[The public IdApi](../../rust/birnam-id/src/public_api.rs) admits one
+[The public IdApi](../../rust/birnam-runtime/src/public_api.rs) admits one
 process-lifetime initialization. Native modules including
 [Store](../../rust/birnam-store/src/lib.rs),
 [collections](../../rust/birnam-collection/src/lib.rs), and
@@ -393,10 +393,10 @@ The consequences are observable in ordinary programs:
   Richer recovery requires metadata for the affected execution itself.
 
 The current failure behavior needs explicit review. The
-[Machine suspension checks](../../rust/birnam-id/src/execution.rs) reject an
+[Machine suspension checks](../../rust/birnam-runtime/src/execution.rs) reject an
 entry-barrier crossing with `ContinuationBarrier`. If that failure escapes
 through an ordinary synchronous `IdApi.send`, the
-[send boundary](../../rust/birnam-id/src/dispatch.rs) calls `fatal_invariant`,
+[send boundary](../../rust/birnam-runtime/src/dispatch.rs) calls `fatal_invariant`,
 which [aborts the process](../../rust/birnam-id/src/boundary.rs). This is an
 implemented enforcement rule, not a graceful asynchronous error. Preserving the
 native stack is necessary under the current mechanism; retaining process abort
@@ -712,7 +712,7 @@ Neither is a hidden extension of a worker-pool ticket.
 
 Linux work must identify its CPU/libc targets and prove native ABI/root discovery,
 loader/libtcc behavior, artifact materialization, foreign layouts, and OS services.
-The current [native-root adapter](../../rust/birnam-id/src/gc.rs) is specifically
+The current [native-root adapter](../../rust/birnam-runtime/src/gc.rs) is specifically
 implemented for Darwin arm64. Explicit Frames do not eliminate roots held by
 native calls. Optimizer guards and recovery maps must be target-qualified and
 must not embed Darwin assumptions into portable executable meaning.

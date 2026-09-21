@@ -69,7 +69,7 @@ inconclusive independent native-tier performance results.
 
 ## 1. Reconstructing an absent logical call
 
-The [runtime experiment](../../rust/birnam-id/src/runtime/architectural_fit_experiment.rs)
+The [runtime experiment](../../rust/birnam-runtime/src/runtime/architectural_fit_experiment.rs)
 encodes two portable Blocks, invokes the production lowering, liveness, coloring,
 descriptor and baseline C generators, and compiles actual native code. Its caller
 normally sends to a callee whose body keeps two aliases, observes them, and
@@ -83,7 +83,7 @@ resumes through the unchanged real stackless driver, receives native answers and
 commits the caller's original return destination. Recovery itself performs no Id
 send, Birnam allocation or callback while installing state.
 
-The [arena helper](../../rust/birnam-id/src/execution/inline_recovery_experiment.rs)
+The [arena helper](../../rust/birnam-runtime/src/execution/inline_recovery_experiment.rs)
 checks current caller/descriptor allocation, pending-call kind and return slot,
 callee PC, physical slot bounds, source spill bounds, duplicate destinations and
 explicit initialization of traced locations before mutation. Seven malformed

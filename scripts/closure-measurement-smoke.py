@@ -27,9 +27,10 @@ def main():
                BIRNAM_DEV_CLOSURE_REPORT="0", BIRNAM_CLOSURE_BATCHES="2")
     root = Path(__file__).resolve().parent.parent
     paths = [Path(__file__).resolve(), root / "scripts/closure_timing_common.py",
-             root / "rust/birnam-id/src/runtime/closure_timing_probe.rs"]
+             root / "rust/birnam-runtime/src/runtime/closure_timing_probe.rs"]
     paths += sorted(p for p in (root / "rust/birnam-native-compiler").rglob("*") if p.is_file())
     paths += sorted(p for p in (root / "rust/birnam-id").rglob("*") if p.is_file())
+    paths += sorted(p for p in (root / "rust/birnam-runtime").rglob("*") if p.is_file())
     paths += [root / "vendor/libtcc-src" / name for name in ("tcc.h", "config.h", "tccrun.c", "libtcc.c")]
     hashes = {str(p.relative_to(root)): hashlib.sha256(read_bytes(p)).hexdigest() for p in paths}
     manifest = args.prefix.resolve() / "share/birnam/rust-install.json"

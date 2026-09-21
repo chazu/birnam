@@ -52,10 +52,10 @@ contract does not yet provide that transition:
 - [60P](60p-v2-control-completion.md), lines 13–29, stages a result-bearing Call.
   Its visible PC is the successor while predecessor roots remain active.
   Resumption supplies a result and commits copies, clears, and successor roots.
-- [execution.rs](../../rust/birnam-id/src/execution.rs), lines 2290–2300, performs
+- [execution.rs](../../rust/birnam-runtime/src/execution.rs), lines 2290–2300, performs
   that normal result-bearing resume. Its `fail` path, lines 2304–2319, clears
   drive/delimiter and suspended-result state and marks the Machine failed.
-- [runtime.rs](../../rust/birnam-id/src/runtime.rs), lines 4101–4120, uses that
+- [runtime.rs](../../rust/birnam-runtime/src/runtime.rs), lines 4101–4120, uses that
   `fail` path for the decoded Abort action. It does not execute language cleanup.
 
 **Concrete trace:** A is suspended in `receive`, with a pending V2 Call edge and
@@ -100,7 +100,7 @@ queue before installing a drive root. This requires only an ordinary allocating
 policy method, not a malicious override.
 
 The existing scoped host-root mechanism in
-[execution.rs](../../rust/birnam-id/src/execution.rs), lines 3460–3477, proves
+[execution.rs](../../rust/birnam-runtime/src/execution.rs), lines 3460–3477, proves
 that explicitly registered drive roots are traced. It does not, by itself,
 establish retention before registration or after the drive root is removed.
 

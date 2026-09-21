@@ -14,7 +14,7 @@ import platform
 import subprocess
 import sys
 
-from compatibility_authority import unchanged_authority
+from compatibility_authority import baseline_path, unchanged_authority
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = "43935092"
@@ -27,27 +27,27 @@ CASES = {
 CONTRACTS = [
     "rust/birnam-abi/src/lib.rs", "rust/birnam-image/src/lib.rs",
     "rust/birnam-image/src/v8.rs",
-    "rust/birnam-id/src/registration.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
+    "rust/birnam-runtime/src/registration.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
 ]
 # 74J permits internal runtime changes. Frozen ABI/image/descriptor authorities
 # remain above; execution implementation is recorded as source evidence below.
 SOURCES = [
-    "rust/birnam-id/src/runtime/guarded_lookup.rs",
-    "rust/birnam-id/src/runtime/guarded_lookup/tests.rs",
-    "rust/birnam-id/src/runtime/native_tier.rs",
-    "rust/birnam-id/src/runtime/native_tier/shims.c",
-    "rust/birnam-id/src/runtime/native_tier/tests.rs",
+    "rust/birnam-runtime/src/runtime/guarded_lookup.rs",
+    "rust/birnam-runtime/src/runtime/guarded_lookup/tests.rs",
+    "rust/birnam-runtime/src/runtime/native_tier.rs",
+    "rust/birnam-runtime/src/runtime/native_tier/shims.c",
+    "rust/birnam-runtime/src/runtime/native_tier/tests.rs",
     "rust/birnam-native-compiler/Cargo.toml", "rust/birnam-native-compiler/build.rs",
     "rust/birnam-native-compiler/src/lib.rs", "rust/birnam-native-compiler/src/unit.rs",
-    "rust/birnam-id/src/execution.rs", "rust/birnam-id/src/dispatch.rs",
-    "rust/birnam-id/src/id/vtable.rs", "rust/birnam-id/src/runtime/guarded_dispatch.rs",
-    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs",
-    "Cargo.lock", "rust/birnam-id/Cargo.toml", "rust/birnam-codegen/Cargo.toml",
-    "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-id/src/runtime.rs",
-    "rust/birnam-id/src/runtime/generated_deopt_experiment.rs",
-    "rust/birnam-id/src/runtime/generated_deopt_program.rs",
-    "rust/birnam-id/src/runtime/generated_deopt_adapter.c",
-    "rust/birnam-id/src/runtime/generated_deopt_baseline.c",
+    "rust/birnam-runtime/src/execution.rs", "rust/birnam-runtime/src/dispatch.rs",
+    "rust/birnam-id/src/id/vtable.rs", "rust/birnam-runtime/src/runtime/guarded_dispatch.rs",
+    "rust/birnam-runtime/src/runtime/guarded_dispatch/tests.rs",
+    "Cargo.lock", "rust/birnam-id/Cargo.toml", "rust/birnam-runtime/Cargo.toml", "rust/birnam-codegen/Cargo.toml",
+    "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-runtime/src/runtime.rs",
+    "rust/birnam-runtime/src/runtime/generated_deopt_experiment.rs",
+    "rust/birnam-runtime/src/runtime/generated_deopt_program.rs",
+    "rust/birnam-runtime/src/runtime/generated_deopt_adapter.c",
+    "rust/birnam-runtime/src/runtime/generated_deopt_baseline.c",
     "scripts/generated-frame-deopt.py",
 ]
 
@@ -74,7 +74,7 @@ def main():
     contracts = {}
     for name in CONTRACTS:
         current = (ROOT / name).read_bytes()
-        if not unchanged_authority(name, current, command(["git", "show", f"{BASELINE}:{name}"])):
+        if not unchanged_authority(name, current, command(["git", "show", f"{BASELINE}:{baseline_path(name)}"])):
             raise RuntimeError(f"compatibility authority changed: {name}")
         contracts[name] = digest(current)
     if command(["git", "diff", BASELINE, "--name-only", "--", "abi/fixtures"]).strip():
@@ -83,7 +83,7 @@ def main():
     env.setdefault("CARGO_TARGET_DIR", str(ROOT / ".cargo-target"))
     profiles = {}
     for profile in ("debug", "release"):
-        cmd = ["cargo", "test", "-p", "birnam-id", "--offline", "--locked"]
+        cmd = ["cargo", "test", "-p", "birnam-runtime", "--offline", "--locked"]
         if profile == "release":
             cmd.append("--release")
         cmd.extend(["generated_same_frame_deopt_experiment", "--", "--nocapture", "--test-threads=1"])

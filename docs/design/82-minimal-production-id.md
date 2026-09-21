@@ -65,9 +65,9 @@ for current progress and remaining construction/ownership work.
 | Evidence | What it establishes |
 |---|---|
 | [`startup::load_floor`](../../rust/birnam-host/src/startup.rs) prepares twenty services before calling `id_init` | Id cannot currently initialize independently of upper modules. Moving this sequence into Id would merely hide the inversion. |
-| [`initialize_once`](../../rust/birnam-id/src/public_api.rs) calls `build_bootstrap`, publishes canonical exports and installs execution objects | `id_init` constructs much more than an object model. |
-| [`Runtime::new` and `RuntimeState`](../../rust/birnam-id/src/runtime.rs) construct namespace, execution, observation, collection and optimization state | Id still owns integration and lifecycle after the container extractions. |
-| [`Heap`](../../rust/birnam-id/src/heap.rs) and [`Vtables`](../../rust/birnam-id/src/id/vtable.rs) construct external services | Even the core storage structures require the pre-Id preparation phase. |
+| [`initialize_once`](../../rust/birnam-runtime/src/public_api.rs) calls `build_bootstrap`, publishes canonical exports and installs execution objects | `id_init` constructs much more than an object model. |
+| [`Runtime::new` and `RuntimeState`](../../rust/birnam-runtime/src/runtime.rs) construct namespace, execution, observation, collection and optimization state | Id still owns integration and lifecycle after the container extractions. |
+| [`Heap`](../../rust/birnam-runtime/src/heap.rs) and [`Vtables`](../../rust/birnam-id/src/id/vtable.rs) construct external services | Even the core storage structures require the pre-Id preparation phase. |
 | [`birnam-id/Cargo.toml`](../../rust/birnam-id/Cargo.toml) has normal dependencies on Codegen, Native Compiler and Artifact | A dynamic-library dependency listing alone cannot establish that Id is independent of compiler semantics. Rust code is also linked into it. |
 | [`IdApi` and `ModuleInitFn`](../../rust/birnam-abi/src/lib.rs) have eighteen fields and twelve initialization arguments respectively | Shrinking the public table did not eliminate the larger initialization contract. |
 | [`floor_symbol`](../../rust/birnam-codegen-runtime/src/lib.rs) discovers private exports through the library containing `api.dlsym` | Private symbol discovery couples consumers to Id beyond the public table. |
@@ -199,7 +199,7 @@ Later behavior is installed through the existing object model. It must take
 effect for actual production callers. A message-based method installer is not
 enough if native clients still call an unconditionally direct `api.method`;
 the same applies to `proto`, `alloc` and `intern`. The current wrappers in
-[`public_api.rs`](../../rust/birnam-id/src/public_api.rs) are part of the migration,
+[`public_api.rs`](../../rust/birnam-runtime/src/public_api.rs) are part of the migration,
 not exceptions to ignore.
 
 A low-level representation primitive may remain non-overridable where Id needs
@@ -217,7 +217,7 @@ production evidence are still required.
 ### Metacircular construction and native operands
 
 Id must directly create its first graph and first method bindings before it
-can use its own sends. [`build_bootstrap` and `bind_active`](../../rust/birnam-id/src/dispatch.rs)
+can use its own sends. [`build_bootstrap` and `bind_active`](../../rust/birnam-runtime/src/dispatch.rs)
 already demonstrate that finite construction and lookup termination. Keep the
 exception explicit and bounded. Do not let it grow into an alternate startup
 path for upper modules.

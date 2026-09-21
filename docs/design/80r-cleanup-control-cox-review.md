@@ -31,7 +31,7 @@ admission obligation concrete; it is not an objection to the proposed semantics.
 proposes a new canonical action and requires non-imageable live records.
 At the baseline, `rust/birnam-image/src/lib.rs:777–795` explicitly enumerates
 the eight current action prototype names to reject their instances.
-`rust/birnam-id/src/runtime.rs:1179–1186` creates sibling action vtables under
+`rust/birnam-runtime/src/runtime.rs:1179–1186` creates sibling action vtables under
 Object, and lines 1379–1404 export their prototypes. There is no common action
 ancestor in this construction that automatically classifies a ninth sibling.
 

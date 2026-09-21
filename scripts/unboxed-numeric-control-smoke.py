@@ -46,19 +46,19 @@ def main():
     prefix, floor = args.prefix.resolve(), args.floor.resolve()
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
     env.update(BIRNAM_TEST_UNBOXED_NUMERIC="1", BIRNAM_ID_DYLIB=str(floor))
-    paths = [Path(__file__).resolve(), ROOT / "rust/birnam-id/src/runtime.rs",
-             ROOT / "rust/birnam-id/src/runtime/unboxed_numeric_probe.rs",
-             ROOT / "rust/birnam-id/src/runtime/unboxed_numeric_probe/control.rs",
-             ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs",
-             ROOT / "rust/birnam-id/src/runtime/native_tier/fused_numeric.rs",
-             ROOT / "rust/birnam-id/src/execution.rs",
-             ROOT / "rust/birnam-id/src/public_api.rs"]
+    paths = [Path(__file__).resolve(), ROOT / "rust/birnam-runtime/src/runtime.rs",
+             ROOT / "rust/birnam-runtime/src/runtime/unboxed_numeric_probe.rs",
+             ROOT / "rust/birnam-runtime/src/runtime/unboxed_numeric_probe/control.rs",
+             ROOT / "rust/birnam-runtime/src/runtime/native_tier/unboxed_numeric.rs",
+             ROOT / "rust/birnam-runtime/src/runtime/native_tier/fused_numeric.rs",
+             ROOT / "rust/birnam-runtime/src/execution.rs",
+             ROOT / "rust/birnam-runtime/src/public_api.rs"]
     paths += sorted((ROOT / "rust/birnam-codegen/src/numeric_chain").rglob("*.rs"))
-    paths += sorted((ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
-    paths += [ROOT / "rust/birnam-id/src/heap.rs", ROOT / "rust/birnam-id/src/heap/dead_allocations.rs"]
-    paths += sorted((ROOT / "rust/birnam-id/src/heap/dead_allocations").rglob("*.rs"))
-    paths += [ROOT / 'rust/birnam-id/src/runtime/native_tier/regions.rs',
-              ROOT / 'rust/birnam-id/src/heap/dead_allocations/frame_indices.rs']
+    paths += sorted((ROOT / "rust/birnam-runtime/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
+    paths += [ROOT / "rust/birnam-runtime/src/heap.rs", ROOT / "rust/birnam-runtime/src/heap/dead_allocations.rs"]
+    paths += sorted((ROOT / "rust/birnam-runtime/src/heap/dead_allocations").rglob("*.rs"))
+    paths += [ROOT / 'rust/birnam-runtime/src/runtime/native_tier/regions.rs',
+              ROOT / 'rust/birnam-runtime/src/heap/dead_allocations/frame_indices.rs']
     installed = [prefix / "bin/birnam", prefix / "share/birnam/rust-install.json"] + sorted((prefix / "lib").glob("*.dylib"))
     receipt = dict(status="running", scope="Forced source recovery followed by test-floor V2 control; no timing claim",
                    floor_sha256=sha(floor), source_sha256={str(p.relative_to(ROOT)): sha(p) for p in paths},

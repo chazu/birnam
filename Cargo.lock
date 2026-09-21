@@ -173,29 +173,6 @@ name = "birnam-id"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "birnam-allocation-budget",
- "birnam-artifact",
- "birnam-codegen",
- "birnam-collect",
- "birnam-dispatch-cache",
- "birnam-finalizers",
- "birnam-float",
- "birnam-gc-settings",
- "birnam-integer",
- "birnam-method-observation",
- "birnam-namespace",
- "birnam-native-compiler",
- "birnam-native-mark",
- "birnam-native-stack",
- "birnam-object-model",
- "birnam-payload-layout",
- "birnam-root-registry",
- "birnam-storage",
- "birnam-string",
- "birnam-trace",
- "birnam-trace-hooks",
- "birnam-word",
- "sha2",
 ]
 
 [[package]]
@@ -354,6 +331,36 @@ name = "birnam-root-registry"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+]
+
+[[package]]
+name = "birnam-runtime"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+ "birnam-allocation-budget",
+ "birnam-artifact",
+ "birnam-codegen",
+ "birnam-collect",
+ "birnam-dispatch-cache",
+ "birnam-finalizers",
+ "birnam-float",
+ "birnam-gc-settings",
+ "birnam-integer",
+ "birnam-method-observation",
+ "birnam-namespace",
+ "birnam-native-compiler",
+ "birnam-native-mark",
+ "birnam-native-stack",
+ "birnam-object-model",
+ "birnam-payload-layout",
+ "birnam-root-registry",
+ "birnam-storage",
+ "birnam-string",
+ "birnam-trace",
+ "birnam-trace-hooks",
+ "birnam-word",
+ "sha2",
 ]
 
 [[package]]

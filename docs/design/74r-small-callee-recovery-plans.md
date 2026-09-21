@@ -62,7 +62,7 @@ the same one-shot checked recovery transfer.
 The pure compiler pass lives in
 [`small_callee.rs`](../../rust/birnam-codegen/src/small_callee.rs), and production
 selection consumes it in
-[`native_tier.rs`](../../rust/birnam-id/src/runtime/native_tier.rs). Plans contain
+[`native_tier.rs`](../../rust/birnam-runtime/src/runtime/native_tier.rs). Plans contain
 no Oops or executable addresses and do not introduce a new recipe category at the
 Id boundary: their entry-slot/nil sources populate the existing dense slot recipe.
 The existing compiled Id recipe, stale-admission, capture/restore and retirement

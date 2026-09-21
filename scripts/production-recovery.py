@@ -8,12 +8,12 @@ from pathlib import Path
 import statistics
 import subprocess
 import sys
-from compatibility_authority import unchanged_authority
+from compatibility_authority import baseline_path, unchanged_authority
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "ecb1262a"
 AUTHORITIES = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json", "abi/fixtures/idapi-v1/idapi_v1.h",
-               "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-id/src/registration.rs",
+               "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-runtime/src/registration.rs",
                "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs")
 PREFIXES = ("PROJECTION_INLINE ", "PRODUCTION_RECOVERY ", "PROJECTION_BOUNDARY ")
 
@@ -58,16 +58,16 @@ def main():
     try:
         for name in AUTHORITIES:
             data = (ROOT / name).read_bytes()
-            assert unchanged_authority(name, data, subprocess.check_output(["git","show",f"{BASE}:{name}"],cwd=ROOT)), name
+            assert unchanged_authority(name, data, subprocess.check_output(["git","show",f"{BASE}:{baseline_path(name)}"],cwd=ROOT)), name
             result["authorities"][name] = sha(data)
         for profile in ("debug", "release"):
-            output = run(["cargo","test","-p","birnam-id","--locked","--offline"] + (["--release"] if profile == "release" else []) + ["runtime::native_tier::leaf_tests::production_","--","--nocapture"],profile)
+            output = run(["cargo","test","-p","birnam-runtime","--locked","--offline"] + (["--release"] if profile == "release" else []) + ["runtime::native_tier::leaf_tests::production_","--","--nocapture"],profile)
             rows = [{"kind":prefix.strip(),"data":json.loads(line[len(prefix):])} for line in output.splitlines() for prefix in PREFIXES if line.startswith(prefix)]
             assert len(rows) == 10 and "3 passed; 0 failed" in output
             result["profiles"][profile] = sorted(rows, key=lambda row:json.dumps(row,sort_keys=True))
         assert result["profiles"]["debug"] == result["profiles"]["release"]
         if args.measure:
-            output = run(["cargo","test","-p","birnam-id","--release","--locked","--offline","--no-run","--message-format=json"],"timing-build")
+            output = run(["cargo","test","-p","birnam-runtime","--release","--locked","--offline","--no-run","--message-format=json"],"timing-build")
             binary = next(row["executable"] for line in output.splitlines() if (row:=json.loads(line)).get("reason")=="compiler-artifact" and row.get("executable") and row["profile"]["test"])
             result["test_binary_sha256"] = sha(Path(binary).read_bytes())
             samples = []

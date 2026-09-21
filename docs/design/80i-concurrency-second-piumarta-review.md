@@ -42,7 +42,7 @@ the exact existing transition that the mechanism must extend or compose with.
 - [60P](60p-v2-control-completion.md), lines 13–29: suspension stages an exact
   result-bearing Call edge; predecessor roots remain active until an answer
   commits copies, clears, and successor roots.
-- [execution.rs](../../rust/birnam-id/src/execution.rs), lines 2281–2300:
+- [execution.rs](../../rust/birnam-runtime/src/execution.rs), lines 2281–2300:
   `resume_suspended` commits that pending Call with a supplied Oop before
   returning the Machine to Running. Lines 2304–2320 show that `fail` changes
   lifecycle and clears control bookkeeping; it does not invoke cleanup.

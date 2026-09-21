@@ -204,14 +204,14 @@ unsafe extern "C" fn initialize(_: *const Protocol, _: *const Operand, count: us
     }
     Outcome::loaded(Operand::protocol(protocol))
 }
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
+pub(crate) const DESCRIPTOR: native::Module = native::Module {
     version: native::VERSION,
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };
 /// Compatibility entry for id_init. The production constructor receives this
 /// carrier explicitly from its caller instead of consulting this process slot.
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 pub(crate) fn protocol() -> Protocol {
     let outcome = unsafe { initialize(core::ptr::null(), core::ptr::null(), 0) };
     assert_eq!(outcome.status, native::LOADED, "Id construction failed");

@@ -41,7 +41,7 @@ fn main() {
     let mut anchor = 0usize;
     unsafe { runtime.prepare_execution(&mut anchor) };
     let api = runtime.stack.api();
-    let path = CString::new(prefix.join("lib/libbirnam_id.dylib").as_os_str().as_encoded_bytes()).unwrap();
+    let path = CString::new(prefix.join("lib/libbirnam_runtime.dylib").as_os_str().as_encoded_bytes()).unwrap();
     let floor = unsafe { (api.dlopen)(path.as_ptr(), 6) };assert!(!floor.is_null());
     let symbol = unsafe { (api.dlsym)(floor, c"birnam_id_observe_storage_v1".as_ptr()) };assert!(!symbol.is_null());
     let observe: ObserveV1 = unsafe { std::mem::transmute(symbol) };

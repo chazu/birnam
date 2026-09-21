@@ -24,5 +24,6 @@ pub(crate) mod vtable;
 #[cfg(not(any(test, feature = "ffi-test-hooks")))]
 mod vtable;
 
-// Legacy id_init compatibility only; production receives the native carrier.
+pub(crate) use native_id::DESCRIPTOR;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 pub(crate) use native_id::protocol;

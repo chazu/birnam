@@ -81,7 +81,7 @@ def main():
     try:
         save()
         for profile in args.profiles:
-            build = dict(profile=profile, argv=['mise', 'exec', '--', 'cargo', 'test', '--locked', '--offline', '-p', 'birnam-id',
+            build = dict(profile=profile, argv=['mise', 'exec', '--', 'cargo', 'test', '--locked', '--offline', '-p', "birnam-runtime",
                         '--features', 'allocation-metrics', '--no-run', '--message-format=json', *(['--release'] if profile == 'release' else [])])
             result['builds'].append(build)
             run(build, output.with_suffix('.' + profile + '-build.log'))

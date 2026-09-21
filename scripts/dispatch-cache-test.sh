@@ -3,9 +3,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mise exec -- cargo test --offline --locked -p birnam-dispatch-cache --lib
 mise exec -- cargo test --offline --locked -p birnam-abi --lib dispatch_cache
-mise exec -- cargo test --offline --locked -p birnam-id --lib runtime::dispatch_cache
-mise exec -- cargo test --offline --locked -p birnam-id --lib runtime::guarded_lookup
-mise exec -- cargo test --offline --locked -p birnam-id --lib runtime::collection_phase_tests
+mise exec -- cargo test --offline --locked -p birnam-runtime --lib runtime::dispatch_cache
+mise exec -- cargo test --offline --locked -p birnam-runtime --lib runtime::guarded_lookup
+mise exec -- cargo test --offline --locked -p birnam-runtime --lib runtime::collection_phase_tests
 mise exec -- cargo build --offline --locked --workspace
 cache_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 cache_lib=${1:+$1/lib}

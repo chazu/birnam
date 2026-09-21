@@ -31,7 +31,9 @@ def main():
     prefix, floor = args.prefix.resolve(), args.floor.resolve()
     paths = [Path(__file__).resolve(), ROOT / 'scripts/unboxed_numeric_timing_common.py']
     paths += sorted((ROOT / 'rust/birnam-id').rglob('*.rs'))
+    paths += sorted((ROOT / 'rust/birnam-runtime').rglob('*.rs'))
     paths += [ROOT / 'rust/birnam-id/Cargo.toml']
+    paths += [ROOT / 'rust/birnam-runtime/Cargo.toml']
     installed = [prefix / 'bin/birnam', prefix / 'share/birnam/rust-install.json']
     installed += sorted((prefix / 'lib').glob('*.dylib'))
     receipt = dict(status='running', qualified=False, profile=args.profile,

@@ -181,7 +181,7 @@ handoff and lifetime proof; separate modules do not make that automatically safe
 ## 4. Existing code and Birnam coverage
 
 The main consolidation point is `RuntimeState`/`Runtime` in
-[`runtime.rs`](../../rust/birnam-id/src/runtime.rs): symbols, values, vtables,
+[`runtime.rs`](../../rust/birnam-runtime/src/runtime.rs): symbols, values, vtables,
 heap, exports, execution, registration state, caches and native tiers remain
 coordinated there, with several backing services now separately owned.
 The table identifies remaining integration points, not an untouched monolith:

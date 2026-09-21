@@ -23,6 +23,7 @@ def main():
     paths = [fixture, Path(__file__).resolve()]
     paths += sorted((root / 'rust/birnam-codegen/src').rglob('*.rs'))
     paths += sorted((root / 'rust/birnam-id/src').rglob('*'))
+    paths += sorted((root / 'rust/birnam-runtime/src').rglob('*'))
     paths = [p for p in paths if p.is_file()]
     digest = lambda p: hashlib.sha256(read_bytes(p)).hexdigest()
     hashes = {str(p.relative_to(root)): digest(p) for p in paths}

@@ -29,16 +29,17 @@ def main():
     env = {k: v for k, v in os.environ.items() if not k.startswith(("BIRNAM_", "DYLD_"))}
     env.update(BIRNAM_TEST_UNBOXED_NUMERIC="1", BIRNAM_ID_DYLIB=str(floor), BIRNAM_NUMERIC_BATCHES="2")
     paths = [Path(__file__).resolve(), ROOT / "scripts/unboxed_numeric_timing_common.py",
-             ROOT / "rust/birnam-id/src/runtime/native_tier.rs",
-             ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs",
-             ROOT / "rust/birnam-id/src/runtime/unboxed_numeric_probe.rs",
-             ROOT / "rust/birnam-id/src/runtime/unboxed_numeric_probe/measure.rs",
+             ROOT / "rust/birnam-runtime/src/runtime/native_tier.rs",
+             ROOT / "rust/birnam-runtime/src/runtime/native_tier/unboxed_numeric.rs",
+             ROOT / "rust/birnam-runtime/src/runtime/unboxed_numeric_probe.rs",
+             ROOT / "rust/birnam-runtime/src/runtime/unboxed_numeric_probe/measure.rs",
              ROOT / "rust/birnam-codegen/src/numeric_chain/recovery_maps.rs"]
-    paths += sorted((ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
-    paths += [ROOT / "rust/birnam-id/src/heap.rs", ROOT / "rust/birnam-id/src/heap/dead_allocations.rs"]
-    paths += sorted((ROOT / "rust/birnam-id/src/heap/dead_allocations").rglob("*.rs"))
+    paths += sorted((ROOT / "rust/birnam-runtime/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
+    paths += [ROOT / "rust/birnam-runtime/src/heap.rs", ROOT / "rust/birnam-runtime/src/heap/dead_allocations.rs"]
+    paths += sorted((ROOT / "rust/birnam-runtime/src/heap/dead_allocations").rglob("*.rs"))
     paths += sorted(p for p in (ROOT / "rust/birnam-native-compiler").rglob("*") if p.is_file())
     paths += [ROOT / "rust/birnam-id/Cargo.toml"]
+    paths += [ROOT / "rust/birnam-runtime/Cargo.toml"]
     paths += [ROOT / "vendor/libtcc-src" / name for name in ("tcc.h", "config.h", "tccrun.c", "libtcc.c")]
     installed = [prefix / "bin/birnam", prefix / "share/birnam/rust-install.json"] + sorted((prefix / "lib").glob("*.dylib"))
     receipt = dict(status="running", profile=args.profile, scope="Measurement correctness only; no qualified timing claim",

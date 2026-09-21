@@ -87,7 +87,7 @@ It prints a JSON receipt to stdout; build status goes to stderr. The retained
 [receipt](../measurements/74f-same-frame-deopt.json) identifies the baseline,
 toolchain, source hashes and unchanged compatibility authorities.
 
-The [implementation](../../rust/birnam-id/src/runtime/deopt_experiment.rs) uses
+The [implementation](../../rust/birnam-runtime/src/runtime/deopt_experiment.rs) uses
 the actual registered-entry path, descriptor-v2 validator, native driver, ordinary
 Machine sends, GC and FrameView operations. Only the optional tier selection
 hook and fixture compile under `cfg(test)`. The ordinary Runtime structure,

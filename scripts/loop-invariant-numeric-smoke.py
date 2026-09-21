@@ -55,13 +55,13 @@ def main():
     args = parser.parse_args()
     floor, prefix = args.floor.resolve(), args.prefix.resolve()
     paths = [Path(__file__).resolve(), ROOT / 'rust/birnam-codegen/src/numeric_chain.rs',
-             ROOT / 'rust/birnam-id/src/execution.rs', ROOT / 'rust/birnam-id/src/execution/tail_entry.rs',
-             ROOT / 'rust/birnam-id/src/execution/loop_iteration.rs',
-             ROOT / 'rust/birnam-id/src/runtime/numeric/chain.rs',
-             ROOT / 'rust/birnam-id/src/runtime/numeric/chain/loop_reuse.rs',
-             ROOT / 'rust/birnam-id/src/runtime/unboxed_numeric_probe.rs']
-    paths += [ROOT / 'rust/birnam-id/src/runtime/native_tier/regions.rs',
-              ROOT / 'rust/birnam-id/src/heap/dead_allocations/frame_indices.rs']
+             ROOT / 'rust/birnam-runtime/src/execution.rs', ROOT / 'rust/birnam-runtime/src/execution/tail_entry.rs',
+             ROOT / 'rust/birnam-runtime/src/execution/loop_iteration.rs',
+             ROOT / 'rust/birnam-runtime/src/runtime/numeric/chain.rs',
+             ROOT / 'rust/birnam-runtime/src/runtime/numeric/chain/loop_reuse.rs',
+             ROOT / 'rust/birnam-runtime/src/runtime/unboxed_numeric_probe.rs']
+    paths += [ROOT / 'rust/birnam-runtime/src/runtime/native_tier/regions.rs',
+              ROOT / 'rust/birnam-runtime/src/heap/dead_allocations/frame_indices.rs']
     installed = [prefix / 'bin/birnam', prefix / 'share/birnam/rust-install.json'] + sorted((prefix / 'lib').glob('*.dylib'))
     receipt = dict(status='running', profile=args.profile, floor_sha256=sha(floor),
                    source_sha256={str(p.relative_to(ROOT)): sha(p) for p in paths},

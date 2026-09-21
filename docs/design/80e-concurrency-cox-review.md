@@ -91,7 +91,7 @@ qualification rule, not proof that an ABI revision is necessary.
 
 The proposal promises ordinary native participation while moving toward multiple
 thread-hosted runtimes. Its source audit is justified:
-[public_api.rs](../../rust/birnam-id/src/public_api.rs) uses `PUBLIC_RUNTIME`, and
+[public_api.rs](../../rust/birnam-runtime/src/public_api.rs) uses `PUBLIC_RUNTIME`, and
 `initialize_once` rejects a second process-lifetime initialization. Replacing that
 pointer with thread-local routing would address only one part of the problem.
 

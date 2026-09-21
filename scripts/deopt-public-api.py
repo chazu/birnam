@@ -21,7 +21,7 @@ HEADER = "abi/fixtures/idapi-v1/idapi_v1.h"
 AUTHORITIES = [
     "rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json", HEADER,
     "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs",
-    "rust/birnam-id/src/registration.rs",
+    "rust/birnam-runtime/src/registration.rs",
     "rust/birnam-artifact/src/frame_descriptor.rs",
 ]
 CASES = {

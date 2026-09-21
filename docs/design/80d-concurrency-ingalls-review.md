@@ -57,7 +57,7 @@ reenter the borrowed state. Uniform sends do not make either situation safe.
 
 [60D §§4–7](60d-stackless-concurrency-fit.md) requires short physical borrows and
 distinct entry scopes for unrelated work. The existing
-[`run_stackless_loop`](../../rust/birnam-id/src/runtime.rs) establishes an entry
+[`run_stackless_loop`](../../rust/birnam-runtime/src/runtime.rs) establishes an entry
 scope around each native step; a Rust loop exit alone is not a new task context.
 
 **Bounded remedy:** specify one drive-to-scheduler handoff with decoded,
@@ -83,8 +83,8 @@ does not choose a legal control transfer.
 failures fatal through ordinary synchronous sends/direct thunks, which lack an
 error channel. A recoverable subset requires an explicit taxonomy amendment.
 Current `DecodedAction::Abort` handling in
-[`runtime.rs`](../../rust/birnam-id/src/runtime.rs) marks the Machine failed and
-returns its reason; [`MachineState::fail`](../../rust/birnam-id/src/execution.rs)
+[`runtime.rs`](../../rust/birnam-runtime/src/runtime.rs) marks the Machine failed and
+returns its reason; [`MachineState::fail`](../../rust/birnam-runtime/src/execution.rs)
 clears drive/delimiter state. This is not the proposed language cleanup protocol.
 
 **Bounded remedy:** enumerate application-declared task failure, cancellation,
@@ -129,7 +129,7 @@ readiness event can then target a reused operation identity.
 
 [60D §14](60d-stackless-concurrency-fit.md) explicitly assigns queued rooting to
 the scheduler, not the capability registry. Existing scoped drive roots and
-Machine tracing in [`runtime.rs`](../../rust/birnam-id/src/runtime.rs) do not
+Machine tracing in [`runtime.rs`](../../rust/birnam-runtime/src/runtime.rs) do not
 automatically cover new queues, result objects, or debugger retention.
 
 **Bounded remedy:** document the strong owner before and after each transfer,

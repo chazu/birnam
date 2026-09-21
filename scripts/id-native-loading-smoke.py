@@ -16,8 +16,28 @@ def run(*args, **kwargs):
     return subprocess.run(args, cwd=root, check=True, **kwargs)
 
 
+# Check the installed images, not just source-level module visibility.
+for stem in ("id", "runtime"):
+    library = prefix / f"lib/libbirnam_{stem}.dylib"
+    manifest = json.loads((root / f"abi/rust-{stem}-dylib-v1.json").read_text())
+    exports = set(run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines())
+    assert exports == {"_" + symbol for symbol in manifest["exported_symbols"]}, (stem, exports)
+    dependencies = run("otool", "-L", str(library), capture_output=True, text=True).stdout.splitlines()[1:]
+    if stem == "id":
+        assert {line.strip().split()[0] for line in dependencies} <= {
+            "@rpath/libbirnam_id.dylib", "/usr/lib/libSystem.B.dylib"}, dependencies
+print("installed Id has only its native entry and identity exports; Runtime exports are separate")
+
 metadata = json.loads(run("mise", "exec", "--", "cargo", "metadata", "--locked", "--offline",
                           "--no-deps", "--format-version", "1", capture_output=True).stdout)
+packages = {package["name"]: package for package in metadata["packages"]}
+def normal_dependencies(name):
+    return {dependency["name"] for dependency in packages[name]["dependencies"]
+            if dependency["kind"] is None}
+assert normal_dependencies("birnam-id") == {"birnam-abi"}
+assert not normal_dependencies("birnam-abi")
+assert "birnam-id" not in normal_dependencies("birnam-runtime")
+print("Cargo boundary: Id depends only on ABI; Runtime has no Rust dependency on Id")
 target = Path(metadata["target_directory"]) / "debug"
 run("mise", "exec", "--", "cargo", "build", "--locked", "--offline", "-p", "birnam-host", "-p", "birnam-abi")
 with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
@@ -25,6 +45,8 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     isolated = scratch / "isolated"
     isolated.mkdir()
     shutil.copy2(prefix / "lib/libbirnam_id.dylib", isolated)
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/runtime-construction-native.c", "-o", str(scratch / "runtime-construction.dylib"))
     for mode in range(6):
         run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib", f"-DMODE={mode}",
             "scripts/fixtures/id-native-module.c", "-o", str(scratch / f"{mode}.dylib"))

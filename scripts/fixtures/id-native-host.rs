@@ -339,6 +339,10 @@ fn main() {
     let activation_exercise = intern(&id, b"exerciseActivationConstructors");
     initial.activate_collection().unwrap();
     assert_eq!(send(&id, activation_save, &[]).status, native::LOADED);
+    let runtime_path = isolated.join("libbirnam_runtime.dylib");
+    assert_eq!(unsafe { initial.load_native(scratch.join("runtime-construction.dylib").as_os_str().as_bytes(),
+        &[Operand::bytes(runtime_path.as_os_str().as_bytes())]) }.status, native::LOADED);
+    println!("separate Runtime rejects malformed constructors before adoption");
     let floor = initial.finish().unwrap();
     assert_eq!(floor.gc_settings(), unsafe { (*collection).settings }.cast_const());
     assert_eq!(floor.native_stack(), unsafe { (*collection).stack }.cast_const());

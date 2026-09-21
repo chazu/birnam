@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 
 const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id.dylib",
+    "libbirnam_runtime.dylib",
     "libbirnam_bootstrap.dylib",
     "libbirnam_namespace.dylib",
     "libbirnam_storage.dylib",
@@ -530,6 +531,7 @@ fn run_status(command: &mut Command, label: &str) -> Result<(), String> {
 fn native_library_source(canonical: &str) -> &'static str {
     match canonical {
         "libbirnam_id.dylib" => "libbirnam_id.dylib",
+        "libbirnam_runtime.dylib" => "libbirnam_runtime.dylib",
         "libbirnam_bootstrap.dylib" => "libbirnam_bootstrap.dylib",
         "libbirnam_namespace.dylib" => "libbirnam_namespace.dylib",
         "libbirnam_storage.dylib" => "libbirnam_storage.dylib",
@@ -687,7 +689,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         Vec::new()
     };
     // Development-only cargo features (for example Design 74 E1's
-    // `birnam-id/dev-guarded-slots,...`). Recorded in the receipt's cargo
+    // `birnam-runtime/dev-guarded-slots,...`). Recorded in the receipt's cargo
     // invocation so a dev prefix is never mistaken for an ordinary build.
     let mut cargo = Command::new("cargo");
     cargo

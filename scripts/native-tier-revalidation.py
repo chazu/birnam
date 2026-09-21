@@ -20,7 +20,7 @@ spec = importlib.util.spec_from_file_location("focus", ROOT / "scripts/native-ti
 focus = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(focus)
 BASE = "24e200a3"
-CHANGES = (focus.NATIVE, "rust/birnam-id/src/runtime/native_tier/tests.rs")
+CHANGES = (focus.NATIVE, "rust/birnam-runtime/src/runtime/native_tier/tests.rs")
 SOURCES = (
     "scripts/native-tier-revalidation.py", "scripts/native-tier-focus.py",
     "scripts/runtime-native-tier.py", "scripts/fixtures/native-tier-profile.rs",
@@ -65,7 +65,7 @@ def correctness(args):
             assert unchanged_authority(name, (ROOT / name).read_bytes(), subprocess.check_output(["git", "show", f"{BASE}:{name}"], cwd=ROOT))
             result["authorities"][name] = focus.sha(ROOT / name)
         for profile in ("debug", "release"):
-            command = ["cargo", "test", "-p", "birnam-id", "--locked", "--offline"]
+            command = ["cargo", "test", "-p", "birnam-runtime", "--locked", "--offline"]
             if profile == "release":
                 command.append("--release")
             output = focus.run(command + ["native_tier", "--", "--nocapture"], env=env)

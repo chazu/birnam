@@ -892,7 +892,6 @@ pub enum FloorError {
     },
     EmbeddedNul,
     OpenFailed,
-    MissingIdInit,
     IdProtocol { status: u32, detail: usize },
     MethodObservation { path: PathBuf, reason: &'static str },
     RootRegistry { path: PathBuf, reason: &'static str },
@@ -942,7 +941,6 @@ impl fmt::Debug for FloorError {
             }
             Self::EmbeddedNul => formatter.write_str("EmbeddedNul"),
             Self::OpenFailed => formatter.write_str("OpenFailed"),
-            Self::MissingIdInit => formatter.write_str("MissingIdInit"),
             Self::IdProtocol { status, detail } => write!(formatter, "Id protocol initialization failed ({status}, {detail})"),
             Self::MethodObservation { path, reason } => write!(formatter, "Method observation preparation failed: {} ({reason})", path.display()),
             Self::RootRegistry { path, reason } => write!(formatter, "Root registry preparation failed: {} ({reason})", path.display()),
@@ -980,24 +978,13 @@ pub struct LoadedFloor {
     native_word: Option<*mut birnam_abi::word::WordApiV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
     id_protocol: birnam_abi::id_protocol::Protocol,
-    _namespace: Option<NonNull<std::ffi::c_void>>,
-    _object_model: Option<NonNull<std::ffi::c_void>>,
     _deferred_identity: NonNull<std::ffi::c_void>,
     _deferred_index: NonNull<std::ffi::c_void>,
-    _root_registry: Option<NonNull<std::ffi::c_void>>,
     root_registry: NonNull<birnam_abi::root_registry::ApiV1>,
-    _gc_settings: Option<NonNull<std::ffi::c_void>>,
     gc_settings: NonNull<birnam_abi::gc_settings::ApiV1>,
-    _payload_layout: Option<NonNull<std::ffi::c_void>>,
     payload_layout: NonNull<birnam_abi::payload_layout::ApiV1>,
-    _trace_hooks: Option<NonNull<std::ffi::c_void>>,
     trace_hooks: NonNull<birnam_abi::trace_hooks::ApiV1>,
-    _finalizers: Option<NonNull<std::ffi::c_void>>,
     finalizers: NonNull<birnam_abi::finalizers::ApiV1>,
-    _native_stack: Option<NonNull<std::ffi::c_void>>,
-    _native_mark: Option<NonNull<std::ffi::c_void>>,
-    _allocation_budget: Option<NonNull<std::ffi::c_void>>,
-    _collection_phase: Option<NonNull<std::ffi::c_void>>,
     _storage_observation: NonNull<std::ffi::c_void>,
     _dispatch_cache: NonNull<std::ffi::c_void>,
     _guard_verdict: NonNull<std::ffi::c_void>,
@@ -3081,7 +3068,7 @@ impl LoadedFloor {
     pub fn native_stack(&self) -> *const birnam_abi::native_stack::ApiV1 { self.native_stack.as_ptr() }
 
     pub fn api(&self) -> &IdApi {
-        // SAFETY: `id_init` returned a process-owned, non-null table and the
+        // SAFETY: Runtime construction returned a process-owned, non-null table and the
         // successful loader retains its dylib handle for this value's lifetime.
         unsafe { self.api.as_ref() }
     }
@@ -3118,14 +3105,6 @@ pub fn begin_id(
     let Some(handle) = NonNull::new(handle) else {
         return Err(FloorError::OpenFailed);
     };
-    let init_name = c"id_init";
-    // SAFETY: `handle` came from a successful `dlopen`; the symbol name is a
-    // static NUL-terminated string.
-    let init = unsafe { system_dlsym(handle.as_ptr(), init_name.as_ptr().cast()) };
-    let Some(init) = NonNull::new(init) else {
-        unsafe { system_dlclose(handle.as_ptr()) };
-        return Err(FloorError::MissingIdInit);
-    };
     if let Some(expected) = expected_identity {
         let identity_name = c"birnam_id_floor_identity";
         // SAFETY: the handle is live and the static symbol name is valid.
@@ -3155,15 +3134,13 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v13".as_ptr()) });
     // Capture original entries before any upper module can replace them.
-    let primitives = if runtime_init.is_some() { Some(unsafe { birnam_abi::id_primitives::select(id_protocol) }.map_err(|failure| FloorError::IdProtocol { status: failure.status, detail: failure.detail })?) } else { None };
-    let bootstrap = if runtime_init.is_some() {
-        let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
-        Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
-            .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
-    } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, primitives, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, graph: None, collection: None, text_ready: false, _owner_thread: PhantomData })
+    let primitives = Some(unsafe { birnam_abi::id_primitives::select(id_protocol) }
+        .map_err(|failure| FloorError::IdProtocol { status: failure.status, detail: failure.detail })?);
+    let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
+    let bootstrap = Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
+        .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?);
+    Ok(InitialFloor { source_path, handle, id_protocol, primitives, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, graph: None, collection: None, text_ready: false, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3171,8 +3148,6 @@ pub fn begin_id(
 pub struct InitialFloor {
     source_path: PathBuf,
     handle: NonNull<std::ffi::c_void>,
-    init: NonNull<std::ffi::c_void>,
-    runtime_init: Option<NonNull<std::ffi::c_void>>,
     primitives: Option<birnam_abi::id_primitives::PrimitivesV1>,
     lifetime: Option<*const birnam_abi::lifetime::OwnedV1>,
     base_values: Option<*const birnam_abi::base_values::ValuesV1>,
@@ -3204,7 +3179,7 @@ impl InitialFloor {
         unsafe { load_native_with_bootstrap(self.bootstrap.as_ref(), self.id_protocol, path, args) }
     }
     pub fn initialize_roots(&mut self) -> Result<Option<*const birnam_abi::root_registry::OwnedV1>, FloorError> {
-        if self.roots.is_some() || self.runtime_init.is_none() { return Ok(self.roots); }
+        if self.roots.is_some() { return Ok(self.roots); }
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_root_registry.dylib");
         let answer = unsafe { self.load_native(&path_bytes(&path), &[Operand::object(self.id_protocol.receiver)]) };
@@ -3225,7 +3200,7 @@ impl InitialFloor {
     /// Construct complete payload, trace-hook and finalizer records through Id.
     /// This is the same step used by ordinary production startup.
     pub fn initialize_lifetime(&mut self) -> Result<Option<*const birnam_abi::lifetime::OwnedV1>, FloorError> {
-        if self.runtime_init.is_none() || self.lifetime.is_some() { return Ok(self.lifetime); }
+        if self.lifetime.is_some() { return Ok(self.lifetime); }
         self.initialize_roots()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let load = |file: &str, arguments: &[Operand]| -> Result<Operand, FloorError> {
@@ -3248,7 +3223,7 @@ impl InitialFloor {
     }
     /// Construct base identities and predicates before String, numbers or Block.
     pub fn initialize_base_values(&mut self) -> Result<Option<*const birnam_abi::base_values::ValuesV1>, FloorError> {
-        if self.runtime_init.is_none() || self.base_values.is_some() { return Ok(self.base_values); }
+        if self.base_values.is_some() { return Ok(self.base_values); }
         self.initialize_lifetime()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let boolean = self.source_path.with_file_name("libbirnam_boolean.dylib");
@@ -3264,7 +3239,7 @@ impl InitialFloor {
     }
     /// Native publication/import and Word-valued enumeration, before String.
     pub fn initialize_namespace(&mut self) -> Result<Option<*const birnam_abi::namespace_owner::OwnedV1>, FloorError> {
-        if self.runtime_init.is_none() || self.namespace.is_some() { return Ok(self.namespace); }
+        if self.namespace.is_some() { return Ok(self.namespace); }
         self.initialize_base_values()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_namespace.dylib");
@@ -3278,7 +3253,7 @@ impl InitialFloor {
     }
     /// Construct private behaviors and enumeration before Runtime/GC.
     pub fn initialize_object_model(&mut self) -> Result<Option<*const birnam_abi::object_model::OwnedV1>, FloorError> {
-        if self.runtime_init.is_none() || self.model.is_some() { return Ok(self.model); }
+        if self.model.is_some() { return Ok(self.model); }
         self.initialize_namespace()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_object_model.dylib");
@@ -3292,7 +3267,7 @@ impl InitialFloor {
     }
     /// Construct usable byte storage before Integer, Error, Float or Runtime.
     pub fn initialize_string(&mut self) -> Result<Option<*mut birnam_abi::string::StringApiV1>, FloorError> {
-        if self.runtime_init.is_none() || self.string.is_some() { return Ok(self.string); }
+        if self.string.is_some() { return Ok(self.string); }
         self.initialize_object_model()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_string.dylib");
@@ -3306,7 +3281,7 @@ impl InitialFloor {
     }
     /// Construct Error values and propagation before numbers or Runtime.
     pub fn initialize_error(&mut self) -> Result<Option<birnam_abi::Oop>, FloorError> {
-        if self.runtime_init.is_none() || self.error.is_some() { return Ok(self.error); }
+        if self.error.is_some() { return Ok(self.error); }
         self.initialize_string()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_id_error.dylib");
@@ -3325,7 +3300,7 @@ impl InitialFloor {
     }
     /// Construct checked Integer arithmetic and errors before Float or Runtime.
     pub fn initialize_integer(&mut self) -> Result<Option<*mut birnam_abi::integer::IntegerApiV1>, FloorError> {
-        if self.runtime_init.is_none() || self.integer.is_some() { return Ok(self.integer); }
+        if self.integer.is_some() { return Ok(self.integer); }
         self.initialize_error()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_integer.dylib");
@@ -3341,7 +3316,7 @@ impl InitialFloor {
     }
     /// Construct Float and extend Integer only after the Integer base exists.
     pub fn initialize_float(&mut self) -> Result<Option<*mut birnam_abi::float::FloatApiV1>, FloorError> {
-        if self.runtime_init.is_none() || self.float.is_some() { return Ok(self.float); }
+        if self.float.is_some() { return Ok(self.float); }
         self.initialize_integer()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_float.dylib");
@@ -3357,7 +3332,7 @@ impl InitialFloor {
     }
     /// Construct Word after Integer without a Float or Runtime dependency.
     pub fn initialize_word(&mut self) -> Result<Option<*mut birnam_abi::word::WordApiV1>, FloorError> {
-        if self.runtime_init.is_none() || self.word.is_some() { return Ok(self.word); }
+        if self.word.is_some() { return Ok(self.word); }
         self.initialize_integer()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_word.dylib");
@@ -3373,7 +3348,7 @@ impl InitialFloor {
     }
     /// Extend existing String storage after both numeric families are complete.
     pub fn initialize_text(&mut self) -> Result<(), FloorError> {
-        if self.runtime_init.is_none() || self.text_ready { return Ok(()); }
+        if self.text_ready { return Ok(()); }
         self.initialize_float()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let id = self.id_protocol;
@@ -3401,7 +3376,7 @@ impl InitialFloor {
     }
     /// Construct live graph access from completed lower owners, before Runtime.
     pub fn initialize_trace(&mut self) -> Result<Option<*const birnam_abi::trace_graph::GraphV2>, FloorError> {
-        if self.runtime_init.is_none() || self.graph.is_some() { return Ok(self.graph); }
+        if self.graph.is_some() { return Ok(self.graph); }
         self.initialize_text()?;
         self.initialize_word()?;
         use birnam_abi::id_protocol::{self as native, Operand};
@@ -3419,7 +3394,7 @@ impl InitialFloor {
     }
     /// Construct the collection records and controls before aggregate Runtime.
     pub fn initialize_collection(&mut self) -> Result<Option<*const birnam_abi::collection_state::OwnedV2>, FloorError> {
-        if self.runtime_init.is_none() || self.collection.is_some() { return Ok(self.collection); }
+        if self.collection.is_some() { return Ok(self.collection); }
         self.initialize_trace()?;
         use birnam_abi::id_protocol as native;
         let mut dependencies = Vec::new();
@@ -3459,7 +3434,14 @@ impl InitialFloor {
         self.initialize_text()?;
         self.initialize_trace()?;
         self.activate_collection()?;
-        let Self { source_path, handle, init, runtime_init, id_protocol, primitives, roots, lifetime, base_values, namespace, model, string, float, word, graph, collection, bootstrap, .. } = self;
+        let Self { source_path, handle, id_protocol, primitives, roots, lifetime, base_values, namespace, model, string, float, word, graph, collection, bootstrap, .. } = self;
+        // Id and its native entries stay pinned. Remaining legacy factory tables
+        // belong to the separate upper image; mapping it does not initialize it.
+        let _id_image = handle;
+        let runtime_path = source_path.with_file_name("libbirnam_runtime.dylib");
+        let runtime_name = CString::new(path_bytes(&runtime_path)).map_err(|_| FloorError::EmbeddedNul)?;
+        let handle = NonNull::new(unsafe { system_dlopen(runtime_name.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
+            .ok_or(FloorError::OpenFailed)?;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3470,29 +3452,12 @@ impl InitialFloor {
         let trace_hooks_path = path.with_file_name("libbirnam_trace_hooks.dylib");
         let finalizers_path = path.with_file_name("libbirnam_finalizers.dylib");
         let native_stack_path = path.with_file_name("libbirnam_native_stack.dylib");
-        let native_mark_path = path.with_file_name("libbirnam_native_mark.dylib");
-        let allocation_budget_path = path.with_file_name("libbirnam_allocation_budget.dylib");
-        let collection_phase_path = path.with_file_name("libbirnam_collect.dylib");
         let storage_observation_path = path.with_file_name("libbirnam_storage.dylib");
         let dispatch_cache_path = path.with_file_name("libbirnam_dispatch_cache.dylib");
         let guard_verdict_path = path.with_file_name("libbirnam_dispatch_cache.dylib");
 
         // These inert factories still feed the legacy upper Runtime constructor.
         // They are no longer prerequisites for constructing Id itself.
-        let namespace_image = if namespace.is_some() { None } else { Some(match unsafe { prepare_namespace(handle, &namespace_path) } {
-            Ok(namespace) => namespace,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let object_model = if model.is_some() { None } else { Some(match unsafe { prepare_vtable_enumeration(handle, &object_model_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
         let observation_image = match unsafe { prepare_method_observation(handle, &observation_path) } {
             Ok(image) => image,
             Err(error) => {
@@ -3500,69 +3465,6 @@ impl InitialFloor {
                 return Err(error);
             }
         };
-        let root_registry_image = if roots.is_some() { None } else { Some(match unsafe { prepare_root_registry(handle, &root_registry_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let gc_settings_image = if collection.is_some() { None } else { Some(match unsafe { prepare_gc_settings(handle, &gc_settings_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let payload_layout_image = if lifetime.is_some() { None } else { Some(match unsafe { prepare_payload_layout(handle, &payload_layout_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let trace_hooks_image = if lifetime.is_some() { None } else { Some(match unsafe { prepare_trace_hooks(handle, &trace_hooks_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let finalizers_image = if lifetime.is_some() { None } else { Some(match unsafe { prepare_finalizers(handle, &finalizers_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let native_stack_image = if collection.is_some() { None } else { Some(match unsafe { prepare_native_stack(handle, &native_stack_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let native_mark_image = if graph.is_some() { None } else { Some(match unsafe { prepare_native_mark(handle, &native_mark_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let allocation_budget_image = if collection.is_some() { None } else { Some(match unsafe { prepare_allocation_budget(handle, &allocation_budget_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
-        let collection_phase_image = if collection.is_some() { None } else { Some(match unsafe { prepare_collection_phase(handle, &collection_phase_path) } {
-            Ok(image) => image,
-            Err(error) => {
-                unsafe { system_dlclose(handle.as_ptr()) };
-                return Err(error);
-            }
-        }) };
         let storage_observation_image = match unsafe { prepare_storage_observation(handle, &storage_observation_path) } {
             Ok(image) => image,
             Err(error) => {
@@ -3598,13 +3500,22 @@ impl InitialFloor {
                 return Err(error);
             }
         };
-        let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values), Some(namespace), Some(model), Some(graph), Some(collection)) = (runtime_init, roots, lifetime, base_values, namespace, model, graph, collection) {
-            let initialize: unsafe extern "C" fn(*const birnam_abi::id_protocol::Protocol, *const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1, *const birnam_abi::trace_graph::GraphV2, *const birnam_abi::collection_state::OwnedV2, *const birnam_abi::id_primitives::PrimitivesV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
-            unsafe { initialize(&id_protocol, roots, lifetime, values, namespace, model, graph, collection, primitives.as_ref().expect("Runtime requires completed Id primitives")) }
-        } else {
-            let initialize: IdInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
-            unsafe { initialize() }
-        };
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let arguments = [
+            Operand::word(roots.expect("completed roots").addr()),
+            Operand::word(lifetime.expect("completed lifetime").addr()),
+            Operand::word(base_values.expect("completed base values").addr()),
+            Operand::word(namespace.expect("completed namespace").addr()),
+            Operand::word(model.expect("completed object model").addr()),
+            Operand::word(graph.expect("completed trace graph").addr()),
+            Operand::word(collection.expect("completed collection").addr()),
+            Operand::word((primitives.as_ref().expect("completed Id primitives") as *const birnam_abi::id_primitives::PrimitivesV1).addr()),
+        ];
+        let answer = unsafe { load_native_with_bootstrap(bootstrap.as_ref(), id_protocol, &path_bytes(&runtime_path), &arguments) };
+        if answer.status != native::LOADED {
+            return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail });
+        }
+        let initialized = answer.value.as_word().unwrap_or(0) as *mut IdApi;
         let api = NonNull::new(initialized).ok_or_else(|| {
             unsafe { system_dlclose(handle.as_ptr()) };
             FloorError::NullApi
@@ -3741,27 +3652,17 @@ impl InitialFloor {
             native_word: word,
             bootstrap,
             id_protocol,
-            _root_registry: root_registry_image,
             root_registry: NonNull::new(root_registry).unwrap(),
-            _gc_settings: gc_settings_image,
             gc_settings: NonNull::new(gc_settings).unwrap(),
-            _payload_layout: payload_layout_image,
             payload_layout: NonNull::new(payload_layout).unwrap(),
-            _trace_hooks: trace_hooks_image,
             trace_hooks: NonNull::new(trace_hooks).unwrap(),
-            _finalizers: finalizers_image,
             finalizers: NonNull::new(finalizers).unwrap(),
-            _native_stack: native_stack_image,
-            _native_mark: native_mark_image,
-            _allocation_budget: allocation_budget_image,
-            _collection_phase: collection_phase_image,
             _storage_observation: storage_observation_image,
             _dispatch_cache: dispatch_cache_image,
             _guard_verdict: guard_verdict_image,
             native_stack: NonNull::new(native_stack).unwrap(),
             _method_observation: observation_image,
             method_observation: NonNull::new(observation).unwrap(),
-            _object_model: object_model,
             _deferred_identity: deferred_identity_image,
             _deferred_index: deferred_index_image,
             vtable_enumeration: NonNull::new(vtables).unwrap(),
@@ -3769,7 +3670,6 @@ impl InitialFloor {
             namespace_import: NonNull::new(import).unwrap(),
             namespace_presence: NonNull::new(presence).unwrap(),
             namespace_names: NonNull::new(names).unwrap(),
-            _namespace: namespace_image,
             handle,
             api,
             _owner_thread: PhantomData,
@@ -3798,72 +3698,6 @@ pub fn load_floor(path: &Path, expected_identity: Option<&str>, expected_digest:
 
 // Only host loader operations run here; no Id callbacks exist yet. On success
 // the descriptor has escaped into the floor and both libraries stay pinned.
-unsafe fn prepare_namespace(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::Namespace {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_namespace_dependency_v8".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_namespace_provider_v8".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::namespace::ProviderV8 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::namespace::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::namespace::DependencyV8 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_vtable_enumeration(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::VtableEnumeration {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_vtable_enumeration_dependency_v2".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_vtable_enumeration_factory_v2".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::vtable_enumeration::FactoryProviderV2 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::vtable_enumeration::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::vtable_enumeration::DependencyV2 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
 unsafe fn prepare_method_observation(
     floor: NonNull<std::ffi::c_void>,
     path: &Path,
@@ -3890,303 +3724,6 @@ unsafe fn prepare_method_observation(
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::method_observation::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
         let attach: birnam_abi::method_observation::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_root_registry(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::RootRegistry {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_root_registry_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_root_registry_factory_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::root_registry::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::root_registry::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::root_registry::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_gc_settings(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::GcSettings {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_gc_settings_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_gc_settings_factory_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::gc_settings::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::gc_settings::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::gc_settings::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_payload_layout(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::PayloadLayout {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_payload_layout_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_payload_layout_factory_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::payload_layout::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::payload_layout::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::payload_layout::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_trace_hooks(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::TraceHooks {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_trace_hooks_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_trace_hooks_factory_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::trace_hooks::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::trace_hooks::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::trace_hooks::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_finalizers(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::Finalizers {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_finalizers_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_finalizers_factory_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::finalizers::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::finalizers::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::finalizers::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_native_stack(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::NativeStack {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_native_stack_dependency_v4".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_native_stack_factory_v4".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::native_stack::FactoryProviderV4 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::native_stack::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::native_stack::DependencyV4 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_native_mark(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::NativeMark {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_native_mark_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_native_mark_provider_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::native_mark::ProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::native_mark::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::native_mark::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_allocation_budget(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::AllocationBudget {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_allocation_budget_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_allocation_budget_factory_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::allocation_budget::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::allocation_budget::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::allocation_budget::DependencyV1 = unsafe { std::mem::transmute(attach) };
-        if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
-        Ok(image)
-    })();
-    if result.is_err() { unsafe { system_dlclose(image.as_ptr()) }; }
-    result
-}
-
-unsafe fn prepare_collection_phase(
-    floor: NonNull<std::ffi::c_void>,
-    path: &Path,
-) -> Result<NonNull<std::ffi::c_void>, FloorError> {
-    let error = |reason| FloorError::CollectionPhase {
-        path: path.to_path_buf(),
-        reason,
-    };
-    let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_collection_phase_dependency_v1".as_ptr()) };
-    if attach.is_null() {
-        return Err(error("missing floor dependency"));
-    }
-    let path_c = CString::new(path_bytes(path)).map_err(|_| error("embedded NUL"))?;
-    let image = NonNull::new(unsafe { system_dlopen(path_c.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-        .ok_or_else(|| error("open failed"))?;
-    let result = (|| {
-        let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_collection_phase_factory_v1".as_ptr()) };
-        if provider.is_null() {
-            return Err(error("missing provider"));
-        }
-        let provide: birnam_abi::collection_phase::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
-        let descriptor = unsafe { provide() };
-        if !unsafe { birnam_abi::collection_phase::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::collection_phase::DependencyV1 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

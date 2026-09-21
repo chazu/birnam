@@ -1,7 +1,7 @@
 # Runtime construction v13
 
 `birnam_runtime_init_v13` is the temporary upper constructor used by the
-production host while Design 83's Execution and package migration continues.
+native entry of `libbirnam_runtime.dylib` while Design 83's Execution migration continues.
 Version 13 replaces the allocation-only descriptor with the original Id entries
 retained before upper modules load. The Id native carrier remains version 1;
 version 12 of this constructor is no longer exported.
@@ -37,9 +37,15 @@ collector-extension installation and releases temporary roots afterward.
 
 Id keeps its own production state for process life, matching primitive native
 image pinning. Runtime neither takes an `InitialObjects` Rust value nor owns an
-Id `State` box. The legacy `id_init` compatibility entry obtains a carrier and
-calls this same construction path; it is still scheduled for removal.
+Id `State` box. Only explicit `ffi-test-hooks` builds of Runtime retain `id_init` for diagnostic
+fixtures. Normal Id and Runtime builds do not export that entry.
 
-This declaration does not establish the final Execution entry or independent
-Id package: Runtime/compiler code and the remaining legacy interfaces must still
-leave `birnam-id` under Design 83.
+The host invokes Runtime through Id's native module loader. The loader supplies
+argument 1 as the native carrier; the other eight pointers are explicit `Word`
+initializer operands in the order above. The native entry rejects wrong counts,
+operand kinds and invalid descriptors before adopting owners, and returns the
+`IdApi` address as a `Word` on success.
+
+Id is now independently packaged with only `birnam-abi` as a Cargo dependency.
+This constructor does not establish the final Execution base: compiler code and
+remaining legacy factory preparation still reside in the upper Runtime.

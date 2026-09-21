@@ -112,7 +112,7 @@ sketched in 80A or a background I/O executor.
 
 ## Runtime connection and invariants
 
-[task_control.rs](../../rust/birnam-id/src/runtime/task_control.rs) supplies
+[task_control.rs](../../rust/birnam-runtime/src/runtime/task_control.rs) supplies
 small generic Machine adapters: `runBlock:`, `resumeWith:`, `protectedBlock:`,
 `leaveBoundary:`, `park`, and `controlEligible`. `prepareBlockControl` prepares
 their registrations. The eligibility query runs as a StepMethod and checks

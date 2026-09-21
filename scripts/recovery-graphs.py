@@ -11,12 +11,12 @@ import re
 import runpy
 import subprocess
 import tempfile
-from compatibility_authority import unchanged_authority
+from compatibility_authority import baseline_path, unchanged_authority
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "ff71ec23"
 AUTHORITIES = (
-    "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-id/src/registration.rs",
+    "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-runtime/src/registration.rs",
     "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs",
 )
 CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v20.json",
@@ -456,7 +456,7 @@ def main():
     try:
         for name in AUTHORITIES:
             data = (ROOT / name).read_bytes()
-            baseline = subprocess.check_output(["git", "show", f"{BASE}:{name}"], cwd=ROOT)
+            baseline = subprocess.check_output(["git", "show", f"{BASE}:{baseline_path(name)}"], cwd=ROOT)
             if not unchanged_authority(name, data, baseline):
                 raise RuntimeError("changed compatibility authority: " + name)
             receipt["authorities"][name] = sha(ROOT / name)
@@ -478,7 +478,7 @@ def main():
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["cargo", "build", "--locked", "--offline",
-                     "-p", "birnam-id", "-p", "birnam-object-model", "-p", "birnam-method-observation", "-p", "birnam-root-registry", "-p", "birnam-gc-settings", "-p", "birnam-payload-layout", "-p", "birnam-trace-hooks", "-p", "birnam-finalizers", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-collection",
+                     "-p", "birnam-runtime", "-p", "birnam-object-model", "-p", "birnam-method-observation", "-p", "birnam-root-registry", "-p", "birnam-gc-settings", "-p", "birnam-payload-layout", "-p", "birnam-trace-hooks", "-p", "birnam-finalizers", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-collection",
                      "-p", "birnam-error", "-p", "birnam-portable-code",
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
@@ -498,7 +498,7 @@ def main():
                 run([api_fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
                     ("id", "tcc", "codegen_runtime")], profile + "-closure-api-context")
             output = run(["cargo", "test", "--locked", "--offline",
-                          "-p", "birnam-id", "-p", "birnam-codegen", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
+                          "-p", "birnam-runtime", "-p", "birnam-codegen", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-relational", "--no-run", "--message-format=json"]
                          + (["--release"] if profile == "release" else []), profile + "-build")
             binaries = {}
             for line in output.splitlines():
@@ -509,47 +509,47 @@ def main():
                                               for name, path in binaries.items()}
             checks = [
                 ("birnam_codegen", "shape", "recovery_graph::tests"),
-                ("birnam_id", "materialization", "runtime::recovery::graph::tests"),
-                ("birnam_id", "id-producer", "runtime::native_tier::leaf_tests::graph_tests"),
-                ("birnam_id", "dense-recovery", "production_recovery_admits_id_recipe"),
+                ("birnam_runtime", "materialization", "runtime::recovery::graph::tests"),
+                ("birnam_runtime", "id-producer", "runtime::native_tier::leaf_tests::graph_tests"),
+                ("birnam_runtime", "dense-recovery", "production_recovery_admits_id_recipe"),
             ]
             if args.closures:
                 checks.append(("birnam_codegen", "closure-plan", "closure_elision::"))
-                checks.append(("birnam_id", "literal-callee", "runtime::native_tier::leaf_tests::literal_tests"))
-                checks.append(("birnam_id", "closure-context", "closure_context_requires_active_nil"))
-                checks.append(("birnam_id", "closure-staging", "disabled_closure_mode_skips_preparation"))
+                checks.append(("birnam_runtime", "literal-callee", "runtime::native_tier::leaf_tests::literal_tests"))
+                checks.append(("birnam_runtime", "closure-context", "closure_context_requires_active_nil"))
+                checks.append(("birnam_runtime", "closure-staging", "disabled_closure_mode_skips_preparation"))
             if args.numeric:
                 checks += [
                     ("birnam_codegen", "numeric-plan", "numeric_chain::"),
-                    ("birnam_id", "numeric-kernels", "runtime::numeric::tests"),
-                    ("birnam_id", "numeric-driver", "runtime::native_tier::leaf_tests::numeric_tests"),
+                    ("birnam_runtime", "numeric-kernels", "runtime::numeric::tests"),
+                    ("birnam_runtime", "numeric-driver", "runtime::native_tier::leaf_tests::numeric_tests"),
                     ("birnam_integer", "numeric-declarations", "numeric_declarations_name_exact_implementations"),
                 ]
             if args.unboxed:
-                checks.append(("birnam_id", "unboxed-numeric", "runtime::native_tier::leaf_tests::unboxed_numeric_tests"))
+                checks.append(("birnam_runtime", "unboxed-numeric", "runtime::native_tier::leaf_tests::unboxed_numeric_tests"))
             if args.chains:
-                checks.append(("birnam_id", "numeric-chain-storage", "runtime::numeric::chain::tests"))
-                checks.append(("birnam_id", "numeric-fusion", "runtime::native_tier::leaf_tests::fused_numeric_tests"))
+                checks.append(("birnam_runtime", "numeric-chain-storage", "runtime::numeric::chain::tests"))
+                checks.append(("birnam_runtime", "numeric-fusion", "runtime::native_tier::leaf_tests::fused_numeric_tests"))
             if args.tails:
                 checks += [
                     ("birnam_codegen", "tail-entry-plan", "tail_entry::tests"),
-                    ("birnam_id", "tail-entry-arena", "execution::tail_entry::tests"),
-                    ("birnam_id", "tail-entry-loop", "runtime::native_tier::leaf_tests::tail_entry_tests"),
-                    ("birnam_id", "loop-invariant-kernel", "runtime::numeric::chain::loop_reuse::tests"),
-                    ("birnam_id", "loop-iteration-evidence", "execution::loop_iteration::tests"),
-                    ("birnam_id", "loop-invariant-consumer", "runtime::native_tier::leaf_tests::loop_invariant_tests"),
+                    ("birnam_runtime", "tail-entry-arena", "execution::tail_entry::tests"),
+                    ("birnam_runtime", "tail-entry-loop", "runtime::native_tier::leaf_tests::tail_entry_tests"),
+                    ("birnam_runtime", "loop-invariant-kernel", "runtime::numeric::chain::loop_reuse::tests"),
+                    ("birnam_runtime", "loop-iteration-evidence", "execution::loop_iteration::tests"),
+                    ("birnam_runtime", "loop-invariant-consumer", "runtime::native_tier::leaf_tests::loop_invariant_tests"),
                 ]
             if args.allocations:
                 checks += [
                     ("birnam_codegen", "discarded-clone-plan", "discarded_clone::tests"),
-                    ("birnam_id", "dead-allocation-journal", "heap::dead_allocations::tests"),
-                    ("birnam_id", "discarded-clone-driver", "runtime::native_tier::leaf_tests::discarded_clone_tests"),
+                    ("birnam_runtime", "dead-allocation-journal", "heap::dead_allocations::tests"),
+                    ("birnam_runtime", "discarded-clone-driver", "runtime::native_tier::leaf_tests::discarded_clone_tests"),
                 ]
             if args.fields:
                 checks += [
                     ("birnam_codegen", "virtual-field-plan", "virtual_aggregate::tests"),
-                    ("birnam_id", "virtual-field-driver", "runtime::native_tier::leaf_tests::virtual_aggregate_tests"),
-                    ("birnam_id", "virtual-field-layout", "all_oop_layout_checks_current_prefix_tail_and_exact_vtable"),
+                    ("birnam_runtime", "virtual-field-driver", "runtime::native_tier::leaf_tests::virtual_aggregate_tests"),
+                    ("birnam_runtime", "virtual-field-layout", "all_oop_layout_checks_current_prefix_tail_and_exact_vtable"),
                     ("birnam_relational", "native-field-declaration", "native_field_projection_declares_only_the_exact_pure_getter"),
                 ]
             for package, label, test_filter in checks:

@@ -143,7 +143,7 @@ metadata retirement across L1/L2/L5. The other obligations remain unexecuted.
 ### L1. Object-model library and reflection — private behavior witnessed; reflection pending
 
 **Evidence:** `Runtime::ensure_private_vtable` in
-[runtime.rs](../../rust/birnam-id/src/runtime.rs) reads owner metadata, creates a
+[runtime.rs](../../rust/birnam-runtime/src/runtime.rs) reads owner metadata, creates a
 vtable, sets its owner, writes the object's header through `Heap::set_vtable`,
 and records mutation. [vtable.rs](../../rust/birnam-id/src/id/vtable.rs) owns
 registered parents, direct bindings and enumeration. [symbol.rs](../../rust/birnam-id/src/id/symbol.rs)
@@ -169,7 +169,7 @@ observing changes do not establish I6's observer contract.
 
 ### L2. Values and collections — Integer witnessed; remaining values and lifetime integration pending
 
-**Evidence:** [values.rs](../../rust/birnam-id/src/values.rs) writes numeric
+**Evidence:** [values.rs](../../rust/birnam-runtime/src/values.rs) writes numeric
 payloads after allocation; Strings additionally own byte buffers in a side map.
 [Collection](../../rust/birnam-collection/src/lib.rs) registers layouts, root
 providers and finalizers, and extends the String parent protocol.
@@ -195,7 +195,7 @@ authoring remain unproved.
 
 ### L3. Environment and binding — constructible above Symbols/collections
 
-**Evidence:** [env.rs](../../rust/birnam-id/src/env.rs) stores Symbol/object pairs
+**Evidence:** [env.rs](../../rust/birnam-runtime/src/env.rs) stores Symbol/object pairs
 with forward and reverse indexes and supplies both halves as roots. It has no
 need to define object identity or lookup semantics.
 
@@ -233,10 +233,10 @@ unproved.
 
 ### L5. Collector — ordinary reclamation witnessed; full lifetime integration pending
 
-**Evidence:** [gc.rs](../../rust/birnam-id/src/gc.rs) marks through `Heap` and
+**Evidence:** [gc.rs](../../rust/birnam-runtime/src/gc.rs) marks through `Heap` and
 captures native roots using a platform register-save operation.
 `gc_collect_from_native_range`, `run_mark_phase` and `mark_floor_roots` in
-[runtime.rs](../../rust/birnam-id/src/runtime.rs) directly consult values,
+[runtime.rs](../../rust/birnam-runtime/src/runtime.rs) directly consult values,
 exports, execution registries, Symbols and vtables, retire bindings, and invoke
 finalizers before reclaiming detached storage.
 
@@ -264,10 +264,10 @@ safepoint/root discipline.
 
 ### L6. Executable ownership — blocked on I5 and binding retirement
 
-**Evidence:** [ExecutionState](../../rust/birnam-id/src/execution.rs) currently
+**Evidence:** [ExecutionState](../../rust/birnam-runtime/src/execution.rs) currently
 owns dispatch-read scopes, acquired entries and generation leases.
 `Runtime::add_method`/removal adjust binding counts and staging journals.
-[registration.rs](../../rust/birnam-id/src/registration.rs) validates carriers,
+[registration.rs](../../rust/birnam-runtime/src/registration.rs) validates carriers,
 while live ownership and publication live elsewhere.
 
 **Construction:** a separate owner registry retains mapped code and supplies
@@ -283,7 +283,7 @@ Repeat retirement through dictionary collection, not just explicit removal.
 
 ### L7. Frames/descriptors — constructible on storage, values and ownership
 
-**Evidence:** `FrameArena` in [execution.rs](../../rust/birnam-id/src/execution.rs)
+**Evidence:** `FrameArena` in [execution.rs](../../rust/birnam-runtime/src/execution.rs)
 owns slot vectors, descriptors, program counters and generation-checked handles;
 `trace_roots` uses the descriptor/root-state PC. Other execution-object helpers
 currently accept `Heap` directly for membership, extent and payload operations.
@@ -301,7 +301,7 @@ raw writes merely to eliminate the `Heap` parameter.
 ### L8. Machine driving — blocked on I5's resolution/invocation split
 
 **Evidence:** `resolve_stackless_target` in
-[runtime.rs](../../rust/birnam-id/src/runtime.rs) binds through Id, then classifies
+[runtime.rs](../../rust/birnam-runtime/src/runtime.rs) binds through Id, then classifies
 the exact returned carrier in ExecutionState. `materialize_registered_target`
 also reads capture storage directly. The driver resides in the same Runtime.
 
@@ -317,9 +317,9 @@ different targets on successive sends must work with optimization absent.
 
 ### L9. Continuations/control and task policy — depends on Frames/Machine, not new seed policy
 
-**Evidence:** [scheduling.rs](../../rust/birnam-id/src/runtime/scheduling.rs) wraps
+**Evidence:** [scheduling.rs](../../rust/birnam-runtime/src/runtime/scheduling.rs) wraps
 bounded drives and suspended-Machine state through Runtime. Continuation state
-and root helpers are in [execution.rs](../../rust/birnam-id/src/execution.rs).
+and root helpers are in [execution.rs](../../rust/birnam-runtime/src/execution.rs).
 Task policy already exists in [stackless-control.birnam](../../src/id/stackless-control.birnam).
 
 **Construction:** provide capture/resume, boundary and bounded-driving protocols
@@ -333,10 +333,10 @@ extracted mechanisms without a compiler or optimizer on its execution path.
 
 ### L10. Optimization — blocked on I5/I6 and recovery contracts
 
-**Evidence:** [guarded_lookup.rs](../../rust/birnam-id/src/runtime/guarded_lookup.rs)
-and [dispatch_cache.rs](../../rust/birnam-id/src/runtime/dispatch_cache.rs) read
+**Evidence:** [guarded_lookup.rs](../../rust/birnam-runtime/src/runtime/guarded_lookup.rs)
+and [dispatch_cache.rs](../../rust/birnam-runtime/src/runtime/dispatch_cache.rs) read
 vtable epochs, heap membership and execution classification directly.
-[recovery.rs](../../rust/birnam-id/src/runtime/recovery.rs) reaches entry ownership,
+[recovery.rs](../../rust/birnam-runtime/src/runtime/recovery.rs) reaches entry ownership,
 Frame recovery authority and scoped roots; native tiers also compile code.
 
 **Construction:** optional lookup caching consumes validated seed/default-behavior

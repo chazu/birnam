@@ -89,11 +89,11 @@ or the smallest missing transition, not to assume an ABI break is necessary.
 | Existing mechanism | Consequence for this proposal |
 | --- | --- |
 | [60P](60p-v2-control-completion.md) stages a Call edge with predecessor roots and commits it when supplied an answer. | The internal park call can receive a tagged wake through ordinary resume. |
-| [resume_suspended](../../rust/birnam-id/src/execution.rs#L2281) validates and commits the top pending Call before driving its successor. | The top pending Call must belong to a library adapter, not the application's `receive` call. |
-| [commit_v2_transition](../../rust/birnam-id/src/execution.rs#L1371) applies parallel copies, result insertion, clears, and the successor root state. | The handler's exit result must use a real descriptor-admitted Call edge. No arbitrary PC assignment. |
-| [finish_stackless_return](../../rust/birnam-id/src/runtime.rs#L3296) pops a frame, commits its caller's Call, and releases its entry pin without invoking user code while borrowed. | Delimited exit can follow the same transfer discipline, but must preflight the entire multi-frame transition. This function is not already a delimited unwinder. |
-| [DelimiterKind](../../rust/birnam-id/src/execution.rs#L1609) currently contains Host and EntryBarrier; capture/restore is same-Machine and one-shot. | There is no supplied library-handler delimiter today; ordinary capture/restore does not by itself escape back into a retained cleanup handler. |
-| [Abort handling](../../rust/birnam-id/src/runtime.rs#L4101) calls `fail`, which clears execution control state. | It cannot stand in for language cleanup. |
+| [resume_suspended](../../rust/birnam-runtime/src/execution.rs#L2281) validates and commits the top pending Call before driving its successor. | The top pending Call must belong to a library adapter, not the application's `receive` call. |
+| [commit_v2_transition](../../rust/birnam-runtime/src/execution.rs#L1371) applies parallel copies, result insertion, clears, and the successor root state. | The handler's exit result must use a real descriptor-admitted Call edge. No arbitrary PC assignment. |
+| [finish_stackless_return](../../rust/birnam-runtime/src/runtime.rs#L3296) pops a frame, commits its caller's Call, and releases its entry pin without invoking user code while borrowed. | Delimited exit can follow the same transfer discipline, but must preflight the entire multi-frame transition. This function is not already a delimited unwinder. |
+| [DelimiterKind](../../rust/birnam-runtime/src/execution.rs#L1609) currently contains Host and EntryBarrier; capture/restore is same-Machine and one-shot. | There is no supplied library-handler delimiter today; ordinary capture/restore does not by itself escape back into a retained cleanup handler. |
+| [Abort handling](../../rust/birnam-runtime/src/runtime.rs#L4101) calls `fail`, which clears execution control state. | It cannot stand in for language cleanup. |
 | [Current stackless ensure:](../../src/id/stackless-control.birnam#L205) evaluates its body, evaluates cleanup, then returns the body's value. | It supports sequential/Error-value behavior, not nonlocal cancellation. A task-aware implementation must establish a real handler before the body runs. |
 
 These are current-source observations. The rest of this document is the proposed

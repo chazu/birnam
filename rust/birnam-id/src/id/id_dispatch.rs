@@ -338,9 +338,13 @@ mod tests {
         let path = std::ffi::CString::new(library.as_os_str().as_encoded_bytes()).unwrap();
         // The foreign entry's image stays pinned for the process. This is an
         // ABI fixture, not an alternate Id: it is called by the actual core.
-        let image = unsafe { crate::loader::open(path.as_ptr(), 2 | 4) };
+        unsafe extern "C" {
+            fn dlopen(path: *const core::ffi::c_char, flags: core::ffi::c_int) -> *mut c_void;
+            fn dlsym(image: *mut c_void, name: *const core::ffi::c_char) -> *mut c_void;
+        }
+        let image = unsafe { dlopen(path.as_ptr(), 2 | 4) };
         assert!(!image.is_null());
-        let address = unsafe { crate::loader::symbol(image, c"birnam_id_protocol_echo".as_ptr()) };
+        let address = unsafe { dlsym(image, c"birnam_id_protocol_echo".as_ptr()) };
         assert!(!address.is_null());
         let method: native::Method = unsafe { core::mem::transmute(address) };
         let id = InitialObjects::new();

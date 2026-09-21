@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mise exec -- cargo test --offline --locked -p birnam-native-stack --lib
-mise exec -- cargo test --offline --locked -p birnam-id --lib runtime::tests::native_stack_anchor
+mise exec -- cargo test --offline --locked -p birnam-runtime --lib runtime::tests::native_stack_anchor
 mise exec -- cargo build --offline --locked --workspace
 native_stack_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-native-stack.XXXXXX")

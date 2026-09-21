@@ -20,7 +20,7 @@ import time
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "24e200a3"
-NATIVE = "rust/birnam-id/src/runtime/native_tier.rs"
+NATIVE = "rust/birnam-runtime/src/runtime/native_tier.rs"
 SCENARIOS = ("chain-1024", "chain-4096", "eval", "collections", "portable-collections", "materialize-cold", "steady-chain")
 GROUPS = 7
 EXTRA_INPUTS = ("wrapped/linenoise/liblinenoise.dylib", "wrapped/termbox2/libtermbox2.dylib")
@@ -109,7 +109,7 @@ def prepare(args):
         patches[variant] = "".join(difflib.unified_diff(original.splitlines(True), changed.splitlines(True), fromfile=NATIVE, tofile=NATIVE))
         (work / f"{variant}.patch").write_text(patches[variant])
         if variant == "profile":
-            (destination / "rust/birnam-id/src/runtime/native_tier/profile.rs").write_bytes((ROOT / "scripts/fixtures/native-tier-profile.rs").read_bytes())
+            (destination / "rust/birnam-runtime/src/runtime/native_tier/profile.rs").write_bytes((ROOT / "scripts/fixtures/native-tier-profile.rs").read_bytes())
         prefix = work / f"prefix-{variant}"
         if not prefix.exists():
             install(destination, prefix, work / f"build-{variant}.log")

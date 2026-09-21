@@ -7,8 +7,9 @@
 > protocol before upper preparation. Runtime now borrows the native Id carrier
 > and original entries through the temporary [v13 constructor](../../abi/runtime-construction-v13.md),
 > without taking Id's Rust owner or referencing its primitive functions for
-> lookup/Integer admission. Independent packaging, native upper construction
-> and owned Method consumer migration remain open.
+> lookup/Integer admission. Id is independently packaged with only the ABI crate;
+> Runtime/compiler code is in a separate upper library loaded through Id. Native
+> Execution construction and owned Method consumer migration remain open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -172,9 +173,9 @@ dereference/resurrect it later. Any other live object references required by the
 record are rooted separately until release. This is ownership transfer, not a
 promise to keep a finalized object alive until the next checkpoint.
 
-Relevant migration sites are [`ExecutionState`](../../rust/birnam-id/src/execution.rs)
+Relevant migration sites are [`ExecutionState`](../../rust/birnam-runtime/src/execution.rs)
 (`classify_resumable`, binding removal, `end_dispatch_read`),
-[`Runtime`](../../rust/birnam-id/src/runtime.rs) (retirement and Machine entry),
+[`Runtime`](../../rust/birnam-runtime/src/runtime.rs) (retirement and Machine entry),
 and [Codegen runtime](../../rust/birnam-codegen-runtime/src/lib.rs) (mapped-owner
 finalization and candidate disposal). Remove the old per-send protection only
 when all those paths use the upper turn boundary.
@@ -543,11 +544,12 @@ establish it before declaring Id decoupled.
 
 ### Implementation evidence and remaining boundary
 
-**Production migration is in progress. Id is not yet independently packaged.**
-The same production Id now initializes before upper libraries are present, but
-its crate still contains Runtime and statically linked compiler/artifact code.
-Independent first entry is evidence for the loading path, not architectural
-acceptance of the complete design.
+**Production migration is in progress. Id is now independently packaged.**
+The production Id crate depends only on `birnam-abi`. Its dylib exports the native
+module descriptor and identity; Runtime and compiler/artifact code live in the
+separate `birnam-runtime` crate. Both are installed and the host initializes
+Runtime through Id's loader after its predecessors. Execution/compiler separation,
+owned Method consumers and the complete construction graph remain unfinished.
 
 The host's [`Siphon`](../../rust/birnam-host/src/siphon.rs) supplies the small ad
 hoc loading protocol and invokes `birnam_native_module_v1`. The real Id descriptor
@@ -557,8 +559,8 @@ operations. Core Id dispatch has no Runtime, GC, Execution or future-provider
 slot. Native descriptor admission closes rejected images before entry and pins
 entered images, including failed initializers with partial publication.
 
-Upper startup adopts the exact initial registries, objects and carrier. Each
-registry has one owner and a stable address; no graph is copied and no carrier
+Upper startup uses the same objects and carrier. Id keeps its registries; each
+registry has one owner and a stable address. No graph is copied and no carrier
 slot is retargeted. Six upper factory preparations still run in the host
 after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace/Object-Model/String/Error initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
@@ -590,15 +592,13 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v11` is an upper construction entry taking the completed
-root and representation owners plus completed base values, Namespace, Object Model,
-the live Trace graph, collection state and retained non-collecting Id primitives,
-temporarily packaged in the Id library along with
-Runtime. The intermediate v1 through v10 Runtime bridges are removed. The old `id_init` and factory preparation path remain
-for legacy consumers and fixtures; this legacy construction
-is not used by the current production host with the current Id. Remove it with
-those consumers during the ownership cutover. The production path no longer
-prepares a root-registry factory inside Id or constructs a second registry.
+prefix. Runtime's native entry in `libbirnam_runtime.dylib` receives the eight
+completed predecessor pointers as Word operands and invokes the temporary
+[v13 constructor](../../abi/runtime-construction-v13.md). Earlier Runtime bridges
+and normal `id_init` exports are removed. Explicit Runtime diagnostic builds
+retain the old local initialization path for fixtures that have not yet migrated;
+that path is absent from normal Id and Runtime libraries. The host's obsolete
+fallback preparations for completed native predecessors are removed.
 
 Retained root records transfer with the registry into Runtime and are included
 in actual GC and diagnostic roots. Releasing a record removes its reference;
@@ -1244,7 +1244,7 @@ callbacks, repeat installation and rejection of replacement/nested collection.
 The image tests cover source, compiled, mapped, rebuilt and baked execution.
 Actual deferred writes agree across image forms: `(386, 150)` normally and
 `(386, 75)` under forced recovery. Installed Id/Collect exports match their
-manifests, including Id's published wrapper. No release validation was run.
+manifests, including Id's then-linked artifact exports. No release validation was run.
 
 ### Production collector activation and construction
 
@@ -1291,7 +1291,7 @@ collection, finalizer and deferred-identity image workloads pass. Deferred write
 remain `(386, 150)` normally and `(386, 75)` under forced recovery in mapped,
 rebuilt and baked images. The independent ARM64 stack capture/scanner checks
 pass, and installed Id, Collect, Bootstrap and Native Stack exports match their
-manifests (including Id's installed wrapper exports).
+manifests (including Id's then-linked artifact exports).
 
 The worker-service smoke passes its Cell image round trips but fails the
 unchanged ten-second ready deadline, including an isolated retry. A child sample
@@ -1379,7 +1379,7 @@ Validation: 337 ABI/Id unit tests pass, with 15 intentionally ignored. A fresh
 debug installation passes the independent native-loading harness, including exact
 allocation address/count queries, detached storage, non-collecting primitive
 retention across activation/adoption and collecting upper constructors. Installed
-Id exports match all 68 expected symbols, including its two installation wrappers.
+Id exports match all 68 expected symbols, including its two statically linked artifact exports.
 Collection-value, finalizer and protected storage-observation workloads pass
 source, source-free compiled, image and baked execution. The deferred-identity
 suite also passes mapped/rebuilt/baked recovery with actual write counts
@@ -1457,7 +1457,7 @@ passes the independent native-loading harness, including registry queries and
 mutations before and after Runtime, rejection of all-Object raw mutations,
 ordered views, weak opaque shadowing, exact selected contexts, and visitor
 mutation/failure propagation. Its 68 installed Id exports match the existing
-manifest plus installer wrappers; the native carrier and Runtime v11 bridge are
+manifest plus statically linked artifact exports; the native carrier and Runtime v11 bridge are
 unchanged.
 
 Dispatch-cache and protected storage-observation scripts pass source, source-free
@@ -1509,7 +1509,7 @@ restoration of the complete primitive, and effectful lookup installed before
 Runtime construction. The fresh debug installation passes the independent native
 loading harness and the dispatch-cache source/compiled/mapped/rebuilt/baked suite,
 including the host checks. All 68 installed Id exports match the existing manifest
-and installer wrappers. Runtime v11 and the native carrier ABI are unchanged.
+and statically linked artifact exports. Runtime v11 and the native carrier ABI are unchanged.
 
 The independent native Integer admission test also passes all eight replacement
 paths with matching optimization-disabled/enabled effects. This covers allocator,
@@ -1560,7 +1560,7 @@ builds 55 native libraries and 28 stage-1 modules. The independent native-loadin
 harness passes, including collection during Runtime construction, invocation of
 saved primitives afterward, and C rejection of malformed v12 inputs before and
 after initialization without consuming owners. All 68 installed Id exports match
-the manifest and installer wrappers. Release validation remains waived.
+the manifest and statically linked artifact exports. Release validation remains waived.
 
 The same v12 installation also passes the deferred-identity image suite through
 source, compiled, mapped/rebuilt and baked execution. Its independently compiled
@@ -1596,7 +1596,7 @@ installation builds 55 native libraries and 28 stage-1 modules. The independent
 native-loading suite passes, including automatic collection during construction,
 saved-context invocation and malformed-constructor rejection. Integer admission
 preserves optimization-disabled/enabled effects for all eight replacement paths.
-All 68 installed exports match the v13 manifest and installer wrappers.
+All 68 installed exports match the v13 manifest and statically linked artifact exports.
 
 The v13 dispatch-cache image suite also passes source-free compiled, mapped,
 rebuilt and baked execution, including the separately compiled host observations.
@@ -1607,7 +1607,7 @@ reload. No release validation was run.
 
 The Id graph, allocation registry, Symbol registry, dictionaries and native
 dispatch now live behind the private modules in
-[`id.rs`](../../rust/birnam-id/src/id.rs). Ordinary upper code cannot name their
+[`id/mod.rs`](../../rust/birnam-id/src/id/mod.rs). Ordinary upper code cannot name their
 Rust implementation types. The sole Rust facade is the existing legacy `id_init`
 carrier getter; production construction continues to receive its carrier and
 original entries explicitly. Tests and explicit `ffi-test-hooks` diagnostics
@@ -1636,3 +1636,53 @@ collection and saved contexts. Storage observation passes source, compiled,
 mapped/rebuilt and baked execution, including nested rejection, failure cleanup,
 roots, aliases and reload. All 68 installed exports match the unchanged manifest
 and wrappers. No release validation was run.
+
+
+### Separate production Id and Runtime libraries
+
+The production package boundary now follows the existing native carrier boundary.
+`birnam-id` contains Id allocation, Symbols, dictionaries, fixed native dispatch and
+native loading, with only `birnam-abi` as a Cargo dependency. Its complete normal
+export inventory is `birnam_native_module_v1` and `birnam_id_floor_identity`.
+`birnam-runtime` contains the upper Runtime, Machine, collector integration and
+compiler/artifact dependencies. Ordinary Runtime has no Rust dependency on Id;
+only explicit diagnostic builds and unit tests compile the local Id test backend.
+
+The installer publishes both dylibs. The host no longer looks for `id_init` or an
+upper Runtime constructor in Id. After completed native predecessors exist, it
+maps Runtime for its six remaining legacy factory preparations, then requests
+Runtime's actual native initialization through Bootstrap and Id. Mapping that
+upper image is still temporary construction machinery: it does not establish the
+Execution base/compiler extension required by section 4. Eleven obsolete factory
+preparations and their retained-handle fields are removed from the host.
+
+The installed native-loading fixture audits both complete symbol inventories and
+Id's system-only dynamic dependencies. Its isolated directory contains only the
+actual Id dylib before upper construction. Independent C checks that Id has no
+Runtime/legacy constructor exports; a separate C consumer checks Runtime's direct
+and native-entry malformed constructor rejection before adoption. Existing early
+allocation, dispatch, rooting, collector and saved-entry checks continue against
+the same installed production libraries.
+
+Validation: 352 ABI/Id/Runtime unit tests pass (15 ignored), 90 host/installer
+unit tests pass (one ignored), and normal plus explicit diagnostic/guarded-slot
+configurations compile. A debug installation builds 56 native libraries and 28
+stage-1 modules; the complete independent native-loading suite passes. The final
+installation also passes storage observation in source, source-free compiled,
+mapped/rebuilt image and baked execution, including the real host's nested
+rejection, failure cleanup, rooting and alias checks. Release validation remains
+waived.
+
+Remaining work includes the Execution base/compiler extension, owned Method
+consumers, the six upper preparations, predecessor-manifest/diagram reconciliation
+and worker acceptance. Older C/diagnostic drivers that still initialize the former
+aggregate dylib through `id_init` or use `BIRNAM_ID_DYLIB` to replace Runtime need
+migration to the new boundary; their previous results do not validate this split.
+The older `compatibility-authority-test.py` currently fails its reviewed-image
+comparison. Running the committed HEAD checker against committed HEAD image source
+reproduces that failure; the split does not change image encoding or broaden the
+checker to accept it. That comparison remains an open validation issue.
+
+Earlier evidence sections above record intermediate states and their then-current
+export counts. Their two additional artifact exports came from statically linked
+`birnam-artifact`, not installer-generated wrappers.

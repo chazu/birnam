@@ -23,7 +23,7 @@ AUTHORITIES = (
     "rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json",
     "abi/fixtures/idapi-v1/idapi_v1.h", "rust/birnam-image/src/lib.rs",
     "rust/birnam-image/src/v8.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
-    "rust/birnam-id/src/registration.rs", "rust/birnam-codegen/src/resumable_c.rs",
+    "rust/birnam-runtime/src/registration.rs", "rust/birnam-codegen/src/resumable_c.rs",
 )
 
 
@@ -59,7 +59,7 @@ def prefix(path):
 def correctness(env):
     profiles = {}
     for profile in ("debug", "release"):
-        command = ["cargo", "test", "-p", "birnam-id", "--offline", "--locked"]
+        command = ["cargo", "test", "-p", "birnam-runtime", "--offline", "--locked"]
         if profile == "release":
             command.append("--release")
         output = run(command + ["native_tier", "--", "--nocapture"], env)
@@ -180,7 +180,7 @@ def main():
         if args.design == "74L":
             receipt["guarded_lookup_tests"] = {}
             for profile in ("debug", "release"):
-                command = ["cargo", "test", "-p", "birnam-id", "--offline", "--locked"]
+                command = ["cargo", "test", "-p", "birnam-runtime", "--offline", "--locked"]
                 if profile == "release":
                     command.append("--release")
                 output = run(command + ["guarded_lookup", "--", "--nocapture"], env)

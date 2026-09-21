@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Separate the production Id and Runtime packages. Id depends only on the ABI
+  crate and exports its native module entry and identity. The host constructs Id
+  through Siphon, then loads the separate Runtime through Id after its native
+  predecessors. Install both libraries; keep compiler integration and remaining
+  legacy factory preparation entirely above Id.
+
 - Make Id's allocation, Symbol and dictionary implementations private to its
   module. Ordinary Runtime uses native clients; local registry backends compile
   only for tests and explicit diagnostic builds. Share the existing object-header

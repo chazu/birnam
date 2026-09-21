@@ -256,7 +256,7 @@ lifetime, worker startup and relocated runtime loading.
 
 **Strength: worth exploring; cost benefit unmeasured.**
 
-Evidence: `rust/birnam-id/src/runtime/native_tier.rs:541,610,623` colors a
+Evidence: `rust/birnam-runtime/src/runtime/native_tier.rs:541,610,623` colors a
 program, derives a numeric template and requests maps;
 `rust/birnam-codegen/src/numeric_chain/recovery_maps.rs:45–46` derives the
 template and checks coloring again. Numeric closure composition repeats the

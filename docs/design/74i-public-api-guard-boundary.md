@@ -90,12 +90,12 @@ method identities or optimizer admission. The observed ordinary floor export
 inventory also provides no guarded slot access. Its existing registration and
 generation-lease symbols establish publication and ownership, not those guards.
 
-In [dispatch.rs](../../rust/birnam-id/src/dispatch.rs), `bind_active`'s lookup
+In [dispatch.rs](../../rust/birnam-runtime/src/dispatch.rs), `bind_active`'s lookup
 base case resolves the *current* lookup method. The send still invokes that
 method. The experiment explicitly exercises this subtlety; recursively asking
 the metatable does not escape custom lookup effects.
 
-In [runtime.rs](../../rust/birnam-id/src/runtime.rs),
+In [runtime.rs](../../rust/birnam-runtime/src/runtime.rs),
 `guarded_slot_access_eligible` verifies private dictionary entries against the
 actual canonical Machine read/write functions and floor lookup function.
 The dictionary epoch lives in [vtable.rs](../../rust/birnam-id/src/id/vtable.rs).

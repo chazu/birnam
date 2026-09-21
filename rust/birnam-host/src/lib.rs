@@ -218,7 +218,7 @@ use std::path::{Component, Path, PathBuf};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 
-use birnam_abi::{IdApi, IdInitFn};
+use birnam_abi::IdApi;
 
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;

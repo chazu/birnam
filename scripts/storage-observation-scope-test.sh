@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mise exec -- cargo test --offline --locked -p birnam-storage --lib observation::tests
 mise exec -- cargo test --offline --locked -p birnam-abi --lib storage_observation
-mise exec -- cargo test --offline --locked -p birnam-id --lib runtime::storage::scope_tests
+mise exec -- cargo test --offline --locked -p birnam-runtime --lib runtime::storage::scope_tests
 mise exec -- cargo build --offline --locked --workspace
 scope_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 scope_lib=${1:+$1/lib}

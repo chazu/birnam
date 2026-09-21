@@ -4,7 +4,7 @@ from validation_support import ROOT
 
 PRODUCTION = ('Cargo.toml', 'Cargo.lock', 'rust/**/*', 'src/id/**/*', 'modules/**/*', 'vendor/libtcc-src/**/*')
 TARGET = ROOT / '.cargo-target/74t-closure-control-target'
-FEATURES = 'birnam-id/ffi-test-hooks,birnam-codegen-runtime/test-evaluator-lifetime,birnam-tcc/allocation-metrics'
+FEATURES = 'birnam-runtime/ffi-test-hooks,birnam-codegen-runtime/test-evaluator-lifetime,birnam-tcc/allocation-metrics'
 
 
 def closure_plan(prefix, output, suite='exhaustive', installed_dependency=('install',)):

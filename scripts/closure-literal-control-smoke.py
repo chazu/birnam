@@ -31,6 +31,7 @@ def main():
     paths = [fixture, Path(__file__).resolve()]
     paths += sorted((root / 'rust/birnam-codegen/src').rglob('*.rs'))
     paths += sorted((root / 'rust/birnam-id/src').rglob('*'))
+    paths += sorted((root / 'rust/birnam-runtime/src').rglob('*'))
     digest = lambda p: hashlib.sha256(read_bytes(p)).hexdigest()
     hashes = {str(p.relative_to(root)): digest(p) for p in paths if p.is_file()}
     installed = {str(p.relative_to(args.prefix)): digest(p) for p in sorted(args.prefix.rglob('*')) if p.is_file()}

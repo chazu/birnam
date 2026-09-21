@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 
-from compatibility_authority import unchanged_authority
+from compatibility_authority import baseline_path, unchanged_authority
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "24e200a3"
@@ -20,7 +20,7 @@ AUTHORITIES = (
     "rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json",
     "abi/fixtures/idapi-v1/idapi_v1.h", "rust/birnam-image/src/lib.rs",
     "rust/birnam-image/src/v8.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
-    "rust/birnam-id/src/registration.rs", "rust/birnam-codegen/src/resumable_c.rs",
+    "rust/birnam-runtime/src/registration.rs", "rust/birnam-codegen/src/resumable_c.rs",
 )
 PREFIXES = ("ARCHITECTURAL_FIT ", "ARCHITECTURAL_FIT_OBJECT ",
             "ARCHITECTURAL_FIT_CONTINUATION ")
@@ -70,12 +70,12 @@ def main():
 
     try:
         for name in AUTHORITIES:
-            baseline = subprocess.check_output(["git", "show", f"{BASE}:{name}"], cwd=ROOT)
+            baseline = subprocess.check_output(["git", "show", f"{BASE}:{baseline_path(name)}"], cwd=ROOT)
             assert unchanged_authority(name, (ROOT / name).read_bytes(), baseline), f"frozen authority changed: {name}"
             result["authorities"][name] = sha(ROOT / name)
         result["base"] = subprocess.check_output(["git", "rev-parse", BASE], cwd=ROOT, text=True).strip()
         result["head"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-        cargo = ["cargo", "test", "-p", "birnam-id", "--locked", "--offline"]
+        cargo = ["cargo", "test", "-p", "birnam-runtime", "--locked", "--offline"]
         facts_dir = work / "compiler-facts"
         run(cargo + ["reconstructs_compiler_colored", "--", "--nocapture"], "compiler-facts",
             {"BIRNAM_74O_DUMP": str(facts_dir)})

@@ -76,20 +76,20 @@ def main():
                 out = run(["cargo", "test", "-p", "birnam-codegen", "--locked", "--offline", *flags,
                            "native_region", "--", "--nocapture"], profile + "-region-compiler")
                 assert "1 passed; 0 failed" in out
-                out = run(["cargo", "test", "-p", "birnam-id", "--locked", "--offline", *flags,
+                out = run(["cargo", "test", "-p", "birnam-runtime", "--locked", "--offline", *flags,
                            "native_region_", "--", "--nocapture"], profile + "-regions")
                 assert "4 passed; 0 failed" in out
-            out = run(["cargo", "test", "-p", "birnam-id", "--locked", "--offline", *flags,
+            out = run(["cargo", "test", "-p", "birnam-runtime", "--locked", "--offline", *flags,
                        "dispatch_specialization", "--", "--nocapture"], profile)
             assert "2 passed; 0 failed" in out
-            out = run(["cargo", "test", "-p", "birnam-id", "--locked", "--offline", *flags,
+            out = run(["cargo", "test", "-p", "birnam-runtime", "--locked", "--offline", *flags,
                        "guarded_lookup", "--", "--nocapture"], profile + "-lookup")
             assert "2 passed; 0 failed" in out
         if args.verify:
             run(["mise", "run", "verify"], "full-verification")
             receipt['full_verification'] = 'passed'
         if args.measure:
-            out = run(["cargo", "test", "-p", "birnam-id", "--release", "--locked", "--offline",
+            out = run(["cargo", "test", "-p", "birnam-runtime", "--release", "--locked", "--offline",
                        "--no-run", "--message-format=json"], "timing-build")
             binary = next(row['executable'] for line in out.splitlines()
                           if (row := json.loads(line)).get('executable') and row['profile']['test'])

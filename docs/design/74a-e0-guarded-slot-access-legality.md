@@ -44,7 +44,7 @@ void* __birnam_put_args_7[] = {__birnam_put_slot_7, __birnam_value_7};
 ```
 
 `machine` is the StepMethod's receiver argument: the driver
-([`run_stackless_loop`](../../rust/birnam-id/src/runtime.rs), the loop that
+([`run_stackless_loop`](../../rust/birnam-runtime/src/runtime.rs), the loop that
 copies `step_method`, `program_counter` and `driver_argument_count` out of the
 current Frame's descriptor and calls `method(machine, arguments, count)` inside
 `enter_stackless_scope`) always passes the Machine Oop that owns the current
@@ -54,8 +54,8 @@ Frame. `MKV` is `birnam_mkSmallInt`, which allocates a boxed Integer through
 ### 1.2 The send path, in order
 
 For `birnam_send(machine, oopAt:, …)` the floor performs
-([`dispatch.rs`](../../rust/birnam-id/src/dispatch.rs) `send_abi`,
-[`runtime.rs`](../../rust/birnam-id/src/runtime.rs) `resolve_stackless_target`,
+([`dispatch.rs`](../../rust/birnam-runtime/src/dispatch.rs) `send_abi`,
+[`runtime.rs`](../../rust/birnam-runtime/src/runtime.rs) `resolve_stackless_target`,
 `bind_active`):
 
 1. `enter_dispatch_read` (dispatch-read token; protects a dictionary-proven
@@ -81,7 +81,7 @@ For `birnam_send(machine, oopAt:, …)` the floor performs
 
 ### 1.3 The canonical Methods
 
-[`execution.rs`](../../rust/birnam-id/src/execution.rs) `machine_oop_at` and
+[`execution.rs`](../../rust/birnam-runtime/src/execution.rs) `machine_oop_at` and
 `machine_oop_at_put` are static floor functions installed on the canonical
 Machine vtable by `install_execution_objects` (`runtime.rs`, the
 `(oop_at, machine_oop_at)` / `(oop_at_put, machine_oop_at_put)` pairs). Each:

@@ -48,8 +48,11 @@ methods through ordinary sends and verifies native failures and unwrapped scalar
 results become language Errors. For construction after adoption, the fixture
 passes the already-created root registry and collector as explicit initializer
 operands, registers its temporary roots before allocating, and verifies an actual
-collection preserves the new object's identity and payload. This does not establish
-the full staged construction graph or remove upper code statically linked in Id.
+collection preserves the new object's identity and payload. The installed-image audit checks that Id exports only its native module entry
+and identity and has no upper dynamic-library dependencies. Runtime and compiler
+code live in the separate Runtime crate. An independent C fixture checks malformed
+Runtime constructors before adoption. The full staged Execution/compiler graph
+still remains to be completed.
 
 The later prefix now constructs the [native Trace graph](../../../abi/trace-graph-v2.md)
 with only eighteen predecessor libraries available. Independent C tests cover

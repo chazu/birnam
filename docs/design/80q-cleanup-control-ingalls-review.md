@@ -46,7 +46,7 @@ continuation pins), and 206–211 (handler-delivery phase).
 The proposed boundary identifies H by its live Frame handle and exact pending
 Call. Existing continuation capture can detach a segment containing H and E:
 
-- [execution.rs](../../rust/birnam-id/src/execution.rs), lines 1138–1175,
+- [execution.rs](../../rust/birnam-runtime/src/execution.rs), lines 1138–1175,
   detaches Frames and increments the original arena-slot generations.
 - Lines 1178–1215 restore the Frame contents without restoring those old handle
   generations. The restored H therefore does not have its old live handle.

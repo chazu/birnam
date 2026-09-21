@@ -70,14 +70,14 @@ def main():
     env.update(BIRNAM_TEST_UNBOXED_NUMERIC="1")
     installed = [prefix / "bin/birnam", prefix / "share/birnam/rust-install.json"]
     installed += sorted((prefix / "lib").glob("*.dylib"))
-    sources = [Path(__file__).resolve(), ROOT / "rust/birnam-id/src/public_api.rs",
-               ROOT / "rust/birnam-id/src/runtime.rs", ROOT / "rust/birnam-id/src/runtime/unboxed_numeric_probe.rs",
-               ROOT / "rust/birnam-id/src/runtime/native_tier.rs",
-               ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric.rs"]
+    sources = [Path(__file__).resolve(), ROOT / "rust/birnam-runtime/src/public_api.rs",
+               ROOT / "rust/birnam-runtime/src/runtime.rs", ROOT / "rust/birnam-runtime/src/runtime/unboxed_numeric_probe.rs",
+               ROOT / "rust/birnam-runtime/src/runtime/native_tier.rs",
+               ROOT / "rust/birnam-runtime/src/runtime/native_tier/unboxed_numeric.rs"]
     sources += sorted((ROOT / "rust/birnam-codegen/src/numeric_chain").rglob("*.rs"))
-    sources += sorted((ROOT / "rust/birnam-id/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
-    sources += [ROOT / "rust/birnam-id/src/heap.rs", ROOT / "rust/birnam-id/src/heap/dead_allocations.rs"]
-    sources += sorted((ROOT / "rust/birnam-id/src/heap/dead_allocations").rglob("*.rs"))
+    sources += sorted((ROOT / "rust/birnam-runtime/src/runtime/native_tier/unboxed_numeric").rglob("*.rs"))
+    sources += [ROOT / "rust/birnam-runtime/src/heap.rs", ROOT / "rust/birnam-runtime/src/heap/dead_allocations.rs"]
+    sources += sorted((ROOT / "rust/birnam-runtime/src/heap/dead_allocations").rglob("*.rs"))
     receipt = dict(status="running", captured_inputs=args.captured_inputs, scope="Installed Prelude and Codegen with a test-only floor; no timing claim",
                    floor_sha256=sha(floor), installed_sha256={str(p): sha(p) for p in installed},
                    source_sha256={str(p.relative_to(ROOT)): sha(p) for p in sources}, rows=[])

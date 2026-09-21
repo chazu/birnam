@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mise exec -- cargo test --offline --locked -p birnam-finalizers --lib
-mise exec -- cargo test --offline --locked -p birnam-id --lib runtime::tests::finalizers
+mise exec -- cargo test --offline --locked -p birnam-runtime --lib runtime::tests::finalizers
 mise exec -- cargo test --offline --locked -p birnam-codegen-runtime --lib finalizer_tests
 mise exec -- cargo build --offline --locked --workspace
 finalizers_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')

@@ -33,7 +33,7 @@ and invocation to be one transition. Lines 205–212 also require normal return
 to establish handler-delivery state atomically. [60B](60b-stackless-machine-and-frames.md),
 lines 56–64, stages one exact pending edge; lines 384–399 distinguish ordinary
 publication from nonrecursive driver decoding.
-[runtime.rs](../../rust/birnam-id/src/runtime.rs), lines 3824–3843, invokes a
+[runtime.rs](../../rust/birnam-runtime/src/runtime.rs), lines 3824–3843, invokes a
 synchronous target before committing its caller's pending result edge.
 
 **Counterexample:** implement the suggested surface naively as an ordinary
@@ -72,7 +72,7 @@ stall or alter cancellation; that remains the user's responsibility.
 handle. Lines 168–184 require boundary invalidation and account for independently
 retained continuations. [60B](60b-stackless-machine-and-frames.md), section 8,
 defines detached segment and delimiter ownership.
-[execution.rs](../../rust/birnam-id/src/execution.rs), lines 1138–1175,
+[execution.rs](../../rust/birnam-runtime/src/execution.rs), lines 1138–1175,
 detaches Frames and advances their generations; lines 1195–1213 reinstall their
 execution state without restoring those old generations. Lines 3697–3705
 describe the existing captured-segment record.

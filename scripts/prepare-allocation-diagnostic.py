@@ -37,8 +37,8 @@ def main():
     archive.stdout.close()
     if archive.wait():
         raise RuntimeError("git archive failed")
-    runtime = "rust/birnam-id/src/runtime.rs"
-    execution = "rust/birnam-id/src/execution.rs"
+    runtime = "rust/birnam-runtime/src/runtime.rs"
+    execution = "rust/birnam-runtime/src/execution.rs"
     replace(root, runtime, "pub(crate) fn make_integer(&self, value: i64) -> Oop {",
             "pub(crate) fn make_integer(&self, value: i64) -> Oop {\n" + event("integer"))
     replace(root, runtime, "pub(crate) fn gc_collect(&self) -> usize {",

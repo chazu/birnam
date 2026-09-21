@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mise exec -- cargo test --offline --locked -p birnam-collect --lib phase::tests
 mise exec -- cargo test --offline --locked -p birnam-abi --lib collection_phase
-mise exec -- cargo test --offline --locked -p birnam-id --lib runtime::collection_phase_tests
+mise exec -- cargo test --offline --locked -p birnam-runtime --lib runtime::collection_phase_tests
 mise exec -- cargo build --offline --locked --workspace
 phase_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 phase_lib=${1:+$1/lib}

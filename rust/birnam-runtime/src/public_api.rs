@@ -308,6 +308,7 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
 }
 
 /// Perform the one supported process-lifetime initialization transition.
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 pub(crate) fn initialize_once() -> *mut IdApi {
     initialize_with_owners(crate::id::protocol(), None, None, None, None, None, None, None, None)
 }

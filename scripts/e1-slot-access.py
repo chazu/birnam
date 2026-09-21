@@ -4,7 +4,7 @@
     python3 scripts/e1-slot-access.py PREFIX [--sizes 0,1,32,1024,16384] [--pairs 5]
 
 PREFIX must be a dev-feature prefix (built with
-BIRNAM_BUILD_CARGO_FEATURES=birnam-id/dev-guarded-slots,birnam-tcc/dev-guarded-slots,birnam-codegen/dev-guarded-slots).
+BIRNAM_BUILD_CARGO_FEATURES=birnam-runtime/dev-guarded-slots,birnam-tcc/dev-guarded-slots,birnam-codegen/dev-guarded-slots).
 Baseline and candidate run the same prefix and the same fixture source; only
 BIRNAM_DEV_GUARDED_SLOTS=1 in the candidate process selects the guarded
 emission for the fixture's own compiled unit. Each pair is two fresh

@@ -7,41 +7,9 @@ publish = false
 
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
-birnam-artifact = { path = "../birnam-artifact", default-features = false }
-birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization"] }
-birnam-native-compiler = { path = "../birnam-native-compiler" }
-sha2.workspace = true
-
-[dev-dependencies]
-birnam-dispatch-cache = { path = "../birnam-dispatch-cache" }
-birnam-storage = { path = "../birnam-storage" }
-birnam-namespace = { path = "../birnam-namespace" }
-birnam-string = { path = "../birnam-string" }
-birnam-word = { path = "../birnam-word" }
-birnam-float = { path = "../birnam-float" }
-birnam-collect = { path = "../birnam-collect" }
-birnam-trace = { path = "../birnam-trace" }
-birnam-integer = { path = "../birnam-integer" }
-birnam-object-model = { path = "../birnam-object-model" }
-birnam-method-observation = { path = "../birnam-method-observation" }
-birnam-root-registry = { path = "../birnam-root-registry" }
-birnam-gc-settings = { path = "../birnam-gc-settings" }
-birnam-payload-layout = { path = "../birnam-payload-layout" }
-birnam-trace-hooks = { path = "../birnam-trace-hooks" }
-birnam-finalizers = { path = "../birnam-finalizers" }
-birnam-native-stack = { path = "../birnam-native-stack" }
-birnam-native-mark = { path = "../birnam-native-mark" }
-birnam-allocation-budget = { path = "../birnam-allocation-budget" }
-birnam-codegen = { path = "../birnam-codegen", features = ["dev-pc-specialization", "dev-frame-read-reuse"] }
 
 [features]
-ffi-test-hooks = ["birnam-native-compiler/resource-metrics"]
-# Explicit diagnostics for complete private-compiler consumer lifecycles.
-allocation-metrics = ["birnam-native-compiler/allocation-metrics"]
-# Design 74 E1: development-only guarded Machine slot access exports. Never
-# enabled by ordinary builds; a dev artifact that binds them cannot load on an
-# ordinary runtime.
-dev-guarded-slots = []
+ffi-test-hooks = []
 
 [lib]
 name = "birnam_id"

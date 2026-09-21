@@ -278,7 +278,7 @@ The important comparison is behavior, not matching field names to the paper.
 **Default delegation currently walks Rust records.**
 [`Vtables::lookup`](../../rust/birnam-id/src/id/vtable.rs) loops over registered
 parents; `set_parent` requires a registered vtable or null. The canonical lookup
-method in [`dispatch.rs`](../../rust/birnam-id/src/dispatch.rs) calls that walker.
+method in [`dispatch.rs`](../../rust/birnam-runtime/src/dispatch.rs) calls that walker.
 Our proposed boundary must allow a parent to participate through its own lookup
 behavior. Investigate the current guard paths and representation restrictions,
 and demonstrate the desired behavior before extracting them unchanged.
@@ -304,8 +304,8 @@ upward dependencies, not returning fewer pointers from the same aggregate boot.
 join heap, vtables, symbols, values, exports, execution and registration. Give
 services independent state and explicit contracts, not an interface accepting
 the entire Runtime. Relevant source is in
-[`public_api.rs`](../../rust/birnam-id/src/public_api.rs) and
-[`runtime.rs`](../../rust/birnam-id/src/runtime.rs).
+[`public_api.rs`](../../rust/birnam-runtime/src/public_api.rs) and
+[`runtime.rs`](../../rust/birnam-runtime/src/runtime.rs).
 
 ## 6. Performance without freezing behavior
 

@@ -115,8 +115,8 @@ Verified implementation facts:
    object addresses, not bytes, so it does not accelerate these name lookups.
 4. The same Symbol table owns weak identities, stable C-name buffers, insertion
    order and post-GC compaction. An index must preserve all four properties.
-5. [`runtime.rs`](../../rust/birnam-id/src/runtime.rs) and
-   [`execution.rs`](../../rust/birnam-id/src/execution.rs) already share
+5. [`runtime.rs`](../../rust/birnam-runtime/src/runtime.rs) and
+   [`execution.rs`](../../rust/birnam-runtime/src/execution.rs) already share
    resolve-and-pin classification. Frame arenas reuse storage. Temporary
    argument, capture and initial-slot vectors still allocate; their existence
    alone does not make them the dominant cost in this profile.

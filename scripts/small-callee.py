@@ -12,7 +12,7 @@ import signal
 import statistics
 import subprocess
 import datetime
-from compatibility_authority import unchanged_authority
+from compatibility_authority import baseline_path, unchanged_authority
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("production_recovery", ROOT / "scripts/production-recovery.py")
@@ -90,19 +90,19 @@ def main():
     try:
         for name in previous.AUTHORITIES:
             data = (ROOT / name).read_bytes()
-            assert unchanged_authority(name, data, subprocess.check_output(["git","show",f"{BASE}:{name}"],cwd=ROOT)), name
+            assert unchanged_authority(name, data, subprocess.check_output(["git","show",f"{BASE}:{baseline_path(name)}"],cwd=ROOT)), name
             result["authorities"][name] = sha(data)
         for profile in ("debug","release"):
             flags = ["--release"] if profile == "release" else []
             output = run(["cargo","test","-p","birnam-codegen","--locked","--offline",*flags,"small_callee","--","--nocapture"],profile+"-compiler")
             assert "2 passed; 0 failed" in output
-            output = run(["cargo","test","-p","birnam-id","--locked","--offline",*flags,"production_","--","--nocapture"],profile+"-runtime")
+            output = run(["cargo","test","-p","birnam-runtime","--locked","--offline",*flags,"production_","--","--nocapture"],profile+"-runtime")
             rows = [{"kind":prefix.strip(),"data":json.loads(line[len(prefix):])} for line in output.splitlines() for prefix in PREFIXES if line.startswith(prefix)]
             assert len(rows)==17 and "6 passed; 0 failed" in output
             result["profiles"][profile] = sorted(rows,key=lambda row:json.dumps(row,sort_keys=True))
         assert result["profiles"]["debug"] == result["profiles"]["release"]
         if args.measure:
-            output = run(["cargo","test","-p","birnam-id","--release","--locked","--offline","--no-run","--message-format=json"],"timing-build")
+            output = run(["cargo","test","-p","birnam-runtime","--release","--locked","--offline","--no-run","--message-format=json"],"timing-build")
             binary = next(r["executable"] for line in output.splitlines() if (r:=json.loads(line)).get("reason")=="compiler-artifact" and r.get("executable") and r["profile"]["test"])
             result["binary_sha256"] = sha(Path(binary).read_bytes())
             if args.reference_binary:

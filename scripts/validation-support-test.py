@@ -125,7 +125,7 @@ class ValidationTests(unittest.TestCase):
             self.assertEqual(set(names),{s['name'] for s in matrices})
             self.assertEqual(set(core)|set(names)|{'complete-matrix-oracle'},{s['name'] for s in steps})
         self.assertEqual(ci.select(['docs/validation.md']),'routine')
-        self.assertEqual(ci.select(['rust/birnam-id/src/runtime.rs']),'exhaustive')
+        self.assertEqual(ci.select(['rust/birnam-runtime/src/runtime.rs']),'exhaustive')
         self.assertEqual(ci.select(['scripts/rust-install.sh']),'release')
 
     def test_ci_seed_preserves_artifact_bytes_and_executable_mode(self):

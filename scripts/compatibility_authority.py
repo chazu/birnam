@@ -11,6 +11,11 @@ only those complete expressions, with their original operands and exact counts.
 """
 
 
+def baseline_path(name):
+    """Location of the moved registration authority in pre-split baselines."""
+    return {"rust/birnam-runtime/src/registration.rs": "rust/birnam-id/src/registration.rs"}.get(name, name)
+
+
 def unchanged_authority(name, current, baseline):
     if name == "rust/birnam-image/src/lib.rs" and current != baseline:
         name_call = b'(birnam_abi::namespace_names::name_of)'
@@ -110,7 +115,7 @@ def unchanged_authority(name, current, baseline):
             if baseline.count(old) != 1 or new in baseline or current.count(new) != 1:
                 return False
             current = current.replace(new, old, 1)
-    if name == "rust/birnam-id/src/registration.rs":
+    if name == "rust/birnam-runtime/src/registration.rs":
         marker = b"\n#[cfg(test)]\nmod tests {"
         assert current.count(marker) == baseline.count(marker) == 1
         current = current.split(marker)[0]

@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 
-from compatibility_authority import unchanged_authority
+from compatibility_authority import baseline_path, unchanged_authority
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = "5e242e70"
@@ -24,13 +24,13 @@ AUTHORITIES = [
     "rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json",
     "abi/fixtures/idapi-v1/idapi_v1.h", "rust/birnam-image/src/lib.rs",
     "rust/birnam-image/src/v8.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
-    "rust/birnam-id/src/registration.rs", "rust/birnam-codegen/src/resumable_c.rs",
+    "rust/birnam-runtime/src/registration.rs", "rust/birnam-codegen/src/resumable_c.rs",
 ]
 SOURCES = [
-    "rust/birnam-id/src/runtime.rs", "rust/birnam-id/src/dispatch.rs",
-    "rust/birnam-id/src/execution.rs", "rust/birnam-id/src/id/vtable.rs",
-    "rust/birnam-id/src/runtime/guarded_dispatch.rs",
-    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs",
+    "rust/birnam-runtime/src/runtime.rs", "rust/birnam-runtime/src/dispatch.rs",
+    "rust/birnam-runtime/src/execution.rs", "rust/birnam-id/src/id/vtable.rs",
+    "rust/birnam-runtime/src/runtime/guarded_dispatch.rs",
+    "rust/birnam-runtime/src/runtime/guarded_dispatch/tests.rs",
     "scripts/internal-guarded-sends.py", "scripts/fixtures/internal-guarded-sends.c",
     "bench/e1-slot-access.birnam", "bench/control-throughput-probe.birnam",
     "scripts/bench-host-check.sh",
@@ -109,7 +109,7 @@ def main():
     prefixes = {name: getattr(args, name).resolve() for name in ("baseline", "candidate")}
     authority = {}
     for name in AUTHORITIES:
-        if not unchanged_authority(name, (ROOT / name).read_bytes(), subprocess.check_output(["git", "show", f"{BASELINE}:{name}"], cwd=ROOT)):
+        if not unchanged_authority(name, (ROOT / name).read_bytes(), subprocess.check_output(["git", "show", f"{BASELINE}:{baseline_path(name)}"], cwd=ROOT)):
             raise RuntimeError(f"compatibility authority changed: {name}")
         authority[name] = sha(ROOT / name)
     receipt = {"schema": "birnam-internal-guarded-sends-v1", "design": "74J", "status": "pending",

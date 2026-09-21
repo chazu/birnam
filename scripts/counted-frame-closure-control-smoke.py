@@ -29,6 +29,7 @@ def main():
     fixture = ROOT / 'scripts/fixtures/closure-control.birnam'
     paths = [Path(__file__).resolve(), fixture, ROOT / 'scripts/closure-control-smoke.sh']
     paths += sorted((ROOT / 'rust/birnam-id').rglob('*.rs'))
+    paths += sorted((ROOT / 'rust/birnam-runtime').rglob('*.rs'))
     installed = [prefix / 'bin/birnam', prefix / 'share/birnam/rust-install.json']
     installed += sorted((prefix / 'lib').glob('*.dylib'))
     result = dict(status='running', qualified=False, profile=args.profile,

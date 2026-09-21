@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 
-from compatibility_authority import unchanged_authority
+from compatibility_authority import baseline_path, unchanged_authority
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = "a10d1b55"
@@ -21,26 +21,26 @@ BENCH = "runtime::generated_deopt_experiment::read_reuse::frame_read_reuse_bench
 CONTRACTS = [
     "rust/birnam-abi/src/lib.rs", "rust/birnam-image/src/lib.rs",
     "rust/birnam-image/src/v8.rs",
-    "rust/birnam-id/src/registration.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
+    "rust/birnam-runtime/src/registration.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
 ]
 # 74J permits internal runtime changes. Frozen ABI/image/descriptor authorities
 # remain above; execution implementation is recorded as source evidence below.
 SOURCES = [
-    "rust/birnam-id/src/runtime/guarded_lookup.rs",
-    "rust/birnam-id/src/runtime/guarded_lookup/tests.rs",
-    "rust/birnam-id/src/runtime/native_tier.rs",
-    "rust/birnam-id/src/runtime/native_tier/shims.c",
-    "rust/birnam-id/src/runtime/native_tier/tests.rs",
+    "rust/birnam-runtime/src/runtime/guarded_lookup.rs",
+    "rust/birnam-runtime/src/runtime/guarded_lookup/tests.rs",
+    "rust/birnam-runtime/src/runtime/native_tier.rs",
+    "rust/birnam-runtime/src/runtime/native_tier/shims.c",
+    "rust/birnam-runtime/src/runtime/native_tier/tests.rs",
     "rust/birnam-native-compiler/Cargo.toml", "rust/birnam-native-compiler/build.rs",
     "rust/birnam-native-compiler/src/lib.rs", "rust/birnam-native-compiler/src/unit.rs",
-    "rust/birnam-id/src/execution.rs", "rust/birnam-id/src/dispatch.rs",
-    "rust/birnam-id/src/id/vtable.rs", "rust/birnam-id/src/runtime/guarded_dispatch.rs",
-    "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs",
+    "rust/birnam-runtime/src/execution.rs", "rust/birnam-runtime/src/dispatch.rs",
+    "rust/birnam-id/src/id/vtable.rs", "rust/birnam-runtime/src/runtime/guarded_dispatch.rs",
+    "rust/birnam-runtime/src/runtime/guarded_dispatch/tests.rs",
     "rust/birnam-codegen/Cargo.toml", "rust/birnam-codegen/src/resumable_c.rs",
-    "rust/birnam-id/Cargo.toml", "rust/birnam-id/src/runtime.rs",
-    "rust/birnam-id/src/runtime/generated_deopt_experiment.rs",
-    "rust/birnam-id/src/runtime/generated_deopt_adapter.c",
-    "rust/birnam-id/src/runtime/read_reuse_experiment.rs", "scripts/frame-read-reuse.py",
+    "rust/birnam-id/Cargo.toml", "rust/birnam-runtime/Cargo.toml", "rust/birnam-runtime/src/runtime.rs",
+    "rust/birnam-runtime/src/runtime/generated_deopt_experiment.rs",
+    "rust/birnam-runtime/src/runtime/generated_deopt_adapter.c",
+    "rust/birnam-runtime/src/runtime/read_reuse_experiment.rs", "scripts/frame-read-reuse.py",
 ]
 
 
@@ -60,7 +60,7 @@ def sha(data):
 
 
 def measure(env):
-    built = run(["cargo", "test", "-p", "birnam-id", "--release", "--no-run", "--offline", "--locked", "--message-format=json"], env)
+    built = run(["cargo", "test", "-p", "birnam-runtime", "--release", "--no-run", "--offline", "--locked", "--message-format=json"], env)
     artifacts = [json.loads(line) for line in built.splitlines() if line.startswith("{")]
     executable = next(row["executable"] for row in artifacts if row.get("reason") == "compiler-artifact" and row.get("executable") and row["profile"]["test"])
     measurement = {"status": "pending", "pairs": [], "classifications": [], "iterations": 4096, "warmup": 64}
@@ -138,7 +138,7 @@ def main():
     contracts = {}
     for name in CONTRACTS:
         current = (ROOT / name).read_bytes()
-        baseline = subprocess.check_output(["git", "show", f"{BASELINE}:{name}"], cwd=ROOT)
+        baseline = subprocess.check_output(["git", "show", f"{BASELINE}:{baseline_path(name)}"], cwd=ROOT)
         if not unchanged_authority(name, current, baseline):
             raise RuntimeError(f"compatibility authority changed: {name}")
         contracts[name] = sha(current)
@@ -147,7 +147,7 @@ def main():
     profiles = {}
     for profile in ("debug", "release"):
         print(f"frame-read-reuse: correctness {profile}", file=sys.stderr, flush=True)
-        cmd = ["cargo", "test", "-p", "birnam-id", "--locked", "--offline"]
+        cmd = ["cargo", "test", "-p", "birnam-runtime", "--locked", "--offline"]
         if profile == "release":
             cmd.append("--release")
         result = run(cmd + [TEST, "--", "--exact", "--nocapture", "--test-threads=1"], env)
