@@ -4251,9 +4251,8 @@ fn generation_module_order(modules: &[GenerationModuleProjection]) -> Option<Vec
 fn named_operation_descriptor_hash(
     module: &GenerationModuleProjection,
     operation_index: usize,
-    selection: birnam_artifact_codec::stackless_selection::Selection<'_>,
+    row: birnam_artifact_codec::stackless_selection::SelectionRow<'_>,
 ) -> Option<[u8; 32]> {
-    let row = named_operation_selection_row(module, operation_index, selection)?;
     if row.disposition != SelectionDisposition::ResumableRequired {
         return None;
     }
@@ -4277,29 +4276,11 @@ fn named_operation_descriptor_hash(
     Some(sha256_raw(&compiled.descriptor))
 }
 
-fn named_operation_selection_row<'a>(
-    module: &GenerationModuleProjection,
-    operation_index: usize,
-    selection: birnam_artifact_codec::stackless_selection::Selection<'a>,
-) -> Option<birnam_artifact_codec::stackless_selection::SelectionRow<'a>> {
-    selection.rows().find_map(|row| {
-        let row = row.ok()?;
-        (row.source_revision == module.revision
-            && row.root_kind == RootKind::MethodOperation
-            && row.root_index == operation_index as u32
-            && row.path.is_empty()
-            && row.implementation_kind == SelectionImplementationKind::NamedAdapter)
-            .then_some(row)
-    })
-}
-
 fn dispatch_generation_authority(
     modules: &[GenerationModuleProjection],
     generation_selection: &[u8],
 ) -> Option<[u8; 32]> {
-    dispatch_generation_authority_with(modules, generation_selection, |module, index, selection| {
-        named_operation_descriptor_hash(module, index, selection)
-    })
+    dispatch_generation_authority_with(modules, generation_selection, named_operation_descriptor_hash)
 }
 
 fn dispatch_generation_authority_with(
@@ -4308,7 +4289,7 @@ fn dispatch_generation_authority_with(
     mut descriptor_hash: impl FnMut(
         &GenerationModuleProjection,
         usize,
-        birnam_artifact_codec::stackless_selection::Selection<'_>,
+        birnam_artifact_codec::stackless_selection::SelectionRow<'_>,
     ) -> Option<[u8; 32]>,
 ) -> Option<[u8; 32]> {
     let selection = inspect_generation_selection(generation_selection).ok()?;
@@ -4319,6 +4300,17 @@ fn dispatch_generation_authority_with(
     {
         return None;
     }
+
+    // The admitted selection has unique canonical rows. Decode each once:
+    // looking up every method by rescanning the wire table is quadratic during
+    // startup and image recovery, where a generation contains many methods.
+    let named_rows = selection.rows().filter_map(|row| {
+        let row = row.expect("inspected generation selection");
+        (row.root_kind == RootKind::MethodOperation
+            && row.path.is_empty()
+            && row.implementation_kind == SelectionImplementationKind::NamedAdapter)
+            .then_some(((row.source_revision, row.root_index), row))
+    }).collect::<BTreeMap<_, _>>();
 
     let mut input = b"birnam.dispatch-base.v2\0".to_vec();
     input.extend_from_slice(&u32::try_from(modules.len()).ok()?.to_be_bytes());
@@ -4341,10 +4333,10 @@ fn dispatch_generation_authority_with(
                 let mut definition = b"birnam.definition.v1\0".to_vec();
                 definition.extend_from_slice(&operation.source);
                 input.extend_from_slice(&sha256_raw(&definition));
-                let row = named_operation_selection_row(module, operation_index, selection)?;
+                let row = *named_rows.get(&(module.revision, u32::try_from(operation_index).ok()?))?;
                 match row.disposition {
                     SelectionDisposition::ResumableRequired => {
-                        let descriptor = descriptor_hash(module, operation_index, selection)?;
+                        let descriptor = descriptor_hash(module, operation_index, row)?;
                         input.push(2);
                         input.extend_from_slice(&descriptor);
                     }

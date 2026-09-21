@@ -1941,3 +1941,19 @@ the separate source/synchronous/resumable Unit-reclamation checks. Codegen passe
 97 unit tests; Codegen Runtime passes 22 with four existing ignored tests;
 validation tooling passes eight. Its Id library is byte-identical to the
 previous ownership installation used for the independent native-prefix checks.
+
+The worker service check still fails its ten-second readiness deadline. Profiling
+the real child shows repeated selection-table decoding during authored-module
+admission; a later sample shows the host recompiling image code after loading
+the image. Generation authority now indexes admitted named-method rows once per
+calculation, preserving the existing independent digest fixture and validation.
+This removes quadratic decoding, but does not by itself establish worker
+acceptance or remove the host's additional image-recovery compilation.
+
+On `/tmp/birnam-83-generation-index`, Codegen Runtime's 22 unit tests pass
+(four remain ignored), including the frozen dispatch-base digest. The independent
+image-worker reader verifies twelve replies and orderly shutdown on both the
+previous and updated installations, with byte-identical transcripts. One serial
+comparison observes readiness at 43.63 and 42.21 seconds respectively; this is
+diagnostic timing, not a performance acceptance claim. The production service
+suite remains blocked by its unchanged ten-second readiness limit.

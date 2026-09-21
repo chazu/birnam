@@ -8,6 +8,9 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Decode generation method selections once per authority calculation instead of
+  rescanning the complete wire table for every method during startup and recovery.
+
 - Resolve generated global reads by name instead of embedding unrooted Symbol
   addresses. Code compiled before a nested source load now sees the globals it
   publishes, including the test framework under forced-source startup.
