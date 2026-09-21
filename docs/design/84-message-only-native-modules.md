@@ -193,3 +193,22 @@ the replacements. Logs: `/tmp/birnam84-check.log`, `/tmp/birnam84-unit.log`,
 This completes the first package's production edits, not Design 84. The old
 Runtime message bridge and value, collection-policy, lifetime, collector and
 compiler tables remain; subsequent work must remove them with their consumers.
+
+### Retired seed coverage
+
+The separate `experiments/id-seed` workspace and `id-seed-experiment` runner/task
+are deleted. They tested a second implementation, never the installed language.
+The following production checks replace their role, not every experimental API:
+
+| Useful obligation | Production coverage / remaining obligation |
+|---|---|
+| Id construction, identity, binding, replacement and native loading | `id-native-module.c`, `id-native-host.rs`, Id dispatch unit tests |
+| Integer arithmetic, overflow, invalid operands and replacement | `early-integer-native.c`: 605 signed cases before and after Runtime adoption |
+| Private behaviors, ownership and graph traversal | `early-object-model-native.c`, `early-trace-native.c` |
+| Roots, collection phase, finalization and Runtime adoption | `early-lifetime-native.c`, `early-collection-native.c` and the installed native suite |
+| Exact address reuse, stale metadata and collection failure atomicity | Still require the final production lifetime audit inherited from Design 83; deletion of the seed is not evidence of closure |
+
+Seed-specific factory layouts, multiple seed-universe destruction and its native
+library unload sequence are not production contracts and are deliberately retired.
+Its negative controls validated the discarded implementation, not production.
+No test result from that workspace counts toward Design 84 acceptance.

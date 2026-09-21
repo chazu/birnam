@@ -1,5 +1,11 @@
 # 81F — Standalone Id seed and object-model boundary proof
 
+> **Historical experiment, retired by Design 84.** The separate seed workspace
+> and runner were deleted after production native coverage became available.
+> Source paths and commands below describe the earlier experiment; recover its
+> files from commit `2c32308b` with `git show COMMIT:path` if needed. They are not
+> an alternate implementation or a current validation command.
+
 > **Status:** Executed Rust experiment, 2026-09-18, macOS arm64.
 > The bounded witness in [81E §6](81e-seed-sufficiency-audit.md#6-what-this-audit-settles-and-the-next-bounded-proof)
 > passes in debug and release. This is a new isolated implementation, not an
@@ -41,7 +47,7 @@ native table is the smallest possible table.
 
 ## 2. Artifacts, construction order and state ownership
 
-Sources live in [experiments/id-seed](../../experiments/id-seed/README.md), a
+Sources live in experiments/id-seed (`experiments/id-seed/README.md` at `2c32308b`), a
 separate Cargo workspace. Each implementation/test crate depends only on the
 small ABI crate; the ABI crate has no dependencies.
 
@@ -71,7 +77,7 @@ does not establish the eventual Birnam-to-platform construction path.
 
 ## 3. Declared experimental boundary
 
-The [ABI carrier](../../experiments/id-seed/abi/src/lib.rs) contains:
+The ABI carrier (`experiments/id-seed/abi/src/lib.rs` at `2c32308b`) contains:
 
 - Version/size, an opaque seed context, core roots and selector handles.
 - `send`, `behavior_of` and `reassociate` native entries.
@@ -115,7 +121,7 @@ Reproduce on macOS with:
 mise run id-seed-experiment
 ```
 
-The [driver](../../scripts/id-seed-experiment.py) copies only the experiment's
+The driver (`scripts/id-seed-experiment.py` at `2c32308b`) copies only the experiment's
 Rust sources/manifests/lockfile into a fresh directory, builds offline, and copies
 the three artifacts into an isolated execution directory. It verifies the Cargo
 graph, runs Rustfmt/Clippy, checks Mach-O dependencies and exports, rejects Birnam

@@ -1,5 +1,11 @@
 # 81H — Storage observation and a separate tracing module
 
+> **Historical experiment, retired by Design 84.** The separate seed workspace
+> and runner were deleted after production native coverage became available.
+> Source paths and commands below describe the earlier experiment; recover its
+> files from commit `2c32308b` with `git show COMMIT:path` if needed. They are not
+> an alternate implementation or a current validation command.
+
 > **Status:** Executed Rust experiment, 2026-09-18, macOS arm64.
 > Builds on checkpoint `b7461cc1` (81F/81G). A separately loaded tracer computes
 > reachability over the existing seed allocation domain. No reclamation occurs.
@@ -38,10 +44,10 @@ graph exist. Reports refer to those original identities. There is no copying or
 relocation of Birnam objects. Copied native fact arrays/work buffers are temporary
 and expire at the observation boundary.
 
-The sources are [seed](../../experiments/id-seed/seed/src/lib.rs),
-[observation carriers](../../experiments/id-seed/observation-abi/src/lib.rs),
-[tracer](../../experiments/id-seed/trace/src/lib.rs) and
-[independent probe](../../experiments/id-seed/trace-probe/src/main.rs).
+The sources are seed (`experiments/id-seed/seed/src/lib.rs` at `2c32308b`),
+observation carriers (`experiments/id-seed/observation-abi/src/lib.rs` at `2c32308b`),
+tracer (`experiments/id-seed/trace/src/lib.rs` at `2c32308b`) and
+independent probe (`experiments/id-seed/trace-probe/src/main.rs` at `2c32308b`).
 The new shared crate contains C-layout records, status constants and carrier
 helpers, with no heap, tracing or object implementation. It is an interface
 definition, not a semantic runtime beneath Id. Implementation crates depend only
@@ -163,7 +169,7 @@ Run the expanded isolated suite:
 mise run id-seed-experiment
 ```
 
-The [driver](../../scripts/id-seed-experiment.py) retains fresh offline source
+The driver (`scripts/id-seed-experiment.py` at `2c32308b`) retains fresh offline source
 snapshots, Rustfmt/Clippy checks, original ABI hashing, dependency/export audits,
 and exact mapped-image checks. The trace process maps only its probe, seed,
 Integer, object-model and tracer as non-system images. The tracer exports only

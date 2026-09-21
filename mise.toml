@@ -235,10 +235,6 @@ run = "scripts/float-test.sh"
 description = "Check the loaded production collection coordinator in debug"
 run = "scripts/collection-test.sh"
 
-[tasks.id-seed-experiment]
-description = "Run Designs 81F/81G/81H/81I isolated Id, modules, tracing and reclamation proofs"
-run = "python3 scripts/id-seed-experiment.py"
-
 [tasks.generated-deopt-experiment]
 description = "Run Design 74G generated same-frame recovery and native unload checks"
 run = "python3 scripts/generated-frame-deopt.py"

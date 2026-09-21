@@ -1,5 +1,11 @@
 # 81G — Integer as a module above Id
 
+> **Historical experiment, retired by Design 84.** The separate seed workspace
+> and runner were deleted after production native coverage became available.
+> Source paths and commands below describe the earlier experiment; recover its
+> files from commit `2c32308b` with `git show COMMIT:path` if needed. They are not
+> an alternate implementation or a current validation command.
+
 > **Status:** Executed Rust experiment, 2026-09-18, macOS arm64.
 > Extends [81F](81f-isolated-id-seed-proof.md) with the smallest useful slice of
 > Values. Both the seed implementation and its ABI source remain byte-for-byte
@@ -21,7 +27,7 @@ loaded module using the existing seed API.** The module owns its payload layout,
 default methods and representation checks. There is no Integer knowledge in Id,
 no new SeedApi field, and no dependency on the private-vtable module.
 
-The source is [integer/src/lib.rs](../../experiments/id-seed/integer/src/lib.rs).
+The source is integer/src/lib.rs (`experiments/id-seed/integer/src/lib.rs` at `2c32308b`).
 Its only crate dependency is `birnam-seed-abi`. The compiled
 `libbirnam_integer_experiment.dylib` is loaded after Id. Its initialization uses
 `delegated`, `allocate`, `intern` and `addMethod` sends to create an Integer
@@ -121,13 +127,13 @@ Run the extended experiment on macOS:
 mise run id-seed-experiment
 ```
 
-The [driver](../../scripts/id-seed-experiment.py) builds a fresh source snapshot
+The driver (`scripts/id-seed-experiment.py` at `2c32308b`) builds a fresh source snapshot
 offline and retains the original 81F checks. It additionally verifies the seed
 and ABI SHA-256 values against 81F's successful run, audits the Integer dependency
 closure and two exports, and checks both complete and Integer-only process image
 inventories. Source/binary hashes and command logs are recorded in the receipt.
 
-The [independent probe](../../experiments/id-seed/probe/src/integer.rs) does not
+The independent probe (`experiments/id-seed/probe/src/integer.rs` at `2c32308b`) does not
 link the Integer implementation or read its private state/payload directly.
 
 | New case | Required observation |

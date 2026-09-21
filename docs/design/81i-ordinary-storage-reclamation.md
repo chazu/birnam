@@ -1,5 +1,11 @@
 # 81I — Ordinary storage reclamation above Id
 
+> **Historical experiment, retired by Design 84.** The separate seed workspace
+> and runner were deleted after production native coverage became available.
+> Source paths and commands below describe the earlier experiment; recover its
+> files from commit `2c32308b` with `git show COMMIT:path` if needed. They are not
+> an alternate implementation or a current validation command.
+
 > **Status:** Executed Rust experiment, 2026-09-18, macOS arm64.
 > Builds on the 81H checkpoint `c4d49b23`. A separately loaded collector retires
 > unreachable ordinary objects and their upper-module metadata, then Id releases
@@ -36,10 +42,10 @@ finalization, native stack scanning, or a Birnam-authored implementation.
 | Pair fixture | Prepare/commit removal of representation descriptions |
 | Host probe | Explicit roots, complete participant list, callback/code lifetimes and the independent acceptance oracle |
 
-Sources: [collector](../../experiments/id-seed/collect/src/lib.rs),
-[seed](../../experiments/id-seed/seed/src/lib.rs),
-[carriers](../../experiments/id-seed/observation-abi/src/lib.rs), and
-[probe](../../experiments/id-seed/collect-probe/src/main.rs).
+Sources: collector (`experiments/id-seed/collect/src/lib.rs` at `2c32308b`),
+seed (`experiments/id-seed/seed/src/lib.rs` at `2c32308b`),
+carriers (`experiments/id-seed/observation-abi/src/lib.rs` at `2c32308b`), and
+probe (`experiments/id-seed/collect-probe/src/main.rs` at `2c32308b`).
 
 ## 2. Protected trace, retire and release
 

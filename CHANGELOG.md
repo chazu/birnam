@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Delete the retired standalone Id seed workspace, its runner and mise task.
+  Record the production coverage and outstanding lifetime obligations; historical
+  experiments no longer provide a parallel implementation or acceptance path.
+
 - Begin Design 84's removal of the parallel native module APIs. Delete twelve
   ABI tables and their provider/attachment/host plumbing. Vector returns an
   opaque prototype; Map, Range and String splitting use replaceable Vector
