@@ -13,10 +13,10 @@ use std::sync::atomic::Ordering;
 pub(crate) struct Access {
     pub id: Protocol,
     pub lifetime: lifetime::OwnedV1,
-    roots: root_registry::OwnedV1,
+    pub(crate) roots: root_registry::OwnedV1,
     allocate: Oop,
-    allocation_size: NativeEntry,
-    behavior_of: NativeEntry,
+    pub(crate) allocation_size: NativeEntry,
+    pub(crate) behavior_of: NativeEntry,
 }
 impl Access {
     pub(crate) fn references(self) -> [Oop; 4] {
@@ -28,14 +28,19 @@ impl Access {
         ]
     }
 }
-fn invalid() -> Outcome {
+pub(crate) fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
-fn send(id: Protocol, receiver: Oop, selector: Oop, args: &[Operand]) -> Result<Operand, Outcome> {
+pub(crate) fn send(
+    id: Protocol,
+    receiver: Oop,
+    selector: Oop,
+    args: &[Operand],
+) -> Result<Operand, Outcome> {
     unsafe { id.message.unwrap()(id.context, receiver, selector, args.as_ptr(), args.len()) }
         .into_result()
 }
-fn intern(id: Protocol, name: &[u8]) -> Result<Oop, Outcome> {
+pub(crate) fn intern(id: Protocol, name: &[u8]) -> Result<Oop, Outcome> {
     send(id, id.receiver, id.intern, &[Operand::bytes(name)])?
         .as_object()
         .ok_or_else(invalid)
@@ -50,17 +55,17 @@ fn select(id: Protocol, name: &[u8]) -> Result<NativeEntry, Outcome> {
     .as_entry()
     .ok_or_else(invalid)
 }
-fn fact(access: Access, entry: NativeEntry, object: Oop) -> Result<Operand, Outcome> {
+pub(crate) fn fact(access: Access, entry: NativeEntry, object: Oop) -> Result<Operand, Outcome> {
     let args = [Operand::object(object)];
     unsafe { entry.method.unwrap()(entry.context, access.id.receiver, args.as_ptr(), args.len()) }
         .into_result()
 }
-struct Root {
+pub(crate) struct Root {
     roots: root_registry::OwnedV1,
     token: usize,
 }
 impl Root {
-    fn new(roots: root_registry::OwnedV1, object: Oop) -> Self {
+    pub(crate) fn new(roots: root_registry::OwnedV1, object: Oop) -> Self {
         let token = unsafe { roots.retain.unwrap()(roots.context, object) };
         assert_ne!(token, 0);
         Self { roots, token }
@@ -298,6 +303,10 @@ fn construct(
         (b"fromBytes:".as_slice(), from_bytes as native::Method),
         (b"bytes".as_slice(), bytes as native::Method),
         (b"length".as_slice(), length as native::Method),
+        (
+            b"installText:".as_slice(),
+            super::text::install as native::Method,
+        ),
         (b"clone".as_slice(), clone as native::Method),
         (b"new".as_slice(), clone as native::Method),
     ] {

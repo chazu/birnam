@@ -40,13 +40,27 @@ Initialization installs the raw layout and owner association and publishes
 `String`/`StringVt` in the existing Namespace. Production startup subsequently
 attaches that exact operations table to Runtime and other consumers. It does
 not run `birnam_string_prepare_v4`; that entry remains for legacy `id_init`
-consumers. Later `module_init` installs printing, Integer-valued indexing,
-numeric conversion and text methods after their dependencies exist. It preserves
-the original storage, names and `clone`/`new` bindings. Collection methods still
-mount separately.
+consumers. The native `installText:` extension on String accepts three Words:
+completed base values, Integer and Float descriptors. It installs the fourteen
+existing printing, comparison, indexing, transformation and numeric-conversion
+methods before Block or Runtime. The extension owns a separate complete context;
+the storage owner has no future numeric slots. Existing bindings are preserved.
+Late `module_init` checks the Id and preserves the completed native extension.
+Collection methods still mount separately.
+
+Text calls root their receiver and arguments across callbacks. Concatenation
+sends the current `printString` for a non-String argument and roots that result
+while reading bytes. Numeric callbacks use the live tables. Indexing remains
+byte-oriented and returns nil for invalid indices/types. `asSymbol` preserves
+the existing first-NUL boundary; numeric parsing preserves its four-character
+ASCII trim policy, distinct from `trimmed`'s six whitespace characters. Native
+and legacy text methods share the trim, replacement and bracket-scanning code.
 
 `scripts/id-native-loading-smoke.py PREFIX` exercises the actual twelve-library
 construction prefix using `scripts/fixtures/early-string-native.c`, then resumes
 the same production Runtime and tests retention, cleanup and construction again.
+The same driver then completes the sixteen-library value/text prefix and runs
+`early-text-native.c` before Block/Runtime and again after adoption with precise
+GC, including collection during printable-result and byte callbacks.
 `scripts/string-image-smoke.sh PREFIX` checks the completed String behavior in
 source, compiled, saved-image and baked-image execution.

@@ -22,8 +22,15 @@ Available operations are Object `==`, Boolean `not`, `&`, `|`, and Object/Nil
 `isNil`, `notNil`. They return the canonical objects. Nil predicates use its
 behavior, so other instances of Nil behave consistently. Native arity/type
 failures return InvalidRequest. Printing and Block control are absent here.
-The later `module_init` entries add those higher operations once their complete
-inputs exist; in production they leave the base bindings intact.
+
+After String exists, the native `installPrinting:` extension is sent to nil and
+true with two Words: the completed roots and String descriptors. Each module
+creates a separate printing context and installs its existing `printString`
+behavior using current String `fromBytes:` messages. Cached selectors and
+predecessor references are rooted. Existing printing replacements are preserved.
+This works before Block/Runtime and does not put a future String slot in either
+base owner. Late `module_init` preserves native printing and predicates; Boolean
+Block control still mounts later with Execution.
 
 The temporary upper Runtime constructor `birnam_runtime_init_v5` takes completed
 roots, Lifetime, this descriptor, Namespace and Object Model. It adopts the same identities and layouts.

@@ -67,7 +67,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, _p
             (api.method)(nil_vt, intern(api, b"isNil\0"), nil_is_nil);
             (api.method)(nil_vt, intern(api, b"notNil\0"), nil_not_nil);
         }
-        (api.method)(nil_vt, intern(api, b"printString\0"), nil_print_string);
+        if !base::printing_ready() { (api.method)(nil_vt, intern(api, b"printString\0"), nil_print_string); }
     }
     ptr::null_mut()
 }

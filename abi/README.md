@@ -11,6 +11,8 @@ followed by [String storage](fixtures/string-v1/README.md) and
 operations and Integer's mixed-number extension before Word/Block/Runtime.
 [Word construction](word-v1.md#production-construction) follows with working
 conversion, overflow errors, printing and equality before Block/Runtime.
+String's native text/numeric extension and Nil/Boolean printing complete this
+value layer before Runtime; collection and Execution still use the upper path.
 The remaining aggregate Runtime and module interfaces below are migration
 boundaries. Earlier descriptions of factory preparation before `id_init` apply
 to the legacy path; current startup loads the real Id first. See

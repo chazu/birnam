@@ -263,6 +263,16 @@ fn main() {
     let word_check = intern(&id, b"earlyWordCheck");
     let word_release = intern(&id, b"releaseEarlyWord");
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 16);
+    initial.initialize_text().unwrap();
+    initial.initialize_text().unwrap();
+    let text_fixture = scratch.join("early-text.dylib");
+    let text_arguments = [Operand::word(roots as usize), Operand::word(namespace as usize), Operand::word(values as usize), Operand::word(string as usize), Operand::word(integer as usize), Operand::word(float as usize), Operand::word(0), Operand::word(0)];
+    let result = unsafe { initial.load_native(text_fixture.as_os_str().as_bytes(), &text_arguments) };
+    assert_eq!(result.status, native::LOADED);
+    let text_identity = result.value.as_word().unwrap();
+    let text_check = intern(&id, b"earlyTextCheck");
+    let text_release = intern(&id, b"releaseEarlyText");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 16);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -384,6 +394,21 @@ fn main() {
     unsafe { (runtime.stack.api().gcCollect)(); }
     assert_eq!(send(&id, word_check, &[]).value.kind(), native::UNIT);
     println!("Word works before Block/Runtime; bits, conversion and native replacements survive adoption/GC");
+    assert_eq!(send(&id, text_check, &[]).value.as_word(), Some(text_identity));
+    assert_eq!(send(&id, text_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, text_check, &[]).value.kind(), native::UNIT);
+    let mut later_arguments = text_arguments; later_arguments[6] = Operand::word(1);
+    later_arguments[7] = Operand::word(runtime.stack.api().gcCollect as usize);
+    let later = unsafe { runtime.stack.load_native(text_fixture.as_os_str().as_bytes(), &later_arguments) };
+    assert_eq!(later.status, native::LOADED);
+    let later_identity = later.value.as_word().unwrap(); assert_ne!(later_identity, text_identity);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, text_check, &[]).value.as_word(), Some(later_identity));
+    assert_eq!(send(&id, text_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, text_check, &[]).value.kind(), native::UNIT);
+    println!("String text and Nil/Boolean printing work before Block/Runtime; native replacements and callback roots survive adoption/GC");
     let adopted_integer = unsafe { birnam_abi::integer::operations() };
     assert_eq!((adopted_integer.context, adopted_integer.behavior, adopted_integer.prototype),
         unsafe { ((*integer).context, (*integer).behavior, (*integer).prototype) });

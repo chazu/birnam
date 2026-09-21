@@ -3161,7 +3161,7 @@ pub fn begin_id(
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, text_ready: false, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3180,6 +3180,7 @@ pub struct InitialFloor {
     integer: Option<*mut birnam_abi::integer::IntegerApiV1>,
     float: Option<*mut birnam_abi::float::FloatApiV1>,
     word: Option<*mut birnam_abi::word::WordApiV1>,
+    text_ready: bool,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
@@ -3365,11 +3366,40 @@ impl InitialFloor {
         self.word = Some(word);
         Ok(self.word)
     }
+    /// Extend existing String storage after both numeric families are complete.
+    pub fn initialize_text(&mut self) -> Result<(), FloorError> {
+        if self.runtime_init.is_none() || self.text_ready { return Ok(()); }
+        self.initialize_float()?;
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let id = self.id_protocol;
+        let name = Operand::bytes(b"installText:");
+        let selector = unsafe { id.message.unwrap()(id.context, id.receiver, id.intern, &name, 1) };
+        if selector.status != native::LOADED { return Err(FloorError::IdProtocol { status: selector.status, detail: selector.detail }); }
+        let selector = selector.value.as_object().ok_or(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 })?;
+        let args = [Operand::word(self.base_values.unwrap() as usize), Operand::word(self.integer.unwrap() as usize), Operand::word(self.float.unwrap() as usize)];
+        let result = unsafe { id.message.unwrap()(id.context, (*self.string.unwrap()).prototype, selector, args.as_ptr(), args.len()) };
+        if result.status != native::LOADED { return Err(FloorError::IdProtocol { status: result.status, detail: result.detail }); }
+        if result.value.kind() != native::UNIT { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
+        let name = Operand::bytes(b"installPrinting:");
+        let selector = unsafe { id.message.unwrap()(id.context, id.receiver, id.intern, &name, 1) };
+        if selector.status != native::LOADED { return Err(FloorError::IdProtocol { status: selector.status, detail: selector.detail }); }
+        let selector = selector.value.as_object().ok_or(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 })?;
+        let values = unsafe { *self.base_values.unwrap() };
+        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.string.unwrap() as usize)];
+        for receiver in [values.nil, values.true_object] {
+            let result = unsafe { id.message.unwrap()(id.context, receiver, selector, args.as_ptr(), args.len()) };
+            if result.status != native::LOADED { return Err(FloorError::IdProtocol { status: result.status, detail: result.detail }); }
+            if result.value.kind() != native::UNIT { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
+        }
+        self.text_ready = true;
+        Ok(())
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
         self.initialize_float()?;
         self.initialize_word()?;
+        self.initialize_text()?;
         let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, float, word, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");

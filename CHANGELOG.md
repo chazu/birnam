@@ -10,6 +10,12 @@ loader ports are complete.
 
 ### Changed
 
+- Complete Design 83's early value/text stage: install String's fourteen text
+  and numeric methods and Nil/Boolean printing through native extension entries
+  before Block or Runtime. Use completed predecessor contexts, preserve early
+  bindings through later mounting, and root temporary printable results across
+  collection callbacks. Share the existing pure text algorithms with legacy
+  clients; retain byte indexing, NUL conversion and numeric parsing behavior.
 - Construct production Word through Id before Block or Runtime (Design 83), with
   the existing unsigned payload, equality, hexadecimal printing and checked
   Integer conversion. Overflow errors use the current Error factory. Skip legacy

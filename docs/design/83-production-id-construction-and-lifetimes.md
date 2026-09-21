@@ -698,9 +698,9 @@ against selected inert Id facts before writing, rejects existing ownership or
 finalizers, roots clone inputs across dispatch, and attaches cleanup through the
 already initialized Lifetime records. No storage-map borrow spans a send.
 The completed String table is adopted by the upper consumers; production skips
-String's legacy preparation. Late String mounting preserves early names, storage
-and clone/new bindings while installing methods whose number/text dependencies
-now exist. This completes step 5's production byte-storage construction.
+String's legacy preparation. Its separate text extension installs methods once
+the number dependencies exist. Late String mounting preserves early names,
+storage and native bindings. This completes step 5's byte-storage construction.
 The aggregate Runtime remains in Id.
 
 `InitialFloor::initialize_error` now loads the actual installed Error library
@@ -774,8 +774,25 @@ rooted. Production skips legacy Word preparation; upper consumers adopt the same
 table and late mounting preserves native methods, layouts and replacements.
 Legacy preparation returns that table if called on the same native Id.
 
-This delivers Float, Word and mixed-number operations in step 8. String
-numeric/text extensions and Nil/Boolean printing still need native entries.
+`InitialFloor::initialize_text` now sends String `installText:` with completed
+base-value, Integer and Float descriptors, then sends nil and true
+`installPrinting:` with completed roots and String. These explicit native
+extensions install all fourteen existing String text/numeric methods and
+Nil/Boolean printing before Block/Runtime. Each extension owns a separate
+complete context; no future provider is stored in the base owners. Existing
+bindings are preserved and late legacy mounting keeps the native methods.
+
+String roots arguments and temporary printable results across callbacks and
+uses the live numeric/String operation tables. Indexing remains byte-oriented;
+invalid indices and numeric parses keep their existing nil results. Symbol
+conversion preserves its first-NUL boundary. Native and legacy text paths share
+trimming, replacement and bracket-scanning algorithms. Nil/Boolean printing sends
+the current String construction message; cached selectors and predecessor
+references remain rooted.
+
+This completes the value/text entries in step 8, with the real sixteen-library
+prefix exercising both ordinary results and advertised failure paths. No new
+library, representation, descriptor version or Runtime bridge is added.
 Collector activation, Execution/Block, native-aware compiler admission and the
 remaining upper/package separation are still open.
 
@@ -967,6 +984,18 @@ Current debug evidence:
   image workloads pass source, source-free compiled, saved-image and baked runs,
   including overflow and live Error factory replacement. Installed Word matches
   its eight-symbol manifest and links only the platform library.
+- The completed sixteen-library value/text prefix runs String's fourteen methods
+  and Nil/Boolean printing before Block/Runtime. Independent C covers all 256
+  byte indices, binary slices/equality, trimming, replacement, bracket scanning,
+  first-NUL symbol conversion, numeric parsing boundaries and malformed native
+  operands. It repeats after adoption with precise GC, including collection
+  during printing and subsequent byte callbacks. Early method/context replacements
+  survive; releasing the retained String reclaims its identity and byte buffer.
+  The legacy String client passes 410 binary/index/slice cases and 18 numeric
+  boundaries; host debug units pass (86). String, Nil and Boolean source,
+  source-free compiled, saved-image and baked workloads pass with native text
+  and printing. Their existing 7/4/4-symbol manifests match the installed dylibs,
+  which link only the platform library. No Runtime bridge version changes.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.

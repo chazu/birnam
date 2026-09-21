@@ -242,6 +242,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, _p
         (b"printString\0", boolean_print_string),
     ];
     for (selector, method) in boolean_methods {
+        if base::printing_ready() && *selector == b"printString\0" { continue; }
         if base::matches(api) && [b"&\0".as_slice(), b"|\0".as_slice(), b"not\0".as_slice()].contains(selector) { continue; }
         let symbol = unsafe { intern(api, selector) };
         // SAFETY: both singleton booleans share this vtable for the process lifetime.

@@ -3,7 +3,7 @@ use birnam_abi::{Oop, base_values::ValuesV1, root_registry, lifetime,
     id_protocol::{self as native, Operand, Outcome, NativeEntry, Protocol}};
 use core::{ffi::c_void, ptr};
 use std::sync::atomic::{AtomicPtr, Ordering};
-struct State { values: ValuesV1, id_context: *mut c_void }
+struct State { values: ValuesV1, id: Protocol }
 static BASE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
 fn invalid() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
 fn object(value: Oop) -> Outcome { Outcome::loaded(Operand::object(value)) }
@@ -56,7 +56,7 @@ fn construct(id: Protocol, roots: root_registry::OwnedV1, records: lifetime::Own
     let true_object = retain(send(id, boolean_behavior, allocate, &[Operand::word(0)])?)?;
     let false_object = retain(send(id, boolean_behavior, allocate, &[Operand::word(0)])?)?;
     let state = Box::into_raw(Box::new(State { values: ValuesV1 { version: 1, byte_size: size_of::<ValuesV1>(),
-        nil_behavior, boolean_behavior, nil, true_object, false_object }, id_context: id.context }));
+        nil_behavior, boolean_behavior, nil, true_object, false_object }, id }));
     let values = unsafe { &raw mut (*state).values };
     let add = intern(id, b"addMethod")?;
     for (vtable, name, method) in [
@@ -67,6 +67,7 @@ fn construct(id: Protocol, roots: root_registry::OwnedV1, records: lifetime::Own
     ] {
         send(id, vtable, add, &[Operand::object(intern(id, name)?), Operand::entry(NativeEntry::new(method, values.cast()))])?;
     }
+    send(id, boolean_behavior, add, &[Operand::object(intern(id, b"installPrinting:")?), Operand::entry(NativeEntry::new(install_printing, state.cast()))])?;
     BASE.store(state, Ordering::Release);
     Ok(values)
 }
@@ -80,7 +81,7 @@ unsafe extern "C" fn initialize(id: *const Protocol, args: *const Operand, count
     let id = unsafe { *id };
     let existing = BASE.load(Ordering::Acquire);
     if !existing.is_null() {
-        if unsafe { (*existing).id_context } != id.context { return invalid(); }
+        if unsafe { (*existing).id.context } != id.context { return invalid(); }
         return Outcome::loaded(Operand::word(unsafe { &raw const (*existing).values } as usize));
     }
     match construct(id, unsafe { *roots }, unsafe { *records }) {
@@ -95,3 +96,124 @@ pub(super) fn matches(api: &birnam_abi::IdApi) -> bool {
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize) };
+
+struct Printing {
+    id: Protocol,
+    string: Oop,
+    from_bytes: Oop,
+    values: ValuesV1,
+}
+static PRINTING: AtomicPtr<Printing> = AtomicPtr::new(ptr::null_mut());
+pub(super) fn printing_ready() -> bool {
+    !PRINTING.load(Ordering::Acquire).is_null()
+}
+unsafe extern "C" fn printing_roots(mark: birnam_abi::MarkFn) {
+    let printing = PRINTING.load(Ordering::Acquire);
+    if printing.is_null() {
+        return;
+    }
+    let printing = unsafe { &*printing };
+    let objects = [
+        printing.id.receiver,
+        printing.id.intern,
+        printing.id.load,
+        printing.string,
+        printing.from_bytes,
+        printing.values.nil,
+        printing.values.true_object,
+        printing.values.false_object,
+    ];
+    for object in objects {
+        unsafe { mark(object) };
+    }
+}
+unsafe extern "C" fn print(
+    context: *mut c_void,
+    receiver: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    if count != 0 {
+        return invalid();
+    }
+    let printing = unsafe { &*context.cast::<Printing>() };
+    let text = if receiver == printing.values.true_object {
+        b"true".as_slice()
+    } else if receiver == printing.values.false_object {
+        b"false".as_slice()
+    } else {
+        return Outcome::loaded(Operand::object(printing.values.nil));
+    };
+    let bytes = Operand::bytes(text);
+    unsafe {
+        printing.id.message.unwrap()(
+            printing.id.context,
+            printing.string,
+            printing.from_bytes,
+            &bytes,
+            1,
+        )
+    }
+}
+unsafe extern "C" fn install_printing(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let state = unsafe { &*context.cast::<State>() };
+    let values = state.values;
+    if receiver != values.true_object || printing_ready() {
+        return invalid();
+    }
+    let Some([roots, string]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let (Some(roots), Some(string)) = (roots.as_word(), string.as_word()) else {
+        return invalid();
+    };
+    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
+    let string = string as *const birnam_abi::string::StringApiV1;
+    if !unsafe {
+        birnam_abi::root_registry::valid_owned(roots) && birnam_abi::string::valid(string)
+    } {
+        return invalid();
+    }
+    let id = state.id;
+    let result = (|| {
+        let from_bytes = intern(id, b"fromBytes:")?;
+        let selector = intern(id, b"printString")?;
+        let printing = Box::into_raw(Box::new(Printing {
+            id,
+            values,
+            string: unsafe { (*string).prototype },
+            from_bytes,
+        }));
+        PRINTING.store(printing, Ordering::Release);
+        unsafe { birnam_abi::root_registry::register((*roots).api, printing_roots) };
+        if send(
+            id,
+            values.boolean_behavior,
+            intern(id, b"lookup")?,
+            &[Operand::object(selector)],
+        )?
+        .kind()
+            == native::UNIT
+        {
+            send(
+                id,
+                values.boolean_behavior,
+                intern(id, b"addMethod")?,
+                &[
+                    Operand::object(selector),
+                    Operand::entry(NativeEntry::new(print, printing.cast())),
+                ],
+            )?;
+        }
+        Ok(Operand::unit())
+    })();
+    match result {
+        Ok(value) => Outcome::loaded(value),
+        Err(error) => error,
+    }
+}

@@ -1,19 +1,23 @@
 # Native String v1
 
 `birnam-string` owns canonical String objects, their two-word pointer/length
-payload, and an address-keyed map of owned byte buffers. It loads through the
-siphon; Id has no normal Rust dependency on the implementation. IdApi v7 removes
-`string_vt`, `mkString` and `stringBytes` (34 fields / 272 bytes). Rebuild native
-consumers. The payload and image formats are unchanged.
+payload, and an address-keyed map of owned byte buffers. Bootstrap constructs it
+through Id before Error or numbers; Id has no normal Rust dependency on the
+implementation. The [production entries](fixtures/string-v1/README.md) provide
+byte storage first, then a native text/numeric extension once Integer and Float
+exist. Both stages complete before Runtime. Payload and image formats are unchanged.
 
-`birnam_string_prepare_v2(IdApi *, const NamespaceExportV1 *, const NativeAllocationV1 *)` registers partial
+The legacy `birnam_string_prepare_v4`/IdApi path registers partial
 roots, creates the canonical behavior and empty prototype, declares RAW layout,
-and installs clone/new once. The host prepares String after the collector is
+and installs clone/new once. A legacy host prepares String after the collector is
 mounted and before Word, Float and Integer. It attaches `StringApiV1` to itself,
 the selected floor, and each declaring consumer before calling `module_init`.
 Activation stays immediately before Collection: publish owner/exports once and
 reinstall the fourteen existing String methods on every activation. Repeated
-preparation must use the same IdApi. Native handles remain pinned on failure.
+preparation must use the same IdApi. Production skips this preparation and its
+late `module_init` preserves the native methods, identities and replacements.
+Native handles remain pinned on failure. Legacy clients use the current IdApi;
+historical manifests describe prior checkpoints.
 
 String split: lives in the separately loaded [String collection adapter](string-collection-v1.md),
 which loads after Vector. Collection installs it after String parenting, retaining
@@ -34,14 +38,15 @@ and a stable non-null pointer for an owned empty string. Ordinary `bytes` reject
 unowned objects. Release removes only private native ownership. Borrowed bytes
 remain valid while the buffer remains owned; callers must root objects across GC.
 
-Clone/new ignore arity, accept null, copy the source's owned bytes twice as before,
+Legacy clone/new ignore arity, accept null, copy the source's owned bytes twice as before,
 canonicalize behavior and install default cleanup instead of inheriting a changed
-source finalizer. Reinitialization does not overwrite clone/new replacements.
+source finalizer. Native clone/new validate arity and require owned String bytes.
+Reinitialization does not overwrite clone/new replacements.
 Retirement classifies cleanup as nonobserving only when its exact function reports
 the matching String instance and the object still owns bytes. Wrappers, foreign
 runtimes, replaced finalizers and unowned payloads retain ordinary settlement.
 
-`birnam_native_allocation_provider_v1` on Id supplies a separate immutable,
+For legacy String construction, `birnam_native_allocation_provider_v1` on Id supplies a separate immutable,
 32-byte `NativeAllocationV1`: version, extent, runtime context and allocator.
 Its stack-scoped 48-byte plan has private context, behavior, payload size, optional
 finalizer, prepare and initialize callbacks. The floor checks for GC first,

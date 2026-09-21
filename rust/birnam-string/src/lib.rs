@@ -8,6 +8,7 @@ use std::sync::{Once, OnceLock};
 use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 pub mod storage;
 mod native;
+mod text;
 static INSTANCE: AtomicPtr<storage::Instance> = AtomicPtr::new(ptr::null_mut());
 static PHASE: AtomicU8 = AtomicU8::new(0);
 
@@ -235,16 +236,8 @@ unsafe extern "C" fn string_trimmed(self_object: Oop, _args: *const Oop, count: 
     let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
     };
-    let is_space = |byte: u8| matches!(byte, b' ' | b'\t' | b'\r' | b'\n' | 0x0b | 0x0c);
-    let start = bytes
-        .iter()
-        .position(|byte| !is_space(*byte))
-        .unwrap_or(bytes.len());
-    let end = bytes
-        .iter()
-        .rposition(|byte| !is_space(*byte))
-        .map_or(start, |index| index + 1);
-    unsafe { (birnam_abi::string::make)(bytes[start..end].as_ptr(), end - start) }
+    let trimmed = text::trimmed_bytes(&bytes);
+    unsafe { (birnam_abi::string::make)(trimmed.as_ptr(), trimmed.len()) }
 }
 
 unsafe extern "C" fn string_index_of(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -284,37 +277,7 @@ unsafe extern "C" fn string_bracket_depth(
     let Some(bytes) = (unsafe { string_copy(api, self_object) }) else {
         return api.nilObj;
     };
-    let mut depth = 0i64;
-    let mut in_string = false;
-    let mut index = 0usize;
-    while index < bytes.len() {
-        let byte = bytes[index];
-        if in_string {
-            if byte == b'\\' {
-                index = index.saturating_add(2);
-                continue;
-            }
-            if byte == b'"' {
-                in_string = false;
-            }
-            index += 1;
-            continue;
-        }
-        if byte == b'/' && index + 1 < bytes.len() && bytes[index + 1] == b'/' {
-            while index < bytes.len() && bytes[index] != b'\n' {
-                index += 1;
-            }
-            continue;
-        }
-        match byte {
-            b'"' => in_string = true,
-            b'[' | b'{' => depth += 1,
-            b']' | b'}' => depth -= 1,
-            _ => {}
-        }
-        index += 1;
-    }
-    unsafe { (birnam_abi::integer::make)(depth) }
+    unsafe { (birnam_abi::integer::make)(text::bracket_depth(&bytes)) }
 }
 
 unsafe extern "C" fn string_replace_with(self_object: Oop, args: *const Oop, count: usize) -> Oop {
@@ -334,22 +297,7 @@ unsafe extern "C" fn string_replace_with(self_object: Oop, args: *const Oop, cou
     let Some(replacement) = (unsafe { string_copy(api, arguments[1]) }) else {
         return api.nilObj;
     };
-    if needle.is_empty() {
-        return unsafe { (birnam_abi::string::make)(haystack.as_ptr(), haystack.len()) };
-    }
-    let mut output = Vec::new();
-    let mut index = 0usize;
-    while index < haystack.len() {
-        if index + needle.len() <= haystack.len()
-            && haystack[index..index + needle.len()] == needle[..]
-        {
-            output.extend_from_slice(&replacement);
-            index += needle.len();
-        } else {
-            output.push(haystack[index]);
-            index += 1;
-        }
-    }
+    let output = text::replace(&haystack, &needle, &replacement);
     unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
 }
 
@@ -428,6 +376,11 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, _p
     if previous != 2 && previous != 4 { abort("recursive String activation"); }
     let _ = unsafe { birnam_abi::integer::operations() };
     let _ = unsafe { birnam_abi::float::operations() };
+    if text::ready() {
+        let instance = INSTANCE.load(Ordering::Acquire);
+        assert_eq!(unsafe { (*instance).native_access().unwrap().id.receiver }, unsafe { (*api_pointer).vtable_vt }, "String mounted on another Id");
+        return ptr::null_mut();
+    }
     let api = unsafe { &*api_pointer };
     if previous == 2 && unsafe { (*INSTANCE.load(Ordering::Acquire)).native_access().is_none() } { unsafe { (*INSTANCE.load(Ordering::Acquire)).publish() }; }
     ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });

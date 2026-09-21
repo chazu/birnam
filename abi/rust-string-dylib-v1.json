@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "String representation, owned byte buffers and existing methods through explicit native dependencies",
+  "scope": "Native String storage and text extensions before Runtime; legacy IdApi adapters",
   "install_name": "@rpath/libbirnam_string.dylib",
   "exported_symbols": [
     "birnam_float_dependency_v1",

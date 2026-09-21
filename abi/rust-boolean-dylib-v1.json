@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "Boolean methods through existing IdApi and object-model messages",
+  "scope": "Native base values and printing before Runtime, followed by Block control",
   "install_name": "@rpath/libbirnam_boolean.dylib",
   "exported_symbols": [
     "birnam_native_module_v1",

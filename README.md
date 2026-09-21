@@ -728,11 +728,11 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-map/` — independently loaded Map storage, canonical objects, methods, traversal and printing.
 - `rust/birnam-range/` — independently loaded Range representation, construction and all Range methods; uses native Vector storage.
 - `rust/birnam-string-builder/` — independently loaded StringBuilder buffer ownership and methods.
-- `rust/birnam-string/` — [String byte storage](abi/fixtures/string-v1/README.md) constructed through Id before Error/numbers/Runtime, followed by text and numeric methods.
+- `rust/birnam-string/` — [String byte storage](abi/fixtures/string-v1/README.md) before Error/numbers, followed by native text and numeric methods before Runtime.
 - `rust/birnam-error/` — [Error construction and propagation](abi/error-value-v3.md#production-error-construction), initialized before numbers and Runtime.
 - `rust/birnam-string-collection/` — late String split adapter using native Vector construction.
-- `rust/birnam-nil/` — early Object/Nil predicates, followed by the String printing extension.
-- `rust/birnam-boolean/` — early Nil/Boolean identities and basic operations, followed by printing and Block control; see [base values](abi/fixtures/base-values-v1/README.md).
+- `rust/birnam-nil/` — early Object/Nil predicates and native String printing before Runtime.
+- `rust/birnam-boolean/` — early Nil/Boolean identities, basic operations and printing, followed by Block control with Execution; see [base values](abi/fixtures/base-values-v1/README.md).
 - `rust/birnam-word/` — Word construction, printing and checked Integer conversion through Id before Runtime;
   [native dependency contract](abi/word-v1.md).
 - `rust/birnam-float/` — Float construction and operations before Runtime, followed by Integer's mixed-number extension;
