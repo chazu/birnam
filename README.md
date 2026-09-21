@@ -737,7 +737,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
   [native dependency contract](abi/word-v1.md).
 - `rust/birnam-float/` — independently loaded Float representation and behavior;
   [native dependency contract](abi/float-v1.md).
-- `rust/birnam-integer/` — independently loaded Integer representation and behavior;
+- `rust/birnam-integer/` — Integer construction and arithmetic through Id before Float/Runtime, followed by mixed-number and Block extensions;
   [native dependency contract](abi/integer-v1.md).
 - `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
   (`Config` for project manifests, `AppConfig` for application startup).

@@ -36,7 +36,8 @@ pub struct IntegerApiV1 {
     pub read: unsafe extern "C" fn(*mut c_void, Oop) -> i64,
     pub is_exact: unsafe extern "C" fn(*mut c_void, Oop) -> c_int,
     pub storage: *const IntegerStorageV1,
-    /// Pure query of the allocator used by the direct constructor.
+    /// Pure query of the allocator used by a direct constructor; zero when
+    /// construction dispatches messages and cannot attest one fixed allocator.
     pub allocation_context: unsafe extern "C" fn(*mut c_void) -> usize,
 }
 
@@ -46,9 +47,9 @@ static DEPENDENCY: AtomicPtr<IntegerApiV1> = AtomicPtr::new(core::ptr::null_mut(
 /// # Safety
 /// The selected Integer table, its context/code, and this consumer remain live
 /// for the process. Mounting runs on the floor owner thread before publication.
-pub unsafe fn attach(pointer: *mut IntegerApiV1) -> c_int {
+pub unsafe fn valid(pointer: *const IntegerApiV1) -> bool {
     if pointer.is_null() {
-        return 0;
+        return false;
     }
     let value = unsafe { pointer.read() };
     if value.version != INTEGER_ABI_VERSION
@@ -58,7 +59,7 @@ pub unsafe fn attach(pointer: *mut IntegerApiV1) -> c_int {
         || value.prototype.is_null()
         || value.storage.is_null()
     {
-        return 0;
+        return false;
     }
     let storage = unsafe { value.storage.read() };
     if storage.version != 1
@@ -67,8 +68,14 @@ pub unsafe fn attach(pointer: *mut IntegerApiV1) -> c_int {
         || !storage.payload_alignment.is_power_of_two()
         || storage.payload_alignment > align_of::<Oop>()
     {
-        return 0;
+        return false;
     }
+    true
+}
+/// # Safety
+/// Mount only a completed owner-thread Integer descriptor with live code.
+pub unsafe fn attach(pointer: *mut IntegerApiV1) -> c_int {
+    if !unsafe { valid(pointer) } { return 0; }
     match DEPENDENCY.compare_exchange(
         core::ptr::null_mut(),
         pointer,

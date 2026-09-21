@@ -700,9 +700,8 @@ already initialized Lifetime records. No storage-map borrow spans a send.
 The completed String table is adopted by the upper consumers; production skips
 String's legacy preparation. Late String mounting preserves early names, storage
 and clone/new bindings while installing methods whose number/text dependencies
-now exist. This completes step 5's production byte-storage construction. Integer-only
-arithmetic and later extensions still need their own completed native
-construction entries; the aggregate Runtime remains in Id.
+now exist. This completes step 5's production byte-storage construction.
+The aggregate Runtime remains in Id.
 
 `InitialFloor::initialize_error` now loads the actual installed Error library
 (`libbirnam_id_error.dylib`) with completed roots, Lifetime, base values,
@@ -720,8 +719,31 @@ already installed Object DNU, and late Error mounting preserves the native
 factory, layout and method/context identities, including early replacements.
 The old stateless Error Value v3 adapter remains for legacy IdApi consumers; it
 owns no representation and now sees a completed factory before numbers mount.
-This completes step 6's native Error construction. The Integer/Float split,
-collector activation and remaining upper/package separation are still open.
+This completes step 6's native Error construction.
+
+`InitialFloor::initialize_integer` constructs the actual Integer base through
+Bootstrap with completed roots, Lifetime, base values, Namespace, String and the
+Error factory. The [native entry](../../abi/integer-v1.md#production-construction)
+returns the existing Integer operations table. It owns the same signed-64-bit
+payload and codec, constructs canonical identities, installs the raw layout and
+publishes the names. Integer construction, arithmetic, comparison, printing and
+Error propagation work before Float, Word, Block or Runtime. Allocation sends
+the current Id method and checks actual size/behavior before writing. Equality
+and ordered comparison retain their existing semantics, including double-precision
+rounding in ordered comparisons.
+
+This completes step 7's Integer base. Late mounting reuses its actual operations
+table and identities; mixed-number methods replace only original base entries,
+preserving early replacements. Float conversion and Block iteration are absent
+until those dependencies exist. Their native extension entries, Float/Word
+construction, collector activation and upper/package separation remain open.
+The old numeric compiler declaration assumes direct allocation and therefore
+returns zero for this message-based constructor. Native-aware compiler admission
+must still be implemented; this fallback is not the completed compiler design.
+
+String, Error and Integer root their cached selectors and predecessor references.
+Removing a method binding must not collect a selector still held by a native
+context; the same selector can be used to restore the method after collection.
 
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
@@ -878,6 +900,16 @@ Current debug evidence:
   including fresh factory replacement and exact recognition. Id's 308 and the
   host's 86 debug units pass; the installed Error exports match its five-symbol manifest and
   link only the platform library. The private Runtime v5 bridge is unchanged.
+- The fourteen-library prefix constructs Integer with Float/Word/Block absent.
+  Independent C checks 605 signed arithmetic cases and 605 comparisons, boundary
+  printing, Error propagation, malformed operands and replacement allocation
+  bounds. The fixture repeats after Runtime adoption with precise GC, preserving
+  canonical storage, early method replacements and unchanged base entries.
+  Retained Integers survive collection and released ones are reclaimed; cached
+  selectors survive method removal and collection. Integer's source, compiled,
+  saved-image and baked-image workload passes. Integer (1), Id (308) and host (86)
+  debug units pass. The installed Integer exports match its nine-symbol manifest
+  and link only the platform library. The private Runtime v5 bridge is unchanged.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.

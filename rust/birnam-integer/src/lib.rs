@@ -7,6 +7,7 @@ use core::ptr;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicPtr, Ordering};
 pub mod storage;
+mod native;
 static INSTANCE: AtomicPtr<storage::Instance> = AtomicPtr::new(ptr::null_mut());
 
 unsafe extern "C" fn integer_roots(mark: birnam_abi::MarkFn) {
@@ -19,7 +20,7 @@ unsafe extern "C" fn integer_roots(mark: birnam_abi::MarkFn) {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_integer_provider_v1() -> *mut birnam_abi::integer::IntegerApiV1 {
     let instance = INSTANCE.load(Ordering::Acquire);
-    if instance.is_null() {
+    if instance.is_null() || (unsafe { (*instance).native_access().is_some() } && !native::ready()) {
         ptr::null_mut()
     } else {
         unsafe { (*instance).operations() }
@@ -34,6 +35,7 @@ pub unsafe extern "C" fn birnam_native_numeric_semantics_v4(
     integer_vtable: Oop,
     functions: *const usize,
 ) -> u32 {
+    if native::ready() { return 0; }
     let Some(runtime) = RUNTIME.get() else {
         return 0;
     };
@@ -462,10 +464,18 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, pr
         })
         .ok()
         .expect("Integer initialization serialized");
-    let instance = Box::into_raw(unsafe { storage::Instance::empty(api_pointer, exports, layouts) });
-    INSTANCE.store(instance, Ordering::Release);
-    unsafe { birnam_abi::root_registry::register(roots, integer_roots) };
-    unsafe { (*instance).populate() };
+    let native = native::ready();
+    let instance = if native {
+        let instance = INSTANCE.load(Ordering::Acquire);
+        assert_eq!(unsafe { (*instance).native_access().unwrap().id.receiver }, api.vtable_vt, "Integer mounted on another Id");
+        let _ = unsafe { birnam_abi::float::operations() };
+        instance
+    } else {
+        let instance = Box::into_raw(unsafe { storage::Instance::empty(api_pointer, exports, layouts) });
+        INSTANCE.store(instance, Ordering::Release);
+        unsafe { birnam_abi::root_registry::register(roots, integer_roots); (*instance).populate(); }
+        instance
+    };
     assert_eq!(
         unsafe { birnam_abi::integer::attach((*instance).operations()) },
         1
@@ -487,6 +497,10 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, pr
         (b"to:do:\0", integer_to_do),
     ];
     for (selector, method) in methods {
+        // The native base already implements these without successor inputs.
+        // Mixed operations replace only our own base binding, preserving an
+        // application's earlier method replacement.
+        if native && !unsafe { native::extend_binding(&*instance, &selector[..selector.len()-1]) } { continue; }
         let symbol = unsafe { intern(api, selector) };
         // SAFETY: integer_vt and each method are live for the process lifetime.
         unsafe { (api.method)(integer_vt, symbol, *method) };

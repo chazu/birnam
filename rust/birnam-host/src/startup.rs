@@ -3157,7 +3157,7 @@ pub fn begin_id(
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3173,6 +3173,7 @@ pub struct InitialFloor {
     model: Option<*const birnam_abi::object_model::OwnedV1>,
     string: Option<*mut birnam_abi::string::StringApiV1>,
     error: Option<birnam_abi::Oop>,
+    integer: Option<*mut birnam_abi::integer::IntegerApiV1>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
@@ -3310,10 +3311,26 @@ impl InitialFloor {
         self.error = Some(error);
         Ok(self.error)
     }
+    /// Construct checked Integer arithmetic and errors before Float or Runtime.
+    pub fn initialize_integer(&mut self) -> Result<Option<*mut birnam_abi::integer::IntegerApiV1>, FloorError> {
+        if self.runtime_init.is_none() || self.integer.is_some() { return Ok(self.integer); }
+        self.initialize_error()?;
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let path = self.source_path.with_file_name("libbirnam_integer.dylib");
+        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize),
+            Operand::word(self.base_values.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize),
+            Operand::word(self.string.unwrap() as usize), Operand::object(self.error.unwrap())];
+        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        let integer = answer.value.as_word().unwrap_or(0) as *mut birnam_abi::integer::IntegerApiV1;
+        if !unsafe { birnam_abi::integer::valid(integer) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
+        self.integer = Some(integer);
+        Ok(self.integer)
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
-        self.initialize_error()?;
+        self.initialize_integer()?;
         let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");

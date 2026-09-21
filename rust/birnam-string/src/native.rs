@@ -18,6 +18,16 @@ pub(crate) struct Access {
     allocation_size: NativeEntry,
     behavior_of: NativeEntry,
 }
+impl Access {
+    pub(crate) fn references(self) -> [Oop; 4] {
+        [
+            self.id.receiver,
+            self.id.intern,
+            self.id.load,
+            self.allocate,
+        ]
+    }
+}
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }

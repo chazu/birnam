@@ -84,6 +84,15 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
             (*state).factory,
             (*state).wild_kind,
             (*state).dnu_kind,
+            (*state).values.nil,
+            (*state).values.true_object,
+            (*state).values.false_object,
+            (*state).string.prototype,
+            (*state).allocate,
+            (*state).from_bytes,
+            (*state).id.receiver,
+            (*state).id.intern,
+            (*state).id.load,
         ]
     };
     for object in objects {

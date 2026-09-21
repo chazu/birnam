@@ -232,7 +232,12 @@ impl Instance {
     /// # Safety
     /// Marking-phase callback on this mounting's owner thread; mark cannot GC.
     pub unsafe fn trace(&self, mark: MarkFn) {
-        for object in self.identities() {
+        let native = self.native_access().map(|access| access.references());
+        for object in self
+            .identities()
+            .into_iter()
+            .chain(native.into_iter().flatten())
+        {
             if !object.is_null() {
                 unsafe { mark(object) };
             }

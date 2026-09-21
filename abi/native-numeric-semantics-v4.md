@@ -4,6 +4,13 @@ This optional higher-module export supplies compiler facts about exact native
 implementations. It adds no IdApi field and does not alter the Method ABI,
 canonical descriptors or image encoding. Modules without it remain callable.
 
+Design 83's production Integer base now constructs through the current Id
+`allocate` message. It returns zero from this query and from
+`IntegerApiV1.allocation_context`: arbitrary allocation dispatch cannot satisfy
+v4's one-direct-allocation/no-other-effects contract. Source, compiled and image
+execution use ordinary dispatch. Native-aware compiler admission remains to be
+implemented; the legacy direct-allocation initializer still supports v4.
+
 ```c
 unsigned int birnam_native_numeric_semantics_v4(
     const void *method, void *integer_vtable, const uintptr_t *functions);

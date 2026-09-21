@@ -10,6 +10,14 @@ loader ports are complete.
 
 ### Changed
 
+- Construct production Integer through Id before Float, Word, Block or Runtime
+  (Design 83), with working arithmetic, comparison, printing and Error propagation.
+  Adopt the same identities and storage into upper consumers; preserve early
+  method replacements when adding mixed-number operations. Root cached selectors
+  in Integer, String and Error even after method removal. Cover the real early
+  prefix, precise GC and source/compiled/saved/baked execution. The legacy direct
+  allocation compiler optimization is declined by native construction; its
+  replacement and the later native numeric extensions remain unfinished.
 - Construct production Error through Id before Integer, Float, Block or Runtime
   (Design 83). Keep the existing two-Oop representation and factory selectors,
   with working recognition, propagation and missing-message errors using early
