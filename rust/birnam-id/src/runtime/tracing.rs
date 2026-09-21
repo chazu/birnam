@@ -1,4 +1,5 @@
-//! Floor-owned live-GC facts, consumed by the independently loaded tracer.
+//! Runtime roots and mark admission over the completed native Trace graph.
+//! The legacy graph adapter remains for minimal unit/legacy initialization.
 use super::*;
 use crate::gc::{emit_candidate, emit_native_root_range, invoke_with_mark_callback};
 use birnam_abi::storage::OK;
@@ -25,6 +26,7 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
     runtime
         .read_reuse_gc_epoch
         .set(runtime.read_reuse_gc_epoch.get().saturating_add(1));
+    let graph = runtime.trace_graph;
     let (roots, providers) = unsafe {
         let state = &*runtime.state.get();
         (
@@ -33,15 +35,15 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
             } else {
                 floor_roots(state)
             },
-            state.root_registry.snapshot(),
+            if graph.is_none() { state.root_registry.snapshot() } else { Vec::new() },
         )
     };
     for root in roots {
         emit_candidate(sink, root.addr());
     }
     if let Some(id) = source.id {
-        for root in id.roots() {
-            emit_candidate(sink, root.addr());
+        if graph.is_none() {
+            for root in id.roots() { emit_candidate(sink, root.addr()); }
         }
         // Permanent allocations are not admitted to the tracing worklist. Their
         // Id references and upper behavior owners must still seed the walk.
@@ -49,6 +51,11 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
             let permanent = unsafe { (&*runtime.state.get()).heap.permanence_of(object) }
                 == Some(Permanence::Permanent);
             if !permanent {
+                continue;
+            }
+            if let Some(graph) = graph {
+                let status = unsafe { (graph.edges)(graph.context, object, birnam_abi::trace_graph::CORE_ONLY, sink) };
+                if status != OK { return status; }
                 continue;
             }
             let mut facts = id
@@ -115,6 +122,10 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
             }
         }
     }
+    if let Some(graph) = graph {
+        let status = unsafe { (graph.roots)(graph.context, sink) };
+        if status != OK { return status; }
+    }
     for provider in providers {
         invoke_with_mark_callback(sink, |mark| unsafe { provider(mark) });
     }
@@ -135,6 +146,10 @@ unsafe extern "C" fn edges(context: *mut c_void, address: usize, sink: *const Si
     let runtime = source.runtime;
     let object = unsafe { (&*runtime.state.get()).heap.object_at_address(address) }
         .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
+    if let Some(graph) = runtime.trace_graph {
+        let flags = if unsafe { (&*runtime.state.get()).metadata.precise() } { birnam_abi::trace_graph::PRECISE } else { 0 };
+        return unsafe { (graph.edges)(graph.context, object, flags, sink) };
+    }
     let (vtable, registered, symbol) = if let Some(id) = source.id {
         let mut facts = id
             .references(object)

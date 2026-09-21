@@ -68,3 +68,14 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }
 
 #[cfg(test)]
 mod tests;
+
+/// Complete callback-scope operations, available through Id before Runtime.
+unsafe extern "C" fn initialize_native(_: *const birnam_abi::id_protocol::Protocol, _: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
+    use birnam_abi::id_protocol::{self as native, Operand, Outcome};
+    if count != 0 { return Outcome::failed(native::INVALID_REQUEST, 0); }
+    Outcome::loaded(Operand::word(&API as *const ApiV1 as usize))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {
+    version: 1, byte_size: size_of::<birnam_abi::id_protocol::Module>() as u32, initialize: Some(initialize_native),
+};

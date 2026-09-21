@@ -17,7 +17,7 @@ static unsigned calls;
 static int registered;
 static MarkFn saved;
 static void check_owner(MarkFn mark) {
-    Dl_info owner;assert(dladdr((void *)mark,&owner) && strstr(owner.dli_fname,"libbirnam_id.dylib"));
+    Dl_info owner;assert(dladdr((void *)mark,&owner) && strstr(owner.dli_fname,"libbirnam_trace.dylib"));
 }
 static void mark_roots(MarkFn mark) {
     check_owner(mark);saved=mark;mark(NULL);

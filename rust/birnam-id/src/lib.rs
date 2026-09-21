@@ -90,13 +90,13 @@ pub extern "C" fn id_init() -> *mut core::ffi::c_void {
     public_api::initialize_once().cast()
 }
 
-/// Upper Runtime construction from already completed roots, Lifetime, values, Namespace and Object Model.
+/// Upper Runtime construction from completed lower owners and live Trace graph.
 /// # Safety
-/// Transfer the four native owners once; retain the base-value module and objects.
+/// Transfer the four native owners once; retain base values and the Trace graph.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_runtime_init_v5(roots: *const birnam_abi::root_registry::OwnedV1, records: *const birnam_abi::lifetime::OwnedV1, values: *const birnam_abi::base_values::ValuesV1, namespace: *const birnam_abi::namespace_owner::OwnedV1, model: *const birnam_abi::object_model::OwnedV1) -> *mut core::ffi::c_void {
-    if !unsafe { birnam_abi::root_registry::valid_owned(roots) && birnam_abi::lifetime::valid(records) && birnam_abi::base_values::valid(values) && birnam_abi::namespace_owner::valid(namespace) && birnam_abi::object_model::valid(model) } { return core::ptr::null_mut(); }
-    public_api::initialize_with_owners(Some(unsafe { root_registry::Service::adopt(roots) }), Some(unsafe { lifetime::Owner::adopt(records) }), Some(unsafe { *values }), Some(unsafe { env::Environment::adopt(namespace) }), Some(unsafe { object_model::Owner::adopt(model) })).cast()
+pub unsafe extern "C" fn birnam_runtime_init_v6(roots: *const birnam_abi::root_registry::OwnedV1, records: *const birnam_abi::lifetime::OwnedV1, values: *const birnam_abi::base_values::ValuesV1, namespace: *const birnam_abi::namespace_owner::OwnedV1, model: *const birnam_abi::object_model::OwnedV1, graph: *const birnam_abi::trace_graph::GraphV1) -> *mut core::ffi::c_void {
+    if !unsafe { birnam_abi::root_registry::valid_owned(roots) && birnam_abi::lifetime::valid(records) && birnam_abi::base_values::valid(values) && birnam_abi::namespace_owner::valid(namespace) && birnam_abi::object_model::valid(model) && birnam_abi::trace_graph::valid(graph) } { return core::ptr::null_mut(); }
+    public_api::initialize_with_owners(Some(unsafe { root_registry::Service::adopt(roots) }), Some(unsafe { lifetime::Owner::adopt(records) }), Some(unsafe { *values }), Some(unsafe { env::Environment::adopt(namespace) }), Some(unsafe { object_model::Owner::adopt(model) }), Some(unsafe { *graph })).cast()
 }
 
 /// Private host/floor admission seam for Design 60J Symbol compaction.

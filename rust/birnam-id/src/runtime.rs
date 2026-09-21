@@ -222,6 +222,7 @@ struct BlockVtableCatalogEntry {
 /// One runtime owned by the thread that constructed it.
 pub(crate) struct Runtime {
     id_storage: Option<id_storage::Storage>,
+    trace_graph: Option<birnam_abi::trace_graph::GraphV1>,
     owner: u64,
     observation: storage::ObservationState,
     collection_phase: crate::collection_phase::Service,
@@ -419,7 +420,7 @@ impl Runtime {
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
     ) -> Self {
-        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None)
+        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None, None)
     }
     pub(crate) fn new_with_owners(
         heap: Heap,
@@ -430,10 +431,12 @@ impl Runtime {
         roots: Option<crate::root_registry::Service>,
         namespace: Option<Environment>,
         model: Option<crate::object_model::Shared>,
+        trace_graph: Option<birnam_abi::trace_graph::GraphV1>,
     ) -> Self {
         let id_storage = id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol));
         Self {
             id_storage,
+            trace_graph,
             owner: current_thread_token(),
             observation: storage::ObservationState::new(),
             collection_phase: crate::collection_phase::Service::new(),
@@ -450,7 +453,7 @@ impl Runtime {
             word: Cell::new(None),
             string: Cell::new(None),
             #[cfg(not(test))]
-            trace: Cell::new(None),
+            trace: Cell::new(trace_graph.map(|graph| graph.trace)),
             #[cfg(test)]
             trace: Cell::new(Some(birnam_trace::live::birnam_trace_live_v1)),
             #[cfg(not(test))]

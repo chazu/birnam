@@ -55,6 +55,7 @@ pub mod native_allocation;
 pub mod storage;
 pub mod trace;
 pub mod trace_live;
+pub mod trace_graph;
 pub mod collect;
 pub mod private;
 

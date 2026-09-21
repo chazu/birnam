@@ -273,6 +273,17 @@ fn main() {
     let text_check = intern(&id, b"earlyTextCheck");
     let text_release = intern(&id, b"releaseEarlyText");
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 16);
+    for library in ["native_mark", "trace"] {
+        let file = format!("libbirnam_{library}.dylib");
+        symlink(prefix.join("lib").join(&file), isolated.join(file)).unwrap();
+    }
+    let graph = initial.initialize_trace().unwrap().unwrap();
+    assert_eq!(initial.initialize_trace().unwrap(), Some(graph));
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 18);
+    let trace_fixture = scratch.join("early-trace.dylib");
+    let trace_arguments = [Operand::word(graph as usize), Operand::word(roots as usize), Operand::word(records as usize), Operand::word(model as usize), Operand::word(0)];
+    assert_eq!(unsafe { initial.load_native(trace_fixture.as_os_str().as_bytes(), &trace_arguments) }.status, native::LOADED);
+    let trace_check = intern(&id, b"earlyTraceCheck");
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -295,6 +306,8 @@ fn main() {
     unsafe { runtime.prepare_execution(&mut anchor) };
     let settings = runtime.stack.gc_settings();
     unsafe { birnam_abi::gc_settings::set_precise(settings, 1); (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, trace_check, &[]).value.as_word(), Some(1));
+    println!("native Trace roots, layouts, inherited hooks and behavior owners work before Runtime and after adoption/GC");
     let base = unsafe { *values };
     assert_eq!((runtime.stack.api().nilObj, runtime.stack.api().trueObj, runtime.stack.api().falseObj),
         (base.nil, base.true_object, base.false_object));

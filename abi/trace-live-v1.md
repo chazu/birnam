@@ -10,8 +10,8 @@ The [independent C header](fixtures/trace-live-v1/trace_live_v1.h) mirrors
 [`birnam-abi::trace_live`](../rust/birnam-abi/src/trace_live.rs). The three
 carriers are `SourceV1` (48 bytes), `SinkV1` (16 bytes), and `ApiV1` (24 bytes)
 on supported arm64 macOS. Source and API carry version 1 and exact byte sizes.
-IdApi remains v4, 45 fields / 360 bytes; Method, Frame and image bytes do not
-change.
+The original extraction used IdApi v4; current production uses IdApi v20.
+This traversal ABI does not change Method, Frame or image bytes.
 
 ## Mounting
 
@@ -23,8 +23,10 @@ int birnam_trace_live_v1(const TraceLiveSourceV1 *source);
 ```
 
 Id exports `birnam_trace_dependency_v1(const TraceLiveApiV1 *) -> int`.
-The host calls it after initializing the tracer, before mounting the collection coordinator and initializing Integer
-and the remaining native modules. The canonical tracer module must publish a
+Current production constructs the [native graph](trace-graph-v1.md) before
+Runtime and adopts its traversal entry with the completed graph. Later mounting
+repeats this attachment idempotently before mounting the collection coordinator.
+Legacy embedders attach the provider explicitly. The canonical tracer module must publish a
 provider; missing or rejected dependencies fail startup. Successful image
 handles remain pinned for process lifetime.
 

@@ -50,6 +50,8 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
         "scripts/fixtures/early-word-native.c", "-o", str(scratch / "early-word.dylib"))
     run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
         "scripts/fixtures/early-text-native.c", "-o", str(scratch / "early-text.dylib"))
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/early-trace-native.c", "-o", str(scratch / "early-trace.dylib"))
     for mode in range(2):
         run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib", f"-DMODE={mode}",
             "scripts/fixtures/bootstrap-result-native.c", "-o", str(scratch / f"bootstrap-result-{mode}.dylib"))
@@ -57,6 +59,18 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
         "scripts/fixtures/id-native-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
         "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(driver))
+    graph_driver = scratch / "graph-driver"
+    run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
+        "scripts/fixtures/trace-graph-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
+        "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(graph_driver))
+    graph_prefix = scratch / "graph-prefix"
+    graph_prefix.mkdir()
+    for module in ["id", "bootstrap", "root_registry", "payload_layout", "trace_hooks", "finalizers",
+                   "lifetime", "boolean", "nil", "namespace", "object_model", "string", "id_error",
+                   "integer", "float", "word", "native_mark", "trace"]:
+        file = f"libbirnam_{module}.dylib"
+        shutil.copy2(prefix / "lib" / file, graph_prefix / file)
+    run(str(graph_driver), str(graph_prefix), str(scratch / "early-trace.dylib"))
     env = dict(os.environ, BIRNAM_NATIVE_UNLOAD_LOG=str(scratch / "unloaded"))
     run(str(driver), str(prefix), str(scratch), env=env)
     # Entered images only unload at process exit; rejected ones unload immediately.

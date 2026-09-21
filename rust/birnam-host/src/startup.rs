@@ -995,7 +995,7 @@ pub struct LoadedFloor {
     _finalizers: Option<NonNull<std::ffi::c_void>>,
     finalizers: NonNull<birnam_abi::finalizers::ApiV1>,
     _native_stack: NonNull<std::ffi::c_void>,
-    _native_mark: NonNull<std::ffi::c_void>,
+    _native_mark: Option<NonNull<std::ffi::c_void>>,
     _allocation_budget: NonNull<std::ffi::c_void>,
     _collection_phase: NonNull<std::ffi::c_void>,
     _storage_observation: NonNull<std::ffi::c_void>,
@@ -3155,13 +3155,13 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v5".as_ptr()) });
+    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v6".as_ptr()) });
     let bootstrap = if runtime_init.is_some() {
         let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, text_ready: false, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, graph: None, text_ready: false, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3180,6 +3180,7 @@ pub struct InitialFloor {
     integer: Option<*mut birnam_abi::integer::IntegerApiV1>,
     float: Option<*mut birnam_abi::float::FloatApiV1>,
     word: Option<*mut birnam_abi::word::WordApiV1>,
+    graph: Option<*const birnam_abi::trace_graph::GraphV1>,
     text_ready: bool,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
@@ -3394,13 +3395,32 @@ impl InitialFloor {
         self.text_ready = true;
         Ok(())
     }
+    /// Construct live graph access from completed lower owners, before Runtime.
+    pub fn initialize_trace(&mut self) -> Result<Option<*const birnam_abi::trace_graph::GraphV1>, FloorError> {
+        if self.runtime_init.is_none() || self.graph.is_some() { return Ok(self.graph); }
+        self.initialize_text()?;
+        self.initialize_word()?;
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let mark_path = self.source_path.with_file_name("libbirnam_native_mark.dylib");
+        let mark = unsafe { self.load_native(&path_bytes(&mark_path), &[]) };
+        if mark.status != native::LOADED { return Err(FloorError::IdProtocol { status: mark.status, detail: mark.detail }); }
+        let path = self.source_path.with_file_name("libbirnam_trace.dylib");
+        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize), Operand::word(self.model.unwrap() as usize), mark.value];
+        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        let graph = answer.value.as_word().unwrap_or(0) as *const birnam_abi::trace_graph::GraphV1;
+        if !unsafe { birnam_abi::trace_graph::valid(graph) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
+        self.graph = Some(graph);
+        Ok(self.graph)
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
         self.initialize_float()?;
         self.initialize_word()?;
         self.initialize_text()?;
-        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, float, word, bootstrap, .. } = self;
+        self.initialize_trace()?;
+        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, float, word, graph, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3483,13 +3503,13 @@ impl InitialFloor {
                 return Err(error);
             }
         };
-        let native_mark_image = match unsafe { prepare_native_mark(handle, &native_mark_path) } {
+        let native_mark_image = if graph.is_some() { None } else { Some(match unsafe { prepare_native_mark(handle, &native_mark_path) } {
             Ok(image) => image,
             Err(error) => {
                 unsafe { system_dlclose(handle.as_ptr()) };
                 return Err(error);
             }
-        };
+        }) };
         let allocation_budget_image = match unsafe { prepare_allocation_budget(handle, &allocation_budget_path) } {
             Ok(image) => image,
             Err(error) => {
@@ -3539,9 +3559,9 @@ impl InitialFloor {
                 return Err(error);
             }
         };
-        let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values), Some(namespace), Some(model)) = (runtime_init, roots, lifetime, base_values, namespace, model) {
-            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
-            unsafe { initialize(roots, lifetime, values, namespace, model) }
+        let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values), Some(namespace), Some(model), Some(graph)) = (runtime_init, roots, lifetime, base_values, namespace, model, graph) {
+            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1, *const birnam_abi::trace_graph::GraphV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
+            unsafe { initialize(roots, lifetime, values, namespace, model, graph) }
         } else {
             let initialize: IdInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
             unsafe { initialize() }

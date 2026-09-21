@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Construct the production live Trace graph through Id before Runtime, using
+  completed root, Lifetime, Object Model and Native Mark owners. Actual collection
+  uses that same graph for payloads, inherited hooks and behavior-owner edges.
+  Remove the production Native Mark preparation inside Id and add non-collecting
+  allocation/description validation; keep collector activation
+  and upper retirement policy explicitly unfinished.
+
 - Complete Design 83's early value/text stage: install String's fourteen text
   and numeric methods and Nil/Boolean printing through native extension entries
   before Block or Runtime. Use completed predecessor contexts, preserve early

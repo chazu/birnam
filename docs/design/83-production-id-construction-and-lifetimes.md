@@ -297,6 +297,12 @@ Id-registered behavior object.
 | `parentOf:` | Id, Object candidate | Parent Object, or Unit for absent/unknown parent |
 | `parentOf:put:` | Id, Object registered behavior and Object parent (or Unit/null to clear) | Updates delegation and mutation epoch; returns behavior |
 
+Object payloads are aligned to a native word and their backing storage is rounded
+up to a native-word boundary, including zero-initialized tail padding. The public
+extent query still reports the requested bytes. A collector can scan those padded
+words using this allocation contract; it does not read an Id allocation record or
+infer a header layout. Representation writers stay within their requested extent.
+
 Wrong operand kinds/counts and invalid allocation sizes return InvalidRequest.
 The fact queries check exact registry membership; candidate queries may return
 Unit without dereferencing an unregistered candidate. The caller retains a
@@ -548,7 +554,7 @@ entered images, including failed initializers with partial publication.
 
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
-slot is retargeted. Eleven upper factory preparations still run in the host
+slot is retargeted. Ten upper factory preparations still run in the host
 after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace/Object-Model/String/Error initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
 
@@ -579,9 +585,9 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v5` is an upper construction entry taking the completed
-root and representation owners plus completed base values, Namespace and Object Model, temporarily packaged in the Id library along with
-Runtime. The intermediate v1/v2/v3/v4 Runtime bridges are removed. The old `id_init` and factory preparation path remain
+prefix. `birnam_runtime_init_v6` is an upper construction entry taking the completed
+root and representation owners plus completed base values, Namespace, Object Model and the live Trace graph, temporarily packaged in the Id library along with
+Runtime. The intermediate v1/v2/v3/v4/v5 Runtime bridges are removed. The old `id_init` and factory preparation path remain
 for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
@@ -601,7 +607,7 @@ admission, membership and record operations. They do not point forward to Runtim
 
 [`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
-that owner through `birnam_runtime_init_v5`; its behavior/heap tables retain no
+that owner through `birnam_runtime_init_v6`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
 same records through the native boundary. Public APIs retain their existing ABI
 and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
@@ -796,6 +802,26 @@ library, representation, descriptor version or Runtime bridge is added.
 Collector activation, Execution/Block, native-aware compiler admission and the
 remaining upper/package separation are still open.
 
+The live graph portion of step 9 now constructs before Runtime as well.
+`InitialFloor::initialize_trace` loads Native Mark through Id, then constructs
+Trace with completed root-registry, Lifetime, Object Model and Native Mark
+inputs. Its [56-byte descriptor](../../abi/trace-graph-v1.md) owns root discovery,
+Id/owner edges, payload scanning and inherited-hook selection without a Runtime,
+Machine or compiler input. Production Runtime borrows that same completed graph;
+its mark admission, Execution roots and retirement policy remain upper inputs.
+Native roots and hooks now receive Trace's context-free mark callback, backed by
+Native Mark's owned scope; the callback no longer points into Id. Normal startup
+skips the old Native Mark factory preparation in Id; legacy initialization
+retains that path.
+The eighteen-library prefix exercises this construction with the remaining
+libraries unavailable. Validation examines the actual early allocation graph and
+rejects missing payload descriptions without marking or reclaiming anything.
+This is not the collector activation transition: native stack/accounting,
+construction wrappers, the disabled/adopting/active gate and retirement ownership
+still need to move out of aggregate Runtime. Native root/hook completeness must
+also be established by the eventual activation policy; the graph validator alone
+does not prove arbitrary native ownership declarations correct.
+
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
 three native words and GC records one, in separate maps; Lifetime owns the
@@ -820,9 +846,10 @@ payload descriptions remain explicit obligations.
 
 The production collector acquires the five Id storage callables described
 above through Id lookup during construction. It uses them for primordial roots,
-permanent allocation references and each marked object's Id references. Upper
-roots, behavior owners, payload layouts/hooks and mark metadata stay above the
-interface. No Id registry borrow crosses a visitor. The diagnostic storage view,
+permanent allocation references and retirement. The completed native Trace graph
+selects its own exact Id fact entries and supplies marked-object references,
+behavior owners, payload layouts/hooks and native roots. Mark metadata and
+Execution roots remain in the aggregate Runtime above the interface. No Id registry borrow crosses a visitor. The diagnostic storage view,
 legacy Symbol compatibility mode, adoption and Execution's dead-binding accounting
 still access internal Rust storage. Production index retirement, allocation
 detachment and release now use the native storage callables. Upper behavior
@@ -996,6 +1023,21 @@ Current debug evidence:
   source-free compiled, saved-image and baked workloads pass with native text
   and printing. Their existing 7/4/4-symbol manifests match the installed dylibs,
   which link only the platform library. No Runtime bridge version changes.
+- The native Trace graph is constructed in the production eighteen-library
+  prefix before Runtime. An independent C client verifies exact Id fact selection
+  survives method replacement, conservative/precise scanning, core-only queries,
+  inherited and replaced hooks, Object Model owner edges, sink failures and live
+  layout replacement. A separate clean-prefix process validates all initial
+  representations, rejects a newly missing description, then succeeds after its
+  layout is installed. The same graph works after Runtime adoption and actual
+  precise GC. Debug ABI/host/Id/Native Mark/Trace units pass (429 total, 16 ignored).
+  Trace and Native Mark expose exactly 6 and 4 symbols and depend only on the
+  platform library; installed Id matches its bare manifest plus the two existing
+  module wrappers, with only the v6 Runtime bridge. Payload Layout and Trace Hooks
+  pass source, source-free compiled, saved-image and baked execution. Native Mark
+  also passes mapped/rebuilt images with the legacy preparation skipped; its C
+  fixture verifies the callback now belongs to Trace and retains the same identity
+  across providers/hooks, null/duplicate marks and nested-collection rejection.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.

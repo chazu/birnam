@@ -49,3 +49,11 @@ passes the already-created root registry and collector as explicit initializer
 operands, registers its temporary roots before allocating, and verifies an actual
 collection preserves the new object's identity and payload. This does not establish
 the full staged construction graph or remove upper code statically linked in Id.
+
+The later prefix now constructs the [native Trace graph](../../../abi/trace-graph-v1.md)
+with only eighteen predecessor libraries available. Independent C tests cover
+actual Id roots and edges, description coverage, conservative/precise payloads,
+inherited hooks and behavior-owner references before Runtime, then reuse that
+same graph after adoption and precise collection. Id's object-allocation contract
+provides native-word alignment and zero-initialized padding to a native-word
+boundary; `allocationSizeOf:` continues to return only the requested extent.
