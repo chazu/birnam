@@ -44,12 +44,20 @@ struct Roots {
     prototype: Oop,
 }
 
+#[derive(Clone, Copy)]
+enum ConstructionApi {
+    Native(crate::native::Access),
+    Legacy {
+        api: *mut IdApi,
+        exports: *const birnam_abi::namespace_export::ApiV1,
+        layouts: *const birnam_abi::payload_layout::ApiV1,
+        allocation: NativeAllocationV1,
+    },
+}
+
 /// One mounting. Tests use local instances and explicit adapter callbacks.
 pub struct Instance {
-    api: *mut IdApi,
-    exports: *const birnam_abi::namespace_export::ApiV1,
-    layouts: *const birnam_abi::payload_layout::ApiV1,
-    allocation: NativeAllocationV1,
+    construction: ConstructionApi,
     roots: UnsafeCell<Roots>,
     owners: UnsafeCell<Owners>,
     storage: StringStorageV1,
@@ -61,7 +69,7 @@ impl Instance {
     pub unsafe fn empty(
         api: *mut IdApi,
         exports: *const birnam_abi::namespace_export::ApiV1,
-    layouts: *const birnam_abi::payload_layout::ApiV1,
+        layouts: *const birnam_abi::payload_layout::ApiV1,
         allocation: NativeAllocationV1,
         cleanup: Finalizer,
         cleanup_owner: unsafe extern "C" fn(Finalizer) -> *mut c_void,
@@ -69,11 +77,31 @@ impl Instance {
         assert!(!api.is_null());
         assert_eq!(allocation.version, 1);
         assert_eq!(allocation.byte_size, size_of::<NativeAllocationV1>());
+        Self::new(
+            ConstructionApi::Legacy {
+                api,
+                exports,
+                layouts,
+                allocation,
+            },
+            cleanup,
+            cleanup_owner,
+        )
+    }
+    pub(crate) fn native(
+        access: crate::native::Access,
+        cleanup: Finalizer,
+        cleanup_owner: unsafe extern "C" fn(Finalizer) -> *mut c_void,
+    ) -> Box<Self> {
+        Self::new(ConstructionApi::Native(access), cleanup, cleanup_owner)
+    }
+    fn new(
+        construction: ConstructionApi,
+        cleanup: Finalizer,
+        cleanup_owner: unsafe extern "C" fn(Finalizer) -> *mut c_void,
+    ) -> Box<Self> {
         let result = Box::new(Self {
-            api,
-            exports,
-            layouts,
-            allocation,
+            construction,
             roots: UnsafeCell::new(Roots::default()),
             owners: UnsafeCell::new(Owners::default()),
             storage: StringStorageV1 {
@@ -105,16 +133,56 @@ impl Instance {
         }
         result
     }
+    pub(crate) fn owns(&self, object: Oop) -> bool {
+        unsafe { (&*self.owners.get()).contains_key(&object.addr()) }
+    }
+    pub(crate) fn native_access(&self) -> Option<crate::native::Access> {
+        match self.construction {
+            ConstructionApi::Native(access) => Some(access),
+            ConstructionApi::Legacy { .. } => None,
+        }
+    }
+    pub(crate) unsafe fn set_behavior(&self, behavior: Oop) {
+        unsafe {
+            (*self.roots.get()).behavior = behavior;
+            (*self.operations.get()).behavior = behavior;
+        }
+    }
+    pub(crate) unsafe fn set_prototype(&self, prototype: Oop) {
+        unsafe {
+            (*self.roots.get()).prototype = prototype;
+            (*self.operations.get()).prototype = prototype;
+        }
+    }
+    pub(crate) unsafe fn construct_native(
+        &self,
+        bytes: &[u8],
+        source: Oop,
+    ) -> Result<Oop, birnam_abi::id_protocol::Outcome> {
+        unsafe {
+            allocate(
+                self,
+                bytes.as_ptr(),
+                bytes.len(),
+                source,
+                Some(self.storage.cleanup),
+            )
+        }
+    }
     /// # Safety
     /// The caller registers partial roots first. Run once on the floor owner.
     pub unsafe fn prepare(&self, clone_method: Method) {
-        let api = self.api;
+        let ConstructionApi::Legacy { api, layouts, .. } = self.construction else {
+            unreachable!()
+        };
         let behavior = unsafe { ((*api).proto)((*api).object_vt) };
         assert!(!behavior.is_null());
         unsafe {
             (*self.roots.get()).behavior = behavior;
         }
-        unsafe { birnam_abi::payload_layout::set(self.layouts, behavior, ptr::null(), 0, birnam_abi::SLOT_RAW) };
+        unsafe {
+            birnam_abi::payload_layout::set(layouts, behavior, ptr::null(), 0, birnam_abi::SLOT_RAW)
+        };
         let prototype = unsafe {
             construct(
                 (*self.operations.get()).context,
@@ -138,15 +206,21 @@ impl Instance {
     /// # Safety
     /// Called once, after primitives have been attached to all early consumers.
     pub unsafe fn publish(&self) {
+        let ConstructionApi::Legacy { api, exports, .. } = self.construction else {
+            unreachable!()
+        };
         let [behavior, prototype] = self.identities();
         unsafe {
-            birnam_abi::set_vtable_owner(&*self.api, behavior, prototype);
-            birnam_abi::namespace_export::export(self.exports, c"String".as_ptr(), prototype);
-            birnam_abi::namespace_export::export(self.exports, c"StringVt".as_ptr(), behavior);
+            birnam_abi::set_vtable_owner(&*api, behavior, prototype);
+            birnam_abi::namespace_export::export(exports, c"String".as_ptr(), prototype);
+            birnam_abi::namespace_export::export(exports, c"StringVt".as_ptr(), behavior);
         }
     }
     pub fn api(&self) -> *mut IdApi {
-        self.api
+        match self.construction {
+            ConstructionApi::Legacy { api, .. } => api,
+            ConstructionApi::Native(_) => ptr::null_mut(),
+        }
     }
     pub fn operations(&self) -> *mut StringApiV1 {
         self.operations.get()
@@ -213,9 +287,9 @@ unsafe fn allocate(
     length: usize,
     source: Oop,
     finalizer: Option<Finalizer>,
-) -> Oop {
+) -> Result<Oop, birnam_abi::id_protocol::Outcome> {
     // No state reference crosses the collecting allocation boundary.
-    let allocation = unsafe { (*instance).allocation };
+    let native = unsafe { (*instance).native_access() };
     let behavior = unsafe { (*(*instance).roots.get()).behavior };
     let mut construction = Construction {
         instance,
@@ -232,7 +306,15 @@ unsafe fn allocate(
         prepare,
         initialize,
     };
-    unsafe { (allocation.allocate)(allocation.context, &plan) }
+    if let Some(access) = native {
+        unsafe { crate::native::allocate(access, &plan, source, &*instance) }
+    } else {
+        let ConstructionApi::Legacy { allocation, .. } = (unsafe { (*instance).construction })
+        else {
+            unreachable!()
+        };
+        Ok(unsafe { (allocation.allocate)(allocation.context, &plan) })
+    }
 }
 unsafe extern "C" fn construct(
     context: *mut c_void,
@@ -245,12 +327,14 @@ unsafe extern "C" fn construct(
         "String bytes are null with nonzero length"
     );
     unsafe { allocate(context.cast(), bytes, length, ptr::null_mut(), finalizer) }
+        .unwrap_or_else(|_| crate::abort("native String allocation failed"))
 }
 unsafe extern "C" fn clone_owned(context: *mut c_void, object: Oop, finalizer: Finalizer) -> Oop {
     if object.is_null() {
         return object;
     }
     unsafe { allocate(context.cast(), ptr::null(), 0, object, Some(finalizer)) }
+        .unwrap_or_else(|_| crate::abort("native String clone failed"))
 }
 unsafe extern "C" fn make(context: *mut c_void, bytes: *const u8, length: usize) -> Oop {
     let cleanup = unsafe { (*context.cast::<Instance>()).storage.cleanup };

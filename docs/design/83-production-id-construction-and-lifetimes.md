@@ -1,6 +1,6 @@
 # 83 — Production Id construction and lifetimes
 
-> **Status:** Production migration in progress, 2026-09-20. Exact-entry adapters
+> **Status:** Production migration in progress, 2026-09-21. Exact-entry adapters
 > and managed-turn checkpoints are implemented in the existing production
 > runtime. Core Id allocation, Symbols, dictionaries and typed dispatch no longer
 > require upper services. Siphon now loads the real Id through the common native
@@ -549,7 +549,7 @@ entered images, including failed initializers with partial publication.
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
 slot is retargeted. Eleven upper factory preparations still run in the host
-after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace/Object-Model initialization and feed the aggregate Runtime constructor. That
+after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace/Object-Model/String initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
 
 The first upper native entry is now
@@ -685,6 +685,25 @@ Legacy local owner records and enumeration factories remain only for unmigrated
 Namespace/Object Model construction prefix, not the remaining value and GC
 stages or the Runtime/compiler package separation.
 
+`InitialFloor::initialize_string` loads the existing String library through
+Bootstrap with completed roots, Lifetime and Namespace. Object Model is already
+installed. Its [native entry](../../abi/fixtures/string-v1/README.md) constructs
+the real String behavior/prototype, installs its raw layout and finalizer-backed
+byte ownership, and publishes the names. `fromBytes:` accepts native Bytes;
+`bytes` returns borrowed Bytes; `length` returns a Word; `clone`/`new` copy storage.
+No Integer, Error, Float, Block or Runtime dependency is present in these methods.
+
+String sends current Id allocation messages. It validates the returned allocation
+against selected inert Id facts before writing, rejects existing ownership or
+finalizers, roots clone inputs across dispatch, and attaches cleanup through the
+already initialized Lifetime records. No storage-map borrow spans a send.
+The completed String table is adopted by the upper consumers; production skips
+String's legacy preparation. Late String mounting preserves early names, storage
+and clone/new bindings while installing methods whose number/text dependencies
+now exist. This completes step 5's production byte-storage construction. Error,
+integer-only arithmetic and later extensions still need their own completed
+native construction entries; the aggregate Runtime remains in Id.
+
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
 three native words and GC records one, in separate maps; Lifetime owns the
@@ -814,6 +833,20 @@ Current debug evidence:
   Runtime exists, with the original native ensure entry still selected. The
   fixture uses an inherited probe method so Store backfill does not add a second
   root to the private behavior under test.
+- The twelve-library prefix constructs String bytes with Error/Integer/Float/
+  Block absent. The independent C fixture verifies binary and empty bytes, copy
+  ownership despite raw payload mutation, malformed operands, live allocation
+  replacement (including nested sends), rejection of small/already owned results,
+  and unchanged clone bindings. Early Strings survive upper adoption and GC;
+  releasing their roots removes both their allocations and byte/finalizer records.
+  The fixture repeats construction and reclamation after Runtime adoption and
+  confirms the upper consumer has adopted the identical String table/identities.
+  String's source/compiled/saved-image/baked-image workload passes. The legacy C
+  method suite passes 410 byte/index/slice cases and 18 numeric boundaries;
+  String storage units (2), Id units (308) and host units (86) pass. The installed
+  String library exports exactly its seven manifest symbols and links only the
+  platform library. The existing String ABI and private Runtime v5 bridge remain
+  unchanged; no new factory preparation or production library was introduced.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.

@@ -5,6 +5,7 @@
   "exported_symbols": [
     "birnam_float_dependency_v1",
     "birnam_integer_dependency_v1",
+    "birnam_native_module_v1",
     "birnam_string_prepare_v4",
     "birnam_string_provider_v1",
     "birnam_symbol_borrow_v1",

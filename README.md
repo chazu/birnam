@@ -728,7 +728,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-map/` — independently loaded Map storage, canonical objects, methods, traversal and printing.
 - `rust/birnam-range/` — independently loaded Range representation, construction and all Range methods; uses native Vector storage.
 - `rust/birnam-string-builder/` — independently loaded StringBuilder buffer ownership and methods.
-- `rust/birnam-string/` — independently loaded String representation, byte owner and core methods.
+- `rust/birnam-string/` — [String byte storage](abi/fixtures/string-v1/README.md) constructed through Id before Error/numbers/Runtime, followed by text and numeric methods.
 - `rust/birnam-string-collection/` — late String split adapter using native Vector construction.
 - `rust/birnam-nil/` — early Object/Nil predicates, followed by the String printing extension.
 - `rust/birnam-boolean/` — early Nil/Boolean identities and basic operations, followed by printing and Block control; see [base values](abi/fixtures/base-values-v1/README.md).

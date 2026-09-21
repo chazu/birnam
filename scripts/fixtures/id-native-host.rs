@@ -188,6 +188,21 @@ fn main() {
     let model_check = intern(&id, b"earlyObjectModelCheck");
     let model_release = intern(&id, b"releaseEarlyPrivateBehavior");
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 11);
+    symlink(prefix.join("lib/libbirnam_string.dylib"), isolated.join("libbirnam_string.dylib")).unwrap();
+    let string_path = isolated.join("libbirnam_string.dylib");
+    assert_eq!(unsafe { initial.load_native(string_path.as_os_str().as_bytes(), &[]) }.status, native::INVALID_REQUEST);
+    let string = initial.initialize_string().unwrap().unwrap();
+    assert_eq!(initial.initialize_string().unwrap(), Some(string));
+    let repeated = [Operand::word(roots as usize), Operand::word(records as usize), Operand::word(namespace as usize)];
+    assert_eq!(unsafe { initial.load_native(string_path.as_os_str().as_bytes(), &repeated) }.status, native::INVALID_REQUEST);
+    let string_fixture = scratch.join("early-string.dylib");
+    let string_arguments = [Operand::word(roots as usize), Operand::word(string as usize), Operand::word(records as usize), Operand::word(0)];
+    let result = unsafe { initial.load_native(string_fixture.as_os_str().as_bytes(), &string_arguments) };
+    assert_eq!(result.status, native::LOADED);
+    let string_identity = result.value.as_word().unwrap();
+    let string_check = intern(&id, b"earlyStringCheck");
+    let string_release = intern(&id, b"releaseEarlyStrings");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 12);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -241,6 +256,24 @@ fn main() {
     unsafe { (runtime.stack.api().gcCollect)(); }
     assert_eq!(send(&id, model_check, &[]).value.kind(), native::UNIT);
     println!("Object Model constructs private behaviors early; adopted owner edges retain objects and retire after release");
+    let adopted_string = unsafe { birnam_abi::string::operations() };
+    assert_eq!((adopted_string.context, adopted_string.behavior, adopted_string.prototype),
+        unsafe { ((*string).context, (*string).behavior, (*string).prototype) });
+    assert_eq!(unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"String".as_ptr()) }, adopted_string.prototype);
+    assert_eq!(send(&id, string_check, &[]).value.as_word(), Some(string_identity));
+    assert_eq!(send(&id, string_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, string_check, &[]).value.kind(), native::UNIT);
+    let later_arguments = [string_arguments[0], string_arguments[1], string_arguments[2], Operand::word(1)];
+    let later = unsafe { runtime.stack.load_native(string_fixture.as_os_str().as_bytes(), &later_arguments) };
+    assert_eq!(later.status, native::LOADED);
+    let later_identity = later.value.as_word().unwrap(); assert_ne!(later_identity, string_identity);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, string_check, &[]).value.as_word(), Some(later_identity));
+    assert_eq!(send(&id, string_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, string_check, &[]).value.kind(), native::UNIT);
+    println!("String owns bytes before Error/numbers; live allocation, clone and finalizers survive adoption and release");
     assert_eq!(send(&id, root_identity, &[]).value.as_word(), Some(early_identity));
     assert_eq!(send(&id, release_root, &[]).value.as_word(), Some(1));
     unsafe { (runtime.stack.api().gcCollect)(); }

@@ -3,7 +3,8 @@
 Production now enters through [the typed Id protocol](fixtures/id-protocol-v1/README.md),
 then constructs Bootstrap, roots, Lifetime, [Nil/Boolean base values](fixtures/base-values-v1/README.md)
 the [native Namespace owner](fixtures/namespace-owner-v1/README.md), and
-[Object Model ownership/enumeration](fixtures/object-model-owner-v1/README.md).
+[Object Model ownership/enumeration](fixtures/object-model-owner-v1/README.md),
+followed by [String storage](fixtures/string-v1/README.md).
 The remaining aggregate Runtime and module interfaces below are migration
 boundaries. Earlier descriptions of factory preparation before `id_init` apply
 to the legacy path; current startup loads the real Id first. See
@@ -18,7 +19,7 @@ moves native finalizer registration and inline callback construction into
 [Finalizers](finalizers-v1.md).
 Initializers receive `(api, state, presence, imports, exports, vtables,
 observation, roots, settings, layouts, hooks, finalizers)`. [Native Loader v12](native-loader-v12.md)
-forwards the matching finalizer selection. Early String preparation is v4;
+forwards the matching finalizer selection. Legacy String preparation is v4;
 Float/Word preparation and Range/Vector/Map installation are v6. Native
 consumers require rebuilding; image encoding is unchanged.
 [IdApi v20 manifest](idapi-v20.json) and the

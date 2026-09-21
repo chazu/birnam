@@ -3,8 +3,9 @@ use crate::{Finalizer, Oop};
 use core::ffi::{c_int, c_void};
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-/// Immutable descriptor. construct and clone allocate through the admitted
-/// floor capability. borrow, release and cleanup_owner touch only private native
+/// Immutable descriptor. construct and clone use completed Id/Lifetime services
+/// (the admitted floor capability on the legacy path). borrow, release and
+/// cleanup_owner touch only private native
 /// state: no Id calls, GC, reentry or arbitrary callbacks. borrow returns null
 /// for an unowned object, and a non-null stable pointer for an owned empty one.
 #[repr(C)]
@@ -48,10 +49,10 @@ pub type StringProviderV1 = unsafe extern "C" fn() -> *mut StringApiV1;
 static DEPENDENCY: AtomicPtr<StringApiV1> = AtomicPtr::new(core::ptr::null_mut());
 
 /// # Safety
-/// Owner-thread admission; the table and all its code/state outlive consumers.
-pub unsafe fn attach(pointer: *mut StringApiV1) -> c_int {
+/// Readable descriptor from a completed String initializer.
+pub unsafe fn valid(pointer: *const StringApiV1) -> bool {
     if pointer.is_null() {
-        return 0;
+        return false;
     }
     let ops = unsafe { pointer.read() };
     if ops.version != 1
@@ -61,7 +62,7 @@ pub unsafe fn attach(pointer: *mut StringApiV1) -> c_int {
         || ops.prototype.is_null()
         || ops.storage.is_null()
     {
-        return 0;
+        return false;
     }
     let storage = unsafe { ops.storage.read() };
     if storage.version != 1
@@ -70,8 +71,14 @@ pub unsafe fn attach(pointer: *mut StringApiV1) -> c_int {
         || !storage.payload_alignment.is_power_of_two()
         || storage.payload_alignment > align_of::<Oop>()
     {
-        return 0;
+        return false;
     }
+    true
+}
+/// # Safety
+/// Owner-thread admission; the table and all its code/state outlive consumers.
+pub unsafe fn attach(pointer: *mut StringApiV1) -> c_int {
+    if !unsafe { valid(pointer) } { return 0; }
     match DEPENDENCY.compare_exchange(
         core::ptr::null_mut(),
         pointer,

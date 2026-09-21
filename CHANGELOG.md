@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Construct production String storage through Id before Error, numbers or Runtime
+  (Design 83). Own, copy and read bytes through native operands using the existing
+  String representation and Lifetime finalizers; adopt the same storage in upper
+  consumers and skip legacy String preparation. Keep numeric/text methods absent
+  until their dependencies mount. Check replacement allocation results before
+  writing payloads, preserve clone/new bindings, and cover early ownership,
+  adoption and collection with the installed-library native fixture.
 - Construct Object Model ownership, private behaviors and native enumeration
   through Id before Runtime (Design 83). Adopt the same weak owner records into
   collection, retain the actual native private-construction entry, and remove

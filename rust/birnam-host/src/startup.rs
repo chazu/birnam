@@ -975,6 +975,7 @@ impl fmt::Debug for FloorError {
 /// for the lifetime of this value and deliberately never closed: the floor
 /// owns process-wide heap/GC state and may retain function pointers in modules.
 pub struct LoadedFloor {
+    native_string: Option<*mut birnam_abi::string::StringApiV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     _namespace: Option<NonNull<std::ffi::c_void>>,
@@ -2307,6 +2308,9 @@ impl LoadedStack {
     }
 
     fn prepare_string(&mut self, path: &Path) -> Result<(), ModuleError> {
+        if let Some(ops) = self.floor.native_string {
+            return self.attach_string(path, ops);
+        }
         if self.prepared_string.is_some() { return Ok(()); }
         let encoded = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
         let handle = unsafe { (self.api().dlopen)(encoded.as_ptr(), RTLD_LAZY) };
@@ -3153,7 +3157,7 @@ pub fn begin_id(
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3167,6 +3171,7 @@ pub struct InitialFloor {
     base_values: Option<*const birnam_abi::base_values::ValuesV1>,
     namespace: Option<*const birnam_abi::namespace_owner::OwnedV1>,
     model: Option<*const birnam_abi::object_model::OwnedV1>,
+    string: Option<*mut birnam_abi::string::StringApiV1>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
@@ -3271,11 +3276,25 @@ impl InitialFloor {
         self.model = Some(model);
         Ok(self.model)
     }
+    /// Construct usable byte storage before Integer, Error, Float or Runtime.
+    pub fn initialize_string(&mut self) -> Result<Option<*mut birnam_abi::string::StringApiV1>, FloorError> {
+        if self.runtime_init.is_none() || self.string.is_some() { return Ok(self.string); }
+        self.initialize_object_model()?;
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let path = self.source_path.with_file_name("libbirnam_string.dylib");
+        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize)];
+        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        let string = answer.value.as_word().unwrap_or(0) as *mut birnam_abi::string::StringApiV1;
+        if !unsafe { birnam_abi::string::valid(string) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
+        self.string = Some(string);
+        Ok(self.string)
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
-        self.initialize_object_model()?;
-        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, bootstrap, .. } = self;
+        self.initialize_string()?;
+        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3552,6 +3571,7 @@ impl InitialFloor {
             return Err(FloorError::NativeStack { path: native_stack_path, reason: "invalid capability" });
         }
         Ok(LoadedFloor {
+            native_string: string,
             bootstrap,
             id_protocol,
             _root_registry: root_registry_image,

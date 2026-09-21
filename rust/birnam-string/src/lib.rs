@@ -7,6 +7,7 @@ use core::ptr;
 use std::sync::{Once, OnceLock};
 use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 pub mod storage;
+mod native;
 static INSTANCE: AtomicPtr<storage::Instance> = AtomicPtr::new(ptr::null_mut());
 static PHASE: AtomicU8 = AtomicU8::new(0);
 
@@ -66,7 +67,9 @@ pub unsafe extern "C" fn birnam_string_prepare_v4(api: *mut IdApi, exports: *con
     if api.is_null() { abort("preparation received a null IdApi"); }
     if PHASE.load(Ordering::Acquire) != 0 {
         let instance = INSTANCE.load(Ordering::Acquire);
-        if instance.is_null() || unsafe { (*instance).api() } != api { abort("another IdApi is already mounted"); }
+        if instance.is_null() { abort("String preparation has no instance"); }
+        let same = unsafe { (*instance).native_access().map_or((*instance).api() == api, |access| access.id.receiver == (*api).vtable_vt) };
+        if !same { abort("another IdApi is already mounted"); }
         if PHASE.load(Ordering::Acquire) == 1 { abort("recursive String preparation"); }
         return unsafe { birnam_string_provider_v1() };
     }
@@ -426,7 +429,7 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, _p
     let _ = unsafe { birnam_abi::integer::operations() };
     let _ = unsafe { birnam_abi::float::operations() };
     let api = unsafe { &*api_pointer };
-    if previous == 2 { unsafe { (*INSTANCE.load(Ordering::Acquire)).publish() }; }
+    if previous == 2 && unsafe { (*INSTANCE.load(Ordering::Acquire)).native_access().is_none() } { unsafe { (*INSTANCE.load(Ordering::Acquire)).publish() }; }
     ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });
     let _ = RUNTIME.get_or_init(|| Runtime {
         api: api_pointer as usize,
