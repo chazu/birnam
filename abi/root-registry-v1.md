@@ -1,25 +1,18 @@
 # Native root registry v1
 
-> **Construction update (Design 83):** The pre-Id preparation, aggregate
-> initialization and private provider exports described below are historical.
-> Production constructs this service above Id and passes completed dependencies
-> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
-> through Bootstrap and Id; the old provider export is removed.
-
 Design [81BJ](../docs/design/81bj-production-root-provider-registry.md) extracts
 only the ordered native root-provider list, append policy and copied snapshots.
 The [independent C mirror](fixtures/root-registry-v1/root_registry_v1.h) defines
 four arm64 layouts: public capability 32 bytes, copied floor 40 bytes, immutable
 factory 48 bytes, and owned snapshot 264 bytes.
 
-The host pins `libbirnam_root_registry.dylib` and attaches
-`birnam_root_registry_factory_v1` through Id's
-`birnam_root_registry_dependency_v1` before `id_init`. Validation and creation
-invoke no floor operations. Invalid descriptors reject; repeat attachment of
-the same factory succeeds and retargeting rejects. Each Runtime owns an
-independent service. Id publishes its capability through
-`birnam_root_registry_provider_v1`. Ordinary module mounting creates no language
-objects or methods. Production Id does not link the service implementation.
+Id loads `libbirnam_root_registry.dylib` through its common native entry.
+The initializer accepts initial Object roots and returns a completed
+[root owner](fixtures/root-registry-owner-v1/README.md), including its public
+registration capability and immutable factory. Bootstrap adopts its own retained
+results into this owner. Runtime later adopts the same owner and supplies its
+completed admission callbacks. No preparer, provider export or dependency setter
+is involved, and Id does not link the service implementation.
 
 Public registration copies its selected floor context, performs the existing
 owner/observation admission, and appends. Duplicates occupy separate entries.
@@ -32,19 +25,21 @@ The factory's canonical append returns 1 on success and 0 at capacity, without
 callbacks. Its snapshot returns count and 32 optional function pointers by value;
 only the first count entries are populated. Internal append, snapshot and destroy
 use the original owned address regardless of public descriptor instrumentation.
-Id retains direct Runtime admission and calls snapshot at the existing tracing
+Runtime retains its admission policy and calls snapshot at the existing tracing
 and storage-observation points. Live GC invokes the copied providers in order;
 callback-time appends wait for a future snapshot. Storage diagnostics publishes
 the addresses without invoking them and keeps its existing coverage flags.
 
-Destruction calls no providers. The registry owns neither roots nor callback
-code; existing native code lifetime rules remain. Stack capture, collector
+Destruction calls no providers. The provider list does not own callback code; registered callbacks remain live.
+The native owner also holds explicit Object roots, independently of this list. Stack capture, collector
 settings, mark adaptation, collection phases, weak identity and finalization
 remain with their existing owners. There is no unregister or deduplication.
 
-IdApi v15 has 25 fields and 200 bytes. Native initialization takes eight
-arguments, adding the matching root registry after method observation.
-[Native Loader v8](native-loader-v8.md) forwards the saved execution selection.
-String preparation v3, Float/Word preparation v5 and Range/Vector/Map construction
-v5 receive explicit incoming capabilities at their early registration points.
-Image encoding and all provider/mark signatures remain unchanged.
+Run `scripts/root-registry-test.sh PREFIX`, or
+`scripts/runtime-services-test.sh PREFIX` for the combined Root Registry,
+GC Settings and Native Stack tests. The independent C oracle receives completed
+services from production startup and checks ordered/duplicate registration,
+callback-time appends, nested collection, snapshots, overflow and admission.
+Its factory probe loads a separate native root owner through Id and destroys it
+through that owner's factory. Diagnostic observation runs after the loading
+message has returned, at an idle host boundary.

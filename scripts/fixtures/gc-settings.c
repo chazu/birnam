@@ -1,22 +1,20 @@
 #define _DARWIN_C_SOURCE
-#ifdef GC_SETTINGS_BASELINE
-#include "idapi_v15.h"
-#include "../../abi/fixtures/idapi-v15/storage_v1.h"
-#define SET_AUTO(value) api->gc_set_auto(value)
-#define SET_PRECISE(value) api->gc_set_precise(value)
-#else
 #include "idapi_v20.h"
 #include "../../abi/fixtures/idapi-v20/storage_v1.h"
 static GcSettingsV1 *settings;
 #define SET_AUTO(value) gc_settings_auto_v1(settings,value)
 #define SET_PRECISE(value) gc_settings_precise_v1(settings,value)
-#endif
-#include "namespace-support.h"
-#include "trace-support.h"
+#include "native-fixture.h"
+#include "../../abi/fixtures/native-stack-v1/native_stack_v1.h"
+#include <dlfcn.h>
+#include <stdio.h>
+#include <limits.h>
 #include <pthread.h>
 #include <stdlib.h>
 
 static IdApi *api;
+static const RootRegistryV1 *registry;
+static const NativeStackV1 *stack;
 static const char *mode;
 static unsigned collections,observations;
 static uint32_t observed_precise;
@@ -37,15 +35,11 @@ static void snapshot(StorageObserveV1 inspect) {
 }
 static void *wrong_thread(void *context) { (void)context;mutate();return NULL; }
 
-#ifndef GC_SETTINGS_BASELINE
 static unsigned admissions;
 static void admit(void *context) { assert(context==&admissions);admissions++; }
-static void factory_probe(const char *floor_path) {
-    const char *slash=strrchr(floor_path,'/');assert(slash);char path[PATH_MAX];
-    assert(snprintf(path,sizeof(path),"%.*s/libbirnam_gc_settings.dylib",(int)(slash-floor_path),floor_path)>0);
-    void *image=dlopen(path,RTLD_NOW|RTLD_LOCAL);assert(image);
-    GcSettingsFactoryProviderV1 provide=(GcSettingsFactoryProviderV1)dlsym(image,"birnam_gc_settings_factory_v1");assert(provide);
-    const GcSettingsFactoryV1 *factory=provide();assert(factory && factory->version==1 && factory->byte_size==sizeof(*factory));
+static void factory_probe(const BirnamProtocol *id,BirnamOperand path) {
+    const GcSettingsFactoryV1 *factory=fixture_load_word(id,path);
+    assert(factory && factory->version==1 && factory->byte_size==sizeof(*factory));
     GcSettingsFloorV1 floor={1,sizeof(floor),&admissions,admit};
     GcSettingsV1 *a=factory->create(&floor),*b=factory->create(&floor);assert(a && b && a!=b && !admissions);
     assert(!factory->precise(a));
@@ -66,18 +60,14 @@ static void factory_probe(const char *floor_path) {
     assert(strstr(owner.dli_fname,"libbirnam_gc_settings.dylib"));
     assert(dladdr((void *)settings->set_precise,&owner));
     assert(strstr(owner.dli_fname,"libbirnam_gc_settings.dylib"));
-    ModuleInitFn initialize=(ModuleInitFn)dlsym(image,"module_init");assert(initialize);
-    assert(!initialize(api,NULL,fixture_namespace_presence(),fixture_namespace_imports(),fixture_namespace_exports(),fixture_vtable_enumeration(),fixture_method_observation(),fixture_root_registry(),settings,fixture_payload_layout(),fixture_trace_hooks(),fixture_finalizers()));
-}
-#endif
 
-int main(int argc,char **argv) {
-    assert(argc==3);mode=argv[2];
-    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
-    fixture_prepare_namespace(floor,argv[1]);api=((IdInitFn)dlsym(floor,"id_init"))();assert(api);
-#ifndef GC_SETTINGS_BASELINE
-    settings=fixture_gc_settings();factory_probe(argv[1]);
-#endif
+}
+
+static BirnamOutcome exercise(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
+    assert(count==7);api=fixture_word(args[0]);registry=fixture_word(args[1]);
+    settings=fixture_word(args[2]);stack=fixture_word(args[3]);
+    char *path=fixture_text(args[4]);void *floor=dlopen(path,RTLD_NOW|RTLD_LOCAL);free(path);assert(floor);
+    mode=fixture_text(args[6]);factory_probe(id,args[5]);
     StorageObserveV1 inspect=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1");assert(inspect);
     if(strstr(mode,"owner")) { pthread_t thread;assert(!pthread_create(&thread,NULL,wrong_thread,NULL));assert(!pthread_join(thread,NULL));abort(); }
     if(strstr(mode,"observation")) { snapshot(inspect);abort(); }
@@ -88,15 +78,17 @@ int main(int argc,char **argv) {
     }
     SET_PRECISE(0);snapshot(inspect);assert(!observed_precise);
     puts("precise defaults, nonzero conversion and copied observation agree");
-    SET_AUTO(0);fixture_mount_trace(api,argv[1],fixture_root_registry());fixture_register_root(roots);
-    fixture_set_stack_bottom(0);
+    SET_AUTO(0);root_registry_register_v1(registry,roots);
+    native_stack_set_v1(stack,0);
     (void)api->alloc(api->object_vt,16u<<20);assert(!collections);
     SET_AUTO(-1);assert(!collections);
     (void)api->alloc(api->object_vt,0);assert(!collections);
-    uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
+    uintptr_t anchor=0;native_stack_set_v1(stack,(uintptr_t)&anchor+sizeof(anchor));
     (void)api->alloc(api->object_vt,0);assert(collections==1);
     puts("automatic collection waits for stack readiness and the next allocation");
     SET_AUTO(0);(void)api->alloc(api->object_vt,16u<<20);assert(collections==1);
     SET_AUTO(1);assert(collections==1);(void)api->alloc(api->object_vt,0);assert(collections==2);
     puts("suppression retains accumulated bytes; enabling does not collect immediately");
+    return (BirnamOutcome){.status=BIRNAM_LOADED};
 }
+FIXTURE_NATIVE_ENTRY(exercise)

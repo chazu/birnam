@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate Root Registry, GC Settings and Native Stack C oracles to production
+  startup and Id loading. Share their runner, preserve behavioral and rejection
+  checks, and run storage diagnostics at the required idle host boundary.
+
 - Replace five obsolete support-factory admission matrices with 76 cases through
   production Id and Bootstrap, with Runtime absent. Remove their fake Id setup
   and five unreachable host preparation errors; retain independent malformed

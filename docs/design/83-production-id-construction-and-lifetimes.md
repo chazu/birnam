@@ -2751,3 +2751,40 @@ with one ignored. Host checking and shell syntax checks pass. Evidence is
 `.cargo-target/83-support-admission-evidence.json`. Worker readiness, the remaining
 fixture migration and full acceptance audit remain open. Release validation
 remains waived.
+
+
+### Runtime service oracles use production startup
+
+Root Registry, GC Settings, Native Stack and native stack scanning no longer
+construct a diagnostic floor through `id_init`, preparers, provider exports or
+`module_init`. A shared host driver uses production `load_floor`, supplies each
+oracle its explicit completed services, and loads the C fixture through Id.
+Independent factory probes also use Id's native entry; the root probe destroys
+the separate root owner it creates. Historical baseline compile branches and
+obsolete empty module-initialization assertions are removed.
+
+The fixture initializer returns a pinned native entry. The host calls it after
+the loading message returns, because storage observation requires an idle host
+and correctly rejects the managed turn around loading. No production admission
+check is bypassed or relaxed. Production collector activation already installs
+the thread anchor, so the suppression oracle explicitly clears it before testing
+zero-anchor behavior rather than assuming a pre-activation default.
+
+The existing C assertions retain ordered duplicate providers, callback-time
+append, nested collection suppression, factory independence, precise-mode
+conversion, automatic thresholds and accumulated budgets, native/provider roots,
+callback/finalizer anchor reassignment, every scan byte boundary, register capture,
+and exact owner/observation/overflow/tracer rejection diagnostics.
+`scripts/runtime-services-test.sh PREFIX` runs all four; the three original
+service scripts select their corresponding cases. Native Stack also retains its
+Runtime unit and actual installed-host check. ABI pages now describe the actual
+ownership and loading path instead of pre-Id preparation.
+
+Against `/tmp/birnam-83-native-constructor`, the combined runner passes all 16
+native cases and all 16 service unit tests. The complete Native Stack runner
+also passes the Runtime anchor unit and the real installed-host test. Production
+libraries are unchanged; the test driver is rebuilt from the current checkout.
+Evidence is `.cargo-target/83-runtime-services-evidence.json`. These tests close
+four legacy fixture migrations, not their separate image fixtures or the wider
+acceptance audit. Worker readiness and the remaining migrations stay open.
+Release validation remains waived.

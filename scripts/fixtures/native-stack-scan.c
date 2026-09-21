@@ -1,5 +1,6 @@
 #define _DARWIN_C_SOURCE
 #include "../../abi/fixtures/native-stack-v4/native_stack_v4.h"
+#include "native-fixture.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -20,7 +21,6 @@ static int emit(void *context,uintptr_t value) {
     }
     return 0;
 }
-#ifndef NATIVE_SCAN_BASELINE
 static NativeStackCaptureV1 capture;
 static uintptr_t captured_start;
 static int captured_calls;
@@ -64,18 +64,13 @@ static void capture_checks(const NativeStackFactoryV4 *api) {
     assert(capture((uintptr_t)&anchor,&anchor,nesting)==1);assert(captured_calls==3);
     puts("native-stack-capture: native register ownership, shallow frame, interval rejection and nested capture pass");
 }
-#endif
-int main(int argc,char **argv) {
-    assert(argc==3);void *image=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(image);
-#ifdef NATIVE_SCAN_BASELINE
-    scan=(Scan)dlsym(image,"birnam_test_scan");assert(scan);
-#else
-    NativeStackFactoryProviderV4 provide=(NativeStackFactoryProviderV4)dlsym(image,"birnam_native_stack_factory_v4");assert(provide);
-    const NativeStackFactoryV4 *api=provide();assert(api && api->version==4 && api->byte_size==sizeof(*api));scan=api->scan;assert(scan);
+static BirnamOutcome exercise(const BirnamProtocol *id,const BirnamOperand *args,size_t argument_count) {
+    assert(argument_count==2);char *mode=fixture_text(args[1]);
+    const NativeStackFactoryV4 *api=fixture_load_word(id,args[0]);
+    assert(api && api->version==4 && api->byte_size==sizeof(*api));scan=api->scan;assert(scan);
     Dl_info owner;assert(dladdr((void *)scan,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
-#endif
     TraceLiveSinkV1 sink={values,emit};
-    if(!strcmp(argv[2],"reject")) { reject=1;scan(&sink,(uintptr_t)words,(uintptr_t)words+sizeof(words));assert(0); }
+    if(!strcmp(mode,"reject")) { reject=1;scan(&sink,(uintptr_t)words,(uintptr_t)words+sizeof(words));assert(0); }
     for(size_t low=0;low<=sizeof(words);low++)for(size_t high=0;high<=sizeof(words);high++) {
         count=0;scan(&sink,(uintptr_t)words+low,(uintptr_t)words+high);
         size_t expected=0;
@@ -87,8 +82,8 @@ int main(int argc,char **argv) {
     mutate=1;scan(&sink,(uintptr_t)words,(uintptr_t)words+sizeof(words));
     const uintptr_t expected[]={0,41,43,7,99,UINTPTR_MAX,UINTPTR_MAX/2+1,19};
     assert(count==sizeof(expected)/sizeof(*expected) && !memcmp(values,expected,sizeof(expected)));
-#ifndef NATIVE_SCAN_BASELINE
     capture_checks(api);
-#endif
     puts("native-stack-scan: all byte boundaries, exact candidates, empty intervals, incremental reads and emission reentry preserved");
+    return (BirnamOutcome){.status=BIRNAM_LOADED};
 }
+FIXTURE_NATIVE_ENTRY(exercise)
