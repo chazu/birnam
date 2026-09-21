@@ -13,8 +13,9 @@ scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-deferred-index.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 cc -std=c11 -Wall -Wextra -Werror scripts/fixtures/deferred-index.c -o "$scratch/rows"
 "$scratch/rows" "$cache_lib/libbirnam_storage.dylib"
-mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/deferred-index-host.rs --extern "birnam_host=$cache_target/debug/libbirnam_host.rlib" -L "dependency=$cache_target/debug/deps" -o "$scratch/host-probe"
-python3 scripts/fixtures/deferred-index-host.py "$scratch/host-probe" "$cache_lib"
+mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/runtime-support-host.rs --extern "birnam_host=$cache_target/debug/libbirnam_host.rlib" --extern "birnam_abi=$cache_target/debug/libbirnam_abi.rlib" -L "dependency=$cache_target/debug/deps" -o "$scratch/host-probe"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib scripts/fixtures/runtime-support-native.c -o "$scratch/runtime-support.dylib"
+python3 scripts/fixtures/runtime-support-host.py "$scratch/host-probe" "$cache_lib" "$scratch/runtime-support.dylib"
 python3 - "$cache_lib" <<'PY'
 from pathlib import Path
 import json,subprocess,sys

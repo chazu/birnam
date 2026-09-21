@@ -75,12 +75,8 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
         "scripts/fixtures/runtime-support-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
         "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(support_driver))
-    support_prefix = scratch / "support-prefix"
-    support_prefix.mkdir()
-    for name in ["id", "bootstrap", "method_observation", "storage", "dispatch_cache"]:
-        library = f"libbirnam_{name}.dylib"
-        shutil.copy2(prefix / "lib" / library, support_prefix / library)
-    run(str(support_driver), str(support_prefix), str(scratch / "runtime-support.dylib"))
+    run("python3", "scripts/fixtures/runtime-support-host.py", str(support_driver),
+        str(prefix / "lib"), str(scratch / "runtime-support.dylib"))
     for mode in range(6):
         run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib", f"-DMODE={mode}",
             "scripts/fixtures/id-native-module.c", "-o", str(scratch / f"{mode}.dylib"))

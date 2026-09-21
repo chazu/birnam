@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Replace five obsolete support-factory admission matrices with 76 cases through
+  production Id and Bootstrap, with Runtime absent. Remove their fake Id setup
+  and five unreachable host preparation errors; retain independent malformed
+  descriptor and operation checks for all six support requests.
+
 - Remove the temporary Runtime C constructor export. Runtime construction and
   its independent C rejection checks now use only the common native module entry.
 

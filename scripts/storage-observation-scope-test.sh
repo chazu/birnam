@@ -21,5 +21,6 @@ for mode,message in [('active-read','Id access during storage observation'),('ow
  assert result.returncode==-6 and result.stderr=='birnam-id invariant failed: '+message+'\n',(mode,result)
  print(mode+': exact rejection diagnostic preserved')
 PY
-mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/storage-observation-scope-host.rs --extern "birnam_host=$scope_target/debug/libbirnam_host.rlib" -L "dependency=$scope_target/debug/deps" -o "$scratch/host-probe"
-python3 scripts/fixtures/storage-observation-scope-host.py "$scratch/host-probe" "$scope_lib"
+mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/runtime-support-host.rs --extern "birnam_host=$scope_target/debug/libbirnam_host.rlib" --extern "birnam_abi=$scope_target/debug/libbirnam_abi.rlib" -L "dependency=$scope_target/debug/deps" -o "$scratch/host-probe"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib scripts/fixtures/runtime-support-native.c -o "$scratch/runtime-support.dylib"
+python3 scripts/fixtures/runtime-support-host.py "$scratch/host-probe" "$scope_lib" "$scratch/runtime-support.dylib"

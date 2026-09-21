@@ -2719,3 +2719,35 @@ that installation's source copies. The repository test files are hashed in
 This removes the temporary constructor facade; it does not close the older
 fixture migration, worker readiness failure or full acceptance audit.
 No release validation was run.
+
+
+### Consolidate support admission on production Bootstrap
+
+The five host admission matrices for Storage Observation, Deferred Identity,
+Deferred Index, Dispatch Cache and Guard Verdict still tested removed provider
+exports and fake Id dependency setters. They are replaced by one 76-case matrix
+using actual Id and Bootstrap, with only the three support libraries available.
+It also covers Method Observation. No Runtime or value module is present.
+
+Each library is tested absent, without an entry, with incompatible entry headers,
+and without an initializer. For every support request, a C proxy calls the real
+native module entry and changes just that result: null/wrong-kind descriptor,
+initializer failure, bad version/extent, or each missing operation. Other requests
+retain the real implementation. Per-case receipts prove the intended request was
+reached. The unmodified prefix then exercises all operations, independent state,
+context-bearing cache results and repeated selection through the existing C
+oracle. Removed setter rejection cases have no current equivalent; the installed
+export gate prevents reintroduction of those obsolete interfaces.
+
+Ten duplicate fixture files and five unreachable host preparation errors are
+removed. The existing shell runners select the shared matrix. Their separate
+legacy behavioral C fixtures remain unmigrated, so this is not a claim that those
+complete runners pass. The installed native suite directly runs the new matrix.
+
+Validation uses the unchanged native libraries from
+`/tmp/birnam-83-native-constructor` and the current rebuilt host test driver.
+All 76 admission cases and the full native suite pass; host units pass 85 tests
+with one ignored. Host checking and shell syntax checks pass. Evidence is
+`.cargo-target/83-support-admission-evidence.json`. Worker readiness, the remaining
+fixture migration and full acceptance audit remain open. Release validation
+remains waived.

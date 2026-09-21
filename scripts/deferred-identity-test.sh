@@ -11,8 +11,9 @@ cache_lib=${1:+$1/lib}
 cache_lib=${cache_lib:-$cache_target/debug}
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-deferred-identity.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
-mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/deferred-identity-host.rs --extern "birnam_host=$cache_target/debug/libbirnam_host.rlib" -L "dependency=$cache_target/debug/deps" -o "$scratch/host-probe"
-python3 scripts/fixtures/deferred-identity-host.py "$scratch/host-probe" "$cache_lib"
+mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/runtime-support-host.rs --extern "birnam_host=$cache_target/debug/libbirnam_host.rlib" --extern "birnam_abi=$cache_target/debug/libbirnam_abi.rlib" -L "dependency=$cache_target/debug/deps" -o "$scratch/host-probe"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib scripts/fixtures/runtime-support-native.c -o "$scratch/runtime-support.dylib"
+python3 scripts/fixtures/runtime-support-host.py "$scratch/host-probe" "$cache_lib" "$scratch/runtime-support.dylib"
 python3 - "$cache_lib" <<'PY'
 from pathlib import Path
 import json,subprocess,sys
