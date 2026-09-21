@@ -657,6 +657,7 @@ impl Runtime {
         unsafe { notify(observation, i32::from(direct), vtable, selector) };
         let result = unsafe { (&mut *self.state.get()).vtables.add_native_method(vtable, selector, entry) };
         let previous = match result { crate::id_registries::AddMethod::Added => None, crate::id_registries::AddMethod::Overwrote(previous) => Some(previous) };
+        self.update_method_owner_edge(vtable, selector, previous, Some(entry));
         if previous != Some(entry) {
             let state = unsafe { &mut *self.state.get() };
             let staged = state.admission.as_ref().is_some_and(|a| a.staged_resumable_publications.is_some());
@@ -694,6 +695,7 @@ impl Runtime {
         };
         unsafe { notify(observation, i32::from(direct), vtable, selector) };
         let removed = unsafe { (&mut *self.state.get()).vtables.remove_native_method(vtable, selector) };
+        self.update_method_owner_edge(vtable, selector, removed, None);
         if let Some(entry) = removed {
             let state = unsafe { &mut *self.state.get() };
             let staged = state.admission.as_ref().is_some_and(|a| a.staged_resumable_publications.is_some());
@@ -1903,6 +1905,7 @@ impl Runtime {
     }
 
     pub(crate) fn trace_stackless_scoped_roots(&self, mark: MarkFn) {
+        self.trace_method_turn_owners(mark);
         // The mark callback can write heap metadata; no state borrow crosses it.
         let roots = unsafe {
             let mut roots = Vec::new();
@@ -4423,6 +4426,7 @@ impl Runtime {
             return;
         }
         let _drain = RetirementDrainGuard(&self.draining_retirements);
+        self.release_method_turn_owners();
         self.drain_pending_stackless_retirements();
         // One batch, with no borrow across callbacks. Newly queued work waits
         // for the next checkpoint rather than creating an unbounded drain.

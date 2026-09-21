@@ -2,7 +2,7 @@
 use birnam_abi::{
     Oop, finalizers,
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-    lifetime::{self as abi, AccessV1, OwnedV1},
+    lifetime::{self as abi, AccessV1, OwnedV2},
     payload_layout as layouts, trace_hooks as hooks,
 };
 use core::{
@@ -12,7 +12,7 @@ use core::{
 use std::collections::HashMap;
 
 struct State {
-    owner: OwnedV1,
+    owner: OwnedV2,
     thread: std::thread::ThreadId,
     access: AccessV1,
     id: Protocol,
@@ -20,6 +20,25 @@ struct State {
     layouts: HashMap<usize, layouts::OwnedV1>,
     hooks: HashMap<usize, hooks::SlotV1>,
     finalizers: HashMap<usize, finalizers::SlotV1>,
+    edges: HashMap<usize, Vec<abi::EdgeV1>>,
+}
+unsafe extern "C" fn edges(context: *mut c_void, object: Oop) -> abi::EdgesV1 {
+    unsafe { check(context) };
+    let entries = unsafe { &*context.cast::<State>() }.edges.get(&object.addr());
+    entries.map_or(abi::EdgesV1 { entries: ptr::null(), count: 0 }, |entries|
+        abi::EdgesV1 { entries: entries.as_ptr(), count: entries.len() })
+}
+unsafe extern "C" fn set_edge(context: *mut c_void, object: Oop, key: usize, target: Oop) {
+    unsafe { admit(context) };
+    assert_ne!(unsafe { facts(context, object) } & abi::ALLOCATED, 0, "edge owner is not allocated");
+    if !target.is_null() {
+        assert_ne!(unsafe { facts(context, target) } & abi::ALLOCATED, 0, "edge target is not allocated");
+    }
+    let state = unsafe { &mut *context.cast::<State>() };
+    let entries = state.edges.entry(object.addr()).or_default();
+    entries.retain(|edge| edge.key != key);
+    if !target.is_null() { entries.push(abi::EdgeV1 { key, target }); }
+    if entries.is_empty() { state.edges.remove(&object.addr()); }
 }
 unsafe fn check(context: *mut c_void) {
     assert_eq!(
@@ -172,6 +191,7 @@ unsafe extern "C" fn retire(context: *mut c_void, addresses: *const usize, count
         let previous = unsafe {
             let state = &mut *context.cast::<State>();
             state.hooks.remove(address);
+            state.edges.remove(address);
             state.layouts.remove(address)
         };
         if let Some(previous) = previous {
@@ -261,9 +281,9 @@ unsafe extern "C" fn initialize(
         Err(answer) => return answer,
     };
     let mut state = Box::new(State {
-        owner: OwnedV1 {
-            version: 1,
-            byte_size: size_of::<OwnedV1>(),
+        owner: OwnedV2 {
+            version: 2,
+            byte_size: size_of::<OwnedV2>(),
             context: ptr::null_mut(),
             layouts: ptr::null_mut(),
             hooks: ptr::null_mut(),
@@ -280,6 +300,8 @@ unsafe extern "C" fn initialize(
             retire,
             set_access,
             destroy,
+            edges,
+            set_edge,
         },
         thread: std::thread::current().id(),
         access: AccessV1 {
@@ -292,6 +314,7 @@ unsafe extern "C" fn initialize(
         layouts: HashMap::new(),
         hooks: HashMap::new(),
         finalizers: HashMap::new(),
+        edges: HashMap::new(),
     });
     let context = ptr::from_mut(&mut *state).cast();
     state.owner.context = context;

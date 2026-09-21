@@ -1,12 +1,12 @@
 /* Independently consume actual base entries before their successors exist. */
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/base-values-v1/base_values_v1.h"
-#include "../../abi/fixtures/lifetime-v1/lifetime_v1.h"
+#include "../../abi/fixtures/lifetime-v2/lifetime_v2.h"
 #include <assert.h>
 #include <string.h>
 static BirnamProtocol id;
 static BaseValuesV1 values;
-static LifetimeOwnedV1 lifetime;
+static LifetimeOwnedV2 lifetime;
 static void *receivers[8];
 static const char *selectors[]={"==","not","&","|","isNil","notNil","isNil","notNil"};
 static BirnamNativeEntry entries[8];
@@ -68,7 +68,7 @@ static BirnamOutcome replacement(void *context, void *receiver, const BirnamOper
 }
 static BirnamOutcome initialize(const BirnamProtocol *protocol, const BirnamOperand *args, size_t count) {
     assert(count==2 && args[0].kind==BIRNAM_WORD && args[1].kind==BIRNAM_WORD);
-    id=*protocol; values=*(BaseValuesV1 *)args[0].data.word; lifetime=*(LifetimeOwnedV1 *)args[1].data.word;
+    id=*protocol; values=*(BaseValuesV1 *)args[0].data.word; lifetime=*(LifetimeOwnedV2 *)args[1].data.word;
     assert(values.version==1 && values.byte_size==sizeof(values));
     assert(values.nil!=values.true_object && values.nil!=values.false_object && values.true_object!=values.false_object);
     void *objects[]={values.nil,values.true_object,values.false_object};

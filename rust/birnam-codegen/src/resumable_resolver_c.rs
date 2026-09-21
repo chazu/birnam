@@ -53,7 +53,7 @@ pub fn emit_block_vtable_resolver_v1(entries: &[BlockVtableSpec<'_>]) -> Result<
         output.push(cache_index.to_string().as_bytes());
         output.push(b"ULL);if(!v){v=birnam_vtable_cache_set(__birnam_code_generation_identity,");
         output.push(cache_index.to_string().as_bytes());
-        output.push(b"ULL,birnam_proto(birnam_blockVt()));if(!v)return (void*)0;birnam_method(v,birnam_intern(\"");
+        output.push(b"ULL,birnam_proto(birnam_blockVt()));if(!v)return (void*)0;birnam_generated_method(v,birnam_intern(\"");
         output.push_c_string_body(entry.selector);
         output.push(b"\"),(void*)&__birnam_resumable_thunk_");
         output.push(entry.symbol_index.to_string().as_bytes());
@@ -143,7 +143,7 @@ mod tests {
         ));
         let mut source = br#"extern void* birnam_proto(void*);
 extern void* birnam_blockVt(void);
-extern void birnam_method(void*,void*,void*);
+extern void birnam_generated_method(void*,void*,void*);
 extern void* birnam_intern(char const*);
 extern void birnam_layoutAllOops(void*);
 extern void* birnam_vtable_cache_get(unsigned long long,unsigned long long);

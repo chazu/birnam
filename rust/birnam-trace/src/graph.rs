@@ -16,7 +16,7 @@ struct Graph {
     api: GraphV2,
     id: Protocol,
     roots: root_registry::OwnedV1,
-    lifetime: lifetime::OwnedV1,
+    lifetime: lifetime::OwnedV2,
     model: object_model::OwnedV1,
     mark: native_mark::ApiV1,
     mark_context: *mut c_void,
@@ -235,6 +235,12 @@ unsafe extern "C" fn edges(
         for edge in edges {
             emit(sink, edge)?;
         }
+        // Native-state references belong to the object, including dictionaries.
+        // This read and first-mark emission cannot run application callbacks.
+        let references = unsafe { (graph.lifetime.edges)(graph.lifetime.context, object) };
+        for index in 0..references.count {
+            emit(sink, unsafe { references.entries.add(index).read().target })?;
+        }
         if kind == 1 || flags & CORE_ONLY != 0 {
             return Ok(());
         }
@@ -285,6 +291,11 @@ unsafe extern "C" fn validate(context: *mut c_void) -> Status {
         }
         for (object, size, _) in allocations {
             let (kind, edges) = graph.references(object)?;
+            let references = unsafe { (graph.lifetime.edges)(graph.lifetime.context, object) };
+            for index in 0..references.count {
+                let edge = unsafe { references.entries.add(index).read().target };
+                if !addresses.contains(&edge.addr()) { return Err(INVALID); }
+            }
             if edges
                 .iter()
                 .any(|edge| !edge.is_null() && !addresses.contains(&edge.addr()))
@@ -330,6 +341,10 @@ unsafe extern "C" fn inspect(
                 references.insert(2, unsafe { graph.model.owner.unwrap()(graph.model.context, object) });
             } else if kind == 2 {
                 symbols.push(object);
+            }
+            let extra = unsafe { (graph.lifetime.edges)(graph.lifetime.context, object) };
+            for index in 0..extra.count {
+                references.push(unsafe { extra.entries.add(index).read().target });
             }
             edges.extend(references.into_iter()
                 .filter(|to| addresses.contains(&to.addr()))
@@ -382,7 +397,7 @@ unsafe extern "C" fn initialize(
             return Err(INVALID);
         };
         let roots = roots.as_word().ok_or(INVALID)? as *const root_registry::OwnedV1;
-        let lifetime = lifetime.as_word().ok_or(INVALID)? as *const lifetime::OwnedV1;
+        let lifetime = lifetime.as_word().ok_or(INVALID)? as *const lifetime::OwnedV2;
         let model = model.as_word().ok_or(INVALID)? as *const object_model::OwnedV1;
         let mark = mark.as_word().ok_or(INVALID)? as *const native_mark::ApiV1;
         if !unsafe {

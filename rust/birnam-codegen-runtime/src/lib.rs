@@ -231,6 +231,7 @@ const MAX_EMBEDDED_FILE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 struct Runtime {
+    method_owners: birnam_abi::method_owners::Api,
     api: usize,
     finalizers: usize,
     settings: usize,
@@ -257,7 +258,7 @@ struct Runtime {
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 static LAST_ERROR: Mutex<Option<Vec<u8>>> = Mutex::new(None);
-static LIVE_UNITS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
+static EVALUATOR_ROOTS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 #[derive(Clone)]
 struct ModuleSourceEntry {
     name: usize,
@@ -575,10 +576,10 @@ unsafe extern "C" fn mark_live_units(mark: MarkFn) {
             unsafe { mark(value as Oop) };
         }
     }
-    if let Ok(units) = LIVE_UNITS.lock() {
+    if let Ok(units) = EVALUATOR_ROOTS.lock() {
         for &unit in units.iter() {
-            // SAFETY: each address was returned by IdApi.alloc and remains rooted
-            // by this provider until process teardown.
+            // SAFETY: each live value is retained for the enclosing evaluation.
+            // Nested evaluations add and remove their own trailing roots.
             unsafe { mark(unit as Oop) };
         }
     }
@@ -2936,19 +2937,25 @@ fn replace_bytes(input: &[u8], old: &[u8], new: &[u8]) -> Vec<u8> {
 }
 
 unsafe fn dispose_unit(api: &IdApi, unit: Oop) {
-    // SAFETY: callers use this only before installing a method, or after a
-    // direct one-shot entry call.  The Rust TCC invariant rejects disposal of
-    // installed units, so a failed request cannot release live code.
+    // Registers finalization; bindings, Methods and active evaluation roots keep
+    // the Unit alive. Executable release still waits for an outer checkpoint.
     let _ = unsafe { send0(api, unit, DISPOSABLE_SELECTOR) };
 }
 
-fn retain_unit(unit: Oop) {
-    if let Ok(mut units) = LIVE_UNITS.lock() {
-        let address = unit as usize;
-        if !units.contains(&address) {
-            units.push(address);
-        }
+struct EvaluationRoots { base: usize }
+impl EvaluationRoots {
+    fn new(unit: Oop) -> Self {
+        let mut roots = EVALUATOR_ROOTS.lock().unwrap();
+        let base = roots.len();
+        roots.push(unit.addr());
+        Self { base }
     }
+    fn retain(&self, object: Oop) {
+        EVALUATOR_ROOTS.lock().unwrap().push(object.addr());
+    }
+}
+impl Drop for EvaluationRoots {
+    fn drop(&mut self) { EVALUATOR_ROOTS.lock().unwrap().truncate(self.base); }
 }
 
 unsafe fn api(runtime: &Runtime) -> &'static IdApi {
@@ -6073,9 +6080,10 @@ unsafe extern "C" fn rust_codegen_eval(
         note_error(b"RustCodegen could not create a Tcc unit");
         return api.nilObj;
     }
+    let roots = EvaluationRoots::new(unit);
     let c_source = unsafe { (birnam_abi::string::make)(source.bytes.as_ptr(), source.bytes.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit, false) }
+        || !unsafe { bind_global_shims(api, unit, true) }
         || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
@@ -6098,6 +6106,7 @@ unsafe extern "C" fn rust_codegen_eval(
         // frozen Method ABI; the unit is still relocated and not installed.
         let entry: Method = unsafe { core::mem::transmute(address) };
         let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
+        roots.retain(result);
         #[cfg(feature = "test-evaluator-lifetime")]
         assert!(
             !unsafe { (api.vtableOf)(unit) }.is_null(),
@@ -6117,6 +6126,7 @@ unsafe extern "C" fn rust_codegen_eval(
         unsafe { dispose_unit(api, unit) };
         return api.nilObj;
     }
+    roots.retain(instance);
     if unsafe {
         send(
             api,
@@ -6130,7 +6140,8 @@ unsafe extern "C" fn rust_codegen_eval(
         return api.nilObj;
     }
     let result = unsafe { send0(api, instance, ENTRY_SELECTOR) };
-    retain_unit(unit);
+    roots.retain(result);
+    unsafe { dispose_unit(api, unit) };
     result
 }
 
@@ -6223,6 +6234,11 @@ unsafe fn compile_synchronous_materialization(
     }
     let selector = unsafe { intern_bytes(api, &compiled.selector) };
     let entry: Method = unsafe { core::mem::transmute(address) };
+    if unsafe { (runtime.method_owners.register)(address as *const c_void, unit) } != 1 {
+        remove_materialization(unit);
+        unsafe { dispose_unit(api, unit) };
+        return None;
+    }
     unsafe {
         (api.method)(vtable, selector, entry);
         birnam_abi::payload_layout::set(execution_layouts(), vtable, ptr::null(), 0, SLOT_OOP);
@@ -7354,6 +7370,7 @@ fn portable_resumable_plan(program: &[u8]) -> Option<PortableResumablePlan> {
     }
     let mut prepare_all = b"unsigned int __birnam_prepare_portable_resumables_v1(void){\n".to_vec();
     for index in 0..inventory.program_count {
+        prepare_all.extend_from_slice(format!("birnam_register_method_owner((void*)&__birnam_resumable_thunk_{index},__birnam_materialization_owner);\n").as_bytes());
         prepare_all.extend_from_slice(b"if(__birnam_resumable_prepare_");
         prepare_all.extend_from_slice(index.to_string().as_bytes());
         prepare_all.extend_from_slice(b"((void*)0)!=0U)return 1U;\n");
@@ -7920,9 +7937,10 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
         note_error(b"RustCodegen could not create a Tcc unit");
         return api.nilObj;
     }
+    let roots = EvaluationRoots::new(unit);
     let c_source = unsafe { (birnam_abi::string::make)(source.bytes.as_ptr(), source.bytes.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit, false) }
+        || !unsafe { bind_global_shims(api, unit, true) }
         || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
@@ -7943,21 +7961,13 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
     // unit remains relocated but uninstalled for this direct invocation.
     let entry: Method = unsafe { core::mem::transmute(address) };
     let result = unsafe { entry(api.nilObj, ptr::null(), 0) };
+    roots.retain(result);
     #[cfg(feature = "test-evaluator-lifetime")]
     assert!(
         !unsafe { (api.vtableOf)(unit) }.is_null(),
         "evaluator Unit reclaimed during direct entry"
     );
-    // A persisting source can install blocks as methods or store them in
-    // globals. Those closures point into this TCC unit, so keep the unit live
-    // exactly as the native evaluator does for any program containing `__blk`.
-    // One-shot programs with no blocks have no native code reachable after the
-    // entry returns and may be reclaimed immediately.
-    if source.bytes.windows(5).any(|window| window == b"__blk") {
-        retain_unit(unit);
-    } else {
-        unsafe { dispose_unit(api, unit) };
-    }
+    unsafe { dispose_unit(api, unit) };
     let _ = self_object;
     result
 }
@@ -13114,6 +13124,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         let globals = unsafe { birnam_abi::namespace_import::import(imports, GLOBALS_NAME.as_ptr().cast()) };
         let store = unsafe { birnam_abi::namespace_import::import(imports, STORE_NAME.as_ptr().cast()) };
         Runtime {
+            method_owners: unsafe { birnam_abi::method_owners::select(host_api) }.unwrap_or_else(|| abort("Codegen requires completed Method ownership")),
             api: api_pointer as usize, finalizers: finalizers as usize,
             settings: settings as usize,
             layouts: layouts as usize,

@@ -26,9 +26,15 @@ unsafe extern "C" fn compiler() -> *const birnam_abi::runtime_compiler::ApiV1 {
     COMPILER.with(core::ptr::from_ref)
 }
 unsafe extern "C" fn symbol(_: *mut c_void, name: *const c_char) -> *mut c_void {
-    assert_eq!(unsafe { CStr::from_ptr(name) }, c"birnam_runtime_compiler_provider_v1");
-    compiler as *const () as *mut c_void
+    match unsafe { CStr::from_ptr(name) }.to_bytes() {
+        b"birnam_runtime_compiler_provider_v1" => compiler as *const () as *mut c_void,
+        b"birnam_runtime_register_method_owner_v1" => register_owner as *const () as *mut c_void,
+        b"birnam_runtime_forget_method_owner_v1" => forget_owner as *const () as *mut c_void,
+        _ => panic!("unexpected Runtime dependency"),
+    }
 }
+unsafe extern "C" fn register_owner(_: *const c_void, _: Oop) -> i32 { panic!("commit fixture does not publish generated methods"); }
+unsafe extern "C" fn forget_owner(_: Oop) { panic!("commit fixture does not release generated methods"); }
 unsafe extern "C" fn intern(_: *const c_char) -> Oop { oop(10) }
 unsafe extern "C" fn identity(value: Oop) -> Oop { value }
 unsafe extern "C" fn method(_: Oop, _: Oop, _: Method) {}

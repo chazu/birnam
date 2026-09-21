@@ -12,7 +12,7 @@ use std::sync::atomic::Ordering;
 #[derive(Clone, Copy)]
 pub(crate) struct Access {
     pub id: Protocol,
-    pub lifetime: lifetime::OwnedV1,
+    pub lifetime: lifetime::OwnedV2,
     pub(crate) roots: root_registry::OwnedV1,
     allocate: Oop,
     pub(crate) allocation_size: NativeEntry,
@@ -224,7 +224,7 @@ unsafe extern "C" fn initialize(
     };
     let (roots, lifetime, namespace) = (
         roots as *const root_registry::OwnedV1,
-        lifetime as *const lifetime::OwnedV1,
+        lifetime as *const lifetime::OwnedV2,
         namespace as *const namespace_owner::OwnedV1,
     );
     if !unsafe {
@@ -253,7 +253,7 @@ unsafe extern "C" fn initialize(
 fn construct(
     id: Protocol,
     roots: root_registry::OwnedV1,
-    lifetime: lifetime::OwnedV1,
+    lifetime: lifetime::OwnedV2,
     namespace: namespace_owner::OwnedV1,
 ) -> Result<*mut birnam_abi::string::StringApiV1, Outcome> {
     let access = Access {

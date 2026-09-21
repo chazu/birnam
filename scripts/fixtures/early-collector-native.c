@@ -1,13 +1,13 @@
 /* Real installed collection implementation with no Runtime and explicit roots. */
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/root-registry-owner-v1/root_registry_owner_v1.h"
-#include "../../abi/fixtures/lifetime-v1/lifetime_v1.h"
+#include "../../abi/fixtures/lifetime-v2/lifetime_v2.h"
 #include "../../abi/fixtures/collection-state-v2/collection_state_v2.h"
 #include <assert.h>
 #include <string.h>
 static BirnamProtocol id;
 static CollectionStateV2 state;
-static LifetimeOwnedV1 lifetime;
+static LifetimeOwnedV2 lifetime;
 static void *kept,*dead,*weak,*behavior,*size_selector;
 static size_t finalized;
 static BirnamOutcome send(void *receiver,void *selector,const BirnamOperand *args,size_t count) {
@@ -74,7 +74,7 @@ static int extended_collect(void *context,const CollectorV1 *base,const Collecto
 static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOperand *args,size_t count) {
     assert(count==4);id=*protocol;state=*(CollectionStateV2 *)args[0].data.word;
     RootRegistryOwnedV1 roots=*(RootRegistryOwnedV1 *)args[1].data.word;
-    lifetime=*(LifetimeOwnedV1 *)args[2].data.word;
+    lifetime=*(LifetimeOwnedV2 *)args[2].data.word;
     assert(state.version==2 && state.byte_size==sizeof(state));
     assert(state.collector->version==3 && state.collector->byte_size==sizeof(CollectorV3));
     saved=*state.collector; /* Copied before an extension exists. */
@@ -106,6 +106,22 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
     dead=kept;kept=NULL;collected=99;
     assert(state.collector->collect(state.collector->context,&input,&collected)==0 && collected>=1);
     assert(finalized==2 && !allocated(dead));
+    /* Native references are edges of their owners, not permanent roots.
+       The behavior/Unit cycle survives a rooted edge, then collects together. */
+    kept=send(base,name("allocate"),&zero,1).value.data.object;
+    void *edge_behavior=send(base,name("delegated"),NULL,0).value.data.object;
+    void *edge_unit=send(base,name("allocate"),&zero,1).value.data.object;
+    lifetime.set_edge(lifetime.context,kept,1,edge_behavior);
+    lifetime.set_edge(lifetime.context,edge_behavior,2,edge_unit);
+    lifetime.set_edge(lifetime.context,edge_unit,3,edge_behavior);
+    assert(lifetime.edges(lifetime.context,edge_behavior).count==1);
+    assert(state.collector->collect(state.collector->context,&input,&collected)==0);
+    assert(allocated(edge_behavior) && allocated(edge_unit));
+    lifetime.set_edge(lifetime.context,kept,1,NULL);
+    assert(state.collector->collect(state.collector->context,&input,&collected)==0);
+    assert(!allocated(edge_behavior) && !allocated(edge_unit));
+    assert(!lifetime.edges(lifetime.context,edge_behavior).count);
+    kept=NULL;
     extension_root=send(base,name("allocate"),&zero,1).value.data.object;
     caller_root=send(base,name("allocate"),&zero,1).value.data.object;
     extension=(CollectorExtensionV1){&extension,extended_trace,extended_collect};

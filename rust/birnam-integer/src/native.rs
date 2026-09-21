@@ -403,7 +403,7 @@ pub(crate) unsafe fn extend_binding(instance: &Instance, name: &[u8]) -> bool {
 fn construct(
     id: Protocol,
     roots: root_registry::OwnedV1,
-    lifetime: lifetime::OwnedV1,
+    lifetime: lifetime::OwnedV2,
     values: base_values::ValuesV1,
     namespace: namespace_owner::OwnedV1,
     string: StringApiV1,
@@ -527,7 +527,7 @@ unsafe extern "C" fn initialize(
     };
     let (roots, lifetime, values, namespace, string) = (
         roots as *const root_registry::OwnedV1,
-        lifetime as *const lifetime::OwnedV1,
+        lifetime as *const lifetime::OwnedV2,
         values as *const base_values::ValuesV1,
         namespace as *const namespace_owner::OwnedV1,
         string as *const StringApiV1,

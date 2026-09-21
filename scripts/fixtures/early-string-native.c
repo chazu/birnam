@@ -1,7 +1,7 @@
 /* Exercise production byte ownership before values/Runtime and after adoption. */
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/root-registry-owner-v1/root_registry_owner_v1.h"
-#include "../../abi/fixtures/lifetime-v1/lifetime_v1.h"
+#include "../../abi/fixtures/lifetime-v2/lifetime_v2.h"
 typedef void (*Finalizer)(void *);
 typedef struct IdApi IdApi;
 #include "../../abi/fixtures/string-v1/string_v1.h"
@@ -9,7 +9,7 @@ typedef struct IdApi IdApi;
 #include <string.h>
 static BirnamProtocol id;
 static RootRegistryOwnedV1 roots;
-static LifetimeOwnedV1 lifetime;
+static LifetimeOwnedV2 lifetime;
 static StringApiV1 *ops;
 static void *value, *copy, *allocation_override;
 static const uint8_t expected[]={ 'a',0,255,'z' };
@@ -75,7 +75,7 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
     assert(count==4 && args[0].kind==BIRNAM_WORD && args[1].kind==BIRNAM_WORD && args[2].kind==BIRNAM_WORD && args[3].kind==BIRNAM_WORD);
     assert(!tokens[0] && !tokens[1]);
     id=*protocol; roots=*(RootRegistryOwnedV1 *)args[0].data.word;
-    ops=(StringApiV1 *)args[1].data.word; lifetime=*(LifetimeOwnedV1 *)args[2].data.word;
+    ops=(StringApiV1 *)args[1].data.word; lifetime=*(LifetimeOwnedV2 *)args[2].data.word;
     assert(ops->version==1 && ops->byte_size==sizeof(*ops));
     assert(ops->storage->version==1 && ops->storage->byte_size==sizeof(*ops->storage));
     assert(ops->storage->cleanup_owner(ops->storage->cleanup)==ops->context);

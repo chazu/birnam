@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Retain anonymous compiled Units through reflected Methods and aliased method
+  bindings, including synchronous and resumable Blocks. Lifetime v2 traces
+  references held in native state without keeping unreachable cycles alive.
+  Removing a binding defers its Unit's release until the outer turn returns.
+  Ordinary source Units and their caches now collect when their last live
+  reference disappears. Synchronous generated invocation checks arity and
+  Block capture storage.
+
 - Add owned Method values for language reflection. Retain exact implementations
   across replacement, removal and collection; preserve native contexts and
   generated-code leases. TCC and Portable Code use checked language sends.

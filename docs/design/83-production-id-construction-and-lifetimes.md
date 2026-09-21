@@ -11,7 +11,8 @@
 > Runtime/compiler code is in a separate upper library loaded through Id. Native
 > Block and native value/control operations now precede compiler modules.
 > Compiler admission is now a later explicit extension. Language reflection now
-> returns owned Methods; unsafe native consumers and the full entry-level
+> returns owned Methods, including anonymous synchronous/resumable Units;
+> native binding references live in Lifetime above Id. Unsafe native consumers and the full entry-level
 > construction manifest remain open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
@@ -556,10 +557,10 @@ explicit later extension; base Execution has its value dependencies at construct
 Language reflection now returns owned Methods through the checked language-send
 entry used by TCC and Portable Code. Unsafe native consumers still use the frozen
 raw Method convention. Registered generated implementations retain their
-generation; native functions retain their image. Anonymous synchronous TCC
-functions without registration are currently rejected by reflection rather than
-returned as borrowed addresses; their Unit ownership still needs integration.
-That work, native consumer migration and the complete construction graph remain
+generation; native functions retain their image. Anonymous synchronous and
+resumable TCC functions retain their owning Unit. Bindings retain that same Unit
+through Lifetime v2 native references, without permanently rooting unreachable
+cycles. Native consumer migration and the complete construction graph remain
 unfinished. See [the language boundary](../../abi/language-send-v1.md).
 
 The Method production check is `scripts/method-values-smoke.sh PREFIX`, also
@@ -642,7 +643,7 @@ predecessors are Id and the complete native factories returned by
 Those factories construct their public capabilities with Lifetime's own working
 admission, membership and record operations. They do not point forward to Runtime.
 
-[`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
+[`LifetimeOwnedV2`](../../abi/fixtures/lifetime-v2/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
 that owner through `birnam_runtime_init_v11`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
@@ -1841,3 +1842,82 @@ method/factory replacement. The storage-observation suite also passes across
 source, compiled, mapped, rebuilt and baked execution, including host-side BUSY
 checks, nested rejection, visitor failure cleanup, roots and allocation identity.
 The diagnostic `ffi-test-hooks` Runtime configuration still type-checks.
+
+### Owned Methods and anonymous compiled Units
+
+Language reflection now returns an owned Method, preserving the exact native
+function/context pair. `Object methodFor:`, `Vtable methodFor:`,
+`Method invokeOn:`, `invokeOn:arguments:` and `Vtable addMethod:as:` use this
+representation. TCC and Portable Code select the completed checked language-send
+entry during construction. Invalid language lookup results become errors rather
+than executable addresses. The unsafe legacy `IdApi.send` convention remains a
+migration boundary. See [the language contract](../../abi/language-send-v1.md).
+
+A Method retains its TCC Unit in an ordinary traced slot when its function comes
+from anonymous compilation. Registered resumable functions additionally retain
+their generation lease; other native functions retain their mapped image.
+Native authors still own arbitrary native context memory and its object roots.
+Method invocation roots the Method, receiver and arguments across callbacks.
+Image saving rejects process-local Methods, including those with private behavior,
+as `methodNotImageable`.
+
+TCC and Codegen select completed register/forget operations from Runtime before
+publishing their interfaces. TCC registers each generated address and owning Unit
+before publishing bindings, and forgets weak address records before finalization.
+Portable synchronous nested functions and resumable thunks use the same path.
+Retaining the Unit is necessary because generated nested Block constructors read
+that object as well as execute its native code.
+
+Ordinary source-written Blocks use this path too. TCC fills a generated Unit
+reference before publishing relocated code, and generated Block installation
+registers the function with that Unit. Source evaluation no longer permanently
+retains every Unit containing a Block. It roots active evaluation and outward
+results, uses a Unit-owned cache, and registers normal finalization after
+evaluation. Surviving Blocks, Methods and bindings determine the Unit's lifetime.
+The separate-turn lifetime check covers this source path as well.
+
+[Lifetime v2](../../abi/fixtures/lifetime-v2/README.md) adds native references
+indexed by source object and a native key. Runtime uses behavior/selector keys
+to retain a bound function's Unit. Trace visits these references only from live
+source objects, allowing unreachable Unit/behavior cycles to collect. Removing
+or replacing a binding takes effect immediately and retains the previous Unit
+until the outer turn returns. This covers lookup that sends more messages or
+triggers collection before the original dispatch finishes. Id has no new fields,
+dependencies or executable-lifetime policy.
+
+Synchronous portable Block entries validate arity, payload extent and traced
+capture slots before reading captures. A String with enough bytes is not a valid
+capture vector. No native pointer validation or sandboxing is introduced.
+
+Acceptance uses the normal production installer and independent native-loading
+fixtures. `method-values-smoke.sh` covers source, source-free compiled modules,
+mapped/rebuilt images and baked executables, including live replacement/removal,
+aliases, callback GC, malformed lookup results, capture checks and image rejection.
+`method-unit-lifetime-smoke.sh` checks synchronous/resumable reflection and alias
+survival after eviction/GC, followed by eventual Unit release across outer turns.
+The native collector fixture additionally checks retention and collection of a
+native-reference cycle before Runtime is present. These are production paths,
+not a separate bootstrap experiment.
+
+Remaining Designs 82/83 work includes unsafe native consumers and legacy
+constructors, the complete entry/predecessor manifest, migration of diagnostic
+drivers, worker/image acceptance and the final requirement-by-requirement audit.
+The ownership work does not establish completion of those requirements.
+
+The expanded ownership checks use the debug installation
+`/tmp/birnam-83-method-ownership`. Separate REPL turns prove eventual native Unit
+release for source, synchronous and resumable Blocks. Method source/compiled/
+mapped/rebuilt/baked checks pass, including source-written Block reflection and
+wrong-arity invocation. ABI, Runtime, Codegen, Codegen Runtime, TCC and Trace
+unit checks pass; the normal installed Portable Code runner reports 114 assertions.
+The native prefix suite covers Lifetime v2 before Runtime and its later adoption.
+Storage observation also passes source, compiled, mapped, rebuilt and baked
+execution, including host observation, nested BUSY rejection, visitor cleanup,
+root preservation and allocation identity after GC. Release validation is waived.
+
+Full forced-source acceptance remains open: with `BIRNAM_FORCE_SOURCE=1`, the
+Portable Code runner exits zero without executing any assertions. The same
+runner does this on the preceding `cf5ace60` installation, whose installed
+Codegen/TCC sources match that commit. Scalar forced-source execution works.
+Zero exit status without assertion output is not evidence of suite success;
+resolve this alongside the outstanding worker and image-authority acceptance.

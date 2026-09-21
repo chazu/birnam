@@ -29,6 +29,13 @@ struct Compiler {
     next_function: u32,
 }
 
+pub(crate) fn emit_entry_checks(output: &mut Vec<u8>, parameters: u32, captures: u32) {
+    output.extend_from_slice(format!("if(n!={parameters})return birnam_nil();\n").as_bytes());
+    if captures != 0 {
+        output.extend_from_slice(format!("if(!birnam_block_captures_valid(self,{captures}UL))return birnam_nil();\n").as_bytes());
+    }
+}
+
 /// Compile one canonical Block program and all nested synchronous Block
 /// programs into a self-contained JIT translation unit. The namespace remains
 /// an input to the frozen compiler contract even though this first bounded
@@ -62,7 +69,7 @@ impl Compiler {
     fn compile_program(&mut self, bytes: &[u8], function_index: u32) -> Result<(), Error> {
         let program = portable_program::inspect(bytes).map_err(|_| Error::InvalidProgram)?;
         let mut body = Vec::new();
-        body.extend_from_slice(b"(void)n;\n");
+        emit_entry_checks(&mut body, program.parameter_count, program.capture_count);
         for index in 0..program.parameter_count {
             body.extend_from_slice(b"void* __b");
             decimal(&mut body, index);
@@ -213,12 +220,12 @@ impl Compiler {
             .ok_or(Error::QuantityOverflow)?;
         self.compile_program(nested_bytes, function_index)?;
         output.extend_from_slice(
-            b"({void* vt=birnam_proto(birnam_blockVt());if(vt){birnam_method(vt,birnam_intern(\"",
+            b"({void* vt=birnam_proto(birnam_blockVt());if(vt){birnam_owned_method(vt,birnam_intern(\"",
         );
         push_block_selector(output, nested.parameter_count)?;
         output.extend_from_slice(b"\"),(void*)&__birnam_portable_block_");
         decimal(output, function_index);
-        output.extend_from_slice(b");birnam_layoutAllOops(vt);}static const unsigned char pp[]={");
+        output.extend_from_slice(b",__birnam_materialization_owner);birnam_layoutAllOops(vt);}static const unsigned char pp[]={");
         for (index, byte) in nested_bytes.iter().enumerate() {
             if index != 0 {
                 output.push(b',');

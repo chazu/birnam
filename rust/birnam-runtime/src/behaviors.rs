@@ -212,7 +212,7 @@ impl Behaviors {
         self.require_registered(vtable);
         self.layouts.view(vtable)
     }
-    pub(crate) fn lifetime_owner(&self) -> Option<birnam_abi::lifetime::OwnedV1> { self.layouts.native_owner() }
+    pub(crate) fn lifetime_owner(&self) -> Option<birnam_abi::lifetime::OwnedV2> { self.layouts.native_owner() }
     pub(crate) fn layout_api(&self) -> *mut birnam_abi::payload_layout::ApiV1 {
         self.layouts.api()
     }

@@ -206,6 +206,7 @@ pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool
 #[derive(Clone, Copy)]
 struct Runtime {
     send: birnam_abi::language::Send,
+    method_owners: birnam_abi::method_owners::Api,
     api: usize,
     finalizers: usize,
     layouts: usize,
@@ -355,6 +356,7 @@ unsafe fn unit_snapshot(object: Oop) -> Option<(*mut TccState, UnitPhase)> {
 }
 
 unsafe fn release_payload(payload: *mut UnitPayload) {
+    if let Some(runtime) = RUNTIME.get() { unsafe { (runtime.method_owners.forget)(payload.cast()) }; }
     unit_cache::forget(payload.cast());
     // SAFETY: the finalizer owns the one-way transition and clears the pointer
     // before calling foreign code, so a repeated finalizer cannot double free.
@@ -603,6 +605,13 @@ unsafe extern "C" fn m_relocate(self_object: Oop, _args: *const Oop, _count: usi
     if relocated < 0 {
         return api.nilObj;
     }
+    // Generated methods can be published only after relocation. Complete their
+    // Unit reference now, so ordinary source Blocks use the same binding and
+    // reflection ownership as explicit portable materializations.
+    let owner = unsafe { tcc_get_symbol(state, c"__birnam_native_unit".as_ptr()) };
+    if !owner.is_null() {
+        unsafe { owner.cast::<Oop>().write(self_object) };
+    }
     if let Some(payload) = unsafe { unit_payload(self_object) } {
         // SAFETY: no foreign call is active while the phase byte changes.
         unsafe { (*payload).phase = UnitPhase::Relocated };
@@ -669,6 +678,9 @@ unsafe extern "C" fn m_install(self_object: Oop, args: *const Oop, count: usize)
     // SAFETY: these IdApi calls are the host's canonical vtable mutation path;
     // no Rust reference is held across either callback.
     let private_vtable = unsafe { birnam_abi::ensure_private_vtable(api, target) };
+    if unsafe { (runtime.method_owners.register)(symbol, self_object) } != 1 {
+        return api.nilObj;
+    }
     unsafe { (api.method)(private_vtable, selector, method) };
     if let Some(payload) = unsafe { unit_payload(self_object) } {
         // SAFETY: the unit remains live and no foreign call is active.
@@ -678,6 +690,7 @@ unsafe extern "C" fn m_install(self_object: Oop, args: *const Oop, count: usize)
 }
 
 unsafe extern "C" fn unit_finalize(object: Oop) {
+    unsafe { (RUNTIME.get().expect("TCC initialized").method_owners.forget)(object) };
     if let Some(payload) = unsafe { unit_payload(object) } {
         unit_cache::forget(object);
         let state = unsafe { (*payload).state };
@@ -762,7 +775,7 @@ unsafe extern "C" fn m_disposable(self_object: Oop, _args: *const Oop, _count: u
     if state.is_null()
         || matches!(
             phase,
-            UnitPhase::Installed | UnitPhase::Disposable | UnitPhase::Released
+            UnitPhase::Disposable | UnitPhase::Released
         )
     {
         return api.nilObj;
@@ -1205,6 +1218,40 @@ pub unsafe extern "C" fn rt_method(vtable: Oop, selector: Oop, function: *mut c_
     unsafe { (api_ref(runtime).method)(vtable, selector, method) };
 }
 
+/// Publish a generated function together with its already live TCC Unit.
+/// # Safety
+/// Generated code supplies a Method function and its actual owning Unit.
+#[unsafe(export_name = "birnam_owned_method")]
+pub unsafe extern "C" fn rt_owned_method(vtable: Oop, selector: Oop, function: *mut c_void, owner: Oop) {
+    unsafe { rt_register_method_owner(function, owner); rt_method(vtable, selector, function); }
+}
+
+/// # Safety
+/// The generated Method function belongs to this live Unit.
+#[unsafe(export_name = "birnam_register_method_owner")]
+pub unsafe extern "C" fn rt_register_method_owner(function: *mut c_void, owner: Oop) {
+    let runtime = RUNTIME.get().expect("TCC initialized");
+    if unsafe { (runtime.method_owners.register)(function, owner) } != 1 {
+        abort("generated method owner registration failed");
+    }
+}
+
+/// # Safety
+/// The caller supplies a live language object.
+#[unsafe(export_name = "birnam_block_captures_valid")]
+pub unsafe extern "C" fn rt_block_captures_valid(object: Oop, count: usize) -> c_int {
+    let runtime = RUNTIME.get().expect("TCC initialized");
+    let api = unsafe { api_ref(runtime) };
+    let Some(bytes) = count.checked_add(1).and_then(|words| words.checked_mul(size_of::<Oop>())) else { return 0; };
+    if unsafe { (api.objectPayloadSize)(object) } < bytes { return 0; }
+    let behavior = unsafe { (api.vtableOf)(object) };
+    // A payload of the right size may contain bytes or native pointers. Only
+    // traced object slots can supply a generated Block's captured values.
+    i32::from((1..=count).all(|word| unsafe {
+        birnam_abi::payload_layout::slot_kind(runtime.layouts as *const _, behavior, word) == SLOT_OOP
+    }))
+}
+
 #[unsafe(export_name = "birnam_alloc")]
 pub unsafe extern "C" fn rt_alloc(vtable: Oop, bytes: i64) -> Oop {
     let runtime = RUNTIME
@@ -1381,6 +1428,9 @@ static RUNTIME_SYMBOLS: &[RuntimeSymbol] = &[
         name: b"birnam_method\0",
         address: rt_method as *const c_void,
     },
+    RuntimeSymbol { name: b"birnam_owned_method\0", address: rt_owned_method as *const c_void },
+    RuntimeSymbol { name: b"birnam_register_method_owner\0", address: rt_register_method_owner as *const c_void },
+    RuntimeSymbol { name: b"birnam_block_captures_valid\0", address: rt_block_captures_valid as *const c_void },
     RuntimeSymbol {
         name: b"birnam_alloc\0",
         address: rt_alloc as *const c_void,
@@ -1447,6 +1497,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         }
         Runtime {
             send: unsafe { birnam_abi::language::select(api) }.unwrap_or_else(|| abort("TCC requires checked language send")),
+            method_owners: unsafe { birnam_abi::method_owners::select(api) }.unwrap_or_else(|| abort("TCC requires completed Method ownership")),
             api: api_pointer as usize, finalizers: finalizers as usize,
             layouts: layouts as usize,
             hooks: hooks as usize,

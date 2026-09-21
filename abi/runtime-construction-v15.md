@@ -11,7 +11,8 @@ The arguments, in order, are pointers to:
 1. `id_protocol::Protocol`: borrowed Id carrier, retained by the caller for
    Runtime's lifetime; its context is opaque to Runtime.
 2. `root_registry::OwnedV1`: transferred root registry owner.
-3. `lifetime::OwnedV1`: transferred Lifetime owner.
+3. `lifetime::OwnedV2`: transferred Lifetime owner, including complete
+   [native reference records](fixtures/lifetime-v2/README.md).
 4. `base_values::ValuesV1`: borrowed completed Nil/Boolean identities.
 5. `namespace_owner::OwnedV1`: transferred Namespace owner.
 6. `object_model::OwnedV1`: transferred Object Model owner.

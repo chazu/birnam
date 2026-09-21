@@ -3152,7 +3152,7 @@ pub struct InitialFloor {
     source_path: PathBuf,
     handle: NonNull<std::ffi::c_void>,
     primitives: Option<birnam_abi::id_primitives::PrimitivesV1>,
-    lifetime: Option<*const birnam_abi::lifetime::OwnedV1>,
+    lifetime: Option<*const birnam_abi::lifetime::OwnedV2>,
     base_values: Option<*const birnam_abi::base_values::ValuesV1>,
     namespace: Option<*const birnam_abi::namespace_owner::OwnedV1>,
     model: Option<*const birnam_abi::object_model::OwnedV1>,
@@ -3202,7 +3202,7 @@ impl InitialFloor {
     pub fn roots(&self) -> Option<*const birnam_abi::root_registry::OwnedV1> { self.roots }
     /// Construct complete payload, trace-hook and finalizer records through Id.
     /// This is the same step used by ordinary production startup.
-    pub fn initialize_lifetime(&mut self) -> Result<Option<*const birnam_abi::lifetime::OwnedV1>, FloorError> {
+    pub fn initialize_lifetime(&mut self) -> Result<Option<*const birnam_abi::lifetime::OwnedV2>, FloorError> {
         if self.lifetime.is_some() { return Ok(self.lifetime); }
         self.initialize_roots()?;
         use birnam_abi::id_protocol::{self as native, Operand};
@@ -3217,7 +3217,7 @@ impl InitialFloor {
         let hooks = load("libbirnam_trace_hooks.dylib", &[])?;
         let finalizers = load("libbirnam_finalizers.dylib", &[])?;
         let answer = load("libbirnam_lifetime.dylib", &[layout, hooks, finalizers])?;
-        let pointer = answer.as_word().unwrap_or(0) as *const birnam_abi::lifetime::OwnedV1;
+        let pointer = answer.as_word().unwrap_or(0) as *const birnam_abi::lifetime::OwnedV2;
         if !unsafe { birnam_abi::lifetime::valid(pointer) } {
             return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 });
         }

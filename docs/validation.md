@@ -30,6 +30,10 @@ The `method-values` step checks owned callable reflection through source,
 source-free compiled modules, mapped/rebuilt images and baked executables,
 including replacement, removal, callback GC and process-local image rejection.
 For a prebuilt debug installation, run `scripts/method-values-smoke.sh PREFIX`.
+The `method-unit-lifetime` step uses separate REPL turns to verify that retained
+Methods and aliases keep source and anonymous synchronous/resumable Units callable after
+cache eviction and GC, then release them after the last binding is removed.
+Run `scripts/method-unit-lifetime-smoke.sh PREFIX` against a debug installation.
 
 Each build and matrix writes progress and its log under `.cargo-target/validation`.
 Full matrix coverage is checked by the existing coordinate and semantic oracles.

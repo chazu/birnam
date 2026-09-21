@@ -102,7 +102,7 @@ unsafe extern "C" fn destroy(context: *mut c_void) {
     let namespace = unsafe { Box::from_raw(namespace) };
     unsafe { super::destroy(namespace.owned.storage) };
 }
-fn construct(id: Protocol, registry: root_registry::OwnedV1, records: lifetime::OwnedV1, values: base_values::ValuesV1) -> Result<*const OwnedV1, Outcome> {
+fn construct(id: Protocol, registry: root_registry::OwnedV1, records: lifetime::OwnedV2, values: base_values::ValuesV1) -> Result<*const OwnedV1, Outcome> {
     let prototype = send(id, id.receiver, intern(id, b"objectPrototype")?, &[])?;
     let parent = send(id, id.receiver, intern(id, b"behaviorOf:")?, &[prototype])?.as_object().ok_or_else(invalid)?;
     let behavior = send(id, parent, intern(id, b"delegated")?, &[])?.as_object().ok_or_else(invalid)?;
@@ -147,7 +147,7 @@ unsafe extern "C" fn initialize(id: *const Protocol, args: *const Operand, count
     if id.is_null() { return invalid(); }
     let Some([registry, records, values]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
     let (Some(registry), Some(records), Some(values)) = (registry.as_word(), records.as_word(), values.as_word()) else { return invalid(); };
-    let (registry, records, values) = (registry as *const root_registry::OwnedV1, records as *const lifetime::OwnedV1, values as *const base_values::ValuesV1);
+    let (registry, records, values) = (registry as *const root_registry::OwnedV1, records as *const lifetime::OwnedV2, values as *const base_values::ValuesV1);
     if !unsafe { root_registry::valid_owned(registry) && lifetime::valid(records) && base_values::valid(values) } { return invalid(); }
     let id = unsafe { *id };
     // Duplicate construction is an error, including after partial publication.

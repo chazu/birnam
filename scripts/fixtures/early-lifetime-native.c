@@ -1,12 +1,12 @@
 /* Real native records before Runtime; tracing/finalization after adoption. */
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/root-registry-owner-v1/root_registry_owner_v1.h"
-#include "../../abi/fixtures/lifetime-v1/lifetime_v1.h"
+#include "../../abi/fixtures/lifetime-v2/lifetime_v2.h"
 #include <assert.h>
 #include <string.h>
 static BirnamProtocol id;
 static RootRegistryOwnedV1 roots;
-static LifetimeOwnedV1 lifetime;
+static LifetimeOwnedV2 lifetime;
 static void *objects[5], *behaviors[3];
 static size_t identities[5], token, finalized, traced;
 static BirnamObject identity;
@@ -64,8 +64,8 @@ static BirnamOutcome release_root(void *context, void *receiver, const BirnamOpe
 static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOperand *args,size_t count) {
     assert(count==2 && args[0].kind==BIRNAM_WORD && args[1].kind==BIRNAM_WORD);
     id=*protocol; roots=*(RootRegistryOwnedV1 *)args[0].data.word;
-    lifetime=*(LifetimeOwnedV1 *)args[1].data.word;
-    assert(lifetime.version==1 && lifetime.byte_size==sizeof(lifetime));
+    lifetime=*(LifetimeOwnedV2 *)args[1].data.word;
+    assert(lifetime.version==2 && lifetime.byte_size==sizeof(lifetime));
     identity=name("identityOf:");
     BirnamOutcome prototype=send(id.receiver,name("objectPrototype"),NULL,0);
     void *parent=send(id.receiver,name("behaviorOf:"),&prototype.value,1).value.data.object;

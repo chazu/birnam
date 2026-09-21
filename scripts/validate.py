@@ -40,6 +40,9 @@ def plan(suite, prefix, output):
         result.append(step('method-values', ['bash', 'scripts/method-values-smoke.sh', prefix],
                            PRODUCTION + ('scripts/method-values-smoke.sh',),
                            depends=('install',), timeout=600))
+        result.append(step('method-unit-lifetime', ['bash', 'scripts/method-unit-lifetime-smoke.sh', prefix],
+                           PRODUCTION + ('scripts/method-unit-lifetime-smoke.sh',),
+                           depends=('install',), timeout=300))
     result.append(step('floor-discovery', ['python3', 'scripts/floor-discovery-test.py',
                        '--prefix', prefix, '--output', output/'floor-discovery.json'],
                        PRODUCTION + ('scripts/floor-discovery-test.py', 'scripts/fixtures/floor-lookup.c',

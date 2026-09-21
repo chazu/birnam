@@ -1,6 +1,6 @@
 /* Production activation and saved collecting constructors, without Runtime. */
 #include "../../abi/fixtures/collection-state-v2/collection_state_v2.h"
-#include "../../abi/fixtures/lifetime-v1/lifetime_v1.h"
+#include "../../abi/fixtures/lifetime-v2/lifetime_v2.h"
 #include "../../abi/fixtures/integer-v1/integer_v1.h"
 #include <assert.h>
 #include <string.h>
@@ -8,7 +8,7 @@ static BirnamProtocol id;
 static CollectionStateV2 owner;
 static BootstrapOwnedV2 bootstrap;
 static RootRegistryOwnedV1 roots;
-static LifetimeOwnedV1 lifetime;
+static LifetimeOwnedV2 lifetime;
 static void *held[8],*size_selector;
 static IntegerApiV1 *integer;
 static size_t visits;
@@ -113,7 +113,7 @@ static BirnamOutcome exercise(void *context,void *receiver,const BirnamOperand *
 static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOperand *args,size_t count) {
     assert(count==6);id=*protocol;owner=*(CollectionStateV2 *)args[0].data.word;
     bootstrap=*(BootstrapOwnedV2 *)args[1].data.word;roots=*(RootRegistryOwnedV1 *)args[2].data.word;
-    lifetime=*(LifetimeOwnedV1 *)args[3].data.word;integer=(IntegerApiV1 *)args[5].data.word;
+    lifetime=*(LifetimeOwnedV2 *)args[3].data.word;integer=(IntegerApiV1 *)args[5].data.word;
     assert(!owner.collector->active(owner.collector->context));
     assert(bootstrap.pause(bootstrap.context,(BirnamNativeEntry){forbidden,NULL}).status==BIRNAM_INVALID_REQUEST);
     root_registry_register_v1(roots.api,provider); /* Before populating native ownership. */

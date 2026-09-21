@@ -44,7 +44,7 @@ impl Service {
     pub(crate) fn from_lifetime(owner: crate::lifetime::Shared) -> Self {
         Self { api: NonNull::new(owner.0.layouts).unwrap(), factory: unsafe { *owner.0.layout_factory }, native: Some(owner), records: Default::default() }
     }
-    pub(crate) fn native_owner(&self) -> Option<birnam_abi::lifetime::OwnedV1> { self.native.as_ref().map(|owner| owner.0) }
+    pub(crate) fn native_owner(&self) -> Option<birnam_abi::lifetime::OwnedV2> { self.native.as_ref().map(|owner| owner.0) }
     pub(crate) fn view(&self, object: crate::abi::Oop) -> ViewV1 {
         if let Some(owner) = &self.native { unsafe { (owner.0.layout)(owner.0.context, object) } }
         else { self.records.get(&object.addr()).map_or(ViewV1::UNSET, Owned::view) }

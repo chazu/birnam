@@ -108,7 +108,7 @@ fn binding_publication_retains_both_generations() {
 #[test]
 #[ignore = "requires a fresh process for root order and poison behavior"]
 fn root_order_and_source_lock_scope() {
-    LIVE_UNITS.lock().unwrap().push(1);
+    EVALUATOR_ROOTS.lock().unwrap().push(1);
     cache(0, false);
     assert!(stage_code_binding(
         20 as Oop, 21 as Oop, 22 as Oop, 23 as Oop, 24 as Oop, 25 as Oop, 125, [0; 32], 0

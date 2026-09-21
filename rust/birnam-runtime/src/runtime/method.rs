@@ -6,8 +6,8 @@
 //! implementation even after its binding is replaced or removed. `clone`
 //! preserves Method identity. `Vtable addMethod:as:` installs the captured entry.
 //!
-//! Methods retain registered generated code or the native image containing the
-//! implementation. Native contexts and their object roots remain the native
+//! Methods retain the owning TCC Unit, registered generated code, or the native
+//! image containing the implementation. Native contexts and their object roots remain the native
 //! author's responsibility. Methods are process-local; Image rejects durable
 //! instances with `methodNotImageable`. Create fresh Methods after image boot.
 use super::*;
@@ -18,6 +18,8 @@ use core::ffi::c_void;
 pub(super) struct Methods {
     behavior: Oop,
     values: crate::raw::AddressMap<Owned>,
+    owners: crate::raw::AddressMap<Oop>,
+    turn_owners: crate::raw::AddressMap<Oop>,
 }
 struct Roots<'a>(Vec<ScopedOopRootGuard<'a>>);
 impl Drop for Roots<'_> {
@@ -31,13 +33,87 @@ struct Owned {
     image: Option<crate::loader::MethodImage>,
 }
 impl Runtime {
+    pub(crate) fn register_method_owner(&self, function: *const c_void, owner: Oop) -> bool {
+        self.assert_owner();
+        if function.is_null()
+            || self.payload_size(owner).is_none()
+            || unsafe { (&*self.state.get()).vtables.lifetime_owner() }.is_none()
+        {
+            return false;
+        }
+        let mut methods = self.methods.borrow_mut();
+        if methods
+            .owners
+            .get(&function.addr())
+            .is_some_and(|previous| *previous != owner)
+        {
+            return false;
+        }
+        methods.owners.insert(function.addr(), owner);
+        true
+    }
+    pub(crate) fn forget_method_owner(&self, owner: Oop) {
+        self.assert_owner();
+        self.methods
+            .borrow_mut()
+            .owners
+            .retain(|_, value| *value != owner);
+    }
+    fn method_owner(&self, entry: NativeEntry) -> Oop {
+        crate::legacy_method::direct_method(entry)
+            .and_then(|method| {
+                self.methods
+                    .borrow()
+                    .owners
+                    .get(&method.as_oop().addr())
+                    .copied()
+            })
+            .unwrap_or(core::ptr::null_mut())
+    }
+    pub(crate) fn update_method_owner_edge(
+        &self,
+        behavior: Oop,
+        selector: Oop,
+        previous: Option<NativeEntry>,
+        current: Option<NativeEntry>,
+    ) {
+        let old = previous.map_or(core::ptr::null_mut(), |entry| self.method_owner(entry));
+        let new = current.map_or(core::ptr::null_mut(), |entry| self.method_owner(entry));
+        if old == new {
+            return;
+        }
+        if !old.is_null() && unsafe { (&*self.state.get()).execution.has_managed_turn() } {
+            self.methods
+                .borrow_mut()
+                .turn_owners
+                .insert(old.addr(), old);
+        }
+        let owner = unsafe { (&*self.state.get()).vtables.lifetime_owner() }
+            .expect("generated native methods require Lifetime");
+        unsafe { (owner.set_edge)(owner.context, behavior, selector.addr(), new) };
+    }
+    pub(crate) fn trace_method_turn_owners(&self, mark: MarkFn) {
+        let owners: Vec<_> = self
+            .methods
+            .borrow()
+            .turn_owners
+            .values()
+            .copied()
+            .collect();
+        for owner in owners {
+            unsafe { mark(owner) };
+        }
+    }
+    pub(crate) fn release_method_turn_owners(&self) {
+        self.methods.borrow_mut().turn_owners.clear();
+    }
     pub(crate) fn install_method_objects(&self) {
         if !self.methods.borrow().behavior.is_null() {
             return;
         }
         let behavior = self.create_vtable(self.globals().object_vt);
         let _behavior = ScopedOopRootGuard::new(self, behavior);
-        self.set_layout(behavior, core::ptr::null(), 0, crate::abi::SLOT_RAW);
+        self.set_layout(behavior, core::ptr::null(), 0, crate::abi::SLOT_OOP);
         let prototype = self.allocate_empty(behavior, Permanence::Permanent);
         self.set_vtable_owner(behavior, prototype);
         for (name, implementation) in [
@@ -77,6 +153,8 @@ impl Runtime {
             return self.canonical().nil;
         };
         let legacy = crate::legacy_method::direct_method(entry);
+        let owner = self.method_owner(entry);
+        let _owner = ScopedOopRootGuard::new(self, owner);
         let lease = match legacy
             .map(|method| self.try_acquire_stackless_generation_lease(method))
             .transpose()
@@ -91,12 +169,12 @@ impl Runtime {
         });
         // JIT implementations need registration ownership. A plain process
         // image can be retained directly; its native author owns its context.
-        let image = if lease.is_none() {
+        let image = if lease.is_none() && owner.is_null() {
             crate::loader::MethodImage::retain(address)
         } else {
             None
         };
-        if lease.is_none() && image.is_none() {
+        if lease.is_none() && image.is_none() && owner.is_null() {
             return self.native_language_outcome(Outcome::failed(native::INVALID_REQUEST, 0));
         }
         let behavior = self.methods.borrow().behavior;
@@ -104,7 +182,10 @@ impl Runtime {
             !behavior.is_null(),
             "Method representation is not constructed",
         );
-        let object = self.allocate_instance(behavior, 0);
+        let object = self.allocate_instance(behavior, size_of::<Oop>());
+        unsafe {
+            object.cast::<Oop>().write(owner);
+        }
         self.methods.borrow_mut().values.insert(
             object.addr(),
             Owned {

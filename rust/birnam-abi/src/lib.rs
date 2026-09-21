@@ -578,3 +578,4 @@ pub mod runtime_compiler;
 pub mod runtime_values;
 
 pub mod language;
+pub mod method_owners;

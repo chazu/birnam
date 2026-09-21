@@ -667,7 +667,7 @@ fn emit_block_literal(
                 .push(b"ULL);if(!v){v=birnam_vtable_cache_set(__birnam_code_generation_identity,");
             output.push(cache_index.to_string().as_bytes());
             output.push(
-                b"ULL,birnam_proto(birnam_blockVt()));if(v){birnam_method(v,birnam_intern(\"",
+                b"ULL,birnam_proto(birnam_blockVt()));if(v){birnam_generated_method(v,birnam_intern(\"",
             );
             if language_arity == 0 {
                 output.push(b"value");

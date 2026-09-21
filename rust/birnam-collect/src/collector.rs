@@ -19,7 +19,7 @@ pub(super) struct Collector {
     extension: Cell<Option<ExtensionV1>>,
     state: OwnedV2,
     graph: GraphV2,
-    lifetime: lifetime::OwnedV1,
+    lifetime: lifetime::OwnedV2,
     model: object_model::OwnedV1,
     receiver: Oop,
     allocations: NativeEntry,
@@ -42,7 +42,7 @@ impl Collector {
         id: Protocol,
         state: OwnedV2,
         graph: GraphV2,
-        lifetime: lifetime::OwnedV1,
+        lifetime: lifetime::OwnedV2,
         model: object_model::OwnedV1,
     ) -> Result<Box<Self>, Outcome> {
         let intern = |name: &[u8]| -> Result<Oop, Outcome> {

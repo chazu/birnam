@@ -1,5 +1,9 @@
 # Initialized Lifetime records v1
 
+This is the historical 144-byte contract. Current production returns
+[Lifetime v2](../lifetime-v2/README.md), which adds references held in native
+state. Keep this declaration for compatibility fixtures, not new consumers.
+
 `lifetime_v1.h` independently declares the 144-byte owner returned by
 `libbirnam_lifetime.dylib:birnam_native_module_v1`. Its three initializer operands
 are Words containing the complete payload-layout, trace-hooks and finalizers

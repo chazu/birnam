@@ -95,6 +95,11 @@ Method, or nil when it is absent. The Method retains that exact implementation:
 replacing or removing the binding changes future lookup, while the retained
 Method remains callable.
 
+This includes Methods from synchronous and resumable compiled Blocks. A Method
+keeps its compiled Unit alive after the original Block and Codegen cache release
+it. Installing that Method under another selector also retains the Unit until
+the binding is removed or its behavior becomes unreachable.
+
 ```birnam
 let addition := [Integer methodFor: #+];
 [addition invokeOn: 3 arguments: #[4]] // => 7

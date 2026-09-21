@@ -716,6 +716,16 @@ extern long birnam_candidate_preparing(void);
 extern void* birnam_proto(void* parent);
 extern void* birnam_blockVt(void);
 extern void birnam_method(void* vt, void* selector, void* method);
+extern void birnam_owned_method(void* vt, void* selector, void* method, void* owner);
+extern void birnam_register_method_owner(void* method, void* owner);
+extern int birnam_block_captures_valid(void* object,unsigned long count);
+/* TCC fills this before publishing the relocated Unit. Mapped artifacts use
+   their image/generation ownership and leave it null. */
+void* __birnam_native_unit;
+static void birnam_generated_method(void* vt,void* selector,void* method){
+  if(__birnam_native_unit)birnam_owned_method(vt,selector,method,__birnam_native_unit);
+  else birnam_method(vt,selector,method);
+}
 extern void birnam_layoutAllOops(void* vt);
 extern void* birnam_alloc(void* vt, long bytes);
 "#;
@@ -1373,7 +1383,9 @@ impl Emitter {
             self.function_defs
                 .extend_from_slice(method_number.to_string().as_bytes());
             self.function_defs
-                .extend_from_slice(b"(void* self, void** args, long n){ (void)n; void* a[");
+                .extend_from_slice(b"(void* self, void** args, long n){ if(n!=");
+            self.function_defs.extend_from_slice(arity.to_string().as_bytes());
+            self.function_defs.extend_from_slice(b")return birnam_nil(); void* a[");
             self.function_defs
                 .extend_from_slice((arity + 1).to_string().as_bytes());
             self.function_defs
@@ -1594,7 +1606,7 @@ impl Emitter {
                 .extend_from_slice(b"=birnam_vtable_cache_set(__birnam_code_generation_identity,");
             self.bytes.extend_from_slice(number.to_string().as_bytes());
             self.bytes
-                .extend_from_slice(b"ULL,birnam_proto(birnam_blockVt()));birnam_method(__vt");
+                .extend_from_slice(b"ULL,birnam_proto(birnam_blockVt()));birnam_generated_method(__vt");
             self.bytes.extend_from_slice(number.to_string().as_bytes());
             self.bytes.extend_from_slice(b", birnam_intern(\"");
             if program.parameter_count == 0 {
@@ -1728,6 +1740,7 @@ impl Emitter {
 
         let program = birnam_artifact::portable_program::inspect(portable_program)
             .map_err(|_| EmitError::Unsupported)?;
+        portable_c::emit_entry_checks(&mut self.bytes, program.parameter_count, program.capture_count);
         for index in 0..program.parameter_count {
             self.bytes.extend_from_slice(b"void* __b");
             self.bytes.extend_from_slice(index.to_string().as_bytes());
@@ -2914,7 +2927,7 @@ mod tests {
         emitter.emit_expr(&lowered).unwrap();
         let output = String::from_utf8(emitter.finish()).unwrap();
         assert!(output.starts_with(
-            "void* __blk0(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nvoid* __b0=args[0];\nvoid* __n0=__b0;\nvoid* __b1=__n0;\nvoid* __n1=__b1;\nreturn __n1;\n}"
+            "void* __blk0(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nif(n!=1)return birnam_nil();\nvoid* __b0=args[0];\nvoid* __n0=__b0;\nvoid* __b1=__n0;\nvoid* __n1=__b1;\nreturn __n1;\n}"
         ));
         assert!(output.contains("birnam_portable_code_admit_v1(__pp0,sizeof(__pp0))"));
         assert!(output.contains("birnam_portable_block_new_v1(__vt0,__co0,(void**)0,0UL)"));

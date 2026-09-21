@@ -1,14 +1,14 @@
 /* Independent C client of the actual native graph before Runtime and after GC. */
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/root-registry-owner-v1/root_registry_owner_v1.h"
-#include "../../abi/fixtures/lifetime-v1/lifetime_v1.h"
+#include "../../abi/fixtures/lifetime-v2/lifetime_v2.h"
 #include "../../abi/fixtures/object-model-owner-v1/object_model_owner_v1.h"
 #include "../../abi/fixtures/trace-graph-v2/trace_graph_v2.h"
 #include <assert.h>
 #include <string.h>
 static BirnamProtocol id;
 static RootRegistryOwnedV1 roots;
-static LifetimeOwnedV1 lifetime;
+static LifetimeOwnedV2 lifetime;
 static ObjectModelOwnedV1 model;
 static TraceGraphV2 graph;
 static void *objects[5], *behavior, *parent;
@@ -120,7 +120,7 @@ static BirnamOutcome check(void *context,void *receiver,const BirnamOperand *arg
 static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOperand *args,size_t count) {
     assert(count==5);id=*protocol;
     graph=*(TraceGraphV2 *)args[0].data.word;roots=*(RootRegistryOwnedV1 *)args[1].data.word;
-    lifetime=*(LifetimeOwnedV1 *)args[2].data.word;model=*(ObjectModelOwnedV1 *)args[3].data.word;
+    lifetime=*(LifetimeOwnedV2 *)args[2].data.word;model=*(ObjectModelOwnedV1 *)args[3].data.word;
     assert(graph.version==2 && graph.byte_size==sizeof(graph));
     if(args[4].data.word) assert(graph.validate(graph.context)==0);
     BirnamOutcome proto=send(id.receiver,name("objectPrototype"),NULL,0);

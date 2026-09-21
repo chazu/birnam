@@ -15,6 +15,11 @@ let main := [|
   [System preciseGc: true];
   let addition := [Integer methodFor: #+];
   [System println: [addition invokeOn: 3 arguments: #[4]]];
+  let sourceBlock := [:argument | argument];
+  let sourceMethod := [sourceBlock methodFor: #value:];
+  [System gc];
+  [System println: [sourceMethod invokeOn: sourceBlock arguments: #[74]]];
+  [System println: [[sourceMethod invokeOn: sourceBlock] isNil]];
   let target := [Object clone];
   [Reflect defineMethod: #methodValueAnswer on: target as: [:self | [System gc]; 71]];
   let original := [target methodFor: #methodValueAnswer];
@@ -46,13 +51,27 @@ let main := [|
   [Vtable reassociateBehaviorOf: malformedBehavior with: malformedMeta];
   [Reflect defineMethod: #lookup on: malformedMeta as: [:self :selector | 42]];
   [System println: [[malformed anything] kind]];
+  let capturedProgram := [CodeProgram parameters: #[] captures: #["held"] statements: #[[CodeStatement expression: [CodeNode lexicalReadAt: 0]]]];
+  let captured := [Codegen materializeSynchronous: [CodeObject fromProgram: capturedProgram] captures: #[51]];
+  let capturedMethod := [captured methodFor: #value];
+  [System println: [capturedMethod invokeOn: captured]];
+  [System println: [[capturedMethod invokeOn: nil] isNil]];
+  [System println: [[capturedMethod invokeOn: "large enough but not object slots"] isNil]];
+  [System println: [[capturedMethod invokeOn: captured arguments: #[1]] isNil]];
+  let innerProgram := [CodeProgram parameters: #[] captures: #[] statements: #[[CodeStatement expression: [CodeNode integer: 67]]]];
+  let outerProgram := [CodeProgram parameters: #[] captures: #[] statements: #[[CodeStatement expression: [CodeNode block: innerProgram captureBindings: #[]]]]];
+  let outer := [Codegen materializeSynchronous: [CodeObject fromProgram: outerProgram] captures: #[]];
+  let nested := [[outer value] methodFor: #value];
+  [Codegen evictMaterializations];
+  [System gc];
+  [System println: [nested invokeOn: nil]];
   [System preciseGc: false];
   [System println: "method-values-ok"]
 ];
 BIRNAM
 cat "$scratch/body.birnam" >"$scratch/probe.birnam"
 printf '[main value]\n' >>"$scratch/probe.birnam"
-printf '7\n92\ntrue\n71\n92\n71\ntrue\n71\n#nativeInvalidRequest\nmethod-values-ok\n' >"$scratch/expected.out"
+printf '7\n74\ntrue\n92\ntrue\n71\n92\n71\ntrue\n71\n#nativeInvalidRequest\n51\ntrue\ntrue\ntrue\n67\nmethod-values-ok\n' >"$scratch/expected.out"
 "$bin" "$scratch/probe.birnam" >"$scratch/source.out" 2>"$scratch/source.err"
 test ! -s "$scratch/source.err"
 cmp "$scratch/expected.out" "$scratch/source.out"

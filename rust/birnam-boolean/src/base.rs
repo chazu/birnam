@@ -36,7 +36,7 @@ fn send(id: Protocol, receiver: Oop, selector: Oop, args: &[Operand]) -> Result<
 fn intern(id: Protocol, name: &[u8]) -> Result<Oop, Outcome> {
     send(id, id.receiver, id.intern, &[Operand::bytes(name)])?.as_object().ok_or_else(invalid)
 }
-fn construct(id: Protocol, roots: root_registry::OwnedV1, records: lifetime::OwnedV1) -> Result<*const ValuesV1, Outcome> {
+fn construct(id: Protocol, roots: root_registry::OwnedV1, records: lifetime::OwnedV2) -> Result<*const ValuesV1, Outcome> {
     let prototype = send(id, id.receiver, intern(id, b"objectPrototype")?, &[])?;
     let behavior = send(id, id.receiver, intern(id, b"behaviorOf:")?, &[prototype])?.as_object().ok_or_else(invalid)?;
     let delegated = intern(id, b"delegated")?;
@@ -76,7 +76,7 @@ unsafe extern "C" fn initialize(id: *const Protocol, args: *const Operand, count
     let Some([roots, records]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
     let Some((roots, records)) = roots.as_word().zip(records.as_word()) else { return invalid(); };
     let roots = roots as *const root_registry::OwnedV1;
-    let records = records as *const lifetime::OwnedV1;
+    let records = records as *const lifetime::OwnedV2;
     if !unsafe { root_registry::valid_owned(roots) && lifetime::valid(records) } { return invalid(); }
     let id = unsafe { *id };
     let existing = BASE.load(Ordering::Acquire);

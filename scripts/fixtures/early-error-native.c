@@ -1,7 +1,7 @@
 /* The actual Error library constructs and propagates values before numbers. */
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/root-registry-owner-v1/root_registry_owner_v1.h"
-#include "../../abi/fixtures/lifetime-v1/lifetime_v1.h"
+#include "../../abi/fixtures/lifetime-v2/lifetime_v2.h"
 #include "../../abi/fixtures/namespace-owner-v1/namespace_owner_v1.h"
 #include "../../abi/fixtures/base-values-v1/base_values_v1.h"
 typedef void (*Finalizer)(void *);
@@ -11,7 +11,7 @@ typedef struct IdApi IdApi;
 #include <string.h>
 static BirnamProtocol id;
 static RootRegistryOwnedV1 roots;
-static LifetimeOwnedV1 lifetime;
+static LifetimeOwnedV2 lifetime;
 static NamespaceOwnedV1 namespace;
 static BaseValuesV1 values;
 static StringApiV1 *string;
@@ -87,7 +87,7 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
     for(size_t i=0;i<5;i++) assert(args[i].kind==BIRNAM_WORD);
     assert(args[5].kind==BIRNAM_OBJECT && args[6].kind==BIRNAM_WORD);
     id=*protocol; roots=*(RootRegistryOwnedV1 *)args[0].data.word;
-    lifetime=*(LifetimeOwnedV1 *)args[1].data.word;
+    lifetime=*(LifetimeOwnedV2 *)args[1].data.word;
     namespace=*(NamespaceOwnedV1 *)args[2].data.word;
     values=*(BaseValuesV1 *)args[3].data.word;
     string=(StringApiV1 *)args[4].data.word; factory=args[5].data.object;
