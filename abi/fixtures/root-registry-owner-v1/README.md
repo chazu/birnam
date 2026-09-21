@@ -30,7 +30,7 @@ finalizers. Native pointer arguments and callback lifetimes remain the caller's
 responsibility.
 
 The installed `scripts/id-native-loading-smoke.py PREFIX` exercises the actual
-production prefix with only Id and this module available. Independent C retains
+production prefix with only Id, Bootstrap and this module available. Independent C retains
 an otherwise unrooted object before Runtime exists; the same registry is adopted
 by ordinary host construction, and collection observes retention and release.
 This is root ownership only. Complete Lifetime payload/finalizer ownership and

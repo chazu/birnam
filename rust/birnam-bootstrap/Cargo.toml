@@ -1,0 +1,13 @@
+[package]
+name = "birnam-bootstrap"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+[dependencies]
+birnam-abi = { path = "../birnam-abi" }
+[lib]
+name = "birnam_bootstrap"
+crate-type = ["cdylib"]
+[lints]
+workspace = true

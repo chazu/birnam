@@ -10,18 +10,25 @@ loader ports are complete.
 
 ### Changed
 
+- Load Bootstrap immediately after Id and retain native initialization results
+  before Lifetime exists (Design 83). Transfer the early roots into the actual
+  root registry, retain later results there, and release them explicitly when
+  callers transfer ownership. Root/Lifetime construction uses this same loader;
+  nested loads preserve their results and raw native failures. Legacy module
+  construction, collector activation and Id package separation remain unfinished.
+
 - Construct production Lifetime payload descriptions, trace hooks and finalizer
   records through Id before Runtime (Design 83). Runtime, collection and Image
   use that same native owner; behavior/heap tables no longer hold those records.
   Keep behavior metadata retirement separate from finalizer detachment, and
-  preserve existing public descriptor APIs. Bootstrap result retention, staged
+  preserve existing public descriptor APIs. Remaining module construction, staged
   GC activation and the Runtime/compiler package separation remain unfinished.
 
 - Initialize the production root registry through Id before Runtime (Design 83).
   Its native retained-root records and registration operations work without GC or
   Runtime callbacks. Host construction now adopts that exact owner; early native
-  module roots participate in later collection and can be released. Automatic
-  Bootstrap result ownership and staged collector activation remain unfinished.
+  module roots participate in later collection and can be released. Complete
+  module construction and staged collector activation remain unfinished.
 
 - Move production collection's Id index retirement, allocation detachment and
   release onto the native storage protocol (Design 83). Upper GC metadata retires

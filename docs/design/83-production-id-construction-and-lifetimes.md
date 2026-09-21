@@ -543,12 +543,24 @@ entered images, including failed initializers with partial publication.
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
 slot is retargeted. Thirteen upper factory preparations still run in the host
-after native Id/root-registry/Lifetime initialization and feed the aggregate Runtime constructor. That
+after native Id/Bootstrap/root-registry/Lifetime initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
 
-The first actual upper native entry is now
-`libbirnam_root_registry.dylib:birnam_native_module_v1`. Its only predecessor is
-Id. Initial Object arguments are retained before it publishes a Word pointing to
+The first upper native entry is now
+`libbirnam_bootstrap.dylib:birnam_native_module_v1`. Its only predecessor is Id.
+Its [native owner](../../abi/fixtures/bootstrap-v1/README.md) calls Id's current
+loading message for every subsequent native construction. It retains Object and
+Protocol initialization results, including nested loads, before releasing
+argument roots. Before Lifetime exists those references form a working early
+root set. Explicit adoption installs actual records in the completed root registry
+before discarding that set. Later loads use the registry directly; explicit
+result release permits reclamation. Transfer rejects reentry and retargeting;
+ordinary native load failures propagate unchanged. Bootstrap's native owner is
+retained by the host through construction/application lifetime and released at
+teardown, without requiring a GC object or a forward Runtime callback.
+
+`libbirnam_root_registry.dylib:birnam_native_module_v1` follows through Bootstrap.
+The registry itself requires only Id. Initial Object arguments are retained before it publishes a Word pointing to
 its complete [root owner descriptor](../../abi/fixtures/root-registry-owner-v1/README.md).
 Native registration, retain/release and root enumeration work without Runtime or
 GC, including their failure paths. Admission checks the native owner's thread;
@@ -557,8 +569,9 @@ working mutation policy with its storage-observation admission. Canonical root
 queries still work during collection/observation. Existing root-provider ABI v1
 remains intact.
 
-The host's `begin_floor` initializes Id and this root owner; `InitialFloor::finish`
-constructs the remaining Runtime with that same owner. Ordinary `load_floor` and
+The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` constructs
+the root registry and adopts Bootstrap's early set. `begin_floor` combines those
+steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
 prefix. `birnam_runtime_init_v2` is an upper construction entry taking the completed
 root and representation owners, temporarily packaged in the Id library along with
@@ -596,8 +609,10 @@ behavior metadata retires. Native Lifetime destruction releases all description
 bytes before destroying its capabilities and never invokes object finalizers.
 Legacy `id_init`/v1 construction and unit harnesses retain local service records
 until their consumers migrate; current production uses only the native owner.
-Automatic Bootstrap result ownership and staged collector activation remain
-required. This prefix does not move Runtime/compiler code out of Id.
+Bootstrap now owns common-protocol initialization results. Routing the remaining
+legacy constructors through it, completing ownership handoff as module exports
+are published, and staged collector activation remain required. This prefix does
+not move Runtime/compiler code out of Id.
 
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
@@ -667,7 +682,7 @@ Current debug evidence:
   collector acquisition test installs an Id root callable before construction,
   replaces the method afterward, and proves the existing collector retains the
   selected callable while a new consumer observes the replacement.
-- A fresh debug install publishes **54 native libraries and 28 authored modules**.
+- A fresh debug install publishes **55 native libraries and 28 authored modules**.
   `scripts/id-native-loading-smoke.py PREFIX` loads that actual installed Id with
   upper libraries absent, constructs objects and installs methods from independent
   C, and then starts the normal host using the same carrier and graph. The C
@@ -678,16 +693,26 @@ Current debug evidence:
   ordinary Object arguments to the native destruction operations. After upper adoption it
   supplies completed roots/collector explicitly and verifies actual collection
   preserves the rooted object's identity and payload. Ordinary typed sends and
-  native-to-language Error outcomes also pass. With only Id and root-registry
-  libraries available, a second C module retains a new object before Runtime
+  native-to-language Error outcomes also pass. With only Id, Bootstrap and
+  root-registry libraries available, a second C module retains a new object
+  before Runtime
   exists. The same retained record survives adoption and precise collection;
   release then permits reclamation. Repeated retain/release removes records
   without reusing tokens. Invalid initializer operands fail before publication.
-  With only Id, roots, the three primitive description libraries and Lifetime
-  available, another independent C initializer declares payload layouts, a native
+  With only Id, Bootstrap, roots, the three primitive description libraries and
+  Lifetime available, another independent C initializer declares payload layouts, a native
   trace edge and three finalizers, including one on a behavior. The same records
   survive normal adoption and precise collection; releasing the root permits
   reclamation, runs every finalizer once and removes the weak descriptions.
+- The Bootstrap prefix runs with only Id and Bootstrap available. Independent C
+  makes a nested native load return an otherwise unrooted Object, exercises
+  Protocol retention using the real Id, and propagates a missing-library failure.
+  The object survives root transfer, Runtime adoption and precise GC; explicit
+  result release permits reclamation. The same check passes after Runtime exists.
+  Bootstrap's installed exports match its manifest and its only native link is
+  the platform library. The ABI/host suites pass 24/86 debug tests. Normal host
+  startup, compiled modules, images and baked execution pass the root-registry
+  workload with this loader in the production path.
 - The root-registry image workload passes for source, source-free compiled,
   native Code images and baked execution, including duplicate provider order,
   callback-time append, nested collection, roots, aliases and reload. Debug unit
@@ -717,10 +742,10 @@ Remaining architectural acceptance requires all of the following:
 
 1. Move Runtime, compiler/artifact dependencies and upper ownership out of Id;
    remove temporary forwarding exports and migrate native/reflective consumers.
-2. Complete Bootstrap construction with automatic retention of initializer
-   results and explicit transfer before collection becomes active. Lifetime's
-   initialized root and representation owners are available; migrate the remaining
-   legacy local-service construction paths along with their consumers.
+2. Route the remaining legacy constructors through Bootstrap and complete their
+   result-ownership handoff when module exports become available. Common native
+   initialization results are now retained and transferred to the initialized
+   root owner. Migrate remaining legacy local-service paths with their consumers.
 3. Finish storage-consumer migration in adoption, diagnostics, compatibility and
    Execution accounting. Collection now uses Id's native retirement/release path;
    the remaining Rust allocation/registry handoff must not become a permanent

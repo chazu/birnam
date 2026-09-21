@@ -99,23 +99,36 @@ fn main() {
         "actual Id loads and sends without upper libraries; admission and failure pinning pass"
     );
 
-    // Construct the real root owner while every other upper library is absent.
+    // Bootstrap is the first upper module. Its nested initializer result lives
+    // in the early root set before a root-registry library is even available.
+    symlink(prefix.join("lib/libbirnam_bootstrap.dylib"), isolated.join("libbirnam_bootstrap.dylib")).unwrap();
+    let mut initial = birnam_host::begin_id(&id_path, None, None).unwrap();
+    let bootstrap = initial.bootstrap().unwrap();
+    let bootstrap_path = scratch.join("bootstrap-result-1.dylib");
+    let object_path = scratch.join("bootstrap-result-0.dylib");
+    let bootstrap_args = [Operand::word(bootstrap as usize), Operand::bytes(object_path.as_os_str().as_bytes()), Operand::bytes(id_path.as_os_str().as_bytes())];
+    let retained = unsafe { initial.load_native(bootstrap_path.as_os_str().as_bytes(), &bootstrap_args) };
+    assert_eq!(retained.status, native::LOADED);
+    let bootstrap_identity = retained.value.as_word().unwrap();
+    let bootstrap_query = intern(&id, b"bootstrapResultIdentity");
+    let bootstrap_release = intern(&id, b"releaseBootstrapResult");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 2);
+    assert_eq!(unsafe { initial.load_native(b"/missing/bootstrap/module.dylib", &[]) }.status, native::MAPPING_FAILED);
+    // Construct the real root owner and explicitly adopt Bootstrap's live set.
     symlink(prefix.join("lib/libbirnam_root_registry.dylib"), isolated.join("libbirnam_root_registry.dylib")).unwrap();
     let root_path = isolated.join("libbirnam_root_registry.dylib");
     assert_eq!(send(&id, id.load, &[Operand::bytes(root_path.as_os_str().as_bytes()), Operand::word(83)]).status, native::INVALID_REQUEST);
-    let mut initial = birnam_host::begin_floor(&id_path, None, None).unwrap();
+    initial.initialize_roots().unwrap();
     assert_eq!(initial.id_protocol().context, id.context);
     let roots = initial.roots().expect("production initialized root owner");
     let root_path = scratch.join("early-root.dylib");
-    let retained = send(&id, id.load, &[
-        Operand::bytes(root_path.as_os_str().as_bytes()), Operand::word(roots as usize),
-    ]);
+    let retained = unsafe { initial.load_native(root_path.as_os_str().as_bytes(), &[Operand::word(roots as usize)]) };
     assert_eq!(retained.status, native::LOADED);
     assert!(retained.value.as_word().unwrap() > 0);
     let root_identity = intern(&id, b"earlyRootIdentity");
     let release_root = intern(&id, b"releaseEarlyRoot");
     let early_identity = send(&id, root_identity, &[]).value.as_word().unwrap();
-    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 2);
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 3);
     // Complete Lifetime with only Id, roots and the three primitive record
     // algorithms present; every value/collector/Runtime dependency is absent.
     for name in ["payload_layout", "trace_hooks", "finalizers", "lifetime"] {
@@ -126,10 +139,10 @@ fn main() {
     assert_eq!(send(&id, id.load, &[Operand::bytes(lifetime_path.as_os_str().as_bytes())]).status, native::INVALID_REQUEST);
     let records = initial.initialize_lifetime().unwrap().unwrap();
     let path = scratch.join("early-lifetime.dylib");
-    assert_eq!(send(&id, id.load, &[Operand::bytes(path.as_os_str().as_bytes()), Operand::word(roots as usize), Operand::word(records as usize)]).status, native::LOADED);
+    assert_eq!(unsafe { initial.load_native(path.as_os_str().as_bytes(), &[Operand::word(roots as usize), Operand::word(records as usize)]) }.status, native::LOADED);
     let lifetime_check = intern(&id, b"earlyLifetimeCheck");
     let lifetime_release = intern(&id, b"releaseEarlyLifetime");
-    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 6);
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 7);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -163,6 +176,21 @@ fn main() {
     unsafe { (runtime.stack.api().gcCollect)(); }
     assert_eq!(send(&id, lifetime_check, &[]).value.as_word(), Some(7));
     println!("pre-Runtime Lifetime layouts/hooks/finalizers survive adoption, trace exact edges and retire after release");
+    assert_eq!(send(&id, bootstrap_query, &[]).value.as_word(), Some(bootstrap_identity));
+    assert_eq!(send(&id, bootstrap_release, &[]).value.as_word(), Some(1));
+    assert_eq!(send(&id, bootstrap_release, &[]).value.as_word(), Some(0));
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, bootstrap_query, &[]).value.kind(), native::UNIT);
+    let later_result = unsafe { runtime.stack.load_native(bootstrap_path.as_os_str().as_bytes(), &bootstrap_args) };
+    assert_eq!(later_result.status, native::LOADED);
+    let later_identity = later_result.value.as_word().unwrap();
+    assert_ne!(later_identity, bootstrap_identity);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, bootstrap_query, &[]).value.as_word(), Some(later_identity));
+    assert_eq!(send(&id, bootstrap_release, &[]).value.as_word(), Some(1));
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, bootstrap_query, &[]).value.kind(), native::UNIT);
+    println!("Bootstrap retains nested initializer results before roots exist and after Runtime; transfer, release and reclamation pass");
     let adopted = runtime.stack.id_protocol();
     assert_eq!(
         (

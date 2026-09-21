@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "rust/birnam-abi",
+    "rust/birnam-bootstrap",
     "rust/birnam-alien",
     "rust/birnam-artifact",
     "rust/birnam-artifact-codec",

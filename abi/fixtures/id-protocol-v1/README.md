@@ -26,8 +26,11 @@ object/behavior construction, Symbol byte access, method/context publication
 and invocation, nested storage queries, allocation during snapshot visitation,
 visitor-failure propagation, index retirement and detached allocation release,
 admission rejection, and image pinning
-after initializer failure. Next it exposes only the root-registry library and
-constructs the actual native root owner through Id. A second independent C module
+after initializer failure. Next it exposes Bootstrap alone. Independent C uses
+its loader recursively to construct an otherwise unrooted Object result, and
+exercises Protocol retention with the real Id. Bootstrap owns that result before
+the root-registry library is available. The fixture then constructs the actual
+root registry through Bootstrap and transfers the early root set. A second independent C module
 retains an object before Runtime exists, checks repeated retain/release and token
 nonreuse, and publishes methods that later query/release it. Only then does the
 fixture expose the remaining libraries. Normal host startup adopts the same Id
@@ -37,7 +40,9 @@ primitive description libraries and Lifetime. Independent C registers payload
 layouts, native trace edges and finalizers before Runtime, including a finalizer
 on a behavior. Actual precise collection after adoption follows those edges;
 release permits reclamation, invokes the declared finalizers and removes the
-weak descriptions. It then invokes typed
+weak descriptions. Bootstrap's returned object also survives transfer, adoption
+and GC until explicit result release. The fixture repeats that loading/retention
+check after Runtime exists. It then invokes typed
 methods through ordinary sends and verifies native failures and unwrapped scalar
 results become language Errors. For construction after adoption, the fixture
 passes the already-created root registry and collector as explicit initializer

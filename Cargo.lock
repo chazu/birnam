@@ -55,6 +55,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-bootstrap"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-codegen"
 version = "0.0.0"
 dependencies = [

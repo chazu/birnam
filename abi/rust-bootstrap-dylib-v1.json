@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "scope": "Native sequential loading and initialization-result ownership above Id",
+  "install_name": "@rpath/libbirnam_bootstrap.dylib",
+  "exported_symbols": [
+    "birnam_native_module_v1"
+  ]
+}

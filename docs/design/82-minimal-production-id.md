@@ -50,8 +50,9 @@ to undo an extraction when it made the intended dependency direction worse.
 ## 2. The production evidence
 
 The table records the pre-migration failure at `e928780c`. Production now enters
-Id through the common native protocol and initializes its upper root and Lifetime
-owners before the remaining thirteen preparations. Normal startup adopts that
+Id through the common native protocol, then constructs Bootstrap and its upper
+root/Lifetime owners before the remaining thirteen preparations. Bootstrap owns
+native initialization results and transfers its early roots to the root registry. Normal startup adopts that
 same initial graph and those native records. The installed
 Id has been exercised with upper libraries absent. Compiler code and aggregate
 Runtime ownership still reside in its crate, so that first-entry result does not

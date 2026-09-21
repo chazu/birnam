@@ -975,6 +975,7 @@ impl fmt::Debug for FloorError {
 /// for the lifetime of this value and deliberately never closed: the floor
 /// owns process-wide heap/GC state and may retain function pointers in modules.
 pub struct LoadedFloor {
+    bootstrap: Option<crate::native_bootstrap::Owner>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     _namespace: NonNull<std::ffi::c_void>,
     _object_model: NonNull<std::ffi::c_void>,
@@ -2172,6 +2173,17 @@ impl LoadedStack {
     pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.floor.vtables() }
     pub fn observation(&self) -> *const birnam_abi::method_observation::ApiV1 { self.floor.observation() }
     pub fn root_registry(&self) -> *const birnam_abi::root_registry::ApiV1 { self.floor.root_registry() }
+    /// # Safety
+    /// Native operands and pointer/code lifetimes follow the common protocol.
+    pub unsafe fn load_native(&self, path: &[u8], args: &[birnam_abi::id_protocol::Operand]) -> birnam_abi::id_protocol::Outcome {
+        unsafe { load_native_with_bootstrap(self.floor.bootstrap.as_ref(), self.floor.id_protocol, path, args) }
+    }
+    /// # Safety
+    /// The matching result remains live and its native protocol descriptor readable.
+    pub unsafe fn release_initialization_result(&self, result: birnam_abi::id_protocol::Operand) -> usize {
+        self.floor.bootstrap.as_ref().map_or(0, |bootstrap| unsafe { bootstrap.release(result) })
+    }
+
     pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.floor.gc_settings() }
     pub fn payload_layout(&self) -> *const birnam_abi::payload_layout::ApiV1 { self.floor.payload_layout() }
     pub fn trace_hooks(&self) -> *const birnam_abi::trace_hooks::ApiV1 { self.floor.trace_hooks() }
@@ -3071,9 +3083,9 @@ impl LoadedFloor {
     }
 }
 
-/// Initialize Id and its upper root owner through native module messages, after
-/// optional digest/identity checks. The remaining Runtime construction is explicit.
-pub fn begin_floor(
+/// Initialize Id and Bootstrap through native messages, before Lifetime exists.
+/// Optional digest/identity checks precede all construction.
+pub fn begin_id(
     path: &Path,
     expected_identity: Option<&str>,
     expected_digest: Option<&str>,
@@ -3091,7 +3103,6 @@ pub fn begin_floor(
             });
         }
     }
-    let root_registry_path = path.with_file_name("libbirnam_root_registry.dylib");
     let source_path = path.to_path_buf();
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
@@ -3138,21 +3149,12 @@ pub fn begin_floor(
     })?;
     let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v1".as_ptr()) });
     let runtime_init_v2 = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v2".as_ptr()) });
-    let roots = if runtime_init.is_some() || runtime_init_v2.is_some() {
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let root_path_bytes = path_bytes(&root_registry_path);
-        let args = [Operand::bytes(&root_path_bytes), Operand::object(id_protocol.receiver)];
-        let outcome = unsafe { id_protocol.message.unwrap()(id_protocol.context, id_protocol.receiver, id_protocol.load, args.as_ptr(), args.len()) };
-        if outcome.status != native::LOADED {
-            return Err(FloorError::IdProtocol { status: outcome.status, detail: outcome.detail });
-        }
-        let pointer = outcome.value.as_word().unwrap_or(0) as *const birnam_abi::root_registry::OwnedV1;
-        if !unsafe { birnam_abi::root_registry::valid_owned(pointer) } {
-            return Err(FloorError::RootRegistry { path: root_registry_path, reason: "invalid initialized owner" });
-        }
-        Some(pointer)
+    let bootstrap = if runtime_init_v2.is_some() {
+        let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
+        Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
+            .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, runtime_init_v2, id_protocol, roots, lifetime: None, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, runtime_init_v2, id_protocol, bootstrap, roots: None, lifetime: None, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3166,24 +3168,50 @@ pub struct InitialFloor {
     lifetime: Option<*const birnam_abi::lifetime::OwnedV1>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
+    bootstrap: Option<crate::native_bootstrap::Owner>,
     _owner_thread: PhantomData<std::rc::Rc<()>>,
 }
 impl InitialFloor {
     pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.id_protocol }
+    /// Completed native Bootstrap, borrowed for this construction's lifetime.
+    pub fn bootstrap(&self) -> Option<*const birnam_abi::bootstrap::OwnedV1> {
+        self.bootstrap.as_ref().map(crate::native_bootstrap::Owner::descriptor)
+    }
+    /// Load through Bootstrap, retaining Object/Protocol results until released.
+    /// # Safety
+    /// Native operands and borrowed pointer/code lifetimes obey their ABI contracts.
+    pub unsafe fn load_native(&self, path: &[u8], args: &[birnam_abi::id_protocol::Operand]) -> birnam_abi::id_protocol::Outcome {
+        unsafe { load_native_with_bootstrap(self.bootstrap.as_ref(), self.id_protocol, path, args) }
+    }
+    pub fn initialize_roots(&mut self) -> Result<Option<*const birnam_abi::root_registry::OwnedV1>, FloorError> {
+        if self.roots.is_some() || (self.runtime_init.is_none() && self.runtime_init_v2.is_none()) { return Ok(self.roots); }
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let path = self.source_path.with_file_name("libbirnam_root_registry.dylib");
+        let answer = unsafe { self.load_native(&path_bytes(&path), &[Operand::object(self.id_protocol.receiver)]) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        let pointer = answer.value.as_word().unwrap_or(0) as *const birnam_abi::root_registry::OwnedV1;
+        if !unsafe { birnam_abi::root_registry::valid_owned(pointer) } {
+            return Err(FloorError::RootRegistry { path, reason: "invalid initialized owner" });
+        }
+        if let Some(bootstrap) = &self.bootstrap {
+            let status = unsafe { bootstrap.adopt_roots(pointer) };
+            if status != native::LOADED { return Err(FloorError::IdProtocol { status, detail: 0 }); }
+        }
+        self.roots = Some(pointer);
+        Ok(self.roots)
+    }
     /// The completed native root owner, borrowed through construction/startup.
     pub fn roots(&self) -> Option<*const birnam_abi::root_registry::OwnedV1> { self.roots }
     /// Construct complete payload, trace-hook and finalizer records through Id.
     /// This is the same step used by ordinary production startup.
     pub fn initialize_lifetime(&mut self) -> Result<Option<*const birnam_abi::lifetime::OwnedV1>, FloorError> {
         if self.runtime_init_v2.is_none() || self.lifetime.is_some() { return Ok(self.lifetime); }
+        self.initialize_roots()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let load = |file: &str, arguments: &[Operand]| -> Result<Operand, FloorError> {
             let path = self.source_path.with_file_name(file);
             let bytes = path_bytes(&path);
-            let mut args = vec![Operand::bytes(&bytes)];
-            args.extend_from_slice(arguments);
-            let id = self.id_protocol;
-            let answer = unsafe { id.message.unwrap()(id.context, id.receiver, id.load, args.as_ptr(), args.len()) };
+            let answer = unsafe { self.load_native(&bytes, arguments) };
             if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
             Ok(answer.value)
         };
@@ -3199,8 +3227,9 @@ impl InitialFloor {
         Ok(self.lifetime)
     }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
+        self.initialize_roots()?;
         self.initialize_lifetime()?;
-        let Self { source_path, handle, init, runtime_init, runtime_init_v2, id_protocol, roots, lifetime, .. } = self;
+        let Self { source_path, handle, init, runtime_init, runtime_init_v2, id_protocol, roots, lifetime, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3480,6 +3509,7 @@ impl InitialFloor {
             return Err(FloorError::NativeStack { path: native_stack_path, reason: "invalid capability" });
         }
         Ok(LoadedFloor {
+            bootstrap,
             id_protocol,
             _root_registry: root_registry_image,
             root_registry: NonNull::new(root_registry).unwrap(),
@@ -3516,6 +3546,20 @@ impl InitialFloor {
         })
     }
 
+}
+
+/// Initialize Id, Bootstrap and the root owner; later construction stays explicit.
+pub fn begin_floor(path: &Path, expected_identity: Option<&str>, expected_digest: Option<&str>) -> Result<InitialFloor, FloorError> {
+    let mut initial = begin_id(path, expected_identity, expected_digest)?;
+    initial.initialize_roots()?;
+    Ok(initial)
+}
+
+unsafe fn load_native_with_bootstrap(bootstrap: Option<&crate::native_bootstrap::Owner>, id: birnam_abi::id_protocol::Protocol, path: &[u8], args: &[birnam_abi::id_protocol::Operand]) -> birnam_abi::id_protocol::Outcome {
+    if let Some(bootstrap) = bootstrap { return unsafe { bootstrap.initialize(path, args) }; }
+    let mut request = vec![birnam_abi::id_protocol::Operand::bytes(path)];
+    request.extend_from_slice(args);
+    unsafe { id.message.unwrap()(id.context, id.receiver, id.load, request.as_ptr(), request.len()) }
 }
 
 pub fn load_floor(path: &Path, expected_identity: Option<&str>, expected_digest: Option<&str>) -> Result<LoadedFloor, FloorError> {
