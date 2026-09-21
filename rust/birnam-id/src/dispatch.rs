@@ -204,7 +204,7 @@ pub(crate) unsafe extern "C" fn vtable_remove_method(receiver: Oop, args: *const
     })
 }
 
-unsafe extern "C" fn vtable_allocate(receiver: Oop, args: *const Oop, count: usize) -> Oop {
+pub(crate) unsafe extern "C" fn vtable_allocate(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     if count == 0 || args.is_null() {
         boundary::fatal_invariant("vtable allocate requires pointer-encoded size");
     }
@@ -216,7 +216,7 @@ unsafe extern "C" fn vtable_allocate(receiver: Oop, args: *const Oop, count: usi
     })
 }
 
-unsafe extern "C" fn vtable_delegated(receiver: Oop, _: *const Oop, _: usize) -> Oop {
+pub(crate) unsafe extern "C" fn vtable_delegated(receiver: Oop, _: *const Oop, _: usize) -> Oop {
     with_active(|runtime| runtime.create_vtable(receiver))
 }
 
@@ -838,7 +838,7 @@ mod tests {
         }
 
         // Initial Id names exist before the upper runtime installs methods.
-        let selector_names: [&[u8]; 27] = [
+        let selector_names: [&[u8]; 32] = [
             b"lookup",
             b"doesNotUnderstand:",
             b"Symbol",
@@ -848,6 +848,11 @@ mod tests {
             b"loadNative:",
             b"allocate",
             b"delegated",
+            b"objectPrototype",
+            b"behaviorOf:",
+            b"allocationSizeOf:",
+            b"identityOf:",
+            b"symbolBytesOf:",
             b"clone",
             b"new",
             b"==",
@@ -894,6 +899,11 @@ mod tests {
             runtime.intern(b"loadNative:").unwrap(),
             bootstrap.selectors.allocate,
             bootstrap.selectors.delegated,
+            runtime.intern(b"objectPrototype").unwrap(),
+            runtime.intern(b"behaviorOf:").unwrap(),
+            runtime.intern(b"allocationSizeOf:").unwrap(),
+            runtime.intern(b"identityOf:").unwrap(),
+            runtime.intern(b"symbolBytesOf:").unwrap(),
             runtime.intern(b"prepareBehaviorMutationOf:").unwrap(),
             runtime.intern(b"reassociateBehaviorOf:with:").unwrap(),
             runtime.intern(b"ownerOf:").unwrap(),

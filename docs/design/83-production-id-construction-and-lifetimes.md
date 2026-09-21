@@ -274,6 +274,37 @@ generated artifacts are owned by the later artifact/Execution loader, whose
 entry ownership and retirement follow section 2. It is not permission to pin all
 generated programs forever.
 
+### Initial Id object operations
+
+The real Id descriptor installs these operations through its own message sends,
+before any upper module exists. They use the existing typed operand ABI and
+add no carrier fields. `Id` below means the carrier's receiver; a behavior is an
+Id-registered behavior object.
+
+| Selector | Receiver and arguments | Native result |
+|---|---|---|
+| `objectPrototype` | Id, no arguments | The initial Object prototype |
+| `behaviorOf:` | Id, Object candidate | Its behavior, or Unit for an unknown candidate |
+| `delegated` | Parent behavior, no arguments | A new empty behavior delegating to that parent |
+| `allocate` | Behavior, Word byte count | A zeroed object with that behavior |
+| `allocationSizeOf:` | Id, Object candidate | Requested payload bytes as Word, excluding header/padding; Unit if unknown |
+| `identityOf:` | Id, Object candidate | Stable allocation identity as Word; Unit if unknown |
+| `symbolBytesOf:` | Id, Object candidate | Borrowed name bytes without the trailing NUL; Unit for a non-Symbol |
+
+Wrong operand kinds/counts and invalid allocation sizes return InvalidRequest.
+The fact queries check exact registry membership; candidate queries may return
+Unit without dereferencing an unregistered candidate. The caller retains a
+Symbol throughout use of its borrowed name bytes. These native operations need
+no String, Integer, Nil/Boolean, Namespace, GC or Execution representation.
+
+After upper adoption, Runtime replaces `allocate` and `delegated` with completed
+GC-aware implementations under the same selectors, just as it replaces interning
+and mutation. Those entries account for new allocations and behavior metadata
+and protect the receiver through their allocation/checkpoint extent. Id's fact
+queries continue to read the same registries. Native callers retain their own
+objects across calls and supply upper payload descriptions and roots before GC.
+The old all-object native convention is still adapted separately during migration.
+
 ## 4. Construction with no dormant dependencies
 
 **Available means every operation advertised by that initialization result is
@@ -653,6 +684,33 @@ installed Id/cache exports; and a fresh 53-native/28-authored installation.
 The inherited-cache source/compiled/mapped/rebuilt/baked workload passes. The
 final lookup-failure handling also passes the full Id suite and the installed
 native-loading fixture with ordinary sends and actual Error construction.
+
+Id now exposes actual object construction through messages, rather than requiring
+a loaded initializer to reach into Runtime to obtain its first behavior/object.
+It also exposes its own prototype, behavior, allocation extent/identity and Symbol
+bytes. `allocate` and `delegated` are installed during initial Id construction;
+five additional fact selectors follow them in Symbol and root-method enumeration.
+The native carrier and object/image layouts are unchanged. Its retained Id facts
+now include Object, Symbol behavior and the lookup/DNU selectors as well as the
+carrier's receiver/intern/load selectors.
+
+The production adoption test constructs a behavior, an object with an Oop field
+and a raw field, and its child entirely through the initial carrier. After
+adoption it supplies the upper payload layout and root, verifies first-GC
+identity/field preservation, checks later native allocations have GC metadata,
+and verifies reclamation after dropping roots. The 307-test Id debug suite passes.
+The installed C module creates its own behavior and object while upper libraries
+are absent, reads Symbol bytes without String and installs/invokes a method on
+that object. Its later construction receives the already-complete root registry
+and collector explicitly, registers its temporary roots before allocation, and
+verifies an actual collection callback and unchanged identity/payload. The fresh
+53-native/28-authored installation passes this fixture and the allocation-identity
+source/compiled/mapped/rebuilt/baked image workload.
+
+These operations do not yet supply the complete allocation/root/edge enumeration
+and retirement protocol required by a separate Lifetime/GC owner. That owner and
+Bootstrap's early-root adoption still need the actual construction cutover; the
+current upper collector continues to access the internal Rust storage interface.
 
 These changes establish first-entry loading and the lifetime mechanism,
 **not an independently packaged minimal Id**. Its

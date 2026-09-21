@@ -51,6 +51,8 @@ pub(crate) fn try_decode(entry: NativeEntry) -> Option<MethodAddress> {
         }
     }
     for (new, old) in [
+        (crate::runtime::id_protocol::allocate as native::Method, crate::dispatch::vtable_allocate as Method),
+        (crate::runtime::id_protocol::delegated as native::Method, crate::dispatch::vtable_delegated as Method),
         (crate::runtime::id_protocol::add_method as native::Method, crate::dispatch::vtable_add_method as Method),
         (crate::runtime::id_protocol::remove_method as native::Method, crate::dispatch::vtable_remove_method as Method),
     ] {

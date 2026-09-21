@@ -1,4 +1,6 @@
 //! The real Id carrier: only Id-owned state and the native loading protocol.
+pub(crate) mod objects;
+
 use crate::abi::{
     Oop,
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
@@ -16,6 +18,7 @@ pub(crate) struct State {
     dictionaries: *mut Vtables,
     symbols: *mut Symbols,
     symbol_vtable: Oop,
+    object_prototype: Oop,
     lookup: Oop,
     does_not_understand: Oop,
     owner: std::thread::ThreadId,
@@ -27,6 +30,7 @@ impl State {
         symbols: *mut Symbols,
         metavtable: Oop,
         symbol_vtable: Oop,
+        object_prototype: Oop,
         lookup: Oop,
         does_not_understand: Oop,
     ) -> Box<Self> {
@@ -49,6 +53,7 @@ impl State {
             dictionaries,
             symbols,
             symbol_vtable,
+            object_prototype,
             lookup,
             does_not_understand,
             owner: std::thread::current().id(),
@@ -79,16 +84,21 @@ impl State {
                             native::LOADED
                         );
                     }
+                    objects::install(&state, context, add);
                 },
             )
         };
         state
     }
-    pub(crate) fn roots(&self) -> [Oop; 3] {
+    pub(crate) fn roots(&self) -> [Oop; 7] {
         [
             self.protocol.receiver,
             self.protocol.intern,
             self.protocol.load,
+            self.object_prototype,
+            self.symbol_vtable,
+            self.lookup,
+            self.does_not_understand,
         ]
     }
 }

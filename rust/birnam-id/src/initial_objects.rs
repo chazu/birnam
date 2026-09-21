@@ -45,7 +45,7 @@ impl InitialObjects {
                 Operand::object(remove_method), Operand::entry(entry(crate::id_dispatch::vtable_remove_method)),
             ]).status, LOADED);
         }) };
-        let protocol = unsafe { crate::native_id::State::new(memory.pointer(), dictionaries.pointer(), symbols.pointer(), vtable_vt, symbol_vt, lookup, does_not_understand) };
+        let protocol = unsafe { crate::native_id::State::new(memory.pointer(), dictionaries.pointer(), symbols.pointer(), vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
         Self { protocol, memory, dictionaries, symbols, vtable_vt, object_vt, symbol_vt,
             lookup, does_not_understand, object_prototype, symbol_prototype }
     }
@@ -63,6 +63,7 @@ mod tests {
         let allocations: Vec<_> = initial.memory.iter().map(|(_, allocation)|
             (allocation.payload().as_ptr().cast(), allocation.identity(), allocation.requested_size())
         ).collect();
+        let last_identity = initial.memory.last_identity();
         let name = initial.symbols.c_name_of(initial.lookup);
         let mut heap = Heap::adopt(initial.memory);
         heap.retain_initial_objects(&[initial.vtable_vt, initial.object_vt, initial.symbol_vt, initial.object_prototype]);
@@ -92,6 +93,6 @@ mod tests {
         assert_eq!(symbols.existing(b"lookup"), Some(initial.lookup));
         let replacement = heap.intern_symbol(&mut symbols, initial.symbol_vt, b"doesNotUnderstand:").unwrap();
         let allocation = heap.storage_allocations().into_iter().find(|entry| entry.object == replacement).unwrap();
-        assert_eq!(allocation.identity, 12);
+        assert_eq!(allocation.identity, last_identity + 1);
     }
 }

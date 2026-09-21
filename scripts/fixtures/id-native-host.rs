@@ -25,6 +25,17 @@ fn load(id: &Protocol, path: &Path, name: &[u8]) -> Outcome {
         ],
     )
 }
+unsafe extern "C" fn collect(
+    context: *mut core::ffi::c_void,
+    _: *mut core::ffi::c_void,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    assert_eq!(count, 0);
+    let api = unsafe { &*context.cast::<birnam_abi::IdApi>() };
+    unsafe { (api.gcCollect)() };
+    Outcome::loaded(Operand::unit())
+}
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
     assert_eq!(args.len(), 3, "PREFIX SCRATCH");
@@ -154,7 +165,23 @@ fn main() {
             intern(&id, expected)
         );
     }
-    let later = load(&id, &scratch.join("0.dylib"), b"laterNativeEcho:");
+    let settings = runtime.stack.gc_settings();
+    unsafe { birnam_abi::gc_settings::set_precise(settings, 1) };
+    let later_path = scratch.join("0.dylib");
+    let later = send(
+        &id,
+        id.load,
+        &[
+            Operand::bytes(later_path.as_os_str().as_bytes()),
+            Operand::bytes(b"laterNativeEcho:"),
+            Operand::word(0x83),
+            Operand::word(runtime.stack.root_registry() as usize),
+            Operand::entry(native::NativeEntry::new(
+                collect,
+                core::ptr::from_ref(api).cast_mut().cast(),
+            )),
+        ],
+    );
     assert_eq!(later.status, native::LOADED);
     assert_eq!(
         send(&id, later.value.as_object().unwrap(), &[Operand::word(86)])

@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Let native module initializers construct behaviors and objects through Id
+  messages before upper modules exist (Design 83). Add native queries for the
+  Object prototype, behavior, allocation size/identity and Symbol bytes. Adopt
+  the same objects into Runtime, then replace construction with GC-accounted
+  implementations. The separate Lifetime/Bootstrap construction path remains
+  unfinished; native and image layouts are unchanged.
+
 - Carry complete native function/context entries through upper lookup, inherited
   caching and Machine calls (Design 83). Context-only replacement and effectful
   lookup retain the exact selected implementation. Native call/lookup failures

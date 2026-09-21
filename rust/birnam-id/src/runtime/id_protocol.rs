@@ -99,8 +99,68 @@ impl Runtime {
             remove,
             NativeEntry::new(remove_method, context),
         );
+        for (name, method) in [
+            (b"allocate".as_slice(), allocate as native::Method),
+            (b"delegated".as_slice(), delegated as native::Method),
+        ] {
+            let selector = state.symbols.existing(name).unwrap();
+            dictionaries.add_method(
+                protocol.receiver,
+                selector,
+                NativeEntry::new(method, context),
+            );
+        }
     }
 }
+
+pub(crate) unsafe extern "C" fn allocate(
+    context: *mut c_void,
+    behavior: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let Some([size]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
+        return Outcome::failed(native::INVALID_REQUEST, 0);
+    };
+    let Some(size) = size
+        .as_word()
+        .filter(|size| crate::native_id::objects::valid_size(*size))
+    else {
+        return Outcome::failed(native::INVALID_REQUEST, 0);
+    };
+    let runtime = unsafe { &*context.cast::<Runtime>() };
+    runtime.assert_owner();
+    if !unsafe { (&*runtime.state.get()).vtables.is_registered(behavior) } {
+        return Outcome::failed(native::INVALID_REQUEST, 0);
+    }
+    let object = runtime.enter_application(|| {
+        let _behavior = super::ScopedOopRootGuard::new(runtime, behavior);
+        runtime.allocate_instance(behavior, size)
+    });
+    Outcome::loaded(Operand::object(object))
+}
+
+pub(crate) unsafe extern "C" fn delegated(
+    context: *mut c_void,
+    parent: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    if count != 0 {
+        return Outcome::failed(native::INVALID_REQUEST, 0);
+    }
+    let runtime = unsafe { &*context.cast::<Runtime>() };
+    runtime.assert_owner();
+    if !unsafe { (&*runtime.state.get()).vtables.is_registered(parent) } {
+        return Outcome::failed(native::INVALID_REQUEST, 0);
+    }
+    let behavior = runtime.enter_application(|| {
+        let _parent = super::ScopedOopRootGuard::new(runtime, parent);
+        runtime.create_vtable(parent)
+    });
+    Outcome::loaded(Operand::object(behavior))
+}
+
 unsafe extern "C" fn intern(
     context: *mut c_void,
     _: Oop,
@@ -204,6 +264,157 @@ pub(crate) unsafe extern "C" fn remove_method(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_construction_survives_adoption_and_uses_gc_accounting_afterward() {
+        let initial = crate::initial_objects::InitialObjects::new();
+        let id = initial.protocol.protocol;
+        let call = |receiver, name: &[u8], arguments: &[Operand]| unsafe {
+            let symbol =
+                id.message.unwrap()(id.context, id.receiver, id.intern, &Operand::bytes(name), 1);
+            assert_eq!(symbol.status, native::LOADED);
+            id.message.unwrap()(
+                id.context,
+                receiver,
+                symbol.value.as_object().unwrap(),
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        };
+        let object = |outcome: Outcome| {
+            assert_eq!(outcome.status, native::LOADED);
+            outcome.value.as_object().unwrap()
+        };
+        let prototype = object(call(id.receiver, b"objectPrototype", &[]));
+        let object_behavior = object(call(
+            id.receiver,
+            b"behaviorOf:",
+            &[Operand::object(prototype)],
+        ));
+        let behavior = object(call(object_behavior, b"delegated", &[]));
+        let early = object(call(behavior, b"allocate", &[Operand::word(16)]));
+        let child = object(call(object_behavior, b"allocate", &[Operand::word(0)]));
+        unsafe {
+            early.cast::<Oop>().write(child);
+            early.cast::<usize>().add(1).write(83);
+        }
+        let identity = call(id.receiver, b"identityOf:", &[Operand::object(early)])
+            .value
+            .as_word()
+            .unwrap();
+        assert_eq!(
+            call(id.receiver, b"allocationSizeOf:", &[Operand::object(early)])
+                .value
+                .as_word(),
+            Some(16)
+        );
+        assert_eq!(
+            object(call(id.receiver, b"behaviorOf:", &[Operand::object(early)])),
+            behavior
+        );
+        for size in [usize::MAX, isize::MAX as usize] {
+            assert_eq!(
+                call(behavior, b"allocate", &[Operand::word(size)]).status,
+                native::INVALID_REQUEST
+            );
+        }
+        assert_eq!(
+            call(behavior, b"allocate", &[Operand::object(prototype)]).status,
+            native::INVALID_REQUEST
+        );
+        assert_eq!(
+            call(prototype, b"allocationSizeOf:", &[]).status,
+            native::UNBOUND
+        );
+        assert_eq!(
+            call(
+                id.receiver,
+                b"allocationSizeOf:",
+                &[Operand::object(core::ptr::null_mut())]
+            )
+            .value
+            .kind(),
+            native::UNIT
+        );
+
+        let bootstrap = Box::new(crate::dispatch::build_bootstrap_from(initial));
+        let runtime = &bootstrap.runtime;
+        runtime.install_id_runtime_extensions();
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        runtime.enable_symbol_compaction_for_test();
+        // The upper owner supplies its payload description before collection.
+        let layout = [crate::abi::SLOT_OOP, crate::abi::SLOT_RAW];
+        runtime.set_layout(
+            behavior,
+            layout.as_ptr(),
+            layout.len(),
+            crate::abi::SLOT_RAW,
+        );
+        {
+            let _early = super::super::ScopedOopRootGuard::new(runtime, early);
+            runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+            assert_eq!(
+                call(id.receiver, b"identityOf:", &[Operand::object(early)])
+                    .value
+                    .as_word(),
+                Some(identity)
+            );
+            assert_eq!(
+                call(id.receiver, b"allocationSizeOf:", &[Operand::object(child)])
+                    .value
+                    .as_word(),
+                Some(0)
+            );
+            assert_eq!(unsafe { early.cast::<Oop>().read() }, child);
+            assert_eq!(unsafe { early.cast::<usize>().add(1).read() }, 83);
+            let later_behavior = object(call(object_behavior, b"delegated", &[]));
+            let _behavior = super::super::ScopedOopRootGuard::new(runtime, later_behavior);
+            let later = object(call(later_behavior, b"allocate", &[Operand::word(7)]));
+            assert_eq!(
+                runtime.permanence_of(later_behavior),
+                Some(crate::heap::Permanence::Collectable)
+            );
+            assert_eq!(
+                runtime.permanence_of(later),
+                Some(crate::heap::Permanence::Collectable)
+            );
+            assert_eq!(
+                call(id.receiver, b"allocationSizeOf:", &[Operand::object(later)])
+                    .value
+                    .as_word(),
+                Some(7)
+            );
+            assert!(
+                call(id.receiver, b"identityOf:", &[Operand::object(later)])
+                    .value
+                    .as_word()
+                    .unwrap()
+                    > identity
+            );
+            let _later = super::super::ScopedOopRootGuard::new(runtime, later);
+            runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+            assert_eq!(
+                runtime.permanence_of(later),
+                Some(crate::heap::Permanence::Collectable)
+            );
+        }
+        runtime.enter(|| runtime.gc_collect_from_native_range(0, 0));
+        for dead in [early, child, behavior] {
+            assert_eq!(
+                call(id.receiver, b"identityOf:", &[Operand::object(dead)])
+                    .value
+                    .kind(),
+                native::UNIT
+            );
+            assert_eq!(
+                call(id.receiver, b"behaviorOf:", &[Operand::object(dead)])
+                    .value
+                    .kind(),
+                native::UNIT
+            );
+        }
+    }
+
     #[test]
     fn the_same_carrier_survives_adoption_and_gc_accounts_for_later_symbols() {
         let initial = crate::initial_objects::InitialObjects::new();
