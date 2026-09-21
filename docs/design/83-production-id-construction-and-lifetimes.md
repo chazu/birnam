@@ -585,9 +585,9 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v8` is an upper construction entry taking the completed
+prefix. `birnam_runtime_init_v9` is an upper construction entry taking the completed
 root and representation owners plus completed base values, Namespace, Object Model, the live Trace graph and collection state, temporarily packaged in the Id library along with
-Runtime. The intermediate v1/v2/v3/v4/v5/v6/v7 Runtime bridges are removed. The old `id_init` and factory preparation path remain
+Runtime. The intermediate v1 through v8 Runtime bridges are removed. The old `id_init` and factory preparation path remain
 for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
@@ -607,7 +607,7 @@ admission, membership and record operations. They do not point forward to Runtim
 
 [`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
-that owner through `birnam_runtime_init_v8`; its behavior/heap tables retain no
+that owner through `birnam_runtime_init_v9`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
 same records through the native boundary. Public APIs retain their existing ABI
 and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
@@ -840,10 +840,12 @@ The four former production preparations inside Id are skipped. The completed
 coordinator is adopted with this owner instead of awaiting a later mount. Marking and dead
 record removal now run in Collect, including deferred allocations when realized.
 The legacy local mark map remains only for legacy initialization/unit consumers.
-The [collector capability](../../abi/collector-v1.md) also owns live tracing,
+The [collector capability](../../abi/collector-v2.md) also owns live tracing,
 Lifetime/Object Model retirement, Id index retirement, finalizer detachment and
-allocation release. Runtime supplies complete scoped upper roots and deferred/code
-retirement operations on each call; without Execution there are no such records.
+allocation release. Once Execution exists, Runtime installs a completed extension
+that supplies scoped upper roots and deferred/code retirement on every call,
+including calls through previously saved collector entries. Without Execution
+there are no such records.
 The state owner advertises no operation needing a future callback. Explicit
 activation and GC-aware constructor installation remain separate unfinished work.
 
@@ -1202,3 +1204,36 @@ Remaining architectural acceptance requires all of the following:
 6. Prove real construction prefixes, source/compiled/image/worker behavior and
    the source/Cargo/private-export independence audits specified above. Passing
    the current tests does not close these unimplemented requirements.
+
+### Mandatory completed collector extension
+
+The public collector now has an explicit completed-owner extension
+([Collector v2](../../abi/collector-v2.md)). The base remains independently usable
+before Runtime. Once Runtime and its Execution objects exist, Runtime installs
+its full roots and retirement operations. Saved public descriptors select that
+extension on every call; they cannot accidentally keep collecting the earlier
+heap without Execution's obligations. The scoped base passed into the extension
+performs the original native collection sequence without redispatch.
+
+Normal Runtime collection now passes only the captured native interval, while
+trace probes pass only their additional roots. Runtime's extension owns the full
+upper retirement sequence and rejects a competing per-call retirement table.
+The outer collection owner keeps its 128-byte layout and requires collector v2;
+the temporary upper constructor becomes `birnam_runtime_init_v9`.
+
+This closes the saved-entry obligation needed for section 5's later construction
+wrappers. It does not complete activation: publication pause, heap-description
+validation, the lasting stack boundary, GC-aware construction and the explicit
+Active transition remain open, as do the remaining module/package split tasks.
+
+Validation passes for the ABI/Id/Collect unit suites (341 passed, 15 ignored),
+the installed native-loading harness and the collection, finalizer and
+deferred-identity image scripts. The saved-entry test traces an otherwise
+unbound Symbol with no caller roots and proves Runtime's compatibility root
+survives; the same early descriptor later collects with Runtime retirement.
+The independent C extension test checks added roots, release, all retirement
+callbacks, repeat installation and rejection of replacement/nested collection.
+The image tests cover source, compiled, mapped, rebuilt and baked execution.
+Actual deferred writes agree across image forms: `(386, 150)` normally and
+`(386, 75)` under forced recovery. Installed Id/Collect exports match their
+manifests, including Id's published wrapper. No release validation was run.

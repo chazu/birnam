@@ -57,7 +57,7 @@ pub struct OwnedV2 {
     pub set_access: unsafe extern "C" fn(*mut c_void, AccessV1),
     pub destroy: unsafe extern "C" fn(*mut c_void),
     pub collect: crate::collect::CollectV1,
-    pub collector: *const crate::collector::ApiV1,
+    pub collector: *const crate::collector::ApiV2,
 }
 const _: () = {
     assert!(size_of::<RecordV1>() == 16 && size_of::<ViewV1>() == 16);
@@ -80,8 +80,7 @@ pub unsafe fn valid(pointer: *const OwnedV2) -> bool {
     {
         return false;
     }
-    let collector = unsafe { *owner.collector };
-    if collector.version != 1 || collector.byte_size != size_of::<crate::collector::ApiV1>() || collector.context.is_null() { return false; }
+    if !unsafe { crate::collector::valid(owner.collector) } { return false; }
     let records = unsafe { *owner.records };
     records.version == 1
         && records.byte_size == size_of::<RecordsV1>()

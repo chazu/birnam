@@ -11,6 +11,7 @@ struct Source<'a> {
     dead_bindings: Vec<(Oop, Vec<MethodAddress>)>,
     dead: Vec<usize>,
     detached: Option<Detached>,
+    extra_roots: Option<birnam_abi::collector::InputV1>,
 }
 
 enum Detached {
@@ -55,6 +56,7 @@ pub(super) fn assign_phase_for_test(runtime: &Runtime, code: u32) {
         dead_bindings: Vec::new(),
         dead: Vec::new(),
         detached: None,
+        extra_roots: None,
     };
     unsafe { phase((&raw mut source).cast(), code) };
 }
@@ -231,12 +233,105 @@ unsafe extern "C" fn prune(context: *mut c_void) {
     source.runtime.native_tier.borrow_mut().prune();
 }
 
-unsafe extern "C" fn upper_roots(context: *mut c_void, sink: *const birnam_abi::trace_live::SinkV1) -> i32 {
+unsafe extern "C" fn upper_roots(
+    context: *mut c_void,
+    sink: *const birnam_abi::trace_live::SinkV1,
+) -> i32 {
     let source = unsafe { &*context.cast::<Source<'_>>() };
-    super::tracing::emit_upper_roots(source.runtime, &[], unsafe { &*sink })
+    let status = super::tracing::emit_upper_roots(source.runtime, &[], unsafe { &*sink });
+    if status != OK {
+        return status;
+    }
+    source
+        .extra_roots
+        .and_then(|input| input.roots.map(|roots| (input.context, roots)))
+        .map_or(OK, |(context, roots)| unsafe { roots(context, sink) })
 }
 
+unsafe extern "C" fn extended_trace(
+    context: *mut c_void,
+    base: *const birnam_abi::collector::ApiV1,
+    input: *const birnam_abi::collector::InputV1,
+) -> i32 {
+    let runtime = unsafe { &*context.cast::<Runtime>() };
+    runtime.assert_owner();
+    let input = unsafe { *input };
+    let mut source = Source {
+        runtime,
+        native_range: (input.start, input.bottom),
+        dead_bindings: Vec::new(),
+        dead: Vec::new(),
+        detached: None,
+        extra_roots: Some(input),
+    };
+    let input = birnam_abi::collector::InputV1 {
+        context: (&raw mut source).cast(),
+        roots: Some(upper_roots),
+        ..input
+    };
+    let base = unsafe { *base };
+    runtime.enter(|| unsafe { (base.trace)(base.context, &input) })
+}
+
+unsafe extern "C" fn extended_collect(
+    context: *mut c_void,
+    base: *const birnam_abi::collector::ApiV1,
+    input: *const birnam_abi::collector::InputV1,
+    out: *mut usize,
+) -> i32 {
+    let runtime = unsafe { &*context.cast::<Runtime>() };
+    runtime.assert_owner();
+    let input = unsafe { *input };
+    // Runtime owns the complete upper retirement sequence. A caller may add
+    // scoped roots, but cannot substitute another retirement owner.
+    if !input.retirement.is_null() {
+        return birnam_abi::storage::INVALID;
+    }
+    let _guard = CollectionGuard {
+        phase: &runtime.collection_phase,
+    };
+    let mut source = Source {
+        runtime,
+        native_range: (input.start, input.bottom),
+        dead_bindings: Vec::new(),
+        dead: Vec::new(),
+        detached: None,
+        extra_roots: Some(input),
+    };
+    let retirement = birnam_abi::collector::RetirementV1 {
+        context: (&raw mut source).cast(),
+        inspect: inspect_retirement,
+        settle: settle_deferred,
+        retire: retire_metadata,
+        reclaim: reclaim_deferred,
+        prune,
+    };
+    let input = birnam_abi::collector::InputV1 {
+        context: (&raw mut source).cast(),
+        roots: Some(upper_roots),
+        retirement: &retirement,
+        ..input
+    };
+    let base = unsafe { *base };
+    runtime.enter(|| unsafe { (base.collect)(base.context, &input, out) })
+}
 impl Runtime {
+    pub(crate) fn install_collector_extension(&self) {
+        let Some(owner) = &self.collection_owner else {
+            return;
+        };
+        let collector = unsafe { *owner.0.collector };
+        let extension = birnam_abi::collector::ExtensionV1 {
+            context: core::ptr::from_ref(self).cast_mut().cast(),
+            trace: extended_trace,
+            collect: extended_collect,
+        };
+        let status = unsafe { (collector.extend)(collector.context, &extension) };
+        boundary::require_invariant(
+            status == OK,
+            "collector rejected completed Runtime extension",
+        );
+    }
     /// The host pins implementation code. Mounting is idempotent, never replacement.
     pub(crate) unsafe fn attach_collect(&self, api: *const ApiV1) -> bool {
         self.assert_owner();
@@ -265,6 +360,17 @@ impl Runtime {
         root_start: usize,
         stack_bottom: usize,
     ) -> usize {
+        if let Some(owner) = &self.collection_owner {
+            let collector = unsafe { *owner.0.collector };
+            let input = birnam_abi::collector::InputV1 {
+                start: root_start, bottom: stack_bottom, context: core::ptr::null_mut(),
+                roots: None, retirement: core::ptr::null(),
+            };
+            let mut reclaimed = 0;
+            let status = unsafe { (collector.collect)(collector.context, &input, &mut reclaimed) };
+            boundary::require_invariant(status == OK, "GC coordinator failed");
+            return reclaimed;
+        }
         let collect = self
             .collect
             .get()
@@ -278,22 +384,8 @@ impl Runtime {
             dead_bindings: Vec::new(),
             dead: Vec::new(),
             detached: None,
+            extra_roots: None,
         };
-        if let Some(owner) = &self.collection_owner {
-            let collector = unsafe { *owner.0.collector };
-            let retirement = birnam_abi::collector::RetirementV1 {
-                context: (&raw mut context).cast(), inspect: inspect_retirement,
-                settle: settle_deferred, retire: retire_metadata, reclaim: reclaim_deferred, prune,
-            };
-            let input = birnam_abi::collector::InputV1 {
-                start: root_start, bottom: stack_bottom, context: (&raw mut context).cast(),
-                roots: Some(upper_roots), retirement: &retirement,
-            };
-            let mut reclaimed = 0;
-            let status = unsafe { (collector.collect)(collector.context, &input, &mut reclaimed) };
-            boundary::require_invariant(status == OK, "GC coordinator failed");
-            return reclaimed;
-        }
         let source = SourceV1 {
             version: VERSION,
             byte_size: size_of::<SourceV1>(),

@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Make saved early collector entries use Runtime's complete roots and retirement
+  extension after adoption. Runtime installs the extension after Execution
+  construction; ordinary collection now supplies only its native interval.
+  Collector v2 and the temporary Runtime v9 bridge make that contract explicit.
+
 - Admit production native Integer construction and arithmetic to compiler
   optimizations using live dispatch checks and exact function/context pairs.
   Custom allocation, lookup and Namespace operations retain their observable

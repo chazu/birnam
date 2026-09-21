@@ -20,7 +20,7 @@ mirrored by [`collection_state::OwnedV2`](../rust/birnam-abi/src/collection_stat
 It contains the records table, completed stack/settings tables, canonical
 factories and budget/phase contexts, a complete admission-policy replacement,
 native destruction, the completed stateless collection coordinator, and the
-[collector capability](collector-v1.md). Runtime
+[collector v2 capability](collector-v2.md). Runtime
 adopts that coordinator immediately; later legacy mounting is an idempotent check.
 The owner destroys each control exactly once. Runtime's
 consumers share that ownership and borrow the existing controls; none creates a
@@ -43,7 +43,7 @@ policy. It does not fill a missing provider. No Execution or Runtime pointer is
 needed to construct or use the early owner.
 
 `InitialFloor::initialize_collection` builds this owner after the Trace graph.
-The temporary `birnam_runtime_init_v8` bridge transfers it to Runtime, alongside
+The temporary `birnam_runtime_init_v9` bridge transfers it to Runtime, alongside
 the existing completed owners and graph. Adoption retains its existing records
 and budget, then registers and charges only Id allocations made since the early
 snapshot. Subsequent production allocation, deferred settlement, marking,
@@ -58,10 +58,13 @@ This completes the state ownership portion of Design 83 step 9. The explicit
 collector activation transition and construction wrappers still need to move out
 of aggregate Runtime. The collector now owns tracing,
 Lifetime/Object Model/Id retirement, detachment, finalization and release;
-Execution supplies only its scoped roots and retirement operations. Until
-activation is implemented, early native allocations are non-collecting and their
-record registrations are reconciled at tracing and Runtime adoption. The coordinator takes complete
-scoped operations per call; the early owner advertises no heap-collection operation depending on a future service.
+Runtime installs a complete extension after Execution construction. Every public
+collector entry, including earlier saved copies, then supplies its mandatory roots
+and retirement operations. Until activation is implemented, early native
+allocations are non-collecting and their record registrations are reconciled at
+tracing and Runtime adoption. The base coordinator takes complete scoped
+operations per call; the public collector selects the installed complete
+extension. The early owner works without any future service.
 
 `scripts/id-native-loading-smoke.py PREFIX` exercises the installed production
 owner with only its twenty-two predecessor libraries available. Independent C

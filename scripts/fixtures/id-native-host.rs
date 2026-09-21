@@ -291,6 +291,7 @@ fn main() {
     let collection = initial.initialize_collection().unwrap().unwrap();
     assert_eq!(initial.initialize_collection().unwrap(), Some(collection));
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 22);
+    let saved_collector = unsafe { *(*collection).collector };
     let collection_fixture = scratch.join("early-collection.dylib");
     let arguments = [Operand::word(collection as usize), Operand::word(roots as usize), Operand::word(records as usize)];
     assert_eq!(unsafe { initial.load_native(collection_fixture.as_os_str().as_bytes(), &arguments) }.status, native::LOADED);
@@ -317,6 +318,23 @@ fn main() {
     assert_eq!(floor.gc_settings(), unsafe { (*collection).settings }.cast_const());
     assert_eq!(floor.native_stack(), unsafe { (*collection).stack }.cast_const());
     assert_eq!(send(&id, collection_adopted, &[]).value.as_word(), Some(1));
+    // An unbound compatibility Symbol is rooted by Runtime, not the native
+    // Trace graph. Empty input must still include it through the extension.
+    let compatibility_root = intern(&id, b"savedCollectorRuntimeRootProbe");
+    let owner = unsafe { &*collection };
+    let records = unsafe { &*owner.records };
+    let phase = unsafe { &*owner.phase_factory };
+    let input = birnam_abi::collector::InputV1 {
+        start: 0, bottom: 0, context: core::ptr::null_mut(), roots: None, retirement: core::ptr::null(),
+    };
+    unsafe {
+        assert_eq!(phase.set.unwrap()(owner.phase_context, 1), 1);
+        (records.clear)(records.context);
+        assert_eq!((saved_collector.trace)(saved_collector.context, &input), 0);
+        assert_eq!((records.get)(records.context, compatibility_root.addr()), 1);
+        assert_eq!(phase.set.unwrap()(owner.phase_context, 0), 1);
+    }
+
     let runtime =
         unsafe { birnam_host::start_with_floor(resources, StartupPolicy::from_flags(false, false), floor) }.unwrap();
     let mut anchor = 0usize;
@@ -325,7 +343,19 @@ fn main() {
     unsafe { birnam_abi::gc_settings::set_precise(settings, 1); (runtime.stack.api().gcCollect)(); }
     assert_eq!(send(&id, collection_check, &[]).value.as_word(), Some(2));
     assert_eq!(send(&id, collection_release, &[]).status, native::LOADED);
-    unsafe { (runtime.stack.api().gcCollect)(); }
+    // Use the entry saved before Runtime existed, with no caller-supplied upper
+    // roots or retirement. The installed extension must provide them itself.
+    unsafe extern "C" fn collect_saved(context: *mut core::ffi::c_void, start: usize, bottom: usize) {
+        let collector = unsafe { &*context.cast::<birnam_abi::collector::ApiV2>() };
+        let input = birnam_abi::collector::InputV1 {
+            start, bottom, context: core::ptr::null_mut(), roots: None, retirement: core::ptr::null(),
+        };
+        let mut count = 0;
+        assert_eq!(unsafe { (collector.collect)(collector.context, &input, &mut count) }, 0);
+    }
+    let factory = unsafe { &*(*collection).stack_factory };
+    assert_eq!(unsafe { factory.capture.unwrap()((&raw mut anchor).addr(),
+        core::ptr::from_ref(&saved_collector).cast_mut().cast(), Some(collect_saved)) }, 1);
     assert_eq!(send(&id, collection_check, &[]).value.as_word(), Some(3));
     println!("native collection records/controls survive adoption; real marking, phase, budget, finalization and removal use the same owner");
     assert_eq!(send(&id, trace_check, &[]).value.as_word(), Some(1));

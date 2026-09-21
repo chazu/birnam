@@ -3,17 +3,18 @@ use birnam_abi::{
     Oop, borrowed_slice,
     collect::{self as coordination, DeadV1, DetachedV1},
     collection_state::{MARKED, MISSING, OwnedV2, PERMANENT, RecordV1},
-    collector::{ApiV1, InputV1, RetirementV1},
+    collector::{ApiV1, ApiV2, ExtensionV1, InputV1, RetirementV1},
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
     lifetime, object_model,
     storage::{BUSY, INVALID, OK, Status},
     trace_graph::{CORE_ONLY, GraphV1, PRECISE},
     trace_live::{SinkV1, SourceV1},
 };
-use core::{ffi::c_void, ptr};
+use core::{cell::Cell, ffi::c_void, ptr};
 
 pub(super) struct Collector {
-    pub(super) api: ApiV1,
+    pub(super) api: ApiV2,
+    extension: Cell<Option<ExtensionV1>>,
     state: OwnedV2,
     graph: GraphV1,
     lifetime: lifetime::OwnedV1,
@@ -70,13 +71,15 @@ impl Collector {
                 .ok_or_else(invalid)
         };
         let mut collector = Box::new(Self {
-            api: ApiV1 {
-                version: 1,
-                byte_size: size_of::<ApiV1>(),
+            api: ApiV2 {
+                version: 2,
+                byte_size: size_of::<ApiV2>(),
                 context: ptr::null_mut(),
-                trace,
-                collect,
+                trace: extended_trace,
+                collect: extended_collect,
+                extend,
             },
+            extension: Cell::new(None),
             state,
             graph,
             lifetime,
@@ -163,6 +166,79 @@ impl Collector {
             ))],
         )
         .map_or_else(|status| status, |_| OK)
+    }
+}
+fn base(collector: &Collector) -> ApiV1 {
+    ApiV1 {
+        version: 1,
+        byte_size: size_of::<ApiV1>(),
+        context: ptr::from_ref(collector).cast_mut().cast(),
+        trace,
+        collect,
+    }
+}
+unsafe extern "C" fn extend(context: *mut c_void, extension: *const ExtensionV1) -> Status {
+    if !super::aligned(context.cast::<Collector>()) || !super::aligned(extension) {
+        return INVALID;
+    }
+    let collector = unsafe { &*context.cast::<Collector>() };
+    collector.check();
+    if unsafe { (*collector.state.phase_factory).read.unwrap()(collector.state.phase_context) }
+        != coordination::IDLE
+    {
+        return BUSY;
+    }
+    let extension = unsafe { *extension };
+    if let Some(current) = collector.extension.get() {
+        return if current.context == extension.context
+            && core::ptr::fn_addr_eq(current.trace, extension.trace)
+            && core::ptr::fn_addr_eq(current.collect, extension.collect)
+        {
+            OK
+        } else {
+            INVALID
+        };
+    }
+    collector.extension.set(Some(extension));
+    OK
+}
+unsafe extern "C" fn extended_trace(context: *mut c_void, input: *const InputV1) -> Status {
+    if !super::aligned(context.cast::<Collector>()) || !super::aligned(input) {
+        return INVALID;
+    }
+    let collector = unsafe { &*context.cast::<Collector>() };
+    collector.check();
+    let extension = collector.extension.get();
+    match extension {
+        Some(extension) => unsafe { (extension.trace)(extension.context, &base(collector), input) },
+        None => unsafe { trace(context, input) },
+    }
+}
+unsafe extern "C" fn extended_collect(
+    context: *mut c_void,
+    input: *const InputV1,
+    out: *mut usize,
+) -> Status {
+    if !super::aligned(context.cast::<Collector>())
+        || !super::aligned(input)
+        || !super::aligned(out)
+    {
+        return INVALID;
+    }
+    let collector = unsafe { &*context.cast::<Collector>() };
+    collector.check();
+    // Reject nesting before entering any upper callback, including a saved one.
+    if unsafe { (*collector.state.phase_factory).read.unwrap()(collector.state.phase_context) }
+        != coordination::IDLE
+    {
+        return BUSY;
+    }
+    let extension = collector.extension.get();
+    match extension {
+        Some(extension) => unsafe {
+            (extension.collect)(extension.context, &base(collector), input, out)
+        },
+        None => unsafe { collect(context, input, out) },
     }
 }
 struct Mark<'a> {

@@ -66,7 +66,7 @@ code stays pinned under existing native-module lifetime rules. The provider
 table need only remain readable during mounting. The coordinator retains no IdApi or
 source state; its execution guard is a thread-local active bit. The separately
 constructed collector owns the complete predecessor capabilities described in
-[Collector v1](collector-v1.md).
+[Collector v2](collector-v2.md).
 
 `OK=0` writes the completed reclaimed count. `INVALID=1` rejects malformed
 carriers/results; `BUSY=2` rejects nested direct coordinator entry. Trace,

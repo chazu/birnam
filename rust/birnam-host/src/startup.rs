@@ -3155,7 +3155,7 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v8".as_ptr()) });
+    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v9".as_ptr()) });
     let bootstrap = if runtime_init.is_some() {
         let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))

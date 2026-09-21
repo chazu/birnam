@@ -1,5 +1,9 @@
 # Collector v1
 
+Historical public descriptor; its layout remains the scoped base interface used
+by [Collector v2 extensions](collector-v2.md). New production collection owners
+publish v2. The description below records the original per-call contract.
+
 Collect now implements heap tracing and collection using completed Id storage,
 Lifetime, Object Model, Trace and collection-state owners. It needs no Runtime,
 Machine or compiler. The six-argument native constructor returns

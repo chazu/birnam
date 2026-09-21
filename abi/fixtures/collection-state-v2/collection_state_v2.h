@@ -5,7 +5,7 @@
 #include "../allocation-budget-v1/allocation_budget_v1.h"
 #include "../collection-phase-v1/collection_phase_v1.h"
 #include "../collect-v1/collect_v1.h"
-#include "../collector-v1/collector_v1.h"
+#include "../collector-v2/collector_v2.h"
 typedef struct { void *object; uint32_t flags,reserved; } CollectionRecordV1;
 typedef struct { const CollectionRecordV1 *entries; size_t count; } CollectionRecordsViewV1;
 typedef struct {
@@ -29,7 +29,7 @@ typedef struct {
     void (*set_access)(void *,CollectionAccessV1);
     void (*destroy)(void *);
     CollectV1 collect;
-    const CollectorV1 *collector;
+    const CollectorV2 *collector;
 } CollectionStateV2;
 _Static_assert(sizeof(CollectionRecordV1)==16 && sizeof(CollectionRecordsViewV1)==16,"record ABI");
 _Static_assert(sizeof(CollectionRecordsV1)==80 && offsetof(CollectionRecordsV1,remove_dead)==72,"records ABI");

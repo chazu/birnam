@@ -315,6 +315,7 @@ pub(crate) fn initialize_with_owners(roots: Option<crate::root_registry::Service
     bootstrap.runtime.install_id_runtime_extensions();
     bootstrap.runtime.install_namespace_runtime_extension();
     install_bootstrap_metadata(&bootstrap, values.is_some(), namespace_exists);
+    bootstrap.runtime.install_collector_extension();
     let mut api = Box::new(table_for(&bootstrap));
     let api_pointer = core::ptr::from_mut(api.as_mut());
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();

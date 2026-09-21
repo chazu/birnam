@@ -24,7 +24,9 @@ pub(super) fn emit_upper_roots(runtime: &Runtime, initial: &[Oop], sink: &SinkV1
 }
 unsafe extern "C" fn native_upper_roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
     let source = unsafe { &*context.cast::<Source<'_>>() };
-    emit_upper_roots(source.runtime, source.initial_roots, unsafe { &*sink })
+    // The installed collector extension supplies Runtime roots on every call.
+    for root in source.initial_roots { emit_candidate(unsafe { &*sink }, root.addr()); }
+    OK
 }
 
 unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
