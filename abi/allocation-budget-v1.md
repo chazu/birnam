@@ -46,6 +46,6 @@ stack; `scripts/allocation-budget-image-smoke.sh PREFIX` checks Siphon startup,
 source-free compiled callers, mapped/rebuilt native Code images and baked apps.
 
 Current production constructs and owns these controls in the early
-[collection-state owner](collection-state-v1.md), then Runtime adopts the same
+[collection-state owner](collection-state-v2.md), then Runtime adopts the same
 context. Normal startup no longer prepares this dependency inside Id. The
 existing factory ABI remains available for legacy clients.

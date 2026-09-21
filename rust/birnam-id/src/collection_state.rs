@@ -1,11 +1,11 @@
 //! Borrow the completed collection owner; Runtime installs a complete admission extension.
-use birnam_abi::collection_state::{AccessV1, OwnedV1};
+use birnam_abi::collection_state::{AccessV1, OwnedV2};
 use core::ffi::c_void;
 use std::rc::Rc;
-pub(crate) struct Owner(pub(crate) OwnedV1);
+pub(crate) struct Owner(pub(crate) OwnedV2);
 pub(crate) type Shared = Rc<Owner>;
 impl Owner {
-    pub(crate) unsafe fn adopt(pointer: *const OwnedV1) -> Shared {
+    pub(crate) unsafe fn adopt(pointer: *const OwnedV2) -> Shared {
         assert!(unsafe { birnam_abi::collection_state::valid(pointer) });
         Rc::new(Self(unsafe { *pointer }))
     }

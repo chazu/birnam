@@ -565,3 +565,5 @@ pub mod base_values;
 pub mod namespace_owner;
 
 pub mod object_model;
+
+pub mod collector;

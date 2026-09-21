@@ -3155,7 +3155,7 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v7".as_ptr()) });
+    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v8".as_ptr()) });
     let bootstrap = if runtime_init.is_some() {
         let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
@@ -3181,7 +3181,7 @@ pub struct InitialFloor {
     float: Option<*mut birnam_abi::float::FloatApiV1>,
     word: Option<*mut birnam_abi::word::WordApiV1>,
     graph: Option<*const birnam_abi::trace_graph::GraphV1>,
-    collection: Option<*const birnam_abi::collection_state::OwnedV1>,
+    collection: Option<*const birnam_abi::collection_state::OwnedV2>,
     text_ready: bool,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
@@ -3415,7 +3415,7 @@ impl InitialFloor {
         Ok(self.graph)
     }
     /// Construct the collection records and controls before aggregate Runtime.
-    pub fn initialize_collection(&mut self) -> Result<Option<*const birnam_abi::collection_state::OwnedV1>, FloorError> {
+    pub fn initialize_collection(&mut self) -> Result<Option<*const birnam_abi::collection_state::OwnedV2>, FloorError> {
         if self.runtime_init.is_none() || self.collection.is_some() { return Ok(self.collection); }
         self.initialize_trace()?;
         use birnam_abi::id_protocol as native;
@@ -3426,10 +3426,12 @@ impl InitialFloor {
             if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
             dependencies.push(answer.value);
         }
+        dependencies.extend([native::Operand::word(self.graph.unwrap() as usize),
+            native::Operand::word(self.lifetime.unwrap() as usize), native::Operand::word(self.model.unwrap() as usize)]);
         let path = self.source_path.with_file_name("libbirnam_collect.dylib");
         let answer = unsafe { self.load_native(&path_bytes(&path), &dependencies) };
         if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let owner = answer.value.as_word().unwrap_or(0) as *const birnam_abi::collection_state::OwnedV1;
+        let owner = answer.value.as_word().unwrap_or(0) as *const birnam_abi::collection_state::OwnedV2;
         if !unsafe { birnam_abi::collection_state::valid(owner) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
         self.collection = Some(owner);
         Ok(self.collection)
@@ -3582,7 +3584,7 @@ impl InitialFloor {
             }
         };
         let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values), Some(namespace), Some(model), Some(graph), Some(collection)) = (runtime_init, roots, lifetime, base_values, namespace, model, graph, collection) {
-            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1, *const birnam_abi::trace_graph::GraphV1, *const birnam_abi::collection_state::OwnedV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
+            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1, *const birnam_abi::trace_graph::GraphV1, *const birnam_abi::collection_state::OwnedV2) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
             unsafe { initialize(roots, lifetime, values, namespace, model, graph, collection) }
         } else {
             let initialize: IdInitFn = unsafe { std::mem::transmute(init.as_ptr()) };

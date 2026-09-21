@@ -585,9 +585,9 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v7` is an upper construction entry taking the completed
+prefix. `birnam_runtime_init_v8` is an upper construction entry taking the completed
 root and representation owners plus completed base values, Namespace, Object Model, the live Trace graph and collection state, temporarily packaged in the Id library along with
-Runtime. The intermediate v1/v2/v3/v4/v5/v6 Runtime bridges are removed. The old `id_init` and factory preparation path remain
+Runtime. The intermediate v1/v2/v3/v4/v5/v6/v7 Runtime bridges are removed. The old `id_init` and factory preparation path remain
 for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
@@ -607,7 +607,7 @@ admission, membership and record operations. They do not point forward to Runtim
 
 [`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
-that owner through `birnam_runtime_init_v7`; its behavior/heap tables retain no
+that owner through `birnam_runtime_init_v8`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
 same records through the native boundary. Public APIs retain their existing ABI
 and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
@@ -823,9 +823,9 @@ also be established by the eventual activation policy; the graph validator alone
 does not prove arbitrary native ownership declarations correct.
 
 `ObjectMemory` owns allocations and identities. Collect now constructs the
-[collection-state owner](../../abi/collection-state-v1.md) before Runtime, from
-complete Native Stack, GC Settings and Allocation Budget factories plus its own
-phase implementation. Its native entry enumerates the existing Id allocations
+[collection-state owner](../../abi/collection-state-v2.md) before Runtime, from
+complete Native Stack, GC Settings and Allocation Budget factories, Trace graph,
+Lifetime and Object Model plus its own phase implementation. Its native entry enumerates the existing Id allocations
 and creates the actual weak mark/permanence records and initial budget. Runtime
 adopts the same records, phase, anchor and settings; it preserves early state and
 adds only allocations made since their initial snapshot. Public mutations start
@@ -834,8 +834,12 @@ The four former production preparations inside Id are skipped. The completed
 coordinator is adopted with this owner instead of awaiting a later mount. Marking and dead
 record removal now run in Collect, including deferred allocations when realized.
 The legacy local mark map remains only for legacy initialization/unit consumers.
-The coordinator accepts complete scoped operations on each call. The state owner
-advertises no heap-collection operation needing a future callback.
+The [collector capability](../../abi/collector-v1.md) also owns live tracing,
+Lifetime/Object Model retirement, Id index retirement, finalizer detachment and
+allocation release. Runtime supplies complete scoped upper roots and deferred/code
+retirement operations on each call; without Execution there are no such records.
+The state owner advertises no operation needing a future callback. Explicit
+activation and GC-aware constructor installation remain separate unfinished work.
 
 `Heap` retains the deferred-allocation journals and storage-consumer adapter.
 Allocation records use three native words. The collection owner's weak records
@@ -860,12 +864,15 @@ construction, its prototype, allocation extent/identity, behavior and Symbol
 bytes before language value modules exist. Native caller roots and upper
 payload descriptions remain explicit obligations.
 
-The production collector acquires the five Id storage callables described
-above through Id lookup during construction. It uses them for primordial roots,
-permanent allocation references and retirement. The completed native Trace graph
-selects its own exact Id fact entries and supplies marked-object references,
-behavior owners, payload layouts/hooks and native roots. Mark metadata lives in Collect; Execution roots and the collection-source adapter
-remain in aggregate Runtime above the interface. No Id registry borrow crosses a visitor. The diagnostic storage view,
+Collect selects its exact allocation enumeration, index retirement and detachment
+entries through Id lookup during construction. The completed native Trace graph
+selects its own Id fact entries and supplies primordial references, marked-object
+edges, behavior owners, payload layouts/hooks and native roots. Runtime no longer
+selects redundant Id storage callables on this production path. The mark and
+collection-source implementations now live in Collect. Runtime supplies its
+remaining upper roots, compatibility roots, deferred materialization and
+executable-owner retirement callbacks. No Id registry borrow crosses a visitor.
+The diagnostic storage view,
 legacy Symbol compatibility mode, adoption and Execution's dead-binding accounting
 still access internal Rust storage. Production index retirement, allocation
 detachment and release now use the native storage callables. Upper behavior
@@ -1084,6 +1091,21 @@ Current debug evidence:
   the GC-specific Darwin `_setjmp` dependency now belongs to Native Stack. Id's
   separate compiler-linked `setjmp` dependency remains with the pending compiler
   package extraction. The explicit activation transition remains unimplemented.
+- The same twenty-two-library prefix now constructs the collector itself from
+  completed native owners. Independent C verifies root-only survival, later
+  release, retirement of unreferenced Symbols/behaviors, removal of mark/finalizer
+  metadata before finalization, nested collection rejection, and accounting reset.
+  A separate process verifies a rejected root callback leaves all allocations and
+  finalizers intact and the result count untouched. The full native loading and
+  adoption harness passes with the same collector. ABI/Collect/host/Id units pass
+  (423 total, 16 ignored). Collection and Trace Hooks pass source, source-free
+  compiled, saved-image and baked execution. Finalizers also pass mapped/rebuilt
+  images, replacement, detachment and native cleanup. The portable CodeBinding lifecycle
+  workload preserves publication, replacement, self-removal and retirement.
+  Collect depends only on `birnam-abi`, exports its existing six declared symbols,
+  and links only the platform library. Installed Id matches its 68 exports with
+  the new temporary v8 bridge. These checks establish native collection ownership;
+  they do not establish the remaining activation/construction transition.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.
@@ -1116,6 +1138,15 @@ Current debug evidence:
   The installed `portable-resumable-lifecycle-smoke.sh` and
   `portable-code-binding-lifecycle-smoke.sh` checks also pass with native Id
   detachment/release, including eviction survival, replacement and self-removal.
+
+The deferred-identity image workload currently fails in its legacy custom-lookup
+case with `birnam Rust Integer: native Integer construction failed`. A separate
+debug installation of the preceding commit (`e8045b44`) reproduces the same
+failure. Instrumenting the fixture places it in lookup mode 3, with automatic
+collection disabled and before its explicit GC calls. This is not passing
+collector evidence. The legacy Method round trip for native construction must be
+resolved as part of the remaining native/reflective consumer migration; the test
+and its assertions remain intact.
 
 Remaining architectural acceptance requires all of the following:
 

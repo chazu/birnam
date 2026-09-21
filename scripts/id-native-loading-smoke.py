@@ -57,6 +57,8 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     for mode in range(2):
         run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib", f"-DMODE={mode}",
             "scripts/fixtures/bootstrap-result-native.c", "-o", str(scratch / f"bootstrap-result-{mode}.dylib"))
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/early-collector-native.c", "-o", str(scratch / "early-collector.dylib"))
     driver = scratch / "driver"
     run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
         "scripts/fixtures/id-native-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
@@ -73,6 +75,15 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
         file = f"libbirnam_{module}.dylib"
         shutil.copy2(prefix / "lib" / file, graph_prefix / file)
     run(str(graph_driver), str(graph_prefix), str(scratch / "early-trace.dylib"))
+    collector_driver = scratch / "collector-driver"
+    run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
+        "scripts/fixtures/collector-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
+        "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(collector_driver))
+    for module in ["native_stack", "gc_settings", "allocation_budget", "collect"]:
+        file = f"libbirnam_{module}.dylib"
+        shutil.copy2(prefix / "lib" / file, graph_prefix / file)
+    run(str(collector_driver), str(graph_prefix), str(scratch / "early-collector.dylib"))
+    run(str(collector_driver), str(graph_prefix), str(scratch / "early-collector.dylib"), "trace-failure")
     env = dict(os.environ, BIRNAM_NATIVE_UNLOAD_LOG=str(scratch / "unloaded"))
     run(str(driver), str(prefix), str(scratch), env=env)
     # Entered images only unload at process exit; rejected ones unload immediately.

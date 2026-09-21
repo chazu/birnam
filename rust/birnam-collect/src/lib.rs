@@ -1,6 +1,7 @@
 //! Production collection order, independent of storage and metadata owners.
 mod phase;
 mod state;
+mod collector;
 pub use phase::birnam_collection_phase_factory_v1;
 
 use birnam_abi::collect::{

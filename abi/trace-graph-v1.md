@@ -42,11 +42,12 @@ sink or native hook. Direct sink failures propagate; rejected native marks retai
 Native Mark's abort behavior. Neither failure authorizes a sweep.
 
 Production constructs the graph in `InitialFloor::initialize_trace`, passes the
-same descriptor through the temporary `birnam_runtime_init_v7` bridge, and uses
+same descriptor through the temporary `birnam_runtime_init_v8` bridge, and uses
 it for native roots, payloads, hooks and owner edges in actual collection.
-Collect now owns the [mark records and controls](collection-state-v1.md).
-Native Stack supplies register capture. Runtime still supplies Execution roots, its collection
-source adapter and retirement policy. Explicit collector activation before Runtime remains pending.
+Collect now owns the [mark records and controls](collection-state-v2.md).
+Native Stack supplies register capture. Collect owns the collection-source adapter
+and base retirement policy; Runtime supplies scoped upper roots and deferred/code
+retirement operations. Explicit collector activation before Runtime remains pending.
 
 `scripts/id-native-loading-smoke.py PREFIX` builds independent C fixtures against
 the installed production dylibs. The standalone graph case has only the eighteen

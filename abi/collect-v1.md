@@ -2,7 +2,7 @@
 
 `libbirnam_collect.dylib` exports `birnam_collect_v1(source, out_count)` and
 `birnam_collect_provider_v1()`. Its native entry constructs complete
-[collection state](collection-state-v1.md), including the coordinator, before
+[collection state](collection-state-v2.md), including the coordinator, before
 Runtime. Runtime adopts that same coordinator at construction. The later legacy
 mount through Id's `birnam_collect_dependency_v1(api)` verifies the identical
 entry; it does not supply a missing production dependency. Legacy `id_init`
@@ -63,8 +63,10 @@ No conflicting Rust storage/metadata borrow may cross a foreign callback.
 The mounted entry is copied per Runtime. Mounting is allowed only while idle;
 reattaching the identical function is idempotent, replacement is rejected. Its
 code stays pinned under existing native-module lifetime rules. The provider
-table need only remain readable during mounting. The module retains no IdApi or
-source state; its only execution guard is a thread-local active bit.
+table need only remain readable during mounting. The coordinator retains no IdApi or
+source state; its execution guard is a thread-local active bit. The separately
+constructed collector owns the complete predecessor capabilities described in
+[Collector v1](collector-v1.md).
 
 `OK=0` writes the completed reclaimed count. `INVALID=1` rejects malformed
 carriers/results; `BUSY=2` rejects nested direct coordinator entry. Trace,

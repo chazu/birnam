@@ -435,7 +435,7 @@ impl Runtime {
         trace_graph: Option<birnam_abi::trace_graph::GraphV1>,
         collection_owner: Option<crate::collection_state::Shared>,
     ) -> Self {
-        let id_storage = id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol));
+        let id_storage = if collection_owner.is_none() { id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol)) } else { None };
         Self {
             id_storage,
             trace_graph,

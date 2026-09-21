@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Moved production tracing, weak metadata retirement, finalizer detachment and
+  allocation release into Collect, constructed from completed native owners before
+  Runtime. Runtime supplies scoped upper roots and Execution/deferred retirement
+  operations. Collection state v2 and the temporary Runtime v8 bridge preserve the
+  existing allocations and controls; activation/construction migration continues.
+
 - Moved register capture and native stack interval validation from Id into Native
   Stack's v3 factory. Collect receives the complete operation before Runtime;
   collection and source probes use the same native implementation. Replaced the

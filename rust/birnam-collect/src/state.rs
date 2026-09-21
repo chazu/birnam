@@ -2,7 +2,7 @@
 use birnam_abi::{
     Oop, allocation_budget, borrowed_slice,
     collection_state::{
-        self as abi, AccessV1, MARKED, MISSING, OwnedV1, PERMANENT, RecordV1, RecordsV1, ViewV1,
+        self as abi, AccessV1, MARKED, MISSING, OwnedV2, PERMANENT, RecordV1, RecordsV1, ViewV1,
     },
     gc_settings,
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
@@ -141,10 +141,11 @@ unsafe extern "C" fn admit_stack(context: *mut c_void) {
     let access = unsafe { (*context.cast::<Policy>()).access.get() };
     unsafe { (access.stack)(access.context) };
 }
-struct State {
-    owned: OwnedV1,
+pub(super) struct State {
+    owned: OwnedV2,
     records: Box<Records>,
     policy: Box<Policy>,
+    collector: Option<Box<crate::collector::Collector>>,
 }
 unsafe extern "C" fn set_access(context: *mut c_void, access: AccessV1) {
     let state = unsafe { &*context.cast::<State>() };
@@ -214,7 +215,7 @@ unsafe extern "C" fn initialize(
     if id.version != 1 || id.byte_size as usize != size_of::<Protocol>() || id.message.is_none() {
         return invalid();
     }
-    let Some([stack, settings, budget]) = (unsafe { borrowed_slice(args, count) }) else {
+    let Some([stack, settings, budget, graph, lifetime, model]) = (unsafe { borrowed_slice(args, count) }) else {
         return invalid();
     };
     let (Some(stack), Some(settings), Some(budget)) =
@@ -234,6 +235,11 @@ unsafe extern "C" fn initialize(
     } {
         return invalid();
     }
+    let (Some(graph), Some(lifetime), Some(model)) = (graph.as_word(), lifetime.as_word(), model.as_word()) else { return invalid(); };
+    let graph = graph as *const birnam_abi::trace_graph::GraphV1;
+    let lifetime = lifetime as *const birnam_abi::lifetime::OwnedV1;
+    let model = model as *const birnam_abi::object_model::OwnedV1;
+    if !unsafe { birnam_abi::trace_graph::valid(graph) && birnam_abi::lifetime::valid(lifetime) && birnam_abi::object_model::valid(model) } { return invalid(); }
     let thread = Box::new(std::thread::current().id());
     let access = AccessV1 {
         context: ptr::from_ref(thread.as_ref()).cast_mut().cast(),
@@ -259,9 +265,9 @@ unsafe extern "C" fn initialize(
     };
     let phase = unsafe { crate::phase::birnam_collection_phase_factory_v1() };
     let mut state = Box::new(State {
-        owned: OwnedV1 {
-            version: 1,
-            byte_size: size_of::<OwnedV1>(),
+        owned: OwnedV2 {
+            version: 2,
+            byte_size: size_of::<OwnedV2>(),
             context: ptr::null_mut(),
             records: ptr::null(),
             stack: unsafe { (*stack).create.unwrap()(&stack_floor) },
@@ -275,7 +281,9 @@ unsafe extern "C" fn initialize(
             set_access,
             destroy,
             collect: crate::birnam_collect_v1,
+            collector: ptr::null(),
         },
+        collector: None,
         records: Records::new(),
         policy,
     });
@@ -302,6 +310,11 @@ unsafe extern "C" fn initialize(
     if answer.status != native::LOADED {
         return answer;
     }
+    let collector = match unsafe { crate::collector::Collector::new(id, state.owned, *graph, *lifetime, *model) } {
+        Ok(collector) => collector, Err(error) => return error,
+    };
+    state.owned.collector = ptr::from_ref(&collector.api);
+    state.collector = Some(collector);
     let owned = ptr::from_ref(&state.owned);
     assert!(unsafe { abi::valid(owned) });
     let _ = Box::into_raw(state);
@@ -313,3 +326,7 @@ pub static birnam_native_module_v1: native::Module = native::Module {
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };
+
+pub(super) unsafe fn object_at(context: *mut c_void, address: usize) -> Option<Oop> {
+    unsafe { records(context) }.entries.get(&address).map(|record| record.object)
+}

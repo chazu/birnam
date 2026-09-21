@@ -2,13 +2,13 @@
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/root-registry-owner-v1/root_registry_owner_v1.h"
 #include "../../abi/fixtures/lifetime-v1/lifetime_v1.h"
-#include "../../abi/fixtures/collection-state-v1/collection_state_v1.h"
+#include "../../abi/fixtures/collection-state-v2/collection_state_v2.h"
 #include <assert.h>
 #include <string.h>
 static BirnamProtocol id;
 static RootRegistryOwnedV1 roots;
 static LifetimeOwnedV1 lifetime;
-static CollectionStateV1 owner;
+static CollectionStateV2 owner;
 static CollectionRecordsV1 records;
 static void *kept,*late;
 static size_t token,finalized;
@@ -69,9 +69,9 @@ static void captured_before_runtime(void *context,uintptr_t start,uintptr_t bott
     *(uintptr_t *)context=1;
 }
 static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOperand *args,size_t count) {
-    assert(count==3);id=*protocol;owner=*(CollectionStateV1 *)args[0].data.word;
+    assert(count==3);id=*protocol;owner=*(CollectionStateV2 *)args[0].data.word;
     roots=*(RootRegistryOwnedV1 *)args[1].data.word;lifetime=*(LifetimeOwnedV1 *)args[2].data.word;
-    assert(owner.version==1 && owner.byte_size==sizeof(owner));records=*owner.records;
+    assert(owner.version==2 && owner.byte_size==sizeof(owner));records=*owner.records;
     size_t native_anchor=0;uintptr_t captured=(uintptr_t)&native_anchor;
     assert(owner.stack_factory->capture((uintptr_t)&native_anchor,&captured,captured_before_runtime)==1);
     assert(captured==1);

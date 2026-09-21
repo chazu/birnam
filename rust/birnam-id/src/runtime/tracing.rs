@@ -13,6 +13,20 @@ struct Source<'a> {
     id: Option<super::id_storage::Storage>,
 }
 
+pub(super) fn emit_upper_roots(runtime: &Runtime, initial: &[Oop], sink: &SinkV1) -> i32 {
+    for root in initial { emit_candidate(sink, root.addr()); }
+    runtime.dispatch_cache.clear();
+    #[cfg(all(test, target_os = "macos"))]
+    runtime.read_reuse_gc_epoch.set(runtime.read_reuse_gc_epoch.get().saturating_add(1));
+    let roots = unsafe { upper_roots(&*runtime.state.get()) };
+    for root in roots { emit_candidate(sink, root.addr()); }
+    OK
+}
+unsafe extern "C" fn native_upper_roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
+    let source = unsafe { &*context.cast::<Source<'_>>() };
+    emit_upper_roots(source.runtime, source.initial_roots, unsafe { &*sink })
+}
+
 unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
     let (source, sink) = unsafe { (&*context.cast::<Source<'_>>(), &*sink) };
     let runtime = source.runtime;
@@ -232,10 +246,6 @@ impl Runtime {
     }
 
     pub(super) fn run_mark_phase(&self, native_range: (usize, usize), initial_roots: &[Oop]) {
-        let trace = self
-            .trace
-            .get()
-            .unwrap_or_else(|| boundary::fatal_invariant("GC tracer dependency not mounted"));
         let id = self.id_storage;
         let mut context = Source {
             runtime: self,
@@ -243,6 +253,20 @@ impl Runtime {
             native_range,
             initial_roots,
         };
+        if let Some(owner) = &self.collection_owner {
+            let collector = unsafe { *owner.0.collector };
+            let input = birnam_abi::collector::InputV1 {
+                start: native_range.0, bottom: native_range.1, context: (&raw mut context).cast(),
+                roots: Some(native_upper_roots), retirement: core::ptr::null(),
+            };
+            let status = unsafe { (collector.trace)(collector.context, &input) };
+            boundary::require_invariant(status == OK, "GC tracer failed before sweep");
+            return;
+        }
+        let trace = self
+            .trace
+            .get()
+            .unwrap_or_else(|| boundary::fatal_invariant("GC tracer dependency not mounted"));
         let source = SourceV1 {
             version: VERSION,
             byte_size: size_of::<SourceV1>(),

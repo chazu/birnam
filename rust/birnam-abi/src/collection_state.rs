@@ -41,7 +41,7 @@ pub struct AccessV1 {
 }
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct OwnedV1 {
+pub struct OwnedV2 {
     pub version: u32,
     pub byte_size: usize,
     pub context: *mut c_void,
@@ -57,27 +57,31 @@ pub struct OwnedV1 {
     pub set_access: unsafe extern "C" fn(*mut c_void, AccessV1),
     pub destroy: unsafe extern "C" fn(*mut c_void),
     pub collect: crate::collect::CollectV1,
+    pub collector: *const crate::collector::ApiV1,
 }
 const _: () = {
     assert!(size_of::<RecordV1>() == 16 && size_of::<ViewV1>() == 16);
-    assert!(size_of::<RecordsV1>() == 80 && size_of::<OwnedV1>() == 120);
+    assert!(size_of::<RecordsV1>() == 80 && size_of::<OwnedV2>() == 128);
 };
 /// # Safety
 /// Readable descriptor and predecessor tables; all contexts and code stay live.
-pub unsafe fn valid(pointer: *const OwnedV1) -> bool {
+pub unsafe fn valid(pointer: *const OwnedV2) -> bool {
     if pointer.is_null() {
         return false;
     }
     let owner = unsafe { *pointer };
-    if owner.version != 1
-        || owner.byte_size != size_of::<OwnedV1>()
+    if owner.version != 2
+        || owner.byte_size != size_of::<OwnedV2>()
         || owner.context.is_null()
         || owner.records.is_null()
+        || owner.collector.is_null()
         || owner.budget_context.is_null()
         || owner.phase_context.is_null()
     {
         return false;
     }
+    let collector = unsafe { *owner.collector };
+    if collector.version != 1 || collector.byte_size != size_of::<crate::collector::ApiV1>() || collector.context.is_null() { return false; }
     let records = unsafe { *owner.records };
     records.version == 1
         && records.byte_size == size_of::<RecordsV1>()

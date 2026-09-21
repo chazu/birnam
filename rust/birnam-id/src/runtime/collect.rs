@@ -120,13 +120,13 @@ unsafe extern "C" fn retire_metadata(context: *mut c_void) {
                 });
             }
         }
-        if source.runtime.id_storage.is_some() {
+        if source.runtime.collection_owner.is_some() || source.runtime.id_storage.is_some() {
             let dead = state.heap.dead_collectable_addresses();
-            state.vtables.retire_metadata(&dead);
+            if source.runtime.collection_owner.is_none() { state.vtables.retire_metadata(&dead); }
             state
                 .block_vtable_catalog
                 .retain(|entry| !dead.contains(&entry.vtable.addr()));
-            Some(dead)
+            source.runtime.collection_owner.is_none().then_some(dead)
         } else {
             let dead_vtables = state.vtables.remove_dead_collectable(&state.heap);
             state
@@ -231,6 +231,11 @@ unsafe extern "C" fn prune(context: *mut c_void) {
     source.runtime.native_tier.borrow_mut().prune();
 }
 
+unsafe extern "C" fn upper_roots(context: *mut c_void, sink: *const birnam_abi::trace_live::SinkV1) -> i32 {
+    let source = unsafe { &*context.cast::<Source<'_>>() };
+    super::tracing::emit_upper_roots(source.runtime, &[], unsafe { &*sink })
+}
+
 impl Runtime {
     /// The host pins implementation code. Mounting is idempotent, never replacement.
     pub(crate) unsafe fn attach_collect(&self, api: *const ApiV1) -> bool {
@@ -274,6 +279,21 @@ impl Runtime {
             dead: Vec::new(),
             detached: None,
         };
+        if let Some(owner) = &self.collection_owner {
+            let collector = unsafe { *owner.0.collector };
+            let retirement = birnam_abi::collector::RetirementV1 {
+                context: (&raw mut context).cast(), inspect: inspect_retirement,
+                settle: settle_deferred, retire: retire_metadata, reclaim: reclaim_deferred, prune,
+            };
+            let input = birnam_abi::collector::InputV1 {
+                start: root_start, bottom: stack_bottom, context: (&raw mut context).cast(),
+                roots: Some(upper_roots), retirement: &retirement,
+            };
+            let mut reclaimed = 0;
+            let status = unsafe { (collector.collect)(collector.context, &input, &mut reclaimed) };
+            boundary::require_invariant(status == OK, "GC coordinator failed");
+            return reclaimed;
+        }
         let source = SourceV1 {
             version: VERSION,
             byte_size: size_of::<SourceV1>(),

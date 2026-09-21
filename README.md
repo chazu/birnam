@@ -709,7 +709,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v20 (18 fields / 144 bytes).
 - `rust/birnam-bootstrap/` — sequential native loading through Id and ownership of initialization results; see [the native contract](abi/fixtures/bootstrap-v1/README.md).
 - `rust/birnam-root-registry/` — native root ownership, initialized through Id before Runtime.
-- `rust/birnam-collect/` — [collection records and controls](abi/collection-state-v1.md), initialized before Runtime and shared with its collector, plus the collection coordinator.
+- `rust/birnam-collect/` — [collection records and controls](abi/collection-state-v2.md), initialized before Runtime and shared with its collector, plus the collection coordinator.
+- [Collector v1](abi/collector-v1.md): production tracing and reclamation over completed native owners.
 - [Native Stack factory v3](abi/native-stack-v3.md): native register capture and root scanning before Runtime.
 - `rust/birnam-trace/` — [live graph traversal](abi/trace-graph-v1.md), constructed before Runtime from Id storage facts and completed lifetime owners.
 - `rust/birnam-lifetime/` — payload descriptions, trace hooks and finalizer records, initialized through Id and adopted by Runtime; see [the native contract](abi/fixtures/lifetime-v1/README.md).

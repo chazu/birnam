@@ -1,5 +1,8 @@
 # Collection state v1
 
+Historical contract; production now uses [v2](collection-state-v2.md), which
+adds the completed collector capability and its construction dependencies.
+
 `libbirnam_collect.dylib:birnam_native_module_v1` constructs the production mark
 records, allocation budget, collection phase, native stack anchor and GC settings
 before Runtime exists. It takes three Words: completed Native Stack factory v3,
