@@ -1915,9 +1915,29 @@ Storage observation also passes source, compiled, mapped, rebuilt and baked
 execution, including host observation, nested BUSY rejection, visitor cleanup,
 root preservation and allocation identity after GC. Release validation is waived.
 
-Full forced-source acceptance remains open: with `BIRNAM_FORCE_SOURCE=1`, the
-Portable Code runner exits zero without executing any assertions. The same
-runner does this on the preceding `cf5ace60` installation, whose installed
-Codegen/TCC sources match that commit. Scalar forced-source execution works.
-Zero exit status without assertion output is not evidence of suite success;
-resolve this alongside the outstanding worker and image-authority acceptance.
+The forced-source Portable Code runner exposed a generated-reference lifetime
+bug: compiled `Test` answered nil after the nested framework load, while a fresh
+`[Globals at: #Test]` found the object and executed all 114 assertions. The emitter
+had embedded an unrooted Symbol address in each global reference, then the lookup
+shim converted that Symbol back to a name. Collection during nested loading could
+retire those Symbols before their generated references were used.
+
+Generated global reads now call the existing name-based lookup directly. JIT
+Symbol binding, per-artifact Symbol storage/initialization and the emitter's
+baked-global lists are removed. The artifact initializer symbol remains because
+candidate admission requires it. Existing `birnam_global_b` exports remain for
+old artifact ABI consumers; newly emitted code does not use them. This removes
+an ownership obligation rather than adding another native root table.
+
+`scripts/source-global-lookup-smoke.sh` runs the Portable Code suite through
+installed, forced-source and compiled entry paths and checks both the reported
+assertion total and individual pass lines. Its forced-source check rejects the
+previous `d9f61666` installation's silent zero exit. Broader worker and
+image-authority acceptance remain outstanding.
+
+The debug installation `/tmp/birnam-83-live-globals` passes all three modes
+(114 assertions each), Method source/compiled/mapped/rebuilt/baked checks and
+the separate source/synchronous/resumable Unit-reclamation checks. Codegen passes
+97 unit tests; Codegen Runtime passes 22 with four existing ignored tests;
+validation tooling passes eight. Its Id library is byte-identical to the
+previous ownership installation used for the independent native-prefix checks.

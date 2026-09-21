@@ -35,7 +35,6 @@ pub struct Emitter {
     bytes: Vec<u8>,
     function_defs: Vec<u8>,
     bound_names: Vec<Vec<u8>>,
-    baked_globals: Vec<Vec<u8>>,
     next_block: usize,
     next_send: usize,
     artifact_mode: bool,
@@ -698,7 +697,6 @@ extern void* birnam_nil(void);
 extern void* birnam_true(void);
 extern void* birnam_false(void);
 extern void* birnam_global(const char* name);
-extern void* birnam_global_b(void* sym);
 extern void* birnam_global_set(const char* name, void* value);
 extern void* birnam_ensurePrivateVtable(void* obj);
 extern void* birnam_install_method(void* vt, void* sel, void* method, const char* src, long n);
@@ -735,7 +733,6 @@ extern void* birnam_alloc(void* vt, long bytes);
 #[derive(Debug, Default)]
 pub struct TranslationUnit {
     artifact: bool,
-    baked_globals: Vec<Vec<u8>>,
     function_defs: Vec<u8>,
     body: Vec<u8>,
 }
@@ -746,10 +743,6 @@ impl TranslationUnit {
             artifact,
             ..Self::default()
         }
-    }
-
-    pub fn add_baked_global(&mut self, name: &[u8]) {
-        self.baked_globals.push(name.to_vec());
     }
 
     pub fn push_function(&mut self, definition: &[u8]) {
@@ -765,7 +758,6 @@ impl TranslationUnit {
             C_RUNTIME_PRELUDE.len()
                 + self.function_defs.len()
                 + self.body.len()
-                + self.baked_globals.len() * 32
                 + if self.artifact { 64 } else { 0 },
         );
         output.extend_from_slice(C_RUNTIME_PRELUDE);
@@ -775,17 +767,6 @@ impl TranslationUnit {
         if resumable_c::slot_box_elision_selected() {
             output.extend_from_slice(resumable_c::ELIDED_SLOT_PRELUDE);
         }
-        for (index, _name) in self.baked_globals.iter().enumerate() {
-            if self.artifact {
-                output.extend_from_slice(b"static void* __g");
-                output.extend_from_slice(index.to_string().as_bytes());
-                output.extend_from_slice(b";\n");
-            } else {
-                output.extend_from_slice(b"extern char __g");
-                output.extend_from_slice(index.to_string().as_bytes());
-                output.extend_from_slice(b"[];\n");
-            }
-        }
         output.extend_from_slice(&self.function_defs);
         output.extend_from_slice(
             b"void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\n",
@@ -794,15 +775,6 @@ impl TranslationUnit {
         output.extend_from_slice(b"}\n");
         if self.artifact {
             output.extend_from_slice(b"void __birnam_unit_init(void){\n");
-            for (index, name) in self.baked_globals.iter().enumerate() {
-                output.extend_from_slice(b"  __g");
-                output.extend_from_slice(index.to_string().as_bytes());
-                output.extend_from_slice(b" = birnam_intern(\"");
-                let mut escaped = Emitter::new();
-                escaped.push_c_string_body(name);
-                output.extend_from_slice(&escaped.finish());
-                output.extend_from_slice(b"\");\n");
-            }
             output.extend_from_slice(b"}\n");
         }
         output
@@ -1022,29 +994,10 @@ impl Emitter {
             self.bytes.extend_from_slice(b"b_");
             self.bytes.extend_from_slice(name);
         } else {
-            let index = self.bake_global(name);
-            self.bytes.extend_from_slice(b"birnam_global_b(");
-            if self.artifact_mode {
-                self.bytes.extend_from_slice(b"__g");
-            } else {
-                self.bytes.extend_from_slice(b"(void*)__g");
-            }
-            self.bytes.extend_from_slice(index.to_string().as_bytes());
-            self.bytes.extend_from_slice(b")");
+            // Resolve by name at the send site. A compiled Unit must not embed
+            // an unrooted Symbol address across module loading or collection.
+            self.emit_global(name);
         }
-    }
-
-    fn bake_global(&mut self, name: &[u8]) -> usize {
-        if let Some(index) = self
-            .baked_globals
-            .iter()
-            .position(|baked| baked.as_slice() == name)
-        {
-            return index;
-        }
-        let index = self.baked_globals.len();
-        self.baked_globals.push(name.to_vec());
-        index
     }
 
     pub fn emit_send(&mut self, receiver: &[u8], selector: &[u8], args: &[&[u8]]) {
@@ -1979,9 +1932,6 @@ impl Emitter {
         (self.function_defs, self.bytes)
     }
 
-    pub fn baked_globals(&self) -> &[Vec<u8>] {
-        &self.baked_globals
-    }
 }
 
 #[cfg(test)]
@@ -2076,7 +2026,7 @@ mod tests {
         emitter.emit_expr(&expression).unwrap();
         assert_eq!(
             String::from_utf8(emitter.finish()).unwrap(),
-            "({void* __birnam_send_0_receiver=birnam_global_b((void*)__g0);void* __birnam_send_0_arg_0=birnam_mkString(\"answer\", 6L);void* __birnam_send_0_args[]={__birnam_send_0_arg_0};birnam_send(__birnam_send_0_receiver,birnam_intern(\"at:\"),__birnam_send_0_args,1L);})"
+            "({void* __birnam_send_0_receiver=birnam_global(\"Integer\");void* __birnam_send_0_arg_0=birnam_mkString(\"answer\", 6L);void* __birnam_send_0_args[]={__birnam_send_0_arg_0};birnam_send(__birnam_send_0_receiver,birnam_intern(\"at:\"),__birnam_send_0_args,1L);})"
         );
 
         let result = std::thread::Builder::new()
@@ -2264,12 +2214,8 @@ mod tests {
                 body: vec![Statement::Expr(expression)],
             })
             .unwrap();
-        let baked_globals = emitter.baked_globals().to_vec();
         let (function_defs, body) = emitter.finish_parts();
         let mut unit = TranslationUnit::new(true);
-        for name in baked_globals {
-            unit.add_baked_global(&name);
-        }
         unit.push_function(&function_defs);
         unit.push_body(&body);
         let output = String::from_utf8(unit.finish()).unwrap();
@@ -2635,7 +2581,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"({void* __birnam_send_0_receiver=birnam_global_b((void*)__g0);void* __birnam_send_0_arg_0=MKV(1L);void* __birnam_send_0_arg_1=MKV(2L);void* __birnam_send_0_args[]={__birnam_send_0_arg_0,__birnam_send_0_arg_1};birnam_send(__birnam_send_0_receiver,birnam_intern(\"foo:bar:\"),__birnam_send_0_args,2L);})"
+            b"({void* __birnam_send_0_receiver=birnam_global(\"x\");void* __birnam_send_0_arg_0=MKV(1L);void* __birnam_send_0_arg_1=MKV(2L);void* __birnam_send_0_args[]={__birnam_send_0_arg_0,__birnam_send_0_arg_1};birnam_send(__birnam_send_0_receiver,birnam_intern(\"foo:bar:\"),__birnam_send_0_args,2L);})"
         );
     }
 
@@ -2790,7 +2736,7 @@ mod tests {
             .unwrap();
         let output = String::from_utf8(emitter.finish()).unwrap();
         let receiver = output
-            .find("__birnam_send_2_receiver=birnam_global_b")
+            .find("__birnam_send_2_receiver=birnam_global(")
             .unwrap();
         let first_lookup = output.find("birnam_send(__birnam_send_2_receiver").unwrap();
         let first_arg = output.find("__birnam_send_1_arg_0=MKV(1L)").unwrap();
@@ -2865,7 +2811,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             emitter.finish(),
-            b"({void* __birnam_send_0_receiver=birnam_global_b((void*)__g0);void* __birnam_send_0_arg_0=birnam_intern(\"p\");void* __birnam_send_0_args[]={__birnam_send_0_arg_0};birnam_send(__birnam_send_0_receiver,birnam_intern(\"named:\"),__birnam_send_0_args,1L);})"
+            b"({void* __birnam_send_0_receiver=birnam_global(\"LogicVar\");void* __birnam_send_0_arg_0=birnam_intern(\"p\");void* __birnam_send_0_args[]={__birnam_send_0_arg_0};birnam_send(__birnam_send_0_receiver,birnam_intern(\"named:\"),__birnam_send_0_args,1L);})"
         );
     }
 
@@ -3012,19 +2958,16 @@ mod tests {
     #[test]
     fn assembles_jit_and_artifact_units_deterministically() {
         let mut jit = TranslationUnit::new(false);
-        jit.add_baked_global(b"Integer");
         jit.push_body(b"return MKV(42L);\n");
         let output = String::from_utf8(jit.finish()).unwrap();
         assert!(output.contains("extern void* birnam_global(const char* name);\n"));
-        assert!(output.ends_with("extern char __g0[];\nvoid* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nreturn MKV(42L);\n}\n"));
+        assert!(output.ends_with("void* __ev(void* self, void** args, long n){ (void)self;(void)args;(void)n;\nreturn MKV(42L);\n}\n"));
 
         let mut artifact = TranslationUnit::new(true);
-        artifact.add_baked_global(b"Integer");
-        artifact.push_body(b"return __g0;\n");
+        artifact.push_body(b"return birnam_global(\"Integer\");\n");
         let output = String::from_utf8(artifact.finish()).unwrap();
-        assert!(output.contains("static void* __g0;"));
         assert!(output.contains("void __birnam_unit_init(void){"));
-        assert!(output.contains("__g0 = birnam_intern(\"Integer\");"));
+        assert!(output.contains("return birnam_global(\"Integer\");"));
     }
 }
 

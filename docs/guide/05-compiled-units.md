@@ -5,6 +5,10 @@ the running system. Activation asks the host to publish its declarative method
 delta and a new whole-runtime `DispatchGeneration` together. Rollback asks the
 host to republish the exact predecessor.
 
+Compiled global references look up the current binding by name when executed.
+They see globals published by later module loads and subsequent replacements;
+compilation does not freeze a global's value or retain a raw Symbol address.
+
 Every module has the same representation and is live-editable. The current
 candidate contract permits declarative method changes and capture-free
 top-level block bindings such as `let handler := [| ...]`. Module identity,

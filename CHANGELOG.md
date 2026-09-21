@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Resolve generated global reads by name instead of embedding unrooted Symbol
+  addresses. Code compiled before a nested source load now sees the globals it
+  publishes, including the test framework under forced-source startup.
+
 - Retain anonymous compiled Units through reflected Methods and aliased method
   bindings, including synchronous and resumable Blocks. Lifetime v2 traces
   references held in native state without keeping unreachable cycles alive.

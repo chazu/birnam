@@ -1768,21 +1768,6 @@ unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
     (!address.is_null()).then_some(address as usize)
 }
 
-unsafe fn bind_baked_global_shims(api: &IdApi, unit: Oop, baked_globals: &[Vec<u8>]) -> bool {
-    for (index, name_bytes) in baked_globals.iter().enumerate() {
-        let symbol = unsafe { intern_bytes(api, name_bytes) };
-        let mut name = format!("__g{index}").into_bytes();
-        let name_object = unsafe { (birnam_abi::string::make)(name.as_mut_ptr(), name.len()) };
-        let Some(address) = (unsafe { borrowed_address(api, symbol as usize) }) else {
-            return false;
-        };
-        if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name_object, address]) } == api.nilObj {
-            return false;
-        }
-    }
-    true
-}
-
 fn descriptor_field(payload: &mut Vec<u8>, value: &[u8]) {
     payload.extend_from_slice(&(value.len() as u32).to_le_bytes());
     payload.extend_from_slice(value);
@@ -5777,17 +5762,12 @@ unsafe fn emit_source(
             return None;
         }
     }
-    let baked_globals = emitter.baked_globals().to_vec();
     let (function_defs, body) = emitter.finish_parts();
     let mut unit = TranslationUnit::new(artifact);
-    for name in &baked_globals {
-        unit.add_baked_global(name);
-    }
     unit.push_function(&function_defs);
     unit.push_body(&body);
     Some(EmittedSource {
         bytes: unit.finish(),
-        baked_globals,
     })
 }
 
@@ -5820,23 +5800,17 @@ unsafe fn emit_image_recovery_source(
         note_error(b"RustCodegen could not emit the image recovery projection");
         return None;
     }
-    let baked_globals = emitter.baked_globals().to_vec();
     let (function_defs, body) = emitter.finish_parts();
     let mut unit = TranslationUnit::new(true);
-    for name in &baked_globals {
-        unit.add_baked_global(name);
-    }
     unit.push_function(&function_defs);
     unit.push_body(&body);
     Some(EmittedSource {
         bytes: unit.finish(),
-        baked_globals,
     })
 }
 
 struct EmittedSource {
     bytes: Vec<u8>,
-    baked_globals: Vec<Vec<u8>>,
 }
 
 unsafe extern "C" fn rust_codegen_emit(
@@ -6084,7 +6058,6 @@ unsafe extern "C" fn rust_codegen_eval(
     let c_source = unsafe { (birnam_abi::string::make)(source.bytes.as_ptr(), source.bytes.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
         || !unsafe { bind_global_shims(api, unit, true) }
-        || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
         || !unsafe { bind_jit_code_generation_identity(api, unit) }
@@ -7941,7 +7914,6 @@ unsafe extern "C" fn rust_codegen_eval_persisting(
     let c_source = unsafe { (birnam_abi::string::make)(source.bytes.as_ptr(), source.bytes.len()) };
     if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
         || !unsafe { bind_global_shims(api, unit, true) }
-        || !unsafe { bind_baked_global_shims(api, unit, &source.baked_globals) }
         || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
         || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
         || !unsafe { bind_jit_code_generation_identity(api, unit) }
