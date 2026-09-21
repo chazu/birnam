@@ -42,7 +42,7 @@ Its receiver is unused. Invoke it outside module initialization; nested graph
 construction is rejected. No Bootstrap-state borrow crosses a module callback.
 
 The loaded Bootstrap module owns the dependency order and arguments from roots
-through Runtime and its control extensions. Stages `roots`, `lifetime`, `values`, `namespace`, `objectModel`,
+through the complete native application stack. Stages `roots`, `lifetime`, `values`, `namespace`, `objectModel`,
 `string`, `integer`, `float`, `word`, `trace`, `collection`, `runtimeSupport`,
 `runtimeValues`, `runtime`, `errorValue`, `printing`, and `blockLoop` return Word
 pointers to completed descriptors. `control` installs Integer/Boolean control,
@@ -55,9 +55,9 @@ anything. Unknown stages fail with native InvalidRequest.
 Host prefix entry points delegate to this same constructor; they contain no
 second dependency sequence. `begin_floor` requests the roots stage. Normal
 startup requests Runtime, then `control` before collections, and retains
-Bootstrap until teardown. The host's later
-legacy module entries and aggregate Runtime capability discovery still need
-migration; this constructor is not a claim that the entire upper graph is done.
+Bootstrap until teardown. Normal startup has no legacy native module sequence.
+Direct legacy module consumers and aggregate Runtime capability discovery still
+need migration; complete construction does not imply those consumers are safe.
 
 The installed `scripts/id-native-loading-smoke.py PREFIX` uses an independent C
 module to initiate a nested Bootstrap load before any root-registry library is
@@ -223,3 +223,38 @@ The host delegates to this sequence and retains descriptors for remaining
 legacy native consumers. The language-facing `loadModule:` implementation still
 uses the old module ABI; migrating that consumer and removing its compatibility
 descriptors remain required by Design 83.
+
+
+The application constructors complete the native stack. `F` has the same six
+operands defined above; Object inputs name already published predecessors.
+
+| Library | Operands after Id | Complete result |
+|---|---|---|
+| Isolate | F, Word(finalizers), Word(Integer), Word(Float), Word(String), Object(Vector), Object(Map), Object(Error), Object(Globals) | Object(Isolate); worker, handle and failure operations |
+| Relational | F, Word(Integer), Word(Float), Word(String), Object(Store), Object(Vector), Object(Map) | Object(Store), also published as db; entities, logic variables and queries |
+| Alien | F, Word(vtable enumeration), Word(finalizers), Word(Integer), Word(Float), Word(String), Word(namespace names), Object(Tcc), Object(Store), Object(Vector), Object(Error) | Object(Alien); foreign addresses, libraries, wrappers and callbacks |
+| Image | F, Word(vtable enumeration), Word(GC settings), Word(Integer), Word(Float), Word(Word), Word(String), Word(namespace names), Word(compiler/admission), Object(System), Object(Codegen), Object(Store), Object(CodeObject) | Object(ImageSaveReport); installs System image operations |
+
+Stages `isolate`, `relational`, `alien` and `image` return these Objects.
+`applicationBase` completes Relational, Isolate and Alien, leaving Image absent;
+`applications` also completes Image. Both aggregate stages return Unit. New
+families and constructor selectors have temporary roots until their module roots
+are registered. Repeated construction preserves the selected Runtime and objects.
+Image uses the completed compiler descriptor for compiler-owned entries, and its
+native constructor establishes its canonical implementation without an environment
+variable written by the host.
+
+The [production construction manifest](../../production-construction-v1.json)
+records native entries, operands, completed predecessors and operations for all
+56 installed native libraries, including the 52 former host startup rows. The
+installer checks library coverage, missing predecessors, cycles and the library
+inventory in Bootstrap's source, and records the manifest hash in its receipt.
+These static checks do not prove semantic dependency completeness. Prefix tests
+exercise real operations while later libraries are physically unavailable, then
+complete full startup with zero legacy module initializations. Legacy `module_init`
+exports and direct consumers remain compatibility work to remove under Design 83.
+
+Native Runtime begins with weak Symbol retention. Previously the first legacy
+module load enabled that policy as a side effect; native-only startup must not
+retain the entire interner while waiting for an initializer that no longer runs.
+Explicit legacy admission can still select its bounded compatibility policy.

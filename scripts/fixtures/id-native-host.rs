@@ -371,9 +371,9 @@ fn main() {
     assert_eq!(floor.gc_settings(), unsafe { (*collection).settings }.cast_const());
     assert_eq!(floor.native_stack(), unsafe { (*collection).stack }.cast_const());
     assert_eq!(send(&id, collection_adopted, &[]).value.as_word(), Some(1));
-    // An unbound compatibility Symbol is rooted by Runtime, not the native
-    // Trace graph. Empty input must still include it through the extension.
-    let compatibility_root = intern(&id, b"savedCollectorRuntimeRootProbe");
+    // Native Runtime starts with weak Symbols; it must not need a later
+    // legacy module load to stop retaining the entire interner.
+    let transient_symbol = intern(&id, b"savedCollectorRuntimeRootProbe");
     let owner = unsafe { &*collection };
     let records = unsafe { &*owner.records };
     let phase = unsafe { &*owner.phase_factory };
@@ -384,7 +384,7 @@ fn main() {
         assert_eq!(phase.set.unwrap()(owner.phase_context, 1), 1);
         (records.clear)(records.context);
         assert_eq!((saved_collector.trace)(saved_collector.context, &input), 0);
-        assert_eq!((records.get)(records.context, compatibility_root.addr()), 1);
+        assert_eq!((records.get)(records.context, transient_symbol.addr()), 0);
         assert_eq!(phase.set.unwrap()(owner.phase_context, 0), 1);
     }
 
@@ -599,6 +599,7 @@ fn main() {
     assert_eq!(invoke(saved_lookup, &[Operand::object(early)]).value.as_entry(), Some(echo));
     println!("saved Id lookup remains directly callable after Runtime adoption");
     // Ordinary language sends must invoke the same typed entry and context.
+    assert_eq!(runtime.stack.module_count(), 0, "production startup used legacy module initialization");
     let api = runtime.stack.api();
     assert_eq!(
         unsafe { (api.send)(id.receiver, early, &id.receiver, 1) },

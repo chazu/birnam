@@ -528,7 +528,10 @@ impl Runtime {
                 globals,
                 canonical: None,
                 internal_dictionaries: None,
-                symbol_compaction_enabled: false,
+                // Native construction follows the borrowed Symbol contract.
+                // Only a subsequently admitted legacy module can request the
+                // compatibility policy that retains the complete interner.
+                symbol_compaction_enabled: collection_owner.is_some(),
                 symbol_compatibility_limits: None,
                 metadata: collection_owner.map(MetadataShell::from_collection).unwrap_or_else(MetadataShell::new),
                 environment: namespace.unwrap_or_else(Environment::new),

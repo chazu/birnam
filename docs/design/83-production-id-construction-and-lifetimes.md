@@ -12,10 +12,11 @@
 > Block and native value/control operations now precede compiler modules.
 > Compiler admission is now a later explicit extension. Language reflection now
 > returns owned Methods, including anonymous synchronous/resumable Units;
-> native binding references live in Lifetime above Id. Unsafe native consumers and the full entry-level
-> construction manifest remain open.
+> native binding references live in Lifetime above Id. Unsafe native consumers
+> remain open. The [construction manifest](../../abi/production-construction-v1.json)
+> records the native entry graph; installer checks cover its structure and library inventory.
 > The loaded Bootstrap now owns the production construction sequence through
-> Runtime, control, collections, Store, parsers, compilers and System; host
+> Runtime, control, collections, Store, parsers, compilers, System and applications; host
 > prefix requests delegate to the
 > same implementation.
 > Resolves the four adversarial-review findings against
@@ -549,6 +550,13 @@ within them, commit coherent progress and remove superseded factories, adapters
 and initialization paths. Update the manifest and startup diagram with the
 executed result. The design is a target contract; implementation and tests must
 establish it before declaring Id decoupled.
+
+## Implementation history
+
+The following records describe intermediate migration states. Statements about
+remaining construction work in older records are superseded by the status at the
+top of this document and the final application-construction record below. The
+normative requirements in sections 1–6 still apply in full.
 
 ### Implementation evidence and remaining boundary
 
@@ -2212,3 +2220,52 @@ cases with two existing ignored cases. All eleven changed Rust sources match
 the installation; all twenty-four checked native export sets match their
 manifests. Application constructors, legacy consumers, the complete manifest,
 worker readiness and final architecture acceptance remain open.
+
+
+### Application construction and manifest (2026-09-21)
+
+Isolate, Relational, Alien and Image now use the common native module descriptor
+with completed predecessors. Bootstrap owns their ordering and constructor roots;
+Image receives compiler admission explicitly. Normal startup no longer contains
+`SCRIPT_MODULES` or calls any legacy native initializer. The final Trace, Collect
+and Error compatibility rows were redundant and are removed with the four
+application rows. Direct consumers of legacy native entries remain unfinished.
+
+The full entry inventory is in `abi/production-construction-v1.json`, with exact
+application operands documented in `abi/fixtures/bootstrap-v2/README.md`. The
+installer rejects missing predecessors, cycles and library inventory mismatch.
+Those checks establish manifest structure, not the safety of remaining legacy
+consumers or worker readiness. Validation uses the fresh debug prefix `/tmp/birnam-83-applications-final`:
+
+- `scripts/id-native-loading-smoke.py`: passed, including application operations
+  before Image/authored modules, repeated Image identity and zero legacy native
+  initializations through full startup. All earlier prefix/GC checks also pass.
+- `scripts/source-global-lookup-smoke.sh`: installed, forced-source and compiled
+  modes execute the full Portable Code assertions.
+- `scripts/method-values-smoke.sh`: source, source-free compiled modules,
+  mapped/rebuilt images and baked execution pass, including exact entries,
+  replacement/removal, aliases, collection and Method image rejection.
+- `scripts/isolate-image-wire-test.py`: twelve exact worker wire round trips and
+  orderly stop pass. This external reader allows a longer startup wait; it does
+  **not** establish the production parent's ten-second readiness requirement.
+- Affected package tests: 163 passed, four ignored. Runtime tests: 322 passed,
+  fifteen ignored. The separately invoked relational output matrix passes its
+  120 cases after removing its private-provider/`id_init` setup and using the
+  production constructors instead.
+- All nine changed production Rust sources match the installed copies byte for
+  byte; the construction manifest hash matches the install receipt. The later
+  relational test-only migration was compiled against that same installation.
+
+Removing the last legacy load exposed a hidden policy transition: Runtime kept
+all Symbols alive until `configure_symbol_borrow` ran for a legacy module. Native
+Runtime now enables weak Symbols when constructed with its completed collector.
+The native fixture checks this before upper startup and verifies early Error,
+Symbol and String reclamation afterward. Diagnostic legacy construction retains
+its existing compatibility default; explicit legacy admission can still request
+bounded compatibility retention.
+
+Evidence is recorded in `.cargo-target/83-applications-evidence.json`. Release
+validation remains waived. Remaining work is legacy native consumers (including
+`System loadModule:`), unchecked native sends/reflection, compatibility exports
+and aggregate capability discovery, worker readiness, documentation/diagram
+consolidation and the complete requirement-by-requirement acceptance audit.

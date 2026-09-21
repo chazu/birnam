@@ -1,14 +1,5 @@
 //! Actual native adapters, with a handwritten synchronous Store and real floor.
-#[path = "../../birnam-abi/tests/support/namespace.rs"]
-mod namespace;
-
 use super::*;
-use std::ffi::CString;
-
-unsafe extern "C" {
-    fn dlopen(path: *const c_char, flags: i32) -> *mut c_void;
-    fn dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void;
-}
 
 struct StoreFixture {
     facts: Vec<[Oop; 3]>,
@@ -72,66 +63,29 @@ unsafe fn vector(api: &IdApi, vt: Oop, values: &[Oop]) -> Oop {
 #[ignore = "requires a fresh-process installed-floor fixture"]
 fn exported_output_contract() {
     unsafe {
-        let path = CString::new(std::env::var("BIRNAM_RELATIONAL_FLOOR").unwrap()).unwrap();
-        let floor = dlopen(path.as_ptr(), 6);
-        assert!(!floor.is_null());
-        namespace::prepare(floor, std::path::Path::new(path.to_str().unwrap()));
-        let address = dlsym(floor, c"id_init".as_ptr());
-        assert!(!address.is_null());
-        let init: unsafe extern "C" fn() -> *mut IdApi = std::mem::transmute(address);
-        let api = &*init();
-        // This fixture tests synchronous pointer use; GC lifetime has separate suites.
-        let provider = dlsym(floor, c"birnam_gc_settings_provider_v1".as_ptr());
-        assert!(!provider.is_null());
-        let provider: birnam_abi::gc_settings::ProviderV1 = std::mem::transmute(provider);
-        let settings = provider();
-        birnam_abi::gc_settings::set_auto(settings, 0);
-        // Mount the same explicit numeric pair as the production host. Handles
-        // remain pinned for all method, context and codec addresses below.
-        let lib_dir = std::path::Path::new(path.to_str().unwrap()).parent().unwrap();
-        let load = |name: &str| {
-            let path = CString::new(lib_dir.join(name).as_os_str().as_encoded_bytes()).unwrap();
-            let handle = (api.dlopen)(path.as_ptr(), 6);
-            assert!(!handle.is_null());
-            handle
-        };
-        macro_rules! entry {
-            ($handle:expr, $name:expr, $ty:ty) => {{
-                let address = (api.dlsym)($handle, $name.as_ptr());
-                assert!(!address.is_null());
-                std::mem::transmute::<*mut c_void, $ty>(address)
-            }};
-        }
-        let presence = entry!(floor, c"birnam_namespace_presence_provider_v1", birnam_abi::namespace_presence::ProviderV1)();
-        let imports = entry!(floor, c"birnam_namespace_import_provider_v1", birnam_abi::namespace_import::ProviderV1)();
-        let exports = entry!(floor, c"birnam_namespace_export_provider_v1", birnam_abi::namespace_export::ProviderV1)();
-        let vtables = entry!(floor, c"birnam_vtable_enumeration_provider_v2", birnam_abi::vtable_enumeration::ProviderV2)();
-        let observation = entry!(floor, c"birnam_method_observation_provider_v1", birnam_abi::method_observation::ProviderV1)();
-        let roots = entry!(floor, c"birnam_root_registry_provider_v1", birnam_abi::root_registry::ProviderV1)();
-        let layouts = entry!(floor, c"birnam_payload_layout_provider_v1", birnam_abi::payload_layout::ProviderV1)();
-        let hooks = entry!(floor, c"birnam_trace_hooks_provider_v1", birnam_abi::trace_hooks::ProviderV1)();
-        let finalizers = entry!(floor, c"birnam_finalizers_provider_v1", birnam_abi::finalizers::ProviderV1)();
-        let api_pointer = api as *const _ as *mut IdApi;
-        // Classification also consults String's canonical behavior for values
-        // outside the numeric pair, so prepare its real floor-owned binding.
-        let string_image = load("libbirnam_string.dylib");
-        let allocation = entry!(floor, c"birnam_native_allocation_provider_v1", birnam_abi::native_allocation::NativeAllocationProviderV1)();
-        let strings = entry!(string_image, c"birnam_string_prepare_v4", birnam_abi::string::StringPrepareV4)(api_pointer, exports, allocation, roots, layouts);
-        assert_eq!(birnam_abi::string::attach(strings), 1);
-        assert_eq!(entry!(floor, c"birnam_string_dependency_v1", birnam_abi::string::StringDependencyV1)(strings), 1);
-        let float_image = load("libbirnam_float.dylib");
-        let floats = entry!(float_image, c"birnam_float_prepare_v6", birnam_abi::float::FloatPrepareV6)(api_pointer, presence, imports, exports, roots, layouts);
-        assert_eq!(birnam_abi::float::attach(floats), 1);
-        assert_eq!(entry!(floor, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
-        let integer_image = load("libbirnam_integer.dylib");
-        assert_eq!(entry!(integer_image, c"birnam_float_dependency_v1", birnam_abi::float::FloatDependencyV1)(floats), 1);
-        entry!(integer_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts, hooks, finalizers);
-        let integers = entry!(integer_image, c"birnam_integer_provider_v1", unsafe extern "C" fn() -> *mut birnam_abi::integer::IntegerApiV1)();
-        assert_eq!(birnam_abi::integer::attach(integers), 1);
-        assert_eq!(entry!(floor, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
-        assert_eq!(entry!(float_image, c"birnam_integer_dependency_v1", birnam_abi::integer::IntegerDependencyV1)(integers), 1);
-        entry!(float_image, c"module_init", birnam_abi::ModuleInitFn)(api_pointer, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts, hooks, finalizers);
-        module_init(api as *const _ as *mut _, ptr::null_mut(), presence, imports, exports, vtables, observation, roots, settings, layouts, hooks, finalizers);
+        let path = std::path::PathBuf::from(std::env::var("BIRNAM_RELATIONAL_FLOOR").unwrap());
+        let mut initial = birnam_host::begin_id(&path, None, None).unwrap();
+        let roots = initial.initialize_roots().unwrap().unwrap();
+        let values = initial.initialize_runtime_values().unwrap();
+        let mut stack = birnam_host::LoadedStack::new(initial.finish().unwrap());
+        stack.initialize_store().unwrap();
+        let api = stack.api();
+        // This matrix tests synchronous output atomicity; lifetime has separate suites.
+        birnam_abi::gc_settings::set_auto(stack.gc_settings(), 0);
+        let imports = stack.imports();
+        let layouts = stack.payload_layout();
+        let named = |name: &std::ffi::CStr| birnam_abi::namespace_import::import(imports, name.as_ptr());
+        let operands = [
+            Operand::word((api as *const IdApi).addr()),
+            Operand::word(stack.presence().addr()), Operand::word(imports.addr()),
+            Operand::word(stack.exports().addr()), Operand::word(roots.addr()),
+            Operand::word(layouts.addr()), Operand::word(values.integer.addr()),
+            Operand::word(values.float.addr()), Operand::word(values.string.addr()),
+            Operand::object(named(c"Store")), Operand::object(named(c"Vector")),
+            Operand::object(named(c"Map")),
+        ];
+        assert_eq!(initialize_native(stack.id_protocol(), operands.as_ptr(), operands.len()).status, native::LOADED);
+        assert_eq!(stack.module_count(), 0);
         let integer = |n| (birnam_abi::integer::make)(n);
         let null = ptr::null_mut();
         let attribute = integer(7);

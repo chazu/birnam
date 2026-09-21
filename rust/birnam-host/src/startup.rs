@@ -1090,20 +1090,6 @@ fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleErro
     Ok((count, bytes))
 }
 
-/// Remaining legacy extensions above completed Bootstrap/Runtime construction.
-/// Lower native modules are already usable and are not initialized again here.
-/// Store precedes Codegen; all entries see the same completed Runtime API.
-pub const SCRIPT_MODULES: &[&str] = &[
-    "libbirnam_trace",
-    "libbirnam_collect",
-    // Remaining compatibility attachments before compiler-facing modules.
-    "libbirnam_id_error",
-    "libbirnam_id_isolate",
-    "libbirnam_id_relational",
-    "libbirnam_id_alien",
-    "libbirnam_id_image",
-];
-
 /// Source-backed self-hosted modules. `modules` is intentionally separate:
 /// the manager must be installed first because it implements the dependency
 /// registration and ordering protocol used by the remaining modules.
@@ -1598,10 +1584,7 @@ pub fn self_hosted_boot_order() -> Result<Vec<&'static str>, BootstrapOrderError
                 // The source declaration names a non-self-hosted module. Keep
                 // the distinction explicit so a typo cannot silently reorder
                 // the self-hosted layer.
-                let is_kernel = matches!(dependency.as_str(), "store" | "collection" | "artifact" | "peg" | "lang" | "tcc" | "codegen" | "portable_code" | "prelude") || SCRIPT_MODULES.iter().any(|name| {
-                    name.strip_prefix("libbirnam_id_")
-                        .is_some_and(|kernel| kernel == dependency)
-                });
+                let is_kernel = KERNEL_MODULES.contains(&dependency.as_str()) || dependency == "portable_code";
                 if !is_kernel {
                     return Err(BootstrapOrderError::UnknownSelfHostedDependency {
                         module: module.name.to_owned(),
@@ -2739,54 +2722,20 @@ impl LoadedStack {
         Ok(())
     }
 
-    /// Resolve and load the canonical native stack in dependency order. TCC
-    /// retains its exact override path; every other rung, including Store,
-    /// comes from the one executable-relative runtime library directory.
-    pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
+    /// Complete application families before mounting Image.
+    pub fn initialize_application_base(&mut self) -> Result<(), ModuleError> {
         self.initialize_system()?;
-        for name in SCRIPT_MODULES {
-            let path = resources.lib_dir.join(format!("{name}.dylib"));
-            let handle = self.load_module_handle(&path)?;
-            if *name == "libbirnam_trace" {
-                let provider = unsafe {
-                    (self.api().dlsym)(handle.as_ptr(), c"birnam_trace_provider_v1".as_ptr())
-                };
-                if provider.is_null() {
-                    return Err(ModuleError::TraceDependencyRejected { path });
-                }
-            }
-            if *name == "libbirnam_collect" {
-                let provider = unsafe {
-                    (self.api().dlsym)(handle.as_ptr(), c"birnam_collect_provider_v1".as_ptr())
-                };
-                if provider.is_null() {
-                    return Err(ModuleError::CollectDependencyRejected { path });
-                }
-            }
-            if *name == "libbirnam_id_image"
-                && path.file_name().and_then(|file| file.to_str())
-                    == Some("libbirnam_id_image.dylib")
-            {
-                // The canonical Rust Image module must be allowed to publish
-                // through the ordinary host path.
-                // SAFETY: `handle` is a live loader handle retained for the
-                // process lifetime, and the symbol has the frozen identity
-                // export signature when present.
-                let rust_identity = unsafe {
-                    (self.floor.api().dlsym)(
-                        handle.as_ptr(),
-                        c"birnam_image_rust_identity".as_ptr().cast(),
-                    )
-                };
-                if !rust_identity.is_null() {
-                    // Startup is single-threaded until this stack is returned;
-                    // publish the canonical choice before any saveImage send.
-                    unsafe { std::env::set_var("BIRNAM_RUST_IMAGE_CANONICAL", "rust") };
-                }
-            }
-        }
+        self.construct(b"applicationBase")?;
         Ok(())
     }
+
+    /// The loaded Bootstrap owns the entire native construction sequence.
+    pub fn load_script_modules(&mut self, _resources: &Resources) -> Result<(), ModuleError> {
+        self.initialize_application_base()?;
+        self.construct(b"image")?;
+        Ok(())
+    }
+
 }
 
 fn resolve_isolate_hooks(

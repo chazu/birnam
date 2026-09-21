@@ -44,7 +44,6 @@ pub use startup::{
     Resources,
     RuntimeModuleError,
     RuntimeStartError,
-    SCRIPT_MODULES,
     SELF_HOSTED_MODULES,
     ScriptError,
     SelfHostedLoadOutcome,

@@ -544,6 +544,7 @@ mod runtime {
     }
 
     static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+    static NATIVE_COMPILER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
     unsafe extern "C" fn mark_runtime_roots(mark: MarkFn) {
         if let Some(runtime) = RUNTIME.get() {
@@ -598,6 +599,12 @@ mod runtime {
     unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
         if name.last() != Some(&0) {
             return None;
+        }
+        let compiler = NATIVE_COMPILER.load(std::sync::atomic::Ordering::Acquire) as *const birnam_abi::runtime_compiler::ApiV1;
+        if !compiler.is_null() {
+            let bare = &name[..name.len()-1];
+            let address = unsafe { ((*compiler).resolve.unwrap())((*compiler).context, bare.as_ptr(), bare.len()) };
+            return (!address.is_null()).then_some(address.addr());
         }
         static FLOOR_HANDLE: OnceLock<usize> = OnceLock::new();
         let handle = *FLOOR_HANDLE.get_or_init(|| {
@@ -1596,7 +1603,8 @@ mod runtime {
     }
 
     fn rust_image_canonical_selected() -> bool {
-        std::env::var("BIRNAM_RUST_IMAGE_CANONICAL").ok().as_deref() == Some("rust")
+        NATIVE_PHASE.load(std::sync::atomic::Ordering::Acquire) == 2
+            || std::env::var("BIRNAM_RUST_IMAGE_CANONICAL").ok().as_deref() == Some("rust")
     }
 
     unsafe fn current_generation_digest(api: &IdApi) -> Option<[u8; AUTHORITY_DIGEST_LEN]> {
@@ -3060,16 +3068,18 @@ mod runtime {
         api.nilObj
     }
 
-    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1) {
+    unsafe fn bring_up(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1, system: Option<Oop>) {
         if api.is_null() {
             abort("module_init received a null IdApi");
         }
+        let mut retained = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
+        let mut retain = |object| { if let Some(roots) = &mut retained { unsafe { roots.keep(object) } } else { object } };
         let api_ref = unsafe { &*api };
         let report_vt =
             if unsafe { birnam_abi::namespace_presence::contains(presence, IMAGE_REPORT_VT_NAME.as_ptr().cast()) } != 0 {
                 unsafe { birnam_abi::namespace_import::import(imports, IMAGE_REPORT_VT_NAME.as_ptr().cast()) }
             } else {
-                let vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
+                let vt = retain(unsafe { (api_ref.proto)(api_ref.object_vt) });
                 unsafe { birnam_abi::payload_layout::set(layouts, vt, ptr::null(), 0, birnam_abi::SLOT_RAW) };
                 vt
             };
@@ -3077,7 +3087,7 @@ mod runtime {
         {
             unsafe { birnam_abi::namespace_import::import(imports, IMAGE_REPORT_NAME.as_ptr().cast()) }
         } else {
-            let object = unsafe { (api_ref.alloc)(report_vt, 0) };
+            let object = retain(unsafe { (api_ref.alloc)(report_vt, 0) });
             unsafe {
                 birnam_abi::set_vtable_owner(api_ref, report_vt, object);
                 let _ = birnam_abi::namespace_export::export(exports, IMAGE_REPORT_VT_NAME.as_ptr().cast(), report_vt);
@@ -3085,7 +3095,7 @@ mod runtime {
             }
             object
         };
-        let collector_vt = unsafe { (api_ref.proto)(api_ref.object_vt) };
+        let collector_vt = retain(unsafe { (api_ref.proto)(api_ref.object_vt) });
         unsafe {
             (api_ref.method)(report_vt, intern(api_ref, b"status\0"), report_status);
             (api_ref.method)(
@@ -3125,7 +3135,7 @@ mod runtime {
                 collector_collect,
             );
             let _ = birnam_abi::namespace_export::export(exports, COLLECTOR_VT_NAME.as_ptr().cast(), collector_vt);
-            let system_vt = birnam_abi::namespace_import::import(imports, c"SystemVt".as_ptr());
+            let system_vt = system.map(|object| (api_ref.vtableOf)(object)).unwrap_or_else(|| birnam_abi::namespace_import::import(imports, c"SystemVt".as_ptr()));
             if !system_vt.is_null() {
                 (api_ref.method)(
                     system_vt,
@@ -3205,10 +3215,74 @@ mod runtime {
     pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
         let _ = state;
         if RUNTIME.get().is_none() {
-            unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts) };
+            unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts, ptr::null(), None) };
         }
         ptr::null_mut()
     }
+
+    use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+    static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+    static NATIVE_RESULT: OnceLock<usize> = OnceLock::new();
+    fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+    unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+        use std::sync::atomic::Ordering;
+        if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+        let Some([api, presence, imports, exports, roots, layouts, vtables, settings, integer, float, word, string, names, compiler, system, codegen, store, code_object]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+        let Some(api) = api.as_word() else { return invalid_native(); };
+        let Some(presence) = presence.as_word() else { return invalid_native(); };
+        let Some(imports) = imports.as_word() else { return invalid_native(); };
+        let Some(exports) = exports.as_word() else { return invalid_native(); };
+        let Some(roots) = roots.as_word() else { return invalid_native(); };
+        let Some(layouts) = layouts.as_word() else { return invalid_native(); };
+        let Some(vtables) = vtables.as_word() else { return invalid_native(); };
+        let Some(settings) = settings.as_word() else { return invalid_native(); };
+        let Some(integer) = integer.as_word() else { return invalid_native(); };
+        let Some(float) = float.as_word() else { return invalid_native(); };
+        let Some(word) = word.as_word() else { return invalid_native(); };
+        let Some(string) = string.as_word() else { return invalid_native(); };
+        let Some(names) = names.as_word() else { return invalid_native(); };
+        let Some(compiler) = compiler.as_word() else { return invalid_native(); };
+        let api = api as *mut IdApi;
+        if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver } { return invalid_native(); }
+        let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
+        if !unsafe { birnam_abi::namespace_presence::valid(presence) } { return invalid_native(); }
+        let imports = imports as *const birnam_abi::namespace_import::ApiV1;
+        if !unsafe { birnam_abi::namespace_import::valid(imports) } { return invalid_native(); }
+        let exports = exports as *const birnam_abi::namespace_export::ApiV1;
+        if !unsafe { birnam_abi::namespace_export::valid(exports) } { return invalid_native(); }
+        let roots = roots as *const birnam_abi::root_registry::OwnedV1;
+        if !unsafe { birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
+        let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
+        if !unsafe { birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
+        let vtables = vtables as *const birnam_abi::vtable_enumeration::ApiV2;
+        if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } { return invalid_native(); }
+        let settings = settings as *const birnam_abi::gc_settings::ApiV1;
+        if !unsafe { birnam_abi::gc_settings::valid(settings) } { return invalid_native(); }
+        if unsafe { birnam_abi::integer::attach(integer as _) } != 1 { return invalid_native(); }
+        if unsafe { birnam_abi::float::attach(float as _) } != 1 { return invalid_native(); }
+        if unsafe { birnam_abi::word::attach(word as _) } != 1 { return invalid_native(); }
+        if unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
+        if unsafe { birnam_abi::namespace_names::attach(names as _) } != 1 { return invalid_native(); }
+        let compiler = compiler as *const birnam_abi::runtime_compiler::ApiV1;
+        if !unsafe { birnam_abi::runtime_compiler::valid(compiler) } { return invalid_native(); }
+        let Some(system) = system.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+        if codegen.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+        if store.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+        if code_object.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+        if RUNTIME.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
+        match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(*NATIVE_RESULT.get().unwrap() as Oop)), _ => return invalid_native(),
+        }
+        NATIVE_COMPILER.store(compiler.addr(), Ordering::Release);
+        unsafe { bring_up(api, presence, imports, exports, vtables, (*roots).api, settings, layouts, roots, Some(system)); }
+        let result = RUNTIME.get().unwrap().report_obj as Oop;
+        assert!(NATIVE_RESULT.set(result.addr()).is_ok());
+        NATIVE_PHASE.store(2, Ordering::Release);
+        Outcome::loaded(Operand::object(result))
+    }
+    #[unsafe(no_mangle)]
+    pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
+
 }
 
 birnam_abi::integer_dependency!();

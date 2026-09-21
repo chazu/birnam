@@ -148,6 +148,40 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     api=(void *)args[0].data.word; imports=(void *)args[1].data.word;
     const RootRegistryV1 *registry=(void *)args[2].data.word;
     integer=*(IntegerApiV1 *)args[3].data.word; string=*(StringApiV1 *)args[4].data.word;
+    if(args[6].data.word==7 || args[6].data.word==8) {
+        if(!registered) { root_registry_register_v1(registry,mark); registered=1; }
+        assert(!namespace_import_v1(imports,"Module"));
+        Oop system=named("System");
+        if(args[6].data.word==7) {
+            absent(id,api->vtable_of(system),"saveImage:");
+            assert(named("db")==named("Store"));
+            Oop entity=keep(send0(named("db"),"entity"));
+            assert(api->vtable_of(entity)==named("EntityVt"));
+            Oop name=api->intern("nativeVariable");
+            Oop variable=keep(send1(named("LogicVar"),"named:",name));
+            assert(send0(variable,"name")==name);
+            assert(send1(named("LogicVar"),"named:",name)==variable);
+            Oop address=keep(send1(named("Alien"),"alloc:",integer.make(integer.context,16)));
+            assert(address!=api->nil_obj);
+            assert(send0(address,"isNull")==api->false_obj);
+            (void)send0(address,"free");
+            Oop missing=keep(send1(named("Alien"),"dlopen:",text("/no/birnam/library.dylib")));
+            assert(missing==api->nil_obj);
+            Oop bad_size=keep(send1(named("Alien"),"alloc:",integer.make(integer.context,0)));
+            assert(send0(bad_size,"isError")==api->true_obj);
+            Oop bad=keep(send0(named("Isolate"),"start:selector:image:"));
+            assert(send0(bad,"isError")==api->true_obj);
+            api->gc_collect();
+            assert(send0(variable,"name")==name);
+            root_count=0;
+            return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=system}};
+        }
+        Oop report=send0(system,"imageSaveReport");
+        assert(report==named("ImageSaveReport"));
+        assert(send1(system,"loadImage:",text("/no/birnam/image"))!=api->true_obj);
+        root_count=0;
+        return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=report}};
+    }
     if(args[6].data.word==6) {
         if(!registered) { root_registry_register_v1(registry,mark); registered=1; }
         assert(!namespace_import_v1(imports,"Vector"));

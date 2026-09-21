@@ -43,6 +43,10 @@ pub(super) struct Construction {
     portable_ready: bool,
     codegen: Option<birnam_abi::Oop>,
     system: Option<birnam_abi::Oop>,
+    isolate: Option<birnam_abi::Oop>,
+    relational: Option<birnam_abi::Oop>,
+    alien: Option<birnam_abi::Oop>,
+    image: Option<birnam_abi::Oop>,
     system_services: std::collections::BTreeMap<&'static str, usize>,
 
     error_value: Option<*const birnam_abi::error_value::ApiV3>,
@@ -97,6 +101,10 @@ impl Construction {
             portable_ready: false,
             codegen: None,
             system: None,
+            isolate: None,
+            relational: None,
+            alien: None,
+            image: None,
             system_services: std::collections::BTreeMap::new(),
 
             error_value: None,
@@ -1029,6 +1037,67 @@ impl Construction {
         }
         Ok(())
     }
+    fn initialize_isolate(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.isolate { return Ok(object); }
+        self.initialize_store()?;
+        let mut args = self.family_arguments()?;
+        args.extend([Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
+            Operand::word(self.integer.unwrap().addr()), Operand::word(self.float.unwrap().addr()), Operand::word(self.string.unwrap().addr()),
+            Operand::object(self.named(c"Vector")?), Operand::object(self.named(c"Map")?),
+            Operand::object(self.error.unwrap()), Operand::object(self.named(c"Globals")?)]);
+        let result = self.load("libbirnam_id_isolate.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.isolate = Some(object);
+        Ok(object)
+    }
+    fn initialize_relational(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.relational { return Ok(object); }
+        let store = self.initialize_store()?;
+        let mut args = self.family_arguments()?;
+        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.float.unwrap().addr()), Operand::word(self.string.unwrap().addr()),
+            Operand::object(store), Operand::object(self.named(c"Vector")?), Operand::object(self.named(c"Map")?)]);
+        let result = self.load("libbirnam_id_relational.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.relational = Some(object);
+        Ok(object)
+    }
+    fn initialize_alien(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.alien { return Ok(object); }
+        let store = self.initialize_store()?;
+        let tcc = self.initialize_tcc()?;
+        let mut args = self.family_arguments()?;
+        args.extend([self.runtime_service(b"vtables")?, Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
+            Operand::word(self.integer.unwrap().addr()), Operand::word(self.float.unwrap().addr()), Operand::word(self.string.unwrap().addr()),
+            self.runtime_service(b"namespaceNames")?, Operand::object(tcc), Operand::object(store),
+            Operand::object(self.named(c"Vector")?), Operand::object(self.error.unwrap())]);
+        let result = self.load("libbirnam_id_alien.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.alien = Some(object);
+        Ok(object)
+    }
+    fn initialize_image(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.image { return Ok(object); }
+        let codegen = self.initialize_codegen()?;
+        self.initialize_system_io()?;
+        self.initialize_system_service("sourceLoader")?;
+        let mut args = self.family_arguments()?;
+        args.extend([self.runtime_service(b"vtables")?, Operand::word(unsafe { (*self.collection.unwrap()).settings }.addr()),
+            Operand::word(self.integer.unwrap().addr()), Operand::word(self.float.unwrap().addr()),
+            Operand::word(self.word.unwrap().addr()), Operand::word(self.string.unwrap().addr()),
+            self.runtime_service(b"namespaceNames")?, Operand::word(self.compiler.unwrap().addr()),
+            Operand::object(self.system.unwrap()), Operand::object(codegen), Operand::object(self.store.unwrap()),
+            Operand::object(self.named(c"CodeObject")?)]);
+        let result = self.load("libbirnam_id_image.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.image = Some(object);
+        Ok(object)
+    }
+    fn initialize_application_base(&mut self) -> Result<(), Outcome> {
+        self.initialize_relational()?;
+        self.initialize_isolate()?;
+        self.initialize_alien()?;
+        Ok(())
+    }
     pub(super) fn advance(&mut self, stage: &[u8]) -> Result<Operand, Outcome> {
         macro_rules! owner {
             ($method:ident) => {
@@ -1100,6 +1169,12 @@ impl Construction {
             b"compilerAdmission" => Ok(Operand::word(self.initialize_compiler_admission()?.addr())),
             b"tcc" => Ok(Operand::object(self.initialize_tcc()?)),
             b"portable" => { self.initialize_portable()?; Ok(Operand::unit()) },
+            b"isolate" => Ok(Operand::object(self.initialize_isolate()?)),
+            b"relational" => Ok(Operand::object(self.initialize_relational()?)),
+            b"alien" => Ok(Operand::object(self.initialize_alien()?)),
+            b"image" => Ok(Operand::object(self.initialize_image()?)),
+            b"applicationBase" => { self.initialize_application_base()?; Ok(Operand::unit()) },
+            b"applications" => { self.initialize_application_base()?; self.initialize_image()?; Ok(Operand::unit()) },
             b"systemBase" => Ok(Operand::object(self.initialize_system_base()?)),
             b"systemIo" => { self.initialize_system_io()?; Ok(Operand::unit()) },
             b"system" => {

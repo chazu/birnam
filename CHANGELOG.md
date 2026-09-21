@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Construct Isolate, Relational, Alien and Image through Bootstrap with completed
+  dependencies and temporary constructor roots. Remove the final legacy native
+  startup sequence. Add the full construction manifest and installer checks for
+  library coverage, missing predecessors and dependency cycles. Native Runtime
+  enables weak Symbol collection at construction, removing a hidden dependency
+  on legacy module admission. The relational output matrix now uses production
+  constructors instead of the removed `id_init` bootstrap.
+
 - Construct System and its IO, GC and loading operations through Bootstrap,
   removing nine legacy host initialization rows. Each constructor installs its
   operations with complete dependencies; System IO can precede collections and

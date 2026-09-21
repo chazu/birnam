@@ -103,6 +103,24 @@ fn main() {
             assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) }.status, native::LOADED);
             stack.initialize_compiler().unwrap();
             println!("TCC and Codegen execute native/source compilation with Portable Code and Store compensation already available, before System and Image libraries");
+            for library in ["id_prelude", "text_view", "system_gc", "system_output", "system_input", "environment", "file_io", "native_loader", "source_loader", "id_isolate", "id_relational", "id_alien"] {
+                let file = format!("libbirnam_{library}.dylib");
+                std::fs::copy(Path::new(&args[4]).join(&file), prefix.join(&file)).unwrap();
+            }
+            stack.initialize_application_base().unwrap();
+            assert_eq!(stack.module_count(), 0, "application base used legacy initialization");
+            parser_arguments[6] = Operand::word(7);
+            assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) }.status, native::LOADED);
+            std::fs::copy(Path::new(&args[4]).join("libbirnam_id_image.dylib"), prefix.join("libbirnam_id_image.dylib")).unwrap();
+            stack.load_script_modules(&resources).unwrap();
+            assert_eq!(stack.module_count(), 0, "native startup used legacy initialization");
+            parser_arguments[6] = Operand::word(8);
+            let result = unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) };
+            assert_eq!(result.status, native::LOADED);
+            stack.load_script_modules(&resources).unwrap();
+            let repeated = unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) };
+            assert_eq!(repeated.value.as_object(), result.value.as_object());
+            println!("all native application operations mount through Bootstrap with zero legacy module initializations, before authored modules; Image repeats preserve its report");
         }
         return;
     }

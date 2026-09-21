@@ -1114,7 +1114,7 @@ unsafe extern "C" fn alien_release_callback(
     api.trueObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
@@ -1126,21 +1126,23 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             let _ = API.set((address, presence as usize, imports as usize, exports as usize, vtables as usize, layouts as usize, finalizers as usize));
         }
     }
+    let mut retained = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
     let api = unsafe { &*api_pointer };
     let Some((foreign_address_vt, _foreign_address)) =
-        (unsafe { foreign_address::ensure_family(api, layouts, presence, imports, exports) })
+        (unsafe { foreign_address::ensure_family_with_roots(api, layouts, presence, imports, exports, retained.as_mut()) })
     else {
         abort("ForeignAddress exports were incomplete");
     };
     unsafe { ensure_callback_roots(roots) };
+    let mut retain = |object| { if let Some(roots) = &mut retained { unsafe { roots.keep(object) } } else { object } };
     let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ALIEN_NAME.as_ptr().cast()) } != 0;
     let (alien_vt, alien_obj) = if reloading {
         let alien_vt = unsafe { birnam_abi::namespace_import::import(imports, ALIEN_VT_NAME.as_ptr().cast()) };
         let alien_obj = unsafe { birnam_abi::namespace_import::import(imports, ALIEN_NAME.as_ptr().cast()) };
         (alien_vt, alien_obj)
     } else {
-        let alien_vt = unsafe { (api.proto)(api.object_vt) };
-        let alien_obj = unsafe { (api.alloc)(alien_vt, 0) };
+        let alien_vt = retain(unsafe { (api.proto)(api.object_vt) });
+        let alien_obj = retain(unsafe { (api.alloc)(alien_vt, 0) });
         (alien_vt, alien_obj)
     };
     if alien_vt.is_null() || alien_obj.is_null() {
@@ -1279,7 +1281,7 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, state: *mut c_void, presen
     let _ = state;
     // SAFETY: the host supplies the process-owned IdApi table and retains it
     // for the module lifetime.
-    unsafe { bring_up(api, presence, imports, exports, vtables, roots, layouts, finalizers) };
+    unsafe { bring_up(api, presence, imports, exports, vtables, roots, layouts, finalizers, ptr::null()) };
     ptr::null_mut()
 }
 
@@ -1291,3 +1293,60 @@ fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { API.get()
 fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { API.get().expect("module not initialized").5 as *const birnam_abi::payload_layout::ApiV1 }
 
 fn execution_vtables() -> *const birnam_abi::vtable_enumeration::ApiV2 { API.get().expect("module not initialized").4 as *const _ }
+
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static NATIVE_RESULT: OnceLock<usize> = OnceLock::new();
+fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    use std::sync::atomic::Ordering;
+    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+    let Some([api, presence, imports, exports, roots, layouts, vtables, finalizers, integer, float, string, names, tcc, store, vector, error]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+    let Some(api) = api.as_word() else { return invalid_native(); };
+    let Some(presence) = presence.as_word() else { return invalid_native(); };
+    let Some(imports) = imports.as_word() else { return invalid_native(); };
+    let Some(exports) = exports.as_word() else { return invalid_native(); };
+    let Some(roots) = roots.as_word() else { return invalid_native(); };
+    let Some(layouts) = layouts.as_word() else { return invalid_native(); };
+    let Some(vtables) = vtables.as_word() else { return invalid_native(); };
+    let Some(finalizers) = finalizers.as_word() else { return invalid_native(); };
+    let Some(integer) = integer.as_word() else { return invalid_native(); };
+    let Some(float) = float.as_word() else { return invalid_native(); };
+    let Some(string) = string.as_word() else { return invalid_native(); };
+    let Some(names) = names.as_word() else { return invalid_native(); };
+    let api = api as *mut IdApi;
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver } { return invalid_native(); }
+    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
+    if !unsafe { birnam_abi::namespace_presence::valid(presence) } { return invalid_native(); }
+    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
+    if !unsafe { birnam_abi::namespace_import::valid(imports) } { return invalid_native(); }
+    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
+    if !unsafe { birnam_abi::namespace_export::valid(exports) } { return invalid_native(); }
+    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
+    if !unsafe { birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
+    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
+    if !unsafe { birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
+    let vtables = vtables as *const birnam_abi::vtable_enumeration::ApiV2;
+    if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } { return invalid_native(); }
+    let finalizers = finalizers as *const birnam_abi::finalizers::ApiV1;
+    if !unsafe { birnam_abi::finalizers::valid(finalizers) } { return invalid_native(); }
+    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 { return invalid_native(); }
+    if unsafe { birnam_abi::float::attach(float as _) } != 1 { return invalid_native(); }
+    if unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
+    if unsafe { birnam_abi::namespace_names::attach(names as _) } != 1 { return invalid_native(); }
+    if tcc.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+    if store.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+    if vector.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+    if error.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+    if API.get().is_some_and(|selected| selected.0 != api.addr()) { return invalid_native(); }
+    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(*NATIVE_RESULT.get().unwrap() as Oop)), _ => return invalid_native(),
+    }
+    unsafe { bring_up(api, presence, imports, exports, vtables, (*roots).api, layouts, finalizers, roots); }
+    let result = RUNTIME.get().unwrap().alien_obj as Oop;
+    assert!(NATIVE_RESULT.set(result.addr()).is_ok());
+    NATIVE_PHASE.store(2, Ordering::Release);
+    Outcome::loaded(Operand::object(result))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

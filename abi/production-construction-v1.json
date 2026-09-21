@@ -1,0 +1,1276 @@
+{
+  "schema_version": 1,
+  "scope": "Production native entries and extensions; predecessors must be complete, including error paths. This graph describes dependencies, not a second runtime loader.",
+  "source": "rust/birnam-bootstrap/src/construction.rs",
+  "entry_abi": "abi/fixtures/id-protocol-v1/id_protocol.h",
+  "operand_reference": "abi/fixtures/bootstrap-v2/README.md",
+  "legacy_startup": "SCRIPT_MODULES removed; every former library is mapped below. Legacy direct module_init consumers still require migration.",
+  "former_script_modules": [
+    "libbirnam_namespace.dylib",
+    "libbirnam_storage.dylib",
+    "libbirnam_trace.dylib",
+    "libbirnam_collect.dylib",
+    "libbirnam_integer.dylib",
+    "libbirnam_float.dylib",
+    "libbirnam_word.dylib",
+    "libbirnam_object_model.dylib",
+    "libbirnam_method_observation.dylib",
+    "libbirnam_root_registry.dylib",
+    "libbirnam_gc_settings.dylib",
+    "libbirnam_payload_layout.dylib",
+    "libbirnam_trace_hooks.dylib",
+    "libbirnam_finalizers.dylib",
+    "libbirnam_native_stack.dylib",
+    "libbirnam_native_mark.dylib",
+    "libbirnam_allocation_budget.dylib",
+    "libbirnam_dispatch_cache.dylib",
+    "libbirnam_id_artifact.dylib",
+    "libbirnam_store.dylib",
+    "libbirnam_id_peg.dylib",
+    "libbirnam_id_lang.dylib",
+    "libbirnam_id_tcc.dylib",
+    "libbirnam_id_codegen.dylib",
+    "libbirnam_boolean.dylib",
+    "libbirnam_printing.dylib",
+    "libbirnam_system_gc.dylib",
+    "libbirnam_text_view.dylib",
+    "libbirnam_system_output.dylib",
+    "libbirnam_system_input.dylib",
+    "libbirnam_environment.dylib",
+    "libbirnam_file_io.dylib",
+    "libbirnam_block_loop.dylib",
+    "libbirnam_native_loader.dylib",
+    "libbirnam_source_loader.dylib",
+    "libbirnam_error_value.dylib",
+    "libbirnam_id_prelude.dylib",
+    "libbirnam_nil.dylib",
+    "libbirnam_string.dylib",
+    "libbirnam_string_builder.dylib",
+    "libbirnam_collection_value.dylib",
+    "libbirnam_vector.dylib",
+    "libbirnam_range.dylib",
+    "libbirnam_map.dylib",
+    "libbirnam_string_collection.dylib",
+    "libbirnam_id_collection.dylib",
+    "libbirnam_id_error.dylib",
+    "libbirnam_portable_code.dylib",
+    "libbirnam_id_isolate.dylib",
+    "libbirnam_id_relational.dylib",
+    "libbirnam_id_alien.dylib",
+    "libbirnam_id_image.dylib"
+  ],
+  "entries": [
+    {
+      "name": "id",
+      "library": "libbirnam_id.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Siphon ad-hoc Id protocol",
+      "request": [],
+      "predecessors": [],
+      "operations": "Storage, Symbols, behavior, lookup, native invocation and loadNative:; no upper services"
+    },
+    {
+      "name": "bootstrap",
+      "library": "libbirnam_bootstrap.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "id"
+      ],
+      "operations": "Sequential native loading and retained results before root adoption"
+    },
+    {
+      "name": "bootstrap.construction",
+      "library": "libbirnam_bootstrap.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "construction"
+      ],
+      "predecessors": [
+        "bootstrap"
+      ],
+      "operations": "Production stage selection and dependency construction"
+    },
+    {
+      "name": "roots",
+      "library": "libbirnam_root_registry.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Retain, release, enumerate roots and register native root providers"
+    },
+    {
+      "name": "payload_layout",
+      "library": "libbirnam_payload_layout.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Payload descriptions"
+    },
+    {
+      "name": "trace_hooks",
+      "library": "libbirnam_trace_hooks.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Native trace declarations"
+    },
+    {
+      "name": "finalizers",
+      "library": "libbirnam_finalizers.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Native finalizer declarations"
+    },
+    {
+      "name": "lifetime",
+      "library": "libbirnam_lifetime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "payload_layout",
+        "trace_hooks",
+        "finalizers"
+      ],
+      "operations": "Completed root/layout/finalizer ownership services"
+    },
+    {
+      "name": "boolean",
+      "library": "libbirnam_boolean.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime"
+      ],
+      "operations": "Boolean/Nil identities, identity equality and predicates; no printing or Block branches"
+    },
+    {
+      "name": "nil",
+      "library": "libbirnam_nil.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "boolean"
+      ],
+      "operations": "Nil identity and predicates"
+    },
+    {
+      "name": "namespace",
+      "library": "libbirnam_namespace.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime",
+        "boolean",
+        "nil"
+      ],
+      "operations": "Publication, import, presence and native enumeration"
+    },
+    {
+      "name": "object_model",
+      "library": "libbirnam_object_model.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "namespace",
+        "boolean"
+      ],
+      "operations": "Behavior ownership, private behaviors and enumeration"
+    },
+    {
+      "name": "string",
+      "library": "libbirnam_string.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime",
+        "namespace",
+        "object_model"
+      ],
+      "operations": "String byte storage, copy and native byte access"
+    },
+    {
+      "name": "error",
+      "library": "libbirnam_id_error.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime",
+        "boolean",
+        "namespace",
+        "string"
+      ],
+      "operations": "Error kind/message construction and recognition; DNU errors"
+    },
+    {
+      "name": "integer",
+      "library": "libbirnam_integer.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime",
+        "boolean",
+        "namespace",
+        "string",
+        "error"
+      ],
+      "operations": "Checked Integer operations and printing; no mixed Float operations"
+    },
+    {
+      "name": "float",
+      "library": "libbirnam_float.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime",
+        "boolean",
+        "namespace",
+        "string",
+        "error",
+        "integer"
+      ],
+      "operations": "Float operations and mixed Integer/Float extensions"
+    },
+    {
+      "name": "word",
+      "library": "libbirnam_word.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime",
+        "boolean",
+        "namespace",
+        "string",
+        "error",
+        "integer"
+      ],
+      "operations": "Word storage, conversions and printing"
+    },
+    {
+      "name": "string.text",
+      "library": "libbirnam_string.dylib",
+      "entry": "message",
+      "receiver": "String prototype",
+      "request": [
+        "installText:"
+      ],
+      "predecessors": [
+        "string",
+        "boolean",
+        "integer",
+        "float"
+      ],
+      "operations": "String indexing, size, numeric conversion and transformations"
+    },
+    {
+      "name": "nil.printing",
+      "library": "libbirnam_nil.dylib",
+      "entry": "message",
+      "receiver": "Nil or True object",
+      "request": [
+        "installPrinting:"
+      ],
+      "predecessors": [
+        "nil",
+        "roots",
+        "string"
+      ],
+      "operations": "Printing on completed base identities"
+    },
+    {
+      "name": "boolean.printing",
+      "library": "libbirnam_boolean.dylib",
+      "entry": "message",
+      "receiver": "Nil or True object",
+      "request": [
+        "installPrinting:"
+      ],
+      "predecessors": [
+        "boolean",
+        "roots",
+        "string"
+      ],
+      "operations": "Printing on completed base identities"
+    },
+    {
+      "name": "native_mark",
+      "library": "libbirnam_native_mark.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Native graph marking callbacks"
+    },
+    {
+      "name": "trace",
+      "library": "libbirnam_trace.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime",
+        "object_model",
+        "native_mark",
+        "string.text",
+        "nil.printing",
+        "boolean.printing",
+        "word"
+      ],
+      "operations": "Trace the real Id heap and upper roots/layouts"
+    },
+    {
+      "name": "native_stack",
+      "library": "libbirnam_native_stack.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Native stack anchor"
+    },
+    {
+      "name": "gc_settings",
+      "library": "libbirnam_gc_settings.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Collection settings"
+    },
+    {
+      "name": "allocation_budget",
+      "library": "libbirnam_allocation_budget.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Allocation accounting and budget"
+    },
+    {
+      "name": "collect",
+      "library": "libbirnam_collect.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "native_stack",
+        "gc_settings",
+        "allocation_budget",
+        "trace",
+        "lifetime",
+        "object_model"
+      ],
+      "operations": "Complete collector, ownership and settings descriptors, initially disabled"
+    },
+    {
+      "name": "collect.activate",
+      "library": "libbirnam_collect.dylib",
+      "entry": "collector.activate",
+      "receiver": "Collector context",
+      "request": [],
+      "predecessors": [
+        "collect",
+        "roots",
+        "bootstrap"
+      ],
+      "operations": "Adopt early roots, validate layouts, install construction behavior, activate GC"
+    },
+    {
+      "name": "method_observation",
+      "library": "libbirnam_method_observation.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "methodObservation"
+      ],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Method observation owner factory"
+    },
+    {
+      "name": "storage.observation",
+      "library": "libbirnam_storage.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "observation"
+      ],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Scoped storage observation factory"
+    },
+    {
+      "name": "storage.identity",
+      "library": "libbirnam_storage.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "deferredIdentity"
+      ],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Deferred identity owner factory"
+    },
+    {
+      "name": "storage.index",
+      "library": "libbirnam_storage.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "deferredIndex"
+      ],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Deferred index owner factory"
+    },
+    {
+      "name": "dispatch_cache",
+      "library": "libbirnam_dispatch_cache.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "dispatchCache"
+      ],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Dispatch cache owner factory"
+    },
+    {
+      "name": "guard_verdict",
+      "library": "libbirnam_dispatch_cache.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "guardVerdict"
+      ],
+      "predecessors": [
+        "bootstrap.construction"
+      ],
+      "operations": "Guard verdict owner factory"
+    },
+    {
+      "name": "runtime",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "roots",
+        "lifetime",
+        "boolean",
+        "nil",
+        "namespace",
+        "object_model",
+        "trace",
+        "collect.activate",
+        "integer",
+        "float",
+        "word",
+        "string.text",
+        "nil.printing",
+        "boolean.printing",
+        "method_observation",
+        "storage.observation",
+        "storage.identity",
+        "storage.index",
+        "dispatch_cache",
+        "guard_verdict"
+      ],
+      "operations": "Execution turns, Machine, Block calling, owned Methods and checked language dispatch; no compiler admission"
+    },
+    {
+      "name": "runtime.namespacePresence",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "namespacePresence"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed namespacePresence view; no new owner"
+    },
+    {
+      "name": "runtime.namespaceImport",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "namespaceImport"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed namespaceImport view; no new owner"
+    },
+    {
+      "name": "runtime.namespaceExport",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "namespaceExport"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed namespaceExport view; no new owner"
+    },
+    {
+      "name": "runtime.namespaceNames",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "namespaceNames"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed namespaceNames view; no new owner"
+    },
+    {
+      "name": "runtime.vtables",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "vtables"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed vtables view; no new owner"
+    },
+    {
+      "name": "runtime.methodObservation",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "methodObservation"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed methodObservation view; no new owner"
+    },
+    {
+      "name": "error_value",
+      "library": "libbirnam_error_value.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "string",
+        "error"
+      ],
+      "operations": "Error helper operations"
+    },
+    {
+      "name": "integer.control",
+      "library": "libbirnam_integer.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "control"
+      ],
+      "predecessors": [
+        "runtime",
+        "integer",
+        "error_value",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport"
+      ],
+      "operations": "Integer to:do:"
+    },
+    {
+      "name": "printing",
+      "library": "libbirnam_printing.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "string"
+      ],
+      "operations": "Object/Symbol printing"
+    },
+    {
+      "name": "block_loop",
+      "library": "libbirnam_block_loop.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "error_value",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport"
+      ],
+      "operations": "Block whileTrue:/whileFalse:"
+    },
+    {
+      "name": "boolean.control",
+      "library": "libbirnam_boolean.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "control"
+      ],
+      "predecessors": [
+        "boolean",
+        "runtime"
+      ],
+      "operations": "Block-taking branches and short-circuit operations"
+    },
+    {
+      "name": "collection",
+      "library": "libbirnam_id_collection.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport"
+      ],
+      "operations": "Collection behavior"
+    },
+    {
+      "name": "collection_value",
+      "library": "libbirnam_collection_value.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "integer",
+        "float",
+        "string"
+      ],
+      "operations": "Collection equality and hashing policy"
+    },
+    {
+      "name": "vector",
+      "library": "libbirnam_vector.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "integer",
+        "string",
+        "collection_value",
+        "collection"
+      ],
+      "operations": "Vector representation and operations"
+    },
+    {
+      "name": "vector.comma",
+      "library": "libbirnam_vector.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "comma"
+      ],
+      "predecessors": [
+        "vector"
+      ],
+      "operations": "Exact Vector concatenation entry with its context"
+    },
+    {
+      "name": "range",
+      "library": "libbirnam_range.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "integer",
+        "string",
+        "vector",
+        "collection",
+        "vector.comma"
+      ],
+      "operations": "Range operations and Integer to:"
+    },
+    {
+      "name": "map",
+      "library": "libbirnam_map.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "integer",
+        "string",
+        "vector",
+        "collection_value",
+        "collection"
+      ],
+      "operations": "Map representation and operations"
+    },
+    {
+      "name": "string_collection",
+      "library": "libbirnam_string_collection.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "string",
+        "vector",
+        "collection"
+      ],
+      "operations": "String collection operations"
+    },
+    {
+      "name": "string_builder",
+      "library": "libbirnam_string_builder.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "finalizers",
+        "integer",
+        "string"
+      ],
+      "operations": "StringBuilder representation and operations"
+    },
+    {
+      "name": "store",
+      "library": "libbirnam_store.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "runtime.vtables",
+        "runtime.methodObservation",
+        "trace_hooks",
+        "integer",
+        "vector",
+        "map",
+        "range",
+        "string_collection",
+        "string_builder"
+      ],
+      "operations": "Store, Cells, Globals, mutation observation and compensation"
+    },
+    {
+      "name": "store.compensation",
+      "library": "libbirnam_store.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "compensation"
+      ],
+      "predecessors": [
+        "store",
+        "runtime"
+      ],
+      "operations": "Completed Store compensation service"
+    },
+    {
+      "name": "artifact",
+      "library": "libbirnam_id_artifact.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "integer",
+        "string",
+        "vector"
+      ],
+      "operations": "Artifact metadata parsing and validation errors"
+    },
+    {
+      "name": "peg",
+      "library": "libbirnam_id_peg.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "trace_hooks",
+        "finalizers",
+        "integer",
+        "string",
+        "vector"
+      ],
+      "operations": "PEG patterns, parse trees and parse errors"
+    },
+    {
+      "name": "lang",
+      "library": "libbirnam_id_lang.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "integer",
+        "string",
+        "peg"
+      ],
+      "operations": "Complete Birnam grammar and source parsing"
+    },
+    {
+      "name": "runtime.compiler",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "compiler"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed compiler admission, resumable registration and generation ownership"
+    },
+    {
+      "name": "tcc",
+      "library": "libbirnam_id_tcc.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "runtime.vtables",
+        "trace_hooks",
+        "finalizers",
+        "integer",
+        "float",
+        "word",
+        "string",
+        "runtime.compiler"
+      ],
+      "operations": "C compilation, native Units, symbols, ForeignAddress and runtime binding"
+    },
+    {
+      "name": "tcc.artifactRuntime",
+      "library": "libbirnam_id_tcc.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "artifactRuntime"
+      ],
+      "predecessors": [
+        "tcc"
+      ],
+      "operations": "Exact action exposing the completed TCC C ABI for Mach-O artifact linking"
+    },
+    {
+      "name": "portable_code",
+      "library": "libbirnam_portable_code.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "runtime.vtables",
+        "trace_hooks",
+        "finalizers",
+        "integer",
+        "string",
+        "runtime.namespaceNames",
+        "vector",
+        "error"
+      ],
+      "operations": "CodeObject/CodeProgram representation, methods and native portable APIs"
+    },
+    {
+      "name": "codegen",
+      "library": "libbirnam_id_codegen.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "runtime.vtables",
+        "gc_settings",
+        "finalizers",
+        "integer",
+        "string",
+        "runtime.namespaceNames",
+        "runtime.compiler",
+        "store.compensation",
+        "tcc",
+        "store",
+        "lang",
+        "portable_code",
+        "tcc.artifactRuntime",
+        "artifact"
+      ],
+      "operations": "Source compilation, reflection, portable materialization and artifact admission; receives completed dependencies"
+    },
+    {
+      "name": "system",
+      "library": "libbirnam_id_prelude.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "printing",
+        "integer.control",
+        "boolean.control",
+        "block_loop"
+      ],
+      "operations": "Rooted System object; no IO or loading methods yet"
+    },
+    {
+      "name": "text_view",
+      "library": "libbirnam_text_view.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "string"
+      ],
+      "operations": "Exact/printable String byte helper"
+    },
+    {
+      "name": "system_gc",
+      "library": "libbirnam_system_gc.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "system",
+        "gc_settings",
+        "integer"
+      ],
+      "operations": "System gc/liveObjects/autoGc:/preciseGc:"
+    },
+    {
+      "name": "system_output",
+      "library": "libbirnam_system_output.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "system",
+        "text_view"
+      ],
+      "operations": "System print:/println:"
+    },
+    {
+      "name": "system_input",
+      "library": "libbirnam_system_input.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "system",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "string",
+        "error_value"
+      ],
+      "operations": "System readLine"
+    },
+    {
+      "name": "environment",
+      "library": "libbirnam_environment.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "system",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "string",
+        "error_value",
+        "text_view"
+      ],
+      "operations": "System getEnv:"
+    },
+    {
+      "name": "file_io",
+      "library": "libbirnam_file_io.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "system",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "string",
+        "error_value",
+        "text_view"
+      ],
+      "operations": "System readFile:/writeFile:contents:"
+    },
+    {
+      "name": "native_loader",
+      "library": "libbirnam_native_loader.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "system",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "runtime.vtables",
+        "runtime.methodObservation",
+        "gc_settings",
+        "payload_layout",
+        "trace_hooks",
+        "finalizers",
+        "error_value",
+        "text_view"
+      ],
+      "operations": "Existing System loadModule:; its legacy loaded-module ABI is still a consumer-migration item"
+    },
+    {
+      "name": "source_loader",
+      "library": "libbirnam_source_loader.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "system",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "integer",
+        "string",
+        "error_value",
+        "text_view",
+        "codegen"
+      ],
+      "operations": "System load: with completed compiler and error paths"
+    },
+    {
+      "name": "isolate",
+      "library": "libbirnam_id_isolate.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "finalizers",
+        "integer",
+        "float",
+        "string",
+        "vector",
+        "map",
+        "error",
+        "store"
+      ],
+      "operations": "Wire transport, process services, worker driver and structured failures"
+    },
+    {
+      "name": "relational",
+      "library": "libbirnam_id_relational.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "integer",
+        "float",
+        "string",
+        "store",
+        "vector",
+        "map"
+      ],
+      "operations": "Relational queries, LogicVar/Entity and db alias to completed Store"
+    },
+    {
+      "name": "alien",
+      "library": "libbirnam_id_alien.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "runtime.vtables",
+        "finalizers",
+        "integer",
+        "float",
+        "string",
+        "runtime.namespaceNames",
+        "tcc",
+        "store",
+        "vector",
+        "error"
+      ],
+      "operations": "FFI libraries, wrappers, callbacks, buffers and ForeignAddress operations"
+    },
+    {
+      "name": "image",
+      "library": "libbirnam_id_image.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [],
+      "predecessors": [
+        "runtime",
+        "roots",
+        "payload_layout",
+        "runtime.namespacePresence",
+        "runtime.namespaceImport",
+        "runtime.namespaceExport",
+        "runtime.vtables",
+        "gc_settings",
+        "integer",
+        "float",
+        "word",
+        "string",
+        "runtime.namespaceNames",
+        "runtime.compiler",
+        "system",
+        "system_gc",
+        "system_output",
+        "system_input",
+        "environment",
+        "file_io",
+        "native_loader",
+        "source_loader",
+        "codegen",
+        "store",
+        "portable_code"
+      ],
+      "operations": "Image save/load, reporting and baking; completed compiler descriptor for Block identity"
+    }
+  ]
+}

@@ -250,10 +250,11 @@ unsafe extern "C" fn rust_logicvar_print_string(
     unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
 }
 
-unsafe fn ensure_relational_contract(api: &IdApi, layouts: *const birnam_abi::payload_layout::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn ensure_relational_contract(api: &IdApi, layouts: *const birnam_abi::payload_layout::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, mut roots: Option<&mut birnam_abi::root_registry::ConstructionRoots>) {
+    let mut retain = |object| { if let Some(roots) = &mut roots { unsafe { roots.keep(object) } } else { object } };
     let logicvar_vt = unsafe { birnam_abi::namespace_import::import(imports, c"LogicVarVt".as_ptr()) };
     let logicvar_vt = if logicvar_vt.is_null() {
-        let created = unsafe { (api.proto)(api.object_vt) };
+        let created = retain(unsafe { (api.proto)(api.object_vt) });
         if created.is_null() {
             abort("Rust Relational could not create LogicVarVt");
         }
@@ -266,7 +267,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, layouts: *const birnam_abi::pa
 
     let factory_vt = unsafe { birnam_abi::namespace_import::import(imports, c"LogicVarFactoryVt".as_ptr()) };
     let factory_vt = if factory_vt.is_null() {
-        let created = unsafe { (api.proto)(api.object_vt) };
+        let created = retain(unsafe { (api.proto)(api.object_vt) });
         if created.is_null() {
             abort("Rust Relational could not create LogicVarFactoryVt");
         }
@@ -279,7 +280,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, layouts: *const birnam_abi::pa
 
     let factory = unsafe { birnam_abi::namespace_import::import(imports, c"LogicVar".as_ptr()) };
     let factory = if factory.is_null() {
-        let created = unsafe { (api.alloc)(factory_vt, 0) };
+        let created = retain(unsafe { (api.alloc)(factory_vt, 0) });
         if created.is_null() {
             abort("Rust Relational could not create LogicVar factory");
         }
@@ -292,7 +293,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, layouts: *const birnam_abi::pa
 
     let entity_vt = unsafe { birnam_abi::namespace_import::import(imports, c"EntityVt".as_ptr()) };
     let entity_vt = if entity_vt.is_null() {
-        let created = unsafe { (api.proto)(api.object_vt) };
+        let created = retain(unsafe { (api.proto)(api.object_vt) });
         if created.is_null() {
             abort("Rust Relational could not create EntityVt");
         }
@@ -305,7 +306,7 @@ unsafe fn ensure_relational_contract(api: &IdApi, layouts: *const birnam_abi::pa
 
     let collector_vt = unsafe { birnam_abi::namespace_import::import(imports, c"RelCollectorVt".as_ptr()) };
     let collector_vt = if collector_vt.is_null() {
-        let created = unsafe { (api.proto)(api.object_vt) };
+        let created = retain(unsafe { (api.proto)(api.object_vt) });
         if created.is_null() {
             abort("Rust Relational could not create RelCollectorVt");
         }
@@ -320,17 +321,17 @@ unsafe fn ensure_relational_contract(api: &IdApi, layouts: *const birnam_abi::pa
         birnam_abi::payload_layout::set(layouts, logicvar_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
         (api.method)(
             factory_vt,
-            (api.intern)(c"named:".as_ptr()),
+            retain((api.intern)(c"named:".as_ptr())),
             rust_logicvar_named,
         );
         (api.method)(
             logicvar_vt,
-            (api.intern)(c"name".as_ptr()),
+            retain((api.intern)(c"name".as_ptr())),
             rust_logicvar_name,
         );
         (api.method)(
             logicvar_vt,
-            (api.intern)(c"printString".as_ptr()),
+            retain((api.intern)(c"printString".as_ptr())),
             rust_logicvar_print_string,
         );
         birnam_abi::namespace_export::export(exports, c"LogicVarVt".as_ptr(), logicvar_vt);
@@ -944,7 +945,8 @@ unsafe extern "C" fn rust_rebuild_rules(self_object: Oop, _args: *const Oop, cou
     self_object
 }
 
-unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, mut roots: Option<&mut birnam_abi::root_registry::ConstructionRoots>) {
+    let mut retain = |object| { if let Some(roots) = &mut roots { unsafe { roots.keep(object) } } else { object } };
     let store_vt = unsafe { birnam_abi::namespace_import::import(imports, c"StoreVt".as_ptr()) };
     if store_vt.is_null() {
         // The classifier-only probe may load this dylib before Store. The
@@ -959,7 +961,7 @@ unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespa
     let entity_vt = if entity_vt.is_null() {
         // SAFETY: the new vtable delegates to the process Object vtable and
         // carries no payload, matching the EntityVt contract.
-        let created = unsafe { (api.proto)(api.object_vt) };
+        let created = retain(unsafe { (api.proto)(api.object_vt) });
         if created.is_null() {
             abort("Rust Relational could not create EntityVt");
         }
@@ -969,7 +971,7 @@ unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespa
         entity_vt
     };
     let _ = ENTITY_VT.set(entity_vt as usize);
-    let selector = unsafe { (api.intern)(c"entity".as_ptr()) };
+    let selector = unsafe { retain((api.intern)(c"entity".as_ptr())) };
     // SAFETY: the Store vtable and selector are process-owned and the method
     // has the frozen IdApi callback ABI.
     unsafe { (api.method)(store_vt, selector, rust_entity) };
@@ -978,41 +980,41 @@ unsafe fn install_entity_method(api: &IdApi, imports: *const birnam_abi::namespa
     {
         return;
     }
-    let find_all_selector = unsafe { (api.intern)(c"findAll:where:".as_ptr()) };
+    let find_all_selector = unsafe { retain((api.intern)(c"findAll:where:".as_ptr())) };
     // SAFETY: this bridge is installed only when the live collection and
     // LogicVar contracts are already present; the callback keeps Store as its
     // sole fact authority and returns the shared Vector family.
     unsafe {
         (api.method)(
             store_vt,
-            (api.intern)(c"defineRule:params:body:".as_ptr()),
+            retain((api.intern)(c"defineRule:params:body:".as_ptr())),
             rust_define_rule,
         );
         (api.method)(
             store_vt,
-            (api.intern)(c"rebuildRules".as_ptr()),
+            retain((api.intern)(c"rebuildRules".as_ptr())),
             rust_rebuild_rules,
         );
         (api.method)(store_vt, find_all_selector, rust_find_all);
     }
-    let as_of_selector = unsafe { (api.intern)(c"findAll:where:asOf:".as_ptr()) };
-    let since_selector = unsafe { (api.intern)(c"findAll:where:since:".as_ptr()) };
-    let between_selector = unsafe { (api.intern)(c"findAll:where:between:and:".as_ptr()) };
+    let as_of_selector = unsafe { retain((api.intern)(c"findAll:where:asOf:".as_ptr())) };
+    let since_selector = unsafe { retain((api.intern)(c"findAll:where:since:".as_ptr())) };
+    let between_selector = unsafe { retain((api.intern)(c"findAll:where:between:and:".as_ptr())) };
     unsafe {
         (api.method)(store_vt, as_of_selector, rust_find_all_as_of);
         (api.method)(store_vt, since_selector, rust_find_all_since);
         (api.method)(store_vt, between_selector, rust_find_all_between);
-        (api.method)(store_vt, (api.intern)(c"count:where:".as_ptr()), rust_count);
-        (api.method)(store_vt, (api.intern)(c"sum:where:".as_ptr()), rust_sum);
-        (api.method)(store_vt, (api.intern)(c"min:where:".as_ptr()), rust_min);
-        (api.method)(store_vt, (api.intern)(c"max:where:".as_ptr()), rust_max);
-        (api.method)(store_vt, (api.intern)(c"avg:where:".as_ptr()), rust_avg);
+        (api.method)(store_vt, retain((api.intern)(c"count:where:".as_ptr())), rust_count);
+        (api.method)(store_vt, retain((api.intern)(c"sum:where:".as_ptr())), rust_sum);
+        (api.method)(store_vt, retain((api.intern)(c"min:where:".as_ptr())), rust_min);
+        (api.method)(store_vt, retain((api.intern)(c"max:where:".as_ptr())), rust_max);
+        (api.method)(store_vt, retain((api.intern)(c"avg:where:".as_ptr())), rust_avg);
         (api.method)(
             store_vt,
-            (api.intern)(c"groupBy:aggregate:of:where:".as_ptr()),
+            retain((api.intern)(c"groupBy:aggregate:of:where:".as_ptr())),
             rust_group_by,
         );
-        (api.method)(store_vt, (api.intern)(c"pull:spec:".as_ptr()), rust_pull);
+        (api.method)(store_vt, retain((api.intern)(c"pull:spec:".as_ptr())), rust_pull);
         // Publish the shared Store as `db` only after the complete relational
         // and collection contract is available. A partial export would force
         // roll Relational down its reload path with missing vtables.
@@ -2336,10 +2338,10 @@ pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, _pres
     unsafe { bring_up(api, imports, layouts) };
     // Publish the complete shared relational object contract before exposing
     // the Store as `db`; this is safe to repeat across reloads.
-    unsafe { ensure_relational_contract(&*api, layouts, imports, exports) };
+    unsafe { ensure_relational_contract(&*api, layouts, imports, exports, None) };
     // SAFETY: module_init received the process-owned IdApi used to install the
     // Store-facing entity constructor.
-    unsafe { install_entity_method(&*api, imports, exports) };
+    unsafe { install_entity_method(&*api, imports, exports, None) };
     // SAFETY: module_init received the same process-owned IdApi recorded above.
     register_probe_root(roots);
     ptr::null_mut()
@@ -3246,3 +3248,57 @@ mod native_output;
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { API.get().expect("module not initialized").1 as *const birnam_abi::namespace_import::ApiV1 }
 
 fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { API.get().expect("module not initialized").2 as *const birnam_abi::payload_layout::ApiV1 }
+
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+static NATIVE_RESULT: OnceLock<usize> = OnceLock::new();
+fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    use std::sync::atomic::Ordering;
+    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+    let Some([api, presence, imports, exports, roots, layouts, integer, float, string, store, vector, map]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+    let Some(api) = api.as_word() else { return invalid_native(); };
+    let Some(presence) = presence.as_word() else { return invalid_native(); };
+    let Some(imports) = imports.as_word() else { return invalid_native(); };
+    let Some(exports) = exports.as_word() else { return invalid_native(); };
+    let Some(roots) = roots.as_word() else { return invalid_native(); };
+    let Some(layouts) = layouts.as_word() else { return invalid_native(); };
+    let Some(integer) = integer.as_word() else { return invalid_native(); };
+    let Some(float) = float.as_word() else { return invalid_native(); };
+    let Some(string) = string.as_word() else { return invalid_native(); };
+    let api = api as *mut IdApi;
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver } { return invalid_native(); }
+    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
+    if !unsafe { birnam_abi::namespace_presence::valid(presence) } { return invalid_native(); }
+    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
+    if !unsafe { birnam_abi::namespace_import::valid(imports) } { return invalid_native(); }
+    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
+    if !unsafe { birnam_abi::namespace_export::valid(exports) } { return invalid_native(); }
+    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
+    if !unsafe { birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
+    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
+    if !unsafe { birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
+    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 { return invalid_native(); }
+    if unsafe { birnam_abi::float::attach(float as _) } != 1 { return invalid_native(); }
+    if unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
+    let Some(store) = store.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    if vector.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+    if map.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+    if API.get().is_some_and(|selected| selected.0 != api.addr()) { return invalid_native(); }
+    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(*NATIVE_RESULT.get().unwrap() as Oop)), _ => return invalid_native(),
+    }
+    let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
+    unsafe { bring_up(api, imports, layouts); }
+    register_probe_root(unsafe { (*roots).api });
+    unsafe {
+        ensure_relational_contract(&*api, layouts, imports, exports, Some(&mut retained));
+        install_entity_method(&*api, imports, exports, Some(&mut retained));
+    }
+    let result = store;
+    assert!(NATIVE_RESULT.set(result.addr()).is_ok());
+    NATIVE_PHASE.store(2, Ordering::Release);
+    Outcome::loaded(Operand::object(result))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
