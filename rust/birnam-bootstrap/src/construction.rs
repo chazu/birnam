@@ -38,6 +38,10 @@ pub(super) struct Construction {
     artifact: Option<birnam_abi::Oop>,
     peg: Option<birnam_abi::Oop>,
     lang: Option<birnam_abi::Oop>,
+    compiler: Option<*const birnam_abi::runtime_compiler::ApiV1>,
+    tcc: Option<birnam_abi::Oop>,
+    portable_ready: bool,
+    codegen: Option<birnam_abi::Oop>,
 
     error_value: Option<*const birnam_abi::error_value::ApiV3>,
     printing: Option<*const birnam_abi::printing::ApiV1>,
@@ -86,6 +90,10 @@ impl Construction {
             artifact: None,
             peg: None,
             lang: None,
+            compiler: None,
+            tcc: None,
+            portable_ready: false,
+            codegen: None,
 
             error_value: None,
             printing: None,
@@ -883,6 +891,74 @@ impl Construction {
         self.initialize_lang()?;
         Ok(())
     }
+    fn initialize_compiler_admission(&mut self) -> Result<*const birnam_abi::runtime_compiler::ApiV1, Outcome> {
+        if let Some(api) = self.compiler { return Ok(api); }
+        let value = self.runtime_service(b"compiler")?;
+        let api = value.as_word().ok_or_else(invalid)? as *const birnam_abi::runtime_compiler::ApiV1;
+        if !unsafe { birnam_abi::runtime_compiler::valid(api) } { return Err(invalid()); }
+        self.compiler = Some(api);
+        Ok(api)
+    }
+    fn tcc_path(&self) -> PathBuf {
+        std::env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from)
+            .unwrap_or_else(|| self.source_path.with_file_name("libbirnam_id_tcc.dylib"))
+    }
+    fn initialize_tcc(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.tcc { return Ok(object); }
+        let compiler = self.initialize_compiler_admission()?;
+        let mut args = self.family_arguments()?;
+        args.extend([self.runtime_service(b"vtables")?,
+            Operand::word(unsafe { (*self.lifetime.unwrap()).hooks }.addr()),
+            Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
+            Operand::word(self.integer.unwrap().addr()), Operand::word(self.float.unwrap().addr()),
+            Operand::word(self.word.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(compiler.addr())]);
+        let path = self.tcc_path();
+        let result = unsafe { self.load_native(&path_bytes(&path), &args) }.into_result()?;
+        let object = self.published_object(result)?;
+        self.tcc = Some(object);
+        Ok(object)
+    }
+    fn named(&mut self, name: &std::ffi::CStr) -> Result<birnam_abi::Oop, Outcome> {
+        let imports = self.runtime_service(b"namespaceImport")?.as_word().ok_or_else(invalid)?;
+        let object = unsafe { birnam_abi::namespace_import::import(imports as _, name.as_ptr()) };
+        if object.is_null() { return Err(invalid()); }
+        Ok(object)
+    }
+    fn initialize_portable(&mut self) -> Result<(), Outcome> {
+        if self.portable_ready { return Ok(()); }
+        self.initialize_collections()?;
+        let mut args = self.family_arguments()?;
+        args.extend([self.runtime_service(b"vtables")?,
+            Operand::word(unsafe { (*self.lifetime.unwrap()).hooks }.addr()),
+            Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
+            Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()),
+            self.runtime_service(b"namespaceNames")?, Operand::object(self.named(c"Vector")?), Operand::object(self.error.unwrap())]);
+        let result = self.load("libbirnam_portable_code.dylib", &args)?;
+        if result.kind() != birnam_abi::id_protocol::UNIT { return Err(invalid()); }
+        self.portable_ready = true;
+        Ok(())
+    }
+    fn initialize_codegen(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.codegen { return Ok(object); }
+        self.initialize_store()?;
+        self.initialize_parsers()?;
+        self.initialize_portable()?;
+        let tcc = self.initialize_tcc()?;
+        let artifact_runtime = unsafe { self.load_native(&path_bytes(&self.tcc_path()), &[Operand::bytes(b"artifactRuntime")]) }.into_result()?;
+        let compensation = self.load("libbirnam_store.dylib", &[Operand::bytes(b"compensation"), Operand::word(self.runtime.unwrap().addr())])?;
+        let mut args = self.family_arguments()?;
+        args.extend([self.runtime_service(b"vtables")?,
+            Operand::word(unsafe { (*self.collection.unwrap()).settings }.addr()),
+            Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
+            Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()),
+            self.runtime_service(b"namespaceNames")?, Operand::word(self.compiler.unwrap().addr()), compensation,
+            Operand::object(tcc), Operand::object(self.store.unwrap()), Operand::object(self.named(c"Globals")?),
+            Operand::object(self.lang.unwrap()), Operand::object(self.named(c"CodeObject")?), artifact_runtime]);
+        let result = self.load("libbirnam_id_codegen.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.codegen = Some(object);
+        Ok(object)
+    }
     pub(super) fn advance(&mut self, stage: &[u8]) -> Result<Operand, Outcome> {
         macro_rules! owner {
             ($method:ident) => {
@@ -951,6 +1027,10 @@ impl Construction {
             b"range" => Ok(Operand::word(self.initialize_range()?.addr())),
             b"map" => Ok(Operand::word(self.initialize_map()?.addr())),
             b"stringCollection" => Ok(Operand::word(self.initialize_string_collection()?.addr())),
+            b"compilerAdmission" => Ok(Operand::word(self.initialize_compiler_admission()?.addr())),
+            b"tcc" => Ok(Operand::object(self.initialize_tcc()?)),
+            b"portable" => { self.initialize_portable()?; Ok(Operand::unit()) },
+            b"codegen" => Ok(Operand::object(self.initialize_codegen()?)),
             b"artifact" => Ok(Operand::object(self.initialize_artifact()?)),
             b"peg" => Ok(Operand::object(self.initialize_peg()?)),
             b"lang" => Ok(Operand::object(self.initialize_lang()?)),

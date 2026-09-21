@@ -25,6 +25,13 @@ pub const PAYLOAD_BYTES: usize = PAYLOAD_WORDS * size_of::<usize>();
 ///
 /// The caller must own the Runtime thread and supply its live IdApi.
 pub unsafe fn ensure_family(api: &IdApi, layouts: *const crate::payload_layout::ApiV1, presence: *const crate::namespace_presence::ApiV1, imports: *const crate::namespace_import::ApiV1, exports: *const crate::namespace_export::ApiV1) -> Option<(Oop, Oop)> {
+    unsafe { ensure_family_with_roots(api, layouts, presence, imports, exports, None) }
+}
+
+/// Construct with temporary roots when called after collector activation.
+/// # Safety
+/// Same owner-thread contract as `ensure_family`; roots belong to this Runtime.
+pub unsafe fn ensure_family_with_roots(api: &IdApi, layouts: *const crate::payload_layout::ApiV1, presence: *const crate::namespace_presence::ApiV1, imports: *const crate::namespace_import::ApiV1, exports: *const crate::namespace_export::ApiV1, mut roots: Option<&mut crate::root_registry::ConstructionRoots>) -> Option<(Oop, Oop)> {
     let existing_vtable = unsafe { crate::namespace_presence::contains(presence, VTABLE_NAME.as_ptr().cast()) } != 0;
     let existing_prototype = unsafe { crate::namespace_presence::contains(presence, PROTOTYPE_NAME.as_ptr().cast()) } != 0;
     if existing_vtable || existing_prototype {
@@ -40,6 +47,7 @@ pub unsafe fn ensure_family(api: &IdApi, layouts: *const crate::payload_layout::
     if vtable.is_null() {
         return None;
     }
+    if let Some(roots) = roots.as_mut() { unsafe { roots.keep(vtable) }; }
     unsafe { crate::payload_layout::set(layouts, vtable, ptr::null(), 0, SLOT_RAW) };
     let prototype = unsafe { (api.alloc)(vtable, PAYLOAD_BYTES) };
     if prototype.is_null() {
@@ -48,6 +56,7 @@ pub unsafe fn ensure_family(api: &IdApi, layouts: *const crate::payload_layout::
     unsafe {
         prototype.cast::<usize>().write(0);
         prototype.cast::<usize>().add(1).write(KIND_PROTOTYPE);
+        if let Some(roots) = roots.as_mut() { roots.keep(prototype); }
         crate::set_vtable_owner(api, vtable, prototype);
     }
     if unsafe { crate::namespace_export::export(exports, VTABLE_NAME.as_ptr().cast(), vtable) }.is_null()

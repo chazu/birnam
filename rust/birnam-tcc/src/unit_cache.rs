@@ -84,22 +84,13 @@ pub(super) unsafe extern "C" fn bind(unit: Oop, _args: *const Oop, count: usize)
     let Some(state) = (unsafe { configured_state(unit) }) else {
         return api.nilObj;
     };
-    if unsafe {
-        tcc_add_symbol(
-            state,
-            c"birnam_vtable_cache_get".as_ptr(),
-            get as *const c_void,
-        )
-    } < 0
-        || unsafe {
-            tcc_add_symbol(
-                state,
-                c"birnam_vtable_cache_set".as_ptr(),
-                set as *const c_void,
-            )
-        } < 0
-    {
-        return api.nilObj;
+    for (name, address) in [
+        (c"birnam_vtable_cache_get", get as *const c_void),
+        (c"birnam_vtable_cache_set", set as *const c_void),
+        (c"birnam_rust_codegen_vtable_cache_get", get as *const c_void),
+        (c"birnam_rust_codegen_vtable_cache_set", set as *const c_void),
+    ] {
+        if unsafe { tcc_add_symbol(state, name.as_ptr(), address) } < 0 { return api.nilObj; }
     }
     CACHES.lock().unwrap().entry(unit as usize).or_default();
     unit

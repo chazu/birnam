@@ -15,7 +15,8 @@
 > native binding references live in Lifetime above Id. Unsafe native consumers and the full entry-level
 > construction manifest remain open.
 > The loaded Bootstrap now owns the production construction sequence through
-> Runtime, control, collections, Store and parsers; host prefix requests delegate to the
+> Runtime, control, collections, Store, parsers and compiler construction; host
+> prefix requests delegate to the
 > same implementation.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
@@ -416,7 +417,7 @@ only installs behavior when all its named inputs exist.
 | 9 | Collector activation; Lifetime + Id storage facts, native stack support, tracer/coordinator | Adopt the existing heap and owners as section 5 specifies. Install collection policy only after its complete dependencies exist. No Machine/compiler needed. |
 | 10 | Execution and Block representation; completed values, Namespace/Object Model, Lifetime/GC | Turn ownership, implementation/Frame ownership, Machine and native Block calling. No source compiler, speculative native tier or artifact-based admission yet. |
 | 11 | Collections, Store and remaining value/control extensions; steps 2–10 | Vector/Map/Range/String collections, Cells/Globals and Store observation, Block loops and Boolean Block-taking control. Compiler/source reflection extensions remain absent. |
-| 12 | Artifact codec, PEG, Lang and native compiler services; steps 2–11 | Existing parsing and native compilation with their real Error, String, Vector, Block and Store dependencies. Lang follows PEG. No hidden compiler remains in Id. |
+| 12 | Artifact codec, PEG, Lang, Portable Code and native compiler services; steps 2–11 | Existing parsing, portable representation and native compilation with their real Error, String, Vector, Block and Store dependencies. Lang follows PEG. Completed Runtime admission precedes TCC; Portable Code precedes Codegen. No hidden compiler remains in Id. |
 | 13 | Codegen and artifact admission; steps 10–12 | Lowering/emission/loading, exact-entry adapters, admission/ownership and source reflection. Add Store/compiler integration now. Optimization is an upper extension with these services available. |
 | 14 | System/module/image/application composition; preceding required owners | System IO can mount as soon as its values are ready; source loading waits for Codegen. Image loading waits for Codegen/Store/portable-code owners. Isolate/relational/Alien and authored modules mount with their declared dependencies, then CLI/application execution. |
 
@@ -2124,3 +2125,62 @@ rebuilt, baked and image-rejection checks pass. Unit tests pass 59 Artifact,
 changed Rust sources match the installed copies. The fifteen checked native
 export sets match their manifests, including nine corrected control/collection
 manifests. Release validation remains waived; worker readiness remains open.
+
+### Compiler dependencies completed before publication
+
+Bootstrap now constructs Runtime admission, TCC, Portable Code and Codegen
+through common native entries. Admission's already complete values are its
+predecessors; no TCC/Codegen provider slot is installed into Runtime. TCC and
+Codegen receive the admission descriptor directly, and their native compiler
+symbol resolution retains its context instead of probing the Runtime provider.
+
+Portable Code previously followed Codegen even though Codegen's portable
+operations imported its native APIs. Portable Code itself needs only completed
+values/execution, so its representation and methods now precede Codegen. This
+removes that forward dependency without making a partially usable Codegen.
+Codegen also receives Store compensation before it publishes any methods, plus
+completed Tcc, Store, Globals, Lang and CodeObject predecessors. The host's late
+Store configuration and the three legacy module rows are removed. Exact
+operands/results are recorded in [Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md).
+
+The native prefix fixture is extended to compile C, evaluate Birnam and invoke
+a generated closure after GC with System/Image libraries absent. Ordinary source
+and image validation must still cover the full production stack. The native
+constructors preserve the existing language protocols and TCC override path.
+Legacy direct entry points remain for existing native consumers; non-compiler
+private entry lookup and unchecked-dispatch consumers are still unfinished.
+System construction, the complete manifest, worker readiness and final
+requirement-by-requirement acceptance remain open.
+
+The compiler prefix exposed an additional implicit dependency: JIT Blocks used
+Codegen's exported `birnam_is_error` without binding it into their TCC Unit.
+Legacy loading made that symbol globally visible; Id's native loader correctly
+keeps modules local. Codegen now explicitly binds its complete helper set,
+including canonical and Rust spellings, into each generated Unit. Unit-owned
+vtable caches bind both spellings to the same Unit implementation. TCC alone
+supplies the resumable-entry bridge, removing its duplicate binding. Compiler
+errors now distinguish compilation, global binding, Runtime binding, relocation
+and generation-identity failures. The regression check compiles a captured Block
+and invokes it after GC with no System/Image initialization.
+
+Compiled Mach-O artifacts have a separate linking requirement: the existing
+format imports the public `birnam_*` C ABI. TCC supplies an exact native action
+after construction; Codegen receives that action with its context as a final
+constructor operand. Before mapping an artifact, Codegen invokes the action
+and exposes its own C ABI. Both operations retain `NOW | GLOBAL | NOLOAD`
+references to the already completed images identified by their own function
+addresses. They neither initialize modules again nor discover future providers.
+This upper artifact-linking step preserves the existing format while ordinary
+native loading and JIT Units remain local. Id has no artifact-specific behavior.
+
+Validation on `/tmp/birnam-83-compiler-linked` passes the native loading suite,
+including C compilation, captured-Block execution after GC and the TCC override
+with System/Image libraries absent. Installed, forced-source and compiled global
+lookup pass. Owned Methods pass source, compiled, mapped, rebuilt, baked and
+image-rejection checks; portable binding publication, replacement, self-removal
+and retirement also pass. ABI/TCC/Codegen unit tests pass 52 cases, with six
+existing ignored cases. All ten changed Rust sources match the installed copies;
+the sixteen checked native export sets and Codegen install name match their
+manifests. Release validation remains waived. System/application construction,
+legacy consumer removal, the complete construction manifest, worker readiness
+and final architecture acceptance remain open.

@@ -149,3 +149,47 @@ published predecessor; ordinary Artifact/PEG methods continue to resolve Vector
 through the live namespace. Native inputs are trusted under Design 83's boundary.
 The legacy entry points remain for existing direct native consumers; this change
 does not yet migrate their internal language sends to checked dispatch.
+
+Compiler construction uses completed admission and Portable Code predecessors:
+
+| Library | Operands after Id | Complete result |
+|---|---|---|
+| Runtime | Bytes("compiler"), Word(Runtime API) | Word(compiler/admission API v1), constructed before TCC |
+| TCC | F, Word(vtable enumeration), Word(trace hooks), Word(finalizers), Word(Integer), Word(Float), Word(Word), Word(String), Word(compiler/admission API) | Object(Tcc); C compilation, Units, runtime binding, symbols and native installation |
+| TCC | Bytes("artifactRuntime") | NativeEntry exposing the completed TCC image's C ABI for artifact linking |
+| Portable Code | F, Word(vtable enumeration), Word(trace hooks), Word(finalizers), Word(Integer), Word(String), Word(namespace names), Object(Vector), Object(Error) | Unit; complete CodeObject/CodeProgram families and native portable APIs |
+| Codegen | F, Word(vtable enumeration), Word(GC settings), Word(finalizers), Word(Integer), Word(String), Word(namespace names), Word(compiler/admission API), Word(Store compensation), Object(Tcc), Object(Store), Object(Globals), Object(Lang), Object(CodeObject), NativeEntry(TCC artifact runtime) | Object(RustCodegen); compiler, reflection and portable operations |
+
+The `compilerAdmission`, `tcc`, `portable` and `codegen` stages expose those
+results. `codegen` first completes Store, parsers, Portable Code and TCC. Portable
+Code needs values/execution but no compiler, so it precedes Codegen instead of
+leaving Codegen's portable operations dependent on a later module. Admission
+requires completed Runtime values and precedes TCC's generated-code hooks.
+
+TCC and Codegen's native paths resolve compiler-owned entries through the
+supplied admission descriptor, keeping its context. Existing legacy entry points
+retain their compatibility lookup path. Codegen receives and installs Store
+compensation before any of its methods are published; the host no longer probes
+and configures that dependency after initialization. Its Tcc/Store/Globals inputs
+are the completed predecessor objects; ordinary language namespace lookups remain
+live. Remaining non-compiler private symbol lookups still require migration.
+
+Bootstrap preserves `BIRNAM_TCC_DYLIB` as the exact TCC override path. The selected
+library must implement the common native descriptor. Other native compiler-group
+libraries come from the Id library directory. New TCC/ForeignAddress/Codegen
+objects retain constructor roots, and Portable Code scopes its temporary family
+roots until their namespace exports are installed.
+
+Generated Units bind all Codegen helper imports explicitly, including their Rust
+spellings. They do not require Codegen's native image to be globally visible.
+Unit-owned cache callbacks retain that ownership for both symbol spellings; the
+TCC Runtime binding supplies the resumable entry bridge exactly once.
+
+Compiled Mach-O artifacts still import the frozen public `birnam_*` C ABI.
+Before mapping an artifact, Codegen invokes the supplied TCC entry with its
+original context, no receiver and no arguments, then exposes its own C ABI.
+Each operation retains a `NOW | GLOBAL | NOLOAD` reference to its already
+constructed native image, selected by an address within that image. It does
+not initialize another module or resolve a future provider. The TCC action
+returns Unit and is available only after its native constructor completes.
+Ordinary native loading and JIT compilation keep their local library scope.

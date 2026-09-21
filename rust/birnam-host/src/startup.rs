@@ -1025,7 +1025,6 @@ pub enum ModuleError {
     NamespaceNamesDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
-    CompilerExtensionRejected { path: PathBuf },
     MissingModuleInit {
         path: PathBuf,
     },
@@ -1043,12 +1042,6 @@ pub enum ModuleError {
     SymbolCompatibilityLimitRejected {
         path: PathBuf,
     },
-    MissingCodegenCompensationConfig {
-        path: PathBuf,
-    },
-    StoreCompensationConfigRejected {
-        path: PathBuf,
-    },
 }
 
 const SYMBOL_COUNT_LIMIT_ENV: &str = "BIRNAM_SYMBOL_LIMIT";
@@ -1060,8 +1053,6 @@ type SymbolCompactionControl = unsafe extern "C" fn(c_int, usize, usize) -> c_in
 type SymbolBorrowDeclaration = unsafe extern "C" fn() -> c_int;
 
 
-type CodegenCompensationConfigure =
-    unsafe extern "C" fn(*const std::ffi::c_void) -> std::ffi::c_int;
 
 fn parse_positive_limit(value: &OsStr) -> Option<usize> {
     value
@@ -1107,8 +1098,6 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_collect",
     // Remaining compatibility attachments before compiler-facing modules.
     "libbirnam_id_error",
-    "libbirnam_id_tcc",
-    "libbirnam_id_codegen",
     "libbirnam_system_gc",
     "libbirnam_text_view",
     "libbirnam_system_output",
@@ -1118,7 +1107,6 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_native_loader",
     "libbirnam_source_loader",
     "libbirnam_id_prelude",
-    "libbirnam_portable_code",
     "libbirnam_id_isolate",
     "libbirnam_id_relational",
     "libbirnam_id_alien",
@@ -1619,7 +1607,7 @@ pub fn self_hosted_boot_order() -> Result<Vec<&'static str>, BootstrapOrderError
                 // The source declaration names a non-self-hosted module. Keep
                 // the distinction explicit so a typo cannot silently reorder
                 // the self-hosted layer.
-                let is_kernel = matches!(dependency.as_str(), "store" | "collection" | "artifact" | "peg" | "lang") || SCRIPT_MODULES.iter().any(|name| {
+                let is_kernel = matches!(dependency.as_str(), "store" | "collection" | "artifact" | "peg" | "lang" | "tcc" | "codegen" | "portable_code") || SCRIPT_MODULES.iter().any(|name| {
                     name.strip_prefix("libbirnam_id_")
                         .is_some_and(|kernel| kernel == dependency)
                 });
@@ -2709,6 +2697,12 @@ impl LoadedStack {
         Ok(())
     }
 
+    pub fn initialize_compiler(&mut self) -> Result<(), ModuleError> {
+        self.initialize_parsers()?;
+        self.construct(b"codegen")?;
+        Ok(())
+    }
+
     /// Install the completed native control group before collections/compiler.
     pub fn initialize_control(&mut self) -> Result<(), ModuleError> {
         self.construct(b"control")?;
@@ -2730,28 +2724,9 @@ impl LoadedStack {
     /// retains its exact override path; every other rung, including Store,
     /// comes from the one executable-relative runtime library directory.
     pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
-        self.initialize_parsers()?;
-        let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
-        let store_compensation_api = self.construction_word(b"storeCompensation")? as *const std::ffi::c_void;
+        self.initialize_compiler()?;
         for name in SCRIPT_MODULES {
-            let path = if *name == "libbirnam_id_tcc" {
-                tcc_override
-                    .as_deref()
-                    .map(Path::to_path_buf)
-                    .unwrap_or_else(|| resources.lib_dir.join("libbirnam_id_tcc.dylib"))
-            } else {
-                resources.lib_dir.join(format!("{name}.dylib"))
-            };
-            if *name == "libbirnam_id_codegen" {
-                let compiler_path = resources.lib_dir.join("libbirnam_runtime.dylib");
-                let arguments = [birnam_abi::id_protocol::Operand::bytes(b"compiler"),
-                    birnam_abi::id_protocol::Operand::word((self.api() as *const IdApi).addr())];
-                let result = unsafe { self.load_native(&path_bytes(&compiler_path), &arguments) };
-                if result.status != birnam_abi::id_protocol::LOADED
-                    || !unsafe { birnam_abi::runtime_compiler::valid(result.value.as_word().unwrap_or(0) as _) } {
-                    return Err(ModuleError::CompilerExtensionRejected { path: compiler_path });
-                }
-            }
+            let path = resources.lib_dir.join(format!("{name}.dylib"));
             let handle = self.load_module_handle(&path)?;
             if *name == "libbirnam_trace" {
                 let provider = unsafe {
@@ -2767,25 +2742,6 @@ impl LoadedStack {
                 };
                 if provider.is_null() {
                     return Err(ModuleError::CollectDependencyRejected { path });
-                }
-            }
-            if *name == "libbirnam_id_codegen" {
-                let table = store_compensation_api;
-                let configure = unsafe {
-                    (self.floor.api().dlsym)(
-                        handle.as_ptr(),
-                        c"birnam_codegen_store_compensation_configure_v1"
-                            .as_ptr()
-                            .cast(),
-                    )
-                };
-                let Some(configure) = NonNull::new(configure) else {
-                    return Err(ModuleError::MissingCodegenCompensationConfig { path });
-                };
-                let configure: CodegenCompensationConfigure =
-                    unsafe { std::mem::transmute(configure.as_ptr()) };
-                if unsafe { configure(table) } != 1 {
-                    return Err(ModuleError::StoreCompensationConfigRejected { path });
                 }
             }
             if *name == "libbirnam_id_image"

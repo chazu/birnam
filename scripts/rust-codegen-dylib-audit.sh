@@ -22,8 +22,7 @@ for symbol in sorted(manifest["exported_symbols"]):
     print(symbol)
 PY
 
-nm -gU "$dylib" |
-  awk '$2 == "T" && $3 !~ /^_?__ubsan_handle_/ {print $3}' |
+nm -gjU "$dylib" |
   sed 's/^_//' | sort -u >"$actual"
 diff -u "$expected" "$actual"
 

@@ -79,3 +79,8 @@ The same completed-service request form also supports `namespaceExport`,
 vtable-enumeration v2 and method-observation v1 descriptors respectively. These
 are inputs to collection/Store construction; they neither initialize a module
 nor introduce a later-filled provider slot.
+
+`namespaceNames` is another completed service selected by the common native
+request `(Bytes("namespaceNames"), Word(Runtime API))`. It returns the existing
+namespace-name API v1 used by Portable Code and Codegen, with the same Runtime/Id
+identity checks as the other namespace views.

@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Construct TCC, Portable Code and Codegen through Bootstrap. Complete admission
+  and Portable Code before their consumers, and supply Store compensation before
+  publishing Codegen methods. Remove the three legacy host initialization rows
+  and retain temporary constructor roots for the new families. Bind generated C
+  helpers explicitly so compilation does not depend on global library visibility.
+  Artifact loading explicitly exposes the completed TCC/Codegen C ABI required
+  by the existing Mach-O format, without changing Id's local native loader.
+
 - Construct Artifact, PEG and Lang through Bootstrap with completed values and
   explicit PEG input, removing three legacy host entries. Build the real grammar
   and exercise parsing before TCC, Codegen or compiler admission are available.

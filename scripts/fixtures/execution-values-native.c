@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 static IdApi *api;
 static const NamespaceImportV1 *imports;
@@ -147,8 +148,33 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     api=(void *)args[0].data.word; imports=(void *)args[1].data.word;
     const RootRegistryV1 *registry=(void *)args[2].data.word;
     integer=*(IntegerApiV1 *)args[3].data.word; string=*(StringApiV1 *)args[4].data.word;
+    if(args[6].data.word==5) {
+        if(!registered) { root_registry_register_v1(registry,mark); registered=1; }
+        assert(!namespace_import_v1(imports,"System"));
+        assert(named("CodeObject") && named("CodeProgram"));
+        Oop unit=keep(send1(named("Tcc"),"compile:",text("long answer(void) { return 42; }")));
+        assert(unit!=api->nil_obj);
+        Oop address=keep(send1(unit,"symbol:",text("answer")));
+        assert(address!=api->nil_obj);
+        long (*answer)(void)=(void *)*(uintptr_t *)address;
+        assert(answer && answer()==42);
+        Oop codegen=named("RustCodegen");
+        assert(number(send1(codegen,"eval:",text("[1 + 2]")))==3);
+        Oop closure=keep(send1(codegen,"eval:",text("let x := 40; [| [x + 2]]")));
+        if(closure==api->nil_obj) {
+            Oop error=send0(codegen,"lastError"); size_t length=0;
+            const uint8_t *message=string.bytes(string.context,error,&length);
+            fprintf(stderr,"compiler prefix closure failed: %.*s\n",(int)length,message);
+        }
+        assert(closure!=api->nil_obj);
+        api->gc_collect();
+        assert(number(send0(closure,"value"))==42);
+        assert(send1(named("Tcc"),"compile:",text("this is invalid C"))==api->nil_obj);
+        root_count=0;
+        return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=codegen}};
+    }
     assert(!namespace_import_v1(imports,"RustCodegen"));
-    assert(!namespace_import_v1(imports,"TCC"));
+    assert(!namespace_import_v1(imports,"Tcc"));
     if(args[6].data.word==4) {
         if(!registered) { root_registry_register_v1(registry,mark); registered=1; }
         check_compiler(id,&args[5],0);

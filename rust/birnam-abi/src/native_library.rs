@@ -25,6 +25,27 @@ unsafe extern "C" {
 /// `api` must be the live process API and `address` must identify the intended
 /// loaded image. The caller must keep that image mapped through acquisition.
 pub unsafe fn open_containing(api: &IdApi, address: *const c_void) -> *mut c_void {
+    #[cfg(target_os = "macos")]
+    const FLAGS: c_int = 2 | 4;
+    #[cfg(not(target_os = "macos"))]
+    const FLAGS: c_int = 2;
+    unsafe { acquire_containing(api, address, FLAGS) }
+}
+
+/// Expose the frozen C ABI of an already mapped image to compiled artifacts.
+/// This acquires a retained reference without loading another image or invoking
+/// a Birnam initializer. It is an upper artifact-linking operation.
+/// # Safety
+/// `address` belongs to the intended, completed, process-pinned native provider.
+pub unsafe fn publish_artifact_abi(api: &IdApi, address: *const c_void) -> *mut c_void {
+    #[cfg(target_os = "macos")]
+    const FLAGS: c_int = 2 | 8 | 16; // NOW | GLOBAL | NOLOAD
+    #[cfg(not(target_os = "macos"))]
+    const FLAGS: c_int = 2 | 0x100 | 4;
+    unsafe { acquire_containing(api, address, FLAGS) }
+}
+
+unsafe fn acquire_containing(api: &IdApi, address: *const c_void, flags: c_int) -> *mut c_void {
     let mut info = DlInfo {
         filename: ptr::null(),
         base: ptr::null_mut(),
@@ -34,9 +55,5 @@ pub unsafe fn open_containing(api: &IdApi, address: *const c_void) -> *mut c_voi
     if unsafe { dladdr(address, &mut info) } == 0 || info.filename.is_null() {
         return ptr::null_mut();
     }
-    #[cfg(target_os = "macos")]
-    const RTLD_NOW_LOCAL: c_int = 2 | 4;
-    #[cfg(not(target_os = "macos"))]
-    const RTLD_NOW_LOCAL: c_int = 2;
-    unsafe { (api.dlopen)(info.filename, RTLD_NOW_LOCAL) }
+    unsafe { (api.dlopen)(info.filename, flags) }
 }

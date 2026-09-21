@@ -964,6 +964,7 @@ pub(crate) fn construction_service(id: &birnam_abi::id_protocol::Protocol, api: 
     match name {
         b"namespacePresence" => Some(runtime.namespace_presence().addr()),
         b"namespaceImport" => Some(runtime.namespace_import().addr()),
+        b"namespaceNames" => Some(unsafe { birnam_namespace_names_provider_v1() }.addr()),
         b"namespaceExport" => Some(unsafe { birnam_namespace_export_provider_v1() }.addr()),
         b"vtables" => Some(unsafe { birnam_vtable_enumeration_provider_v2() }.addr()),
         b"methodObservation" => Some(unsafe { birnam_method_observation_provider_v1() }.addr()),

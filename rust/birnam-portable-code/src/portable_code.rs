@@ -2344,7 +2344,9 @@ fn family(runtime: &Runtime, name: &[u8], vtable_name: &[u8], parent: Oop) -> (O
         .unwrap_or_else(|_| crate::boundary::fatal_invariant("static family name contains NUL"));
     if prototype.is_null() {
         let vtable = runtime.create_vtable(parent);
+        runtime.push_temporary_root(vtable);
         let prototype = runtime.allocate_empty(vtable, Permanence::Permanent);
+        runtime.push_temporary_root(prototype);
         runtime.set_vtable_owner(vtable, prototype);
         return (vtable, prototype);
     }
@@ -2370,7 +2372,9 @@ fn private_payload_object(
         .unwrap_or_else(|_| crate::boundary::fatal_invariant("private export name contains NUL"));
     if object.is_null() {
         let vtable = runtime.create_vtable(parent);
+        runtime.push_temporary_root(vtable);
         let object = unsafe { runtime.allocate_instance_active(vtable, payload_bytes) };
+        runtime.push_temporary_root(object);
         runtime.set_vtable_owner(vtable, object);
         runtime.export(name, object).unwrap_or_else(|_| {
             crate::boundary::fatal_invariant("private object export name contains NUL")
@@ -2494,6 +2498,7 @@ fn install_native_api(runtime: &Runtime) {
 
 impl Runtime {
     pub(crate) fn install_portable_code_objects(&self) {
+        let _roots = self.temporary_root_scope();
         let globals = self.globals();
         let (vtable, prototype) = family(self, b"CodeNode", b"CodeNodeVt", globals.object_vt);
         self.set_layout(vtable, core::ptr::null(), 0, SLOT_RAW);

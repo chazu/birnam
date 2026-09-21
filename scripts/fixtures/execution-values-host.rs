@@ -70,6 +70,21 @@ fn main() {
         stack.initialize_parsers().unwrap();
         assert_eq!(unsafe { birnam_abi::namespace_import::import(stack.imports(), c"BirnamGrammar".as_ptr()) }, grammar);
         println!("Artifact, PEG and Lang work with TCC, Codegen and runtime compiler admission absent; repeated construction preserves the grammar");
+        if args.len() > 5 {
+            for library in ["id_tcc", "portable_code", "id_codegen"] {
+                let file = format!("libbirnam_{library}.dylib");
+                std::fs::copy(Path::new(&args[4]).join(&file), prefix.join(&file)).unwrap();
+            }
+            let selected_tcc = prefix.join("selected-tcc.dylib");
+            std::fs::rename(prefix.join("libbirnam_id_tcc.dylib"), &selected_tcc).unwrap();
+            unsafe { std::env::set_var("BIRNAM_TCC_DYLIB", &selected_tcc); }
+            stack.initialize_compiler().unwrap();
+            assert_eq!(stack.module_count(), 0, "compiler used legacy initialization");
+            parser_arguments[6] = Operand::word(5);
+            assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) }.status, native::LOADED);
+            stack.initialize_compiler().unwrap();
+            println!("TCC and Codegen execute native/source compilation with Portable Code and Store compensation already available, before System and Image libraries");
+        }
         return;
     }
     match stack.load_script_modules(&resources) {

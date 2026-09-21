@@ -257,6 +257,19 @@ struct Runtime {
 }
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
+static NATIVE_COMPILER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static ARTIFACT_RUNTIME: OnceLock<(birnam_abi::id_protocol::Method, usize)> = OnceLock::new();
+
+fn ensure_artifact_runtime() -> bool {
+    let Some(&(publish_tcc, context)) = ARTIFACT_RUNTIME.get() else { return true; };
+    static IMAGE: OnceLock<usize> = OnceLock::new();
+    *IMAGE.get_or_init(|| unsafe {
+        let outcome = publish_tcc(context as *mut c_void, ptr::null_mut(), ptr::null(), 0);
+        if outcome.status != birnam_abi::id_protocol::LOADED { return 0; }
+        birnam_abi::private::native_library::publish_artifact_abi(api(runtime()), birnam_is_error as *const () as _).addr()
+    }) != 0
+}
+
 static LAST_ERROR: Mutex<Option<Vec<u8>>> = Mutex::new(None);
 static EVALUATOR_ROOTS: Mutex<Vec<usize>> = Mutex::new(Vec::new());
 #[derive(Clone)]
@@ -1567,104 +1580,38 @@ unsafe fn bind_global_shims(api: &IdApi, unit: Oop, owned_vtable_cache: bool) ->
             return false;
         }
     }
-    let name = unsafe { (birnam_abi::string::make)(b"birnam_global".as_ptr(), 13) };
-    let Some(address) = (unsafe { borrowed_address(api, birnam_global as *const () as usize) })
-    else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
-    }
-    let name = unsafe { (birnam_abi::string::make)(b"birnam_global_b".as_ptr(), 15) };
-    let Some(address) =
-        (unsafe { borrowed_address(api, birnam_rust_codegen_global_b as *const () as usize) })
-    else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
-    }
-    let name = unsafe { (birnam_abi::string::make)(b"birnam_global_set".as_ptr(), 17) };
-    let Some(address) = (unsafe { borrowed_address(api, birnam_global_set as *const () as usize) })
-    else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
-    }
-    if owned_vtable_cache {
-        // Bind the materialization's cache to its actual Unit lifetime. The
-        // synchronous and resumable emitters keep their existing C signatures.
-        if unsafe { send0(api, unit, b"bindVtableCache\0") } != unit {
-            return false;
-        }
-    } else {
-        let name = unsafe { (birnam_abi::string::make)(b"birnam_vtable_cache_get".as_ptr(), 23) };
-        let Some(address) =
-            (unsafe { borrowed_address(api, birnam_vtable_cache_get as *const () as usize) })
-        else {
-            return false;
-        };
-        if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-            return false;
-        }
-        let name = unsafe { (birnam_abi::string::make)(b"birnam_vtable_cache_set".as_ptr(), 23) };
-        let Some(address) =
-            (unsafe { borrowed_address(api, birnam_vtable_cache_set as *const () as usize) })
-        else {
-            return false;
-        };
-        if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-            return false;
+    // Native modules stay local to Id's loader. Every generated Codegen import
+    // is bound explicitly; no helper is supplied by ambient dyld visibility.
+    let shims: &[(&[u8], usize)] = &[
+        (b"birnam_global", birnam_rust_codegen_global as *const () as usize),
+        (b"birnam_global_b", birnam_rust_codegen_global_b as *const () as usize),
+        (b"birnam_global_set", birnam_rust_codegen_global_set as *const () as usize),
+        (b"birnam_record_global_src", birnam_rust_codegen_record_global_src as *const () as usize),
+        (b"birnam_record_module_source", birnam_rust_codegen_record_module_source as *const () as usize),
+        (b"birnam_is_error", birnam_rust_codegen_is_error as *const () as usize),
+        (b"birnam_install_method", birnam_rust_codegen_install_method as *const () as usize),
+        (b"birnam_remove_method", birnam_rust_codegen_remove_method as *const () as usize),
+        (b"birnam_candidate_root_set", birnam_rust_codegen_candidate_root_set as *const () as usize),
+        (b"birnam_candidate_root_get", birnam_rust_codegen_candidate_root_get as *const () as usize),
+        (b"birnam_vtable_cache_set", birnam_rust_codegen_vtable_cache_set as *const () as usize),
+        (b"birnam_vtable_cache_get", birnam_rust_codegen_vtable_cache_get as *const () as usize),
+        (b"birnam_portable_code_admit_v1", birnam_rust_codegen_portable_code_admit_v1 as *const () as usize),
+        (b"birnam_portable_block_new_v1", birnam_rust_codegen_portable_block_new_v1 as *const () as usize),
+        (b"birnam_portable_materialized_block_new_v2", birnam_rust_codegen_portable_materialized_block_new_v2 as *const () as usize),
+        (b"birnam_candidate_prepare_mode", birnam_rust_codegen_candidate_prepare_mode as *const () as usize),
+        (b"birnam_candidate_preparing", birnam_rust_codegen_candidate_preparing as *const () as usize),
+        (b"birnam_candidate_validate_binding", birnam_rust_codegen_candidate_validate_binding as *const () as usize),
+    ];
+    for &(name, function) in shims {
+        if owned_vtable_cache && matches!(name, b"birnam_vtable_cache_get" | b"birnam_vtable_cache_set") { continue; }
+        let Some(address) = (unsafe { borrowed_address(api, function) }) else { return false; };
+        for spelling in [name, codegen_shim_name(name, true)] {
+            let name = unsafe { (birnam_abi::string::make)(spelling.as_ptr(), spelling.len()) };
+            if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj { return false; }
         }
     }
-    let name = unsafe { (birnam_abi::string::make)(b"birnam_portable_code_admit_v1".as_ptr(), 29) };
-    let Some(address) =
-        (unsafe { borrowed_address(api, birnam_portable_code_admit_v1 as *const () as usize) })
-    else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
-    }
-    let name = unsafe { (birnam_abi::string::make)(b"birnam_portable_block_new_v1".as_ptr(), 28) };
-    let Some(address) =
-        (unsafe { borrowed_address(api, birnam_portable_block_new_v1 as *const () as usize) })
-    else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
-    }
-    let name = unsafe {
-        (birnam_abi::string::make)(
-            b"birnam_portable_materialized_block_new_v2".as_ptr(),
-            b"birnam_portable_materialized_block_new_v2".len(),
-        )
-    };
-    let Some(address) = (unsafe {
-        borrowed_address(
-            api,
-            birnam_portable_materialized_block_new_v2 as *const () as usize,
-        )
-    }) else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
-    }
-    let Some(enter) = (unsafe { floor_symbol(api, b"birnam_enter_resumable_v1\0") })
-    else {
-        return false;
-    };
-    let symbol = b"birnam_enter_resumable_v1";
-    let name = unsafe { (birnam_abi::string::make)(symbol.as_ptr(), symbol.len()) };
-    let Some(address) = (unsafe { borrowed_address(api, enter) }) else {
-        return false;
-    };
-    if unsafe { send(api, unit, ADD_SYMBOL_SELECTOR, &[name, address]) } == api.nilObj {
-        return false;
-    }
+    if owned_vtable_cache && unsafe { send0(api, unit, b"bindVtableCache\0") } != unit { return false; }
+    // TCC's bindRuntime supplies the selected resumable entry bridge once.
     let Some(registration) = (unsafe { floor_symbol(api, b"birnam_register_resumable_v1\0") })
     else {
         return false;
@@ -1744,6 +1691,12 @@ unsafe fn bind_mapped_code_generation_identity(
 unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
     if name.last() != Some(&0) {
         return None;
+    }
+    let bare = &name[..name.len()-1];
+    let compiler = NATIVE_COMPILER.load(std::sync::atomic::Ordering::Acquire) as *const birnam_abi::runtime_compiler::ApiV1;
+    if !compiler.is_null() && birnam_abi::runtime_compiler::SYMBOLS.contains(&bare) {
+        let address = unsafe { ((*compiler).resolve.unwrap())((*compiler).context, bare.as_ptr(), bare.len()) };
+        return (!address.is_null()).then_some(address.addr());
     }
     static FLOOR_HANDLE: OnceLock<usize> = OnceLock::new();
     let handle = *FLOOR_HANDLE.get_or_init(|| unsafe {
@@ -6048,15 +6001,25 @@ unsafe extern "C" fn rust_codegen_eval(
     }
     let roots = EvaluationRoots::new(unit);
     let c_source = unsafe { (birnam_abi::string::make)(source.bytes.as_ptr(), source.bytes.len()) };
-    if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj
-        || !unsafe { bind_global_shims(api, unit, true) }
-        || unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj
-        || unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj
-        || !unsafe { bind_jit_code_generation_identity(api, unit) }
-    {
+    if unsafe { send(api, unit, COMPILE_SELECTOR, &[c_source]) } == api.nilObj {
         unsafe { dispose_unit(api, unit) };
-        note_error(b"RustCodegen generated C failed to compile");
-        return api.nilObj;
+        note_error(b"RustCodegen generated C failed to compile"); return api.nilObj;
+    }
+    if !unsafe { bind_global_shims(api, unit, true) } {
+        unsafe { dispose_unit(api, unit) };
+        note_error(b"RustCodegen could not bind generated globals"); return api.nilObj;
+    }
+    if unsafe { send0(api, unit, BIND_RUNTIME_SELECTOR) } == api.nilObj {
+        unsafe { dispose_unit(api, unit) };
+        note_error(b"RustCodegen could not bind Runtime entries"); return api.nilObj;
+    }
+    if unsafe { send0(api, unit, RELOCATE_SELECTOR) } == api.nilObj {
+        unsafe { dispose_unit(api, unit) };
+        note_error(b"RustCodegen generated C failed to relocate"); return api.nilObj;
+    }
+    if !unsafe { bind_jit_code_generation_identity(api, unit) } {
+        unsafe { dispose_unit(api, unit) };
+        note_error(b"RustCodegen could not bind generation identity"); return api.nilObj;
     }
     let entry_name = unsafe { (birnam_abi::string::make)(b"__ev".as_ptr(), 4) };
     let entry_selector = unsafe { intern(api, ENTRY_SELECTOR) };
@@ -6875,6 +6838,7 @@ unsafe extern "C" fn rust_codegen_begin_portable_image_mapped(
     const RTLD_NOW_LOCAL: c_int = 2 | 4;
     #[cfg(not(target_os = "macos"))]
     const RTLD_NOW_LOCAL: c_int = 2;
+    if !ensure_artifact_runtime() { let _ = fs::remove_file(&path); note_error(b"Codegen artifact runtime publication failed"); return api.nilObj; }
     let handle = unsafe { (api.dlopen)(path_c.as_ptr(), RTLD_NOW_LOCAL) as usize };
     let _ = fs::remove_file(&path);
     if handle == 0
@@ -9597,6 +9561,7 @@ unsafe extern "C" fn rust_codegen_map_candidate(
     content_path_z.push(0);
     // RTLD_LAZY | RTLD_GLOBAL: candidates resolve the frozen birnam_* ABI from
     // the already-loaded native rung set, matching the mapper.
+    if !ensure_artifact_runtime() { note_error(b"Codegen artifact runtime publication failed"); return api.nilObj; }
     let handle = unsafe { (api.dlopen)(content_path_z.as_ptr().cast(), 9) };
     if handle.is_null() {
         note_error(b"RustCodegen candidate mapping failed");
@@ -11248,6 +11213,7 @@ unsafe fn rust_codegen_load_impl(
     path.push(0);
     // RTLD_LAZY | RTLD_GLOBAL: generated artifacts intentionally resolve their
     // frozen birnam_* runtime ABI from the loaded native rung set.
+    if !ensure_artifact_runtime() { note_error(b"Codegen artifact runtime publication failed"); return api.nilObj; }
     let handle = unsafe { (api.dlopen)(path.as_ptr().cast(), 9) };
     if handle.is_null() {
         note_error(b"RustCodegen could not open the compiled dylib");
@@ -12996,10 +12962,12 @@ unsafe extern "C" fn rust_reflect_collect_fact(
     unsafe { api(runtime()) }.nilObj
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1, predecessors: Option<[Oop; 3]>) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
+    let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
+    let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
     let host_api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
         if unsafe { floor_symbol(host_api, b"birnam_register_resumable_v1\0") }.is_none() {
@@ -13012,8 +12980,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
                 unsafe { birnam_abi::namespace_import::import(imports, RUST_CODEGEN_NAME.as_ptr().cast()) },
             )
         } else {
-            let vt = unsafe { (host_api.proto)(host_api.object_vt) };
-            let object = unsafe { (host_api.alloc)(vt, 0) };
+            let vt = retain(unsafe { (host_api.proto)(host_api.object_vt) });
+            let object = retain(unsafe { (host_api.alloc)(vt, 0) });
             (vt, object)
         };
         if rust_codegen_vt.is_null() || rust_codegen.is_null() {
@@ -13027,8 +12995,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
                 unsafe { birnam_abi::namespace_import::import(imports, ADAPTER_CODEGEN_NAME.as_ptr().cast()) },
             )
         } else {
-            let vt = unsafe { (host_api.proto)(host_api.object_vt) };
-            let object = unsafe { (host_api.alloc)(vt, 0) };
+            let vt = retain(unsafe { (host_api.proto)(host_api.object_vt) });
+            let object = retain(unsafe { (host_api.alloc)(vt, 0) });
             (vt, object)
         };
         let (adapter_reflect_vt, adapter_reflect) = if adapter_reloading {
@@ -13037,14 +13005,14 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
                 unsafe { birnam_abi::namespace_import::import(imports, ADAPTER_REFLECT_NAME.as_ptr().cast()) },
             )
         } else {
-            let vt = unsafe { (host_api.proto)(host_api.object_vt) };
-            let object = unsafe { (host_api.alloc)(vt, 0) };
+            let vt = retain(unsafe { (host_api.proto)(host_api.object_vt) });
+            let object = retain(unsafe { (host_api.alloc)(vt, 0) });
             (vt, object)
         };
         let adapter_collector_vt = if adapter_reloading {
             unsafe { birnam_abi::namespace_import::import(imports, ADAPTER_COLLECTOR_VT_NAME.as_ptr().cast()) }
         } else {
-            unsafe { (host_api.proto)(host_api.object_vt) }
+            retain(unsafe { (host_api.proto)(host_api.object_vt) })
         };
         let receipt_reloading =
             unsafe { birnam_abi::namespace_presence::contains(presence, DISCARD_RECEIPT_NAME.as_ptr().cast()) != 0 };
@@ -13054,8 +13022,8 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
                 unsafe { birnam_abi::namespace_import::import(imports, DISCARD_RECEIPT_NAME.as_ptr().cast()) },
             )
         } else {
-            let vt = unsafe { (host_api.proto)(host_api.object_vt) };
-            let object = unsafe { (host_api.alloc)(vt, 0) };
+            let vt = retain(unsafe { (host_api.proto)(host_api.object_vt) });
+            let object = retain(unsafe { (host_api.alloc)(vt, 0) });
             (vt, object)
         };
         let portable_mapped_unit_vt = if unsafe {
@@ -13063,7 +13031,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         } {
             unsafe { birnam_abi::namespace_import::import(imports, PORTABLE_MAPPED_UNIT_VT_NAME.as_ptr().cast()) }
         } else {
-            unsafe { (host_api.proto)(host_api.object_vt) }
+            retain(unsafe { (host_api.proto)(host_api.object_vt) })
         };
         if adapter_codegen_vt.is_null()
             || adapter_codegen.is_null()
@@ -13081,12 +13049,12 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             birnam_abi::payload_layout::set(layouts, discard_receipt_vt, ptr::null(), 0, birnam_abi::SLOT_OOP);
             birnam_abi::payload_layout::set(layouts, portable_mapped_unit_vt, ptr::null(), 0, SLOT_RAW);
         }
-        let tcc = unsafe { birnam_abi::namespace_import::import(imports, TCC_NAME.as_ptr().cast()) };
+        let tcc = predecessors.map(|values| values[0]).unwrap_or_else(|| unsafe { birnam_abi::namespace_import::import(imports, TCC_NAME.as_ptr().cast()) });
         if tcc.is_null() {
             abort("RustCodegen requires Tcc to be loaded");
         }
-        let globals = unsafe { birnam_abi::namespace_import::import(imports, GLOBALS_NAME.as_ptr().cast()) };
-        let store = unsafe { birnam_abi::namespace_import::import(imports, STORE_NAME.as_ptr().cast()) };
+        let globals = predecessors.map(|values| values[2]).unwrap_or_else(|| unsafe { birnam_abi::namespace_import::import(imports, GLOBALS_NAME.as_ptr().cast()) });
+        let store = predecessors.map(|values| values[1]).unwrap_or_else(|| unsafe { birnam_abi::namespace_import::import(imports, STORE_NAME.as_ptr().cast()) });
         Runtime {
             method_owners: unsafe { birnam_abi::method_owners::select(host_api) }.unwrap_or_else(|| abort("Codegen requires completed Method ownership")),
             api: api_pointer as usize, finalizers: finalizers as usize,
@@ -13835,7 +13803,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` must point to the live process-owned IdApi table for the duration of
 /// the module lifetime, as required by the module ABI.
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts, finalizers) };
+    unsafe { bring_up(api, presence, imports, exports, vtables, roots, settings, layouts, finalizers, ptr::null(), None) };
     ptr::null_mut()
 }
 
@@ -14746,3 +14714,47 @@ fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { runtime().l
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
 
 fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { runtime().exports as *const birnam_abi::namespace_export::ApiV1 }
+
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    use std::sync::atomic::Ordering;
+    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+    let Some([api, presence, imports, exports, roots, layouts, vtables, settings, finalizers, integer, string, names, compiler, compensation, tcc, store, globals, lang, portable, artifact_runtime]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+    let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(layouts), Some(vtables), Some(settings), Some(finalizers), Some(integer), Some(string), Some(names), Some(compiler), Some(compensation)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), layouts.as_word(), vtables.as_word(), settings.as_word(), finalizers.as_word(), integer.as_word(), string.as_word(), names.as_word(), compiler.as_word(), compensation.as_word()) else { return invalid_native(); };
+    let api = api as *mut IdApi;
+    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
+    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
+    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
+    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
+    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
+    let vtables = vtables as *const birnam_abi::vtable_enumeration::ApiV2;
+    let settings = settings as *const birnam_abi::gc_settings::ApiV1;
+    let finalizers = finalizers as *const birnam_abi::finalizers::ApiV1;
+    let compiler = compiler as *const birnam_abi::runtime_compiler::ApiV1;
+    let compensation = compensation as *const birnam_abi::private::StoreCompensationApiV1;
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
+        || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports) && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots) && birnam_abi::payload_layout::valid(layouts) && birnam_abi::vtable_enumeration::valid(vtables) && birnam_abi::gc_settings::valid(settings) && birnam_abi::finalizers::valid(finalizers) && birnam_abi::runtime_compiler::valid(compiler) } { return invalid_native(); }
+    if compensation.is_null() || unsafe { (*compensation).abi_version != 1 || (*compensation).byte_size != core::mem::size_of::<birnam_abi::private::StoreCompensationApiV1>() } { return invalid_native(); }
+    let Some(tcc) = tcc.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    let Some(store) = store.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    let Some(globals) = globals.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    let Some(_lang) = lang.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    let Some(_portable) = portable.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 || unsafe { birnam_abi::namespace_names::attach(names as _) } != 1 { return invalid_native(); }
+    let Some(artifact_runtime) = artifact_runtime.as_entry().filter(|entry| entry.method.is_some()) else { return invalid_native(); };
+    if RUNTIME.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
+    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(runtime().rust_codegen as Oop)), _ => return invalid_native(),
+    }
+    assert!(ARTIFACT_RUNTIME.set((artifact_runtime.method.unwrap(), artifact_runtime.context.addr())).is_ok());
+    NATIVE_COMPILER.store(compiler.addr(), Ordering::Release);
+    // Compensation is usable before any Codegen method becomes visible.
+    assert_eq!(unsafe { birnam_codegen_store_compensation_configure_v1(compensation.cast()) }, 1);
+    unsafe { bring_up(api, presence, imports, exports, vtables, (*roots).api, settings, layouts, finalizers, roots, Some([tcc, store, globals])); }
+    NATIVE_PHASE.store(2, Ordering::Release);
+    Outcome::loaded(Operand::object(runtime().rust_codegen as Oop))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
