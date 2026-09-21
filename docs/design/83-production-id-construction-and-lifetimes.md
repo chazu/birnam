@@ -564,10 +564,10 @@ image format 8 and the upper IdApi v20 table shape are unchanged.
 `legacy_method.rs` is an upper Runtime migration adapter for existing native
 modules, generated code and reflection. It converts their all-Oop convention at
 that boundary, including method-valued lookup answers; core Id does not know
-about this adapter or Execution. The current upper binder still requires a
-legacy adapter for entries it exposes through the old Method interface. Migrate
-that binder and its consumers before admitting arbitrary typed modules through
-it; this restriction does not belong in the final Id protocol. The independent
+about this adapter or Execution. At this transition, the upper binder still
+required a legacy adapter for entries exposed through the old Method interface. The subsequent upper dispatch change
+below removes that restriction from ordinary sends; reflective Method consumers
+still require migration. This restriction does not belong in the final Id protocol. The independent
 C fixture checks all operand kinds and native failure detail through the actual
 Id dictionary/bind/invoke path, without constructing Runtime. The existing
 303-test Id suite also passes the typed transition. The separate C interoperability
@@ -619,6 +619,41 @@ loading fixture passes. The allocation-identity source, source-free compiled,
 mapped/rebuilt/baked image workload and both portable resumable and CodeBinding
 lifetime checks pass, including self-removal and retirement after the outer turn.
 
+Upper binding, the inherited lookup cache and Machine synchronous targets now
+carry the complete native entry. Existing Execution registrations are classified
+through the legacy adapter; arbitrary typed native entries are invoked with their
+own function and context. Canonical guards and optimizer probes decline entries
+outside their supported convention instead of aborting. [Cache ABI v2](../../abi/dispatch-cache-v2.md) stores the
+16-byte entry, growing each native slot from 32 to 40 bytes, and its versioned
+provider/dependency exports replace v1. Dictionary/image representation is
+unchanged; image runtime ABI remains 7.
+
+At the upper language boundary, Object results remain objects and Unit becomes
+Nil. Native call or lookup failure becomes an Error (`nativeInvalidRequest` for
+invalid arguments, otherwise `nativeFailure`). A successful Word, Bytes, Native
+entry or Protocol result needs a language value wrapper and produces
+`nativeResultRequiresWrapper` through the ordinary Error constructor. Id itself
+still returns typed operands and scalar failure detail. The existing legacy
+calling convention, including null versus non-null zero-argument buffers on raw
+sends, remains unchanged during consumer migration.
+
+The native dispatch regression exercises inherited cache hits, replacement of
+only the context, effectful lookup that replaces the selected binding, and
+lookup failure. Ordinary sends, Machine calls and tail calls invoke the original
+selected entry once or return the language Error, and the next lookup observes
+the replacement. The installed C fixture also invokes its typed methods through
+ordinary sends and checks actual Error objects for failed calls and unwrapped
+native results. The native cache and host admission fixtures use the v2 C ABI;
+the rejection-only host fixtures now supply the initial protocol descriptor so
+they reach the intended upper dependency failure.
+
+Debug evidence includes 306 Id, 86 Host, 24 ABI and 4 Dispatch Cache unit tests;
+the loaded cache fixture; all 25 cache/guard host admission cases; matching
+installed Id/cache exports; and a fresh 53-native/28-authored installation.
+The inherited-cache source/compiled/mapped/rebuilt/baked workload passes. The
+final lookup-failure handling also passes the full Id suite and the installed
+native-loading fixture with ordinary sends and actual Error construction.
+
 These changes establish first-entry loading and the lifetime mechanism,
 **not an independently packaged minimal Id**. Its
 registration owner, turn state and temporary private retirement queue export
@@ -630,5 +665,6 @@ remaining aggregate preparation path are still required. Those seventeen factory
 preparations now run after real Id initialization, but remain in the host and feed
 the old Runtime constructor. Moving them later is not the required upper-module
 construction graph. The Id crate still statically links compiler/artifact code,
-and the old upper binder/reflection interface cannot yet carry arbitrary typed
-native entries. No full architectural acceptance is claimed from these results.
+and legacy reflective Method results and native module/registration interfaces
+still require migration to typed entries. In particular, old reflective lookup
+and removal still cannot represent an arbitrary native function/context pair. No full architectural acceptance is claimed from these results.

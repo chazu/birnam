@@ -130,6 +130,30 @@ fn main() {
             .as_word(),
         Some(85)
     );
+    // Ordinary language sends must invoke the same typed entry and context.
+    let api = runtime.stack.api();
+    assert_eq!(
+        unsafe { (api.send)(id.receiver, early, &id.receiver, 1) },
+        id.receiver
+    );
+    for (selector, expected) in [
+        (
+            b"nativeReturnsWord".as_slice(),
+            b"nativeResultRequiresWrapper".as_slice(),
+        ),
+        (
+            b"nativeRejectsArgument".as_slice(),
+            b"nativeInvalidRequest".as_slice(),
+        ),
+    ] {
+        let selector = intern(&id, selector);
+        let error = unsafe { (api.send)(id.receiver, selector, core::ptr::null(), 0) };
+        let kind = intern(&id, b"kind");
+        assert_eq!(
+            unsafe { (api.send)(error, kind, core::ptr::null(), 0) },
+            intern(&id, expected)
+        );
+    }
     let later = load(&id, &scratch.join("0.dylib"), b"laterNativeEcho:");
     assert_eq!(later.status, native::LOADED);
     assert_eq!(

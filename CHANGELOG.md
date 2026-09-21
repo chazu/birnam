@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Carry complete native function/context entries through upper lookup, inherited
+  caching and Machine calls (Design 83). Context-only replacement and effectful
+  lookup retain the exact selected implementation. Native call/lookup failures
+  become language Errors; raw non-object results require value wrappers. Advance
+  Dispatch Cache to ABI v2; retain image runtime ABI 7. Legacy reflective Method
+  results and upper ownership still require migration.
+
 - Load the real production Id through a dedicated Siphon and the common typed
   native-module protocol before upper-runtime preparation (Design 83). Adopt
   that same Id graph and carrier during existing runtime construction. Close

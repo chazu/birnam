@@ -179,7 +179,7 @@ fn dispatch_specialization_reentry_and_registration_are_late_classified() {
     // Populate without invoking the mutating body, then invoke the cached target.
     r.enter(|| {
         let _read = r.enter_managed_turn();
-        unsafe { r.bind_active(receiver, selector) };
+        assert!(unsafe { r.bind_active(receiver, selector) }.is_ok());
     });
     assert_eq!(r.enter(|| r.send_slice(receiver, selector, &[])), receiver);
     assert_eq!(

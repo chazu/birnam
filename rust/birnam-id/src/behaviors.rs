@@ -62,15 +62,15 @@ impl Behaviors {
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         self.dictionaries.remove_method(vtable, selector).map(legacy_method::decode)
     }
+    // Optimizer/legacy-registration queries recognize only the old convention.
+    // Actual dispatch uses native_lookup and retains arbitrary typed entries.
     pub(crate) fn lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
-        self.dictionaries.lookup(vtable, selector).map(legacy_method::decode)
+        self.dictionaries.lookup(vtable, selector).and_then(legacy_method::try_decode)
     }
     pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
-        self.dictionaries.direct_lookup(vtable, selector).map(legacy_method::decode)
+        self.dictionaries.direct_lookup(vtable, selector).and_then(legacy_method::try_decode)
     }
-    pub(crate) fn lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<MethodAddress>, Oop> {
-        self.dictionaries.lookup_head(vtable, selector).map(|entry| entry.map(legacy_method::decode))
-    }
+    pub(crate) fn native_lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<crate::abi::id_protocol::NativeEntry>, Oop> { self.dictionaries.lookup_head(vtable, selector) }
 
     /// # Safety
     /// The caller keeps the containing Behaviors live for the entire Id scope.

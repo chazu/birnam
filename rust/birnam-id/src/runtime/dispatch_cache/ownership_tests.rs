@@ -1,4 +1,5 @@
 use super::*;
+use crate::raw::MethodAddress;
 use crate::dispatch::build_bootstrap;
 use crate::runtime::{ScopedOopRootGuard, with_active};
 
@@ -7,8 +8,8 @@ unsafe extern "C" fn nil(_: Oop, _: *const Oop, _: usize) -> Oop { with_active(|
 
 fn counts() -> (usize, usize) { (HITS.get(), MISSES.get()) }
 fn reset_counts() { HITS.set(0); MISSES.set(0); }
-fn lookup(r: &Runtime, shape: Oop, selector: Oop) -> Option<MethodAddress> {
-    r.enter(|| { let _read = r.enter_managed_turn(); r.cached_default_lookup(shape, selector) })
+fn lookup(r: &Runtime, shape: Oop, selector: Oop) -> Option<crate::raw::MethodAddress> {
+    r.enter(|| { let _read = r.enter_managed_turn(); r.cached_default_lookup(shape, selector).map(crate::legacy_method::decode) })
 }
 fn report(label: &str) { println!("cache {label}: {:?}", counts()); }
 

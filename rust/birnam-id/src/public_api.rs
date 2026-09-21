@@ -867,7 +867,7 @@ pub unsafe extern "C" fn birnam_storage_observation_dependency_v1(factory: *cons
 /// # Safety
 /// Prepare before Id initialization; descriptor and code stay pinned.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_dispatch_cache_dependency_v1(factory: *const birnam_abi::dispatch_cache::FactoryV1) -> c_int {
+pub unsafe extern "C" fn birnam_dispatch_cache_dependency_v2(factory: *const birnam_abi::dispatch_cache::FactoryV2) -> c_int {
     unsafe { birnam_abi::dispatch_cache::attach(factory) }
 }
 

@@ -534,6 +534,10 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.lookup(vtable, selector) }
     }
 
+    pub(crate) unsafe fn lookup_native_method_active(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
+        unsafe { (*self.state.get()).vtables.native_lookup(vtable, selector) }
+    }
+
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         let entry = crate::legacy_method::encode(method, selector == self.globals().lookup);
         AddMethod::from_native(self.add_native_method(vtable, selector, entry))
@@ -3062,17 +3066,18 @@ impl Runtime {
     ) -> Result<StacklessTarget, ExecutionError> {
         // SAFETY: callers establish Runtime::enter and pass live values copied
         // from traced Frame storage.
-        let Some(method) = (unsafe { self.bind_active(receiver, selector) }) else {
-            return Ok(StacklessTarget::Unbound);
+        let method = match unsafe { self.bind_active(receiver, selector) } {
+            Ok(Some(method)) => method,
+            Ok(None) => return Ok(StacklessTarget::Unbound),
+            Err(outcome) => return Ok(StacklessTarget::NativeFailure(outcome)),
         };
         // Classification uses the exact carrier returned by metacircular
         // lookup; there is no second vtable or parent-chain walk.
-        let resumable = unsafe {
-            (&mut *self.state.get())
-                .execution
-                .classify_resumable(method)
-        }?;
-        Ok(resumable.unwrap_or_else(|| StacklessTarget::Synchronous(method.to_method())))
+        let resumable = match crate::legacy_method::try_decode(method) {
+            Some(legacy) => unsafe { (&mut *self.state.get()).execution.classify_resumable(legacy) }?,
+            None => None,
+        };
+        Ok(resumable.unwrap_or(StacklessTarget::Synchronous(method)))
     }
 
     fn materialize_registered_target(
@@ -3237,7 +3242,7 @@ impl Runtime {
         &self,
         owner: u64,
         capability: MachineCapability,
-        method: Method,
+        method: NativeEntry,
         receiver: Oop,
         arguments: &[Oop],
         numeric: &mut Option<numeric::Ticket>,
@@ -3251,20 +3256,20 @@ impl Runtime {
                 *numeric = self.prepare_numeric_chain(capability, owner, key);
             }
             let prediction = numeric.as_mut().and_then(|ticket| ticket.take(key, pc));
-            if let Some(result) =
-                self.try_numeric_call_with_prediction(method, receiver, arguments, prediction)
+            if let Some(legacy) = crate::legacy_method::try_decode(method)
+                && let Some(result) = self.try_numeric_call_with_prediction(legacy.to_method(), receiver, arguments, prediction)
             {
                 return result;
             }
-            let args = if arguments.is_empty() {
-                core::ptr::null()
-            } else {
-                arguments.as_ptr()
-            };
-            // SAFETY: the driver-owned argument slice remains live through the
-            // Method call and uses null exactly for a zero count.
-            unsafe { method(receiver, args, arguments.len()) }
+            self.invoke_native_from_objects(method, receiver, arguments)
         }))
+    }
+
+    fn invoke_stackless_native_failure(&self, owner: u64, capability: MachineCapability,
+        outcome: crate::abi::id_protocol::Outcome) -> Result<Oop, ExecutionError> {
+        let _boundary = self.enter_stackless_boundary(owner, capability)?;
+        let _scope = self.enter_stackless_scope(capability);
+        Ok(self.enter(|| self.native_language_outcome(outcome)))
     }
 
     fn invoke_stackless_unbound(
@@ -3906,6 +3911,11 @@ impl Runtime {
                                     )?;
                             }
                         }
+                        StacklessTarget::NativeFailure(outcome) => {
+                            let result = self.invoke_stackless_native_failure(owner, capability, outcome)?;
+                            unsafe { (&mut *self.state.get()).execution.commit_current_call_result(
+                                owner, capability, result_slot, nil, result)?; }
+                        }
                         StacklessTarget::Unbound => {
                             let result = self.invoke_stackless_unbound(
                                 owner,
@@ -4060,6 +4070,12 @@ impl Runtime {
                             if let Some(answer) =
                                 self.finish_stackless_return(owner, capability, result)?
                             {
+                                return Ok(answer);
+                            }
+                        }
+                        StacklessTarget::NativeFailure(outcome) => {
+                            let result = self.invoke_stackless_native_failure(owner, capability, outcome)?;
+                            if let Some(answer) = self.finish_stackless_return(owner, capability, result)? {
                                 return Ok(answer);
                             }
                         }
@@ -8185,7 +8201,7 @@ mod tests {
                             entry: None,
                         })
                     } else if selector == synchronous_selector {
-                        Ok(StacklessTarget::Synchronous(synchronous_increment))
+                        Ok(StacklessTarget::Synchronous(crate::legacy_method::encode(synchronous_increment, false)))
                     } else {
                         panic!("unexpected probe selector")
                     }
@@ -8235,6 +8251,110 @@ mod tests {
             runtime.enter(|| runtime.send_slice(call_action, action_kind, &[])),
             call_kind
         );
+    }
+
+    #[test]
+    fn typed_entries_preserve_context_through_cache_effectful_lookup_and_machine_calls() {
+        use super::{with_active, ScopedOopRootGuard};
+        use crate::abi::id_protocol::{NativeEntry, Operand, Outcome};
+        struct Context { answer: Oop, calls: Cell<usize> }
+        unsafe extern "C" fn answer(context: *mut core::ffi::c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+            assert_eq!(count, 1);
+            assert!(unsafe { args.read() }.as_object().is_some());
+            let context = unsafe { &*context.cast::<Context>() };
+            context.calls.set(context.calls.get() + 1);
+            Outcome::loaded(Operand::object(context.answer))
+        }
+        struct Lookup { selector: Oop, parent: Oop, replacement: NativeEntry, calls: Cell<usize>, reject: Cell<bool> }
+        unsafe extern "C" fn replacing_lookup(context: *mut core::ffi::c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
+            assert_eq!(count, 1);
+            let selector = unsafe { args.read() }.as_object().unwrap();
+            let context = unsafe { &*context.cast::<Lookup>() };
+            with_active(|runtime| {
+                let selected = unsafe { runtime.lookup_native_method_active(receiver, selector) };
+                if selector == context.selector {
+                    context.calls.set(context.calls.get() + 1);
+                    if context.reject.get() { return Outcome::failed(crate::abi::id_protocol::INVALID_REQUEST, 83); }
+                    runtime.add_native_method(context.parent, selector, context.replacement);
+                }
+                Outcome::loaded(selected.map(Operand::entry).unwrap_or_else(Operand::unit))
+            })
+        }
+        unsafe extern "C" fn tail(machine: Oop, _: *const Oop, _: usize) -> Oop {
+            with_active(|runtime| {
+                let selector = runtime.intern(b"tailCallSite:").unwrap();
+                let site = runtime.make_integer(0);
+                runtime.send_slice(machine, selector, &[site])
+            })
+        }
+        let bootstrap = build_bootstrap();
+        let runtime = &bootstrap.runtime;
+        runtime.publish_canonical_exports();
+        runtime.install_execution_objects();
+        let parent = runtime.create_vtable(runtime.globals().object_vt);
+        let child = runtime.create_vtable(parent);
+        let receiver = runtime.allocate_instance(child, 0);
+        let _root = ScopedOopRootGuard::new(runtime, receiver);
+        let selector = runtime.intern(b"typedAnswer:").unwrap();
+        let mut first = Context { answer: receiver, calls: Cell::new(0) };
+        let mut second = Context { answer: runtime.canonical().nil, calls: Cell::new(0) };
+        let first_entry = NativeEntry::new(answer, core::ptr::from_mut(&mut first).cast());
+        let second_entry = NativeEntry::new(answer, core::ptr::from_mut(&mut second).cast());
+        runtime.add_native_method(parent, selector, first_entry);
+        super::dispatch_cache::HITS.set(0);
+        for _ in 0..8 { assert_eq!(runtime.send_slice(receiver, selector, &[receiver]), receiver); }
+        assert_eq!(super::dispatch_cache::HITS.get(), 7);
+        // The inherited entry was cached, including its context.
+        assert_eq!(runtime.enter_application(|| {
+            assert_eq!(runtime.cached_default_lookup(child, selector), Some(first_entry));
+            receiver
+        }), receiver);
+        runtime.add_native_method(parent, selector, second_entry);
+        assert_eq!(runtime.send_slice(receiver, selector, &[receiver]), runtime.canonical().nil);
+        assert_eq!((first.calls.get(), second.calls.get()), (8, 1));
+        let mut lookup = Lookup { selector, parent, replacement: second_entry, calls: Cell::new(0), reject: Cell::new(false) };
+        runtime.add_native_method(runtime.globals().vtable_vt, runtime.globals().lookup,
+            NativeEntry::new(replacing_lookup, core::ptr::from_mut(&mut lookup).cast()));
+        runtime.add_native_method(parent, selector, first_entry);
+        assert_eq!(runtime.send_slice(receiver, selector, &[receiver]), receiver);
+        assert_eq!(lookup.calls.get(), 1);
+        assert_eq!(runtime.send_slice(receiver, selector, &[receiver]), runtime.canonical().nil);
+        CALL_SITE_PROBE_SELECTOR.set(runtime.intern(b"callSite:").unwrap());
+        RETURN_PROBE_SELECTOR.set(runtime.intern(b"returnAt:").unwrap());
+        let kind_selector = runtime.intern(b"kind:").unwrap();
+        export_zero_payload_instance_with_method(runtime, b"Error", kind_selector, test_error_kind_factory);
+        let expected_error = runtime.intern(b"nativeInvalidRequest").unwrap();
+        let _error_root = ScopedOopRootGuard::new(runtime, expected_error);
+        for tail_call in [false, true] {
+            runtime.add_native_method(parent, selector, first_entry);
+            lookup.calls.set(0);
+            let descriptor = FrameDescriptor::validate_v2(FrameDescriptorV2Spec {
+                identity: DescriptorIdentity { implementation: 830, generation: 1, source_map: 830 },
+                program_counter_count: if tail_call { 1 } else { 2 },
+                driver_argument_count: if tail_call { 0 } else { 1 },
+                call_sites: vec![CallSiteDescriptor {
+                    kind: if tail_call { CallSiteKind::TailCall } else { CallSiteKind::Call },
+                    receiver_slot: 0, selector_slot: 1, argument_start: 2, argument_count: 1,
+                    result_slot: (!tail_call).then_some(3), continuation_pc: (!tail_call).then_some(1),
+                }],
+                step_method: if tail_call { tail } else { single_call_parent_step },
+                edges: if tail_call { vec![] } else { vec![probe_call(0, 1, 0, 3, 4)] },
+                ..probe_spec(4, if tail_call { 1 } else { 2 })
+            }).unwrap();
+            let machine = runtime.create_stackless_machine().unwrap();
+            assert_eq!(runtime.drive_stackless(machine, descriptor.clone(), &[(0, receiver), (1, selector), (2, receiver)]), Ok(receiver));
+            assert_eq!(lookup.calls.get(), 1, "Machine invokes the entry selected before replacement exactly once");
+            assert_eq!(runtime.send_slice(receiver, selector, &[receiver]), runtime.canonical().nil);
+            lookup.reject.set(true);
+            lookup.calls.set(0);
+            assert_eq!(runtime.send_slice(receiver, selector, &[receiver]), expected_error);
+            assert_eq!(lookup.calls.get(), 1);
+            let machine = runtime.create_stackless_machine().unwrap();
+            lookup.calls.set(0);
+            assert_eq!(runtime.drive_stackless(machine, descriptor, &[(0, receiver), (1, selector), (2, receiver)]), Ok(expected_error));
+            assert_eq!(lookup.calls.get(), 1, "lookup failure becomes a language Error in both Machine call forms");
+            lookup.reject.set(false);
+        }
     }
 
     #[test]
@@ -8390,7 +8510,7 @@ mod tests {
                 None,
                 |_, _, selector, _| {
                     assert_eq!(selector, synchronous_selector);
-                    Ok(StacklessTarget::Synchronous(synchronous_nested_entry))
+                    Ok(StacklessTarget::Synchronous(crate::legacy_method::encode(synchronous_nested_entry, false)))
                 },
             )
             .expect("outer drive resumes after nested entry");
@@ -8504,7 +8624,7 @@ mod tests {
                 None,
                 |_, _, selector, _| {
                     assert_eq!(selector, synchronous_selector);
-                    Ok(StacklessTarget::Synchronous(synchronous_suppressed_entry))
+                    Ok(StacklessTarget::Synchronous(crate::legacy_method::encode(synchronous_suppressed_entry, false)))
                 },
             )
             .expect("suppressed entry returns to the outer drive");
@@ -8582,10 +8702,10 @@ mod tests {
         }
         runtime.enter(|| {
             let _read = runtime.enter_managed_turn();
-            let selected = unsafe { runtime.bind_active(receiver, selector) }.unwrap();
+            let selected = unsafe { runtime.bind_active(receiver, selector) }.unwrap_or_else(|_| panic!("lookup failed")).unwrap();
             runtime.add_method(runtime.globals().object_vt, selector, replacement);
             let args = [expected];
-            let answer = unsafe { selected.to_method()(receiver, args.as_ptr(), args.len()) };
+            let answer = runtime.invoke_native_from_objects(selected, receiver, &args);
             assert_eq!(answer, expected, "the captured adapter retains the exact selected method");
             assert_eq!(runtime.send_slice(receiver, selector, &args), runtime.canonical().nil,
                 "the next send observes replacement");
@@ -10190,7 +10310,7 @@ mod tests {
                             );
                         }
                     }
-                    Ok(StacklessTarget::Synchronous(synchronous_identity))
+                    Ok(StacklessTarget::Synchronous(crate::legacy_method::encode(synchronous_identity, false)))
                 },
             )
             .unwrap_or_else(|error| panic!("{case:?} drive failed: {error:?}"));

@@ -27,6 +27,14 @@ static BirnamOutcome echo(void *context, BirnamObject receiver,
     assert(context == &cookie && cookie == 0x83 && count == 1);
     return (BirnamOutcome){ .value = arguments[0] };
 }
+static BirnamOutcome returns_word(void *context, BirnamObject receiver, const BirnamOperand *args, size_t count) {
+    (void)context;(void)receiver;(void)args;(void)count;
+    return (BirnamOutcome){ .value = { .kind = BIRNAM_WORD, .data.word = 83 } };
+}
+static BirnamOutcome rejects_argument(void *context, BirnamObject receiver, const BirnamOperand *args, size_t count) {
+    (void)context;(void)receiver;(void)args;(void)count;
+    return (BirnamOutcome){ .status = BIRNAM_INVALID_REQUEST, .detail = 83 };
+}
 static BirnamObject intern(const BirnamProtocol *id, BirnamOperand name) {
     BirnamOutcome answer = id->message(id->context, id->receiver, id->intern, &name, 1);
     assert(answer.status == BIRNAM_LOADED && answer.value.kind == BIRNAM_OBJECT);
@@ -47,6 +55,15 @@ static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *a
     };
     BirnamOutcome answer = id->message(id->context, id->receiver, add, install, 2);
     assert(answer.status == BIRNAM_LOADED && answer.value.kind == BIRNAM_NATIVE_ENTRY);
+    const char *extra_names[] = { "nativeReturnsWord", "nativeRejectsArgument" };
+    BirnamNativeMethod extra_methods[] = { returns_word, rejects_argument };
+    for (size_t i=0;i<2;i++) {
+        install[0].data.object = intern(id, (BirnamOperand){ .kind = BIRNAM_BYTES,
+            .data.bytes = { (const uint8_t *)extra_names[i], strlen(extra_names[i]) } });
+        install[1].data.entry.method = extra_methods[i];
+        answer = id->message(id->context, id->receiver, add, install, 2);
+        assert(answer.status == BIRNAM_LOADED);
+    }
     return (BirnamOutcome){ .status = MODE ? BIRNAM_INITIALIZER_FAILED : BIRNAM_LOADED,
         .detail = MODE ? 42 : 0, .value = { .kind = BIRNAM_OBJECT, .data.object = selector } };
 }

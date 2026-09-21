@@ -21,29 +21,27 @@ impl Runtime {
     ///
     /// A surrounding `Runtime::enter` must be active, and both arguments must
     /// be live floor objects.
-    pub(crate) unsafe fn bind_active(&self, receiver: Oop, selector: Oop) -> Option<MethodAddress> {
+    pub(crate) unsafe fn bind_active(&self, receiver: Oop, selector: Oop) -> Result<Option<crate::abi::id_protocol::NativeEntry>, crate::abi::id_protocol::Outcome> {
         // SAFETY: forwarded active-runtime and live-receiver preconditions.
         let receiver_vtable = unsafe { self.vtable_for_valid_receiver_active(receiver) };
         if receiver_vtable.is_null() {
-            return None;
+            return Ok(None);
         }
         // SAFETY: the surrounding enter serializes RuntimeState access.
         let globals = unsafe { self.globals_active() };
         if receiver_vtable == globals.vtable_vt && selector == globals.lookup {
             // SAFETY: the surrounding enter serializes RuntimeState access.
-            return unsafe { self.lookup_method_active(globals.vtable_vt, globals.lookup) };
+            return Ok(unsafe { self.lookup_native_method_active(globals.vtable_vt, globals.lookup) });
         }
 
         if self.guarded_default_lookup_eligible(receiver_vtable) {
             // Canonical lookup may reuse an epoch-guarded dictionary answer.
             // No callback/allocation separates this guard from the cache read;
             // ordinary target classification and acquisition still follow.
-            return self.cached_default_lookup(receiver_vtable, selector);
+            return Ok(self.cached_default_lookup(receiver_vtable, selector));
         }
 
         unsafe { crate::id_dispatch::bind(receiver, selector) }
-            .unwrap_or_else(|_| boundary::fatal_invariant("Id lookup failed"))
-            .map(crate::legacy_method::decode)
     }
 
     /// Send while preserving the raw C argument-buffer contract.
@@ -144,8 +142,15 @@ impl Runtime {
                 // No Rust state reference or collection guard survives this
                 // call. The surrounding managed turn protects the
                 // dictionary-proven Method for the invocation extent.
-                unsafe { method(receiver, args, count) }
+                if let Some(legacy) = crate::legacy_method::try_decode(method) {
+                    // Preserve the old raw-buffer contract, including a caller's
+                    // choice of null versus non-null for a zero argument count.
+                    unsafe { legacy.to_method()(receiver, args, count) }
+                } else {
+                    self.invoke_native_from_objects(method, receiver, arguments)
+                }
             }
+            StacklessTarget::NativeFailure(outcome) => self.native_language_outcome(outcome),
             StacklessTarget::Unbound => {
                 boundary::fatal_invariant("resolved send target is unbound")
             }
@@ -648,7 +653,7 @@ mod tests {
                 harness
                     .runtime
                     .bind_active(harness.meta, harness.lookup)
-                    .is_some()
+                    .unwrap_or_else(|_| panic!("lookup failed")).is_some()
             });
             harness.runtime.send_slice(receiver, answer, &[])
         });

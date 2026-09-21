@@ -1,5 +1,8 @@
 # Dispatch Cache v1
 
+Historical contract. Production now uses [v2](dispatch-cache-v2.md), which stores
+the complete native function/context entry. The frozen v1 header is retained.
+
 Design [81BU](../docs/design/81bu-production-inherited-lookup-cache.md) moves the
 64-slot inherited dictionary-answer table into `libbirnam_dispatch_cache`.
 Each Runtime owns a separate table. Id keeps canonical lookup eligibility,

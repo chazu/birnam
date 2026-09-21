@@ -19,5 +19,7 @@ That fixture uses the actual host Siphon and installed Id, with upper libraries
 absent at first. The independent C module checks explicit initializer operands,
 method/context publication and invocation, admission rejection, and image pinning
 after initializer failure. It then makes the upper libraries available and proves
-normal host startup adopts the same Id graph and carrier. This does not establish
+normal host startup adopts the same Id graph and carrier. It then invokes typed
+methods through ordinary sends and verifies native failures and unwrapped scalar
+results become language Errors. This does not establish
 the full staged construction graph or remove upper code statically linked in Id.

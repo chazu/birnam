@@ -88,7 +88,7 @@ fn runtime_phase_transcript() {
     let child = runtime.create_vtable(parent);
     let selector = runtime.intern(b"phaseAnswer").unwrap();
     runtime.add_method(parent, selector, identity);
-    let expected = runtime.lookup_method(parent, selector);
+    let expected = unsafe { runtime.lookup_native_method_active(parent, selector) };
     assert!(expected.is_some());
     for phase in 0..3 {
         runtime.dispatch_cache.clear();

@@ -33,8 +33,8 @@ impl Runtime {
                 == globals.vtable_vt
                 && state
                     .vtables
-                    .direct_lookup(globals.vtable_vt, globals.lookup)
-                    == Some(canonical);
+                    .native_direct_lookup(globals.vtable_vt, globals.lookup)
+                    == Some(crate::legacy_method::encode(canonical.to_method(), true));
             self.lookup_guard_cache.set((epoch, verified));
             verified
         };

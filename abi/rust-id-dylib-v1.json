@@ -6,7 +6,7 @@
     "birnam_allocation_budget_dependency_v1",
     "birnam_collect_dependency_v1",
     "birnam_collection_phase_dependency_v1",
-    "birnam_dispatch_cache_dependency_v1",
+    "birnam_dispatch_cache_dependency_v2",
     "birnam_enter_resumable_v1",
     "birnam_execution_queue_retirement_v1",
     "birnam_finalizers_dependency_v1",

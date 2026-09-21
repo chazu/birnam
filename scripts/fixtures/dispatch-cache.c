@@ -1,7 +1,7 @@
 /* Capture real Runtime ownership and cache calls without production test exports. */
 #define _DARWIN_C_SOURCE
 #include "../../abi/fixtures/idapi-v20/idapi_v20.h"
-#include "../../abi/fixtures/dispatch-cache-v1/dispatch_cache_v1.h"
+#include "../../abi/fixtures/dispatch-cache-v2/dispatch_cache_v2.h"
 #include "../../abi/fixtures/collection-phase-v1/collection_phase_v1.h"
 #include "../../abi/fixtures/trace-live-v1/trace_live_v1.h"
 #include <assert.h>
@@ -9,8 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 
-static const DispatchCacheFactoryV1 *factory;
-static DispatchCacheFactoryV1 watched;
+static const DispatchCacheFactoryV2 *factory;
+static DispatchCacheFactoryV2 watched;
 static const CollectionPhaseFactoryV1 *phases;
 static CollectionPhaseFactoryV1 watched_phases;
 static void *cache,*phase;
@@ -20,13 +20,13 @@ static uint64_t saved_epoch;
 static int collecting;
 static void *create(void) { assert(!creates++);cache=factory->create();assert(cache);return cache; }
 static void *phase_create(void) { phase=phases->create();assert(phase);return phase; }
-static void *lookup(const void *context,uint64_t epoch,uintptr_t shape,uintptr_t selector) {
-    assert(context==cache);void *method=factory->lookup(context,epoch,shape,selector);
-    if(shape==target_shape && selector==target_selector) { lookups++;hits+=method!=NULL;saved_epoch=epoch; }
+static BirnamNativeEntry lookup(const void *context,uint64_t epoch,uintptr_t shape,uintptr_t selector) {
+    assert(context==cache);BirnamNativeEntry method=factory->lookup(context,epoch,shape,selector);
+    if(shape==target_shape && selector==target_selector) { lookups++;hits+=method.method!=NULL;saved_epoch=epoch; }
     return method;
 }
-static void insert(void *context,uint64_t epoch,uintptr_t shape,uintptr_t selector,void *method) {
-    assert(context==cache && method);
+static void insert(void *context,uint64_t epoch,uintptr_t shape,uintptr_t selector,BirnamNativeEntry method) {
+    assert(context==cache && method.method);
     if(shape==target_shape && selector==target_selector)inserts++;
     factory->insert(context,epoch,shape,selector,method);
 }
@@ -35,12 +35,12 @@ static void clear(void *context) {
     if(collecting)assert(phases->read(phase)==1 && admitted_before_clear && !providers);
     clears++;factory->clear(context);
 }
-static const DispatchCacheFactoryV1 *provide(void) { return &watched; }
+static const DispatchCacheFactoryV2 *provide(void) { return &watched; }
 static const CollectionPhaseFactoryV1 *provide_phases(void) { return &watched_phases; }
 static void *capture_dlsym(void *image,const char *name) {
     void *symbol=dlsym(image,name);
-    if(!strcmp(name,"birnam_dispatch_cache_factory_v1")) {
-        assert(symbol);factory=((DispatchCacheFactoryProviderV1)symbol)();watched=*factory;
+    if(!strcmp(name,"birnam_dispatch_cache_factory_v2")) {
+        assert(symbol);factory=((DispatchCacheFactoryProviderV2)symbol)();watched=*factory;
         watched.create=create;watched.lookup=lookup;watched.insert=insert;watched.clear=clear;return (void *)provide;
     }
     if(!strcmp(name,"birnam_collection_phase_factory_v1")) {
@@ -109,9 +109,9 @@ int main(int argc,char **argv) {
     fixture_register_root(roots);fixture_set_precise(1);
     uintptr_t anchor=0;fixture_set_stack_bottom((uintptr_t)&anchor+sizeof(anchor));
     assert(api->send(receiver,selector,NULL,0)==receiver);
-    uint64_t epoch=saved_epoch;assert(factory->lookup(cache,epoch,target_shape,target_selector));
+    uint64_t epoch=saved_epoch;assert(factory->lookup(cache,epoch,target_shape,target_selector).method);
     clears=providers=admitted_before_clear=0;reset();collecting=1;api->gc_collect();collecting=0;
-    assert(clears==1 && providers==1 && !factory->lookup(cache,epoch,target_shape,target_selector));
+    assert(clears==1 && providers==1 && !factory->lookup(cache,epoch,target_shape,target_selector).method);
     assert(api->send(receiver,selector,NULL,0)==receiver);assert(lookups==1 && !hits && inserts==1);
     puts("Runtime GC clears after native admission and before providers; callbacks bypass the cache; next send repopulates");
 }

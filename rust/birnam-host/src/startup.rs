@@ -3873,7 +3873,7 @@ unsafe fn prepare_dispatch_cache(
         reason,
     };
     let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_dispatch_cache_dependency_v1".as_ptr()) };
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_dispatch_cache_dependency_v2".as_ptr()) };
     if attach.is_null() {
         return Err(error("missing floor dependency"));
     }
@@ -3882,14 +3882,14 @@ unsafe fn prepare_dispatch_cache(
         .ok_or_else(|| error("open failed"))?;
     let result = (|| {
         let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_dispatch_cache_factory_v1".as_ptr()) };
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_dispatch_cache_factory_v2".as_ptr()) };
         if provider.is_null() {
             return Err(error("missing provider"));
         }
-        let provide: birnam_abi::dispatch_cache::FactoryProviderV1 = unsafe { std::mem::transmute(provider) };
+        let provide: birnam_abi::dispatch_cache::FactoryProviderV2 = unsafe { std::mem::transmute(provider) };
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::dispatch_cache::valid(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::dispatch_cache::DependencyV1 = unsafe { std::mem::transmute(attach) };
+        let attach: birnam_abi::dispatch_cache::DependencyV2 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

@@ -1969,7 +1969,8 @@ pub(crate) enum StacklessTarget {
         initial_oops: Vec<(usize, Oop)>,
         entry: Option<ResumableEntryCapability>,
     },
-    Synchronous(Method),
+    Synchronous(crate::abi::id_protocol::NativeEntry),
+    NativeFailure(crate::abi::id_protocol::Outcome),
     Unbound,
 }
 

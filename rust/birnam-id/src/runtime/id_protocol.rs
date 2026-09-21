@@ -7,6 +7,66 @@ use crate::abi::{
 use core::ffi::c_void;
 
 impl Runtime {
+    /// The existing language send boundary supplies only Object operands.
+    /// Legacy entries keep their old calling convention during migration;
+    /// native modules receive the exact selected function/context pair.
+    pub(crate) fn invoke_native_from_objects(
+        &self,
+        entry: NativeEntry,
+        receiver: Oop,
+        arguments: &[Oop],
+    ) -> Oop {
+        if let Some(legacy) = crate::legacy_method::try_decode(entry) {
+            let args = if arguments.is_empty() {
+                core::ptr::null()
+            } else {
+                arguments.as_ptr()
+            };
+            return unsafe { legacy.to_method()(receiver, args, arguments.len()) };
+        }
+        let arguments: Vec<_> = arguments.iter().copied().map(Operand::object).collect();
+        let outcome = unsafe {
+            entry.method.expect("selected native entry has a method")(
+                entry.context,
+                receiver,
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        };
+        self.native_language_outcome(outcome)
+    }
+
+    pub(crate) fn native_language_outcome(&self, outcome: Outcome) -> Oop {
+        if outcome.status == native::LOADED {
+            if let Some(object) = outcome.value.as_object() {
+                return object;
+            }
+            if outcome.value.kind() == native::UNIT {
+                return self.canonical().nil;
+            }
+        }
+        // Native scalars/entries/borrowed bytes are not disguised as language
+        // objects. A module can expose them through an appropriate value wrapper.
+        let kind = if outcome.status == native::LOADED {
+            b"nativeResultRequiresWrapper".as_slice()
+        } else if outcome.status == native::INVALID_REQUEST {
+            b"nativeInvalidRequest".as_slice()
+        } else {
+            b"nativeFailure".as_slice()
+        };
+        let error = self
+            .import(b"Error")
+            .ok()
+            .filter(|value| !value.is_null() && *value != self.canonical().nil)
+            .unwrap_or_else(|| {
+                crate::boundary::fatal_invariant("native language outcome requires Error")
+            });
+        let kind = self.intern(kind).unwrap();
+        let _kind_root = super::ScopedOopRootGuard::new(self, kind);
+        let selector = self.intern(b"kind:").unwrap();
+        self.send_slice(error, selector, &[kind])
+    }
+
     pub(crate) fn install_id_runtime_extensions(&self) {
         self.assert_owner();
         let state = unsafe { &mut *self.state.get() };
