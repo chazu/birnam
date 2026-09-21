@@ -1,10 +1,10 @@
 //! Ownership of the upper native stack anchor; physical capture stays in Id.
-use birnam_abi::native_stack::{ApiV1, FactoryV3};
+use birnam_abi::native_stack::{ApiV1, FactoryV4};
 use core::ptr::NonNull;
 
 pub(crate) struct Service {
     api: NonNull<ApiV1>,
-    factory: FactoryV3,
+    factory: FactoryV4,
     native: Option<crate::collection_state::Shared>,
 }
 impl Service {
@@ -13,7 +13,7 @@ impl Service {
     }
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v3() };
+        let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v4() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::native_stack::operations() };
         let floor = crate::public_api::native_stack_access();

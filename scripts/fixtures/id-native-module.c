@@ -99,7 +99,7 @@ static BirnamOutcome stop_visit(void *context, BirnamObject receiver, const Birn
     return (BirnamOutcome){ .status = BIRNAM_INVALID_REQUEST, .detail = 83,
         .value = { .kind = BIRNAM_WORD, .data.word = 84 } };
 }
-static void inspect_storage(const BirnamProtocol *id, BirnamObject object, BirnamObject behavior,
+static BirnamObject inspect_storage(const BirnamProtocol *id, BirnamObject object, BirnamObject behavior,
                             BirnamObject method_name, size_t identity, int grow) {
     BirnamObject roots = name(id, "rootsDo:"), allocations = name(id, "allocationsDo:");
     BirnamObject references = name(id, "referencesOf:do:");
@@ -134,6 +134,7 @@ static void inspect_storage(const BirnamProtocol *id, BirnamObject object, Birna
     answer=id->message(id->context, id->receiver, allocations, &callback, 1);
     assert(calls == 1 && answer.status == BIRNAM_INVALID_REQUEST && answer.detail == 83);
     assert(answer.value.kind == BIRNAM_WORD && answer.value.data.word == 84);
+    return visit.created;
 }
 static void retire_disposable(const BirnamProtocol *id, BirnamObject parent, BirnamObject add) {
     BirnamObject delegated=name(id, "delegated"), allocate=name(id, "allocate");
@@ -217,7 +218,22 @@ static void construct_objects(const BirnamProtocol *id, BirnamObject add, const 
     answer = send(id, object, echo_name, &argument, 1);
     assert(answer.value.kind == BIRNAM_OBJECT && answer.value.data.object == object);
     assert(((size_t *)object)[0] == 83 && ((size_t *)object)[1] == 84);
-    inspect_storage(id, object, behavior, echo_name, identity, collect == NULL);
+    BirnamObject temporary=inspect_storage(id, object, behavior, echo_name, identity, collect == NULL);
+    if (!collect) {
+        /* These Id-only probes precede Lifetime. Destroy their temporary raw
+           payloads before entering the later validated production bootstrap. */
+        size_t addresses[]={(size_t)object,(size_t)behavior,(size_t)temporary};
+        BirnamOperand dead={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)addresses,sizeof(addresses)}};
+        send(id,id->receiver,name(id,"retireIndexesFor:"),&dead,1);
+        BirnamObject detach=name(id,"detachAllocationAt:");
+        for(size_t i=0;i<3;i++) {
+            BirnamOperand address={.kind=BIRNAM_WORD,.data.word=addresses[i]};
+            BirnamOutcome detached=send(id,id->receiver,detach,&address,1);
+            assert(detached.value.kind==BIRNAM_NATIVE_ENTRY);
+            BirnamNativeEntry release=detached.value.data.entry;
+            assert(release.method(release.context,NULL,NULL,0).status==BIRNAM_LOADED);
+        }
+    }
     if (!collect) retire_disposable(id, parent, add);
 }
 static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *arguments, size_t count) {

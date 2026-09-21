@@ -224,7 +224,7 @@ unsafe extern "C" fn initialize(
         return invalid();
     };
     let (stack, settings, budget) = (
-        stack as *const native_stack::FactoryV3,
+        stack as *const native_stack::FactoryV4,
         settings as *const gc_settings::FactoryV1,
         budget as *const allocation_budget::FactoryV1,
     );

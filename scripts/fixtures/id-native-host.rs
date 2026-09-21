@@ -314,6 +314,14 @@ fn main() {
         },
     )
     .unwrap();
+    let activation_fixture = scratch.join("early-activation.dylib");
+    let activation_args = [Operand::word(collection as usize), Operand::word(initial.bootstrap().unwrap() as usize),
+        Operand::word(roots as usize), Operand::word(records as usize), Operand::word(0), Operand::word(integer as usize)];
+    assert_eq!(unsafe { initial.load_native(activation_fixture.as_os_str().as_bytes(), &activation_args) }.status, native::LOADED);
+    let activation_save = intern(&id, b"saveActivationConstructors");
+    let activation_exercise = intern(&id, b"exerciseActivationConstructors");
+    initial.activate_collection().unwrap();
+    assert_eq!(send(&id, activation_save, &[]).status, native::LOADED);
     let floor = initial.finish().unwrap();
     assert_eq!(floor.gc_settings(), unsafe { (*collection).settings }.cast_const());
     assert_eq!(floor.native_stack(), unsafe { (*collection).stack }.cast_const());
@@ -346,7 +354,7 @@ fn main() {
     // Use the entry saved before Runtime existed, with no caller-supplied upper
     // roots or retirement. The installed extension must provide them itself.
     unsafe extern "C" fn collect_saved(context: *mut core::ffi::c_void, start: usize, bottom: usize) {
-        let collector = unsafe { &*context.cast::<birnam_abi::collector::ApiV2>() };
+        let collector = unsafe { &*context.cast::<birnam_abi::collector::ApiV3>() };
         let input = birnam_abi::collector::InputV1 {
             start, bottom, context: core::ptr::null_mut(), roots: None, retirement: core::ptr::null(),
         };
@@ -358,6 +366,8 @@ fn main() {
         core::ptr::from_ref(&saved_collector).cast_mut().cast(), Some(collect_saved)) }, 1);
     assert_eq!(send(&id, collection_check, &[]).value.as_word(), Some(3));
     println!("native collection records/controls survive adoption; real marking, phase, budget, finalization and removal use the same owner");
+    assert_eq!(send(&id, activation_exercise, &[]).value.as_word(), Some(1));
+    println!("saved early collecting constructors use completed Runtime roots after adoption");
     assert_eq!(send(&id, trace_check, &[]).value.as_word(), Some(1));
     println!("native Trace roots, layouts, inherited hooks and behavior owners work before Runtime and after adoption/GC");
     let base = unsafe { *values };

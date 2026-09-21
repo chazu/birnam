@@ -298,7 +298,9 @@ unsafe extern "C" fn validate(context: *mut c_void) -> Status {
                 }
             } else if kind == 0 && size != 0 {
                 let layout = unsafe { (graph.lifetime.layout)(graph.lifetime.context, edges[0]) };
-                if unsafe { (*graph.lifetime.layout_factory).has_layout.unwrap()(layout) } == 0 {
+                if unsafe { (*graph.lifetime.layout_factory).has_layout.unwrap()(layout) } == 0
+                    && graph.hook(edges[0]).is_none()
+                {
                     return Err(INCOMPLETE);
                 }
             }

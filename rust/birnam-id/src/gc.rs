@@ -34,7 +34,7 @@ pub(crate) fn with_native_root_range<T, F: FnOnce(usize) -> T>(
 /// immediate first-mark admission; its frames stay below the captured interval.
 pub(crate) fn emit_native_root_range(sink: &SinkV1, start: usize, stack_bottom: usize) {
     #[cfg(test)]
-    let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v3() };
+    let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v4() };
     #[cfg(not(test))]
     let factory = unsafe { birnam_abi::native_stack::operations() };
     unsafe { factory.scan.unwrap()(sink, start, stack_bottom) };

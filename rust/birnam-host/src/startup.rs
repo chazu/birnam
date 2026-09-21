@@ -3155,7 +3155,7 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v9".as_ptr()) });
+    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v10".as_ptr()) });
     let bootstrap = if runtime_init.is_some() {
         let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
@@ -3191,7 +3191,7 @@ pub struct InitialFloor {
 impl InitialFloor {
     pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.id_protocol }
     /// Completed native Bootstrap, borrowed for this construction's lifetime.
-    pub fn bootstrap(&self) -> Option<*const birnam_abi::bootstrap::OwnedV1> {
+    pub fn bootstrap(&self) -> Option<*const birnam_abi::bootstrap::OwnedV2> {
         self.bootstrap.as_ref().map(crate::native_bootstrap::Owner::descriptor)
     }
     /// Load through Bootstrap, retaining Object/Protocol results until released.
@@ -3436,6 +3436,18 @@ impl InitialFloor {
         self.collection = Some(owner);
         Ok(self.collection)
     }
+    /// Activate the existing heap and install ordinary collecting constructors.
+    pub fn activate_collection(&mut self) -> Result<(), FloorError> {
+        let Some(owner) = self.initialize_collection()? else { return Ok(()); };
+        let collector = unsafe { *(*owner).collector };
+        if unsafe { (collector.active)(collector.context) } != 0 { return Ok(()); }
+        let bootstrap = self.bootstrap.as_ref().expect("native collection requires Bootstrap");
+        let status = unsafe { (collector.activate)(collector.context, bootstrap.descriptor(), self.roots.unwrap()) };
+        if status != birnam_abi::storage::OK {
+            return Err(FloorError::IdProtocol { status: birnam_abi::id_protocol::INITIALIZER_FAILED, detail: status as usize });
+        }
+        Ok(())
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
@@ -3443,7 +3455,7 @@ impl InitialFloor {
         self.initialize_word()?;
         self.initialize_text()?;
         self.initialize_trace()?;
-        self.initialize_collection()?;
+        self.activate_collection()?;
         let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, float, word, graph, collection, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
@@ -4056,7 +4068,7 @@ unsafe fn prepare_native_stack(
         reason,
     };
     let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_native_stack_dependency_v3".as_ptr()) };
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_native_stack_dependency_v4".as_ptr()) };
     if attach.is_null() {
         return Err(error("missing floor dependency"));
     }
@@ -4065,14 +4077,14 @@ unsafe fn prepare_native_stack(
         .ok_or_else(|| error("open failed"))?;
     let result = (|| {
         let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_native_stack_factory_v3".as_ptr()) };
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_native_stack_factory_v4".as_ptr()) };
         if provider.is_null() {
             return Err(error("missing provider"));
         }
-        let provide: birnam_abi::native_stack::FactoryProviderV3 = unsafe { std::mem::transmute(provider) };
+        let provide: birnam_abi::native_stack::FactoryProviderV4 = unsafe { std::mem::transmute(provider) };
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::native_stack::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::native_stack::DependencyV3 = unsafe { std::mem::transmute(attach) };
+        let attach: birnam_abi::native_stack::DependencyV4 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

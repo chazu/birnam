@@ -1,7 +1,7 @@
 //! Sequential Id loading with ownership of early and managed module results.
 use birnam_abi::{
     Oop,
-    bootstrap::OwnedV1,
+    bootstrap::OwnedV2,
     id_protocol::{self as native, Operand, Outcome, Protocol},
     root_registry,
 };
@@ -17,7 +17,7 @@ enum Roots {
     },
 }
 struct State {
-    owner: OwnedV1,
+    owner: OwnedV2,
     id: Protocol,
     thread: std::thread::ThreadId,
     roots: Roots,
@@ -241,6 +241,20 @@ unsafe extern "C" fn destroy(context: *mut c_void) {
         drop(Box::from_raw(context.cast::<State>()));
     }
 }
+unsafe extern "C" fn pause(context: *mut c_void, action: native::NativeEntry) -> Outcome {
+    unsafe { check(context) };
+    let Some(method) = action.method else { return invalid(); };
+    {
+        let state = unsafe { &mut *context.cast::<State>() };
+        if state.depth != 0 || state.adopting || !matches!(state.roots, Roots::Managed { .. }) {
+            return invalid();
+        }
+        state.adopting = true;
+    }
+    let result = unsafe { method(action.context, ptr::null_mut(), ptr::null(), 0) };
+    unsafe { (*context.cast::<State>()).adopting = false };
+    result
+}
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
@@ -250,14 +264,15 @@ unsafe extern "C" fn initialize(id: *const Protocol, _: *const Operand, count: u
     }
     let id = unsafe { *id };
     let mut state = Box::new(State {
-        owner: OwnedV1 {
-            version: 1,
-            byte_size: size_of::<OwnedV1>(),
+        owner: OwnedV2 {
+            version: 2,
+            byte_size: size_of::<OwnedV2>(),
             context: ptr::null_mut(),
             load,
             adopt_roots,
             release_result,
             destroy,
+            pause,
         },
         id,
         thread: std::thread::current().id(),

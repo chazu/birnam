@@ -1,9 +1,10 @@
 //! Heap collection from completed owners; no Runtime or Execution dependency.
+mod construction;
 use birnam_abi::{
     Oop, borrowed_slice,
     collect::{self as coordination, DeadV1, DetachedV1},
     collection_state::{MARKED, MISSING, OwnedV2, PERMANENT, RecordV1},
-    collector::{ApiV1, ApiV2, ExtensionV1, InputV1, RetirementV1},
+    collector::{ApiV1, ApiV3, ExtensionV1, InputV1, RetirementV1},
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
     lifetime, object_model,
     storage::{BUSY, INVALID, OK, Status},
@@ -13,7 +14,8 @@ use birnam_abi::{
 use core::{cell::Cell, ffi::c_void, ptr};
 
 pub(super) struct Collector {
-    pub(super) api: ApiV2,
+    pub(super) api: ApiV3,
+    construction: construction::Construction,
     extension: Cell<Option<ExtensionV1>>,
     state: OwnedV2,
     graph: GraphV1,
@@ -53,7 +55,7 @@ impl Collector {
                 .ok_or_else(invalid)
         };
         let lookup = intern(b"lookup")?;
-        let select = |name| -> Result<NativeEntry, Outcome> {
+        let select = |name: &[u8]| -> Result<NativeEntry, Outcome> {
             let selector = intern(name)?;
             let answer = unsafe {
                 id.message.unwrap()(
@@ -71,14 +73,17 @@ impl Collector {
                 .ok_or_else(invalid)
         };
         let mut collector = Box::new(Self {
-            api: ApiV2 {
-                version: 2,
-                byte_size: size_of::<ApiV2>(),
+            api: ApiV3 {
+                version: 3,
+                byte_size: size_of::<ApiV3>(),
                 context: ptr::null_mut(),
                 trace: extended_trace,
                 collect: extended_collect,
                 extend,
+                activate: construction::activate,
+                active: construction::active,
             },
+            construction: construction::Construction::new(id, &intern, &select)?,
             extension: Cell::new(None),
             state,
             graph,
@@ -91,6 +96,7 @@ impl Collector {
             thread: std::thread::current().id(),
         });
         collector.api.context = ptr::from_mut(collector.as_mut()).cast();
+        if collector.reconcile() != OK { return Err(invalid()); }
         Ok(collector)
     }
     fn check(&self) {

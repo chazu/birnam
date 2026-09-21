@@ -58,24 +58,42 @@ pub struct ApiV2 {
     pub collect: unsafe extern "C" fn(*mut c_void, *const InputV1, *mut usize) -> Status,
     pub extend: unsafe extern "C" fn(*mut c_void, *const ExtensionV1) -> Status,
 }
+/// Activated construction over the same heap and completed native owners.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ApiV3 {
+    pub version: u32,
+    pub byte_size: usize,
+    pub context: *mut c_void,
+    pub trace: unsafe extern "C" fn(*mut c_void, *const InputV1) -> Status,
+    pub collect: unsafe extern "C" fn(*mut c_void, *const InputV1, *mut usize) -> Status,
+    pub extend: unsafe extern "C" fn(*mut c_void, *const ExtensionV1) -> Status,
+    /// Activate the existing heap while Bootstrap publication is paused.
+    pub activate: unsafe extern "C" fn(
+        *mut c_void,
+        *const crate::bootstrap::OwnedV2,
+        *const crate::root_registry::OwnedV1,
+    ) -> Status,
+    pub active: unsafe extern "C" fn(*const c_void) -> i32,
+}
 /// # Safety
 /// The version/size header is readable. A matching descriptor has its declared
 /// extent, initialized entries and live code/context. Validation calls nothing.
-pub unsafe fn valid(pointer: *const ApiV2) -> bool {
-    if pointer.is_null() || !pointer.addr().is_multiple_of(align_of::<ApiV2>()) {
+pub unsafe fn valid(pointer: *const ApiV3) -> bool {
+    if pointer.is_null() || !pointer.addr().is_multiple_of(align_of::<ApiV3>()) {
         return false;
     }
-    // Read only the common header before admitting the larger v2 descriptor.
+    // Read only the common header before admitting the larger v3 descriptor.
     unsafe {
-        core::ptr::addr_of!((*pointer).version).read() == 2
-            && core::ptr::addr_of!((*pointer).byte_size).read() == size_of::<ApiV2>()
+        core::ptr::addr_of!((*pointer).version).read() == 3
+            && core::ptr::addr_of!((*pointer).byte_size).read() == size_of::<ApiV3>()
             && !core::ptr::addr_of!((*pointer).context).read().is_null()
     }
 }
 const _: () = {
     assert!(size_of::<RetirementV1>() == 48);
     assert!(size_of::<InputV1>() == 40 && size_of::<ApiV1>() == 40);
-    assert!(size_of::<ExtensionV1>() == 24 && size_of::<ApiV2>() == 48);
+    assert!(size_of::<ExtensionV1>() == 24 && size_of::<ApiV3>() == 64);
 };
 
 #[cfg(test)]
@@ -90,6 +108,16 @@ mod tests {
     unsafe extern "C" fn extend(_: *mut c_void, _: *const ExtensionV1) -> Status {
         panic!("validation installed an extension")
     }
+    unsafe extern "C" fn activate(
+        _: *mut c_void,
+        _: *const crate::bootstrap::OwnedV2,
+        _: *const crate::root_registry::OwnedV1,
+    ) -> Status {
+        panic!("validation activated collection")
+    }
+    unsafe extern "C" fn active(_: *const c_void) -> i32 {
+        panic!("validation queried activation")
+    }
     #[test]
     fn admission_rejects_the_shorter_descriptor_without_invoking_operations() {
         let context = core::ptr::dangling_mut();
@@ -100,13 +128,15 @@ mod tests {
             trace,
             collect,
         };
-        let mut current = ApiV2 {
-            version: 2,
-            byte_size: size_of::<ApiV2>(),
+        let mut current = ApiV3 {
+            version: 3,
+            byte_size: size_of::<ApiV3>(),
             context,
             trace,
             collect,
             extend,
+            activate,
+            active,
         };
         unsafe {
             assert!(!valid(core::ptr::null()));
@@ -114,7 +144,7 @@ mod tests {
             assert!(valid(&current));
             current.byte_size = size_of::<ApiV1>();
             assert!(!valid(&current));
-            current.byte_size = size_of::<ApiV2>();
+            current.byte_size = size_of::<ApiV3>();
             current.context = core::ptr::null_mut();
             assert!(!valid(&current));
         }

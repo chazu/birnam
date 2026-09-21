@@ -83,3 +83,27 @@ impl Drop for Service {
         unsafe { self.factory.destroy.unwrap()(self.api.as_ptr()) };
     }
 }
+
+/// Temporary roots for the aggregate Runtime constructor. These are ordinary
+/// retained roots, released after the complete collector extension is installed.
+pub(crate) struct Retained {
+    owner: birnam_abi::root_registry::OwnedV1,
+    tokens: Vec<usize>,
+}
+impl Retained {
+    pub(crate) fn new(owner: birnam_abi::root_registry::OwnedV1, objects: &[crate::abi::Oop]) -> Self {
+        let tokens = objects.iter().filter(|object| !object.is_null()).map(|object| {
+            let token = unsafe { owner.retain.unwrap()(owner.context, *object) };
+            assert_ne!(token, 0);
+            token
+        }).collect();
+        Self { owner, tokens }
+    }
+}
+impl Drop for Retained {
+    fn drop(&mut self) {
+        for token in &self.tokens {
+            assert_eq!(unsafe { self.owner.release.unwrap()(self.owner.context, *token) }, 1);
+        }
+    }
+}

@@ -59,6 +59,8 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
             "scripts/fixtures/bootstrap-result-native.c", "-o", str(scratch / f"bootstrap-result-{mode}.dylib"))
     run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
         "scripts/fixtures/early-collector-native.c", "-o", str(scratch / "early-collector.dylib"))
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/early-activation-native.c", "-o", str(scratch / "early-activation.dylib"))
     driver = scratch / "driver"
     run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
         "scripts/fixtures/id-native-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
@@ -84,6 +86,13 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
         shutil.copy2(prefix / "lib" / file, graph_prefix / file)
     run(str(collector_driver), str(graph_prefix), str(scratch / "early-collector.dylib"))
     run(str(collector_driver), str(graph_prefix), str(scratch / "early-collector.dylib"), "trace-failure")
+    activation_driver = scratch / "activation-driver"
+    run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
+        "scripts/fixtures/activation-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
+        "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(activation_driver))
+    run(str(activation_driver), str(graph_prefix), str(scratch / "early-activation.dylib"))
+    run(str(activation_driver), str(graph_prefix), str(scratch / "early-activation.dylib"), "missing-layout")
+    run(str(activation_driver), str(prefix / "lib"), str(scratch / "early-activation.dylib"), "adopt")
     env = dict(os.environ, BIRNAM_NATIVE_UNLOAD_LOG=str(scratch / "unloaded"))
     run(str(driver), str(prefix), str(scratch), env=env)
     # Entered images only unload at process exit; rejected ones unload immediately.

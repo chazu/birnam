@@ -560,7 +560,7 @@ ordering improvement does not implement the construction graph in section 4.
 
 The first upper native entry is now
 `libbirnam_bootstrap.dylib:birnam_native_module_v1`. Its only predecessor is Id.
-Its [native owner](../../abi/fixtures/bootstrap-v1/README.md) calls Id's current
+Its [native owner](../../abi/fixtures/bootstrap-v2/README.md) calls Id's current
 loading message for every subsequent native construction. It retains Object and
 Protocol initialization results, including nested loads, before releasing
 argument roots. Before Lifetime exists those references form a working early
@@ -585,9 +585,9 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v9` is an upper construction entry taking the completed
+prefix. `birnam_runtime_init_v10` is an upper construction entry taking the completed
 root and representation owners plus completed base values, Namespace, Object Model, the live Trace graph and collection state, temporarily packaged in the Id library along with
-Runtime. The intermediate v1 through v8 Runtime bridges are removed. The old `id_init` and factory preparation path remain
+Runtime. The intermediate v1 through v9 Runtime bridges are removed. The old `id_init` and factory preparation path remain
 for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
@@ -607,7 +607,7 @@ admission, membership and record operations. They do not point forward to Runtim
 
 [`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
-that owner through `birnam_runtime_init_v9`; its behavior/heap tables retain no
+that owner through `birnam_runtime_init_v10`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
 same records through the native boundary. Public APIs retain their existing ABI
 and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
@@ -623,7 +623,8 @@ Legacy `id_init` construction and unit harnesses retain local service records
 until their consumers migrate; current production uses only the native owner.
 Bootstrap now owns common-protocol initialization results. Routing the remaining
 legacy constructors through it, completing ownership handoff as module exports
-are published, and staged collector activation remain required. This prefix does
+are published remain required. Collector activation now follows the completed
+value/Trace/collection prefix as described below. This prefix does
 not move Runtime/compiler code out of Id.
 
 `InitialFloor::initialize_base_values` then loads the existing Boolean and Nil
@@ -640,7 +641,7 @@ Runtime adopts these same objects and layouts, retaining the existing permanence
 policy for the five canonical objects/behaviors without promoting unrelated early
 allocations. Later Boolean/Nil entries preserve the basic method bindings. The
 legacy `id_init` path still constructs local constants until its consumers move.
-The remaining value stages and full construction graph remain unimplemented.
+The remaining upper construction graph is still unimplemented.
 
 `InitialFloor::initialize_namespace` then loads Namespace's native entry with
 completed roots, Lifetime and base values. Its
@@ -805,7 +806,7 @@ references remain rooted.
 This completes the value/text entries in step 8, with the real sixteen-library
 prefix exercising both ordinary results and advertised failure paths. No new
 library, representation, descriptor version or Runtime bridge is added.
-Collector activation, Execution/Block and the remaining upper/package separation
+Execution/Block and the remaining upper/package separation
 are still open. Native Integer/compiler admission is described above.
 
 The live graph portion of step 9 now constructs before Runtime as well.
@@ -822,11 +823,12 @@ retains that path.
 The eighteen-library prefix exercises this construction with the remaining
 libraries unavailable. Validation examines the actual early allocation graph and
 rejects missing payload descriptions without marking or reclaiming anything.
-Native Stack now supplies register capture through its complete v3 factory.
-This is not the collector activation transition: construction wrappers, the
-disabled/adopting/active gate and retirement ownership still need to move out of aggregate Runtime. Native root/hook completeness must
-also be established by the eventual activation policy; the graph validator alone
-does not prove arbitrary native ownership declarations correct.
+Native Stack now supplies register capture through its complete v4 factory.
+Graph construction alone does not activate collection. The subsequent explicit
+activation validates layout or native-hook coverage, establishes the lasting
+native boundary and installs collecting constructors. Native modules remain
+responsible for declaring their owned references; the graph validator cannot
+infer references hidden in arbitrary native storage.
 
 `ObjectMemory` owns allocations and identities. Collect now constructs the
 [collection-state owner](../../abi/collection-state-v2.md) before Runtime, from
@@ -840,14 +842,15 @@ The four former production preparations inside Id are skipped. The completed
 coordinator is adopted with this owner instead of awaiting a later mount. Marking and dead
 record removal now run in Collect, including deferred allocations when realized.
 The legacy local mark map remains only for legacy initialization/unit consumers.
-The [collector capability](../../abi/collector-v2.md) also owns live tracing,
+The [collector capability](../../abi/collector-v3.md) also owns live tracing,
 Lifetime/Object Model retirement, Id index retirement, finalizer detachment and
 allocation release. Once Execution exists, Runtime installs a completed extension
 that supplies scoped upper roots and deferred/code retirement on every call,
 including calls through previously saved collector entries. Without Execution
 there are no such records.
 The state owner advertises no operation needing a future callback. Explicit
-activation and GC-aware constructor installation remain separate unfinished work.
+activation and GC-aware constructor installation now run through Collector v3
+before Runtime construction. Execution and the remaining package split are open.
 
 `Heap` retains the deferred-allocation journals and storage-consumer adapter.
 Allocation records use three native words. The collection owner's weak records
@@ -886,7 +889,7 @@ still access internal Rust storage. Production index retirement, allocation
 detachment and release now use the native storage callables. Upper behavior
 metadata and per-allocation finalizer records retire separately; the coordinator
 keeps detached payloads readable until their finalizers return. Lifetime's root and representation owners now initialize before Runtime;
-separate GC activation and the full Id allocation/registry adoption cutover
+the full Id allocation/registry adoption cutover
 remain required.
 
 Ordinary binding, inherited caching and Machine synchronous targets carry the
@@ -1083,8 +1086,9 @@ Current debug evidence:
   primitive owners exports four, matching its manifest. All link only the platform
   library. Installed Id matches its manifest plus the two module wrappers and
   replaces the intermediate bridge with `birnam_runtime_init_v7`. This verifies
-  state adoption, not the remaining explicit collector activation transition.
-- Native Stack v3 owns Darwin arm64 register capture and interval validation.
+  state adoption; the subsequent activation implementation is described below.
+- Native Stack v4 retains Darwin arm64 register capture and interval validation,
+  and adds the thread-lifetime boundary used by activation.
   The independent C scanner fixture passes at default optimization and `-O2`,
   observing an x19 value in the real save area, callback frame ordering, rejected
   intervals and nested capture. The native loading harness invokes that operation
@@ -1098,7 +1102,7 @@ Current debug evidence:
   collision. Installed Native Stack and Id match their 4/68 export manifests;
   the GC-specific Darwin `_setjmp` dependency now belongs to Native Stack. Id's
   separate compiler-linked `setjmp` dependency remains with the pending compiler
-  package extraction. The explicit activation transition remains unimplemented.
+  package extraction. The subsequent explicit activation transition is described below.
 - The same twenty-two-library prefix now constructs the collector itself from
   completed native owners. Independent C verifies root-only survival, later
   release, retirement of unreferenced Symbols/behaviors, removal of mark/finalizer
@@ -1113,7 +1117,7 @@ Current debug evidence:
   Collect depends only on `birnam-abi`, exports its existing six declared symbols,
   and links only the platform library. Installed Id matches its 68 exports with
   the new temporary v8 bridge. These checks establish native collection ownership;
-  they do not establish the remaining activation/construction transition.
+  they predate the explicit activation/construction transition described below.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.
@@ -1182,7 +1186,7 @@ sharing one legacy address. The current ABI/Id/Integer/Namespace unit suites pas
 (356 passed, 16 ignored), including native relation-context rejection. Legacy
 Integer error/value and numeric-context fixtures pass their 800 oracle cases and
 live callback/restoration checks. These tests do not close arbitrary native
-reflection migration, collector activation or the package split.
+reflection migration or the package split.
 
 Remaining architectural acceptance requires all of the following:
 
@@ -1196,12 +1200,10 @@ Remaining architectural acceptance requires all of the following:
    Execution accounting. Collection now uses Id's native retirement/release path;
    the remaining Rust allocation/registry handoff must not become a permanent
    coupling between separately packaged modules.
-4. Implement disabled → adopting → active collector activation, complete root and
-   representation checks, and failed activation without partial collection.
-5. Replace the aggregate preparations/initialization with real base and extension
+4. Replace the aggregate preparations/initialization with real base and extension
    entries. Publish the entry-level predecessor manifest, map every SCRIPT_MODULES
    entry or removal, reject cycles/missing predecessors, and update the diagram.
-6. Prove real construction prefixes, source/compiled/image/worker behavior and
+5. Prove real construction prefixes, source/compiled/image/worker behavior and
    the source/Cargo/private-export independence audits specified above. Passing
    the current tests does not close these unimplemented requirements.
 
@@ -1219,12 +1221,11 @@ Normal Runtime collection now passes only the captured native interval, while
 trace probes pass only their additional roots. Runtime's extension owns the full
 upper retirement sequence and rejects a competing per-call retirement table.
 The outer collection owner keeps its 128-byte layout and requires collector v2;
-the temporary upper constructor becomes `birnam_runtime_init_v9`.
+the temporary upper constructor becomes `birnam_runtime_init_v10`.
 
-This closes the saved-entry obligation needed for section 5's later construction
-wrappers. It does not complete activation: publication pause, heap-description
-validation, the lasting stack boundary, GC-aware construction and the explicit
-Active transition remain open, as do the remaining module/package split tasks.
+This extension closed the saved-entry obligation needed for section 5's
+construction wrappers. Activation was separate work; its production
+implementation follows below. The module/package split remains open.
 
 Validation passes for the ABI/Id/Collect unit suites (341 passed, 15 ignored),
 the installed native-loading harness and the collection, finalizer and
@@ -1237,3 +1238,61 @@ The image tests cover source, compiled, mapped, rebuilt and baked execution.
 Actual deferred writes agree across image forms: `(386, 150)` normally and
 `(386, 75)` under forced recovery. Installed Id/Collect exports match their
 manifests, including Id's published wrapper. No release validation was run.
+
+### Production collector activation and construction
+
+[`Collector v3`](../../abi/collector-v3.md) now activates the production heap
+before Runtime/Execution. `InitialFloor::finish` first calls
+`activate_collection`: Bootstrap v2 pauses publication, the live Trace graph
+validates Id edges and payload layout/native-hook coverage, Collect reconciles
+records and installs Native Stack v4's lasting thread boundary, then replaces
+construction methods through Id messages. It publishes Active only after all
+steps succeed. A failure retains the existing owners and leaves collection
+disabled without marking, finalization or reclamation. Bootstrap's early roots
+have already been transferred into ordinary Root Registry records; activation
+neither copies the heap nor permanently marks every bootstrap allocation.
+
+`allocate`, `delegated`, `clone` and `new` collect before construction, with their
+input explicitly rooted. This prevents a native hook from seeing an uninitialized
+new instance. `intern:` accounts a fully initialized Symbol and roots it if a
+collection is due; re-interning an existing Symbol never causes collection.
+The Id primitives remain non-collecting. New allocations update Collect's own
+weak records and budget. Saved early wrappers invoke the public collector, so
+they gain the complete later Runtime roots and retirement extension.
+
+Aggregate Runtime construction temporarily retains its actual canonical objects
+and compatibility Symbols while it creates Execution objects, then releases those
+roots after installing its complete collector extension. This transitional
+constructor still installs Runtime's existing upper methods and deferred-accounting
+adapter. Those duplicates and the Rust allocation/registry handoff must disappear
+with the native Execution/package migration; activation does not claim that cut
+is complete. The matching temporary upper entry is `birnam_runtime_init_v10`.
+
+The C activation fixture forces automatic collection through all four construction
+paths with only twenty-two predecessor libraries present. It checks result/input
+liveness, existing-Symbol behavior, initialized payloads at trace hooks, publication
+pause and failure without sweep for an undescribed payload. It also forces GC
+during native Integer construction and overflow-error creation. Separate tests reuse
+saved constructors after Runtime adoption and force collection while Runtime
+itself is being built. The older Id-only storage probes now explicitly destroy
+their temporary raw payloads before entering validated startup. Native-hook-only
+payloads remain valid coverage; the missing-description negative test still fails.
+
+Validation: the final ABI, Bootstrap, Collect, Id, Native Stack and Trace unit
+run passes 356 tests with 15 ignored. The installed native-loading harness and
+collection, finalizer and deferred-identity image workloads pass. Deferred writes
+remain `(386, 150)` normally and `(386, 75)` under forced recovery in mapped,
+rebuilt and baked images. The independent ARM64 stack capture/scanner checks
+pass, and installed Id, Collect, Bootstrap and Native Stack exports match their
+manifests (including Id's installed wrapper exports).
+
+The worker-service smoke passes its Cell image round trips but fails the
+unchanged ten-second ready deadline, including an isolated retry. A child sample
+shows normal authored-module startup. The existing independent worker wire test
+then passes source-free image boot, twelve exact replies and orderly shutdown;
+its observed ready time was 53.87 seconds while the unit suite also ran, not a
+performance baseline. An earlier debug implementation records the same deadline
+failure in [Design 81BE](81be-production-namespace-import.md). This establishes
+working worker image recovery and transfer, not acceptance of the nineteen-case
+worker-service suite. That suite and the full architectural acceptance above
+remain open. No production timeout was changed or release validation run.

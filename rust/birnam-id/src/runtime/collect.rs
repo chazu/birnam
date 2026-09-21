@@ -316,6 +316,13 @@ unsafe extern "C" fn extended_collect(
     runtime.enter(|| unsafe { (base.collect)(base.context, &input, out) })
 }
 impl Runtime {
+    pub(crate) fn retain_construction_roots(&self) -> Option<crate::root_registry::Retained> {
+        let (owner, roots) = unsafe {
+            let state = &*self.state.get();
+            (state.root_registry.native_owner()?, super::upper_roots(state))
+        };
+        Some(crate::root_registry::Retained::new(owner, &roots))
+    }
     pub(crate) fn install_collector_extension(&self) {
         let Some(owner) = &self.collection_owner else {
             return;

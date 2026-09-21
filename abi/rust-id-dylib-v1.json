@@ -49,7 +49,7 @@
     "birnam_native_allocation_provider_v1",
     "birnam_native_mark_dependency_v1",
     "birnam_native_module_v1",
-    "birnam_native_stack_dependency_v3",
+    "birnam_native_stack_dependency_v4",
     "birnam_native_stack_provider_v1",
     "birnam_payload_layout_dependency_v1",
     "birnam_payload_layout_provider_v1",
@@ -68,6 +68,6 @@
     "id_init",
     "birnam_deferred_identity_dependency_v1",
     "birnam_deferred_index_dependency_v1",
-    "birnam_runtime_init_v9"
+    "birnam_runtime_init_v10"
   ]
 }

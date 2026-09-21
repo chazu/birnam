@@ -34,7 +34,7 @@ static void finalize(void *object) {
 }
 static int reject(void *context,const TraceLiveSinkV1 *sink) { (void)context;(void)sink;return -77; }
 /* A complete later owner, with roots and retirement scoped around the base. */
-static CollectorV2 saved;
+static CollectorV3 saved;
 static CollectorExtensionV1 extension;
 static void *extension_root,*caller_root;
 static size_t trace_calls,collect_calls,inspected,settled,retired,reclaimed,pruned;
@@ -76,7 +76,7 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
     RootRegistryOwnedV1 roots=*(RootRegistryOwnedV1 *)args[1].data.word;
     lifetime=*(LifetimeOwnedV1 *)args[2].data.word;
     assert(state.version==2 && state.byte_size==sizeof(state));
-    assert(state.collector->version==2 && state.collector->byte_size==sizeof(CollectorV2));
+    assert(state.collector->version==3 && state.collector->byte_size==sizeof(CollectorV3));
     saved=*state.collector; /* Copied before an extension exists. */
     size_selector=name("allocationSizeOf:");
     BirnamOutcome proto=send(id.receiver,name("objectPrototype"),NULL,0);

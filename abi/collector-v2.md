@@ -1,5 +1,8 @@
 # Collector v2
 
+Historical public layout. [Collector v3](collector-v3.md) preserves this extension
+contract and adds production activation and collecting constructors.
+
 Collect publishes a 48-byte capability through the existing
 [collection-state v2 owner](collection-state-v2.md). It performs tracing and
 collection before Runtime exists, using the completed Id, Lifetime, Object Model

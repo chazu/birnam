@@ -312,10 +312,12 @@ pub(crate) fn initialize_once() -> *mut IdApi {
 pub(crate) fn initialize_with_owners(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV1>, collection: Option<crate::collection_state::Shared>) -> *mut IdApi {
     let namespace_exists = namespace.is_some();
     let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(crate::native_id::take_initial_objects(), roots, lifetime, values, namespace, model, graph, collection));
+    let construction_roots = bootstrap.runtime.retain_construction_roots();
     bootstrap.runtime.install_id_runtime_extensions();
     bootstrap.runtime.install_namespace_runtime_extension();
-    install_bootstrap_metadata(&bootstrap, values.is_some(), namespace_exists);
+    bootstrap.runtime.enter(|| install_bootstrap_metadata(&bootstrap, values.is_some(), namespace_exists));
     bootstrap.runtime.install_collector_extension();
+    drop(construction_roots);
     let mut api = Box::new(table_for(&bootstrap));
     let api_pointer = core::ptr::from_mut(api.as_mut());
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
@@ -841,7 +843,7 @@ pub(crate) fn native_stack_access() -> birnam_abi::native_stack::FloorV1 {
     }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_stack_dependency_v3(factory: *const birnam_abi::native_stack::FactoryV3) -> c_int {
+pub unsafe extern "C" fn birnam_native_stack_dependency_v4(factory: *const birnam_abi::native_stack::FactoryV4) -> c_int {
     unsafe { birnam_abi::native_stack::attach(factory) }
 }
 #[unsafe(no_mangle)]

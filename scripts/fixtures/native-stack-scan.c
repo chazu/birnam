@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "../../abi/fixtures/native-stack-v3/native_stack_v3.h"
+#include "../../abi/fixtures/native-stack-v4/native_stack_v4.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -53,7 +53,7 @@ static void nesting(void *context,uintptr_t start,uintptr_t bottom) {
     captured_start=start;captured_calls++;
     assert(capture(bottom,context,nested)==1);
 }
-static void capture_checks(const NativeStackFactoryV3 *api) {
+static void capture_checks(const NativeStackFactoryV4 *api) {
     capture=api->capture;assert(capture);
     Dl_info owner;assert(dladdr((void *)capture,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
     uintptr_t anchor=0;
@@ -70,8 +70,8 @@ int main(int argc,char **argv) {
 #ifdef NATIVE_SCAN_BASELINE
     scan=(Scan)dlsym(image,"birnam_test_scan");assert(scan);
 #else
-    NativeStackFactoryProviderV3 provide=(NativeStackFactoryProviderV3)dlsym(image,"birnam_native_stack_factory_v3");assert(provide);
-    const NativeStackFactoryV3 *api=provide();assert(api && api->version==3 && api->byte_size==sizeof(*api));scan=api->scan;assert(scan);
+    NativeStackFactoryProviderV4 provide=(NativeStackFactoryProviderV4)dlsym(image,"birnam_native_stack_factory_v4");assert(provide);
+    const NativeStackFactoryV4 *api=provide();assert(api && api->version==4 && api->byte_size==sizeof(*api));scan=api->scan;assert(scan);
     Dl_info owner;assert(dladdr((void *)scan,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
 #endif
     TraceLiveSinkV1 sink={values,emit};

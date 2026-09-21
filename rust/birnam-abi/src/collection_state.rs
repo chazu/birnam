@@ -47,7 +47,7 @@ pub struct OwnedV2 {
     pub context: *mut c_void,
     pub records: *const RecordsV1,
     pub stack: *mut native_stack::ApiV1,
-    pub stack_factory: *const native_stack::FactoryV3,
+    pub stack_factory: *const native_stack::FactoryV4,
     pub settings: *mut gc_settings::ApiV1,
     pub settings_factory: *const gc_settings::FactoryV1,
     pub budget_context: *mut c_void,
@@ -57,7 +57,7 @@ pub struct OwnedV2 {
     pub set_access: unsafe extern "C" fn(*mut c_void, AccessV1),
     pub destroy: unsafe extern "C" fn(*mut c_void),
     pub collect: crate::collect::CollectV1,
-    pub collector: *const crate::collector::ApiV2,
+    pub collector: *const crate::collector::ApiV3,
 }
 const _: () = {
     assert!(size_of::<RecordV1>() == 16 && size_of::<ViewV1>() == 16);

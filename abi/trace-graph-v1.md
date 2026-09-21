@@ -42,7 +42,7 @@ sink or native hook. Direct sink failures propagate; rejected native marks retai
 Native Mark's abort behavior. Neither failure authorizes a sweep.
 
 Production constructs the graph in `InitialFloor::initialize_trace`, passes the
-same descriptor through the temporary `birnam_runtime_init_v9` bridge, and uses
+same descriptor through the temporary `birnam_runtime_init_v10` bridge, and uses
 it for native roots, payloads, hooks and owner edges in actual collection.
 Collect now owns the [mark records and controls](collection-state-v2.md).
 Native Stack supplies register capture. Collect owns the collection-source adapter

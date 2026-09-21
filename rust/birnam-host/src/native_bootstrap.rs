@@ -1,12 +1,12 @@
 //! Host ownership of Bootstrap loaded through the real Id message API.
 use birnam_abi::{
-    bootstrap::OwnedV1,
+    bootstrap::OwnedV2,
     id_protocol::{self as native, Operand, Outcome, Protocol},
 };
 
 pub(crate) struct Owner {
-    pointer: *const OwnedV1,
-    api: OwnedV1,
+    pointer: *const OwnedV2,
+    api: OwnedV2,
 }
 impl Owner {
     pub(crate) fn load(id: Protocol, path: &[u8]) -> Result<Self, (u32, usize)> {
@@ -16,7 +16,7 @@ impl Owner {
         if answer.status != native::LOADED {
             return Err((answer.status, answer.detail));
         }
-        let pointer = answer.value.as_word().unwrap_or(0) as *const OwnedV1;
+        let pointer = answer.value.as_word().unwrap_or(0) as *const OwnedV2;
         if !unsafe { birnam_abi::bootstrap::valid(pointer) } {
             return Err((native::INCOMPATIBLE_ABI, 0));
         }
@@ -25,7 +25,7 @@ impl Owner {
             api: unsafe { *pointer },
         })
     }
-    pub(crate) fn descriptor(&self) -> *const OwnedV1 {
+    pub(crate) fn descriptor(&self) -> *const OwnedV2 {
         self.pointer
     }
     pub(crate) unsafe fn initialize(&self, path: &[u8], args: &[Operand]) -> Outcome {

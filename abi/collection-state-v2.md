@@ -2,7 +2,7 @@
 
 `libbirnam_collect.dylib:birnam_native_module_v1` constructs the production mark
 records, allocation budget, collection phase, native stack anchor and GC settings
-before Runtime exists. It takes six Words: completed Native Stack factory v3,
+before Runtime exists. It takes six Words: completed Native Stack factory v4,
 GC Settings factory v1, Allocation Budget factory v1, Trace graph, Lifetime and
 Object Model descriptors. Those three
 modules now publish their existing factories through zero-argument native entries.
@@ -20,7 +20,7 @@ mirrored by [`collection_state::OwnedV2`](../rust/birnam-abi/src/collection_stat
 It contains the records table, completed stack/settings tables, canonical
 factories and budget/phase contexts, a complete admission-policy replacement,
 native destruction, the completed stateless collection coordinator, and the
-[collector v2 capability](collector-v2.md). Runtime
+[collector v3 capability](collector-v3.md). Runtime
 adopts that coordinator immediately; later legacy mounting is an idempotent check.
 The owner destroys each control exactly once. Runtime's
 consumers share that ownership and borrow the existing controls; none creates a
@@ -43,7 +43,7 @@ policy. It does not fill a missing provider. No Execution or Runtime pointer is
 needed to construct or use the early owner.
 
 `InitialFloor::initialize_collection` builds this owner after the Trace graph.
-The temporary `birnam_runtime_init_v9` bridge transfers it to Runtime, alongside
+The temporary `birnam_runtime_init_v10` bridge transfers it to Runtime, alongside
 the existing completed owners and graph. Adoption retains its existing records
 and budget, then registers and charges only Id allocations made since the early
 snapshot. Subsequent production allocation, deferred settlement, marking,
@@ -54,17 +54,12 @@ legacy factory preparations inside Id; legacy `id_init` clients retain them.
 Native register capture is also available through the completed stack factory;
 Runtime uses it for collection and source probes.
 
-This completes the state ownership portion of Design 83 step 9. The explicit
-collector activation transition and construction wrappers still need to move out
-of aggregate Runtime. The collector now owns tracing,
-Lifetime/Object Model/Id retirement, detachment, finalization and release;
-Runtime installs a complete extension after Execution construction. Every public
-collector entry, including earlier saved copies, then supplies its mandatory roots
-and retirement operations. Until activation is implemented, early native
-allocations are non-collecting and their record registrations are reconciled at
-tracing and Runtime adoption. The base coordinator takes complete scoped
-operations per call; the public collector selects the installed complete
-extension. The early owner works without any future service.
+The owner is initially non-collecting. The host then explicitly activates it
+through [Collector v3](collector-v3.md), with publication paused, heap validation,
+a lasting native boundary and collecting constructors. Runtime later installs a
+complete roots/retirement extension. Earlier saved collector and constructor
+entries use that same extension. The base collector remains independently usable
+before Runtime; no operation waits for a future service.
 
 `scripts/id-native-loading-smoke.py PREFIX` exercises the installed production
 owner with only its twenty-two predecessor libraries available. Independent C

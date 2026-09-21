@@ -1,5 +1,8 @@
 # Native Bootstrap v1
 
+Historical layout. Production uses [Bootstrap v2](../bootstrap-v2/README.md),
+which adds the synchronous publication pause used for collector activation.
+
 `libbirnam_bootstrap.dylib:birnam_native_module_v1` initializes with Id and no
 other operands. It returns a Word containing the 56-byte owner independently
 declared in `bootstrap_v1.h`. Bootstrap's only Cargo dependency is `birnam-abi`.

@@ -8,6 +8,13 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Activate production collection before Runtime: pause Bootstrap publication,
+  validate the existing heap, establish a lasting stack boundary and install
+  collecting allocation, delegation, interning and clone methods through Id.
+  Protect constructor inputs and Runtime construction roots. Failed activation
+  leaves collection disabled without sweeping; native trace hooks count as
+  payload coverage. Publish Bootstrap v2, Native Stack v4 and Collector v3.
+
 - Make saved early collector entries use Runtime's complete roots and retirement
   extension after adoption. Runtime installs the extension after Execution
   construction; ordinary collection now supplies only its native interval.

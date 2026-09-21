@@ -1,5 +1,8 @@
 # Native Stack factory v3
 
+Historical layout. Production uses [factory v4](native-stack-v4.md), which adds
+a thread-lifetime boundary for activation before Runtime.
+
 Native Stack owns the stack anchor, Darwin arm64 register capture, interval
 validation and scanning. The immutable 64-byte factory adds `capture(bottom,
 context, operation)` after the existing create/destroy/set/get/scan operations.

@@ -1,14 +1,14 @@
 /* The normal initializer stays at twelve arguments; the host owns this entry. */
 #define _DARWIN_C_SOURCE
 #include "idapi_v20.h"
-#include "../../abi/fixtures/native-stack-v3/native_stack_v3.h"
+#include "../../abi/fixtures/native-stack-v4/native_stack_v4.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 
 static IdApi *api;
 static const NativeStackV1 *stack;
-static const NativeStackFactoryV3 *factory;
+static const NativeStackFactoryV4 *factory;
 static Oop retained;
 static unsigned calls,reset,registered;
 static uintptr_t scan_words[3];
@@ -50,7 +50,7 @@ void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presenc
     NativeStackProviderV1 provide=(NativeStackProviderV1)dlsym(floor,"birnam_native_stack_provider_v1");assert(provide);stack=provide();assert(stack);
     assert(dladdr((void *)stack->set,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
     void *image=dlopen(owner.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(image);
-    NativeStackFactoryProviderV3 operations=(NativeStackFactoryProviderV3)dlsym(image,"birnam_native_stack_factory_v3");assert(operations);factory=operations();assert(factory && factory->version==3 && factory->byte_size==sizeof(*factory) && factory->scan);
+    NativeStackFactoryProviderV4 operations=(NativeStackFactoryProviderV4)dlsym(image,"birnam_native_stack_factory_v4");assert(operations);factory=operations();assert(factory && factory->version==4 && factory->byte_size==sizeof(*factory) && factory->scan);
     assert(dladdr((void *)factory->scan,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
     if(!registered) { root_registry_register_v1(root_registry,roots);registered=1; }
     Oop system=namespace_import_v1(imports,"System");assert(system);

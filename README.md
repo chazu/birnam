@@ -707,11 +707,11 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v20 (18 fields / 144 bytes).
-- `rust/birnam-bootstrap/` — sequential native loading through Id and ownership of initialization results; see [the native contract](abi/fixtures/bootstrap-v1/README.md).
+- `rust/birnam-bootstrap/` — sequential native loading through Id and ownership of initialization results; see [the native contract](abi/fixtures/bootstrap-v2/README.md).
 - `rust/birnam-root-registry/` — native root ownership, initialized through Id before Runtime.
 - `rust/birnam-collect/` — [collection records and controls](abi/collection-state-v2.md), initialized before Runtime and shared with its collector, plus the collection coordinator.
-- [Collector v2](abi/collector-v2.md): native collection with complete later roots and retirement extensions.
-- [Native Stack factory v3](abi/native-stack-v3.md): native register capture and root scanning before Runtime.
+- [Collector v3](abi/collector-v3.md): heap activation and collecting constructors before Runtime.
+- [Native Stack factory v4](abi/native-stack-v4.md): native register capture and root scanning before Runtime.
 - `rust/birnam-trace/` — [live graph traversal](abi/trace-graph-v1.md), constructed before Runtime from Id storage facts and completed lifetime owners.
 - `rust/birnam-lifetime/` — payload descriptions, trace hooks and finalizer records, initialized through Id and adopted by Runtime; see [the native contract](abi/fixtures/lifetime-v1/README.md).
 - `rust/birnam-namespace/` — early publication/import, reverse aliases and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/namespace-owner-v1/README.md).

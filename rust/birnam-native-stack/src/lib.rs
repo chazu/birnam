@@ -1,6 +1,6 @@
 //! Native root-anchor state, register capture and word scanning.
 mod capture;
-use birnam_abi::native_stack::{ApiV1, FactoryV3, FloorV1};
+use birnam_abi::native_stack::{ApiV1, FactoryV4, FloorV1};
 use core::ffi::{c_int, c_void};
 use core::ptr;
 
@@ -54,14 +54,22 @@ unsafe extern "C" fn scan(pointer: *const birnam_abi::trace_live::SinkV1, start:
         address += size_of::<usize>();
     }
 }
-static FACTORY: FactoryV3 = FactoryV3 {
-    version: 3, byte_size: size_of::<FactoryV3>(), create: Some(create), destroy: Some(destroy),
-    set: Some(set), get: Some(get), scan: Some(scan), capture: Some(capture::capture),
+// Birnam currently targets arm64 macOS. This boundary outlives startup frames.
+unsafe extern "C" fn thread_bottom() -> usize {
+    unsafe extern "C" {
+        fn pthread_self() -> *mut c_void;
+        fn pthread_get_stackaddr_np(thread: *mut c_void) -> *mut c_void;
+    }
+    unsafe { pthread_get_stackaddr_np(pthread_self()).addr() }
+}
+static FACTORY: FactoryV4 = FactoryV4 {
+    version: 4, byte_size: size_of::<FactoryV4>(), create: Some(create), destroy: Some(destroy),
+    set: Some(set), get: Some(get), scan: Some(scan), capture: Some(capture::capture), thread_bottom: Some(thread_bottom),
 };
 /// # Safety
 /// Owner-thread operations require the declared descriptor and code lifetimes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_stack_factory_v3() -> *const FactoryV3 { &FACTORY }
+pub unsafe extern "C" fn birnam_native_stack_factory_v4() -> *const FactoryV4 { &FACTORY }
 
 /// # Safety
 /// All descriptors and code have the native initialization lifetime.
@@ -92,7 +100,7 @@ mod tests;
 unsafe extern "C" fn initialize_native(_: *const birnam_abi::id_protocol::Protocol, _: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
     use birnam_abi::id_protocol::{self as native, Operand, Outcome};
     if count != 0 { return Outcome::failed(native::INVALID_REQUEST, 0); }
-    Outcome::loaded(Operand::word(&FACTORY as *const FactoryV3 as usize))
+    Outcome::loaded(Operand::word(&FACTORY as *const FactoryV4 as usize))
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {
