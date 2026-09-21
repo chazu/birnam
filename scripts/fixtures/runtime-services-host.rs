@@ -20,6 +20,21 @@ fn main() {
         "gc-settings" | "root-registry" => vec![api, roots, settings, stack,
             Operand::bytes(runtime_path.as_os_str().as_bytes()),
             Operand::bytes(factory_path.as_os_str().as_bytes()), mode],
+        "vtable-enumeration" | "vtable-enumeration-boundary" | "selector-enumeration" =>
+            vec![api, roots, settings, stack, Operand::word(floor.vtables().addr()),
+                Operand::bytes(runtime_path.as_os_str().as_bytes()), mode],
+        "namespace-presence" | "namespace-import" | "namespace-publication" => {
+            let kind = args[4].to_str().unwrap();
+            let service = match kind {
+                "namespace-presence" => floor.presence().addr(),
+                "namespace-import" => floor.imports().addr(),
+                _ => floor.exports().addr(),
+            };
+            let mut inputs = vec![api, roots, settings, stack, Operand::word(service),
+                Operand::bytes(runtime_path.as_os_str().as_bytes()), mode, Operand::bytes(kind.as_bytes())];
+            if kind == "namespace-publication" { inputs.push(Operand::word(floor.imports().addr())); }
+            inputs
+        },
         "native-stack-scan" => vec![Operand::bytes(scan_path.as_os_str().as_bytes()), mode],
         other => panic!("unknown fixture {other}"),
     };

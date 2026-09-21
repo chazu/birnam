@@ -44,3 +44,12 @@ use v2 exports with imports immediately after API.
 No production slot loan, aggregate compatibility table, API-address registry
 or process-global replacement selection is provided. Independent historical
 C oracles may use per-caller callback slots solely to compare old/new traces.
+
+
+The production boundary oracle is `scripts/fixtures/namespace-boundary.c`, loaded
+through Id after Bootstrap constructs Runtime. It preserves exact null-name,
+owner-thread and storage-observation admission (including null-name precedence),
+and verifies that the selected operation remains callable from GC root callbacks.
+Run `bash scripts/runtime-services-test.sh PREFIX namespace`; the installed
+native-loading suite includes this matrix. The old aggregate initializer and
+provider exports are not involved in this check.

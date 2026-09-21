@@ -46,3 +46,12 @@ not export. Native modules require rebuilding; image encoding is unchanged.
 See [81BF](../docs/design/81bf-production-namespace-export.md) for caller audit
 and validation evidence. `mise run namespace` includes the native publication
 boundary and constructor-selection probes.
+
+
+The production boundary oracle is `scripts/fixtures/namespace-boundary.c`, loaded
+through Id after Bootstrap constructs Runtime. It preserves exact null-name,
+owner-thread and storage-observation admission (including null-name precedence),
+and verifies that the selected operation remains callable from GC root callbacks.
+Run `bash scripts/runtime-services-test.sh PREFIX namespace`; the installed
+native-loading suite includes this matrix. The old aggregate initializer and
+provider exports are not involved in this check.

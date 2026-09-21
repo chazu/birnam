@@ -1,56 +1,59 @@
 # Vtable enumeration v2
 
-> **Construction update (Design 83):** The pre-Id preparation, aggregate
-> initialization and private provider exports described below are historical.
-> Production constructs this service above Id and passes completed dependencies
-> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
-> through Bootstrap and Id; the old provider export is removed.
-
-[81BH](../docs/design/81bh-production-selector-enumeration.md) extends
-[v1](vtable-enumeration-v1.md) with direct ordered-key observation. Object Model
-owns count and checked selection; Id owns its registry and dictionaries. All
-views are transient, unrooted borrows. There is no send, allocation, snapshot or
-additional root. Selection observes the current dictionary on every call.
+Object Model supplies a native capability for counting registered behaviors,
+selecting one by index, and selecting a behavior's ordered method keys. Id owns
+those registries and dictionaries. Object Model is fully constructed before
+Runtime and selects pinned Id entries through `lookup` at construction:
+`behaviorCount`, `behaviorAt:` and `selectorAt:in:`. It invokes those exact entries
+for native enumeration. Replacing application lookup does not change raw
+reflection or cause enumeration to execute application code.
 
 The [independent C mirror](fixtures/vtable-enumeration-v2/vtable_enumeration_v2.h)
-defines these arm64 macOS layouts:
+defines the 48-byte capability: version 2, native extent, context at offset 16,
+`count` at 24, `at` at 32 and `selector_at` at 40. Each operation copies the
+selected callback and context before invoking them. Descriptor copies borrow the
+original owner's lifetime. Replacing a shared context requires callbacks that
+accept that context; an active call retains its selected pair.
 
-| Descriptor | Size | Operations after version/extent/context |
-| --- | --- | --- |
-| Factory v2 | 32 | create at 16, destroy at 24; no context |
-| Floor v2 | 40 | registry view at 24, selectors at 32 |
-| Capability v2 | 48 | count at 24, at at 32, selector_at at 40 |
-| View v1 | 16 | entries at 0, count at 8; no version/extent |
+Views are transient, unrooted borrows, not snapshots. Selection observes the
+current registry or dictionary on every call. Bounds misses return null.
+Replacement retains key position; removal shifts successors; re-addition appends.
+Parent dictionaries and custom lookup are not consulted. Collection removes dead
+behaviors while preserving survivor order. Callers must root retained objects.
 
-`selectors(context, vtable)` first performs owner/observation admission and
-exact registry lookup, then returns the ordered key borrow. Invalid vtables
-fail before bounds checking, even for SIZE_MAX. Object Model immediately copies
-the selected identity or returns null past the end. Replacement retains key
-position; removal shifts successors; re-addition appends. Parent dictionaries,
-custom lookup and weak-key filtering are not consulted. Root callbacks may
-observe; storage-observation callbacks retain their existing refusal.
+Native enumeration follows Design 83's trusted native-call contract: the caller
+supplies owner-thread access and, for `selector_at`, a registered behavior. There
+is no future Runtime admission hook in Object Model. These read-only operations
+are available during root collection and diagnostic storage observation. This is
+distinct from Runtime-facing namespace operations, which retain their existing
+thread and observation checks. The diagnostic observer itself retains its
+scoped, non-reentrant contract.
 
-The host pins Object Model and attaches `birnam_vtable_enumeration_factory_v2`
-through `birnam_vtable_enumeration_dependency_v2` before Id initialization.
-Factory validation/creation are inert and reject missing operations or incorrect
-version/extent. Same-pointer attachment repeats; retargeting rejects. Each
-Runtime owns its service, copies the floor and saves its canonical capability
-for pure optional Block-constructor admission. Destroy uses the original owned
-address even after public context replacement; descriptor copies borrow its
-lifetime. Ordinary Object Model method installation stays at its original point.
+Typed Id requests validate operands and behavior membership before selecting a
+key: a live instance that is not a behavior yields `InvalidRequest` even for
+`SIZE_MAX`; a non-Word index also yields `InvalidRequest`. This checked request
+path is separate from the trusted native capability's calling convention.
 
-Id publishes `birnam_vtable_enumeration_provider_v2`. Native initialization
-still receives `(api, prior_state, presence, imports, exports, vtables)`;
-[Native Loader v7](native-loader-v7.md) forwards the saved matching capability.
-Each operation copies callback and context before invoking either. Consumers
-retain it at the same point as their execution API. Replacing a shared context
-requires callbacks that accept that context; an active call retains its selected
-pair. No API-address registry or aggregate replacement facade is introduced.
+Production construction returns the enumeration capability within
+[Object Model's owner](fixtures/object-model-owner-v1/README.md). Bootstrap passes that completed owner
+to Runtime; later clients select `vtables` through
+[Runtime service requests](runtime-construction-v15.md#completed-service-selection).
+The old provider/factory exports, dependency setter and aggregate module
+initializer are removed. The historical Factory/Floor descriptors remain in the
+frozen C fixture and internal factory unit tests; they do not describe the
+production construction path.
 
-IdApi v13 has 27 fields / 216 bytes. Native consumers must rebuild; image
-encoding is unchanged. [Block construction v5](native-block-construction-v5.md)
-compares the canonical selector function and context before any call, declining
-if either differs while ordinary construction retains live dispatch.
+Run `mise run reflection-boundaries`, or with a debug installation:
 
-Run `mise run vtable-enumeration`, `mise run selector-enumeration`, and
-`scripts/selector-enumeration-image-smoke.sh PREFIX` for focused checks.
+```sh
+bash scripts/runtime-services-test.sh PREFIX reflection
+python3 scripts/id-native-loading-smoke.py PREFIX
+```
+
+These exercise ordered growth, replacement, removal/re-addition, bounds, weak
+membership and survivor order, GC callbacks, observation-time reads, and typed
+request failures. Native misuse probes that supplied foreign threads or arbitrary
+and stale pointers to the trusted capability are retired. The older consumer
+and image fixtures in `vtable-enumeration-test.sh`, `selector-enumeration-test.sh`
+and their image runners still require migration from aggregate initialization;
+the focused reflection matrix does not claim those consumer suites pass.

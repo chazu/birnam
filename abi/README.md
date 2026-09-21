@@ -18,7 +18,7 @@ The aggregate `module_init` entry and dependency-setter exports have been
 removed from all production modules. Earlier descriptions of factory preparation
 before `id_init` record a retired construction path; current startup loads the
 real Id first. See
-[Design 83](../docs/design/83-production-id-construction-and-lifetimes.md#implementation-evidence-and-remaining-boundary)
+[Design 83](../docs/design/83-production-id-construction-and-lifetimes.md#implementation-status)
 for current construction and the remaining migration work.
 
 The upper Runtime compatibility table is **IdApi v20**, with 18 fields / 144 bytes. Design

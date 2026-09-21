@@ -139,6 +139,10 @@ run = "scripts/trace-hooks-test.sh"
 description = "Check native pre-overwrite observation and Store registration (debug)"
 run = "scripts/method-observation-test.sh"
 
+[tasks.reflection-boundaries]
+description = "Check production namespace admission, native enumeration, typed errors and GC"
+run = "bash scripts/runtime-services-test.sh '' reflection"
+
 [tasks.selector-enumeration]
 description = "Check Object Model selector enumeration and live consumers (debug)"
 run = "scripts/selector-enumeration-test.sh"

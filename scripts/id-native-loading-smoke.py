@@ -49,6 +49,10 @@ for stem in ("id", "bootstrap", "runtime", "method-observation", "storage", "dis
             "@rpath/libbirnam_id.dylib", "/usr/lib/libSystem.B.dylib"}, dependencies
 print("installed Id has only its native entry and identity exports; Runtime exports are separate")
 
+# Runtime-facing services and early native reflection share production startup.
+# This includes namespace admission, ordered weak enumeration and typed errors.
+run("bash", "scripts/runtime-services-test.sh", str(prefix))
+
 metadata = json.loads(run("mise", "exec", "--", "cargo", "metadata", "--locked", "--offline",
                           "--no-deps", "--format-version", "1", capture_output=True).stdout)
 packages = {package["name"]: package for package in metadata["packages"]}

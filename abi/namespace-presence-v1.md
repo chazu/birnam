@@ -41,3 +41,12 @@ registry in production. The floor retains the original function/context pair
 separately for pure numeric admission; live replacement withdraws admission
 without invoking the replacement. Owned services are destroyed by descriptor
 address even if the public operation/context was replaced.
+
+
+The production boundary oracle is `scripts/fixtures/namespace-boundary.c`, loaded
+through Id after Bootstrap constructs Runtime. It preserves exact null-name,
+owner-thread and storage-observation admission (including null-name precedence),
+and verifies that the selected operation remains callable from GC root callbacks.
+Run `bash scripts/runtime-services-test.sh PREFIX namespace`; the installed
+native-loading suite includes this matrix. The old aggregate initializer and
+provider exports are not involved in this check.

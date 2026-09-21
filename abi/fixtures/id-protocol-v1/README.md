@@ -71,7 +71,7 @@ Runtime retains completed [Id allocation primitives](../../primitive-allocation-
 for its internal construction and deferred materialization; production Heap no
 longer owns or borrows Id allocation records.
 
-[Registry operations](../../../docs/design/83-production-id-construction-and-lifetimes.md#removing-upper-access-to-id-registries)
+[Registry operations](../../../docs/design/83-implementation-history.md#removing-upper-access-to-id-registries)
 keep Symbol and dictionary ownership in Id. The independent C consumer checks
 non-interning name lookup and counts, ordered Symbol/behavior/key views,
 opaque shadowing, exact method/context results, mutation epochs and dictionary

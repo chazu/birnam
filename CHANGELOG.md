@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Move namespace admission and behavior/selector enumeration oracles onto
+  production native loading and include them in the installed native suite.
+  Consolidate namespace boundary fixtures and service runners. Document the
+  distinction between early native enumeration and Runtime namespace admission;
+  typed Id requests continue to validate behavior membership and operand types.
+
 - Verify that bounded and completed Machine returns beneath a synchronous
   native caller defer queued code release until the outer application return.
 

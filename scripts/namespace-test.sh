@@ -7,63 +7,7 @@ scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-namespace.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v20 -Iscripts/fixtures scripts/fixtures/namespace.c -o "$scratch/namespace"
 "$scratch/namespace" "$namespace_target/debug/libbirnam_id.dylib" provider
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v20 -Iscripts/fixtures scripts/fixtures/namespace-presence-boundary.c -o "$scratch/presence-boundary"
-python3 - "$scratch/presence-boundary" "$namespace_target/debug/libbirnam_id.dylib" <<'PY'
-import subprocess, sys
-cases = {
-    'null': 'IdApi.import name is null',
-    'owner': 'Rust floor entered from a non-owner thread',
-    'null-owner': 'IdApi.import name is null',
-    'observation': 'Id access during storage observation',
-    'null-observation': 'IdApi.import name is null',
-}
-for mode, diagnostic in cases.items():
-    result = subprocess.run([sys.argv[1], sys.argv[2], mode], capture_output=True, text=True)
-    assert result.returncode < 0, (mode, result)
-    assert result.stderr == 'birnam-id invariant failed: ' + diagnostic + '\n', (mode, result.stderr)
-result = subprocess.run([sys.argv[1], sys.argv[2], 'collection'], capture_output=True, text=True)
-assert result.returncode == 0 and not result.stderr, result
-assert result.stdout == 'presence remains callable during root collection\n', result.stdout
-print('namespace presence: null/owner/observation precedence and collection callbacks passed')
-PY
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v20 -Iscripts/fixtures scripts/fixtures/namespace-publication-boundary.c -o "$scratch/publication-boundary"
-python3 - "$scratch/publication-boundary" "$namespace_target/debug/libbirnam_id.dylib" <<'PY'
-import subprocess, sys
-cases = {
-    'null': 'IdApi.exportObj name is null',
-    'owner': 'Rust floor entered from a non-owner thread',
-    'null-owner': 'IdApi.exportObj name is null',
-    'observation': 'Id access during storage observation',
-    'null-observation': 'IdApi.exportObj name is null',
-}
-for mode, diagnostic in cases.items():
-    result = subprocess.run([sys.argv[1], sys.argv[2], mode], capture_output=True, text=True)
-    assert result.returncode < 0, (mode, result)
-    assert result.stderr == 'birnam-id invariant failed: ' + diagnostic + '\n', (mode, result.stderr)
-result = subprocess.run([sys.argv[1], sys.argv[2], 'collection'], capture_output=True, text=True)
-assert result.returncode == 0 and not result.stderr, result
-assert result.stdout == 'publication remains callable during root collection\n', result.stdout
-print('namespace publication: null/owner/observation precedence and collection callbacks passed')
-PY
-cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v20 -Iscripts/fixtures scripts/fixtures/namespace-import-boundary.c -o "$scratch/import-boundary"
-python3 - "$scratch/import-boundary" "$namespace_target/debug/libbirnam_id.dylib" <<'PY'
-import subprocess, sys
-cases = {
-    'null': 'IdApi.import name is null',
-    'owner': 'Rust floor entered from a non-owner thread',
-    'null-owner': 'IdApi.import name is null',
-    'observation': 'Id access during storage observation',
-    'null-observation': 'IdApi.import name is null',
-}
-for mode, diagnostic in cases.items():
-    result = subprocess.run([sys.argv[1], sys.argv[2], mode], capture_output=True, text=True)
-    assert result.returncode < 0, (mode, result)
-    assert result.stderr == 'birnam-id invariant failed: ' + diagnostic + '\n', (mode, result.stderr)
-result = subprocess.run([sys.argv[1], sys.argv[2], 'collection'], capture_output=True, text=True)
-assert result.returncode == 0 and not result.stderr, result
-assert result.stdout == 'import remains callable during root collection\n', result.stdout
-print('namespace import: null/owner/observation precedence and collection callbacks passed')
-PY
+bash scripts/runtime-services-test.sh "${1:-}" namespace
 
 cc -std=c11 -Wall -Wextra -Werror -Iabi/fixtures/idapi-v20 -Iscripts/fixtures scripts/fixtures/namespace-export-selection.c -o "$scratch/export-selection"
 python3 - "$scratch/export-selection" "$namespace_target/debug/libbirnam_id.dylib" <<'PYTEST'

@@ -1,12 +1,8 @@
-#ifdef FIXTURE_IDAPI_V11
-#include "idapi_v11.h"
-#else
 #include "idapi_v20.h"
-#endif
-#include "namespace-support.h"
-#include "trace-support.h"
+#include "reflection-fixture.h"
+
 #include <stdlib.h>
-static IdApi *api;
+static const VtableEnumerationV2 *enumeration;
 static Oop roots[64];
 static Oop created[64];
 static void mark_roots(MarkFn mark) { for(size_t i=0;i<64;i++)mark(roots[i]); }
@@ -16,32 +12,19 @@ __attribute__((noinline)) static void collect_now(void) {
     (void)api->gc_collect();
 }
 static size_t count(void) {
-#ifdef FIXTURE_IDAPI_V11
-    return api->vtable_count();
-#else
-    return vtable_count_v2(fixture_vtable_enumeration());
-#endif
+    return vtable_count_v2(enumeration);
 }
 static Oop at(size_t index) {
-#ifdef FIXTURE_IDAPI_V11
-    return api->vtable_at(index);
-#else
-    return vtable_at_v2(fixture_vtable_enumeration(),index);
-#endif
+    return vtable_at_v2(enumeration,index);
 }
-int main(int argc,char **argv) {
-    assert(argc==2);
-    void *floor=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(floor);
-    fixture_prepare_namespace(floor,argv[1]);
-    IdInitFn initialize=(IdInitFn)dlsym(floor,"id_init");assert(initialize);api=initialize();assert(api);
-    fixture_set_auto(0);fixture_mount_trace(api,argv[1],fixture_root_registry());
+static BirnamOutcome exercise(const BirnamProtocol *id,const BirnamOperand *args,size_t argc) {
+    (void)id;assert(argc==7);reflection_start(args,argc);enumeration=fixture_word(args[4]);
+    fixture_set_auto(0);
     fixture_register_root(mark_roots);fixture_set_precise(1);collect_now();
-#ifndef FIXTURE_IDAPI_V11
-    VtableEnumerationV2 *selected=fixture_vtable_enumeration();
+    const VtableEnumerationV2 *selected=enumeration;
     Dl_info owner;
     assert(dladdr((void *)selected->count,&owner) && strstr(owner.dli_fname,"libbirnam_object_model"));
     assert(dladdr((void *)selected->at,&owner) && strstr(owner.dli_fname,"libbirnam_object_model"));
-#endif
     size_t baseline=count();assert(baseline && at(0)==api->vtable_vt);
     Oop *original=malloc(baseline*sizeof(Oop));assert(original);
     for(size_t i=0;i<baseline;i++)original[i]=at(i);
@@ -62,4 +45,7 @@ int main(int argc,char **argv) {
     for(size_t i=0;i<baseline;i++)assert(at(i)==original[i]);
     free(original);
     puts("vtable enumeration: live append, bounds, weak membership, GC and survivor order passed");
+    return (BirnamOutcome){0};
 }
+
+FIXTURE_NATIVE_ENTRY(exercise)

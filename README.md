@@ -729,7 +729,7 @@ application and build driver.
 - `rust/birnam-trace/` — [live graph traversal](abi/trace-graph-v2.md), constructed before Runtime from Id storage facts and completed lifetime owners.
 - `rust/birnam-lifetime/` — payload descriptions, trace hooks, finalizer records and references held in native state, initialized through Id and adopted by Runtime; see [the native contract](abi/fixtures/lifetime-v2/README.md).
 - `rust/birnam-namespace/` — early publication/import, reverse aliases and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/namespace-owner-v1/README.md).
-- `rust/birnam-object-model/` — early private-behavior ownership/construction and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/object-model-owner-v1/README.md).
+- `rust/birnam-object-model/` — early private-behavior ownership/construction and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/object-model-owner-v1/README.md). The production namespace and enumeration checks run with `mise run reflection-boundaries`; see [Enumeration v2](abi/vtable-enumeration-v2.md).
 - `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for native System, Block and numeric methods.
 - `rust/birnam-source-loader/` — System source reading, staging, evaluation and diagnostics.
 - `rust/birnam-native-loader/` — System direct native-module loading, installed by Prelude.
