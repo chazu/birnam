@@ -1,5 +1,11 @@
 # Namespace import capability v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 A 32-byte caller-owned live descriptor: version 1, byte size, opaque context,
 and `import(context, const char *name) -> Oop`. The independent
 [C mirror](fixtures/namespace-import-v1/namespace_import_v1.h) fixes the layout.

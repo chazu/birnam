@@ -1,5 +1,11 @@
 # Native method observation v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 [81BI](../docs/design/81bi-production-method-observation.md) moves the single
 nullable native pre-overwrite callback from Id into Method Observation. This
 service owns replacement, snapshot selection and invocation. Id retains exact

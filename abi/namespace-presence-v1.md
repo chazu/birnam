@@ -1,5 +1,11 @@
 # Live Namespace presence v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 Design [81BB](../docs/design/81bb-production-namespace-presence.md) moves the
 canonical presence operation out of Id. The [C mirror](fixtures/namespace-presence-v1/namespace_presence_v1.h)
 defines a 32-byte arm64 descriptor: version 1 at 0, extent at 8, opaque context

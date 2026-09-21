@@ -2467,131 +2467,60 @@ impl InitialFloor {
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         let initialized = self.constructed_word(b"runtime")? as *mut IdApi;
         let values = self.initialize_runtime_values()?;
+        // Obtain completed services through Bootstrap and Id before moving the owner.
+        let presence = self.constructed_word(b"namespacePresence")? as *mut birnam_abi::namespace_presence::ApiV1;
+        if !unsafe { birnam_abi::namespace_presence::valid(presence) } {
+            return Err(FloorError::Namespace { path: self.source_path.with_file_name("libbirnam_namespace.dylib"), reason: "invalid namespacePresence capability" });
+        }
+        let import = self.constructed_word(b"namespaceImport")? as *mut birnam_abi::namespace_import::ApiV1;
+        if !unsafe { birnam_abi::namespace_import::valid(import) } {
+            return Err(FloorError::Namespace { path: self.source_path.with_file_name("libbirnam_namespace.dylib"), reason: "invalid namespaceImport capability" });
+        }
+        let export = self.constructed_word(b"namespaceExport")? as *mut birnam_abi::namespace_export::ApiV1;
+        if !unsafe { birnam_abi::namespace_export::valid(export) } {
+            return Err(FloorError::Namespace { path: self.source_path.with_file_name("libbirnam_namespace.dylib"), reason: "invalid namespaceExport capability" });
+        }
+        let vtables = self.constructed_word(b"vtables")? as *mut birnam_abi::vtable_enumeration::ApiV2;
+        if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } {
+            return Err(FloorError::VtableEnumeration { path: self.source_path.with_file_name("libbirnam_object_model.dylib"), reason: "invalid vtables capability" });
+        }
+        let observation = self.constructed_word(b"methodObservation")? as *mut birnam_abi::method_observation::ApiV1;
+        if !unsafe { birnam_abi::method_observation::valid(observation) } {
+            return Err(FloorError::MethodObservation { path: self.source_path.with_file_name("libbirnam_method_observation.dylib"), reason: "invalid methodObservation capability" });
+        }
+        let root_registry = self.constructed_word(b"rootRegistry")? as *mut birnam_abi::root_registry::ApiV1;
+        if !unsafe { birnam_abi::root_registry::valid(root_registry) } {
+            return Err(FloorError::RootRegistry { path: self.source_path.with_file_name("libbirnam_root_registry.dylib"), reason: "invalid rootRegistry capability" });
+        }
+        let gc_settings = self.constructed_word(b"gcSettings")? as *mut birnam_abi::gc_settings::ApiV1;
+        if !unsafe { birnam_abi::gc_settings::valid(gc_settings) } {
+            return Err(FloorError::GcSettings { path: self.source_path.with_file_name("libbirnam_gc_settings.dylib"), reason: "invalid gcSettings capability" });
+        }
+        let payload_layout = self.constructed_word(b"payloadLayout")? as *mut birnam_abi::payload_layout::ApiV1;
+        if !unsafe { birnam_abi::payload_layout::valid(payload_layout) } {
+            return Err(FloorError::PayloadLayout { path: self.source_path.with_file_name("libbirnam_payload_layout.dylib"), reason: "invalid payloadLayout capability" });
+        }
+        let trace_hooks = self.constructed_word(b"traceHooks")? as *mut birnam_abi::trace_hooks::ApiV1;
+        if !unsafe { birnam_abi::trace_hooks::valid(trace_hooks) } {
+            return Err(FloorError::TraceHooks { path: self.source_path.with_file_name("libbirnam_trace_hooks.dylib"), reason: "invalid traceHooks capability" });
+        }
+        let finalizers = self.constructed_word(b"finalizers")? as *mut birnam_abi::finalizers::ApiV1;
+        if !unsafe { birnam_abi::finalizers::valid(finalizers) } {
+            return Err(FloorError::Finalizers { path: self.source_path.with_file_name("libbirnam_finalizers.dylib"), reason: "invalid finalizers capability" });
+        }
+        let native_stack = self.constructed_word(b"nativeStack")? as *mut birnam_abi::native_stack::ApiV1;
+        if !unsafe { birnam_abi::native_stack::valid(native_stack) } {
+            return Err(FloorError::NativeStack { path: self.source_path.with_file_name("libbirnam_native_stack.dylib"), reason: "invalid nativeStack capability" });
+        }
         let Self { source_path, handle, id_protocol, bootstrap, .. } = self;
         // Id pins every entered native image, including the supporting factories.
         let _id_image = handle;
         let runtime_path = source_path.with_file_name("libbirnam_runtime.dylib");
-        let path = &source_path;
-        let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
-        let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
-        let observation_path = path.with_file_name("libbirnam_method_observation.dylib");
-        let root_registry_path = path.with_file_name("libbirnam_root_registry.dylib");
-        let gc_settings_path = path.with_file_name("libbirnam_gc_settings.dylib");
-        let payload_layout_path = path.with_file_name("libbirnam_payload_layout.dylib");
-        let trace_hooks_path = path.with_file_name("libbirnam_trace_hooks.dylib");
-        let finalizers_path = path.with_file_name("libbirnam_finalizers.dylib");
-        let native_stack_path = path.with_file_name("libbirnam_native_stack.dylib");
-
         let api = NonNull::new(initialized).ok_or(FloorError::NullApi)?;
-        // Acquire a lookup handle only after Id has loaded and initialized Runtime.
+        // Retain a handle for the remaining execution/image entry points only.
         let runtime_name = CString::new(path_bytes(&runtime_path)).map_err(|_| FloorError::EmbeddedNul)?;
         let handle = NonNull::new(unsafe { system_dlopen(runtime_name.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
             .ok_or(FloorError::OpenFailed)?;
-        let presence_provider = unsafe {
-            system_dlsym(handle.as_ptr(), c"birnam_namespace_presence_provider_v1".as_ptr())
-        };
-        if presence_provider.is_null() {
-            return Err(FloorError::Namespace { path: namespace_path, reason: "missing presence capability" });
-        }
-        let provide: birnam_abi::namespace_presence::ProviderV1 = unsafe { std::mem::transmute(presence_provider) };
-        let presence = unsafe { provide() };
-        if !unsafe { birnam_abi::namespace_presence::valid(presence) } {
-            return Err(FloorError::Namespace { path: namespace_path, reason: "invalid presence capability" });
-        }
-        let import_provider = unsafe {
-            system_dlsym(handle.as_ptr(), c"birnam_namespace_import_provider_v1".as_ptr())
-        };
-        if import_provider.is_null() {
-            return Err(FloorError::Namespace { path: namespace_path, reason: "missing import capability" });
-        }
-        let provide: birnam_abi::namespace_import::ProviderV1 = unsafe { std::mem::transmute(import_provider) };
-        let import = unsafe { provide() };
-        if !unsafe { birnam_abi::namespace_import::valid(import) } {
-            return Err(FloorError::Namespace { path: namespace_path, reason: "invalid import capability" });
-        }
-        let export_provider = unsafe {
-            system_dlsym(handle.as_ptr(), c"birnam_namespace_export_provider_v1".as_ptr())
-        };
-        if export_provider.is_null() {
-            return Err(FloorError::Namespace { path: namespace_path, reason: "missing export capability" });
-        }
-        let provide: birnam_abi::namespace_export::ProviderV1 = unsafe { std::mem::transmute(export_provider) };
-        let export = unsafe { provide() };
-        if !unsafe { birnam_abi::namespace_export::valid(export) } {
-            return Err(FloorError::Namespace { path: namespace_path, reason: "invalid export capability" });
-        }
-        let vtables_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_vtable_enumeration_provider_v2".as_ptr()) };
-        if vtables_provider.is_null() {
-            return Err(FloorError::VtableEnumeration { path: object_model_path, reason: "missing capability" });
-        }
-        let provide: birnam_abi::vtable_enumeration::ProviderV2 = unsafe { std::mem::transmute(vtables_provider) };
-        let vtables = unsafe { provide() };
-        if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } {
-            return Err(FloorError::VtableEnumeration { path: object_model_path, reason: "invalid capability" });
-        }
-        let observation_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_method_observation_provider_v1".as_ptr()) };
-        if observation_provider.is_null() {
-            return Err(FloorError::MethodObservation { path: observation_path, reason: "missing capability" });
-        }
-        let provide: birnam_abi::method_observation::ProviderV1 = unsafe { std::mem::transmute(observation_provider) };
-        let observation = unsafe { provide() };
-        if !unsafe { birnam_abi::method_observation::valid(observation) } {
-            return Err(FloorError::MethodObservation { path: observation_path, reason: "invalid capability" });
-        }
-        let root_registry_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_root_registry_provider_v1".as_ptr()) };
-        if root_registry_provider.is_null() {
-            return Err(FloorError::RootRegistry { path: root_registry_path, reason: "missing capability" });
-        }
-        let provide: birnam_abi::root_registry::ProviderV1 = unsafe { std::mem::transmute(root_registry_provider) };
-        let root_registry = unsafe { provide() };
-        if !unsafe { birnam_abi::root_registry::valid(root_registry) } {
-            return Err(FloorError::RootRegistry { path: root_registry_path, reason: "invalid capability" });
-        }
-        let gc_settings_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_gc_settings_provider_v1".as_ptr()) };
-        if gc_settings_provider.is_null() {
-            return Err(FloorError::GcSettings { path: gc_settings_path, reason: "missing capability" });
-        }
-        let provide: birnam_abi::gc_settings::ProviderV1 = unsafe { std::mem::transmute(gc_settings_provider) };
-        let gc_settings = unsafe { provide() };
-        if !unsafe { birnam_abi::gc_settings::valid(gc_settings) } {
-            return Err(FloorError::GcSettings { path: gc_settings_path, reason: "invalid capability" });
-        }
-        let payload_layout_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_payload_layout_provider_v1".as_ptr()) };
-        if payload_layout_provider.is_null() {
-            return Err(FloorError::PayloadLayout { path: payload_layout_path, reason: "missing capability" });
-        }
-        let provide: birnam_abi::payload_layout::ProviderV1 = unsafe { std::mem::transmute(payload_layout_provider) };
-        let payload_layout = unsafe { provide() };
-        if !unsafe { birnam_abi::payload_layout::valid(payload_layout) } {
-            return Err(FloorError::PayloadLayout { path: payload_layout_path, reason: "invalid capability" });
-        }
-        let trace_hooks_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_trace_hooks_provider_v1".as_ptr()) };
-        if trace_hooks_provider.is_null() {
-            return Err(FloorError::TraceHooks { path: trace_hooks_path, reason: "missing capability" });
-        }
-        let provide: birnam_abi::trace_hooks::ProviderV1 = unsafe { std::mem::transmute(trace_hooks_provider) };
-        let trace_hooks = unsafe { provide() };
-        if !unsafe { birnam_abi::trace_hooks::valid(trace_hooks) } {
-            return Err(FloorError::TraceHooks { path: trace_hooks_path, reason: "invalid capability" });
-        }
-        let finalizers_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_finalizers_provider_v1".as_ptr()) };
-        if finalizers_provider.is_null() {
-            return Err(FloorError::Finalizers { path: finalizers_path, reason: "missing capability" });
-        }
-        let provide: birnam_abi::finalizers::ProviderV1 = unsafe { std::mem::transmute(finalizers_provider) };
-        let finalizers = unsafe { provide() };
-        if !unsafe { birnam_abi::finalizers::valid(finalizers) } {
-            return Err(FloorError::Finalizers { path: finalizers_path, reason: "invalid capability" });
-        }
-        let native_stack_provider = unsafe { system_dlsym(handle.as_ptr(), c"birnam_native_stack_provider_v1".as_ptr()) };
-        if native_stack_provider.is_null() {
-            return Err(FloorError::NativeStack { path: native_stack_path, reason: "missing capability" });
-        }
-        let provide: birnam_abi::native_stack::ProviderV1 = unsafe { std::mem::transmute(native_stack_provider) };
-        let native_stack = unsafe { provide() };
-        if !unsafe { birnam_abi::native_stack::valid(native_stack) } {
-            return Err(FloorError::NativeStack { path: native_stack_path, reason: "invalid capability" });
-        }
         Ok(LoadedFloor {
             values,
             bootstrap,

@@ -1,5 +1,11 @@
 # Native root registry v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 Design [81BJ](../docs/design/81bj-production-root-provider-registry.md) extracts
 only the ordered native root-provider list, append policy and copied snapshots.
 The [independent C mirror](fixtures/root-registry-v1/root_registry_v1.h) defines

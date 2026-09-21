@@ -84,3 +84,34 @@ nor introduce a later-filled provider slot.
 request `(Bytes("namespaceNames"), Word(Runtime API))`. It returns the existing
 namespace-name API v1 used by Portable Code and Codegen, with the same Runtime/Id
 identity checks as the other namespace views.
+
+## Completed service selection
+
+After Runtime construction, load `libbirnam_runtime.dylib` through Id with two
+operands: `Bytes(request)` and `Word(runtime_api)`. The result is
+`Word(descriptor)`, borrowing the already completed Runtime service. The supplied
+Id protocol and Runtime API must match that Runtime. Unknown requests or a
+mismatched API return native `InvalidRequest`.
+
+| Request | Descriptor |
+|---|---|
+| `namespacePresence` | `namespace_presence::ApiV1` |
+| `namespaceImport` | `namespace_import::ApiV1` |
+| `namespaceExport` | `namespace_export::ApiV1` |
+| `namespaceNames` | `namespace_names::ApiV1` |
+| `vtables` | `vtable_enumeration::ApiV2` |
+| `methodObservation` | `method_observation::ApiV1` |
+| `rootRegistry` | `root_registry::ApiV1` |
+| `gcSettings` | `gc_settings::ApiV1` |
+| `payloadLayout` | `payload_layout::ApiV1` |
+| `traceHooks` | `trace_hooks::ApiV1` |
+| `finalizers` | `finalizers::ApiV1` |
+| `nativeStack` | `native_stack::ApiV1` |
+
+Bootstrap exposes the same named requests to host construction. It completes
+Runtime before selecting a service. Selection returns the same live descriptor
+on repeated requests, preserving its context, admission callbacks and ownership.
+These requests replace the twelve private `birnam_*_provider_*` exports for
+these services. Native consumers receive only their declared dependencies.
+The separate `compiler` request constructs the later compiler extension; it is
+not one of these existing-service queries.

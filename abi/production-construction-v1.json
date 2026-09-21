@@ -906,6 +906,84 @@
       "operations": "Complete Birnam grammar and source parsing"
     },
     {
+      "name": "runtime.rootRegistry",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "rootRegistry"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed rootRegistry view; no new owner"
+    },
+    {
+      "name": "runtime.gcSettings",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "gcSettings"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed gcSettings view; no new owner"
+    },
+    {
+      "name": "runtime.payloadLayout",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "payloadLayout"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed payloadLayout view; no new owner"
+    },
+    {
+      "name": "runtime.traceHooks",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "traceHooks"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed traceHooks view; no new owner"
+    },
+    {
+      "name": "runtime.finalizers",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "finalizers"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed finalizers view; no new owner"
+    },
+    {
+      "name": "runtime.nativeStack",
+      "library": "libbirnam_runtime.dylib",
+      "entry": "birnam_native_module_v1",
+      "receiver": "Id",
+      "request": [
+        "nativeStack"
+      ],
+      "predecessors": [
+        "runtime"
+      ],
+      "operations": "Completed nativeStack view; no new owner"
+    },
+    {
       "name": "runtime.compiler",
       "library": "libbirnam_runtime.dylib",
       "entry": "birnam_native_module_v1",

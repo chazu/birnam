@@ -1,5 +1,11 @@
 # Namespace export capability v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 A 32-byte live descriptor: version 1, byte size, opaque context, and
 `export(context, const char *name, Oop value) -> Oop`. The independent
 [C mirror](fixtures/namespace-export-v1/namespace_export_v1.h) fixes its layout.

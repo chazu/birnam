@@ -1,5 +1,11 @@
 # Payload Layout v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 This native module owns the existing exact-vtable payload descriptions. See
 [81BL](../docs/design/81bl-production-payload-layout.md) for the ownership audit,
 caller migration and validation status.

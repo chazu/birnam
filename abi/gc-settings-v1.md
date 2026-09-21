@@ -1,5 +1,11 @@
 # Native GC settings v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 Design [81BK](../docs/design/81bk-production-gc-settings.md) moves the two GC
 flags and the existing automatic-collection predicate into `birnam-gc-settings`.
 The [independent C mirror](fixtures/gc-settings-v1/gc_settings_v1.h) fixes three

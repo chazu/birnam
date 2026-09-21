@@ -1,5 +1,11 @@
 # Vtable enumeration v2
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 [81BH](../docs/design/81bh-production-selector-enumeration.md) extends
 [v1](vtable-enumeration-v1.md) with direct ordered-key observation. Object Model
 owns count and checked selection; Id owns its registry and dictionaries. All

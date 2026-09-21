@@ -2392,3 +2392,37 @@ the installation byte for byte. Evidence: `.cargo-target/83-owned-lookup-evidenc
 Internal C-address aliases for typed allocation/delegation, old native exports
 and direct C fixture consumers still require cleanup. Worker readiness and the
 complete acceptance/documentation audit remain open. Release validation is waived.
+
+
+### Host service selection through completed native construction
+
+`InitialFloor::finish` now requests its eleven completed Runtime services through
+Bootstrap. Bootstrap selects each service by loading Runtime through Id with
+`Bytes(name), Word(runtime_api)`, using the same native entry as later module
+construction. The host no longer discovers these services with `dlsym`.
+Runtime returns its existing live descriptors, preserving their contexts,
+admission callbacks and ownership. No new owner or second service instance is
+introduced, and Id has no knowledge of the service names.
+
+The twelve private provider exports for namespace presence/import/export/names,
+vtable enumeration, method observation, roots, GC settings, payload layouts,
+trace hooks, finalizers and native stack are removed. The export inventory and
+construction manifest describe the resulting interface; the latter now includes
+six additional completed-service queries. Runtime's handle remains in the host
+for separate execution/image entry points, which still require cleanup.
+
+The ABI overview and Runtime construction contract document the current service
+requests. The older capability pages explicitly mark their pre-Id construction
+and provider accounts as historical. Unmigrated direct C fixture harnesses still
+refer to retired APIs; they are not a supported production loading path and
+remain part of the outstanding fixture migration/retirement audit.
+
+Validation against `/tmp/birnam-83-completed-services` passes: the debug install,
+85 host tests (one ignored), the complete native loading suite and native-loader
+image checks across startup, source-free compiled loading, mapped images and
+baked execution. Installed export inventories confirm the providers are absent.
+All three changed production Rust files match installed sources byte for byte;
+the construction manifest hash matches the installation receipt. Evidence is
+recorded in `.cargo-target/83-completed-services-evidence.json`. Release validation
+remains waived. Worker readiness and the full Design 82/83 acceptance audit
+remain open.

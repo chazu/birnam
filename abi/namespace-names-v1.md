@@ -1,5 +1,11 @@
 # Namespace reverse names v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 Design [81AX](../docs/design/81ax-production-namespace-names.md) moves
 `exportedNameOf` out of IdApi. IdApi v8 contains 33 fields / 264 bytes; rebuild all
 native consumers. No aggregate forwarding entry remains.

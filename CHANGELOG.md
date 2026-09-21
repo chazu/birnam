@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Select completed Runtime services through Bootstrap and Id during host startup.
+  Remove twelve private service-provider exports and their host symbol discovery;
+  document the native requests and extend the construction manifest.
+
 - Require owned Method or nil from Object-valued C lookup callbacks. Remove raw
   address recovery, nested result scopes and temporary bootstrap mutation wrappers;
   retain exact native function/context pairs throughout lookup.

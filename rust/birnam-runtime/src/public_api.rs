@@ -582,11 +582,6 @@ pub(crate) fn namespace_name_access() -> birnam_abi::namespace_names::FloorV1 {
         symbol_name: Some(symbol_name),
     }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_namespace_names_provider_v1()
--> *mut birnam_abi::namespace_names::ApiV1 {
-    runtime().namespace_names()
-}
 
 
 use birnam_abi::namespace_enumeration::{CountV1, NameAtV1, PublicationV1};
@@ -622,10 +617,6 @@ pub(crate) fn namespace_presence_access() -> birnam_abi::namespace_presence::Flo
         intern: Some(crate::runtime::namespace_intern),
     }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_namespace_presence_provider_v1() -> *mut birnam_abi::namespace_presence::ApiV1 {
-    runtime().namespace_presence()
-}
 
 pub(crate) fn namespace_import_access() -> birnam_abi::namespace_import::FloorV1 {
     unsafe extern "C" fn access(_: *mut c_void) -> *mut c_void {
@@ -640,10 +631,6 @@ pub(crate) fn namespace_import_access() -> birnam_abi::namespace_import::FloorV1
         context: core::ptr::null_mut(), access: Some(access),
         intern: Some(crate::runtime::namespace_intern),
     }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_namespace_import_provider_v1() -> *mut birnam_abi::namespace_import::ApiV1 {
-    runtime().namespace_import()
 }
 
 
@@ -661,10 +648,6 @@ pub(crate) fn namespace_export_access() -> birnam_abi::namespace_export::FloorV1
         intern: Some(crate::runtime::namespace_intern),
         mirror: Some(crate::runtime::namespace_mirror),
     }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_namespace_export_provider_v1() -> *mut birnam_abi::namespace_export::ApiV1 {
-    runtime().namespace_export()
 }
 
 
@@ -692,10 +675,6 @@ pub unsafe extern "C" fn birnam_vtable_enumeration_dependency_v2(
 ) -> c_int {
     unsafe { birnam_abi::vtable_enumeration::attach(factory) }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_vtable_enumeration_provider_v2() -> *mut birnam_abi::vtable_enumeration::ApiV2 {
-    runtime().vtable_enumeration()
-}
 
 pub(crate) fn method_observation_access() -> birnam_abi::method_observation::FloorV1 {
     unsafe extern "C" fn admit(_: *mut c_void) {
@@ -715,10 +694,6 @@ pub unsafe extern "C" fn birnam_method_observation_dependency_v1(
     factory: *const birnam_abi::method_observation::FactoryV1,
 ) -> c_int {
     unsafe { birnam_abi::method_observation::attach(factory) }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_method_observation_provider_v1() -> *mut birnam_abi::method_observation::ApiV1 {
-    runtime().method_observation()
 }
 
 
@@ -743,10 +718,6 @@ pub unsafe extern "C" fn birnam_root_registry_dependency_v1(
 ) -> c_int {
     unsafe { birnam_abi::root_registry::attach(factory) }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_root_registry_provider_v1() -> *mut birnam_abi::root_registry::ApiV1 {
-    runtime().root_registry()
-}
 
 pub(crate) fn gc_settings_access() -> birnam_abi::gc_settings::FloorV1 {
     unsafe extern "C" fn admit(_: *mut c_void) {
@@ -765,10 +736,6 @@ pub unsafe extern "C" fn birnam_gc_settings_dependency_v1(
     factory: *const birnam_abi::gc_settings::FactoryV1,
 ) -> c_int {
     unsafe { birnam_abi::gc_settings::attach(factory) }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_gc_settings_provider_v1() -> *mut birnam_abi::gc_settings::ApiV1 {
-    runtime().gc_settings()
 }
 
 pub(crate) fn payload_layout_access() -> birnam_abi::payload_layout::FloorV1 {
@@ -800,10 +767,6 @@ pub unsafe extern "C" fn birnam_payload_layout_dependency_v1(
 ) -> c_int {
     unsafe { birnam_abi::payload_layout::attach(factory) }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_payload_layout_provider_v1() -> *mut birnam_abi::payload_layout::ApiV1 {
-    runtime().payload_layout()
-}
 
 pub(crate) fn trace_hooks_access() -> birnam_abi::trace_hooks::FloorV1 {
     use birnam_abi::trace_hooks::{FloorV1, SlotV1};
@@ -825,10 +788,6 @@ pub(crate) fn trace_hooks_access() -> birnam_abi::trace_hooks::FloorV1 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_trace_hooks_dependency_v1(factory: *const birnam_abi::trace_hooks::FactoryV1) -> c_int {
     unsafe { birnam_abi::trace_hooks::attach(factory) }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_trace_hooks_provider_v1() -> *mut birnam_abi::trace_hooks::ApiV1 {
-    runtime().trace_hooks()
 }
 
 pub(crate) fn finalizers_access() -> birnam_abi::finalizers::FloorV1 {
@@ -861,10 +820,6 @@ pub(crate) fn finalizers_access() -> birnam_abi::finalizers::FloorV1 {
 pub unsafe extern "C" fn birnam_finalizers_dependency_v1(factory: *const birnam_abi::finalizers::FactoryV1) -> c_int {
     unsafe { birnam_abi::finalizers::attach(factory) }
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_finalizers_provider_v1() -> *mut birnam_abi::finalizers::ApiV1 {
-    runtime().finalizers()
-}
 
 pub(crate) fn native_stack_access() -> birnam_abi::native_stack::FloorV1 {
     unsafe extern "C" fn admit(_: *mut c_void) {
@@ -881,10 +836,6 @@ pub(crate) fn native_stack_access() -> birnam_abi::native_stack::FloorV1 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn birnam_native_stack_dependency_v4(factory: *const birnam_abi::native_stack::FactoryV4) -> c_int {
     unsafe { birnam_abi::native_stack::attach(factory) }
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_stack_provider_v1() -> *mut birnam_abi::native_stack::ApiV1 {
-    runtime().native_stack()
 }
 
 #[unsafe(no_mangle)]
@@ -952,10 +903,16 @@ pub(crate) fn construction_service(id: &birnam_abi::id_protocol::Protocol, api: 
     match name {
         b"namespacePresence" => Some(runtime.namespace_presence().addr()),
         b"namespaceImport" => Some(runtime.namespace_import().addr()),
-        b"namespaceNames" => Some(unsafe { birnam_namespace_names_provider_v1() }.addr()),
-        b"namespaceExport" => Some(unsafe { birnam_namespace_export_provider_v1() }.addr()),
-        b"vtables" => Some(unsafe { birnam_vtable_enumeration_provider_v2() }.addr()),
-        b"methodObservation" => Some(unsafe { birnam_method_observation_provider_v1() }.addr()),
+        b"namespaceExport" => Some(runtime.namespace_export().addr()),
+        b"vtables" => Some(runtime.vtable_enumeration().addr()),
+        b"methodObservation" => Some(runtime.method_observation().addr()),
+        b"rootRegistry" => Some(runtime.root_registry().addr()),
+        b"gcSettings" => Some(runtime.gc_settings().addr()),
+        b"payloadLayout" => Some(runtime.payload_layout().addr()),
+        b"traceHooks" => Some(runtime.trace_hooks().addr()),
+        b"finalizers" => Some(runtime.finalizers().addr()),
+        b"nativeStack" => Some(runtime.native_stack().addr()),
+        b"namespaceNames" => Some(runtime.namespace_names().addr()),
         _ => None,
     }
 }

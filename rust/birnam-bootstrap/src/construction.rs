@@ -1152,6 +1152,19 @@ impl Construction {
                 ))
             }
             b"runtime" => Ok(Operand::word(self.initialize_runtime()?.addr())),
+            // These are the completed Runtime services, selected through Id.
+            b"namespacePresence" => self.runtime_service(stage),
+            b"namespaceImport" => self.runtime_service(stage),
+            b"namespaceExport" => self.runtime_service(stage),
+            b"vtables" => self.runtime_service(stage),
+            b"methodObservation" => self.runtime_service(stage),
+            b"rootRegistry" => self.runtime_service(stage),
+            b"gcSettings" => self.runtime_service(stage),
+            b"payloadLayout" => self.runtime_service(stage),
+            b"traceHooks" => self.runtime_service(stage),
+            b"finalizers" => self.runtime_service(stage),
+            b"nativeStack" => self.runtime_service(stage),
+            b"namespaceNames" => self.runtime_service(stage),
             b"errorValue" => Ok(Operand::word(self.initialize_error_value()?.addr())),
             b"printing" => Ok(Operand::word(self.initialize_printing()?.addr())),
             b"blockLoop" => Ok(Operand::word(self.initialize_block_loop()?.addr())),

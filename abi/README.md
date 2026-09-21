@@ -43,26 +43,20 @@ Design 81BF removes `exportObj` into the explicit [Namespace export capability](
 Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
 following 81BB's [presence capability](namespace-presence-v1.md).
 The earlier aggregate initialization signature is retained only by unmigrated native exports and fixtures.
-All native modules must be rebuilt for this signature and IdApi v20.
-After `id_init`, the selected floor exposes `birnam_namespace_presence_provider_v1`,
-`birnam_namespace_import_provider_v1` and `birnam_namespace_export_provider_v1`. The host and Native Loader pass these
-selections explicitly. The floor also supplies `birnam_vtable_enumeration_provider_v2`
-from the Object Model factory prepared before Id initialization. The Method Observation
-factory is also prepared before Id; `birnam_method_observation_provider_v1` supplies
-its matching registration capability as the seventh initialization argument. The
-Root Registry factory is prepared before Id and exposes
-`birnam_root_registry_provider_v1` as the eighth argument. GC Settings is also prepared before Id;
-`birnam_gc_settings_provider_v1` supplies the ninth argument. Payload Layout is
-prepared before Id and exposes `birnam_payload_layout_provider_v1` as the tenth
-argument. Trace Hooks is prepared before Id and exposes
-`birnam_trace_hooks_provider_v1` as the eleventh argument. Finalizers is also prepared before Id and exposes
-`birnam_finalizers_provider_v1` as the twelfth argument. Native Stack is prepared
-before Id and exposes `birnam_native_stack_provider_v1` directly to the host;
-initialization stays at twelve arguments and Native Loader stays v12. Modules capture matching live capabilities when they save
-their execution API; incoming registration/adoption uses the incoming selection
-at its original call points. There is no API-address registry or production
-callback-slot loan. Code, contexts and descriptors must remain valid for every
-retained API use. Image encoding and language behavior are unchanged.
+Native modules use the common Id loading protocol and declare their completed
+inputs in the [production construction manifest](production-construction-v1.json).
+Bootstrap constructs the dependencies, then passes each module its required
+operands. There is no aggregate `module_init` argument list in production.
+
+The host obtains completed Runtime services through Bootstrap, which selects
+those services through Id's native loading protocol. The old namespace,
+enumeration, observation, roots, settings, layouts, hooks, finalizers and native
+stack provider exports are removed. See [Runtime service selection](runtime-construction-v15.md#completed-service-selection)
+for the request names. Selection returns the existing descriptor with its live
+operations and context; it neither creates another owner nor changes admission
+or lifetime rules. A retained descriptor and its code/context must remain valid
+for every use. Historical Design 81 ABI pages retain their original construction
+accounts; Design 83 and the construction manifest supersede those accounts.
 
 Design 81AX moves `exportedNameOf` to the explicit [Namespace names capability](namespace-names-v1.md).
 Design 81X removes three String fields into an explicit [String dependency](string-v1.md).

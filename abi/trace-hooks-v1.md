@@ -1,5 +1,11 @@
 # Trace Hooks v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 This native module owns hook registration and bounded inherited-hook selection.
 See [81BM](../docs/design/81bm-production-trace-hooks.md) for the ownership audit
 and validation status. The existing Trace module owns traversal; Id invokes

@@ -1,5 +1,11 @@
 # Native Stack v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 [81BO](../docs/design/81bo-production-native-stack-anchor.md) moves each Runtime's
 native stack-anchor state into `libbirnam_native_stack.dylib`. The host prepares
 and pins `birnam_native_stack_factory_v1` before Id initialization, attaching it

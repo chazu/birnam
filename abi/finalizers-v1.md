@@ -1,5 +1,11 @@
 # Finalizers v1
 
+> **Construction update (Design 83):** The pre-Id preparation, aggregate
+> initialization and private provider exports described below are historical.
+> Production constructs this service above Id and passes completed dependencies
+> explicitly. Host selection uses [Runtime service requests](runtime-construction-v15.md#completed-service-selection),
+> through Bootstrap and Id; the old provider export is removed.
+
 Native finalizer registration and inline attachment construction move from Id
 into `libbirnam_finalizers.dylib` in [81BN](../docs/design/81bn-production-finalizers.md).
 Collect retains detach/call/reclaim ordering; Id retains exact allocation facts
