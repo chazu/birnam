@@ -208,3 +208,6 @@ EOF
 done
 
 printf 'portable-image-v8-smoke: boxed identity, nested source-less meaning, CodeBinding recovery, ordinary/rebuild entry, baked entry, resave, and boundary admission passed\n'
+
+# Normal startup must use all saved compiled code, including source-defined methods.
+bash scripts/compiled-image-startup-smoke.sh "$prefix"

@@ -31,9 +31,9 @@ answers `#methodNotImageable`, including when it has a private behavior. Save
 the information needed to find the method, and call `methodFor:` after boot.
 The canonical `Method` prototype is a normal named native reference.
 
-Closures still cannot serialize as ordinary values. Keep shared blocks in methods
-that answer fresh blocks, or in top-level `let` globals whose source-backed recovery
-contract can rederive them.
+Portable Blocks and CodeObjects retain their code and captures in the image.
+Source-backed global restoration uses the saved compiled generation. Process-local
+native resources need an explicit restoration recipe.
 
 `System saveImage:` is deliberately the only image-save workflow. It persists the
 current runtime state through the low-level atomic full-save primitive; source
@@ -53,8 +53,11 @@ birnam --rebuild /tmp/app.image
 ```
 
 Normal boot validates the image format, source-map authority, generation digest,
-code checksum, and code-to-generation binding before mapping executable bytes.
-There is deliberately no old-format migration path.
+code checksum, and code-to-generation binding, then maps the saved compiled code.
+Images save both the portable Block/binding unit and the compiled source-generation
+unit. Source-defined methods are compiled when saving, not on every startup.
+An earlier v8 image missing the source-generation unit uses embedded-source
+recovery and reports that outcome; there is no old-format migration path.
 
 `--rebuild` skips the captured native unit, recompiles the same accepted
 GenerationProjection from durable source and selection, and maps that fresh

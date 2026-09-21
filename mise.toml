@@ -357,3 +357,7 @@ run = "scripts/storage-tracing-test.sh"
 [tasks.live-tracing]
 description = "Check production GC through the loaded tracer with focused debug fixtures"
 run = "scripts/live-tracing-test.sh"
+
+[tasks.compiled-image-startup]
+description = "Check compiled image/baked startup without source compilation and explicit recovery"
+run = 'bash scripts/compiled-image-startup-smoke.sh "${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"'

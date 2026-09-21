@@ -138,6 +138,7 @@ const GENERATION_METHOD_SOURCES_SELECTOR: &[u8] = b"generationMethodSources\0";
 const CURRENT_GENERATION_DIGEST_SELECTOR: &[u8] = b"currentGenerationDigest\0";
 const COMPILE_IMAGE_CODE_SELECTOR: &[u8] = b"compileImageCode:\0";
 const COMPILE_IMAGE_CODE_MANIFEST_SELECTOR: &[u8] = b"compileImageCode:manifest:\0";
+const LOAD_IMAGE_CODE_SELECTOR: &[u8] = b"loadImageCode:manifest:\0";
 const REBUILD_IMAGE_CODE_SELECTOR: &[u8] = b"rebuildImageCode\0";
 const REPLAY_ALIENS_SELECTOR: &[u8] = b"replayAliens\0";
 const DERIVE_IMAGE_GLOBALS_SELECTOR: &[u8] = b"deriveImageGlobals\0";
@@ -5156,10 +5157,14 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
     let generation = unsafe { durable_current_generation(api) };
     let recovering = IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
         && RUNTIME_PHASE.load(Ordering::Acquire) == PHASE_IMAGE_RECOVERY;
+    // Authored DispatchGeneration initializes G0 directly in Store. The native
+    // lifecycle cache is populated only by native initialization/publication;
+    // its absence does not invalidate the durable generation checked below.
+    let active = ACTIVE_GENERATION.load(Ordering::Acquire);
     if generation.is_null() || generation == api.nilObj
-        || (!recovering && ACTIVE_GENERATION.load(Ordering::Acquire) as Oop != generation)
+        || (!recovering && active != 0 && active as Oop != generation)
     {
-        note_error(b"RustCodegen image generation is stale");
+        note_error(b"RustCodegen image generation is not current");
         return api.nilObj;
     }
     let source_map = unsafe {
@@ -5377,6 +5382,81 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
         return api.nilObj;
     }
     result
+}
+
+/// Validate a saved generation and admit its compiled unit without recompilation.
+unsafe extern "C" fn rust_codegen_load_image_code(
+    self_object: Oop,
+    pointer: *const Oop,
+    count: usize,
+) -> Oop {
+    let api = unsafe { api(runtime()) };
+    clear_error();
+    let Some(values) = (unsafe { borrowed_oop_args(pointer, count) }) else {
+        return api.nilObj;
+    };
+    if values.len() != 2
+        || !IMAGE_DISPATCH_RECOVERY.load(Ordering::Acquire)
+        || RUNTIME_PHASE.load(Ordering::Acquire) != PHASE_IMAGE_RECOVERY
+    {
+        note_error(b"RustCodegen image code loading requires recovery and code/manifest Strings");
+        return api.nilObj;
+    }
+    let (Some(code), Some(manifest)) = (unsafe { string_bytes(api, values[0]) }, unsafe {
+        string_bytes(api, values[1])
+    }) else {
+        return api.nilObj;
+    };
+    let generation = unsafe { durable_current_generation(api) };
+    if !unsafe { durable_generation_is_canonical(api, generation) } {
+        note_error(b"RustCodegen saved image generation is not canonical");
+        return api.nilObj;
+    }
+    let Some(authority) = (unsafe { durable_generation_base_digest(api, generation) })
+        .and_then(|digest| decode_hex_digest(&digest))
+    else {
+        note_error(b"RustCodegen saved image authority is unavailable");
+        return api.nilObj;
+    };
+    if resumable_manifest::inspect(&manifest, authority).is_err() || !candidate_macho_safe(&code) {
+        note_error(b"RustCodegen saved image code or manifest is invalid");
+        return api.nilObj;
+    }
+    let sequence = IMAGE_CODE_LOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!(
+        "birnam-image-generation-{}-{sequence}.dylib",
+        std::process::id()
+    ));
+    let wrote = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .and_then(|mut file| file.write_all(&code));
+    if wrote.is_err() {
+        return api.nilObj;
+    }
+    struct Cleanup<'a>(&'a Path);
+    impl Drop for Cleanup<'_> {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(self.0);
+        }
+    }
+    let _cleanup = Cleanup(&path);
+    let bytes = path.as_os_str().as_bytes();
+    let path_object = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
+    // The existing artifact loader checks exported ABI/descriptor/manifest,
+    // stages exact entries and retains the mapped code for their lifetime.
+    unsafe {
+        rust_codegen_load_impl(
+            self_object,
+            &path_object,
+            1,
+            ResumableLoadPolicy::Expected(ResumableLoadExpectation {
+                authority,
+                manifest: &manifest,
+            }),
+        )
+    }
 }
 
 /// Recompile the durable generation's exact accepted projection and map the
@@ -13179,6 +13259,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         );
         (api.method)(
             runtime.rust_codegen_vt as Oop,
+            intern(api, LOAD_IMAGE_CODE_SELECTOR),
+            rust_codegen_load_image_code,
+        );
+        (api.method)(
+            runtime.rust_codegen_vt as Oop,
             intern(api, REBUILD_IMAGE_CODE_SELECTOR),
             rust_codegen_rebuild_image_code,
         );
@@ -13658,6 +13743,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             rust_codegen_compile_image_code
         );
         adapter_method!(REBUILD_IMAGE_CODE_SELECTOR, rust_codegen_rebuild_image_code);
+        adapter_method!(LOAD_IMAGE_CODE_SELECTOR, rust_codegen_load_image_code);
         adapter_method!(GENERATION_SOURCES_SELECTOR, rust_codegen_generation_sources);
         adapter_method!(
             GENERATION_METHOD_SOURCES_SELECTOR,

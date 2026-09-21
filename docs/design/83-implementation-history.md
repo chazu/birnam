@@ -2405,3 +2405,51 @@ detached finalized-owner tests. It uses a counted native release callback to
 observe checkpoint ordering; the installed image tests separately exercise
 mapped code. No production policy or deadline changed. Full section 6 acceptance
 still requires the remaining migration and worker checks recorded above.
+
+### Restore saved compiled code during ordinary image startup
+
+Image-v8 saved the portable code unit but omitted the compiled source-generation
+unit. The host compensated with an unconditional `rebuildImageCode` send even
+when native mapping succeeded. New saves include both units and the generation
+manifest in a versioned bundle inside the checksummed Code record. The image
+loader maps and admits the saved generation through the existing artifact
+ABI/manifest and lifetime machinery. The host no longer requests a rebuild.
+Explicit `--rebuild` and earlier v8 images missing that unit use embedded-source
+recovery; malformed saved units are rejected. Canonical source-map, digest and
+selection validation remains part of admission.
+
+The authored `DispatchGeneration` initializer creates G0 in Store without filling
+the native lifecycle cache. Image compilation now accepts that absence while
+still rejecting a conflicting cached generation and validating the full durable
+projection. This makes the existing generation compiler usable at save time.
+
+`scripts/compiled-image-startup-smoke.sh` runs real production startup, disables
+source compilation/evaluation entries before loading, and checks mapped and baked
+application entry after deleting the input source. It also checks explicit and
+missing-unit recovery. An independent Python reader checks bundle lengths, both
+Mach-O units and the outer checksum, then constructs malformed-manifest, empty-unit
+and trailing-byte rejection cases. The ordinary portable-image suite includes
+this regression. The new format is documented in the portable-code ABI guide;
+the image user guide describes compilation at save time and direct compiled boot.
+
+Debug evidence uses `/tmp/birnam-83-compiled-image-v3`: 120 Image/Host/Codegen unit
+tests passed with five existing ignores. The complete portable-image suite and
+its compiled-image regression pass. Evidence is recorded in
+`.cargo-target/83-compiled-image-evidence.json`.
+Worker wire readiness is 7.48 seconds (previously 10.88), with twelve exact wire
+exchanges and orderly shutdown passing. The full service runner's mapped/rebuilt
+Cell checks and all nineteen AOT service cases pass. Its forced-source diagnostic
+still times out; the user explicitly waived that timing as an acceptance gate.
+The default worker runner now checks ordinary startup; `--force-source` retains
+the optional diagnostic. The ten-second production deadline is unchanged.
+
+These results close the unconditional image-recompilation bug. They do not close
+the remaining Designs 82/83 fixture migrations or the full requirement audit.
+
+The final image-loader review preserved error recognition through a live
+`isError` send. The complete targeted compiled-image regression passes on
+`/tmp/birnam-83-compiled-image-final`, including compiler-disabled mapped/baked
+entry, explicit/missing-unit recovery and malformed-record rejection. The broader
+portable-image and nineteen-case AOT worker results above precede this final
+error-recognition adjustment; the final worker rerun was still running when the
+user requested committing after targeted validation.

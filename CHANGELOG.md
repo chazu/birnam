@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Save and restore the compiled source-generation unit alongside portable image
+  code. Normal image and baked startup no longer rebuild source-defined methods
+  unconditionally; explicit rebuilds and v8 images missing that unit retain source
+  recovery. Add installed checks with compilation/evaluation disabled, independent
+  Code-bundle inspection, and malformed-manifest/framing rejection.
+
 - Move namespace admission and behavior/selector enumeration oracles onto
   production native loading and include them in the installed native suite.
   Consolidate namespace boundary fixtures and service runners. Document the

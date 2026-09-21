@@ -2,6 +2,7 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+mod native_code;
 mod retained_facts;
 pub mod v8;
 
@@ -1658,6 +1659,39 @@ mod runtime {
         unsafe { oop_string_bytes(api, code) }.filter(|bytes| !bytes.is_empty())
     }
 
+    unsafe fn compile_generation_image_code(api: &IdApi) -> Option<(Vec<u8>, Vec<u8>)> {
+        let codegen = unsafe { writer_codegen_authority(api) }?;
+        let sequence = super::support::TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let directory = std::env::temp_dir().join(format!(
+            "birnam-image-save-{}-{sequence}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).ok()?;
+        struct Cleanup(std::path::PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(directory.clone());
+        let code = directory.join("generation.dylib");
+        let manifest = directory.join("generation.manifest");
+        let arguments = [code.as_os_str().as_bytes(), manifest.as_os_str().as_bytes()]
+            .map(|bytes| unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) });
+        let result = unsafe {
+            (api.send)(
+                codegen,
+                intern(api, b"compileImageCode:manifest:\0"),
+                arguments.as_ptr(),
+                2,
+            )
+        };
+        if result.is_null() || result == api.nilObj {
+            return None;
+        }
+        Some((fs::read(code).ok()?, fs::read(manifest).ok()?))
+    }
+
     fn composition_identity(checksums: &[u64]) -> Option<[u8; 64]> {
         let mut digest = Sha256::new();
         digest.update(b"birnam.image-composition.v1\0");
@@ -2186,7 +2220,8 @@ mod runtime {
             unsafe { (birnam_abi::string::make)(decoded.selection.as_ptr(), decoded.selection.len()) };
         if !rebuild {
             if let Some(code) = decoded.code {
-                let unit = code.get(72..)?;
+                let units = super::native_code::decode(code.get(72..)?)?;
+                let unit = units.portable;
                 let unit = unsafe { (birnam_abi::string::make)(unit.as_ptr(), unit.len()) };
                 let arguments = [unit, programs, bindings, selection];
                 let owner = unsafe {
@@ -2269,7 +2304,30 @@ mod runtime {
         if unsafe { install_v8_bindings(api, decoded.bindings, &relocations) }.is_none() {
             return api.nilObj;
         }
-        if mapped { api.trueObj } else { api.falseObj }
+        // Restore the source-defined method/global unit alongside portable code.
+        // Old images did not save this unit; only those and explicit rebuilds
+        // need to compile the durable sources during startup.
+        let saved_generation = decoded.code
+            .and_then(|code| super::native_code::decode(code.get(72..)?))
+            .and_then(|units| units.generation);
+        let mapped_generation = !rebuild && saved_generation.is_some();
+        let restored = if mapped_generation {
+            let (code, manifest) = saved_generation.unwrap();
+            let arguments = [code, manifest].map(|bytes| unsafe {
+                (birnam_abi::string::make)(bytes.as_ptr(), bytes.len())
+            });
+            unsafe { (api.send)(codegen, intern(api, b"loadImageCode:manifest:\0"), arguments.as_ptr(), 2) }
+        } else {
+            unsafe { send0(api, codegen, b"rebuildImageCode\0") }
+        };
+        if restored.is_null() || restored == api.nilObj { return api.nilObj; }
+        let error = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Error".as_ptr()) };
+        if !error.is_null() && error != api.nilObj
+            && unsafe { send0(api, restored, b"isError\0") } == api.trueObj
+        {
+            return api.nilObj;
+        }
+        if mapped && mapped_generation { api.trueObj } else { api.falseObj }
     }
 
     unsafe fn runtime_image_path_bytes(api: &IdApi, path: Oop) -> Option<Vec<u8>> {
@@ -2639,16 +2697,20 @@ mod runtime {
                 .code_units = 0;
             return unsafe { image_rejection_error(api, kind) };
         }
-        // New saves make the accepted clean v8 cut. Code is an authority-bound
-        // mapped acceleration; canonical inventories remain sufficient for a
-        // forced source-free rebuild.
+        // Save both compiled units. Portable inventories rebuild source-less
+        // Blocks/bindings; the durable source generation rebuilds the remaining
+        // language methods only when native code is absent or rebuild is explicit.
         let portable_records = PORTABLE_SAVE_RECORDS
             .lock()
             .ok()
             .and_then(|mut records| records.take());
         let portable_code = portable_records
             .as_ref()
-            .and_then(|records| unsafe { compile_portable_image_code(api, records) });
+            .and_then(|records| unsafe { compile_portable_image_code(api, records) })
+            .and_then(|portable| {
+                let (generation, manifest) = unsafe { compile_generation_image_code(api) }?;
+                super::native_code::encode(&portable, &generation, &manifest)
+            });
         let composed = preflight
             .heap_payload
             .as_deref()

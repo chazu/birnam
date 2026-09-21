@@ -522,7 +522,9 @@ source/compiled/image/worker checks. Id must initialize with all upper libraries
 absent. Source/Cargo and private-export audits must show no upper runtime hidden
 inside it. Prefix checks must exercise real shipped entries; no new seed or
 one-off experiment. Debug validation is sufficient; release validation remains
-waived.
+waived. Worker readiness acceptance uses ordinary compiled-image startup. The
+user also waived forced-source bootstrap timing as a readiness gate; source
+execution and explicit image rebuilding remain separate functional checks.
 
 An independent follow-up review accepted the managed-turn architecture and found
 the four original architectural gaps addressed. It identified two additional
@@ -546,9 +548,11 @@ executed native graph. The [migration history](83-implementation-history.md)
 retains detailed implementation decisions, earlier tests and intermediate states.
 It is not a substitute for the acceptance requirements in section 6.
 
-The current production sources are represented by the debug installation at
-`/tmp/birnam-83-retirement-index`. Subsequent commits change test fixtures and
-documentation, not installed production libraries. Current evidence:
+The final compiled-image regression passes on the debug installation at
+`/tmp/birnam-83-compiled-image-final`. The broader image and worker results below
+used `/tmp/birnam-83-compiled-image-v3`. Earlier native, service and deferred-storage
+acceptance below used `/tmp/birnam-83-retirement-index`; those results must not be
+mistaken for a complete rerun on the newer installation. Current evidence:
 
 | Area | Established evidence | Remaining closure |
 |---|---|---|
@@ -556,8 +560,8 @@ documentation, not installed production libraries. Current evidence:
 | Explicit construction | Bootstrap constructs the production graph through applications with complete predecessor operands. Installed prefixes exercise real entries with successors absent, including early value errors and later extensions. | Audit every manifest entry against section 4, not just its presence in the file. |
 | Same-heap GC adoption | Installed tests cover early native roots, activation failure, tracing, collection, finalization and weak-index retirement before and after Runtime. | Complete the section 5/6 audit, including the exact-address-reuse requirement. |
 | Managed turns and executable lifetime | Owned Method dispatch, exact-entry adapters and detached retirement are implemented. Four Runtime turn tests cover outward roots, nested callbacks, finalized-owner detachment and bounded Machine returns beneath a synchronous caller. Earlier installed Method/image/lifecycle evidence is in the history. | Audit every release path and external callback entry; unit evidence alone is not proof for every generated-code path. |
-| Source, compiled and image carriers | Portable image-v8 and the migrated service/deferred-storage matrices pass source-free, mapped/rebuilt and baked cases on the same installation. | Complete the remaining consumer matrices and worker acceptance. |
-| Worker | Exact wire exchanges and shutdown pass. The last measured readiness was 10.73 seconds; the full service runner fails AOT startup with `handshakeTimeout` before its nineteen service cases. | Meet the unchanged ten-second readiness contract, then run all service cases. |
+| Source, compiled and image carriers | New saves include the compiled source-generation unit as well as portable code. Mapped/baked application startup passes with source compilation/evaluation disabled; explicit and missing-code recovery and malformed bundle rejection pass. Earlier service/deferred-storage matrices cover source-free, mapped/rebuilt and baked cases. | Complete the remaining consumer matrices and final same-installation acceptance audit. |
+| Worker | Compiled-image readiness is 7.48 seconds with all twelve exact wire exchanges and shutdown passing. The service runner passes mapped/rebuilt Cell checks and all nineteen AOT service cases. | Include this evidence in final same-installation acceptance. The user waived forced-source readiness timing as a gate; its diagnostic still reports `handshakeTimeout`. |
 | Test construction cleanup | Support admission, Runtime services, deferred storage and the namespace/reflection boundary oracles now use production Id/Bootstrap. The installed native suite includes all 43 service cases and 76 support admission cases. | Migrate the remaining `namespace-support.h` consumers and other obsolete test initializers. Older consumer/image runners are not claimed green. |
 | Documentation | Current ABI guides describe explicit construction; detailed progress records are separated into the history. | Finalize the startup diagram and close this table from authoritative acceptance evidence. |
 
@@ -581,9 +585,9 @@ mutation, GC and typed request failures. It uses explicit completed services and
 runs its storage observers after the native loading turn returns. No production
 guard or policy was changed to make these tests pass.
 
-The current installed native suite passes, including all 43 service cases, 76
-support admission cases and early construction/collector/value checks. Its five
-service crates pass 40 unit tests with one existing ignored test. Reproduce with:
+On `/tmp/birnam-83-retirement-index`, the installed native suite passes all 43
+service cases, 76 support admission cases and early construction/collector/value
+checks. Its five service crates pass 40 unit tests with one existing ignored test. Reproduce with:
 
 ```sh
 bash scripts/runtime-services-test.sh PREFIX reflection

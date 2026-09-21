@@ -736,17 +736,12 @@ unsafe fn finish_image_load(
     };
     let codegen = unsafe { birnam_abi::namespace_import::import(imports, c"Codegen".as_ptr()) };
     if codegen != api.nilObj {
-        // Both v8 paths have admitted the exact portable generation. Recover
-        // source-defined methods and process-local Alien wrappers before any
-        // user entry, without introducing another durable generation.
+        // The image loader has restored both compiled units (or explicitly
+        // rebuilt missing code). Reconnect process-local resources before user
+        // entry without recompiling the saved language implementation.
         let begin_recovery = unsafe { (api.intern)(c"beginImageDispatchRecovery".as_ptr()) };
         let begun = unsafe { (api.send)(codegen, begin_recovery, std::ptr::null(), 0) };
         if begun.is_null() || begun == api.nilObj || send_is_error(api, presence, begun) {
-            return Err(ImageError::LoadRejected);
-        }
-        let rebuild_image_code = unsafe { (api.intern)(c"rebuildImageCode".as_ptr()) };
-        let rebuilt = unsafe { (api.send)(codegen, rebuild_image_code, std::ptr::null(), 0) };
-        if rebuilt.is_null() || rebuilt == api.nilObj || send_is_error(api, presence, rebuilt) {
             return Err(ImageError::LoadRejected);
         }
         let config_surface_missing = unsafe { global_named(api, imports, "Config") }

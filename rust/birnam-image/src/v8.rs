@@ -240,6 +240,7 @@ pub fn structural_preflight(
     if let Some(payload) = code {
         if payload.len() < 73
             || payload.get(8..72) != Some(authority_spelling)
+            || super::native_code::decode(&payload[72..]).is_none()
             || super::support::wyhash(0, &payload[72..])
                 != read_u64(payload, 0).ok_or(Error::Code)?
         {
