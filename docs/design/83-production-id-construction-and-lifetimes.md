@@ -9,7 +9,8 @@
 > without taking Id's Rust owner or referencing its primitive functions for
 > lookup/Integer admission. Id is independently packaged with only the ABI crate;
 > Runtime/compiler code is in a separate upper library loaded through Id. Native
-> Execution construction and owned Method consumer migration remain open.
+> Block and native value/control operations now precede compiler modules. The
+> Execution/compiler extension boundary and owned Method consumer migration remain open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -1726,3 +1727,48 @@ The final host/installer suite passes 90 tests (one ignored). The installed
 storage-observation suite passes dynamic source, source-free compiled,
 mapped/rebuilt native Code images and baked execution, including independent
 host observations, nested rejection, failure cleanup, roots, aliases and reload.
+
+
+### Native values and Block precede parser/compiler modules
+
+Runtime now constructs `Block` and `BlockVt`, with Oop capture layout and the
+ordinary behavior owner, alongside its execution objects. A native module can
+create a concrete delegated Block behavior, install its native `value` method
+and allocate captures without Prelude or a source compiler. Block Loop's own
+`module_init` installs its complete native while methods using the existing
+Block and Error Value; Prelude no longer constructs Block or attaches that
+installer. Printing also installs its own Object/Symbol defaults before
+collections; StringBuilder conversion and collection printing do not depend on
+Prelude. Boolean's Block-taking controls, Nil/String/StringBuilder, collection
+value operations, Vector/Range/Map/String collection composition, Error and Store
+now load before Artifact, PEG, Lang, TCC and Codegen. These later modules receive
+actual published values instead of relying on future initialization.
+
+The installed native-loading suite now has a prefix containing the real shipped
+Runtime and value modules, with Artifact, PEG, Lang, TCC, Codegen, Prelude,
+Portable Code and Image libraries absent. The actual host startup must reach the
+missing Artifact entry, after which an independent C consumer exercises native
+Block capture/calling and precise collection, Boolean control, Vector callbacks,
+Map, String splitting, Object/Symbol/collection/StringBuilder printing, loop error
+propagation, Globals and basic Machine behavior.
+The same check verifies Block identity survives Block Loop reload. Separate
+copies of the shipped Block Loop image reenter first initialization during
+selector interning and registration with another API table; execution retains
+the original table selected before either callback.
+
+This establishes the native value/control prefix. Runtime still physically links
+compiler/artifact implementation and exposes its old admission machinery;
+separating that advertised compiler extension remains required. The legacy value
+entry/provider construction and full checked predecessor manifest also remain
+open. The new prefix fixture does not establish completion of those boundaries.
+
+
+Validation: 319 Runtime and 90 host/installer unit tests pass (16 ignored), plus
+Prelude's identity test. The final debug installation builds all 56 native
+libraries and 28 stage-1 modules. Its full native-loading suite passes, including
+the prefix's printing/conversion cases, precise GC and both first-initialization
+reentry cases. The printing source/compiled/native-Code-image/baked suite passes
+on that installation. Block Loop source/compiled/native-Code-image/baked tests
+pass after its installation and reentry changes; the broader storage-observation
+source/compiled/mapped/rebuilt/baked suite also passes after the Block and value
+ordering changes. Release validation remains waived.

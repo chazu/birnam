@@ -187,8 +187,8 @@ late adapter that depends on String and Vector. Its [export inventory](rust-stri
 adds no IdApi fields, objects or roots; Collection preserves ordered installation.
 
 [Printing v1](printing-v1.md) owns the three Object/Symbol printing defaults.
-Prelude supplies separate registration and original execution tables at its
-existing installation point. The [export inventory](rust-printing-dylib-v1.json)
+Printing installs them during its own initialization, before collections or
+compiler modules, retaining its original execution table. The [export inventory](rust-printing-dylib-v1.json)
 adds no IdApi fields, objects or roots.
 
 [System GC v2](system-gc-v2.md) owns System's four collector control methods.
@@ -228,8 +228,9 @@ installer at their original Prelude binding positions. The
 representation or image encoding.
 
 [Block Loop v3](block-loop-v3.md) owns the native whileTrue:/whileFalse: methods
-through a 24-byte installer. Prelude retains Block identity/layout and authored
-stackless control still replaces the methods later. The
+through a 24-byte installer. Runtime constructs Block identity/layout before
+collections or compilers; Block Loop installs its native methods at its own
+initialization. Authored stackless control still replaces them later. The
 [export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
 encoding.
 

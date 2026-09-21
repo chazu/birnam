@@ -15,7 +15,7 @@ cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 \
   -DEXPECT_BLOCK_LOOP_LIBRARY='"libbirnam_block_loop.dylib"' \
   scripts/fixtures/block-loop-native.c -o "$scratch/native-guard.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
-[System loadModule: "$prefix/lib/libbirnam_id_prelude.dylib"];
+[System loadModule: "$prefix/lib/libbirnam_block_loop.dylib"];
 [System loadModule: "$scratch/native-guard.dylib"];
 let n := [0 asCell];
 let r := [[| [[n value] < 10000]] whileTrue: [| [n inc]]];
@@ -45,7 +45,7 @@ let bodyAlias := body;
 let answer := [Object clone];
 let fault := [Error kind: #loopProbe message: "retained"];
 let main := [|
-  [System loadModule: "$prefix/lib/libbirnam_id_prelude.dylib"];
+  [System loadModule: "$prefix/lib/libbirnam_block_loop.dylib"];
   [System loadModule: "$scratch/native-guard.dylib"];
   [System autoGc: false];
   [System preciseGc: true];

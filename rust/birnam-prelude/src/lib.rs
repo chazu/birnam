@@ -1,4 +1,4 @@
-//! Prelude coordinates native defaults and owns System/Block identity and layout.
+//! Prelude installs System operations after their inputs are available.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -101,33 +101,6 @@ unsafe fn install_system_protocol(api: &IdApi, presence: *const birnam_abi::name
     let _ = system_object;
 }
 
-unsafe fn install_block_protocol(api: &IdApi, layouts: *const birnam_abi::payload_layout::ApiV1, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1) {
-    let (block_vt, block_proto) = if unsafe { birnam_abi::namespace_presence::contains(presence, c"Block".as_ptr()) } != 0 {
-        let block_vt = unsafe { birnam_abi::namespace_import::import(imports, c"BlockVt".as_ptr()) };
-        let block_proto = unsafe { birnam_abi::namespace_import::import(imports, c"Block".as_ptr()) };
-        (block_vt, block_proto)
-    } else {
-        let block_vt = unsafe { (api.proto)(api.object_vt) };
-        // SAFETY: a Block payload consists only of captured Oops, and this
-        // first native loop rung does not inspect the payload itself.
-        unsafe { birnam_abi::payload_layout::set(layouts, block_vt, ptr::null(), 0, birnam_abi::SLOT_OOP) };
-        let block_proto = unsafe { (api.alloc)(block_vt, 0) };
-        unsafe { birnam_abi::set_vtable_owner(api, block_vt, block_proto) };
-        unsafe { birnam_abi::namespace_export::export(exports, c"Block".as_ptr(), block_proto) };
-        unsafe { birnam_abi::namespace_export::export(exports, c"BlockVt".as_ptr(), block_vt) };
-        (block_vt, block_proto)
-    };
-    let _ = block_proto;
-    let while_true = unsafe { intern(api, b"whileTrue:\0") };
-    let while_false = unsafe { intern(api, b"whileFalse:\0") };
-    // SAFETY: the Block vtable is process-owned and remains live with the image.
-    unsafe {
-        birnam_abi::block_loop::install(
-            api, runtime().api as *const IdApi, runtime().presence as *const birnam_abi::namespace_presence::ApiV1, runtime().imports as *const birnam_abi::namespace_import::ApiV1, block_vt, while_true, while_false,
-        );
-    }
-}
-
 unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
@@ -145,8 +118,6 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
         imports: imports as usize,
         exports: exports as usize,
     });
-    unsafe { birnam_abi::printing::install(api_pointer, runtime().api as *const IdApi) };
-    unsafe { install_block_protocol(api, layouts, presence, imports, exports) };
     unsafe { install_system_protocol(api, presence, imports, exports) };
 }
 
@@ -184,8 +155,6 @@ mod tests {
     }
 }
 
-birnam_abi::printing_dependency!();
-
 birnam_abi::system_gc_dependency!();
 
 birnam_abi::system_output_dependency!();
@@ -195,8 +164,6 @@ birnam_abi::system_input_dependency!();
 birnam_abi::environment_dependency!();
 
 birnam_abi::file_io_dependency!();
-
-birnam_abi::block_loop_dependency!();
 
 birnam_abi::native_loader_dependency!();
 

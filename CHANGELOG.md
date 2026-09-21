@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Construct native Block identity/layout in Runtime and install Block loops at
+  their own module entry. Install Object/Symbol printing before collections, and
+  load Boolean control, collections and Store before Artifact, PEG, Lang, TCC
+  and Codegen; Prelude now extends System.
+
 - Load the remaining Runtime support factories through Id and supply their
   complete operations explicitly to Runtime v14. Remove six host preparations,
   normal dependency-setter exports, and three empty legacy module entries.

@@ -1174,6 +1174,17 @@ impl Runtime {
         }
     }
 
+    /// Native Blocks precede collections and compilers. Captures are ordinary
+    /// Oops; each concrete Block behavior supplies its own native value method.
+    pub(crate) fn install_block_objects(&self) {
+        let behavior = self.create_vtable(self.globals().object_vt);
+        self.set_layout(behavior, core::ptr::null(), 0, crate::abi::SLOT_OOP);
+        let prototype = self.allocate_empty(behavior, Permanence::Permanent);
+        self.set_vtable_owner(behavior, prototype);
+        self.export(b"BlockVt", behavior).expect("static export name");
+        self.export(b"Block", prototype).expect("static export name");
+    }
+
     pub(crate) fn install_execution_objects(&self) {
         self.assert_owner();
         let globals = self.globals();

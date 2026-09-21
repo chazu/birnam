@@ -127,6 +127,24 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     run(str(activation_driver), str(graph_prefix), str(scratch / "early-activation.dylib"))
     run(str(activation_driver), str(graph_prefix), str(scratch / "early-activation.dylib"), "missing-layout")
     run(str(activation_driver), str(prefix / "lib"), str(scratch / "early-activation.dylib"), "adopt")
+    values_prefix = scratch / "values-prefix"
+    shutil.copytree(graph_prefix, values_prefix)
+    for module in ["runtime", "method_observation", "storage", "dispatch_cache", "error_value",
+                   "printing", "block_loop", "string_builder", "collection_value", "vector", "range", "map",
+                   "string_collection", "id_collection", "store"]:
+        file = f"libbirnam_{module}.dylib"
+        shutil.copy2(prefix / "lib" / file, values_prefix / file)
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/execution-values-native.c", "-o", str(scratch / "execution-values.dylib"))
+    values_driver = scratch / "values-driver"
+    run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
+        "scripts/fixtures/execution-values-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
+        "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(values_driver))
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/block-loop-reentry-native.c", "-o", str(scratch / "block-loop-reentry.dylib"))
+    for mode in [1, 2]:
+        shutil.copy2(prefix / "lib/libbirnam_block_loop.dylib", scratch / f"block-loop-{mode}.dylib")
+    run(str(values_driver), str(values_prefix), str(scratch / "execution-values.dylib"), str(scratch))
     env = dict(os.environ, BIRNAM_NATIVE_UNLOAD_LOG=str(scratch / "unloaded"))
     run(str(driver), str(prefix), str(scratch), env=env)
     # Entered images only unload at process exit; rejected ones unload immediately.

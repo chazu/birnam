@@ -720,7 +720,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for native System, Block and numeric methods.
 - `rust/birnam-source-loader/` — System source reading, staging, evaluation and diagnostics.
 - `rust/birnam-native-loader/` — System direct native-module loading, installed by Prelude.
-- `rust/birnam-block-loop/` — native Block while methods, installed by Prelude before authored stackless control.
+- `rust/birnam-block-loop/` — native Block while methods, installed on Runtime’s Block before collections and compilers; authored stackless control follows later.
 - `rust/birnam-file-io/` — System binary file reads and writes, installed by Prelude.
 - `rust/birnam-environment/` — System environment lookup, installed by Prelude with shared text/error policy.
 - `rust/birnam-system-input/` — System stdin method, installed by Prelude using String and Error Value.

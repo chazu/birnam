@@ -1,4 +1,4 @@
-/* Image smoke guard: called only after explicitly reloading Prelude. */
+/* Image smoke guard: called only after explicitly reloading Block Loop. */
 #include "idapi_v20.h"
 #include <assert.h>
 #include <dlfcn.h>

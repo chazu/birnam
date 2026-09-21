@@ -1,4 +1,4 @@
-//! Block's existing native while methods, installed by Prelude (81AT).
+//! Native Block loops installed after Runtime's Block representation.
 #![allow(clippy::missing_safety_doc)]
 use birnam_abi::block_loop::ApiV3;
 use birnam_abi::error_value::{is_error, numeric_error};
@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static READY: AtomicBool = AtomicBool::new(false);
-// Prelude supplies its original selection, even when registration reenters
+// Installation retains its original selection, even when registration reenters
 // with another table before the first block loop installation. The host pins it.
 static EXECUTION_API: OnceLock<(usize, usize, usize)> = OnceLock::new();
 
@@ -107,9 +107,18 @@ static API: ApiV3 = ApiV3 {
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, _presence: *const birnam_abi::namespace_presence::ApiV1, _imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
+pub unsafe extern "C" fn module_init(api: *mut IdApi, _: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, _exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, _roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, _layouts: *const birnam_abi::payload_layout::ApiV1, _hooks: *const birnam_abi::trace_hooks::ApiV1, _finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
     assert!(!api.is_null(), "Block Loop received a null IdApi");
+    // Select execution before namespace/intern callbacks can reenter module_init.
+    EXECUTION_API.get_or_init(|| (api as usize, presence as usize, imports as usize));
+    let block_vt = unsafe { birnam_abi::namespace_import::import(imports, c"BlockVt".as_ptr()) };
+    assert!(!block_vt.is_null(), "Block Loop requires Runtime's Block representation");
     READY.store(true, Ordering::Release);
+    unsafe {
+        let while_true = ((*api).intern)(c"whileTrue:".as_ptr());
+        let while_false = ((*api).intern)(c"whileFalse:".as_ptr());
+        install(api, api, presence, imports, block_vt, while_true, while_false);
+    }
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]

@@ -92,3 +92,11 @@ the native carrier remains version 1.
 explicitly. Id keeps its own state; Runtime no longer takes the private Rust
 initial-object graph. The production host's before/after tests still compare the
 same carrier and early identities across upper construction and collection.
+
+The installed value/control prefix additionally omits Artifact, PEG, Lang, TCC,
+Codegen, Prelude, Portable Code and Image. Its independent C client exercises
+native Blocks and captured roots, Boolean control, collection and StringBuilder
+printing, Vector/Map/String operations, loop errors, Globals and basic Machine
+behavior. Copies of the shipped Block Loop library exercise first initialization
+reentry during selector interning and method registration with different API
+tables; the original execution table must remain selected.
