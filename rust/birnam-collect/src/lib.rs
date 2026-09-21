@@ -2,10 +2,10 @@
 mod phase;
 mod state;
 mod collector;
-pub use phase::birnam_collection_phase_factory_v1;
+pub use phase::collection_phase_factory;
 
 use birnam_abi::collect::{
-    ApiV1, DeadV1, DetachedV1, FINALIZING, IDLE, MARKING, SourceV1, VERSION,
+    DeadV1, DetachedV1, FINALIZING, IDLE, MARKING, SourceV1, VERSION,
 };
 use birnam_abi::storage::{BUSY, INVALID, OK, Status};
 use birnam_abi::borrowed_slice;
@@ -122,16 +122,7 @@ pub unsafe extern "C" fn birnam_collect_v1(source: *const SourceV1, count: *mut 
     OK
 }
 
-static API: ApiV1 = ApiV1 {
-    version: VERSION,
-    byte_size: size_of::<ApiV1>(),
-    collect: Some(birnam_collect_v1),
-};
 
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_collect_provider_v1() -> *const ApiV1 {
-    &API
-}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {

@@ -103,14 +103,6 @@ static API: ApiV2 = ApiV2 {
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_system_gc_provider_v2() -> *const ApiV2 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }

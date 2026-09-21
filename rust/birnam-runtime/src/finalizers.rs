@@ -13,7 +13,7 @@ pub(crate) struct Service {
 impl Service {
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_finalizers::birnam_finalizers_factory_v1() };
+        let factory = unsafe { *birnam_finalizers::finalizers_factory() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::finalizers::operations() };
         let floor = crate::public_api::finalizers_access();

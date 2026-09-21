@@ -5,7 +5,6 @@ use birnam_abi::file_io::ApiV3;
 use birnam_abi::text_view::string_bytes;
 use birnam_abi::{IdApi, Oop, borrowed_oop_args};
 use core::ffi::c_void;
-use core::ptr;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
@@ -110,14 +109,6 @@ static API: ApiV3 = ApiV3 {
     byte_size: size_of::<ApiV3>(),
     install: Some(install),
 };
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_file_io_provider_v3() -> *const ApiV3 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1

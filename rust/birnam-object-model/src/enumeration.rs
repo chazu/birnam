@@ -49,8 +49,7 @@ static FACTORY: FactoryV2 = FactoryV2 {
 };
 /// # Safety
 /// Factory operations require their declared owner-thread and borrow contracts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_vtable_enumeration_factory_v2() -> *const FactoryV2 {
+pub unsafe fn vtable_enumeration_factory() -> *const FactoryV2 {
     &FACTORY
 }
 

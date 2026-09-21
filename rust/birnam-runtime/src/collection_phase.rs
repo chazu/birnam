@@ -20,7 +20,7 @@ impl Service {
     }
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_collect::birnam_collection_phase_factory_v1() };
+        let factory = unsafe { *birnam_collect::collection_phase_factory() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::collection_phase::operations() };
         let context = NonNull::new(unsafe { factory.create.unwrap()() })

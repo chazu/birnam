@@ -3,7 +3,6 @@
   "scope": "System file IO methods constructed through Bootstrap",
   "install_name": "@rpath/libbirnam_file_io.dylib",
   "exported_symbols": [
-    "birnam_file_io_provider_v3",
     "birnam_native_module_v1",
     "birnam_symbol_borrow_v1"
   ]

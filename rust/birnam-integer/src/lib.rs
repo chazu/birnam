@@ -17,16 +17,6 @@ unsafe extern "C" fn integer_roots(mark: birnam_abi::MarkFn) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_integer_provider_v1() -> *mut birnam_abi::integer::IntegerApiV1 {
-    let instance = INSTANCE.load(Ordering::Acquire);
-    if instance.is_null() || (unsafe { (*instance).native_access().is_some() } && !native::ready()) {
-        ptr::null_mut()
-    } else {
-        unsafe { (*instance).operations() }
-    }
-}
-
 /// Optional native implementation declaration, independent of selector names.
 /// See abi/native-numeric-semantics-v4.md. This pure query never enters Id.
 #[unsafe(no_mangle)]

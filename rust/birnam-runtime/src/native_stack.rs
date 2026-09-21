@@ -13,7 +13,7 @@ impl Service {
     }
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v4() };
+        let factory = unsafe { *birnam_native_stack::native_stack_factory() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::native_stack::operations() };
         let floor = crate::public_api::native_stack_access();

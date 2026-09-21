@@ -876,14 +876,6 @@ static API: ApiV6 = ApiV6 {
     install: Some(install),
 };
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_map_provider_v6() -> *const ApiV6 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }

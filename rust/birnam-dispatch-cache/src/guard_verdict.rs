@@ -19,8 +19,7 @@ static FACTORY: FactoryV1 = FactoryV1 {
 };
 /// # Safety
 /// The host pins this descriptor and its code for the lifetime of every owner.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_guard_verdict_factory_v1() -> *const FactoryV1 { &FACTORY }
+pub unsafe fn guard_verdict_factory() -> *const FactoryV1 { &FACTORY }
 
 #[cfg(test)]
 mod tests {

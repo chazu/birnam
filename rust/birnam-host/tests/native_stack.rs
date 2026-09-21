@@ -2,7 +2,6 @@
 use birnam_abi::{gc_settings, native_stack};
 use core::cell::{Cell, RefCell};
 use core::ffi::{c_int, c_void};
-use std::ffi::CString;
 use std::path::PathBuf;
 
 struct Probe {
@@ -42,14 +41,15 @@ fn real_host_uses_live_anchor_selection_before_optional_precise_policy() {
     let mut runtime = unsafe { birnam_host::start(resources, birnam_host::StartupPolicy::from_flags(false, false)) }.unwrap();
     let selected = runtime.stack.native_stack().cast_mut();
     let settings = runtime.stack.gc_settings().cast_mut();
-    let path = CString::new(prefix.join("lib/libbirnam_native_stack.dylib").as_os_str().as_encoded_bytes()).unwrap();
-    let api = runtime.stack.api();
-    let image = unsafe { (api.dlopen)(path.as_ptr(), 6) };assert!(!image.is_null());
-    let symbol = unsafe { (api.dlsym)(image, c"birnam_native_stack_factory_v4".as_ptr()) };assert!(!symbol.is_null());
-    let provide: native_stack::FactoryProviderV4 = unsafe { std::mem::transmute(symbol) };
+    let result = unsafe { runtime.stack.load_native(
+        prefix.join("lib/libbirnam_native_stack.dylib").as_os_str().as_encoded_bytes(), &[],
+    ) };
+    assert_eq!(result.status, birnam_abi::id_protocol::LOADED);
+    let factory = result.value.as_word().unwrap() as *const native_stack::FactoryV4;
+    assert!(unsafe { native_stack::valid_factory(factory) });
     let original_stack = unsafe { *selected };
     let original_settings = unsafe { *settings };
-    let factory = unsafe { *provide() };
+    let factory = unsafe { *factory };
     for (round, callback) in [(1, first as unsafe extern "C" fn(*mut c_void, usize)), (2, second)] {
         let mut probe = Probe { original_stack, original_settings, factory, selected,
             expected: Cell::new(0), events: RefCell::new(Vec::new()), round };

@@ -1,11 +1,13 @@
 # Namespace factory v8
 
-The floor requires `birnam_namespace_dependency_v8` before `id_init`. The host
-pins `libbirnam_namespace.dylib` and attaches `birnam_namespace_provider_v8`'s
-immutable 176-byte descriptor. All twenty operations are required. Invalid
-descriptors and retargeting reject; repeating the same attachment succeeds.
-The [independent C mirror](fixtures/namespace-v8/namespace_v8.h) fixes the layout.
-Historical factories are not fallbacks.
+The 176-byte descriptor describes Namespace's storage and service operations.
+All twenty operations are required. Its layout is fixed by the
+[independent C mirror](fixtures/namespace-v8/namespace_v8.h).
+Production constructs the [Namespace owner](fixtures/namespace-owner-v1/README.md)
+through Id after roots, Lifetime and base values. Runtime later adopts its
+completed storage and operations. Id has no Namespace prerequisite.
+The old provider and dependency-setter exports are removed; historical factory
+versions are not fallbacks. The Rust factory helper remains for local unit support.
 
 The first eighteen operations retain [v7](namespace-v7.md)'s offsets and
 contracts. `create_export` at offset 160 and `destroy_export` at 168 create and
@@ -32,11 +34,10 @@ The service retains no transient RuntimeState context or shared state borrow.
 Each runtime owns a separate allocation. Replacing its public function/context
 changes invocation without transferring ownership. Destruction takes the
 original owned address even if the public fields have changed. A copied public
-descriptor borrows the service and does not extend its lifetime. Id destroys
-services before their raw namespace storage.
+descriptor borrows the service and does not extend its lifetime. Services must
+be destroyed before their underlying namespace storage.
 
-Id exposes the live descriptor through `birnam_namespace_export_provider_v1`;
-modules receive it explicitly with their API through six-argument native
-initialization. IdApi v11 removes the old export slot. Internal byte-slice
-bootstrap export remains private to Id. Language behavior and image encoding
-are unchanged.
+Runtime creates the upper export service using the completed Namespace storage.
+Bootstrap selects it through Id's Runtime native entry and passes it explicitly
+to consumers. Id does not expose a namespace provider or export slot. Language
+behavior and image encoding are unchanged.

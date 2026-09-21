@@ -106,14 +106,6 @@ static API: ApiV1 = ApiV1 {
     key_hash: Some(hash),
 };
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_collection_value_provider_v1() -> *const ApiV1 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int {
     1
 }

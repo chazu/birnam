@@ -6,9 +6,9 @@ unsafe extern "C" fn initialize(_: *const Protocol, args: *const Operand, count:
     let Some(bytes) = argument.as_bytes() else { return invalid(); };
     let Some(name) = (unsafe { birnam_abi::borrowed_slice(bytes.pointer, bytes.length) }) else { return invalid(); };
     let factory = match name {
-        b"observation" => unsafe { super::birnam_storage_observation_factory_v1() }.addr(),
-        b"deferredIdentity" => unsafe { super::birnam_deferred_identity_factory_v1() }.addr(),
-        b"deferredIndex" => unsafe { super::birnam_deferred_index_factory_v1() }.addr(),
+        b"observation" => unsafe { super::storage_observation_factory() }.addr(),
+        b"deferredIdentity" => unsafe { super::deferred_identity_factory() }.addr(),
+        b"deferredIndex" => unsafe { super::deferred_index_factory() }.addr(),
         _ => return invalid(),
     };
     Outcome::loaded(Operand::word(factory))

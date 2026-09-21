@@ -11,7 +11,7 @@ pub(crate) struct Service {
 impl Service {
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_object_model::enumeration::birnam_vtable_enumeration_factory_v2() };
+        let factory = unsafe { *birnam_object_model::enumeration::vtable_enumeration_factory() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::vtable_enumeration::operations() };
         let floor = crate::public_api::vtable_enumeration_access();

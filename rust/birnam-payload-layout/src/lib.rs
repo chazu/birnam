@@ -80,8 +80,7 @@ static FACTORY: FactoryV1 = FactoryV1 {
 };
 /// # Safety
 /// The immutable descriptor/code outlive every carrier and retaining consumer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_payload_layout_factory_v1() -> *const FactoryV1 { &FACTORY }
+pub unsafe fn payload_layout_factory() -> *const FactoryV1 { &FACTORY }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }

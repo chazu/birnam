@@ -39,8 +39,7 @@ static API: ApiV1 = ApiV1 {
 };
 /// # Safety
 /// The host pins this descriptor and its code for every retaining floor/thread.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_mark_provider_v1() -> *const ApiV1 { &API }
+pub unsafe fn native_mark_provider() -> *const ApiV1 { &API }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }

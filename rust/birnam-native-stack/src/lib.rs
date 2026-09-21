@@ -68,8 +68,7 @@ static FACTORY: FactoryV4 = FactoryV4 {
 };
 /// # Safety
 /// Owner-thread operations require the declared descriptor and code lifetimes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_stack_factory_v4() -> *const FactoryV4 { &FACTORY }
+pub unsafe fn native_stack_factory() -> *const FactoryV4 { &FACTORY }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }

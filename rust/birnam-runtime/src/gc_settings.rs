@@ -13,7 +13,7 @@ impl Service {
     }
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_gc_settings::birnam_gc_settings_factory_v1() };
+        let factory = unsafe { *birnam_gc_settings::gc_settings_factory() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::gc_settings::operations() };
         let floor = crate::public_api::gc_settings_access();

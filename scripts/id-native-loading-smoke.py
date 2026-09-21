@@ -2,6 +2,7 @@
 """Exercise Siphon, Id and upper adoption using an actual debug installation."""
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -27,9 +28,11 @@ for path in ("rust/birnam-host/src/startup.rs", "rust/birnam-native-loader/src/l
 for library in sorted((prefix / "lib").glob("libbirnam_*.dylib")):
     exports = run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines()
     forbidden = [symbol for symbol in exports
-                 if symbol == "_module_init" or "_dependency_v" in symbol]
+                 if symbol == "_module_init" or "_dependency_v" in symbol
+                 or (re.search(r"_(?:prepare|provider|factory)_v[0-9]+$", symbol)
+                     and symbol != "_birnam_runtime_compiler_provider_v1")]
     assert not forbidden, (library.name, forbidden)
-print("all installed libraries reject the retired aggregate initialization ABI")
+print("all installed libraries reject retired initialization and provider exports")
 
 # Check the installed images, not just source-level module visibility.
 for stem in ("id", "bootstrap", "runtime", "method-observation", "storage", "dispatch-cache",

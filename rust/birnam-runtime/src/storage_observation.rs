@@ -37,7 +37,7 @@ impl Service {
     #[cfg(test)]
     pub(crate) fn refuse_advancement_for_test(&mut self) {
         unsafe extern "C" fn refuse(context: *mut c_void, _: *mut u64) -> i32 {
-            let factory = unsafe { *birnam_storage::birnam_storage_observation_factory_v1() };
+            let factory = unsafe { *birnam_storage::storage_observation_factory() };
             let mut state = StateV1::default();
             unsafe { factory.read.unwrap()(context, &raw mut state) };
             assert_eq!(

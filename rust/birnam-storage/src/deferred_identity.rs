@@ -24,8 +24,7 @@ static FACTORY: FactoryV1 = FactoryV1 {
 };
 /// # Safety
 /// The host pins this descriptor and its code for the lifetime of every owner.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_deferred_identity_factory_v1() -> *const FactoryV1 {
+pub unsafe fn deferred_identity_factory() -> *const FactoryV1 {
     &FACTORY
 }
 

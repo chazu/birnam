@@ -4,7 +4,6 @@ use birnam_abi::system_input::ApiV3;
 use birnam_abi::error_value::numeric_error;
 use birnam_abi::{IdApi, Oop};
 use core::ffi::c_void;
-use core::ptr;
 use std::io::{self, BufRead};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,14 +62,6 @@ static API: ApiV3 = ApiV3 {
     byte_size: size_of::<ApiV3>(),
     install: Some(install),
 };
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_system_input_provider_v3() -> *const ApiV3 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1

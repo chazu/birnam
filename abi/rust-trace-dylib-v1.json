@@ -6,7 +6,6 @@
     "birnam_native_module_v1",
     "birnam_symbol_borrow_v1",
     "birnam_trace_described_v1",
-    "birnam_trace_live_v1",
-    "birnam_trace_provider_v1"
+    "birnam_trace_live_v1"
   ]
 }

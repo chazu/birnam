@@ -145,10 +145,5 @@ pub static API: ApiV1 = ApiV1 {
     trace: Some(birnam_trace_live_v1),
 };
 
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_trace_provider_v1() -> *const ApiV1 {
-    &API
-}
-
 #[cfg(test)]
 mod tests;

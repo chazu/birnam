@@ -14,7 +14,8 @@
 > returns owned Methods, including anonymous synchronous/resumable Units;
 > native binding references live in Lifetime above Id. All upper message sends
 > now use checked Method results, including Object-valued C lookup callbacks.
-> Remaining factory/provider exports and direct C fixture consumers still need cleanup. The [construction manifest](../../abi/production-construction-v1.json)
+> Obsolete preparer and factory/provider exports are removed except Runtime
+> compiler discovery; direct C fixture consumers still need migration. The [construction manifest](../../abi/production-construction-v1.json)
 > records the native entry graph; installer checks cover its structure and library inventory.
 > The loaded Bootstrap now owns the production construction sequence through
 > Runtime, control, collections, Store, parsers, compilers, System and applications; host
@@ -206,7 +207,8 @@ The current production Id dictionaries and core dispatch use these typed
 operands. The common descriptor loader and production Siphon handoff are wired.
 Upper modules now construct through this protocol with explicit predecessors.
 The twelve-argument initializer and dependency-setter exports are removed.
-Remaining factory/provider exports and old direct fixtures still require cleanup.
+The Runtime compiler-provider fallback and old direct fixtures still require migration.
+Other obsolete preparer and factory/provider exports are removed.
 
 On the supported 64-bit target, an operand is a 32-bit kind, 32 reserved zero
 bits and a 16-byte union (24 bytes total). A native entry is a function and native
@@ -2576,3 +2578,32 @@ boxed identity, CodeBinding recovery, mapped/rebuilt/baked application entry,
 resave and boundary-object rejection. The changed Codegen source matches the
 installed copy. Evidence is `.cargo-target/83-emission-metadata-evidence.json`.
 Release validation remains waived.
+
+
+### Retire duplicate native providers and preparers
+
+Forty-two old C exports are removed: three value preparers and thirty-nine
+factory/provider aliases. Native constructors already return these completed
+tables through Id. Rust helper implementations needed by local unit harnesses
+remain ordinary Rust functions; they are no longer alternate exported startup
+paths. Unused wrappers, Float/Word preparation phases and Runtime's unused Native
+Allocation publication are deleted. Thirty-five export inventories are updated.
+
+The active Error Value fixture now loads the module through Id with its completed
+String input. The real host stack-anchor test obtains the Native Stack factory
+through the same loading protocol while retaining its live callback replacement
+and precise-policy ordering assertions. Every installed native library is checked
+for retired initializer, dependency-setter, preparer and factory/provider exports.
+Runtime's compiler provider is the sole explicit exception: Codegen still has a
+discovery fallback and a local finalizer fixture using it. Production Codegen
+receives the completed compiler descriptor explicitly. Removing that fallback
+and migrating historical C initialization fixtures remain open work.
+
+Validation uses `/tmp/birnam-83-native-providers-retired`: 809 workspace library
+tests pass, 28 are ignored; the complete installed native suite and the explicitly
+run real-host stack-anchor test pass. All 60 changed production Rust sources
+match the installed source copies. Two test-only fixes followed installation and
+were included in those successful test runs. All 84 installed Birnam libraries (56 native and 28 authored)
+lack the 42 retired exports. Evidence is
+`.cargo-target/83-provider-cleanup-evidence.json`. No release validation was run.
+The worker deadline and complete Designs 82/83 acceptance audit remain open.

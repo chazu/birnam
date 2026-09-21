@@ -4,7 +4,6 @@
   "install_name": "@rpath/libbirnam_root_registry.dylib",
   "exported_symbols": [
     "birnam_native_module_v1",
-    "birnam_root_registry_factory_v1",
     "birnam_symbol_borrow_v1"
   ]
 }

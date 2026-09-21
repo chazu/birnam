@@ -83,8 +83,7 @@ static FACTORY: FactoryV1 = FactoryV1 {
 };
 /// # Safety
 /// Pin this descriptor and its code for every owner's lifetime.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_deferred_index_factory_v1() -> *const FactoryV1 {
+pub unsafe fn deferred_index_factory() -> *const FactoryV1 {
     &FACTORY
 }
 

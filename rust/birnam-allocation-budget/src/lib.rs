@@ -43,8 +43,7 @@ static FACTORY: FactoryV1 = FactoryV1 {
 };
 /// # Safety
 /// The host pins this immutable descriptor and implementation for every owner.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_allocation_budget_factory_v1() -> *const FactoryV1 {
+pub unsafe fn allocation_budget_factory() -> *const FactoryV1 {
     &FACTORY
 }
 

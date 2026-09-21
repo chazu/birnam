@@ -3,7 +3,6 @@
   "scope": "System environment getter constructed through Bootstrap",
   "install_name": "@rpath/libbirnam_environment.dylib",
   "exported_symbols": [
-    "birnam_environment_provider_v3",
     "birnam_native_module_v1",
     "birnam_symbol_borrow_v1"
   ]

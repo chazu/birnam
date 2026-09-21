@@ -3,8 +3,6 @@
   "scope": "Per-Runtime inherited-lookup cache ownership",
   "install_name": "@rpath/libbirnam_dispatch_cache.dylib",
   "exported_symbols": [
-    "birnam_dispatch_cache_factory_v2",
-    "birnam_guard_verdict_factory_v1",
     "birnam_native_module_v1"
   ]
 }

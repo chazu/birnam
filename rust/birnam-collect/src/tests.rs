@@ -1,5 +1,6 @@
 use core::ffi::c_void;
 use super::*;
+use birnam_abi::collect::ApiV1;
 
 struct Fixture {
     events: Vec<&'static str>,

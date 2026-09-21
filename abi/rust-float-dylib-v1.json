@@ -3,8 +3,6 @@
   "scope": "Native Float construction, operations and Integer mixed extension before Runtime",
   "install_name": "@rpath/libbirnam_float.dylib",
   "exported_symbols": [
-    "birnam_float_prepare_v6",
-    "birnam_float_provider_v1",
     "birnam_native_module_v1",
     "birnam_symbol_borrow_v1"
   ]

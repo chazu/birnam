@@ -63,8 +63,7 @@ static API: ApiV8 = ApiV8 {
     destroy_export: Some(export::destroy),
 };
 /// Preparation has no side effects and needs no Id or namespace instance.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_namespace_provider_v8() -> *const ApiV8 {
+pub fn namespace_provider() -> *const ApiV8 {
     &API
 }
 #[unsafe(no_mangle)]

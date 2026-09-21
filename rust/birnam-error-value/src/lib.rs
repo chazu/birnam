@@ -5,7 +5,6 @@ use birnam_abi::namespace_import::{self, ApiV1 as ImportV1};
 use birnam_abi::namespace_presence::{self, ApiV1 as PresenceV1};
 use birnam_abi::{IdApi, Oop};
 use core::ffi::{c_char, c_int};
-use core::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 static READY: AtomicBool = AtomicBool::new(false);
 
@@ -103,14 +102,6 @@ static API: ApiV3 = ApiV3 {
     is_error: Some(exact),
     from_bytes: Some(from_bytes),
 };
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_error_value_provider_v3() -> *const ApiV3 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1

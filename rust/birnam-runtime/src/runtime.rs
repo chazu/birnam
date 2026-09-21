@@ -7050,15 +7050,15 @@ mod tests {
             if owned.view.count != 0 {
                 EVENTS.with_borrow_mut(|events| events.push(Some(owned.view.kinds.addr())));
             }
-            let factory = unsafe { &*birnam_payload_layout::birnam_payload_layout_factory_v1() };
+            let factory = unsafe { &*birnam_payload_layout::payload_layout_factory() };
             unsafe { factory.release.unwrap()(owned) };
         }
         unsafe extern "C" fn destroy(api: *mut ApiV1) {
             EVENTS.with_borrow_mut(|events| events.push(None));
-            let factory = unsafe { &*birnam_payload_layout::birnam_payload_layout_factory_v1() };
+            let factory = unsafe { &*birnam_payload_layout::payload_layout_factory() };
             unsafe { factory.destroy.unwrap()(api) };
         }
-        let mut factory = unsafe { *birnam_payload_layout::birnam_payload_layout_factory_v1() };
+        let mut factory = unsafe { *birnam_payload_layout::payload_layout_factory() };
         factory.release = Some(release);
         factory.destroy = Some(destroy);
         crate::payload_layout::TEST_FACTORY.set(Some(factory));

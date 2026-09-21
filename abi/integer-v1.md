@@ -3,8 +3,8 @@
 `libbirnam_integer.dylib` owns Integer's canonical behavior and prototype, signed
 64-bit payload and primitive construction/reading/recognition. Its production
 base is constructed through Id before Float, Word, Block or Runtime. Id boots
-without Integer; its remaining Machine and optimizer components explicitly
-acquire Integer when the host composes the stack.
+without Integer. Machine and compiler modules above Id receive the completed
+Integer table as an explicit constructor input.
 
 ## Production construction
 
@@ -29,16 +29,10 @@ table as a native Word. This creates a separate extension context and installs
 mixed arithmetic/comparisons and `asFloat`, replacing only original base entries
 and preserving early replacements, `mod:`, `=` and `printString`. The base has no
 future Float slot. Repeated or malformed extension installation is rejected.
-The later `module_init` reuses the table and adds only the remaining Block
-iteration; its native Execution extension is still part of Design 83.
-
-Upper consumers obtain the identical table through
-`birnam_integer_provider_v1()`. The host passes it to each consumer's optional
-`birnam_integer_dependency_v1(IntegerApiV1 *) -> int` before `module_init`.
-The host also attaches itself and the still-combined Machine library. Success is
-1; malformed or different repeated dependencies return 0. The same table can be
-reattached. A missing dependency fails mounting before the consumer initializes.
-`module_init`'s existing opaque prior-state contract is unchanged.
+The native control extension installs `to:do:` after Runtime/Execution and
+Block are complete, preserving earlier replacements. Bootstrap passes the
+completed Integer table explicitly to upper constructors. The old provider,
+dependency setter and aggregate `module_init` exports are removed.
 
 The [Rust mirror](../rust/birnam-abi/src/integer.rs) and
 [independent C header](fixtures/integer-v1/integer_v1.h) define an 80-byte operations
@@ -52,8 +46,8 @@ new unloading policy and no aggregate replacement for IdApi.
 
 Production `make` sends the current Id `allocate` method and validates the
 returned allocation's size and behavior before initializing its payload.
-The legacy IdApi initializer retains direct allocation for existing native
-clients. Both preserve the existing fresh-result contract. `read` requires a
+Internal Rust test support retains direct construction; it is not an exported
+initialization path. Both preserve the existing fresh-result contract. `read` requires a
 live Integer payload and remains valid after that object's behavior is changed.
 `is_exact` checks heap membership and the original canonical behavior, rejecting
 null, foreign addresses, and descendants. Image handling deliberately retains
@@ -84,18 +78,10 @@ The private closure-elision hook is now `birnam_id_try_closure_elision_v2`, carr
 the producer's actual Integer table alongside its IdApi. Generated code's TCC
 bridge names, Method ABI, Frame descriptors and durable image bytes are unchanged.
 
-All legacy native consumers must be rebuilt for the current IdApi. Historical manifests are
-retained as evidence, not compatibility shims. The independent C fixture checks
-bare Id, arithmetic with a signed-128-bit oracle, errors, fresh identity, mixed
-Float behavior, replacement, reassociation, namespace rebinding, and collection.
-
-Float must be complete before `installFloat:`, or attached before legacy
-IdApi initialization; see the [Float mounting protocol](float-v1.md).
-
-The [nine-symbol export inventory](rust-integer-dylib-v1.json) includes the native
-initializer and the legacy Error Value dependency. The independent
-`scripts/id-native-loading-smoke.py PREFIX` fixture runs 605 arithmetic cases,
-comparison, printing and error checks before Float exists, then repeats after
-Runtime adoption with precise GC and early method replacement. Run
-`mise run integer-error-value` and `scripts/integer-error-value-image-smoke.sh PREFIX`
-for focused debug native and compiled-image checks.
+The [export inventory](rust-integer-dylib-v1.json) describes the current native
+entry and numeric admission declarations. Historical C clients that use removed
+initializers require migration; they are not compatibility shims.
+The independent `scripts/id-native-loading-smoke.py PREFIX` fixture runs 605
+arithmetic cases, comparison, printing and error checks before Float exists,
+then repeats after Runtime adoption with precise GC and early method replacement.
+Float must be complete before `installFloat:`; see [Float construction](float-v1.md).

@@ -132,17 +132,17 @@ fn main() {
     stack.initialize_control().unwrap();
     assert_eq!(unsafe { birnam_abi::namespace_import::import(stack.imports(), c"Block".as_ptr()) }, original);
     let scratch = Path::new(&args[3]);
-    let path = std::ffi::CString::new(prefix.join("libbirnam_error_value.dylib").as_os_str().as_bytes()).unwrap();
-    let image = unsafe { (stack.api().dlopen)(path.as_ptr(), 2) };
-    assert!(!image.is_null());
-    let provider = unsafe { (stack.api().dlsym)(image, c"birnam_error_value_provider_v3".as_ptr()) };
-    assert!(!provider.is_null());
-    let provider: birnam_abi::error_value::ProviderV3 = unsafe { std::mem::transmute(provider) };
-    let error = unsafe { provider() };
+    let error_result = unsafe { stack.load_native(
+        prefix.join("libbirnam_error_value.dylib").as_os_str().as_bytes(),
+        &[Operand::word(values.string.addr())],
+    ) };
+    assert_eq!(error_result.status, native::LOADED);
+    let error = error_result.value.as_word().unwrap();
+    assert_ne!(error, 0);
     for mode in [1, 2] {
         let library = scratch.join(format!("block-loop-{mode}.dylib"));
         let reentry = [arguments[0], Operand::word(stack.presence().addr()), arguments[1],
-            Operand::word(error.addr()), Operand::bytes(library.as_os_str().as_bytes()), Operand::word(mode)];
+            Operand::word(error), Operand::bytes(library.as_os_str().as_bytes()), Operand::word(mode)];
         let result = unsafe { stack.load_native(scratch.join("block-loop-reentry.dylib").as_os_str().as_bytes(), &reentry) };
         assert_eq!(result.status, native::LOADED);
     }

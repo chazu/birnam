@@ -405,14 +405,6 @@ static API: ApiV6 = ApiV6 {
     publish: Some(publish),
 };
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_range_provider_v6() -> *const ApiV6 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }

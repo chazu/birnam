@@ -49,8 +49,7 @@ static FACTORY: FactoryV1 = FactoryV1 {
 };
 /// # Safety
 /// The immutable descriptor and code outlive all retaining consumers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_finalizers_factory_v1() -> *const FactoryV1 { &FACTORY }
+pub unsafe fn finalizers_factory() -> *const FactoryV1 { &FACTORY }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }

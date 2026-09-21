@@ -737,14 +737,6 @@ static API: ApiV6 = ApiV6 {
     inject: Some(vector_inject),
 };
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_vector_provider_v6() -> *const ApiV6 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }

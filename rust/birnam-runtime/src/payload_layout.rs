@@ -32,7 +32,7 @@ impl Service {
     pub(crate) fn new() -> Self {
         #[cfg(test)]
         let factory = TEST_FACTORY.get().unwrap_or_else(|| unsafe {
-            *birnam_payload_layout::birnam_payload_layout_factory_v1()
+            *birnam_payload_layout::payload_layout_factory()
         });
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::payload_layout::operations() };

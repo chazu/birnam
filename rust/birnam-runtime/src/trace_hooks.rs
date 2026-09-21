@@ -12,7 +12,7 @@ pub(crate) struct Service {
 impl Service {
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_trace_hooks::birnam_trace_hooks_factory_v1() };
+        let factory = unsafe { *birnam_trace_hooks::trace_hooks_factory() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::trace_hooks::operations() };
         let floor = crate::public_api::trace_hooks_access();

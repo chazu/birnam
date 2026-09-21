@@ -365,7 +365,6 @@ pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, root
     }
     let _ = Box::into_raw(bootstrap);
     let _ = Box::into_raw(api);
-    NATIVE_ALLOCATION.store(Box::into_raw(Box::new(runtime().native_allocation())), Ordering::Release);
     let enumeration = unsafe { &*runtime().namespace_enumeration() };
     unsafe {
         birnam_namespace_count_v1.publish(&enumeration.count);
@@ -500,13 +499,6 @@ pub(crate) fn test_value_api(bootstrap: &Bootstrap) -> Box<IdApi> {
 }
 
 pub(crate) fn canonical_allocator() -> usize { canonical_numeric_functions().alloc as usize }
-
-static NATIVE_ALLOCATION: AtomicPtr<birnam_abi::native_allocation::NativeAllocationV1> = AtomicPtr::new(core::ptr::null_mut());
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_allocation_provider_v1() -> *const birnam_abi::native_allocation::NativeAllocationV1 {
-    let _ = runtime();
-    NATIVE_ALLOCATION.load(Ordering::Acquire)
-}
 
 /// Primitive floor facts for the namespace's reverse-name operation. Constructing
 /// this descriptor does not inspect a Runtime or call into it.

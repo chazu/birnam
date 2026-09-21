@@ -6,8 +6,8 @@ unsafe extern "C" fn initialize(_: *const Protocol, args: *const Operand, count:
     let Some(bytes) = argument.as_bytes() else { return invalid(); };
     let Some(name) = (unsafe { birnam_abi::borrowed_slice(bytes.pointer, bytes.length) }) else { return invalid(); };
     let factory = match name {
-        b"dispatchCache" => unsafe { super::birnam_dispatch_cache_factory_v2() }.addr(),
-        b"guardVerdict" => unsafe { super::birnam_guard_verdict_factory_v1() }.addr(),
+        b"dispatchCache" => unsafe { super::dispatch_cache_factory() }.addr(),
+        b"guardVerdict" => unsafe { super::guard_verdict_factory() }.addr(),
         _ => return invalid(),
     };
     Outcome::loaded(Operand::word(factory))

@@ -2,8 +2,8 @@
 
 `birnam-float` owns Float's canonical behavior, zero prototype and eight-byte
 IEEE payload. Its production entry constructs Float after Integer and before
-Word, Block or Runtime. The still-combined Machine and image consumers acquire
-the completed family through `birnam_float_dependency_v1`.
+Word, Block or Runtime. Machine and image consumers receive
+the completed table explicitly through their native constructors.
 
 `FloatApiV1` is a 72-byte C table: version, byte size, stable native context,
 behavior and prototype identities, constructor, reader, exact recognizer and
@@ -41,7 +41,7 @@ separate context containing the completed Integer and Float owners, then install
 mixed arithmetic/comparisons and `asFloat` on Integer. It replaces only the
 original base entries and preserves earlier method replacements. Integer's base
 has no absent Float dependency or late-filled slot. `to:do:` still waits for
-Execution/Block; the later legacy mount supplies that remaining extension.
+Execution/Block; the native Integer control extension supplies that operation.
 
 ## Allocation, adoption and lifetime
 
@@ -53,24 +53,17 @@ after behavior reassociation. Pure codec callbacks neither allocate nor dispatch
 image materialization retains its existing allocation/root schedule. Float has
 no native numeric optimization declaration or allocator-context guard.
 
-The host skips legacy Float preparation and attaches the same completed table to
-upper consumers. Late `module_init` checks that it is mounting on the same Id and
-preserves native identities, layouts, bindings and method contexts. Rooted early
-objects survive Runtime adoption and precise GC; releasing their last roots
-permits reclamation. Native libraries and contexts remain pinned after entry,
-including if initialization subsequently fails.
+Bootstrap passes the completed table to upper constructors. Rooted early objects
+survive Runtime adoption and precise GC; releasing their last roots permits
+reclamation. Native libraries and contexts remain pinned after entry, including
+if initialization subsequently fails.
 
-The legacy `birnam_float_prepare_v6` and IdApi `module_init` remain for existing
-native clients pending their migration. That path prepares Float before Integer,
-then publishes its names and installs methods after Integer/String/Error Value
-attachment. It retains its selected execution capabilities and original repeated
-method-installation behavior. It is not the production constructor. Legacy
-consumers must use the current IdApi; historical manifests are evidence only.
-
-The [eight-symbol inventory](rust-float-dylib-v1.json) includes the native entry.
+The old Float preparer, provider, dependency setter and aggregate `module_init`
+exports are removed. Internal Rust storage harnesses still exercise direct
+construction; historical C clients require migration. The
+[export inventory](rust-float-dylib-v1.json) records the current native entry.
 Run `scripts/id-native-loading-smoke.py PREFIX` for the real construction prefix,
 independent IEEE/conversion checks and adoption/GC; `scripts/float-image-smoke.sh PREFIX`
 and `scripts/float-error-value-image-smoke.sh PREFIX` cover source, compiled,
-saved-image and baked execution. `mise run float` exercises legacy native clients
-using a debug build. The remaining Design 83 stages and compiler admission are
+saved-image and baked execution. The remaining Design 83 stages and compiler admission are
 tracked in the [design document](../docs/design/83-production-id-construction-and-lifetimes.md).

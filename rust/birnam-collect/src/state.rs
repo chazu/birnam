@@ -263,7 +263,7 @@ unsafe extern "C" fn initialize(
         context,
         admit: Some(admit_settings),
     };
-    let phase = unsafe { crate::phase::birnam_collection_phase_factory_v1() };
+    let phase = unsafe { crate::phase::collection_phase_factory() };
     let mut state = Box::new(State {
         owned: OwnedV2 {
             version: 2,

@@ -23,7 +23,7 @@ impl Environment {
         // Tests select the same implementation for each independent Runtime;
         // production only accepts the host's explicitly attached descriptor.
         #[cfg(test)]
-        let api = unsafe { *birnam_namespace::birnam_namespace_provider_v8() };
+        let api = unsafe { *birnam_namespace::namespace_provider() };
         #[cfg(not(test))]
         let api = unsafe { birnam_abi::namespace::operations() };
         let context =

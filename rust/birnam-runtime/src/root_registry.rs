@@ -12,7 +12,7 @@ pub(crate) struct Service {
 impl Service {
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_root_registry::birnam_root_registry_factory_v1() };
+        let factory = unsafe { *birnam_root_registry::root_registry_factory() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::root_registry::operations() };
         let floor = crate::public_api::root_registry_access();

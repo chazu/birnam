@@ -6,7 +6,7 @@ unsafe extern "C" fn initialize(_: *const Protocol, args: *const Operand, count:
     let Some(bytes) = argument.as_bytes() else { return invalid(); };
     let Some(name) = (unsafe { birnam_abi::borrowed_slice(bytes.pointer, bytes.length) }) else { return invalid(); };
     let factory = match name {
-        b"methodObservation" => unsafe { super::birnam_method_observation_factory_v1() }.addr(),
+        b"methodObservation" => unsafe { super::method_observation_factory() }.addr(),
         _ => return invalid(),
     };
     Outcome::loaded(Operand::word(factory))

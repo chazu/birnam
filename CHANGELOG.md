@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove 42 obsolete native preparer and factory/provider exports and their
+  duplicate wrappers. Error Value and host stack-anchor integration fixtures now
+  acquire their services through Id. Extend the installed export gate and correct
+  ABI documentation; Runtime compiler discovery remains a migration exception.
+
 - Derive compiled-artifact descriptors from the same parsed source used for
   emission, removing two repeated parses during ordinary and image compilation.
   Each compilation still observes the current parser; metadata retains the

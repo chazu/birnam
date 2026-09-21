@@ -3,8 +3,8 @@
 `birnam-word` owns Word's canonical behavior, zero prototype, eight-byte unsigned
 payload and existing printing, equality and Integer-conversion methods. Production
 constructs it through Id after Integer and before Block or Runtime. Its inputs
-contain no Float dependency. The remaining combined Machine receives the same
-completed family through `birnam_word_dependency_v1`.
+contain no Float dependency. Machine receives the same
+completed table as an explicit native constructor input.
 
 `WordApiV1` is a 72-byte C table: version, byte size, stable native context,
 behavior/prototype identities, constructor, reader, exact recognizer and a pointer
@@ -39,25 +39,19 @@ contracts. No Word optimization declaration or allocator-context guard is added.
 
 ## Adoption and lifetime
 
-The root provider retains canonical objects, predecessor references and cached
-selectors, including during construction and after method removal. The provider
-returns null until construction completes. Production skips legacy Word
-preparation and attaches the completed table to its consumers. Late `module_init`
-checks the Id identity and preserves early bindings, layouts and native method
-contexts. Rooted early Words survive Runtime adoption and precise collection;
-releasing their last root permits reclamation. Libraries, tables and native
-contexts remain pinned after entry, including after initialization failure.
+The registered root callback retains canonical objects, predecessor references
+and cached selectors, including during construction and after method removal.
+Bootstrap passes the completed table explicitly to upper consumers. Rooted early
+Words survive Runtime adoption and precise collection; releasing their last root
+permits reclamation. Libraries, tables and native contexts remain pinned after
+entry, including after initialization failure.
 
-The legacy `birnam_word_prepare_v6`/IdApi constructor remains for native clients
-pending migration. On an already completed native Word it returns the same table
-when called on the same Id. On the legacy path, preparation precedes numeric
-activation, then `module_init` publishes the identities and installs methods
-with Integer/String/Error Value attached. Legacy reinitialization retains its
-original method-reinstallation behavior. Native consumers must use the current
-IdApi; historical manifests are evidence only. ForeignAddress is a separate family.
-
-The [eight-symbol inventory](rust-word-dylib-v1.json) includes the native entry.
+The old Word preparer, provider, dependency setter and aggregate `module_init`
+exports are removed. Internal Rust storage harnesses retain direct construction;
+historical C clients using the old path require migration. ForeignAddress is a
+separate family. The [export inventory](rust-word-dylib-v1.json) records the
+current native entry.
 Run `scripts/id-native-loading-smoke.py PREFIX` for the real early construction
 prefix and adoption/GC checks. `scripts/word-image-smoke.sh PREFIX` and
 `scripts/word-error-value-image-smoke.sh PREFIX` cover source, compiled, saved-image
-and baked execution; `mise run word` exercises the legacy debug native client.
+and baked execution.

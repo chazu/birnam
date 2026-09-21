@@ -4,8 +4,7 @@
   "exported_symbols": [
     "birnam_native_module_v1",
     "birnam_object_model_rust_identity",
-    "birnam_symbol_borrow_v1",
-    "birnam_vtable_enumeration_factory_v2"
+    "birnam_symbol_borrow_v1"
   ],
   "library_name": "libbirnam_object_model.dylib",
   "install_name_policy": "cargo-output-path"

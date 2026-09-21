@@ -63,14 +63,6 @@ static API: ApiV1 = ApiV1 {
     printable: Some(printable),
 };
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_text_view_provider_v1() -> *const ApiV1 {
-    if READY.load(Ordering::Acquire) {
-        &API
-    } else {
-        ptr::null()
-    }
-}
-#[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }

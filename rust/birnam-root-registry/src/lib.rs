@@ -124,8 +124,7 @@ pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi
 };
 /// # Safety
 /// Owner-thread operations require the declared descriptor and code lifetimes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_root_registry_factory_v1() -> *const FactoryV1 { &FACTORY }
+pub unsafe fn root_registry_factory() -> *const FactoryV1 { &FACTORY }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }

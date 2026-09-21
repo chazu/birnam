@@ -47,8 +47,7 @@ static FACTORY: FactoryV1 = FactoryV1 {
 };
 /// # Safety
 /// Factory operations require owner-thread access and their declared lifetimes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_method_observation_factory_v1() -> *const FactoryV1 { &FACTORY }
+pub unsafe fn method_observation_factory() -> *const FactoryV1 { &FACTORY }
 
 #[cfg(test)]
 mod tests {

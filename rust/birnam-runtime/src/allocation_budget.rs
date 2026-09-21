@@ -14,7 +14,7 @@ impl Service {
     }
     pub(crate) fn new() -> Self {
         #[cfg(test)]
-        let factory = unsafe { *birnam_allocation_budget::birnam_allocation_budget_factory_v1() };
+        let factory = unsafe { *birnam_allocation_budget::allocation_budget_factory() };
         #[cfg(not(test))]
         let factory = unsafe { birnam_abi::allocation_budget::operations() };
         let context = NonNull::new(unsafe { factory.create.unwrap()() })

@@ -1,7 +1,7 @@
 //! Bounded inherited dictionary answers, without roots or executable leases.
 mod native;
 mod guard_verdict;
-pub use guard_verdict::birnam_guard_verdict_factory_v1;
+pub use guard_verdict::guard_verdict_factory;
 use birnam_abi::dispatch_cache::FactoryV2;
 use birnam_abi::id_protocol::NativeEntry;
 use core::{cell::Cell, ffi::c_void, ptr};
@@ -42,8 +42,7 @@ static FACTORY: FactoryV2 = FactoryV2 {
 };
 /// # Safety
 /// The host pins this immutable descriptor and implementation for every owner.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_dispatch_cache_factory_v2() -> *const FactoryV2 { &FACTORY }
+pub unsafe fn dispatch_cache_factory() -> *const FactoryV2 { &FACTORY }
 
 #[cfg(test)]
 mod tests;

@@ -19,9 +19,9 @@ removed from all production modules. Earlier descriptions of factory preparation
 before `id_init` record a retired construction path; current startup loads the
 real Id first. See
 [Design 83](../docs/design/83-production-id-construction-and-lifetimes.md#implementation-evidence-and-remaining-boundary)
-for the current construction and remaining package separation.
+for current construction and the remaining migration work.
 
-The current boundary is **IdApi v20**, with 18 fields / 144 bytes. Design
+The upper Runtime compatibility table is **IdApi v20**, with 18 fields / 144 bytes. Design
 [81BO](../docs/design/81bo-production-native-stack-anchor.md) moves native
 stack-anchor ownership into [Native Stack](native-stack-v1.md), exposing its
 setter directly to the host. Design [81BN](../docs/design/81bn-production-finalizers.md)
@@ -31,9 +31,10 @@ Production native modules use Id's common descriptor and explicit constructor
 operands; the host and System no longer call the aggregate `module_init` ABI.
 [System native loading](native-loading.md) exposes that same protocol to language
 callers. The installed native gate rejects any library that reintroduces
-`module_init` or a `birnam_*_dependency_v*` export. Remaining factory/provider
-exports and old direct test clients are migration work, not another supported
-production loader.
+`module_init`, dependency setters, preparers or factory/provider exports, except
+for Runtime's compiler provider while Codegen's fallback is migrated. Forty-two
+obsolete preparer and factory/provider exports are removed. Old direct test
+clients still require migration; they are not another supported production loader.
 [IdApi v20 manifest](idapi-v20.json) and the
 [C fixture](fixtures/idapi-v20/README.md) describe the current boundary.
 
@@ -244,10 +245,10 @@ last Prelude consumers. The [export inventory](rust-source-loader-dylib-v1.json)
 adds no IdApi fields, objects or image encoding.
 
 [Namespace v8](namespace-v8.md) supplies a 176-byte immutable storage/service factory,
-prepared explicitly before Id initialization. It owns ordered bindings and
-independent contexts; Id consumes a borrowed binding view for roots. The
-[export inventory](rust-namespace-dylib-v1.json) adds no IdApi fields or image
-encoding. Current native hosts must attach this prerequisite before id_init.
+used by the native Namespace owner constructed after Id, roots, Lifetime and
+base values. Namespace owns and roots its ordered bindings; upper Runtime adopts
+the completed storage. The [export inventory](rust-namespace-dylib-v1.json) adds
+no IdApi fields or image encoding. Id initializes without Namespace.
 
 `idapi-v7.json` and `fixtures/idapi-v7` preserve the 81X checkpoint. Current
 Namespace [storage v8](namespace-v8.md) creates the per-runtime names service;

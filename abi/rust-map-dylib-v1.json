@@ -3,7 +3,6 @@
   "scope": "Map canonical objects, HAMT storage, methods, traversal and printing",
   "install_name": "@rpath/libbirnam_map.dylib",
   "exported_symbols": [
-    "birnam_map_provider_v6",
     "birnam_native_module_v1",
     "birnam_symbol_borrow_v1"
   ]

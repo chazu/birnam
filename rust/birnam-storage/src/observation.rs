@@ -52,8 +52,7 @@ static FACTORY: FactoryV1 = FactoryV1 {
 };
 /// # Safety
 /// The host pins this immutable descriptor and code for all created contexts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_storage_observation_factory_v1() -> *const FactoryV1 {
+pub unsafe fn storage_observation_factory() -> *const FactoryV1 {
     &FACTORY
 }
 

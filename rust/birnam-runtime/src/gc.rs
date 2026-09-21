@@ -34,7 +34,7 @@ pub(crate) fn with_native_root_range<T, F: FnOnce(usize) -> T>(
 /// immediate first-mark admission; its frames stay below the captured interval.
 pub(crate) fn emit_native_root_range(sink: &SinkV1, start: usize, stack_bottom: usize) {
     #[cfg(test)]
-    let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v4() };
+    let factory = unsafe { *birnam_native_stack::native_stack_factory() };
     #[cfg(not(test))]
     let factory = unsafe { birnam_abi::native_stack::operations() };
     unsafe { factory.scan.unwrap()(sink, start, stack_bottom) };
@@ -54,7 +54,7 @@ struct NativeMarkOwner {
 impl NativeMarkOwner {
     fn new() -> Self {
         #[cfg(test)]
-        let api = unsafe { *birnam_native_mark::birnam_native_mark_provider_v1() };
+        let api = unsafe { *birnam_native_mark::native_mark_provider() };
         #[cfg(not(test))]
         let api = unsafe { birnam_abi::native_mark::operations() };
         let context = core::ptr::NonNull::new(unsafe { api.create.unwrap()() })

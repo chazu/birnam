@@ -47,9 +47,7 @@ impl Access {
     }
 }
 static READY: AtomicBool = AtomicBool::new(false);
-pub(crate) fn ready() -> bool {
-    READY.load(Ordering::Acquire)
-}
+
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }

@@ -4,7 +4,6 @@
   "install_name": "@rpath/libbirnam_system_input.dylib",
   "exported_symbols": [
     "birnam_native_module_v1",
-    "birnam_symbol_borrow_v1",
-    "birnam_system_input_provider_v3"
+    "birnam_symbol_borrow_v1"
   ]
 }
