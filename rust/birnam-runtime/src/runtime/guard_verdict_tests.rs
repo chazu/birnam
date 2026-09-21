@@ -37,8 +37,9 @@ fn runtime_guard_verdict_transcript() {
     let mut owners = vec![build_bootstrap(), build_bootstrap()];
     let moved = owners.remove(0);let r = &moved.runtime;
     let initial = cells(r);assert_eq!(initial[0], (u64::MAX, false));
-    // Bootstrap itself performs lookup; the factory tests cover pre-bootstrap cold state.
-    assert!(initial[1].1 && initial[1].0 != u64::MAX);
+    // Native bootstrap uses Id directly; upper Execution caches stay cold
+    // until an actual managed application lookup needs their proof.
+    assert_eq!(initial[1], (u64::MAX, false));
     assert_eq!(cells(&owners[0].runtime), initial);
     assert!(!r.guarded_slot_access_eligible(r.globals().object_vt));
     assert!(!r.guarded_default_lookup_eligible(r.globals().object_vt));

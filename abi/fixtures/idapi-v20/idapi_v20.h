@@ -42,6 +42,9 @@ struct IdApi {
     Oop (*proto)(Oop base);
     void (*method)(Oop type, Oop selector, Method implementation);
     Oop (*alloc)(Oop type, size_t payload_bytes);
+    /* Checked language send: arguments/results are Objects. Reflection answers
+       owned Method values or nil; raw function pointers are not message operands.
+       Native registration uses the typed method field above. */
     Oop (*send)(Oop receiver, Oop selector, const Oop *args, size_t count);
     Oop nil_obj;
     Oop true_obj;

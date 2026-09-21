@@ -14,12 +14,14 @@ turn, resolves once and invokes the exact result. Native `Object` results stay
 objects, `Unit` becomes nil, and a `NativeEntry` becomes an owned `Method`.
 Unsupported operand results and native failures become language errors.
 
-TCC and Portable Code select this completed entry from the actual Runtime image
-during construction, before publishing their language execution interfaces.
-`birnam_abi::language::select` performs that selection. The frozen `IdApi.send`
-table field still serves unsafe legacy native consumers and retains its raw
-Method convention. It is not the language execution entry. This adapter remains
-a migration boundary; Id's typed native protocol itself is unchanged.
+`IdApi.send` and `birnam_runtime_send_v1` use this same checked operation.
+TCC, Portable Code, the host and all native modules receive it with the completed
+Runtime API. They do not discover a second send entry by opening Runtime's image.
+Reflection through `lookup` and `removeMethod:` returns an owned Method or nil;
+`addMethod` accepts a Method, never a function address disguised as an Object.
+Trusted native authors register C functions through the typed `IdApi.method`
+field or use Id's typed native entries with their explicit contexts and lifetimes.
+Id's own protocol is unchanged.
 
 `Object methodFor:` searches the receiver's behavior. `Vtable methodFor:` searches
 that behavior directly. Method instances provide `invokeOn:`,
@@ -69,8 +71,8 @@ Synchronous portable Block entries check arity and require sufficiently large,
 traced object slots for captures before reading the receiver's payload.
 
 Language lookup results accept Method and nil. Another live object is an
-invalid result, never an executable address. Raw native addresses remain an
-unsafe legacy convention until those consumers migrate. Image saving rejects
+invalid result, never an executable address. Runtime-internal C method adaptation still has legacy registration/lookup
+conventions to remove; they are no longer accepted by `IdApi.send`. Image saving rejects
 Method instances as `methodNotImageable`; the native Method prototype remains
 a named reference.
 

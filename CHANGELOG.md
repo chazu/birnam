@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Use one checked message-send path for generated code, the host and native
+  modules. Native reflection now returns owned Methods or nil, and message-based
+  method installation rejects raw function addresses. TCC and Portable Code use
+  the completed Runtime send directly. Runtime bootstrap sends typed Id operands;
+  remove the old raw send argument/result policy and private send discovery.
+
 - Construct Isolate, Relational, Alien and Image through Bootstrap with completed
   dependencies and temporary constructor roots. Remove the final legacy native
   startup sequence. Add the full construction manifest and installer checks for

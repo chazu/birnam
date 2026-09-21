@@ -57,14 +57,6 @@ impl Runtime {
         args: *const Oop,
         count: usize,
     ) -> Oop {
-        unsafe { self.send_with_result_policy(receiver, selector, args, count, false) }
-    }
-
-    pub(crate) unsafe fn send_legacy_abi(&self, receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
-        unsafe { self.send_with_result_policy(receiver, selector, args, count, true) }
-    }
-
-    unsafe fn send_with_result_policy(&self, receiver: Oop, selector: Oop, args: *const Oop, count: usize, legacy_results: bool) -> Oop {
         if args.is_null() && count != 0 {
             boundary::fatal_invariant("IdApi.send args is null with nonzero count");
         }
@@ -89,7 +81,7 @@ impl Runtime {
             // SAFETY: the resolved target and caller-owned argument buffer stay
             // protected by the caller's managed turn.
             return unsafe {
-                self.invoke_resolved_send_target(target, receiver, args, count, arguments, legacy_results)
+                self.invoke_resolved_send_target(target, receiver, args, count, arguments)
             };
         }
 
@@ -130,7 +122,6 @@ impl Runtime {
                 forwarded.as_ptr(),
                 forwarded_count,
                 &forwarded[..forwarded_count],
-                false,
             )
         }
     }
@@ -142,7 +133,6 @@ impl Runtime {
         args: *const Oop,
         count: usize,
         arguments: &[Oop],
-        legacy_results: bool,
     ) -> Oop {
         match target {
             StacklessTarget::Registered { entry } => self
@@ -152,7 +142,7 @@ impl Runtime {
                 // No Rust state reference or collection guard survives this
                 // call. The surrounding managed turn protects the
                 // dictionary-proven Method for the invocation extent.
-                unsafe { self.invoke_native_abi_from_objects_with_legacy_results(method, receiver, args, count, legacy_results) }
+                unsafe { self.invoke_native_abi_from_objects(method, receiver, args, count) }
             }
             StacklessTarget::NativeFailure(outcome) => self.native_language_outcome(outcome),
             StacklessTarget::Unbound => {
@@ -440,11 +430,17 @@ pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, 
         ] {
             if values.is_some() && selector == selectors.identical { continue; }
             if has_object_dnu && selector == selectors.does_not_understand { continue; }
-            let arguments = [selector, MethodAddress::from_method(method).as_oop()];
-            let installed = runtime.enter_application(|| unsafe { runtime.send_legacy_abi(vtable, selectors.add_method, arguments.as_ptr(), arguments.len()) });
+            let entry = runtime.encode_legacy_method(method, selector == selectors.lookup);
+            let arguments = [crate::abi::id_protocol::Operand::object(selector),
+                crate::abi::id_protocol::Operand::entry(entry)];
+            let installed = runtime.enter(|| unsafe {
+                protocol.message.unwrap()(protocol.context, vtable, selectors.add_method,
+                    arguments.as_ptr(), arguments.len())
+            });
             boundary::require_invariant(
-                installed == arguments[1],
-                "metacircular addMethod changed method identity",
+                installed.status == crate::abi::id_protocol::LOADED
+                    && installed.value.as_entry() == Some(entry),
+                "metacircular addMethod changed native entry",
             );
         }
     });
@@ -1353,47 +1349,34 @@ mod tests {
 
     #[test]
     fn bootstrap_primitives_support_metacircular_dispatch_removal_and_dnu() {
-        let bootstrap = build_bootstrap();
+        use crate::abi::id_protocol::{self as native, Operand};
+        let initial = crate::initial_objects::InitialObjects::new();
+        let protocol = initial.protocol.protocol;
+        let bootstrap = build_bootstrap_from(initial);
         let runtime = &bootstrap.runtime;
+        runtime.install_id_runtime_extensions();
         let globals = runtime.globals();
         let answer = selector(runtime, b"bootstrapAnswer");
         let missing = selector(runtime, b"bootstrapMissing:");
-
-        let native_send = |receiver, selector, args: &[Oop]| unsafe {
-            runtime.send_legacy_abi(receiver, selector, args.as_ptr(), args.len())
+        let native_send = |receiver, selector, args: &[Operand]| {
+            let outcome = runtime.enter(|| unsafe {
+                protocol.message.unwrap()(protocol.context, receiver, selector, args.as_ptr(), args.len())
+            });
+            assert_eq!(outcome.status, native::LOADED);
+            outcome.value
         };
-        runtime.enter(|| {
-            let child = native_send(globals.object_vt, bootstrap.selectors.delegated, &[]);
-            let install = [answer, MethodAddress::from_method(answer_77).as_oop()];
-            assert_eq!(
-                native_send(child, bootstrap.selectors.add_method, &install),
-                install[1]
-            );
-
-            let receiver = native_send(
-                child,
-                bootstrap.selectors.allocate,
-                &[core::ptr::null_mut()],
-            );
-            assert_eq!(native_send(receiver, answer, &[]).addr(), 77);
-
-            let dnu_install = [
-                bootstrap.selectors.does_not_understand,
-                MethodAddress::from_method(dnu_count).as_oop(),
-            ];
-            let _ = native_send(child, bootstrap.selectors.add_method, &dnu_install);
-            assert_eq!(
-                native_send(receiver, missing, &[core::ptr::null_mut(); 20])
-                    .addr(),
-                17
-            );
-
-            assert_eq!(
-                native_send(child, bootstrap.selectors.remove_method, &[answer]),
-                install[1]
-            );
-            assert_eq!(native_send(receiver, answer, &[]).addr(), 1);
-        });
+        let child = native_send(globals.object_vt, bootstrap.selectors.delegated, &[]).as_object().unwrap();
+        let method = runtime.encode_legacy_method(answer_77, false);
+        let install = [Operand::object(answer), Operand::entry(method)];
+        assert_eq!(native_send(child, bootstrap.selectors.add_method, &install).as_entry(), Some(method));
+        let receiver = native_send(child, bootstrap.selectors.allocate, &[Operand::word(0)]).as_object().unwrap();
+        assert_eq!(native_send(receiver, answer, &[]).as_object().unwrap().addr(), 77);
+        let dnu_install = [Operand::object(bootstrap.selectors.does_not_understand),
+            Operand::entry(runtime.encode_legacy_method(dnu_count, false))];
+        native_send(child, bootstrap.selectors.add_method, &dnu_install);
+        assert_eq!(native_send(receiver, missing, &[Operand::object(core::ptr::null_mut()); 20]).as_object().unwrap().addr(), 17);
+        assert_eq!(native_send(child, bootstrap.selectors.remove_method, &[Operand::object(answer)]).as_entry(), Some(method));
+        assert_eq!(native_send(receiver, answer, &[]).as_object().unwrap().addr(), 1);
     }
 
     #[test]

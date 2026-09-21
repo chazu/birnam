@@ -88,7 +88,6 @@ pub(crate) fn native_arguments(
     entry: NativeEntry,
     arguments: &[Oop],
     runtime: &crate::runtime::Runtime,
-    legacy_operands: bool,
 ) -> Vec<Operand> {
     let address = entry.method.map(|method| method as usize);
     if (address == Some(crate::runtime::id_protocol::add_method as native::Method as usize)
@@ -104,49 +103,7 @@ pub(crate) fn native_arguments(
         } else { method };
         return vec![Operand::object(*selector), Operand::entry(method)];
     }
-    if legacy_operands && address == Some(crate::runtime::id_protocol::allocate as native::Method as usize)
-        && let [size] = arguments
-    {
-        return vec![Operand::word(size.addr())];
-    }
-    if (address == Some(crate::runtime::id_protocol::add_method as native::Method as usize)
-        || runtime.core_legacy_method(entry) == Some(MethodAddress::from_method(add_method)))
-        && let [selector, method] = arguments
-        && legacy_operands
-        && let Some(method) = unsafe { MethodAddress::from_oop(*method) }
-    {
-        return vec![
-            Operand::object(*selector),
-            Operand::entry(
-                runtime.encode_legacy_method(
-                    method.to_method(),
-                    *selector == runtime.globals().lookup,
-                ),
-            ),
-        ];
-    }
     arguments.iter().copied().map(Operand::object).collect()
-}
-
-/// Preserve the old lookup/mutation result convention only for representable
-/// entries. Arbitrary native entries go through the checked language boundary.
-pub(crate) fn native_result(entry: NativeEntry, outcome: Outcome, runtime: &crate::runtime::Runtime) -> Option<Oop> {
-    let address = entry.method.map(|method| method as usize);
-    let old_entry_result = runtime.core_legacy_method(entry).is_some() || [
-        crate::runtime::id_protocol::add_method as native::Method,
-        crate::runtime::id_protocol::remove_method,
-    ]
-    .iter()
-    .any(|method| address == Some(*method as usize));
-    if old_entry_result
-        && outcome.status == native::LOADED
-        && (outcome.value.kind() == native::UNIT
-            || outcome.value.as_entry().and_then(|entry| runtime.try_decode_legacy_method(entry)).is_some())
-    {
-        Some(old_result(runtime, outcome))
-    } else {
-        None
-    }
 }
 
 /// These legacy functions return native entries rather than language Objects.

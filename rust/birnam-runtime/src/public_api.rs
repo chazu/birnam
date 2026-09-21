@@ -92,18 +92,7 @@ unsafe extern "C" fn api_alloc(vtable: Oop, payload_size: usize) -> Oop {
 }
 
 unsafe extern "C" fn api_send(receiver: Oop, selector: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = runtime();
-    let result = runtime.enter_application(|| unsafe { runtime.send_legacy_abi(receiver, selector, args, count) });
-    // The frozen native IdApi still borrows legacy Method addresses for native
-    // lookup/mutation clients. Generated language code uses the checked entry.
-    let primitive = selector == runtime.globals().lookup;
-    if primitive {
-        if result == runtime.canonical().nil { return core::ptr::null_mut(); }
-        if let Some(entry) = runtime.owned_method_entry(result) {
-            if let Some(method) = runtime.try_decode_legacy_method(entry) { return method.as_oop(); }
-        }
-    }
-    result
+    unsafe { birnam_runtime_send_v1(receiver, selector, args, count) }
 }
 
 /// Checked language send; native entry results become owned Method objects.

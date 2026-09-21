@@ -203,7 +203,7 @@ pub unsafe fn borrowed_bytes<'a>(pointer: *const u8, count: usize) -> Option<&'a
     unsafe { borrowed_slice(pointer, count) }
 }
 
-/// Current versioned C ABI table returned by `id_init`.
+/// Upper Runtime API supplied after native construction.
 #[allow(dead_code, non_snake_case)]
 #[repr(C)]
 pub struct IdApi {
@@ -219,6 +219,8 @@ pub struct IdApi {
     pub method: unsafe extern "C" fn(Oop, Oop, Method),
     pub alloc: unsafe extern "C" fn(Oop, usize) -> Oop,
 
+    /// Checked language send in a managed turn. Reflection returns owned
+    /// Methods or nil; neither arguments nor results encode raw function pointers.
     pub send: unsafe extern "C" fn(Oop, Oop, *const Oop, usize) -> Oop,
 
     pub nilObj: Oop,

@@ -1497,7 +1497,7 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
             abort("TCC exports were incomplete");
         }
         Runtime {
-            send: unsafe { birnam_abi::language::select(api) }.unwrap_or_else(|| abort("TCC requires checked language send")),
+            send: api.send,
             method_owners: unsafe { birnam_abi::method_owners::select(api) }.unwrap_or_else(|| abort("TCC requires completed Method ownership")),
             api: api_pointer as usize, finalizers: finalizers as usize,
             layouts: layouts as usize,

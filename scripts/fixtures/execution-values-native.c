@@ -51,12 +51,26 @@ static BirnamOutcome method_answer(void *context,Oop receiver,const BirnamOperan
     api->gc_collect();
     return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=state->result}};
 }
-static void check_methods(const BirnamProtocol *id,void *image) {
+static void check_methods(const BirnamProtocol *id) {
     size_t saved_roots=root_count;
-    Oop (*language_send)(Oop,Oop,const Oop *,size_t)=dlsym(image,"birnam_runtime_send_v1");
+    Oop (*language_send)(Oop,Oop,const Oop *,size_t)=api->send;
     assert(language_send);
     Oop behavior=keep(api->proto(named("ObjectVt")));
     Oop receiver=keep(api->alloc(behavior,0));
+    Oop plain=keep(api->intern("plainNativeMethodProbe"));
+    api->method(behavior,plain,body);
+    Oop callable=keep(send1(behavior,"lookup",plain));
+    assert(api->vtable_of(callable)==named("MethodVt"));
+    Oop removed=keep(send1(behavior,"removeMethod:",plain));
+    assert(api->vtable_of(removed)==named("MethodVt"));
+    assert(send1(behavior,"lookup",plain)==api->nil_obj);
+    api->gc_collect();
+    size_t before=calls;
+    assert(send1(callable,"invokeOn:",receiver)==api->nil_obj && calls==before+1);
+    Oop raw_install[]={plain,(Oop)body};
+    Oop rejected=keep(api->send(behavior,api->intern("addMethod"),raw_install,2));
+    assert(send0(rejected,"isError")==api->true_obj);
+    assert(send1(behavior,"lookup",plain)==api->nil_obj);
     Oop selector=keep(api->intern("nativeMethodProbe"));
     MethodContext first={keep(integer.make(integer.context,71)),0};
     MethodContext second={keep(integer.make(integer.context,92)),0};
@@ -114,7 +128,7 @@ static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,in
         assert(module->initialize(id,selected,2).status==BIRNAM_INVALID_REQUEST);
     }
     if(install) {
-        check_methods(id,image);
+        check_methods(id);
         BirnamOutcome result=module->initialize(id,request,2);
         assert(result.status==BIRNAM_LOADED && result.value.kind==BIRNAM_WORD);
         const RuntimeCompilerV1 *compiler=(const void *)result.value.data.word;

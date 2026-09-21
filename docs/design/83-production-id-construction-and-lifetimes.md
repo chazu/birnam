@@ -12,8 +12,9 @@
 > Block and native value/control operations now precede compiler modules.
 > Compiler admission is now a later explicit extension. Language reflection now
 > returns owned Methods, including anonymous synchronous/resumable Units;
-> native binding references live in Lifetime above Id. Unsafe native consumers
-> remain open. The [construction manifest](../../abi/production-construction-v1.json)
+> native binding references live in Lifetime above Id. All upper message sends
+> now use checked Method results. Internal C lookup adapters and legacy native
+> initialization remain open. The [construction manifest](../../abi/production-construction-v1.json)
 > records the native entry graph; installer checks cover its structure and library inventory.
 > The loaded Bootstrap now owns the production construction sequence through
 > Runtime, control, collections, Store, parsers, compilers, System and applications; host
@@ -2269,3 +2270,39 @@ validation remains waived. Remaining work is legacy native consumers (including
 `System loadModule:`), unchecked native sends/reflection, compatibility exports
 and aggregate capability discovery, worker readiness, documentation/diagram
 consolidation and the complete requirement-by-requirement acceptance audit.
+
+
+### One checked send for native and generated consumers
+
+`IdApi.send` now uses the same checked entry as `birnam_runtime_send_v1`.
+This moves the host and all native module message consumers onto managed turns
+with owned reflection results, instead of retaining the raw Method convention
+for their calls. `lookup` and `removeMethod:` answer Method or nil, and a raw
+function address passed to `addMethod` is rejected. Trusted native C registration
+continues through `IdApi.method`; Id's typed native carrier remains independent.
+
+TCC and Portable Code use the send supplied by the completed Runtime API. The
+private `dladdr`/`dlopen`/`dlsym` selection of a separate language-send entry is
+removed. Runtime's own constructor uses typed Id operands for metacircular method
+installation. `send_legacy_abi` and its argument/result-policy branches are gone;
+the primitive constructor test now exercises the native protocol directly.
+
+This does not finish C lookup adapter removal or legacy `module_init` migration.
+Those remaining native boundaries must be audited separately; changing the send
+entry does not justify claiming all unsafe native interfaces have disappeared.
+
+Validation uses `/tmp/birnam-83-checked-native-final`: 324 affected Rust tests
+pass (17 ignored), the native suite passes checked reflection and raw-address
+rejection, and global lookup passes installed/source/compiled modes. Method
+values pass source, source-free compiled, mapped/rebuilt and baked execution,
+including image rejection. The external worker reader reports twelve exact
+wire round trips and orderly stop; readiness is 44.92 seconds, so the production
+ten-second readiness requirement remains open. The Methods and wire process
+handles are now closed; their logs contain their final success markers.
+
+All eight changed production Rust sources match that installation byte for byte.
+The later test-only guard-cache assertion now expects typed Id construction to
+leave the upper lookup cache cold; the full affected unit suite passed afterward.
+Evidence is in `.cargo-target/83-checked-send-evidence.json`. Remaining C fixtures
+that cast lookup answers to function pointers require migration; these checks
+do not establish whole-project acceptance. Release validation remains waived.
