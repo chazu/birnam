@@ -77,6 +77,7 @@ dependencies = [
  "birnam-artifact",
  "birnam-artifact-codec",
  "birnam-codegen",
+ "birnam-host",
 ]
 
 [[package]]
@@ -432,6 +433,7 @@ name = "birnam-tcc"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+ "birnam-host",
  "birnam-native-compiler",
 ]
 

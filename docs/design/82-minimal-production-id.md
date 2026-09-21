@@ -60,7 +60,7 @@ the aggregate `module_init` entry or exported dependency setters.
 The installed native gate exercises Id with upper libraries absent, the native
 construction prefixes and normal production startup. These facts establish the
 construction/dependency changes, not completion of the entire design: remaining
-factory/provider cleanup, old direct fixture consumers, worker readiness and the
+old direct fixture consumers, worker readiness and the
 full lifetime/image acceptance audit are tracked in
 [83](83-production-id-construction-and-lifetimes.md).
 
@@ -127,7 +127,7 @@ The first handoff and later loads must share the loading protocol; they must
 not become unrelated special-purpose loaders. [83 section 3](83-production-id-construction-and-lifetimes.md#3-the-common-native-loading-protocol)
 defines the native operands, result/failure contract and image lifetime; the
 C layout and core typed dispatch are implemented; the common descriptor loader
-and production handoff remain in progress. The native carrier contains only what is
+and production handoff are implemented. The native carrier contains only what is
 needed to enter the message protocol and identify its initial receiver/selectors.
 It must not accumulate every upper module's capabilities.
 

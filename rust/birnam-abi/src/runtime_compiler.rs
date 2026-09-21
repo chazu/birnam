@@ -8,7 +8,6 @@ pub struct ApiV1 {
     pub context: *mut c_void,
     pub resolve: Option<unsafe extern "C" fn(*mut c_void, *const u8, usize) -> *mut c_void>,
 }
-pub type ProviderV1 = unsafe extern "C" fn() -> *const ApiV1;
 /// # Safety
 /// `api` is null or points to a readable complete native descriptor.
 pub unsafe fn valid(api: *const ApiV1) -> bool {

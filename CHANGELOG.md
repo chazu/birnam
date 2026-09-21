@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove Codegen's compiler-provider discovery fallback and Runtime's final
+  provider export. Compiler operations use only the completed constructor input.
+  Migrate the existing selected-library discovery tests to production startup
+  and delete their pre-Id factory preparation helper.
+
 - Remove 42 obsolete native preparer and factory/provider exports and their
   duplicate wrappers. Error Value and host stack-anchor integration fixtures now
   acquire their services through Id. Extend the installed export gate and correct

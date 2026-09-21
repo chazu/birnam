@@ -1688,8 +1688,11 @@ unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
         return None;
     }
     let bare = &name[..name.len()-1];
-    let compiler = NATIVE_COMPILER.load(std::sync::atomic::Ordering::Acquire) as *const birnam_abi::runtime_compiler::ApiV1;
-    if !compiler.is_null() && birnam_abi::runtime_compiler::SYMBOLS.contains(&bare) {
+    if birnam_abi::runtime_compiler::SYMBOLS.contains(&bare) {
+        // Compiler operations exist only through the completed predecessor.
+        // Never discover another descriptor or fall back to raw exports.
+        let compiler = NATIVE_COMPILER.load(std::sync::atomic::Ordering::Acquire) as *const birnam_abi::runtime_compiler::ApiV1;
+        if compiler.is_null() { return None; }
         let address = unsafe { ((*compiler).resolve.unwrap())((*compiler).context, bare.as_ptr(), bare.len()) };
         return (!address.is_null()).then_some(address.addr());
     }
@@ -1700,17 +1703,6 @@ unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
     });
     if handle == 0 {
         return None;
-    }
-    let bare = &name[..name.len()-1];
-    if birnam_abi::runtime_compiler::SYMBOLS.contains(&bare) {
-        let provider = unsafe { (api.dlsym)(handle as *mut c_void, c"birnam_runtime_compiler_provider_v1".as_ptr()) };
-        if provider.is_null() { return None; }
-        let provider: birnam_abi::runtime_compiler::ProviderV1 = unsafe { std::mem::transmute(provider) };
-        let compiler = unsafe { provider() };
-        if !unsafe { birnam_abi::runtime_compiler::valid(compiler) } { return None; }
-        let compiler = unsafe { *compiler };
-        let address = unsafe { compiler.resolve.unwrap()(compiler.context, bare.as_ptr(), bare.len()) };
-        return (!address.is_null()).then_some(address as usize);
     }
     let address = unsafe { (api.dlsym)(handle as *mut c_void, name.as_ptr().cast()) };
     (!address.is_null()).then_some(address as usize)

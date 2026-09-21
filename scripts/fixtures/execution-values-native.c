@@ -162,15 +162,14 @@ static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,in
     char *name=malloc(path->data.bytes.length+1);assert(name);
     memcpy(name,path->data.bytes.pointer,path->data.bytes.length);name[path->data.bytes.length]=0;
     void *image=dlopen(name,RTLD_NOW|RTLD_LOCAL);free(name);assert(image);
-    const RuntimeCompilerV1 *(*provider)(void)=dlsym(image,"birnam_runtime_compiler_provider_v1");
-    assert(provider && !provider());
+    assert(!dlsym(image,"birnam_runtime_compiler_provider_v1"));
     const BirnamModule *module=dlsym(image,"birnam_native_module_v1");assert(module);
     BirnamOperand request[2]={{.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)"compiler",8}},
         {.kind=BIRNAM_WORD,.data.word=0}};
-    assert(module->initialize(id,request,2).status==BIRNAM_INVALID_REQUEST && !provider());
+    assert(module->initialize(id,request,2).status==BIRNAM_INVALID_REQUEST);
     request[1].data.word=(size_t)api;
     BirnamProtocol foreign=*id;foreign.receiver=api->nil_obj;
-    assert(module->initialize(&foreign,request,2).status==BIRNAM_INVALID_REQUEST && !provider());
+    assert(module->initialize(&foreign,request,2).status==BIRNAM_INVALID_REQUEST);
     const char *services[]={"namespacePresence","namespaceImport"};
     for(size_t i=0;i<2;i++) {
         BirnamOperand selected[2]={{.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)services[i],strlen(services[i])}},request[1]};
@@ -186,7 +185,7 @@ static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,in
         BirnamOutcome result=module->initialize(id,request,2);
         assert(result.status==BIRNAM_LOADED && result.value.kind==BIRNAM_WORD);
         const RuntimeCompilerV1 *compiler=(const void *)result.value.data.word;
-        assert(compiler==provider() && compiler->version==1 && compiler->byte_size==32);
+        assert(compiler && compiler->version==1 && compiler->byte_size==32);
         assert(compiler->context && compiler->resolve);
         const char *symbols[]={
             "birnam_register_resumable_v1","birnam_register_resumable_v2",

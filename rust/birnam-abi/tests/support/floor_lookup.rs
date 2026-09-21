@@ -1,5 +1,3 @@
-#[path = "namespace.rs"]
-mod namespace;
 // Test mechanics only. Expected callback counts are supplied by each adapter.
 use birnam_abi::IdApi;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
@@ -18,13 +16,9 @@ pub fn check(mut lookup: impl FnMut(&IdApi, &'static CStr) -> Option<usize>, cac
             assert!(!handle.is_null(), "{variable}");
             handle
         };
-        let base = open("BIRNAM_LOOKUP_BASE", 6);
-        namespace::prepare(base, std::path::Path::new(&std::env::var("BIRNAM_LOOKUP_BASE").unwrap()));
-        let init = dlsym(base, c"id_init".as_ptr());
-        assert!(!init.is_null());
-        let init: unsafe extern "C" fn() -> *mut IdApi = std::mem::transmute(init);
-        let api = init();
-        assert!(!api.is_null());
+        let path = std::path::PathBuf::from(std::env::var("BIRNAM_LOOKUP_BASE").unwrap());
+        let floor = birnam_host::load_floor(&path, None, None).expect("production Id and Runtime construction");
+        let api = floor.api();
         // A same-named global competitor must not supply the selected symbol.
         let competitor = open("BIRNAM_LOOKUP_COMPETITOR", 10);
         let selected = open("BIRNAM_LOOKUP_SELECTED", 6);
@@ -53,6 +47,7 @@ pub fn check(mut lookup: impl FnMut(&IdApi, &'static CStr) -> Option<usize>, cac
         let unloaded = std::path::PathBuf::from(std::env::var("BIRNAM_LOOKUP_UNLOADED").unwrap());
         assert_eq!(unloaded.exists(), mode == 2, "adapter retention, including missing-symbol lookup");
         assert_eq!(dlclose(competitor), 0);
-        // The real floor supplies process-owned API functions and stays mapped.
+        // Keep the production owners through the final adapter assertion.
+        drop(floor);
     }
 }

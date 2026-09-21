@@ -765,11 +765,3 @@ pub(crate) fn initialize_compiler(id: &birnam_abi::id_protocol::Protocol, api: *
     if !runtime.compiler_uses_id(id) { return None; }
     runtime.initialize_compiler()
 }
-
-/// Query an already constructed extension. Base Runtime advertises no table.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_runtime_compiler_provider_v1() -> *const birnam_abi::runtime_compiler::ApiV1 {
-    let pointer = PUBLIC_RUNTIME.load(Ordering::Acquire);
-    if pointer.is_null() { return core::ptr::null(); }
-    unsafe { (&*pointer).compiler_api() }
-}

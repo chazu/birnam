@@ -31,10 +31,10 @@ Production native modules use Id's common descriptor and explicit constructor
 operands; the host and System no longer call the aggregate `module_init` ABI.
 [System native loading](native-loading.md) exposes that same protocol to language
 callers. The installed native gate rejects any library that reintroduces
-`module_init`, dependency setters, preparers or factory/provider exports, except
-for Runtime's compiler provider while Codegen's fallback is migrated. Forty-two
-obsolete preparer and factory/provider exports are removed. Old direct test
-clients still require migration; they are not another supported production loader.
+`module_init`, dependency setters, preparers or factory/provider exports.
+Codegen receives its completed compiler descriptor explicitly and has no provider
+discovery fallback. Old direct test clients still require migration; they are
+not another supported production loader.
 [IdApi v20 manifest](idapi-v20.json) and the
 [C fixture](fixtures/idapi-v20/README.md) describe the current boundary.
 

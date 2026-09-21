@@ -14,8 +14,8 @@
 > returns owned Methods, including anonymous synchronous/resumable Units;
 > native binding references live in Lifetime above Id. All upper message sends
 > now use checked Method results, including Object-valued C lookup callbacks.
-> Obsolete preparer and factory/provider exports are removed except Runtime
-> compiler discovery; direct C fixture consumers still need migration. The [construction manifest](../../abi/production-construction-v1.json)
+> Obsolete preparer and factory/provider exports are removed; Codegen uses its
+> explicit compiler predecessor. Direct C fixture consumers still need migration. The [construction manifest](../../abi/production-construction-v1.json)
 > records the native entry graph; installer checks cover its structure and library inventory.
 > The loaded Bootstrap now owns the production construction sequence through
 > Runtime, control, collections, Store, parsers, compilers, System and applications; host
@@ -207,8 +207,8 @@ The current production Id dictionaries and core dispatch use these typed
 operands. The common descriptor loader and production Siphon handoff are wired.
 Upper modules now construct through this protocol with explicit predecessors.
 The twelve-argument initializer and dependency-setter exports are removed.
-The Runtime compiler-provider fallback and old direct fixtures still require migration.
-Other obsolete preparer and factory/provider exports are removed.
+The Runtime compiler-provider fallback and obsolete preparer/factory/provider
+exports are removed. Old direct fixtures still require migration.
 
 On the supported 64-bit target, an operand is a 32-bit kind, 32 reserved zero
 bits and a 16-byte union (24 bytes total). A native entry is a function and native
@@ -2607,3 +2607,42 @@ were included in those successful test runs. All 84 installed Birnam libraries (
 lack the 42 retired exports. Evidence is
 `.cargo-target/83-provider-cleanup-evidence.json`. No release validation was run.
 The worker deadline and complete Designs 82/83 acceptance audit remain open.
+
+
+### Compiler construction has no provider fallback
+
+Codegen now resolves compiler operations only through the descriptor supplied by
+its native constructor. An absent descriptor or a refused operation stays
+unavailable; neither falls back to provider discovery or raw compiler exports.
+Runtime's last provider alias and the ABI's unused provider function type are
+deleted. The installed export gate has no factory/provider exception.
+
+The finalizer unit fixture supplies its compiler predecessor explicitly and
+checks absent/refused operations with a symbol callback that rejects discovery.
+The installed C fixture checks the retired provider is absent, rejects malformed
+and foreign-carrier requests, resolves every operation on the returned descriptor
+and verifies repeated native construction returns that same descriptor.
+
+The existing selected-library discovery matrix still exercises the non-compiler
+Runtime symbol adapter: a competing global symbol cannot win, failed acquisition
+is cached, and the selected image stays mapped after the caller drops its handle.
+Its three adapters and three modes now use production `load_floor` through Siphon,
+Id and Bootstrap. The unused 169-line pre-Id preparation helper is deleted.
+Host is a test-only dependency of TCC and Codegen; production dependencies are
+unchanged. Adding that dependency exposed an ambiguous empty-vector assertion in
+a Codegen state test; the assertion now directly checks that the result is empty.
+
+Validation uses `/tmp/birnam-83-explicit-compiler`: Runtime and Codegen pass 345
+unit tests (19 ignored); TCC and Codegen pass again with the migrated test setup.
+All nine selected-library discovery cases pass. The complete native suite passes
+without an export exception. Compiled-artifact tests pass, including one parse
+per compilation and live parser replacement. Method values pass source,
+source-free compiled, mapped/rebuilt image and baked execution, replacement,
+removal, aliases, GC and image rejection. Production sources match the installed
+copies; the later Cargo/test-only changes are recorded separately in
+`.cargo-target/83-explicit-compiler-evidence.json`.
+
+This closes obsolete production preparer/provider export removal. It does not
+close historical C fixture migration, worker startup or the complete acceptance
+audit. The last measured worker readiness remains 17.04 seconds against the
+unchanged ten-second deadline. Release validation remains waived.

@@ -29,8 +29,7 @@ for library in sorted((prefix / "lib").glob("libbirnam_*.dylib")):
     exports = run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines()
     forbidden = [symbol for symbol in exports
                  if symbol == "_module_init" or "_dependency_v" in symbol
-                 or (re.search(r"_(?:prepare|provider|factory)_v[0-9]+$", symbol)
-                     and symbol != "_birnam_runtime_compiler_provider_v1")]
+                 or re.search(r"_(?:prepare|provider|factory)_v[0-9]+$", symbol)]
     assert not forbidden, (library.name, forbidden)
 print("all installed libraries reject retired initialization and provider exports")
 

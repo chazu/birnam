@@ -32,6 +32,6 @@ The aggregate `module_init` entry and exported dependency setters are retired.
 Every native module is constructed through `birnam_native_module_v1` with its
 explicit completed inputs. The installed native gate checks every library for
 absence of those obsolete exports, plus retired preparers and factory/provider
-aliases, in addition to the exact module inventories. Runtime's compiler-provider
-export remains temporarily for Codegen's discovery fallback; production Codegen
-receives its compiler table explicitly. Legacy fixture migration remains open.
+aliases, in addition to the exact module inventories. Codegen receives its
+compiler table explicitly and does not discover a provider. Legacy fixture
+migration remains open.

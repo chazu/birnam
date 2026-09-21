@@ -16,6 +16,9 @@ dev-guarded-slots = []
 resource-metrics = ["birnam-native-compiler/resource-metrics"]
 allocation-metrics = ["resource-metrics", "birnam-native-compiler/allocation-metrics"]
 
+[dev-dependencies]
+birnam-host = { path = "../birnam-host" }
+
 [lib]
 name = "birnam_tcc"
 crate-type = ["cdylib", "rlib"]

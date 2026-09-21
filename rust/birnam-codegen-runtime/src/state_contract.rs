@@ -95,7 +95,7 @@ fn binding_publication_retains_both_generations() {
         withdraw_current_code_binding(20 as Oop, 22 as Oop),
         vec![126]
     );
-    assert_eq!(withdraw_current_code_binding(20 as Oop, 22 as Oop), vec![]);
+    assert!(withdraw_current_code_binding(20 as Oop, 22 as Oop).is_empty());
     remove_staged_code_binding(25 as Oop);
     assert_eq!(
         marked(),

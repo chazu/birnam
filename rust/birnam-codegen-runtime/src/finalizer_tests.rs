@@ -14,20 +14,14 @@ fn oop(address: usize) -> Oop { ptr::without_provenance_mut(address) }
 // construction. No generated code is executed by this commit-timing test.
 unsafe extern "C" fn open(_: *const c_char, _: c_int) -> *mut c_void { oop(1) }
 unsafe extern "C" fn resolve(_: *mut c_void, name: *const u8, length: usize) -> *mut c_void {
-    assert_eq!(unsafe { core::slice::from_raw_parts(name,length) }, b"birnam_register_resumable_v1");
-    finish as *const () as *mut c_void
-}
-unsafe extern "C" fn compiler() -> *const birnam_abi::runtime_compiler::ApiV1 {
-    thread_local! {
-        static COMPILER: birnam_abi::runtime_compiler::ApiV1 = birnam_abi::runtime_compiler::ApiV1 {
-            version: 1, byte_size: 32, context: oop(1), resolve: Some(resolve),
-        };
+    match unsafe { core::slice::from_raw_parts(name,length) } {
+        b"birnam_register_resumable_v1" => finish as *const () as *mut c_void,
+        b"birnam_register_resumable_v2" => ptr::null_mut(),
+        _ => panic!("unexpected compiler operation"),
     }
-    COMPILER.with(core::ptr::from_ref)
 }
 unsafe extern "C" fn symbol(_: *mut c_void, name: *const c_char) -> *mut c_void {
     match unsafe { CStr::from_ptr(name) }.to_bytes() {
-        b"birnam_runtime_compiler_provider_v1" => compiler as *const () as *mut c_void,
         b"birnam_runtime_register_method_owner_v1" => register_owner as *const () as *mut c_void,
         b"birnam_runtime_forget_method_owner_v1" => forget_owner as *const () as *mut c_void,
         _ => panic!("unexpected Runtime dependency"),
@@ -84,6 +78,16 @@ fn mapped_commit_retains_first_finalizers_reads_live_selection_and_preserves_com
         nilObj: oop(1), trueObj: oop(2), falseObj: oop(3), symbolName: name, vtableOf: identity,
         gcCollect: count, gcLiveCount: count, objectPayloadSize: size,
     }));
+    // Missing or refused compiler operations must not consult dlsym. The
+    // fixture's symbol callback rejects compiler discovery and raw exports.
+    assert_eq!(unsafe { floor_symbol(&*api, b"birnam_register_resumable_v1\0") }, None);
+    let compiler = Box::leak(Box::new(birnam_abi::runtime_compiler::ApiV1 {
+        version: 1, byte_size: size_of::<birnam_abi::runtime_compiler::ApiV1>(),
+        context: oop(1), resolve: Some(resolve),
+    }));
+    NATIVE_COMPILER.store(ptr::from_ref(compiler).addr(), Ordering::Release);
+    assert_eq!(unsafe { floor_symbol(&*api, b"birnam_register_resumable_v2\0") }, None);
+    assert_eq!(unsafe { floor_symbol(&*api, b"birnam_register_resumable_v1\0") }, Some(finish as *const () as usize));
     let other = Box::into_raw(Box::new(unsafe { ptr::read(api) }));
     unsafe { (*other).nilObj = oop(21); (*other).trueObj = oop(22); }
     let presence = Box::leak(Box::new(birnam_abi::namespace_presence::ApiV1 {

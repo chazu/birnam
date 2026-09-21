@@ -17,6 +17,9 @@ birnam-codegen = { path = "../birnam-codegen" }
 
 [build-dependencies]
 
+[dev-dependencies]
+birnam-host = { path = "../birnam-host" }
+
 [lib]
 name = "birnam_codegen_runtime"
 crate-type = ["cdylib"]

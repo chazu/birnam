@@ -25,23 +25,25 @@ struct RuntimeCompilerV1 {
 };
 ```
 
-`birnam_runtime_compiler_provider_v1()` returns null until construction succeeds,
-then the same borrowed descriptor. The descriptor and resolved functions remain
+Only the native initialization result supplies the descriptor; the old compiler
+provider export is removed. The descriptor and resolved functions remain
 live with Runtime's pinned image for process life. Calls use the Runtime owner
 thread. Names are exact byte spans, without a terminating NUL; unknown names
 return null. The resolver exposes the fifteen registration, artifact admission,
 generation lease, catalog and optimization operations listed in
 [`runtime_compiler.rs`](../rust/birnam-abi/src/runtime_compiler.rs).
 Existing function signatures and caller lifetime obligations are unchanged.
-Codegen resolves those operations through this descriptor, without falling back
-to their raw shared-library exports when the extension is absent.
+Codegen resolves those operations only through its supplied descriptor. A missing
+descriptor or a null resolver result remains unavailable: neither triggers
+provider discovery or a raw-symbol fallback. Its unit fixture uses a symbol
+callback that rejects either fallback and checks both cases.
 
 Base and extension code intentionally share a library, as Design 83 permits.
 Legacy native exports remain for existing ABI consumers; compiler operations
 require extension construction before use. This interface is a construction
 boundary, not an attempt to prevent trusted native code from misusing exports.
 
-The independent installed C fixture checks absent publication, malformed and
-foreign-carrier rejection, complete symbol resolution, repeated construction and
+The independent installed C fixture checks absence of the retired provider,
+malformed and foreign-carrier rejection, complete symbol resolution, repeated construction and
 ordinary Machine/value/GC use before installing the extension. Full source,
 compiled and image checks exercise actual admission through Codegen.
