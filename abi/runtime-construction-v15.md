@@ -1,12 +1,12 @@
 # Runtime construction v15
 
-`birnam_runtime_init_v15` is the temporary upper constructor used by the
-native entry of `libbirnam_runtime.dylib` while Design 83's Execution migration continues.
-Version 15 adds completed Integer, Float, Word and String operations as an explicit input.
-The host no longer fills Runtime dependency globals before construction. The Id native carrier remains version 1;
-version 14 of this constructor is no longer exported.
+Runtime is constructed only through `birnam_native_module_v1`, invoked by Id.
+The former `birnam_runtime_init_v15` export has been removed. The v15 name of
+this document records the predecessor layout; it is not a second loading ABI.
+The native carrier remains version 1. All inputs are completed before construction,
+including Integer, Float, Word and String operations.
 
-The arguments, in order, are pointers to:
+The carrier and initializer operands, in order, are pointers to:
 
 1. `id_protocol::Protocol`: borrowed Id carrier, retained by the caller for
    Runtime's lifetime; its context is opaque to Runtime.
@@ -31,8 +31,9 @@ The arguments, in order, are pointers to:
     followed by Integer, Float, Word and String API pointers in that order.
     Existing value module entries later reuse those same tables.
 
-The result is the existing `IdApi` pointer. Header/extent validation happens
-before adopting any transferred owner; invalid descriptors return null. A valid
+Success returns the existing `IdApi` pointer as a native Word. Header/extent
+validation happens before adopting any transferred owner; invalid descriptors
+return native `InvalidRequest`. A valid
 caller supplies coherent, completed predecessors from the same construction and
 retains the code/contexts of every borrowed descriptor. All calls use the owning
 thread. Runtime owns its one-shot initialization guard and rejects a repeated

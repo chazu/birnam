@@ -8,6 +8,9 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove the temporary Runtime C constructor export. Runtime construction and
+  its independent C rejection checks now use only the common native module entry.
+
 - Remove repeated source validation and subtree copying during image recovery.
   Mapped and rebuilt images share one host recovery path; composed-generation
   adoption validates the same parsed snapshot it uses for its binding ledger.

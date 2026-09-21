@@ -5,7 +5,7 @@
 > runtime. Core Id allocation, Symbols, dictionaries and typed dispatch no longer
 > require upper services. Siphon now loads the real Id through the common native
 > protocol before upper preparation. Runtime now borrows the native Id carrier
-> and original entries through the temporary [v15 constructor](../../abi/runtime-construction-v15.md),
+> and original entries through its [native module entry](../../abi/runtime-construction-v15.md),
 > without taking Id's Rust owner or referencing its primitive functions for
 > lookup/Integer admission. Id is independently packaged with only the ABI crate;
 > Runtime/compiler code is in a separate upper library loaded through Id. Native
@@ -2695,3 +2695,27 @@ The unchanged full worker-service suite passes its mapped/rebuilt Cell checks
 `#handshakeTimeout`. Its nineteen service cases are not reached. The receipt
 includes the redirected failure output; the passing wire test does not substitute
 for this outstanding acceptance requirement.
+
+
+### Runtime construction has one native entry
+
+The temporary `birnam_runtime_init_v15` export is removed. Its validation and
+ownership transfer now live privately beside Runtime's common native entry;
+there is no second external construction ABI. Bootstrap continues to supply the
+same ten completed predecessors through Id. The ABI document retains its v15
+filename to identify that operand layout and now describes only native entry.
+
+The independent C fixture sends malformed Id carriers with completed predecessor
+operands to the actual native descriptor. It retains wrong-count, wrong-kind,
+null-descriptor and incomplete support/value table rejection checks before
+ownership transfer. The installed export gate now rejects every standalone
+`birnam_runtime_init_v*` export in every library, in addition to the exact
+Runtime export inventory.
+
+`cargo check -p birnam-runtime` and the complete native suite pass against
+`/tmp/birnam-83-native-constructor`. Both changed production Rust files match
+that installation's source copies. The repository test files are hashed in
+`.cargo-target/83-native-constructor-evidence.json` alongside the validation logs.
+This removes the temporary constructor facade; it does not close the older
+fixture migration, worker readiness failure or full acceptance audit.
+No release validation was run.

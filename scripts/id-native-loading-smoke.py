@@ -28,7 +28,8 @@ for path in ("rust/birnam-host/src/startup.rs", "rust/birnam-native-loader/src/l
 for library in sorted((prefix / "lib").glob("libbirnam_*.dylib")):
     exports = run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines()
     forbidden = [symbol for symbol in exports
-                 if symbol == "_module_init" or "_dependency_v" in symbol
+                 if symbol == "_module_init" or symbol.startswith("_birnam_runtime_init_v")
+                 or "_dependency_v" in symbol
                  or re.search(r"_(?:prepare|provider|factory)_v[0-9]+$", symbol)]
     assert not forbidden, (library.name, forbidden)
 print("all installed libraries reject retired initialization and provider exports")

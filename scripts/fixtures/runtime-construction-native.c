@@ -5,24 +5,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Handwritten C declaration: validation must precede any ownership transfer. */
-static void check_runtime_constructor(const BirnamProtocol *id, void *image) {
-    typedef void *(*RuntimeV15)(const BirnamProtocol *, const void *, const void *,
-        const void *, const void *, const void *, const void *, const void *, const void *, const void *, const void *);
-    RuntimeV15 initialize = (RuntimeV15)dlsym(image, "birnam_runtime_init_v15");
-    assert(initialize && !dlsym(image, "birnam_runtime_init_v14"));
-    assert(!initialize(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+/* Rejection must precede ownership transfer through the production entry. */
+static void check_protocol(const BirnamProtocol *id, const BirnamModule *module,
+                           const BirnamOperand *predecessors) {
+    assert(module->initialize(NULL, predecessors, 10).status == BIRNAM_INVALID_REQUEST);
     BirnamProtocol bad = *id;
     bad.version = 99;
-    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    assert(module->initialize(&bad, predecessors, 10).status == BIRNAM_INVALID_REQUEST);
     bad = *id;
     bad.byte_size = 8;
-    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    assert(module->initialize(&bad, predecessors, 10).status == BIRNAM_INVALID_REQUEST);
     bad = *id;
     bad.message = NULL;
-    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
-    assert(!initialize(id, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
-
+    assert(module->initialize(&bad, predecessors, 10).status == BIRNAM_INVALID_REQUEST);
 }
 
 static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *args, size_t count) {
@@ -34,7 +29,8 @@ static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *a
     void *image = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     free(path);
     assert(image);
-    check_runtime_constructor(id, image);
+    assert(!dlsym(image, "birnam_runtime_init_v15"));
+    assert(!dlsym(image, "birnam_runtime_init_v14"));
     const BirnamModule *module = dlsym(image, "birnam_native_module_v1");
     assert(module && module->version == 1 && module->byte_size == sizeof(*module));
     assert(module->initialize(id, NULL, 0).status == BIRNAM_INVALID_REQUEST);
@@ -44,6 +40,7 @@ static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *a
     assert(module->initialize(id, invalid, 10).status == BIRNAM_INVALID_REQUEST);
     assert(args[1].data.bytes.length == sizeof(invalid));
     memcpy(invalid,args[1].data.bytes.pointer,sizeof(invalid));
+    check_protocol(id, module, invalid);
     const RuntimeFactoriesV1 *complete=(const void *)invalid[8].data.word;
     assert(complete && complete->version==1 && complete->byte_size==sizeof(*complete));
     for (unsigned fault=0;fault<8;fault++) {

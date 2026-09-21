@@ -32,7 +32,6 @@
     "birnam_register_resumable_v1",
     "birnam_register_resumable_v2",
     "birnam_runtime_forget_method_owner_v1",
-    "birnam_runtime_init_v15",
     "birnam_runtime_register_method_owner_v1",
     "birnam_runtime_send_v1",
     "birnam_symbol_borrow_v1"
