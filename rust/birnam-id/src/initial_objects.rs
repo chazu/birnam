@@ -6,9 +6,10 @@ use crate::symbol::Symbols;
 use crate::vtable::Vtables;
 
 pub(crate) struct InitialObjects {
-    pub(crate) memory: ObjectMemory,
-    pub(crate) dictionaries: Vtables,
-    pub(crate) symbols: Symbols,
+    pub(crate) protocol: Box<crate::native_id::State>,
+    pub(crate) memory: crate::owned::Owned<ObjectMemory>,
+    pub(crate) dictionaries: crate::owned::Owned<Vtables>,
+    pub(crate) symbols: crate::owned::Owned<Symbols>,
     pub(crate) vtable_vt: Oop,
     pub(crate) object_vt: Oop,
     pub(crate) symbol_vt: Oop,
@@ -20,9 +21,9 @@ pub(crate) struct InitialObjects {
 
 impl InitialObjects {
     pub(crate) fn new() -> Self {
-        let mut memory = ObjectMemory::new();
-        let mut dictionaries = Vtables::new();
-        let mut symbols = Symbols::new();
+        let mut memory = crate::owned::Owned::new(ObjectMemory::new());
+        let mut dictionaries = crate::owned::Owned::new(Vtables::new());
+        let mut symbols = crate::owned::Owned::new(Symbols::new());
         let vtable_vt = dictionaries.create(&mut memory, core::ptr::null_mut(), core::ptr::null_mut());
         assert!(memory.set_vtable(vtable_vt, vtable_vt));
         let object_vt = dictionaries.create(&mut memory, core::ptr::null_mut(), vtable_vt);
@@ -39,12 +40,13 @@ impl InitialObjects {
         dictionaries.add_method(vtable_vt, add_method, entry(crate::id_dispatch::vtable_add_method));
         // The first two bindings terminate the metacircular construction. Use
         // Id's own message path for the next binding, before any Runtime exists.
-        unsafe { crate::id_dispatch::enter(&mut dictionaries, vtable_vt, lookup, does_not_understand, || {
+        unsafe { crate::id_dispatch::enter(&mut *dictionaries, vtable_vt, lookup, does_not_understand, || {
             assert_eq!(crate::id_dispatch::send(vtable_vt, add_method, &[
                 Operand::object(remove_method), Operand::entry(entry(crate::id_dispatch::vtable_remove_method)),
             ]).status, LOADED);
         }) };
-        Self { memory, dictionaries, symbols, vtable_vt, object_vt, symbol_vt,
+        let protocol = unsafe { crate::native_id::State::new(memory.pointer(), dictionaries.pointer(), symbols.pointer(), vtable_vt, symbol_vt, lookup, does_not_understand) };
+        Self { protocol, memory, dictionaries, symbols, vtable_vt, object_vt, symbol_vt,
             lookup, does_not_understand, object_prototype, symbol_prototype }
     }
 }
@@ -90,6 +92,6 @@ mod tests {
         assert_eq!(symbols.existing(b"lookup"), Some(initial.lookup));
         let replacement = heap.intern_symbol(&mut symbols, initial.symbol_vt, b"doesNotUnderstand:").unwrap();
         let allocation = heap.storage_allocations().into_iter().find(|entry| entry.object == replacement).unwrap();
-        assert_eq!(allocation.identity, 10);
+        assert_eq!(allocation.identity, 12);
     }
 }

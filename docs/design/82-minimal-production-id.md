@@ -49,6 +49,15 @@ to undo an extraction when it made the intended dependency direction worse.
 
 ## 2. The production evidence
 
+The table records the pre-migration failure at `e928780c`. Production now enters
+Id through the common native protocol before the remaining seventeen upper
+preparations, and normal startup adopts that same initial graph. The installed
+Id has been exercised with upper libraries absent. Compiler code and aggregate
+Runtime ownership still reside in its crate, so that first-entry result does not
+satisfy the complete independence requirement. See
+[83 implementation evidence](83-production-id-construction-and-lifetimes.md#implementation-evidence-and-remaining-boundary)
+for current progress and remaining construction/ownership work.
+
 | Evidence | What it establishes |
 |---|---|
 | [`startup::load_floor`](../../rust/birnam-host/src/startup.rs) prepares twenty services before calling `id_init` | Id cannot currently initialize independently of upper modules. Moving this sequence into Id would merely hide the inversion. |

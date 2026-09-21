@@ -758,7 +758,10 @@ artifact required. The Rust host owns the complete runtime and build closure.
   runtime refactoring direction.
 - [Production construction and lifetimes](docs/design/83-production-id-construction-and-lifetimes.md)
   addresses the adversarial review: simpler dispatch ownership, native loading
-  results, base/extension load order and safe collector activation.
+  results, base/extension load order and safe collector activation. The production
+  [Siphon](rust/birnam-host/src/siphon.rs) now loads Id through the
+  [typed native protocol](abi/fixtures/id-protocol-v1/README.md); upper construction
+  and ownership migration remain in progress.
 - [Production extraction status](docs/design/81-production-extraction-status.md)
   summarizes the completed Rust modularization through 81CA, current ownership,
   validation, and the remaining Birnam implementation work. This phase is closed;

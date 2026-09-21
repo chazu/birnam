@@ -3,6 +3,7 @@
 //! startup mechanics have private owners. HostRuntime and its address-fenced
 //! bridge lifetime remain coordinated here.
 mod startup;
+pub mod siphon;
 #[cfg(test)]
 use startup::selector_has_arity_one;
 pub use startup::{

@@ -893,6 +893,7 @@ pub enum FloorError {
     EmbeddedNul,
     OpenFailed,
     MissingIdInit,
+    IdProtocol { status: u32, detail: usize },
     MethodObservation { path: PathBuf, reason: &'static str },
     RootRegistry { path: PathBuf, reason: &'static str },
     GcSettings { path: PathBuf, reason: &'static str },
@@ -942,6 +943,7 @@ impl fmt::Debug for FloorError {
             Self::EmbeddedNul => formatter.write_str("EmbeddedNul"),
             Self::OpenFailed => formatter.write_str("OpenFailed"),
             Self::MissingIdInit => formatter.write_str("MissingIdInit"),
+            Self::IdProtocol { status, detail } => write!(formatter, "Id protocol initialization failed ({status}, {detail})"),
             Self::MethodObservation { path, reason } => write!(formatter, "Method observation preparation failed: {} ({reason})", path.display()),
             Self::RootRegistry { path, reason } => write!(formatter, "Root registry preparation failed: {} ({reason})", path.display()),
             Self::GcSettings { path, reason } => write!(formatter, "GC settings preparation failed: {} ({reason})", path.display()),
@@ -973,6 +975,7 @@ impl fmt::Debug for FloorError {
 /// for the lifetime of this value and deliberately never closed: the floor
 /// owns process-wide heap/GC state and may retain function pointers in modules.
 pub struct LoadedFloor {
+    id_protocol: birnam_abi::id_protocol::Protocol,
     _namespace: NonNull<std::ffi::c_void>,
     _object_model: NonNull<std::ffi::c_void>,
     _deferred_identity: NonNull<std::ffi::c_void>,
@@ -2162,6 +2165,7 @@ pub struct LoadedStack {
 }
 
 impl LoadedStack {
+    pub fn id_protocol(&self) -> &birnam_abi::id_protocol::Protocol { self.floor.id_protocol() }
     pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.floor.presence() }
     pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.floor.imports() }
     pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.floor.exports() }
@@ -3036,6 +3040,7 @@ pub unsafe fn start_from_environment() -> Result<HostRuntime, RuntimeStartError>
 const RTLD_LAZY: i32 = 1;
 
 impl LoadedFloor {
+    pub fn id_protocol(&self) -> &birnam_abi::id_protocol::Protocol { &self.id_protocol }
     pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.namespace_presence.as_ptr() }
     pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.namespace_import.as_ptr() }
     pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.namespace_export.as_ptr() }
@@ -3132,9 +3137,14 @@ pub fn load_floor(
             });
         }
     }
-    // Namespace supplies only an inert factory before Id exists. The floor
-    // constructs its own instance at the existing bootstrap point. Selection
-    // is explicit here; Id has no loader fallback or linked implementation.
+    // Actual Id construction runs through Siphon before any upper services.
+    // The remaining preparations below belong to the upper Runtime migration.
+    let id_protocol = crate::siphon::load(path.as_bytes()).map_err(|(status, detail)| {
+        unsafe { system_dlclose(handle.as_ptr()) };
+        FloorError::IdProtocol { status, detail }
+    })?;
+    // These inert factories still feed the legacy upper Runtime constructor.
+    // They are no longer prerequisites for constructing Id itself.
     let namespace = match unsafe { prepare_namespace(handle, &namespace_path) } {
         Ok(namespace) => namespace,
         Err(error) => {
@@ -3387,6 +3397,7 @@ pub fn load_floor(
         return Err(FloorError::NativeStack { path: native_stack_path, reason: "invalid capability" });
     }
     Ok(LoadedFloor {
+        id_protocol,
         _root_registry: root_registry_image,
         root_registry: NonNull::new(root_registry).unwrap(),
         _gc_settings: gc_settings_image,

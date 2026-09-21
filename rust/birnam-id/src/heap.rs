@@ -78,7 +78,7 @@ impl DetachedBlock {
 /// exposed as language behavior.
 pub(crate) struct Heap {
     blocks: AddressMap<BlockLifetime>,
-    memory: ObjectMemory,
+    memory: crate::owned::Owned<ObjectMemory>,
     budget: crate::allocation_budget::Service,
     dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
     deferred_allocations: dead_allocations::deferred_index::Index,
@@ -97,13 +97,13 @@ pub(crate) use dead_allocations::{DeadAllocation, DeferredAllocation, MAX_DEAD_P
 
 impl Heap {
     pub(crate) fn new() -> Self {
-        Self::adopt(ObjectMemory::new())
+        Self::adopt(crate::owned::Owned::new(ObjectMemory::new()))
     }
 
     /// Adopt the existing Id allocations without copying payloads or resetting
     /// identities. The caller retains early roots until the collector is ready.
     /// Construction does not collect or run finalizers.
-    pub(crate) fn adopt(memory: ObjectMemory) -> Self {
+    pub(crate) fn adopt(memory: crate::owned::Owned<ObjectMemory>) -> Self {
         let blocks = memory.iter().map(|(address, _)| (address, BlockLifetime {
             metadata: 0, finalizer: SlotV1::EMPTY,
         })).collect();

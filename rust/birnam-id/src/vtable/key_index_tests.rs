@@ -1,6 +1,6 @@
 //! Identical witness on the original map and extracted owner; oracle is linear.
 use super::*;
-use crate::vtable::AddMethod;
+use crate::behaviors::AddMethod;
 unsafe extern "C" fn one(_: Oop, _: *const Oop, _: usize) -> Oop { core::ptr::without_provenance_mut(1) }
 unsafe extern "C" fn two(_: Oop, _: *const Oop, _: usize) -> Oop { core::ptr::without_provenance_mut(2) }
 fn hierarchy() -> (Heap, Behaviors, Oop, Oop, Oop) {

@@ -12,6 +12,7 @@ mod boundary;
 mod dev_slot_access;
 mod dispatch;
 mod id_dispatch;
+mod native_id;
 mod legacy_method;
 mod env;
 mod execution;
@@ -28,6 +29,7 @@ mod trace_hooks;
 mod finalizers;
 mod heap;
 mod object_memory;
+mod owned;
 mod initial_objects;
 mod loader;
 #[cfg(feature = "ffi-test-hooks")]

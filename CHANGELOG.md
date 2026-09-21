@@ -10,12 +10,18 @@ loader ports are complete.
 
 ### Changed
 
+- Load the real production Id through a dedicated Siphon and the common typed
+  native-module protocol before upper-runtime preparation (Design 83). Adopt
+  that same Id graph and carrier during existing runtime construction. Close
+  rejected native images before entry and pin entered images even when an
+  initializer reports failure after publication. Upper ownership, staged
+  construction and legacy consumer migration remain in progress.
+
 - Use typed native operands, method entries and outcomes in production Id
   dictionaries and dispatch (Design 83), with a frozen independent C ABI.
   Keep the existing all-object calling convention in an upper Runtime migration
   adapter. Dictionary value cells grow from 8 to 24 bytes; advance image runtime
-  ABI to 7. The common loader, Siphon handoff and upper consumer migration remain
-  in progress.
+  ABI to 7. Upper consumer migration remains in progress.
 
 - Run production Id lookup and metacircular binding without Runtime or Execution
   policy (Design 83). Install its initial mutation methods through Id's own send

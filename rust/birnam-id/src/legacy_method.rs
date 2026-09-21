@@ -41,12 +41,20 @@ pub(crate) fn encode(method: Method, lookup: bool) -> NativeEntry {
     NativeEntry::new(invoke, MethodAddress::from_method(method).as_oop())
 }
 pub(crate) fn decode(entry: NativeEntry) -> MethodAddress {
+    try_decode(entry).unwrap_or_else(|| boundary::fatal_invariant("typed native entry has no legacy Method adapter"))
+}
+pub(crate) fn try_decode(entry: NativeEntry) -> Option<MethodAddress> {
     let address = entry.method.map(|method| method as usize);
     for method in [invoke_object as native::Method, invoke_lookup, invoke_entry] {
         if address == Some(method as usize) {
-            return unsafe { MethodAddress::from_oop(entry.context) }
-                .expect("legacy adapter has no method");
+            return unsafe { MethodAddress::from_oop(entry.context) };
         }
+    }
+    for (new, old) in [
+        (crate::runtime::id_protocol::add_method as native::Method, crate::dispatch::vtable_add_method as Method),
+        (crate::runtime::id_protocol::remove_method as native::Method, crate::dispatch::vtable_remove_method as Method),
+    ] {
+        if address == Some(new as usize) { return Some(MethodAddress::from_method(old)); }
     }
     for (new, old) in [
         (
@@ -63,10 +71,10 @@ pub(crate) fn decode(entry: NativeEntry) -> MethodAddress {
         ),
     ] {
         if address == Some(new as usize) && entry.context.is_null() {
-            return MethodAddress::from_method(old);
+            return Some(MethodAddress::from_method(old));
         }
     }
-    boundary::fatal_invariant("typed native entry has no legacy Method adapter")
+    None
 }
 unsafe fn invoke(
     context: *mut c_void,

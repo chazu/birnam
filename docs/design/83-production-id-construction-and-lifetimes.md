@@ -3,7 +3,9 @@
 > **Status:** Production migration in progress, 2026-09-20. Exact-entry adapters
 > and managed-turn checkpoints are implemented in the existing production
 > runtime. Core Id allocation, Symbols, dictionaries and typed dispatch no longer
-> require upper services; the library/ownership and loading cutover remains open.
+> require upper services. Siphon now loads the real Id through the common native
+> protocol before upper preparation. Library ownership, upper construction and
+> consumer migration remain open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -187,8 +189,9 @@ The native C layout is frozen in
 [`id-protocol-v1/id_protocol.h`](../../abi/fixtures/id-protocol-v1/id_protocol.h)
 and mirrored by [`id_protocol.rs`](../../rust/birnam-abi/src/id_protocol.rs).
 The current production Id dictionaries and core dispatch use these typed
-operands. The descriptor loader and production Siphon handoff remain to be wired;
-do not preserve the twelve-argument initializer as the final compatibility layer.
+operands. The common descriptor loader and production Siphon handoff are wired.
+Upper modules still use the aggregate construction path after Id has loaded;
+do not preserve that twelve-argument initializer as the final compatibility layer.
 
 On the supported 64-bit target, an operand is a 32-bit kind, 32 reserved zero
 bits and a 16-byte union (24 bytes total). A native entry is a function and native
@@ -576,11 +579,56 @@ custom Namespace fixture now uses the same complete aggregate-floor preparation
 as the ordinary fixture; its stale two-service setup failed before reaching the
 runtime under test.
 
-These changes establish the lifetime mechanism, **not independent Id**. Its
+The production host now uses [`siphon.rs`](../../rust/birnam-host/src/siphon.rs)
+for the first request. Its ad-hoc message calls the same stateless native loader
+as Id's `loadNative:` method. The actual installed Id descriptor constructs only
+`InitialObjects` and returns its real carrier; no upper factory is prepared or
+called by this initialization. `intern:` and `loadNative:` are ordinary native
+methods on the root metabehavior. They follow the original five primordial
+names in Symbol enumeration. The loader admits the fixed version/size/initializer
+and forwards explicit initializer operands. It closes rejected images before
+entry and retains each image once its initializer has been entered, including
+failure after partial publication.
+
+Initial allocation, dictionary and Symbol registries have stable addresses under
+one owner apiece. Upper construction adopts those same registries and retains the
+original carrier, rather than constructing another graph or retargeting a carrier
+slot. After Runtime is fully constructed at its stable address, it installs
+GC-accounted interning, loading within an Execution turn, and observed mutation
+as ordinary replacements of the corresponding Id methods. Mutation and staged
+publication record the exact native function/context pair; Execution binding
+accounting applies to entries belonging to its existing registration interface.
+The raw native caller still owns its rooting and Execution-turn obligations.
+
+`scripts/id-native-loading-smoke.py PREFIX` copies the installed production Id
+into a directory with no upper libraries, uses the real Siphon to load it, and
+loads an independent C module through Id messages. It checks initializer operands,
+method/context invocation, failed-initializer publication, missing files and
+entry points, wrong versions/sizes and null initializers. Destructor observations
+prove admission failures close immediately and entered images remain until
+process exit. Only then does it make the upper libraries available and run normal
+host startup. That startup adopts the same carrier, interned Symbols and installed
+methods, and subsequent native loading uses the retained carrier successfully.
+This is an actual production-path fixture, not another Id implementation.
+
+Debug validation passes 305 Id and 86 Host unit tests. The adoption/GC check uses
+the production Execution roots, verifies old and new Symbol identity, and
+reclaims a later Symbol after its explicit root is dropped. A fresh installation
+contains 53 native libraries and 28 authored modules, and the installed native
+loading fixture passes. The allocation-identity source, source-free compiled,
+mapped/rebuilt/baked image workload and both portable resumable and CodeBinding
+lifetime checks pass, including self-removal and retirement after the outer turn.
+
+These changes establish first-entry loading and the lifetime mechanism,
+**not an independently packaged minimal Id**. Its
 registration owner, turn state and temporary private retirement queue export
 still reside in the existing Runtime inside `birnam-id`. Move these together
 to upper Execution during the ownership cutover and migrate their consumers;
-do not retain Id forwarding exports as the final architecture. The typed loader,
+do not retain Id forwarding exports as the final architecture. The upper
 base/extension construction entries, staged collector activation and removal of the
-pre-Id preparation path remain unimplemented. No architectural acceptance is
-claimed from the regression results above.
+remaining aggregate preparation path are still required. Those seventeen factory
+preparations now run after real Id initialization, but remain in the host and feed
+the old Runtime constructor. Moving them later is not the required upper-module
+construction graph. The Id crate still statically links compiler/artifact code,
+and the old upper binder/reflection interface cannot yet carry arbitrary typed
+native entries. No full architectural acceptance is claimed from these results.

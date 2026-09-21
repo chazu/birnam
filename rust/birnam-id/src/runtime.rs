@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use birnam_artifact::stackless_selection::ImplementationKind;
 
+pub(crate) mod id_protocol;
+
 use crate::abi::SLOT_OOP;
 use crate::abi::{MarkFn, Method, Oop};
 use crate::boundary;
@@ -24,6 +26,7 @@ use crate::registration::{
 };
 use crate::symbol::{EmbeddedNul, Symbols};
 use crate::behaviors::AddMethod;
+use crate::abi::id_protocol::NativeEntry;
 use crate::behaviors::Behaviors;
 
 #[cfg(all(test, target_os = "macos"))]
@@ -138,7 +141,8 @@ struct RuntimeState {
     vtable_enumeration: crate::vtable_enumeration::Service,
     // Ordered authorities are dropped before the raw heap owner at harness
     // teardown. No destructor dereferences a heap payload.
-    symbols: Symbols,
+    symbols: crate::owned::Owned<Symbols>,
+    id_protocol: Option<Box<crate::native_id::State>>,
     vtables: Behaviors,
     heap: Heap,
     globals: DispatchGlobals,
@@ -186,8 +190,8 @@ struct RuntimeRegistrationClaim {
 struct StagedResumablePublication {
     vtable: Oop,
     selector: Oop,
-    installed: Option<MethodAddress>,
-    previous: Option<MethodAddress>,
+    installed: Option<NativeEntry>,
+    previous: Option<NativeEntry>,
 }
 
 struct CommittedResumableEntry {
@@ -409,7 +413,8 @@ impl Runtime {
     pub(crate) fn new(
         heap: Heap,
         vtables: Behaviors,
-        symbols: Symbols,
+        symbols: crate::owned::Owned<Symbols>,
+        id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
     ) -> Self {
         Self {
@@ -456,6 +461,7 @@ impl Runtime {
                 root_registry: crate::root_registry::Service::new(),
                 vtable_enumeration: crate::vtable_enumeration::Service::new(),
                 symbols,
+                id_protocol,
                 vtables,
                 heap,
                 globals,
@@ -529,120 +535,71 @@ impl Runtime {
     }
 
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
+        let entry = crate::legacy_method::encode(method, selector == self.globals().lookup);
+        AddMethod::from_native(self.add_native_method(vtable, selector, entry))
+    }
+
+    pub(crate) fn add_native_method(&self, vtable: Oop, selector: Oop, entry: NativeEntry) -> crate::vtable::AddMethod {
         self.assert_owner();
-        // Exact lookup still precedes observation, including when no hook is set.
-        // Copy the immutable operation and owned address before entering foreign code.
         let (direct, notify, observation) = unsafe {
             let state = &*self.state.get();
-            let direct = state.vtables.direct_lookup(vtable, selector).is_some();
+            let direct = state.vtables.native_direct_lookup(vtable, selector).is_some();
             let (notify, observation) = state.method_observation.notification();
             (direct, notify, observation)
         };
-        // The upper service snapshots the current hook. No RuntimeState borrow
-        // survives its pure Store-log/read-only-floor callback boundary.
+        // Copy observation selection before invoking a callback. The actual
+        // native entry is mutated once, preserving both code and context.
         unsafe { notify(observation, i32::from(direct), vtable, selector) };
-        // SAFETY: callback returned and owner-thread serialization is restored.
-        let result = unsafe {
-            (&mut *self.state.get())
-                .vtables
-                .add_method(vtable, selector, method)
-        };
-        let added = MethodAddress::from_method(method);
-        let staged = unsafe { (&*self.state.get()).staged_resumable_publications.is_some() };
-        // Direct-binding accounting follows the mutation result so aliases own
-        // independent references and inherited lookup adds none.
-        unsafe {
-            let state = &mut *self.state.get();
-            if let AddMethod::Overwrote(previous) = result
-                && previous != added
-            {
+        let result = unsafe { (&mut *self.state.get()).vtables.add_native_method(vtable, selector, entry) };
+        let previous = match result { crate::vtable::AddMethod::Added => None, crate::vtable::AddMethod::Overwrote(previous) => Some(previous) };
+        if previous != Some(entry) {
+            let state = unsafe { &mut *self.state.get() };
+            let staged = state.staged_resumable_publications.is_some();
+            let previous_legacy = previous.and_then(crate::legacy_method::try_decode);
+            let added_legacy = crate::legacy_method::try_decode(entry);
+            if let Some(previous) = previous_legacy.filter(|previous| Some(*previous) != added_legacy) {
                 let removed = if staged {
                     state.execution.note_staged_direct_binding_removed(previous)
-                } else {
-                    state.execution.note_direct_binding_removed(previous)
-                };
-                removed.unwrap_or_else(|_| {
-                    boundary::fatal_invariant("resumable binding removal accounting failed")
-                });
+                } else { state.execution.note_direct_binding_removed(previous) };
+                removed.unwrap_or_else(|_| boundary::fatal_invariant("resumable binding removal accounting failed"));
                 note_block_vtable_replaced(state, vtable, previous);
             }
-            if !matches!(result, AddMethod::Overwrote(previous) if previous == added) {
-                state
-                    .execution
-                    .note_direct_binding_added(added)
-                    .unwrap_or_else(|_| {
-                        boundary::fatal_invariant("resumable binding addition accounting failed")
-                    });
+            if let Some(added) = added_legacy.filter(|added| Some(*added) != previous_legacy) {
+                state.execution.note_direct_binding_added(added)
+                    .unwrap_or_else(|_| boundary::fatal_invariant("resumable binding addition accounting failed"));
                 note_block_vtable_bound(state, vtable, added);
             }
-            if staged && !matches!(result, AddMethod::Overwrote(previous) if previous == added) {
-                state
-                    .staged_resumable_publications
-                    .as_mut()
-                    .unwrap_or_else(|| {
-                        boundary::fatal_invariant("staged publication journal disappeared")
-                    })
-                    .push(StagedResumablePublication {
-                        vtable,
-                        selector,
-                        installed: Some(added),
-                        previous: match result {
-                            AddMethod::Added => None,
-                            AddMethod::Overwrote(previous) => Some(previous),
-                        },
-                    });
+            if let Some(publications) = state.staged_resumable_publications.as_mut() {
+                publications.push(StagedResumablePublication { vtable, selector, installed: Some(entry), previous });
             }
         }
         result
     }
 
     pub(crate) fn remove_method(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
+        self.remove_native_method(vtable, selector).map(crate::legacy_method::decode)
+    }
+    pub(crate) fn remove_native_method(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         self.assert_owner();
-        // Exact lookup still precedes observation, including when no hook is set.
-        // Copy the immutable operation and owned address before entering foreign code.
         let (direct, notify, observation) = unsafe {
             let state = &*self.state.get();
-            let direct = state.vtables.direct_lookup(vtable, selector).is_some();
+            let direct = state.vtables.native_direct_lookup(vtable, selector).is_some();
             let (notify, observation) = state.method_observation.notification();
             (direct, notify, observation)
         };
-        // The upper service snapshots the current hook. No RuntimeState borrow
-        // survives its pure Store-log/read-only-floor callback boundary.
         unsafe { notify(observation, i32::from(direct), vtable, selector) };
-        // SAFETY: callback returned and owner-thread serialization is restored.
-        let removed = unsafe {
-            (&mut *self.state.get())
-                .vtables
-                .remove_method(vtable, selector)
-        };
-        if let Some(method) = removed {
-            // SAFETY: owner-thread point accounting after dictionary mutation.
-            unsafe {
-                let state = &mut *self.state.get();
-                let staged = state.staged_resumable_publications.is_some();
-                let result = if staged {
-                    state.execution.note_staged_direct_binding_removed(method)
-                } else {
-                    state.execution.note_direct_binding_removed(method)
-                };
-                result.unwrap_or_else(|_| {
-                    boundary::fatal_invariant("resumable binding removal accounting failed")
-                });
+        let removed = unsafe { (&mut *self.state.get()).vtables.remove_native_method(vtable, selector) };
+        if let Some(entry) = removed {
+            let state = unsafe { &mut *self.state.get() };
+            let staged = state.staged_resumable_publications.is_some();
+            if let Some(method) = crate::legacy_method::try_decode(entry) {
+                let result = if staged { state.execution.note_staged_direct_binding_removed(method) }
+                    else { state.execution.note_direct_binding_removed(method) };
+                result.unwrap_or_else(|_| boundary::fatal_invariant("resumable binding removal accounting failed"));
                 note_block_vtable_replaced(state, vtable, method);
-                if staged {
-                    state
-                        .staged_resumable_publications
-                        .as_mut()
-                        .unwrap_or_else(|| {
-                            boundary::fatal_invariant("staged publication journal disappeared")
-                        })
-                        .push(StagedResumablePublication {
-                            vtable,
-                            selector,
-                            installed: None,
-                            previous: Some(method),
-                        });
-                }
+            }
+            if let Some(publications) = state.staged_resumable_publications.as_mut() {
+                publications.push(StagedResumablePublication { vtable, selector, installed: None, previous: Some(entry) });
             }
         }
         removed
@@ -2712,7 +2669,8 @@ impl Runtime {
                 .filter_map(|claim| claim.as_ref().map(|claim| claim.thunk))
                 .collect::<Vec<_>>();
             for publication in publications.as_ref().expect("publication journal checked") {
-                if let Some(previous) = publication.previous
+                if let Some(previous) = publication.previous.and_then(crate::legacy_method::try_decode)
+                    && publication.installed.and_then(crate::legacy_method::try_decode) != Some(previous)
                     && !claim_thunks.contains(&previous)
                 {
                     state
@@ -2766,61 +2724,32 @@ impl Runtime {
             boundary::fatal_invariant("staged publication journal disappeared");
         };
         for publication in publications.into_iter().rev() {
+            let installed_legacy = publication.installed.and_then(crate::legacy_method::try_decode);
+            let previous_legacy = publication.previous.and_then(crate::legacy_method::try_decode);
             match publication.installed {
                 Some(installed) => {
-                    let removed = state
-                        .vtables
-                        .remove_method(publication.vtable, publication.selector)
-                        .unwrap_or_else(|| {
-                            boundary::fatal_invariant(
-                                "staged installed binding disappeared during rollback",
-                            )
-                        });
-                    if removed != installed {
-                        boundary::fatal_invariant(
-                            "staged installed binding changed before rollback",
-                        );
+                    let removed = state.vtables.remove_native_method(publication.vtable, publication.selector)
+                        .unwrap_or_else(|| boundary::fatal_invariant("staged installed binding disappeared during rollback"));
+                    if removed != installed { boundary::fatal_invariant("staged installed binding changed before rollback"); }
+                    if let Some(method) = installed_legacy.filter(|method| Some(*method) != previous_legacy) {
+                        state.execution.note_staged_direct_binding_removed(method)
+                            .unwrap_or_else(|_| boundary::fatal_invariant("staged installed binding accounting could not roll back"));
                     }
-                    state
-                        .execution
-                        .note_staged_direct_binding_removed(installed)
-                        .unwrap_or_else(|_| {
-                            boundary::fatal_invariant(
-                                "staged installed binding accounting could not roll back",
-                            )
-                        });
                 }
                 None => {
-                    if state
-                        .vtables
-                        .direct_lookup(publication.vtable, publication.selector)
-                        .is_some()
-                    {
-                        boundary::fatal_invariant(
-                            "staged removed binding was replaced before rollback",
-                        );
+                    if state.vtables.native_direct_lookup(publication.vtable, publication.selector).is_some() {
+                        boundary::fatal_invariant("staged removed binding was replaced before rollback");
                     }
                 }
             }
             if let Some(previous) = publication.previous {
-                if state.vtables.add_method(
-                    publication.vtable,
-                    publication.selector,
-                    previous.to_method(),
-                ) != AddMethod::Added
-                {
-                    boundary::fatal_invariant(
-                        "staged prior binding could not be restored during rollback",
-                    );
+                if state.vtables.add_native_method(publication.vtable, publication.selector, previous) != crate::vtable::AddMethod::Added {
+                    boundary::fatal_invariant("staged prior binding could not be restored during rollback");
                 }
-                state
-                    .execution
-                    .note_direct_binding_added(previous)
-                    .unwrap_or_else(|_| {
-                        boundary::fatal_invariant(
-                            "staged prior binding accounting could not roll back",
-                        )
-                    });
+                if let Some(method) = previous_legacy.filter(|method| Some(*method) != installed_legacy) {
+                    state.execution.note_direct_binding_added(method)
+                        .unwrap_or_else(|_| boundary::fatal_invariant("staged prior binding accounting could not roll back"));
+                }
             }
         }
         let Some(catalog_drift) = catalog_drift else {
@@ -4775,6 +4704,7 @@ fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
     for root in export_roots
         .into_iter()
         .chain(globals)
+        .chain(state.id_protocol.as_ref().into_iter().flat_map(|id| id.roots()))
         .chain(canonical)
         .chain(execution_objects)
         .chain(compatibility_symbols)
@@ -9552,11 +9482,10 @@ mod tests {
                 if candidate.is_null() {
                     break;
                 }
-                assert_ne!(
-                    runtime.lookup_method(vtable, candidate),
-                    Some(step_address),
-                    "vtable {vtable_index} selector {selector_index} exposed a StepMethod"
-                );
+                let entry = unsafe { (*runtime.state.get()).vtables.native_lookup(vtable, candidate) }.unwrap();
+                assert_ne!(entry.method.map(|method| method as usize), Some(step_address.as_oop().addr()));
+                assert_ne!(crate::legacy_method::try_decode(entry), Some(step_address),
+                    "vtable {vtable_index} selector {selector_index} exposed a StepMethod");
                 selector_index += 1;
             }
         }

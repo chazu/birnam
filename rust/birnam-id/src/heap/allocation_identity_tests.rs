@@ -13,7 +13,7 @@ fn lifetime_adopts_existing_id_objects_without_copying_or_resetting_identity() {
     assert!(memory.set_vtable(object, behavior));
     assert!(memory.write_payload_word(object, 0, 83));
     let identity = memory.get(object.addr()).unwrap().identity();
-    let mut heap = Heap::adopt(memory);
+    let mut heap = Heap::adopt(crate::owned::Owned::new(memory));
     assert_eq!(heap.object_at_address(object.addr()), Some(object));
     assert_eq!(heap.vtable_of(object), Some(behavior));
     assert_eq!(heap.read_payload_word(object, 0), Some(83));

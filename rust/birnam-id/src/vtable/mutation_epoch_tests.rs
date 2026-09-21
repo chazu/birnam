@@ -1,6 +1,6 @@
 //! The same exact-value witness runs against the original u64 and native owner.
 use super::*;
-use crate::vtable::AddMethod;
+use crate::behaviors::AddMethod;
 unsafe extern "C" fn one(_: Oop, _: *const Oop, _: usize) -> Oop { core::ptr::without_provenance_mut(1) }
 unsafe extern "C" fn two(_: Oop, _: *const Oop, _: usize) -> Oop { core::ptr::without_provenance_mut(2) }
 unsafe extern "C" fn trace(_: Oop, _: crate::abi::MarkFn) {}

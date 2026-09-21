@@ -207,7 +207,7 @@ mod tests {
             .unwrap();
         unsafe {
             enter(
-                &mut id.dictionaries,
+                &mut *id.dictionaries,
                 id.vtable_vt,
                 id.lookup,
                 id.does_not_understand,
@@ -313,7 +313,7 @@ mod tests {
         ];
         unsafe {
             enter(
-                &mut id.dictionaries,
+                &mut *id.dictionaries,
                 id.vtable_vt,
                 id.lookup,
                 id.does_not_understand,

@@ -1,7 +1,22 @@
 //! GC and private-behavior metadata above Id's method dictionaries.
 use crate::abi::{Method, Oop, TraceHook};
 use crate::vtable::AddMethod as NativeAddMethod;
-pub(crate) type AddMethod = NativeAddMethod<MethodAddress>;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AddMethod {
+    Added,
+    Overwrote(MethodAddress),
+    OverwroteNative(crate::abi::id_protocol::NativeEntry),
+}
+impl AddMethod {
+    pub(crate) fn from_native(change: NativeAddMethod) -> Self {
+        match change {
+            NativeAddMethod::Added => Self::Added,
+            NativeAddMethod::Overwrote(previous) => match legacy_method::try_decode(previous) {
+                Some(method) => Self::Overwrote(method), None => Self::OverwroteNative(previous),
+            },
+        }
+    }
+}
 use crate::legacy_method;
 use crate::boundary;
 use crate::heap::{Heap, Permanence};
@@ -16,7 +31,7 @@ struct Metadata {
     layout: crate::payload_layout::Owned,
 }
 pub(crate) struct Behaviors {
-    dictionaries: Vtables,
+    dictionaries: crate::owned::Owned<Vtables>,
     legacy_lookup: Oop,
     metadata: AddressMap<Metadata>,
     layouts: crate::payload_layout::Service,
@@ -30,12 +45,19 @@ impl core::ops::DerefMut for Behaviors {
     fn deref_mut(&mut self) -> &mut Vtables { &mut self.dictionaries }
 }
 impl Behaviors {
+    pub(crate) fn native_lookup(&self, vtable: Oop, selector: Oop) -> Option<crate::abi::id_protocol::NativeEntry> { self.dictionaries.lookup(vtable, selector) }
     pub(crate) fn set_legacy_lookup(&mut self, selector: Oop) { self.legacy_lookup = selector; }
     pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
-        match self.dictionaries.add_method(vtable, selector, legacy_method::encode(method, selector == self.legacy_lookup)) {
-            NativeAddMethod::Added => AddMethod::Added,
-            NativeAddMethod::Overwrote(previous) => AddMethod::Overwrote(legacy_method::decode(previous)),
-        }
+        AddMethod::from_native(self.dictionaries.add_method(vtable, selector, legacy_method::encode(method, selector == self.legacy_lookup)))
+    }
+    pub(crate) fn add_native_method(&mut self, vtable: Oop, selector: Oop, entry: crate::abi::id_protocol::NativeEntry) -> NativeAddMethod {
+        self.dictionaries.add_method(vtable, selector, entry)
+    }
+    pub(crate) fn remove_native_method(&mut self, vtable: Oop, selector: Oop) -> Option<crate::abi::id_protocol::NativeEntry> {
+        self.dictionaries.remove_method(vtable, selector)
+    }
+    pub(crate) fn native_direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<crate::abi::id_protocol::NativeEntry> {
+        self.dictionaries.direct_lookup(vtable, selector)
     }
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
         self.dictionaries.remove_method(vtable, selector).map(legacy_method::decode)
@@ -53,14 +75,14 @@ impl Behaviors {
     /// # Safety
     /// The caller keeps the containing Behaviors live for the entire Id scope.
     pub(crate) unsafe fn dictionaries_ptr(this: *mut Self) -> *mut Vtables {
-        unsafe { core::ptr::addr_of_mut!((*this).dictionaries) }
+        unsafe { (*this).dictionaries.pointer() }
     }
     pub(crate) fn new() -> Self {
-        Self::adopt(Vtables::new())
+        Self::adopt(crate::owned::Owned::new(Vtables::new()))
     }
 
     /// Add upper metadata without replacing existing behavior objects or keys.
-    pub(crate) fn adopt(dictionaries: Vtables) -> Self {
+    pub(crate) fn adopt(dictionaries: crate::owned::Owned<Vtables>) -> Self {
         let layouts = crate::payload_layout::Service::new();
         let metadata = dictionaries.ordered.iter().map(|object| (object.addr(), Metadata {
             owner: core::ptr::null_mut(), trace_hook: birnam_abi::trace_hooks::SlotV1::EMPTY, layout: layouts.empty(),
@@ -121,7 +143,7 @@ impl Behaviors {
     pub(crate) fn has_permanent_binding(&self, heap: &Heap, methods: &[MethodAddress]) -> bool {
         self.dictionaries.ordered.iter().copied().any(|vtable| {
             heap.permanence_of(vtable) == Some(Permanence::Permanent)
-                && self.dictionaries.methods(vtable).any(|method| methods.contains(&legacy_method::decode(method)))
+                && self.dictionaries.methods(vtable).any(|method| legacy_method::try_decode(method).is_some_and(|method| methods.contains(&method)))
         })
     }
     pub(crate) fn dead_collectable_bindings(&self, heap: &Heap) -> Vec<(Oop, Vec<MethodAddress>)> {
@@ -133,7 +155,7 @@ impl Behaviors {
                     && heap.is_marked(*vtable) == Some(false)
             })
             .map(|vtable| {
-                let methods = self.dictionaries.methods(vtable).map(legacy_method::decode).collect();
+                let methods = self.dictionaries.methods(vtable).filter_map(legacy_method::try_decode).collect();
                 (vtable, methods)
             })
             .collect()

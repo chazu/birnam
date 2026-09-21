@@ -310,10 +310,14 @@ fn static_selector(symbols: &mut Symbols, heap: &mut Heap, symbol_vtable: Oop, n
 
 /// Build the complete R2 identity graph without publishing an `IdApi` table.
 pub(crate) fn build_bootstrap() -> Bootstrap {
+    build_bootstrap_from(crate::initial_objects::InitialObjects::new())
+}
+pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
+        protocol,
         memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
         lookup, does_not_understand, object_prototype, symbol_prototype,
-    } = crate::initial_objects::InitialObjects::new();
+    } = initial;
     // Only completed Id objects cross this boundary. No allocation is copied.
     let mut heap = Heap::adopt(memory);
     heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
@@ -345,6 +349,7 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
         heap,
         vtables,
         symbols,
+        Some(protocol),
         DispatchGlobals {
             vtable_vt,
             object_vt,
@@ -361,7 +366,7 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     ] {
         boundary::require_invariant(
             runtime.add_method(vtable_vt, selector, replacement)
-                == crate::vtable::AddMethod::Overwrote(MethodAddress::from_method(previous)),
+                == crate::behaviors::AddMethod::Overwrote(MethodAddress::from_method(previous)),
             "upper mutation implementation did not replace the Id primitive",
         );
     }
@@ -494,7 +499,8 @@ pub(crate) fn build_harness() -> DispatchHarness {
     let runtime = Runtime::new(
         heap,
         vtables,
-        symbols,
+        crate::owned::Owned::new(symbols),
+        None,
         DispatchGlobals {
             vtable_vt: meta,
             object_vt: object_vtable,
@@ -505,7 +511,7 @@ pub(crate) fn build_harness() -> DispatchHarness {
     );
     assert_eq!(
         runtime.add_method(meta, lookup, vtable_lookup_method),
-        crate::vtable::AddMethod::Added
+        crate::behaviors::AddMethod::Added
     );
     DispatchHarness {
         runtime,
@@ -519,7 +525,7 @@ pub(crate) fn build_harness() -> DispatchHarness {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vtable::AddMethod;
+    use crate::behaviors::AddMethod;
     use core::cell::Cell;
 
     thread_local! {
@@ -633,7 +639,7 @@ mod tests {
             harness
                 .runtime
                 .add_method(harness.object_vtable, answer, answer_42),
-            crate::vtable::AddMethod::Added
+            crate::behaviors::AddMethod::Added
         );
 
         let result = harness.runtime.enter(|| {
@@ -827,12 +833,14 @@ mod tests {
         }
 
         // Initial Id names exist before the upper runtime installs methods.
-        let selector_names: [&[u8]; 25] = [
+        let selector_names: [&[u8]; 27] = [
             b"lookup",
             b"doesNotUnderstand:",
             b"Symbol",
             b"addMethod",
             b"removeMethod:",
+            b"intern:",
+            b"loadNative:",
             b"allocate",
             b"delegated",
             b"clone",
@@ -877,6 +885,8 @@ mod tests {
             bootstrap.selectors.lookup,
             bootstrap.selectors.add_method,
             bootstrap.selectors.remove_method,
+            runtime.intern(b"intern:").unwrap(),
+            runtime.intern(b"loadNative:").unwrap(),
             bootstrap.selectors.allocate,
             bootstrap.selectors.delegated,
             runtime.intern(b"prepareBehaviorMutationOf:").unwrap(),
