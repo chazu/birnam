@@ -118,10 +118,17 @@ impl Collector {
             .expect("invalid collection record view")
             .to_vec()
     }
-    fn dead(&self) -> Vec<RecordV1> {
-        self.records()
-            .into_iter()
-            .filter(|record| record.flags & (MARKED | PERMANENT) == 0)
+    fn dead(&self) -> Vec<usize> {
+        let api = unsafe { *self.state.records };
+        let view = unsafe { (api.snapshot)(api.context) };
+        // No callback or record mutation occurs while this view is borrowed.
+        // Copy only dead addresses, not a second full vector of allocation records.
+        unsafe { borrowed_slice(view.entries, view.count) }
+            .expect("invalid collection record view")
+            .iter()
+            .filter_map(|record| {
+                (record.flags & (MARKED | PERMANENT) == 0).then_some(record.object.addr())
+            })
             .collect()
     }
     fn reconcile(&self) -> Status {
@@ -372,11 +379,7 @@ unsafe extern "C" fn retire(context: *mut c_void) {
     if let Some(extension) = extension {
         unsafe { (extension.retire)(extension.context) };
     }
-    let dead: Vec<_> = collector
-        .dead()
-        .into_iter()
-        .map(|record| record.object.addr())
-        .collect();
+    let dead = collector.dead();
     unsafe {
         (collector.lifetime.retire)(collector.lifetime.context, dead.as_ptr(), dead.len());
         collector.model.retire.unwrap()(collector.model.context, dead.as_ptr(), dead.len());
@@ -393,12 +396,7 @@ unsafe extern "C" fn retire(context: *mut c_void) {
 }
 unsafe extern "C" fn snapshot(context: *mut c_void, out: *mut DeadV1) {
     let source = unsafe { &mut *context.cast::<Collection<'_>>() };
-    source.dead = source
-        .collector
-        .dead()
-        .into_iter()
-        .map(|record| record.object.addr())
-        .collect();
+    source.dead = source.collector.dead();
     unsafe {
         out.write(DeadV1 {
             addresses: source.dead.as_ptr(),
@@ -410,12 +408,9 @@ unsafe extern "C" fn detach(context: *mut c_void, address: usize, out: *mut Deta
     let collector = unsafe { (*context.cast::<Collection<'_>>()).collector };
     assert!(unsafe { (*context.cast::<Collection<'_>>()).detached.is_none() });
     let records = unsafe { *collector.state.records };
-    let Some(object) = (unsafe { crate::state::object_at(records.context, address) }) else {
+    let Some(object) = (unsafe { crate::state::take_dead(records.context, address) }) else {
         return INVALID;
     };
-    if unsafe { (records.remove_dead)(records.context, address) } != 1 {
-        return INVALID;
-    }
     let lifetime = collector.lifetime;
     let finalizer = unsafe { (lifetime.finalizer)(lifetime.context, object) };
     unsafe {

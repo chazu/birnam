@@ -368,8 +368,7 @@ impl Vtables {
     pub(crate) fn methods(&self, vtable: Oop) -> impl Iterator<Item = NativeEntry> + '_ {
         self.record(vtable).values.iter().filter_map(|value| value.as_entry())
     }
-    pub(crate) fn remove_weak_keys(&mut self, dead: &[usize]) -> usize {
-        let dead: AddressMap<()> = dead.iter().map(|address| (*address, ())).collect();
+    pub(crate) fn remove_weak_keys(&mut self, dead: &AddressMap<()>) -> usize {
         let mut removed = 0usize;
         for record in self.by_address.values_mut() {
             let original_length = record.keys.len();

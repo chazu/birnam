@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove repeated dead-address indexing and allocation-record copies during GC.
+  Id shares one retirement set across its indexes; collection removes dead
+  records with one lookup, retaining marked/permanent objects and finalizer order.
+
 - Reuse block inventory references during code emission and skip unrelated
   subtrees during block resolution. Image compilation reuses each validated
   module tree for selected resumable emission; later compilations still observe

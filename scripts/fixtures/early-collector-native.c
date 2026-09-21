@@ -5,14 +5,18 @@
 #include "../../abi/fixtures/collection-state-v2/collection_state_v2.h"
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
 static BirnamProtocol id;
 static CollectionStateV2 state;
 static LifetimeOwnedV2 lifetime;
 static void *kept,*dead,*weak,*behavior,*size_selector;
 static size_t finalized;
-static BirnamOutcome send(void *receiver,void *selector,const BirnamOperand *args,size_t count) {
-    BirnamOutcome answer=id.message(id.context,receiver,selector,args,count);assert(answer.status==BIRNAM_LOADED);return answer;
+static BirnamOutcome checked_send(void *receiver,void *selector,const BirnamOperand *args,size_t count,int line) {
+    BirnamOutcome answer=id.message(id.context,receiver,selector,args,count);
+    if(answer.status!=BIRNAM_LOADED)fprintf(stderr,"early-collector-native.c:%d: native send status %u detail %zu\n",line,answer.status,(size_t)answer.detail);
+    assert(answer.status==BIRNAM_LOADED);return answer;
 }
+#define send(receiver,selector,args,count) checked_send(receiver,selector,args,count,__LINE__)
 static void *name(const char *text) {
     BirnamOperand arg={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)text,strlen(text)}};
     return send(id.receiver,id.intern,&arg,1).value.data.object;
@@ -20,6 +24,14 @@ static void *name(const char *text) {
 static int allocated(void *object) {
     BirnamOperand argument={.kind=BIRNAM_OBJECT,.data.object=object};
     return send(id.receiver,size_selector,&argument,1).value.kind==BIRNAM_WORD;
+}
+static int has_key(void *owner,void *key) {
+    BirnamOperand argument={.kind=BIRNAM_OBJECT,.data.object=owner};
+    BirnamOutcome keys=send(id.receiver,name("selectorsIn:"),&argument,1);
+    assert(keys.value.kind==BIRNAM_BYTES && keys.value.data.bytes.length%sizeof(void *)==0);
+    const void *const *items=(const void *const *)keys.value.data.bytes.pointer;
+    for(size_t i=0;i<keys.value.data.bytes.length/sizeof(void *);i++) if(items[i]==key)return 1;
+    return 0;
 }
 static void provider(void (*mark)(void *)) { if(kept)mark(kept); }
 static void finalize(void *object) {
@@ -85,6 +97,13 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
     kept=send(base,name("allocate"),&zero,1).value.data.object;
     dead=send(base,name("allocate"),&zero,1).value.data.object;
     weak=name("earlyCollectorUnreferencedSymbol");
+    /* A live dictionary must lose a dead weak key before its Symbol storage is
+       reclaimed. Removing a dead behavior alone would not exercise that path. */
+    BirnamOperand binding[]={
+        {.kind=BIRNAM_OBJECT,.data.object=weak},
+        {.kind=BIRNAM_WORD,.data.word=(uintptr_t)base},proto.value};
+    send(id.receiver,name("addWeakBinding:to:as:"),binding,3);
+    assert(has_key(base,weak));
     behavior=send(base,name("delegated"),NULL,0).value.data.object;
     roots.api->register_root(roots.api->context,provider);
     finalizers_set_v1(lifetime.finalizers,kept,finalize);
@@ -97,10 +116,12 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
         input.roots=reject;
         assert(state.collector->collect(state.collector->context,&input,&collected)==-77);
         assert(collected==99 && !finalized && allocated(kept) && allocated(dead) && allocated(weak) && allocated(behavior));
+        assert(has_key(base,weak));
         return (BirnamOutcome){.value={.kind=BIRNAM_UNIT}};
     }
     assert(state.collector->collect(state.collector->context,&input,&collected)==0 && collected>=3);
     assert(finalized==1 && allocated(kept) && !allocated(dead) && !allocated(weak) && !allocated(behavior));
+    assert(!has_key(base,weak));
     assert(state.records->get(state.records->context,(uintptr_t)kept)==0);
     assert(state.phase_factory->read(state.phase_context)==0 && state.budget_factory->read(state.budget_context)==0);
     dead=kept;kept=NULL;collected=99;

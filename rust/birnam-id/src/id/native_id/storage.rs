@@ -52,18 +52,19 @@ unsafe extern "C" fn retire_indexes(
     if bytes.len() % size_of::<usize>() != 0 {
         return invalid();
     }
-    let dead: Vec<_> = bytes
+    // All three indexes retire against the same address set before any storage
+    // can be reused. Do not rebuild this potentially large set for each index.
+    let dead: crate::raw::AddressMap<()> = bytes
         .chunks_exact(size_of::<usize>())
-        .map(|word| usize::from_ne_bytes(word.try_into().unwrap()))
+        .map(|word| (usize::from_ne_bytes(word.try_into().unwrap()), ()))
         .collect();
-    let dead_set: crate::raw::AddressMap<()> = dead.iter().map(|address| (*address, ())).collect();
     let state = unsafe { &*context.cast::<State>() };
     let dictionaries = unsafe { &mut *state.dictionaries };
     let behaviors: Vec<_> = dictionaries
         .ordered
         .iter()
         .copied()
-        .filter(|object| dead_set.contains_key(&object.addr()))
+        .filter(|object| dead.contains_key(&object.addr()))
         .collect();
     dictionaries.remove_objects(&behaviors);
     dictionaries.remove_weak_keys(&dead);

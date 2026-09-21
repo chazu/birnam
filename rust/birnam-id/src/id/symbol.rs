@@ -189,8 +189,7 @@ impl Symbols {
     }
 
     /// Retire names chosen by the caller before their allocations are released.
-    pub(crate) fn remove_objects(&mut self, dead: &[usize]) -> usize {
-        let dead: AddressMap<()> = dead.iter().map(|address| (*address, ())).collect();
+    pub(crate) fn remove_objects(&mut self, dead: &AddressMap<()>) -> usize {
         let before = self.ordered.len();
         self.by_name_hash.clear();
         self.by_address.clear();

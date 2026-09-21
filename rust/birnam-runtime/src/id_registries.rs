@@ -210,7 +210,7 @@ impl Symbols {
     pub(crate) fn remove_objects(&mut self, dead: &[usize]) -> usize {
         match self {
             #[cfg(any(test, feature = "ffi-test-hooks"))]
-            Self::Local(local) => local.remove_objects(dead),
+            Self::Local(local) => local.remove_objects(&dead.iter().map(|address| (*address, ())).collect()),
             Self::Id(id) => {
                 let before = id.call(id.symbol_count, &[]).as_word().unwrap();
                 let bytes = unsafe {
@@ -575,7 +575,7 @@ impl Dictionaries {
     pub(crate) fn remove_weak_keys(&mut self, _dead: &[usize]) -> usize {
         match self {
             #[cfg(any(test, feature = "ffi-test-hooks"))]
-            Self::Local(local) => local.remove_weak_keys(_dead),
+            Self::Local(local) => local.remove_weak_keys(&_dead.iter().map(|address| (*address, ())).collect()),
             Self::Id(_) => panic!("Id retires production weak keys"),
         }
     }

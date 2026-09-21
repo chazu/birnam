@@ -88,16 +88,7 @@ unsafe extern "C" fn snapshot(context: *mut c_void) -> ViewV1 {
     }
 }
 unsafe extern "C" fn remove_dead(context: *mut c_void, address: usize) -> i32 {
-    let records = unsafe { records(context) };
-    if !records
-        .entries
-        .get(&address)
-        .is_some_and(|record| record.flags & (MARKED | PERMANENT) == 0)
-    {
-        return 0;
-    }
-    records.entries.remove(&address);
-    1
+    i32::from(unsafe { take_dead(context, address) }.is_some())
 }
 impl Records {
     fn new() -> Box<Self> {
@@ -329,4 +320,48 @@ pub static birnam_native_module_v1: native::Module = native::Module {
 
 pub(super) unsafe fn object_at(context: *mut c_void, address: usize) -> Option<Oop> {
     unsafe { records(context) }.entries.get(&address).map(|record| record.object)
+}
+
+/// Return the recorded object and remove its unmarked, collectable record in
+/// one lookup. This borrows only collection metadata and runs no callback.
+pub(super) unsafe fn take_dead(context: *mut c_void, address: usize) -> Option<Oop> {
+    let entries = &mut unsafe { records(context) }.entries;
+    match entries.entry(address) {
+        std::collections::hash_map::Entry::Occupied(entry)
+            if entry.get().flags & (MARKED | PERMANENT) == 0 =>
+        {
+            Some(entry.remove().object)
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dead_record_removal_preserves_marked_and_permanent_objects() {
+        let mut owner = Records::new();
+        let api = owner.api;
+        let mut payloads = [0u64; 4];
+        let objects: Vec<_> = payloads.iter_mut().map(|value| ptr::from_mut(value).cast()).collect();
+        for (&object, flags) in objects.iter().zip([0, MARKED, PERMANENT, MARKED | PERMANENT]) {
+            assert_eq!(unsafe { (api.insert)(api.context, object, flags) }, 1);
+        }
+        assert_eq!(unsafe { take_dead(api.context, objects[0].addr()) }, Some(objects[0]));
+        assert_eq!(unsafe { take_dead(api.context, objects[0].addr()) }, None);
+        assert_eq!(unsafe { take_dead(api.context, 0) }, None);
+        for &object in &objects[1..] {
+            assert_eq!(unsafe { (api.remove_dead)(api.context, object.addr()) }, 0);
+        }
+        unsafe { (api.clear)(api.context) };
+        assert_eq!(unsafe { (api.remove_dead)(api.context, objects[1].addr()) }, 1);
+        for &object in &objects[2..] {
+            assert_eq!(unsafe { take_dead(api.context, object.addr()) }, None);
+            assert_eq!(unsafe { (api.get)(api.context, object.addr()) }, PERMANENT);
+        }
+        assert_eq!(owner.entries.len(), 2);
+        owner.entries.clear();
+    }
 }

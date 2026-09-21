@@ -2864,3 +2864,38 @@ Cell checks in ordinary and rebuilt images, then fails AOT startup with
 Evidence is `.cargo-target/83-image-emission-evidence.json`. The remaining fixture
 migration and complete Designs 82/83 acceptance audit stay open. Release
 validation remains waived.
+
+
+### GC retirement uses one address index and fewer record copies
+
+A profile of the installed image-backed worker confirmed substantial time in
+retirement of its temporary parser heap. Id now decodes the dead addresses into
+one set and uses it for behavior, weak-key and Symbol retirement. Previously it
+constructed three equivalent sets. The collector copies only dead addresses
+from its scoped allocation snapshot, avoiding intermediate full-record vectors.
+Removing a dead collection record now checks its flags and takes its object in
+one lookup. It still rejects marked/permanent records; the detached payload
+remains live for its finalizer and is released afterward. Public native layouts,
+callback order and collection timing are unchanged.
+
+The new collection-record unit checks missing/repeated removals, marked and
+permanent objects, and removal after marks clear. The existing independent C
+collector fixture now installs a weak key in a surviving dictionary: successful
+collection removes both the key and its Symbol, while rejected tracing retains
+both. This runs before Runtime exists through the shipped native constructor.
+All 334 affected Id, Collect and Runtime library tests pass (15 ignored), and
+the complete installed native construction suite passes on
+`/tmp/birnam-83-retirement-index`. Its full portable image-v8 suite also passes
+ordinary/rebuilt/baked execution, boxed identity, nested source-less code, resave,
+boundary admission and forged-authority rejection. All six production source
+files match the tested installation.
+
+A sequential worker-wire comparison measured 11.13 seconds on the preceding
+installation and 10.73 seconds with these changes. All twelve replies match byte
+for byte and orderly shutdown passes. The production ten-second readiness
+requirement remains unmet. The full worker-service runner passes ordinary and
+rebuilt Cell checks, then fails AOT startup with `#handshakeTimeout` before its
+nineteen service cases run. Evidence is
+`.cargo-target/83-retirement-index-evidence.json`; worker-service acceptance,
+legacy fixture migration and the full Designs 82/83 audit remain open. Release
+validation remains waived.
