@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Construct complete collection families and Store through Bootstrap, removing
+  their legacy host initialization and deferred family preparation. Keep new
+  objects/selectors rooted during construction and pass Vector's exact typed
+  concatenation callable to Range.
+
 - Construct Integer/Boolean control, Block loops and printing through Bootstrap
   with explicit completed dependencies; remove their legacy host initialization
   entries and test the group before collection/Store/compiler libraries exist.

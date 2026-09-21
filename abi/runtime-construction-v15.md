@@ -73,3 +73,9 @@ Runtime's already completed namespace view, using the existing presence/import
 ABI. A null or different Runtime pointer, or a mismatched Id carrier, returns
 InvalidRequest. These queries neither install compiler services nor change
 ownership. Bootstrap supplies these live views to later control constructors.
+
+The same completed-service request form also supports `namespaceExport`,
+`vtables` and `methodObservation`, returning the existing namespace-export v1,
+vtable-enumeration v2 and method-observation v1 descriptors respectively. These
+are inputs to collection/Store construction; they neither initialize a module
+nor introduce a later-filled provider slot.

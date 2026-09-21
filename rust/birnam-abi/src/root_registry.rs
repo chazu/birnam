@@ -146,3 +146,32 @@ mod tests {
         }
     }
 }
+
+/// Temporary roots for synchronous native construction above the root owner.
+/// The completed owner and its code outlive the scope and every retained object.
+pub struct ConstructionRoots { owner: OwnedV1, tokens: Vec<usize> }
+impl ConstructionRoots {
+    /// # Safety
+    /// The readable, completed owner remains live until this scope is dropped.
+    pub unsafe fn new(owner: *const OwnedV1) -> Self {
+        assert!(unsafe { valid_owned(owner) });
+        Self { owner: unsafe { *owner }, tokens: Vec::new() }
+    }
+    /// # Safety
+    /// The object is live on the owner thread when admitted to the root set.
+    pub unsafe fn keep(&mut self, object: crate::Oop) -> crate::Oop {
+        if !object.is_null() {
+            let token = unsafe { self.owner.retain.unwrap()(self.owner.context, object) };
+            assert_ne!(token, 0);
+            self.tokens.push(token);
+        }
+        object
+    }
+}
+impl Drop for ConstructionRoots {
+    fn drop(&mut self) {
+        for token in self.tokens.drain(..) {
+            assert_eq!(unsafe { self.owner.release.unwrap()(self.owner.context, token) }, 1);
+        }
+    }
+}

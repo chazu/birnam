@@ -126,3 +126,21 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> c_int {
 birnam_abi::integer_dependency!();
 birnam_abi::float_dependency!();
 birnam_abi::string_dependency!();
+
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+    let Some([integer, float, string]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+    let (Some(integer), Some(float), Some(string)) = (integer.as_word(), float.as_word(), string.as_word()) else { return invalid_native(); };
+    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::float::attach(float as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
+    match NATIVE_PHASE.compare_exchange(0, 1, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire) {
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::word((&API as *const ApiV1).addr())), _ => return invalid_native(),
+    }
+    READY.store(true, Ordering::Release);
+    NATIVE_PHASE.store(2, std::sync::atomic::Ordering::Release);
+    Outcome::loaded(Operand::word((&API as *const ApiV1).addr()))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

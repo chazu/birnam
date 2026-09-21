@@ -206,6 +206,15 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     assert(number(send0(map,"size"))==1);
     Oop parts=keep(send1(text("a,b"),"split:",text(",")));
     assert(number(send0(parts,"size"))==2);
+    Oop range=keep(send1(one,"to:",two));
+    Oop joined=keep(send1(range,",",vector));
+    printed(joined,"#[1 2 1 2]");
+    if(args[6].data.word==3) {
+        assert(!namespace_import_v1(imports,"Store"));
+        assert(!namespace_import_v1(imports,"Globals"));
+        root_count=0;
+        return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=block_proto}};
+    }
     Oop globals=named("Globals"), key=keep(api->intern("earlyNativeValue"));
     Oop binding[]={key,expected}; api->send(globals,api->intern("at:put:"),binding,2);
     assert(send1(globals,"at:",key)==expected);

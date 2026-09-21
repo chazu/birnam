@@ -45,14 +45,25 @@ fn main() {
         let path = prefix.join(format!("libbirnam_{library}.dylib"));
         std::fs::rename(path.with_extension("later"), &path).unwrap();
     }
+    let store_path = prefix.join("libbirnam_store.dylib");
+    std::fs::rename(&store_path, store_path.with_extension("later")).unwrap();
+    stack.initialize_collections().unwrap();
+    assert_eq!(stack.module_count(), 0, "collections used legacy initialization");
+    let mut collection_arguments = arguments;
+    collection_arguments[6] = Operand::word(3);
+    assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &collection_arguments) }.status, native::LOADED);
+    println!("complete native collections work before Store and all parser/compiler libraries");
+    std::fs::rename(store_path.with_extension("later"), &store_path).unwrap();
+    stack.initialize_store().unwrap();
+    assert_eq!(stack.module_count(), 0, "Store used legacy initialization");
     match stack.load_script_modules(&resources) {
         Err(ModuleError::OpenFailed { path }) => assert_eq!(path, prefix.join("libbirnam_id_artifact.dylib")),
         other => panic!("expected completed native prefix before missing Artifact, got {other:?}"),
     }
     // dyld can reuse an already mapped image even after its file was moved.
     // Count the actual legacy initialization calls as well: only Trace/Collect,
-    // and the collection/Store extensions remain.
-    assert_eq!(stack.module_count(), 11, "completed lower modules initialized again");
+    // and the legacy Error compatibility attachment remain.
+    assert_eq!(stack.module_count(), 3, "completed lower modules initialized again");
     unsafe { birnam_abi::gc_settings::set_precise(stack.gc_settings(), 1) };
     let mut arguments = arguments;
     arguments[6] = Operand::word(1);

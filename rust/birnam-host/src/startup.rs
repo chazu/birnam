@@ -1043,9 +1043,6 @@ pub enum ModuleError {
     SymbolCompatibilityLimitRejected {
         path: PathBuf,
     },
-    MissingStoreCompensationApi {
-        path: PathBuf,
-    },
     MissingCodegenCompensationConfig {
         path: PathBuf,
     },
@@ -1062,7 +1059,6 @@ type SymbolCompactionControl = unsafe extern "C" fn(c_int, usize, usize) -> c_in
 
 type SymbolBorrowDeclaration = unsafe extern "C" fn() -> c_int;
 
-type StoreCompensationApiGetter = unsafe extern "C" fn() -> *const std::ffi::c_void;
 
 type CodegenCompensationConfigure =
     unsafe extern "C" fn(*const std::ffi::c_void) -> std::ffi::c_int;
@@ -1109,16 +1105,8 @@ fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleErro
 pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_trace",
     "libbirnam_collect",
-    // Complete native value/control behavior before compiler-facing modules.
-    "libbirnam_string_builder",
-    "libbirnam_collection_value",
-    "libbirnam_vector",
-    "libbirnam_range",
-    "libbirnam_map",
-    "libbirnam_string_collection",
-    "libbirnam_id_collection",
+    // Remaining compatibility attachments before compiler-facing modules.
     "libbirnam_id_error",
-    "libbirnam_store",
     "libbirnam_id_artifact",
     "libbirnam_id_peg",
     "libbirnam_id_lang",
@@ -1634,10 +1622,9 @@ pub fn self_hosted_boot_order() -> Result<Vec<&'static str>, BootstrapOrderError
                 // The source declaration names a non-self-hosted module. Keep
                 // the distinction explicit so a typo cannot silently reorder
                 // the self-hosted layer.
-                let is_kernel = SCRIPT_MODULES.iter().any(|name| {
+                let is_kernel = matches!(dependency.as_str(), "store" | "collection") || SCRIPT_MODULES.iter().any(|name| {
                     name.strip_prefix("libbirnam_id_")
                         .is_some_and(|kernel| kernel == dependency)
-                        || (*name == "libbirnam_store" && dependency == "store")
                 });
                 if !is_kernel {
                     return Err(BootstrapOrderError::UnknownSelfHostedDependency {
@@ -2688,20 +2675,43 @@ impl LoadedStack {
         self.load_module_handle(path).map(|_| ())
     }
 
+    fn construct(&self, stage: &[u8]) -> Result<birnam_abi::id_protocol::Operand, ModuleError> {
+        let invalid = || ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 };
+        self.floor.bootstrap.as_ref().ok_or_else(invalid)?.construct(stage).into_result()
+            .map_err(|failure| ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: failure.status, detail: failure.detail })
+    }
+    fn construction_word(&self, stage: &[u8]) -> Result<usize, ModuleError> {
+        self.construct(stage)?.as_word().filter(|value| *value != 0).ok_or_else(|| ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 })
+    }
+    pub fn initialize_collections(&mut self) -> Result<(), ModuleError> {
+        self.initialize_control()?;
+        self.construct(b"collections")?;
+        self.collection_value = self.construction_word(b"valuePolicy")? as _;
+        self.vector = self.construction_word(b"vector")? as _;
+        self.range = self.construction_word(b"range")? as _;
+        self.map = self.construction_word(b"map")? as _;
+        self.string_collection = self.construction_word(b"stringCollection")? as _;
+        unsafe {
+            assert_eq!(birnam_abi::collection_value::attach(self.collection_value), 1);
+            assert_eq!(birnam_abi::vector::attach(self.vector), 1);
+            assert_eq!(birnam_abi::range::attach(self.range), 1);
+            assert_eq!(birnam_abi::map::attach(self.map), 1);
+            assert_eq!(birnam_abi::string_collection::attach(self.string_collection), 1);
+        }
+        Ok(())
+    }
+    pub fn initialize_store(&mut self) -> Result<(), ModuleError> {
+        self.initialize_collections()?;
+        self.construct(b"store")?;
+        Ok(())
+    }
+
     /// Install the completed native control group before collections/compiler.
     pub fn initialize_control(&mut self) -> Result<(), ModuleError> {
-        let construct = |stage: &[u8]| {
-            let invalid = || ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 };
-            self.floor.bootstrap.as_ref().ok_or_else(invalid)?.construct(stage)
-                .into_result().map_err(|failure| ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: failure.status, detail: failure.detail })
-        };
-        construct(b"control")?;
-        let pointer = |stage: &[u8]| -> Result<usize, ModuleError> {
-            construct(stage)?.as_word().filter(|value| *value != 0).ok_or_else(|| ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 })
-        };
-        let errors = pointer(b"errorValue")? as *const birnam_abi::error_value::ApiV3;
-        let printing = pointer(b"printing")? as *const birnam_abi::printing::ApiV1;
-        let loops = pointer(b"blockLoop")? as *const birnam_abi::block_loop::ApiV3;
+        self.construct(b"control")?;
+        let errors = self.construction_word(b"errorValue")? as *const birnam_abi::error_value::ApiV3;
+        let printing = self.construction_word(b"printing")? as *const birnam_abi::printing::ApiV1;
+        let loops = self.construction_word(b"blockLoop")? as *const birnam_abi::block_loop::ApiV3;
         unsafe {
             assert_eq!(birnam_abi::error_value::attach(errors), 1);
             assert_eq!(birnam_abi::printing::attach(printing), 1);
@@ -2717,9 +2727,9 @@ impl LoadedStack {
     /// retains its exact override path; every other rung, including Store,
     /// comes from the one executable-relative runtime library directory.
     pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
-        self.initialize_control()?;
+        self.initialize_store()?;
         let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
-        let mut store_compensation_api = None;
+        let store_compensation_api = self.construction_word(b"storeCompensation")? as *const std::ffi::c_void;
         for name in SCRIPT_MODULES {
             let path = if *name == "libbirnam_id_tcc" {
                 tcc_override
@@ -2756,28 +2766,8 @@ impl LoadedStack {
                     return Err(ModuleError::CollectDependencyRejected { path });
                 }
             }
-            if *name == "libbirnam_store" {
-                let getter = unsafe {
-                    (self.floor.api().dlsym)(
-                        handle.as_ptr(),
-                        c"birnam_store_compensation_api_v1".as_ptr().cast(),
-                    )
-                };
-                let Some(getter) = NonNull::new(getter) else {
-                    return Err(ModuleError::MissingStoreCompensationApi { path });
-                };
-                let getter: StoreCompensationApiGetter =
-                    unsafe { std::mem::transmute(getter.as_ptr()) };
-                let table = unsafe { getter() };
-                let Some(table) = NonNull::new(table.cast_mut()) else {
-                    return Err(ModuleError::MissingStoreCompensationApi { path });
-                };
-                store_compensation_api = Some(table);
-            }
             if *name == "libbirnam_id_codegen" {
-                let Some(table) = store_compensation_api else {
-                    return Err(ModuleError::MissingStoreCompensationApi { path });
-                };
+                let table = store_compensation_api;
                 let configure = unsafe {
                     (self.floor.api().dlsym)(
                         handle.as_ptr(),
@@ -2791,7 +2781,7 @@ impl LoadedStack {
                 };
                 let configure: CodegenCompensationConfigure =
                     unsafe { std::mem::transmute(configure.as_ptr()) };
-                if unsafe { configure(table.as_ptr()) } != 1 {
+                if unsafe { configure(table) } != 1 {
                     return Err(ModuleError::StoreCompensationConfigRejected { path });
                 }
             }

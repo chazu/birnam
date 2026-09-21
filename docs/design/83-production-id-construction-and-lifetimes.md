@@ -15,7 +15,7 @@
 > native binding references live in Lifetime above Id. Unsafe native consumers and the full entry-level
 > construction manifest remain open.
 > The loaded Bootstrap now owns the production construction sequence through
-> Runtime and the native control group; host prefix requests delegate to the
+> Runtime, control, collections and Store; host prefix requests delegate to the
 > same implementation.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
@@ -2050,3 +2050,40 @@ compiled, mapped, rebuilt, baked and image-rejection checks pass. Host unit test
 pass 86 cases with one existing ignored case; Integer's storage test also passes.
 All eleven changed Rust sources match the installed copies. Id's library is
 byte-identical to `/tmp/birnam-83-no-repeat`.
+
+### Complete native collection and Store construction
+
+Bootstrap now builds the Collection base, StringBuilder, value policy, Vector,
+Range, Map, String collection extension and Store through common native entries.
+Each family is callable when its constructor returns; the native path no longer
+returns an unprepared family factory for a later Collection-wide installation.
+Vector precedes its consumers. Its exact concatenation NativeEntry is passed to
+Range with its context intact, without another Vector method installation.
+
+StringBuilder publishes under its own namespace guard instead of depending on
+Vector's absence. Production now constructs Vector and its consumers before
+StringBuilder, exercising that independence in ordinary startup. Native
+construction keeps temporary roots for new objects and selectors until permanent roots are registered, including Store's allocation and
+interning sequence. Object initialization results transfer to the module's
+registered roots before Bootstrap releases its temporary result root.
+
+The eight corresponding legacy host entries are removed. The host receives the
+completed collection descriptors and Store compensation service from Bootstrap.
+Runtime supplies its existing namespace-export, vtable-enumeration and
+method-observation views through named native requests. The exact predecessor
+operands and advertised results are recorded in [Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md).
+
+The prefix fixture constructs control without collections, collections without
+Store, and Store without any parser/compiler library. Each construction phase
+uses zero legacy module initializations. Later compiler/system construction,
+checked-dispatch consumers, the full manifest and final architecture acceptance
+remain required.
+
+Validation on `/tmp/birnam-83-collections-final` passes the native prefix suite,
+including collections with Store absent and Store with compiler libraries absent.
+Installed, forced-source and compiled global lookup pass. Method source, compiled,
+mapped, rebuilt, baked and image-rejection checks pass. Unit tests pass 86 host,
+11 Store and four Vector cases; one host and two Store cases remain ignored.
+All twelve changed Rust sources match the final installed copies. Id's dependency
+and export checks pass. Release validation remains waived; worker readiness and
+the remaining architecture acceptance are still open.

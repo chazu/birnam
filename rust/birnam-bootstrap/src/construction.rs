@@ -27,6 +27,15 @@ pub(super) struct Construction {
     collection: Option<*const birnam_abi::collection_state::OwnedV2>,
     text_ready: bool,
     control_ready: bool,
+    collection_base: Option<birnam_abi::Oop>,
+    string_builder: Option<birnam_abi::Oop>,
+    value_policy: Option<*const birnam_abi::collection_value::ApiV1>,
+    vector: Option<*const birnam_abi::vector::ApiV6>,
+    range: Option<*const birnam_abi::range::ApiV6>,
+    map: Option<*const birnam_abi::map::ApiV6>,
+    string_collection: Option<*const birnam_abi::string_collection::ApiV1>,
+    store: Option<birnam_abi::Oop>,
+
     error_value: Option<*const birnam_abi::error_value::ApiV3>,
     printing: Option<*const birnam_abi::printing::ApiV1>,
     block_loop: Option<*const birnam_abi::block_loop::ApiV3>,
@@ -63,6 +72,15 @@ impl Construction {
             collection: None,
             text_ready: false,
             control_ready: false,
+            collection_base: None,
+            string_builder: None,
+            value_policy: None,
+            vector: None,
+            range: None,
+            map: None,
+            string_collection: None,
+            store: None,
+
             error_value: None,
             printing: None,
             block_loop: None,
@@ -710,6 +728,110 @@ impl Construction {
         self.control_ready = true;
         Ok(())
     }
+    fn family_arguments(&mut self) -> Result<Vec<Operand>, Outcome> {
+        self.initialize_control()?;
+        Ok(vec![Operand::word(self.runtime.unwrap().addr()),
+            self.runtime_service(b"namespacePresence")?, self.runtime_service(b"namespaceImport")?,
+            self.runtime_service(b"namespaceExport")?, Operand::word(self.roots.unwrap().addr()),
+            Operand::word(unsafe { (*self.lifetime.unwrap()).layouts }.addr())])
+    }
+    fn published_object(&self, value: Operand) -> Result<birnam_abi::Oop, Outcome> {
+        let object = value.as_object().filter(|p| !p.is_null()).ok_or_else(invalid)?;
+        // The completed module has registered its roots before returning.
+        assert_eq!(unsafe { self.bootstrap.release(value) }, 1);
+        Ok(object)
+    }
+    fn initialize_collection_base(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(value) = self.collection_base { return Ok(value); }
+        let args = self.family_arguments()?;
+        let result = self.load("libbirnam_id_collection.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.collection_base = Some(object);
+        Ok(object)
+    }
+    fn initialize_string_builder(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(value) = self.string_builder { return Ok(value); }
+        let mut args = self.family_arguments()?;
+        args.extend([Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
+            Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr())]);
+        let result = self.load("libbirnam_string_builder.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.string_builder = Some(object);
+        Ok(object)
+    }
+    fn initialize_value_policy(&mut self) -> Result<*const birnam_abi::collection_value::ApiV1, Outcome> {
+        if let Some(value) = self.value_policy { return Ok(value); }
+        self.initialize_float()?;
+        let args = [Operand::word(self.integer.unwrap().addr()), Operand::word(self.float.unwrap().addr()), Operand::word(self.string.unwrap().addr())];
+        let result = self.load("libbirnam_collection_value.dylib", &args)?;
+        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::collection_value::ApiV1;
+        if unsafe { birnam_abi::collection_value::attach(api) } != 1 { return Err(invalid()); }
+        self.value_policy = Some(api);
+        Ok(api)
+    }
+    fn initialize_vector(&mut self) -> Result<*const birnam_abi::vector::ApiV6, Outcome> {
+        if let Some(value) = self.vector { return Ok(value); }
+        let parent = self.initialize_collection_base()?;
+        let policy = self.initialize_value_policy()?;
+        let mut args = self.family_arguments()?;
+        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(policy.addr()), Operand::object(parent)]);
+        let result = self.load("libbirnam_vector.dylib", &args)?;
+        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::vector::ApiV6;
+        if unsafe { birnam_abi::vector::attach(api) } != 1 { return Err(invalid()); }
+        self.vector = Some(api);
+        Ok(api)
+    }
+    fn initialize_range(&mut self) -> Result<*const birnam_abi::range::ApiV6, Outcome> {
+        if let Some(value) = self.range { return Ok(value); }
+        let vector = self.initialize_vector()?;
+        let comma = self.load("libbirnam_vector.dylib", &[Operand::bytes(b"comma")])?;
+        let mut args = self.family_arguments()?;
+        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(vector.addr()), Operand::object(self.collection_base.unwrap()), comma]);
+        let result = self.load("libbirnam_range.dylib", &args)?;
+        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::range::ApiV6;
+        if unsafe { birnam_abi::range::attach(api) } != 1 { return Err(invalid()); }
+        self.range = Some(api);
+        Ok(api)
+    }
+    fn initialize_map(&mut self) -> Result<*const birnam_abi::map::ApiV6, Outcome> {
+        if let Some(value) = self.map { return Ok(value); }
+        let vector = self.initialize_vector()?;
+        let mut args = self.family_arguments()?;
+        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(vector.addr()), Operand::word(self.value_policy.unwrap().addr()), Operand::object(self.collection_base.unwrap())]);
+        let result = self.load("libbirnam_map.dylib", &args)?;
+        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::map::ApiV6;
+        if unsafe { birnam_abi::map::attach(api) } != 1 { return Err(invalid()); }
+        self.map = Some(api);
+        Ok(api)
+    }
+    fn initialize_string_collection(&mut self) -> Result<*const birnam_abi::string_collection::ApiV1, Outcome> {
+        if let Some(value) = self.string_collection { return Ok(value); }
+        let vector = self.initialize_vector()?;
+        let args = [Operand::word(self.runtime.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::word(vector.addr()), Operand::object(self.collection_base.unwrap())];
+        let result = self.load("libbirnam_string_collection.dylib", &args)?;
+        let api = result.as_word().ok_or_else(invalid)? as *const birnam_abi::string_collection::ApiV1;
+        if unsafe { birnam_abi::string_collection::attach(api) } != 1 { return Err(invalid()); }
+        self.string_collection = Some(api);
+        Ok(api)
+    }
+    fn initialize_collections(&mut self) -> Result<(), Outcome> {
+        self.initialize_range()?;
+        self.initialize_map()?;
+        self.initialize_string_collection()?;
+        self.initialize_string_builder()?;
+        Ok(())
+    }
+    fn initialize_store(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(value) = self.store { return Ok(value); }
+        self.initialize_collections()?;
+        let mut args = self.family_arguments()?;
+        args.extend([self.runtime_service(b"vtables")?, self.runtime_service(b"methodObservation")?,
+            Operand::word(unsafe { (*self.lifetime.unwrap()).hooks }.addr()), Operand::word(self.integer.unwrap().addr())]);
+        let result = self.load("libbirnam_store.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.store = Some(object);
+        Ok(object)
+    }
     pub(super) fn advance(&mut self, stage: &[u8]) -> Result<Operand, Outcome> {
         macro_rules! owner {
             ($method:ident) => {
@@ -771,6 +893,19 @@ impl Construction {
             b"printing" => Ok(Operand::word(self.initialize_printing()?.addr())),
             b"blockLoop" => Ok(Operand::word(self.initialize_block_loop()?.addr())),
             b"control" => { self.initialize_control()?; Ok(Operand::unit()) },
+            b"collectionBase" => Ok(Operand::object(self.initialize_collection_base()?)),
+            b"stringBuilder" => Ok(Operand::object(self.initialize_string_builder()?)),
+            b"valuePolicy" => Ok(Operand::word(self.initialize_value_policy()?.addr())),
+            b"vector" => Ok(Operand::word(self.initialize_vector()?.addr())),
+            b"range" => Ok(Operand::word(self.initialize_range()?.addr())),
+            b"map" => Ok(Operand::word(self.initialize_map()?.addr())),
+            b"stringCollection" => Ok(Operand::word(self.initialize_string_collection()?.addr())),
+            b"collections" => { self.initialize_collections()?; Ok(Operand::unit()) },
+            b"store" => Ok(Operand::object(self.initialize_store()?)),
+            b"storeCompensation" => {
+                self.initialize_store()?;
+                self.load("libbirnam_store.dylib", &[Operand::bytes(b"compensation"), Operand::word(self.runtime.unwrap().addr())])
+            },
             _ => Err(invalid()),
         }
     }

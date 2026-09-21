@@ -120,3 +120,26 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
 }
 birnam_abi::string_dependency!();
 birnam_abi::vector_dependency!();
+
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+    let Some([api, string, vector, parent]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+    let (Some(api), Some(string), Some(vector)) = (api.as_word(), string.as_word(), vector.as_word()) else { return invalid_native(); };
+    let api = api as *mut IdApi;
+    let Some(parent) = parent.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
+        || unsafe { birnam_abi::string::attach(string as _) } != 1 || unsafe { birnam_abi::vector::attach(vector as _) } != 1 { return invalid_native(); }
+    if EXECUTION_API.get().is_some_and(|selected| *selected != api.addr()) { return invalid_native(); }
+    match NATIVE_PHASE.compare_exchange(0, 1, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire) {
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::word((&API as *const ApiV1).addr())), _ => return invalid_native(),
+    }
+    READY.store(true, Ordering::Release);
+    unsafe { birnam_abi::set_vtable_parent(&*api, birnam_abi::string::behavior(), parent); install(api, api); }
+    NATIVE_PHASE.store(2, std::sync::atomic::Ordering::Release);
+    Outcome::loaded(Operand::word((&API as *const ApiV1).addr()))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
