@@ -6,6 +6,7 @@
     "birnam_collection_value_dependency_v1",
     "birnam_integer_dependency_v1",
     "birnam_map_provider_v6",
+    "birnam_native_module_v1",
     "birnam_string_dependency_v1",
     "birnam_symbol_borrow_v1",
     "birnam_vector_dependency_v6",

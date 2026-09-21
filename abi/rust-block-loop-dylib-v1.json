@@ -5,6 +5,7 @@
   "exported_symbols": [
     "birnam_block_loop_provider_v3",
     "birnam_error_value_dependency_v3",
+    "birnam_native_module_v1",
     "birnam_symbol_borrow_v1",
     "module_init"
   ]

@@ -1205,10 +1205,12 @@ unsafe fn register_methods(runtime: &Runtime) {
     }
 }
 
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) {
+unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) {
     if api_pointer.is_null() {
         abort("module_init received a null IdApi");
     }
+    let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
+    let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
     let api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, PEG_NAME.as_ptr().cast()) != 0 };
@@ -1221,11 +1223,11 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
                 unsafe { import(imports, CST_VT_NAME) },
             )
         } else {
-            let pattern_vt = unsafe { (api.proto)(api.object_vt) };
-            let peg_vt = unsafe { (api.proto)(api.object_vt) };
-            let grammar_vt = unsafe { (api.proto)(api.object_vt) };
-            let cst_vt = unsafe { (api.proto)(api.object_vt) };
-            let peg = unsafe { (api.alloc)(peg_vt, 0) };
+            let pattern_vt = retain(unsafe { (api.proto)(api.object_vt) });
+            let peg_vt = retain(unsafe { (api.proto)(api.object_vt) });
+            let grammar_vt = retain(unsafe { (api.proto)(api.object_vt) });
+            let cst_vt = retain(unsafe { (api.proto)(api.object_vt) });
+            let peg = retain(unsafe { (api.alloc)(peg_vt, 0) });
             (pattern_vt, peg_vt, peg, grammar_vt, cst_vt)
         };
         if [pattern_vt, peg_vt, peg, grammar_vt, cst_vt]
@@ -1280,7 +1282,7 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
 /// `api` is the live host IdApi table or null for the documented fatal boundary.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn module_init(api: *mut IdApi, _state: *mut c_void, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, _vtables: *const birnam_abi::vtable_enumeration::ApiV2, _observation: *const birnam_abi::method_observation::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, _settings: *const birnam_abi::gc_settings::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1) -> *mut c_void {
-    unsafe { bring_up(api, presence, imports, exports, roots, layouts, hooks, finalizers) };
+    unsafe { bring_up(api, presence, imports, exports, roots, layouts, hooks, finalizers, ptr::null()) };
     ptr::null_mut()
 }
 
@@ -1306,3 +1308,36 @@ birnam_abi::integer_dependency!();
 birnam_abi::string_dependency!();
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
+
+use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
+use std::sync::atomic::Ordering;
+static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
+unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
+    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
+    let Some([api, presence, imports, exports, roots, layouts, hooks, finalizers, integer, string, predecessor]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
+    let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(layouts), Some(hooks), Some(finalizers), Some(integer), Some(string)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), layouts.as_word(), hooks.as_word(), finalizers.as_word(), integer.as_word(), string.as_word()) else { return invalid_native(); };
+    let api = api as *mut IdApi;
+    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
+    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
+    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
+    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
+    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
+    let hooks = hooks as *const birnam_abi::trace_hooks::ApiV1;
+    let finalizers = finalizers as *const birnam_abi::finalizers::ApiV1;
+    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
+        || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports) && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots) && birnam_abi::payload_layout::valid(layouts) && birnam_abi::trace_hooks::valid(hooks) && birnam_abi::finalizers::valid(finalizers) } { return invalid_native(); }
+    // The trusted caller supplies the already published Vector predecessor.
+    // Methods continue to resolve Vector through the live namespace.
+    if predecessor.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
+    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
+    if RUNTIME.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
+    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
+        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(runtime().peg as Oop)), _ => return invalid_native(),
+    }
+    unsafe { bring_up(api, presence, imports, exports, (*roots).api, layouts, hooks, finalizers, roots); }
+    NATIVE_PHASE.store(2, Ordering::Release);
+    Outcome::loaded(Operand::object(runtime().peg as Oop))
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

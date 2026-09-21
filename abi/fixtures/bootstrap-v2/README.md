@@ -125,3 +125,27 @@ Bootstrap releases temporary Object-result roots after the module has registered
 its own roots. Construction scopes retain newly allocated objects and selectors
 until those permanent roots are available. Range retains the complete typed
 Vector callable without repeating Vector's installation or discarding context.
+
+The parser group uses the same native descriptor and completed value families:
+
+| Library | Operands after Id | Complete result |
+|---|---|---|
+| `libbirnam_id_artifact.dylib` | F, Word(Integer), Word(String), Object(Vector) | Object(Artifact); descriptor inspection, materialization and failure reporting |
+| `libbirnam_id_peg.dylib` | F, Word(trace hooks), Word(finalizers), Word(Integer), Word(String), Object(Vector) | Object(Peg); patterns, grammars, matching, CST results and syntax errors |
+| `libbirnam_id_lang.dylib` | Word(Runtime API), Word(namespace presence), Word(namespace import), Word(namespace export), Word(root owner v1), Word(Integer), Word(String), Object(Peg) | Object(Lang); the completed Birnam grammar and parsing facade |
+
+Bootstrap stages `artifact`, `peg` and `lang` return those completed Objects;
+`parsers` constructs Artifact and Lang (including PEG) and returns Unit. Artifact
+and PEG follow Vector. Lang receives the completed PEG object explicitly and
+builds the grammar with PEG messages. It neither compiles source nor depends on
+TCC, Codegen or Runtime compiler admission. Lang needs no payload-layout input:
+PEG owns its grammar storage. The host constructs Store before this group in the
+full startup sequence, then continues to the remaining compiler/system entries.
+
+Temporary constructor roots retain each new facade and behavior until permanent
+module roots are registered. Repeating a completed constructor preserves the
+original grammar rather than rebuilding it. Vector operands name an already
+published predecessor; ordinary Artifact/PEG methods continue to resolve Vector
+through the live namespace. Native inputs are trusted under Design 83's boundary.
+The legacy entry points remain for existing direct native consumers; this change
+does not yet migrate their internal language sends to checked dispatch.

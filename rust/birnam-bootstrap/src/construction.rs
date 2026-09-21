@@ -35,6 +35,9 @@ pub(super) struct Construction {
     map: Option<*const birnam_abi::map::ApiV6>,
     string_collection: Option<*const birnam_abi::string_collection::ApiV1>,
     store: Option<birnam_abi::Oop>,
+    artifact: Option<birnam_abi::Oop>,
+    peg: Option<birnam_abi::Oop>,
+    lang: Option<birnam_abi::Oop>,
 
     error_value: Option<*const birnam_abi::error_value::ApiV3>,
     printing: Option<*const birnam_abi::printing::ApiV1>,
@@ -80,6 +83,9 @@ impl Construction {
             map: None,
             string_collection: None,
             store: None,
+            artifact: None,
+            peg: None,
+            lang: None,
 
             error_value: None,
             printing: None,
@@ -832,6 +838,51 @@ impl Construction {
         self.store = Some(object);
         Ok(object)
     }
+    fn vector_object(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        self.initialize_vector()?;
+        let imports = self.runtime_service(b"namespaceImport")?.as_word().ok_or_else(invalid)?;
+        let vector = unsafe { birnam_abi::namespace_import::import(imports as _, c"Vector".as_ptr()) };
+        if vector.is_null() { return Err(invalid()); }
+        Ok(vector)
+    }
+    fn initialize_artifact(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.artifact { return Ok(object); }
+        let vector = self.vector_object()?;
+        let mut args = self.family_arguments()?;
+        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::object(vector)]);
+        let result = self.load("libbirnam_id_artifact.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.artifact = Some(object);
+        Ok(object)
+    }
+    fn initialize_peg(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.peg { return Ok(object); }
+        let vector = self.vector_object()?;
+        let mut args = self.family_arguments()?;
+        args.extend([Operand::word(unsafe { (*self.lifetime.unwrap()).hooks }.addr()),
+            Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
+            Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::object(vector)]);
+        let result = self.load("libbirnam_id_peg.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.peg = Some(object);
+        Ok(object)
+    }
+    fn initialize_lang(&mut self) -> Result<birnam_abi::Oop, Outcome> {
+        if let Some(object) = self.lang { return Ok(object); }
+        let peg = self.initialize_peg()?;
+        let mut args = self.family_arguments()?;
+        args.pop(); // Lang owns no payload layout; PEG owns grammar storage.
+        args.extend([Operand::word(self.integer.unwrap().addr()), Operand::word(self.string.unwrap().addr()), Operand::object(peg)]);
+        let result = self.load("libbirnam_id_lang.dylib", &args)?;
+        let object = self.published_object(result)?;
+        self.lang = Some(object);
+        Ok(object)
+    }
+    fn initialize_parsers(&mut self) -> Result<(), Outcome> {
+        self.initialize_artifact()?;
+        self.initialize_lang()?;
+        Ok(())
+    }
     pub(super) fn advance(&mut self, stage: &[u8]) -> Result<Operand, Outcome> {
         macro_rules! owner {
             ($method:ident) => {
@@ -900,6 +951,10 @@ impl Construction {
             b"range" => Ok(Operand::word(self.initialize_range()?.addr())),
             b"map" => Ok(Operand::word(self.initialize_map()?.addr())),
             b"stringCollection" => Ok(Operand::word(self.initialize_string_collection()?.addr())),
+            b"artifact" => Ok(Operand::object(self.initialize_artifact()?)),
+            b"peg" => Ok(Operand::object(self.initialize_peg()?)),
+            b"lang" => Ok(Operand::object(self.initialize_lang()?)),
+            b"parsers" => { self.initialize_parsers()?; Ok(Operand::unit()) },
             b"collections" => { self.initialize_collections()?; Ok(Operand::unit()) },
             b"store" => Ok(Operand::object(self.initialize_store()?)),
             b"storeCompensation" => {

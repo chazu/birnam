@@ -1107,9 +1107,6 @@ pub const SCRIPT_MODULES: &[&str] = &[
     "libbirnam_collect",
     // Remaining compatibility attachments before compiler-facing modules.
     "libbirnam_id_error",
-    "libbirnam_id_artifact",
-    "libbirnam_id_peg",
-    "libbirnam_id_lang",
     "libbirnam_id_tcc",
     "libbirnam_id_codegen",
     "libbirnam_system_gc",
@@ -1622,7 +1619,7 @@ pub fn self_hosted_boot_order() -> Result<Vec<&'static str>, BootstrapOrderError
                 // The source declaration names a non-self-hosted module. Keep
                 // the distinction explicit so a typo cannot silently reorder
                 // the self-hosted layer.
-                let is_kernel = matches!(dependency.as_str(), "store" | "collection") || SCRIPT_MODULES.iter().any(|name| {
+                let is_kernel = matches!(dependency.as_str(), "store" | "collection" | "artifact" | "peg" | "lang") || SCRIPT_MODULES.iter().any(|name| {
                     name.strip_prefix("libbirnam_id_")
                         .is_some_and(|kernel| kernel == dependency)
                 });
@@ -2706,6 +2703,12 @@ impl LoadedStack {
         Ok(())
     }
 
+    pub fn initialize_parsers(&mut self) -> Result<(), ModuleError> {
+        self.initialize_store()?;
+        self.construct(b"parsers")?;
+        Ok(())
+    }
+
     /// Install the completed native control group before collections/compiler.
     pub fn initialize_control(&mut self) -> Result<(), ModuleError> {
         self.construct(b"control")?;
@@ -2727,7 +2730,7 @@ impl LoadedStack {
     /// retains its exact override path; every other rung, including Store,
     /// comes from the one executable-relative runtime library directory.
     pub fn load_script_modules(&mut self, resources: &Resources) -> Result<(), ModuleError> {
-        self.initialize_store()?;
+        self.initialize_parsers()?;
         let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
         let store_compensation_api = self.construction_word(b"storeCompensation")? as *const std::ffi::c_void;
         for name in SCRIPT_MODULES {

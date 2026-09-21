@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Construct Artifact, PEG and Lang through Bootstrap with completed values and
+  explicit PEG input, removing three legacy host entries. Build the real grammar
+  and exercise parsing before TCC, Codegen or compiler admission are available.
+  Refresh the control/collection export manifests and check them against installed
+  libraries in the native loading suite.
+
 - Construct complete collection families and Store through Bootstrap, removing
   their legacy host initialization and deferred family preparation. Keep new
   objects/selectors rooted during construction and pass Vector's exact typed

@@ -56,14 +56,29 @@ fn main() {
     std::fs::rename(store_path.with_extension("later"), &store_path).unwrap();
     stack.initialize_store().unwrap();
     assert_eq!(stack.module_count(), 0, "Store used legacy initialization");
+    if args.len() > 4 {
+        for library in ["id_artifact", "id_peg", "id_lang"] {
+            let file = format!("libbirnam_{library}.dylib");
+            std::fs::copy(Path::new(&args[4]).join(&file), prefix.join(&file)).unwrap();
+        }
+        stack.initialize_parsers().unwrap();
+        assert_eq!(stack.module_count(), 0, "parsers used legacy initialization");
+        let mut parser_arguments = arguments;
+        parser_arguments[6] = Operand::word(4);
+        assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) }.status, native::LOADED);
+        let grammar = unsafe { birnam_abi::namespace_import::import(stack.imports(), c"BirnamGrammar".as_ptr()) };
+        stack.initialize_parsers().unwrap();
+        assert_eq!(unsafe { birnam_abi::namespace_import::import(stack.imports(), c"BirnamGrammar".as_ptr()) }, grammar);
+        println!("Artifact, PEG and Lang work with TCC, Codegen and runtime compiler admission absent; repeated construction preserves the grammar");
+        return;
+    }
     match stack.load_script_modules(&resources) {
-        Err(ModuleError::OpenFailed { path }) => assert_eq!(path, prefix.join("libbirnam_id_artifact.dylib")),
+        Err(ModuleError::NativeConstruction { stage, status, .. }) => { assert_eq!(stage, "parsers"); assert_ne!(status, native::LOADED); },
         other => panic!("expected completed native prefix before missing Artifact, got {other:?}"),
     }
     // dyld can reuse an already mapped image even after its file was moved.
-    // Count the actual legacy initialization calls as well: only Trace/Collect,
-    // and the legacy Error compatibility attachment remain.
-    assert_eq!(stack.module_count(), 3, "completed lower modules initialized again");
+    // Missing native parsers stop construction before any legacy entry runs.
+    assert_eq!(stack.module_count(), 0, "completed lower modules initialized again");
     unsafe { birnam_abi::gc_settings::set_precise(stack.gc_settings(), 1) };
     let mut arguments = arguments;
     arguments[6] = Operand::word(1);

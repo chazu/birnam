@@ -15,7 +15,7 @@
 > native binding references live in Lifetime above Id. Unsafe native consumers and the full entry-level
 > construction manifest remain open.
 > The loaded Bootstrap now owns the production construction sequence through
-> Runtime, control, collections and Store; host prefix requests delegate to the
+> Runtime, control, collections, Store and parsers; host prefix requests delegate to the
 > same implementation.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
@@ -2087,3 +2087,40 @@ mapped, rebuilt, baked and image-rejection checks pass. Unit tests pass 86 host,
 All twelve changed Rust sources match the final installed copies. Id's dependency
 and export checks pass. Release validation remains waived; worker readiness and
 the remaining architecture acceptance are still open.
+
+### Complete native parser construction
+
+Bootstrap now constructs Artifact, PEG and Lang through their common native
+entries, with complete Integer/String/Vector and Lifetime inputs. Lang receives
+the completed PEG object and builds the real Birnam grammar with message sends
+before returning its facade. Artifact and PEG do not require Store themselves;
+the full host sequence completes Store before requesting this parser group.
+The three legacy host rows are removed. The precise entry operands and results
+are recorded in [Bootstrap v2](../../abi/fixtures/bootstrap-v2/README.md).
+
+New facade/behavior objects retain temporary constructor roots until permanent
+roots are installed. Repeated native construction returns the completed result
+and does not rebuild Lang's grammar. The parser prefix test adds the three
+libraries only after proving the lower prefix works without them, then exercises
+parsing, CST collection results, syntax errors and Artifact failure reporting
+with TCC and Codegen absent and Runtime compiler admission still inactive.
+
+TCC's `bindRuntime` currently publishes generated-code registration shims that
+probe Runtime symbols. Codegen similarly selects compiler admission privately,
+and the host supplies Store compensation only after Codegen's initializer has
+returned. These are the next concrete construction dependencies to remove.
+Runtime's `initialize_compiler` currently requires completed values, so it can
+precede TCC; TCC and Codegen can then receive its completed admission descriptor.
+Codegen must receive Store compensation before publishing its operations.
+This ordering still needs implementation and prefix validation. System
+construction, checked-dispatch consumers, the full manifest and worker/image
+acceptance also remain required.
+
+Validation on `/tmp/birnam-83-parsers-final` passes the native prefix suite,
+including real parsing before TCC/Codegen and compiler admission. Installed,
+forced-source and compiled global lookup pass; Method source, compiled, mapped,
+rebuilt, baked and image-rejection checks pass. Unit tests pass 59 Artifact,
+86 host, one Lang and four PEG cases, with two existing ignored cases. All five
+changed Rust sources match the installed copies. The fifteen checked native
+export sets match their manifests, including nine corrected control/collection
+manifests. Release validation remains waived; worker readiness remains open.

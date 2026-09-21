@@ -17,7 +17,9 @@ def run(*args, **kwargs):
 
 
 # Check the installed images, not just source-level module visibility.
-for stem in ("id", "bootstrap", "runtime", "method-observation", "storage", "dispatch-cache"):
+for stem in ("id", "bootstrap", "runtime", "method-observation", "storage", "dispatch-cache",
+             "block-loop", "collection-value", "error-value", "map", "printing", "range",
+             "string-builder", "string-collection", "vector"):
     library = prefix / ("lib/libbirnam_" + stem.replace("-", "_") + ".dylib")
     manifest = json.loads((root / f"abi/rust-{stem}-dylib-v1.json").read_text())
     exports = set(run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines())
@@ -145,7 +147,10 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
         "scripts/fixtures/block-loop-reentry-native.c", "-o", str(scratch / "block-loop-reentry.dylib"))
     for mode in [1, 2, 3, 4]:
         shutil.copy2(prefix / "lib/libbirnam_block_loop.dylib", scratch / f"block-loop-{mode}.dylib")
+    parser_prefix = scratch / "parser-prefix"
+    shutil.copytree(values_prefix, parser_prefix)
     run(str(values_driver), str(values_prefix), str(scratch / "execution-values.dylib"), str(scratch))
+    run(str(values_driver), str(parser_prefix), str(scratch / "execution-values.dylib"), str(scratch), str(prefix / "lib"))
     env = dict(os.environ, BIRNAM_NATIVE_UNLOAD_LOG=str(scratch / "unloaded"))
     run(str(driver), str(prefix), str(scratch), env=env)
     # Entered images only unload at process exit; rejected ones unload immediately.

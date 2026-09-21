@@ -149,6 +149,30 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     integer=*(IntegerApiV1 *)args[3].data.word; string=*(StringApiV1 *)args[4].data.word;
     assert(!namespace_import_v1(imports,"RustCodegen"));
     assert(!namespace_import_v1(imports,"TCC"));
+    if(args[6].data.word==4) {
+        if(!registered) { root_registry_register_v1(registry,mark); registered=1; }
+        check_compiler(id,&args[5],0);
+        Oop source=text("[1 + 2]"), lang=named("Lang");
+        Oop tree=keep(send1(lang,"parse:",source));
+        assert(api->vtable_of(tree)==named("PegCstVt"));
+        assert(number(send0(tree,"start"))==0 && number(send0(tree,"end"))==7);
+        assert(strcmp(api->symbol_name(send0(tree,"rule")),"program")==0);
+        Oop children=keep(send0(tree,"children"));
+        assert(number(send0(children,"size"))==number(send0(tree,"childCount")));
+        api->gc_collect();
+        assert(number(send0(tree,"end"))==7);
+        Oop bad=keep(send1(lang,"parse:",text("[1 +]")));
+        assert(send0(bad,"isError")==api->true_obj);
+        assert(strcmp(api->symbol_name(send0(bad,"kind")),"syntaxError")==0);
+        Oop artifact=named("Artifact");
+        assert(send1(artifact,"inspect:",api->nil_obj)==api->nil_obj);
+        assert(strcmp(api->symbol_name(send0(artifact,"lastFailure")),"artifactPathInvalid")==0);
+        assert(send1(artifact,"inspect:",text("/birnam-test-missing-artifact"))==api->nil_obj);
+        assert(strcmp(api->symbol_name(send0(artifact,"lastFailure")),"artifactUnavailable")==0);
+        check_compiler(id,&args[5],0);
+        root_count=0;
+        return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=lang}};
+    }
     assert(!namespace_import_v1(imports,"Peg"));
     if(!args[6].data.word) {
         Oop machine=send0(named("Machine"),"new");
