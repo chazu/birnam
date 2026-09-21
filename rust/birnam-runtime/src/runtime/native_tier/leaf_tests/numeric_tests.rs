@@ -131,8 +131,8 @@ unsafe extern "C" fn chain_collection(mark: crate::abi::MarkFn) {
         // Active predictions own their metadata/declarations independently of
         // both caches. Cache clearing must not free an active owner or leave a
         // dangling native declaration for subsequent validation.
-        *r.numeric.borrow_mut() = Default::default();
-        *r.native_tier.borrow_mut() = Default::default();
+        *r.compiler().numeric.borrow_mut() = Default::default();
+        *r.compiler().native_tier.borrow_mut() = Default::default();
         assert_eq!(
             CHAIN_OWNER.with_borrow(|owner| owner.upgrade().is_some()),
             numeric::ENABLED.get() && CHANGE.get().0 > 0
@@ -287,7 +287,7 @@ fn production_raw_chains_revalidate_after_changes_at_every_operation() {
                     let key = Arc::as_ptr(&block.descriptor) as usize;
                     CHAIN_OWNER.with_borrow_mut(|owner| {
                         *owner = r
-                            .native_tier
+                            .compiler().native_tier
                             .borrow()
                             .records
                             .get(&key)

@@ -684,23 +684,34 @@ methodology and the measured constants.
 
 ## Architecture
 
-The runtime starts as a Rust host that loads a set of reloadable dynamic
-libraries through a C ABI. The `libid` floor and all native rungs are Rust.
-Artifact selection first adds only the ID-floor inspector; activation then
-brings up the required language rungs:
+The Rust host starts with Siphon, which uses an ad hoc loading protocol to load
+the actual Id module. Bootstrap constructs the lower owners and Runtime through
+Id's message-based loader. Upper modules still use their legacy `module_init`
+entries; the compiler-extension request uses Id again. The main activation
+stages are:
 
 ```text
-libid -> Artifact inspector
-      -> Store -> Peg -> Lang -> Tcc -> Codegen -> Prelude
-      -> Collection -> Modules -> Error -> Relational -> Alien -> Image
+Siphon -> Id -> Bootstrap
+       -> Lifetime, base values, Namespace and Object Model
+       -> String, Error, Integer, Float, Word and text extensions
+       -> Collector -> Runtime Execution and native Block
+       -> value/control extensions, Collections and Store
+       -> Artifact -> PEG -> Lang -> TCC
+       -> Runtime compiler extension -> Codegen
+       -> System, source loading, portable code, Isolate, Relational, Alien, Image
+       -> authored Birnam modules and application execution
 ```
 
-`libid` provides the object model, allocation, dispatch, interning, and GC.
-Higher rungs add the relational substrate, parser, compiler, native-code
-backend, collections, FFI, and image format. The standard library and most
-application-facing modules are Birnam source. Birnam retains a cold source
-bootstrap through declared non-Birnam toolchains, with no prebuilt Birnam
-artifact required. The Rust host owns the complete runtime and build closure.
+Id owns object storage, Symbols, behavior dictionaries, primitive dispatch and
+native loading. Collection, managed execution and compiler services are upper
+modules. Native base and extension entries may share a library; each publishes
+behavior after its required inputs exist. The remaining entry-level construction
+migration is tracked in [Design 83](docs/design/83-production-id-construction-and-lifetimes.md).
+
+The standard library and most application-facing modules are Birnam source.
+Birnam retains a cold source bootstrap through declared non-Birnam toolchains,
+with no prebuilt Birnam artifact required. The Rust host remains the installed
+application and build driver.
 
 ## Repository Guide
 
@@ -774,13 +785,15 @@ artifact required. The Rust host owns the complete runtime and build closure.
   results, base/extension load order and safe collector activation. The production
   [Siphon](rust/birnam-host/src/siphon.rs) now loads Id through the
   [typed native protocol](abi/fixtures/id-protocol-v1/README.md); upper construction
-  and ownership migration remain in progress.
+  uses completed value inputs through [Runtime construction](abi/runtime-construction-v15.md);
+  [compiler admission](abi/runtime-compiler-v1.md) loads as an explicit later
+  extension. Owned Method consumers and the construction manifest remain in progress.
 - [Production extraction status](docs/design/81-production-extraction-status.md)
   summarizes the completed Rust modularization through 81CA, current ownership,
   validation, and the remaining Birnam implementation work. This phase is closed;
   further extraction requires a subsystem-sized objective.
 - [Current bootstrap and runtime layers](docs/design/81a-current-bootstrap-and-runtime-layers.md)
-  explains the installed Rust host, 53 native libraries and 28 compiled Birnam
+  explains the installed Rust host, 56 native libraries and 28 compiled Birnam
   modules, including startup preparation and image recovery.
 - [Self-hosting roadmap](docs/design/81-toward-a-birnam-implementation.md) defines
   the eventual Birnam implementation and retained independent bootstrap.

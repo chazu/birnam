@@ -112,7 +112,7 @@ impl CompiledChain {
         initial: &[(usize, Oop)],
     ) -> Option<Ticket> {
         let mut buffers = runtime
-            .numeric
+            .compiler().numeric
             .borrow_mut()
             .buffers
             .get_or_insert_with(Pool::default)
@@ -361,9 +361,9 @@ impl Runtime {
         owner: u64,
         key: usize,
     ) -> Option<Ticket> {
-        let (template, compiled) = self.native_tier.borrow_mut().numeric_template(key)?;
+        let (template, compiled) = self.compiler().native_tier.borrow_mut().numeric_template(key)?;
         let mut buffers = self
-            .numeric
+            .compiler().numeric
             .borrow_mut()
             .buffers
             .get_or_insert_with(Pool::default)
@@ -434,7 +434,7 @@ impl Runtime {
             .map(|method| {
                 // Predictions do not count as calls for the hotness gate.
                 let summary = self
-                    .numeric
+                    .compiler().numeric
                     .borrow()
                     .records
                     .get(&super::entry_key(method))?
@@ -448,7 +448,7 @@ impl Runtime {
                 })
             })
             .collect::<Option<Vec<_>>>()?;
-        let compiled = self.native_tier.borrow_mut().numeric_chain(key, bindings)?;
+        let compiled = self.compiler().native_tier.borrow_mut().numeric_chain(key, bindings)?;
         let loop_stamp = compiled.loop_reuse.as_ref().and_then(|_| stamp());
         compiled.predict(key, buffers, loop_stamp)
     }

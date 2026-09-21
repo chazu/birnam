@@ -318,7 +318,7 @@ pub(super) fn enabled() -> bool {
 impl Runtime {
     #[cfg(feature = "ffi-test-hooks")]
     pub(in crate::runtime) fn closure_pending_resources(&self) -> (usize, usize) {
-        let registry = self.native_tier.borrow();
+        let registry = self.compiler().native_tier.borrow();
         (
             registry
                 .closures
@@ -334,7 +334,7 @@ impl Runtime {
 
     #[cfg(feature = "ffi-test-hooks")]
     pub(in crate::runtime) fn closure_metadata_payload_bytes(&self) -> usize {
-        self.native_tier
+        self.compiler().native_tier
             .borrow()
             .closures
             .values()
@@ -347,7 +347,7 @@ impl Runtime {
         cap: crate::execution::MachineCapability,
         action: Oop,
     ) -> Result<bool, ExecutionError> {
-        let Some(resume) = self.native_tier.borrow_mut().closure_resume.take() else {
+        let Some(resume) = self.compiler().native_tier.borrow_mut().closure_resume.take() else {
             return Ok(false);
         };
         let state = unsafe { &*self.state.get() };
@@ -389,7 +389,7 @@ impl Runtime {
                 self.canonical().nil, integer, &self.integer_operations(),
             )
             || !fused_numeric::controls(self, machine)
-            || self.native_tier.borrow().closure_resume.is_some()
+            || self.compiler().native_tier.borrow().closure_resume.is_some()
         {
             return None;
         }
@@ -409,7 +409,7 @@ impl Runtime {
             (frame, descriptor)
         };
         let (prepared, constructor_summary) = {
-            let mut registry = self.native_tier.borrow_mut();
+            let mut registry = self.compiler().native_tier.borrow_mut();
             let record = registry
                 .closures
                 .get_mut(&(Arc::as_ptr(&descriptor) as usize))?;
@@ -468,7 +468,7 @@ impl Runtime {
                 constructor,
             )?);
             let previous = {
-                let mut registry = self.native_tier.borrow_mut();
+                let mut registry = self.compiler().native_tier.borrow_mut();
                 let record = registry
                     .closures
                     .get_mut(&(Arc::as_ptr(&descriptor) as usize))?;
@@ -733,7 +733,7 @@ impl Runtime {
             // Unwind the original C literal's capture locals before the driver
             // allocates the successor token or enters an observing PC. Calling
             // it here would extend conservative roots past their baseline life.
-            self.native_tier.borrow_mut().closure_resume = Some(Resume {
+            self.compiler().native_tier.borrow_mut().closure_resume = Some(Resume {
                 machine,
                 frame,
                 pc: edge.target.0 as usize,

@@ -342,11 +342,13 @@ fn main() {
     assert_eq!(send(&id, activation_save, &[]).status, native::LOADED);
     let runtime_path = isolated.join("libbirnam_runtime.dylib");
     let support = initial.initialize_runtime_support().unwrap();
+    let operations = initial.initialize_runtime_values().unwrap();
     let construction = [Operand::word(roots as usize), Operand::word(records as usize),
         Operand::word(values as usize), Operand::word(namespace as usize), Operand::word(model as usize),
         Operand::word(graph as usize), Operand::word(collection as usize),
         Operand::word((&primitives as *const birnam_abi::id_primitives::PrimitivesV1).addr()),
-        Operand::word((&support as *const birnam_abi::runtime_support::FactoriesV1).addr())];
+        Operand::word((&support as *const birnam_abi::runtime_support::FactoriesV1).addr()),
+        Operand::word((&operations as *const birnam_abi::runtime_values::ApisV1).addr())];
     let construction_bytes = unsafe { std::slice::from_raw_parts(construction.as_ptr().cast::<u8>(), size_of_val(&construction)) };
 
     assert_eq!(unsafe { initial.load_native(scratch.join("runtime-construction.dylib").as_os_str().as_bytes(),

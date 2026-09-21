@@ -24,7 +24,7 @@ state using the corresponding factory and retains any code/context it supplies.
 Factories hold no Id objects and need no collector adoption.
 
 `runtime_support::FactoriesV1` collects copies of these six existing descriptors
-for [Runtime construction v14](runtime-construction-v14.md). Its `repr(C)` header
+for [Runtime construction v15](runtime-construction-v15.md). Its `repr(C)` header
 is `u32 version` (1), padding, then native `usize byte_size` (352); fields follow
 in the table's order at offsets 16, 56, 120, 168, 248 and 304. Runtime validates the
 header and all six factories before adopting any predecessor, then gives each

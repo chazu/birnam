@@ -311,9 +311,9 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
 /// Perform the one supported process-lifetime initialization transition.
 #[cfg(any(test, feature = "ffi-test-hooks"))]
 pub(crate) fn initialize_once() -> *mut IdApi {
-    initialize_with_owners(crate::id::protocol(), None, None, None, None, None, None, None, None, crate::support::diagnostic())
+    initialize_with_owners(crate::id::protocol(), None, None, None, None, None, None, None, None, crate::support::diagnostic(), None)
 }
-pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::id_primitives::PrimitivesV1>, support: birnam_abi::runtime_support::FactoriesV1) -> *mut IdApi {
+pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::id_primitives::PrimitivesV1>, support: birnam_abi::runtime_support::FactoriesV1, operations: Option<birnam_abi::runtime_values::ApisV1>) -> *mut IdApi {
     // This is Runtime's one-shot transition. Id keeps its owner and does not
     // police upper construction by handing out a Rust value exactly once.
     boundary::require_invariant(!CONSTRUCTION_STARTED.swap(true, Ordering::AcqRel),
@@ -321,6 +321,15 @@ pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, root
     let namespace_exists = namespace.is_some();
     let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(id, roots, lifetime, values, namespace, model, graph, collection, primitives, support));
     let construction_roots = bootstrap.runtime.retain_construction_roots();
+    if let Some(operations) = operations {
+        boundary::require_invariant(unsafe {
+            bootstrap.runtime.attach_integer(operations.integer)
+                && bootstrap.runtime.attach_float(operations.float)
+                && bootstrap.runtime.attach_word(operations.word)
+                && bootstrap.runtime.attach_string(operations.string)
+        }, "Runtime construction requires completed value operations from this Id");
+    }
+
     bootstrap.runtime.install_id_runtime_extensions();
     bootstrap.runtime.install_namespace_runtime_extension();
     bootstrap.runtime.enter(|| install_bootstrap_metadata(&bootstrap, values.is_some(), namespace_exists));
@@ -915,4 +924,20 @@ pub unsafe extern "C" fn birnam_deferred_identity_dependency_v1(factory: *const 
 #[cfg(feature = "ffi-test-hooks")]
 pub unsafe extern "C" fn birnam_deferred_index_dependency_v1(factory: *const birnam_abi::deferred_index::FactoryV1) -> c_int {
     unsafe { birnam_abi::deferred_index::attach(factory) }
+}
+
+/// Later native extension construction; no ownership changes on rejection.
+pub(crate) fn initialize_compiler(id: &birnam_abi::id_protocol::Protocol, api: *const IdApi) -> Option<*const birnam_abi::runtime_compiler::ApiV1> {
+    if api.is_null() || api != PUBLIC_API.load(Ordering::Acquire) { return None; }
+    let runtime = runtime();
+    if !runtime.compiler_uses_id(id) { return None; }
+    runtime.initialize_compiler()
+}
+
+/// Query an already constructed extension. Base Runtime advertises no table.
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_runtime_compiler_provider_v1() -> *const birnam_abi::runtime_compiler::ApiV1 {
+    let pointer = PUBLIC_RUNTIME.load(Ordering::Acquire);
+    if pointer.is_null() { return core::ptr::null(); }
+    unsafe { (&*pointer).compiler_api() }
 }

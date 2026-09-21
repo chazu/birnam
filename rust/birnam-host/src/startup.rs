@@ -1026,6 +1026,7 @@ pub enum ModuleError {
     NamespaceNamesDependencyRejected { path: PathBuf },
     TraceDependencyRejected { path: PathBuf },
     CollectDependencyRejected { path: PathBuf },
+    CompilerExtensionRejected { path: PathBuf },
     MissingModuleInit {
         path: PathBuf,
     },
@@ -2800,6 +2801,16 @@ impl LoadedStack {
             } else {
                 resources.lib_dir.join(format!("{name}.dylib"))
             };
+            if *name == "libbirnam_id_codegen" {
+                let compiler_path = resources.lib_dir.join("libbirnam_runtime.dylib");
+                let arguments = [birnam_abi::id_protocol::Operand::bytes(b"compiler"),
+                    birnam_abi::id_protocol::Operand::word((self.api() as *const IdApi).addr())];
+                let result = unsafe { self.load_native(&path_bytes(&compiler_path), &arguments) };
+                if result.status != birnam_abi::id_protocol::LOADED
+                    || !unsafe { birnam_abi::runtime_compiler::valid(result.value.as_word().unwrap_or(0) as _) } {
+                    return Err(ModuleError::CompilerExtensionRejected { path: compiler_path });
+                }
+            }
             let handle = self.load_module_handle(&path)?;
             if *name == "libbirnam_trace" {
                 let provider = unsafe {
@@ -3439,6 +3450,17 @@ impl InitialFloor {
             verdict: unsafe { factory(self, "libbirnam_dispatch_cache.dylib", b"guardVerdict", birnam_abi::guard_verdict::valid)? },
         })
     }
+    pub fn initialize_runtime_values(&mut self) -> Result<birnam_abi::runtime_values::ApisV1, FloorError> {
+        self.initialize_text()?;
+        self.initialize_word()?;
+        Ok(birnam_abi::runtime_values::ApisV1 {
+            version: 1, byte_size: size_of::<birnam_abi::runtime_values::ApisV1>(),
+            integer: self.integer.expect("completed Integer"),
+            float: self.float.expect("completed Float"),
+            word: self.word.expect("completed Word"),
+            string: self.string.expect("completed String"),
+        })
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
@@ -3448,6 +3470,7 @@ impl InitialFloor {
         self.initialize_trace()?;
         self.activate_collection()?;
         let support = self.initialize_runtime_support()?;
+        let operations = self.initialize_runtime_values()?;
         let Self { source_path, handle, id_protocol, primitives, roots, lifetime, base_values, namespace, model, string, float, word, graph, collection, bootstrap, .. } = self;
         // Id pins every entered native image, including the supporting factories.
         let _id_image = handle;
@@ -3474,6 +3497,7 @@ impl InitialFloor {
             Operand::word(collection.expect("completed collection").addr()),
             Operand::word((primitives.as_ref().expect("completed Id primitives") as *const birnam_abi::id_primitives::PrimitivesV1).addr()),
             Operand::word((&support as *const birnam_abi::runtime_support::FactoriesV1).addr()),
+            Operand::word((&operations as *const birnam_abi::runtime_values::ApisV1).addr()),
         ];
         let answer = unsafe { load_native_with_bootstrap(bootstrap.as_ref(), id_protocol, &path_bytes(&runtime_path), &arguments) };
         if answer.status != native::LOADED {

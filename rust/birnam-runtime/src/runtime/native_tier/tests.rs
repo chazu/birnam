@@ -312,7 +312,7 @@ pub(super) fn on_intern(runtime: &Runtime) {
     if already {
         return;
     }
-    let mut registry = runtime.native_tier.borrow_mut();
+    let mut registry = runtime.compiler().native_tier.borrow_mut();
     let candidate = registry
         .records
         .values()
@@ -595,15 +595,15 @@ fn check_registration_dependency(runtime: &Runtime, case: Case) {
         unsafe { (*runtime.state.get()).vtables.mutation_epoch() },
         before
     );
-    let key = runtime.native_tier.borrow().records.keys().next().copied();
+    let key = runtime.compiler().native_tier.borrow().records.keys().next().copied();
     if let Some(key) = key {
         assert!(
-            runtime.native_tier.borrow().records[&key]
+            runtime.compiler().native_tier.borrow().records[&key]
                 .candidate
                 .is_some()
         );
         assert!(select(runtime, MACHINE.get(), key, 0).is_none());
-        assert!(runtime.native_tier.borrow().records[&key].disabled);
+        assert!(runtime.compiler().native_tier.borrow().records[&key].disabled);
     }
     runtime
         .unregister_unpublished_stackless_resumable(registration)
@@ -724,7 +724,7 @@ fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
         103
     ));
     if matches!(case, Case::FailedCompile | Case::DescriptorMismatch) {
-        let mut registry = runtime.native_tier.borrow_mut();
+        let mut registry = runtime.compiler().native_tier.borrow_mut();
         let prepared = Rc::get_mut(registry.staged[0].as_mut().unwrap()).unwrap();
         if case == Case::FailedCompile {
             prepared.source = CString::new("invalid generated C").unwrap();
@@ -767,8 +767,8 @@ fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
                 .lookup_method(runtime.globals().object_vt, selector)
                 .is_none()
         );
-        runtime.native_tier.borrow_mut().prune();
-        assert!(runtime.native_tier.borrow().records.is_empty());
+        runtime.compiler().native_tier.borrow_mut().prune();
+        assert!(runtime.compiler().native_tier.borrow().records.is_empty());
         assert_eq!(
             runtime
                 .stackless_registration_diagnostics()
@@ -782,11 +782,11 @@ fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
     }
     assert!(runtime.finish_staged_resumable_unit());
     assert_eq!(
-        runtime.native_tier.borrow().records.len(),
+        runtime.compiler().native_tier.borrow().records.len(),
         usize::from(case != Case::DescriptorMismatch)
     );
     if !optimized {
-        runtime.native_tier.borrow_mut().records.clear();
+        runtime.compiler().native_tier.borrow_mut().records.clear();
     }
     let receiver =
         runtime.allocate_instance(runtime.globals().object_vt, core::mem::size_of::<Oop>());
@@ -867,8 +867,8 @@ fn run(case: Case, optimized: bool) -> (i64, Vec<&'static str>, usize, usize) {
         .remove_method(runtime.globals().object_vt, selector)
         .unwrap();
     assert!(runtime.retire_stackless_code_generation(101));
-    runtime.native_tier.borrow_mut().prune();
-    assert!(runtime.native_tier.borrow().records.is_empty());
+    runtime.compiler().native_tier.borrow_mut().prune();
+    assert!(runtime.compiler().native_tier.borrow().records.is_empty());
     let marker = if matches!(
         case,
         Case::NewSymbol

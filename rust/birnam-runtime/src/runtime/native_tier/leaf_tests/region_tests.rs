@@ -196,7 +196,7 @@ fn native_region_preserves_all_frame_words_boxes_and_observation_boundaries() {
                 LEAF.set(leaf.receiver);
                 let caller = install(r, &caller(), 740400, None);
                 let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-                r.native_tier.borrow_mut().records.retain(|key, _| {
+                r.compiler().native_tier.borrow_mut().records.retain(|key, _| {
                     mode != "off" && *key == Arc::as_ptr(&leaf.descriptor) as usize
                 });
                 let drive = || {
@@ -302,7 +302,7 @@ fn native_region_declines_before_gc_and_keeps_compiled_ownership() {
         let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
         let caller = install(r, &caller(), 740400, None);
         let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-        r.native_tier
+        r.compiler().native_tier
             .borrow_mut()
             .records
             .retain(|key, _| enabled && *key == Arc::as_ptr(&leaf.descriptor) as usize);
@@ -333,7 +333,7 @@ fn native_region_declines_before_gc_and_keeps_compiled_ownership() {
             usize::from(enabled),
             "first PC declines, second can run after collection"
         );
-        r.native_tier.borrow_mut().records.clear();
+        r.compiler().native_tier.borrow_mut().records.clear();
         assert_eq!(drive(), input);
         assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
         assert_eq!(r.stackless_registration_diagnostics().acquired_entries, 0);
@@ -379,12 +379,12 @@ fn native_region_timing() {
     let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
     let caller = install(r, &caller(), 740400, None);
     let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-    r.native_tier
+    r.compiler().native_tier
         .borrow_mut()
         .records
         .retain(|key, _| *key == Arc::as_ptr(&leaf.descriptor) as usize);
     let (source_bytes, metadata_bytes, source_sha256) = {
-        let registry = r.native_tier.borrow();
+        let registry = r.compiler().native_tier.borrow();
         let prepared = registry
             .records
             .get(&(Arc::as_ptr(&leaf.descriptor) as usize))
@@ -552,7 +552,7 @@ fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
             LEAF.set(leaf.receiver);
             let caller = install(r, &caller(), 740400, None);
             let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-            r.native_tier
+            r.compiler().native_tier
                 .borrow_mut()
                 .records
                 .retain(|key, _| mode != "off" && *key == Arc::as_ptr(&leaf.descriptor) as usize);
@@ -624,11 +624,11 @@ fn native_region_call_staging_keeps_lookup_effects_and_symbol_allocation() {
         let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
         let caller = install(r, &caller(), 740400, None);
         let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-        r.native_tier
+        r.compiler().native_tier
             .borrow_mut()
             .records
             .retain(|key, _| enabled && *key == Arc::as_ptr(&leaf.descriptor) as usize);
-        for record in r.native_tier.borrow_mut().records.values_mut() {
+        for record in r.compiler().native_tier.borrow_mut().records.values_mut() {
             record.visits = HOT_ENTRIES;
         }
         assert!(
@@ -706,7 +706,7 @@ fn counted_native_regions_preserve_collection_and_foreign_finalizers() {
                 let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
                 let caller = install(r, &caller(), 740400, None);
                 let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-                r.native_tier
+                r.compiler().native_tier
                     .borrow_mut()
                     .records
                     .retain(|key, _| *key == Arc::as_ptr(&leaf.descriptor) as usize);

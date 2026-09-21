@@ -66,6 +66,7 @@ mod generated_deopt_experiment;
 mod guarded_dispatch;
 mod guarded_lookup;
 mod native_tier;
+mod compiler;
 mod numeric;
 mod integer;
 mod float;
@@ -154,6 +155,12 @@ struct RuntimeState {
     metadata: MetadataShell,
     environment: Environment,
     execution: ExecutionState,
+    admission: Option<CompilerAdmission>,
+    // The native carrier is the complete Id dependency, not a Rust owner.
+    id_protocol: Option<crate::abi::id_protocol::Protocol>,
+}
+
+struct CompilerAdmission {
     staged_resumable_unit: Option<StagedUnit>,
     staged_resumable_claims: Option<Vec<Option<RuntimeRegistrationClaim>>>,
     staged_resumable_publications: Option<Vec<StagedResumablePublication>>,
@@ -164,8 +171,30 @@ struct RuntimeState {
     next_registration_token: u64,
     suppressed_registration_generation: Option<u64>,
     pending_stackless_retirements: Vec<u64>,
-    // The native carrier is the complete Id dependency, not a Rust owner.
-    id_protocol: Option<crate::abi::id_protocol::Protocol>,
+}
+impl CompilerAdmission {
+    fn new() -> Self {
+        Self {
+            staged_resumable_unit: None,
+            staged_resumable_claims: None,
+            staged_resumable_publications: None,
+            staged_catalog_drift: None,
+            committed_resumable_units: Vec::new(),
+            block_vtable_catalog: Vec::new(),
+            registration_tokens: Vec::new(),
+            next_registration_token: 1,
+            suppressed_registration_generation: None,
+            pending_stackless_retirements: Vec::new(),
+        }
+    }
+}
+impl RuntimeState {
+    fn admission(&self) -> &CompilerAdmission {
+        self.admission.as_ref().expect("compiler extension was not initialized")
+    }
+    fn admission_mut(&mut self) -> &mut CompilerAdmission {
+        self.admission.as_mut().expect("compiler extension was not initialized")
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -238,8 +267,7 @@ pub(crate) struct Runtime {
     slot_guard_cache: crate::guard_verdict::Service,
     lookup_guard_cache: crate::guard_verdict::Service,
     dispatch_cache: dispatch_cache::Cache,
-    native_tier: core::cell::RefCell<native_tier::Registry>,
-    numeric: core::cell::RefCell<numeric::Registry>,
+    compiler: core::cell::OnceCell<compiler::Compiler>,
     integer: Cell<Option<integer::Binding>>,
     float: Cell<Option<float::Binding>>,
     word: Cell<Option<word::Binding>>,
@@ -456,8 +484,7 @@ impl Runtime {
             slot_guard_cache: crate::guard_verdict::Service::with_factory(support.verdict),
             lookup_guard_cache: crate::guard_verdict::Service::with_factory(support.verdict),
             dispatch_cache: dispatch_cache::Cache::with_factory(support.cache),
-            native_tier: core::cell::RefCell::new(native_tier::Registry::default()),
-            numeric: core::cell::RefCell::new(numeric::Registry::default()),
+            compiler: compiler::initial(),
             integer: Cell::new(None),
             float: Cell::new(None),
             word: Cell::new(None),
@@ -503,16 +530,9 @@ impl Runtime {
                 metadata: collection_owner.map(MetadataShell::from_collection).unwrap_or_else(MetadataShell::new),
                 environment: namespace.unwrap_or_else(Environment::new),
                 execution: ExecutionState::new(current_thread_token()),
-                staged_resumable_unit: None,
-                staged_resumable_claims: None,
-                staged_resumable_publications: None,
-                staged_catalog_drift: None,
-                committed_resumable_units: Vec::new(),
-                block_vtable_catalog: Vec::new(),
-                registration_tokens: Vec::new(),
-                next_registration_token: 1,
-                suppressed_registration_generation: None,
-                pending_stackless_retirements: Vec::new(),
+                admission: if cfg!(any(test, feature = "ffi-test-hooks")) {
+                    Some(CompilerAdmission::new())
+                } else { None },
             }),
         }
     }
@@ -636,7 +656,7 @@ impl Runtime {
         let previous = match result { crate::id_registries::AddMethod::Added => None, crate::id_registries::AddMethod::Overwrote(previous) => Some(previous) };
         if previous != Some(entry) {
             let state = unsafe { &mut *self.state.get() };
-            let staged = state.staged_resumable_publications.is_some();
+            let staged = state.admission.as_ref().is_some_and(|a| a.staged_resumable_publications.is_some());
             let previous_legacy = previous.and_then(crate::legacy_method::try_decode);
             let added_legacy = crate::legacy_method::try_decode(entry);
             if let Some(previous) = previous_legacy.filter(|previous| Some(*previous) != added_legacy) {
@@ -651,7 +671,7 @@ impl Runtime {
                     .unwrap_or_else(|_| boundary::fatal_invariant("resumable binding addition accounting failed"));
                 note_block_vtable_bound(state, vtable, added);
             }
-            if let Some(publications) = state.staged_resumable_publications.as_mut() {
+            if let Some(publications) = state.admission.as_mut().and_then(|a| a.staged_resumable_publications.as_mut()) {
                 publications.push(StagedResumablePublication { vtable, selector, installed: Some(entry), previous });
             }
         }
@@ -673,14 +693,14 @@ impl Runtime {
         let removed = unsafe { (&mut *self.state.get()).vtables.remove_native_method(vtable, selector) };
         if let Some(entry) = removed {
             let state = unsafe { &mut *self.state.get() };
-            let staged = state.staged_resumable_publications.is_some();
+            let staged = state.admission.as_ref().is_some_and(|a| a.staged_resumable_publications.is_some());
             if let Some(method) = crate::legacy_method::try_decode(entry) {
                 let result = if staged { state.execution.note_staged_direct_binding_removed(method) }
                     else { state.execution.note_direct_binding_removed(method) };
                 result.unwrap_or_else(|_| boundary::fatal_invariant("resumable binding removal accounting failed"));
                 note_block_vtable_replaced(state, vtable, method);
             }
-            if let Some(publications) = state.staged_resumable_publications.as_mut() {
+            if let Some(publications) = state.admission.as_mut().and_then(|a| a.staged_resumable_publications.as_mut()) {
                 publications.push(StagedResumablePublication { vtable, selector, installed: None, previous: Some(entry) });
             }
         }
@@ -2402,12 +2422,11 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread immutable catalog lookup.
         let state = unsafe { &*self.state.get() };
-        let mut matches = state.block_vtable_catalog.iter().filter(|entry| {
+        let mut matches = state.admission().block_vtable_catalog.iter().filter(|entry| {
             entry.vtable == vtable
                 && entry.authority == authority
                 && !entry.drifted
-                && state
-                    .committed_resumable_units
+                && state.admission().committed_resumable_units
                     .iter()
                     .any(|unit| unit.code_generation_identity == entry.code_generation_identity)
         });
@@ -2427,7 +2446,7 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread immutable retained-manifest comparison.
         let state = unsafe { &*self.state.get() };
-        let mut matches = state.committed_resumable_units.iter().filter(|unit| {
+        let mut matches = state.admission().committed_resumable_units.iter().filter(|unit| {
             unit.authority == authority
                 && unit.code_generation_identity == code_generation_identity
                 && unit.manifest_bytes == manifest_bytes
@@ -2455,11 +2474,10 @@ impl Runtime {
         let (staged, committed_count, registered, readers) = unsafe {
             let state = &mut *self.state.get();
             (
-                state.staged_resumable_unit.as_ref().is_some_and(|unit| {
+                state.admission().staged_resumable_unit.as_ref().is_some_and(|unit| {
                     unit.code_generation_identity() == code_generation_identity
                 }),
-                state
-                    .committed_resumable_units
+                state.admission().committed_resumable_units
                     .iter()
                     .filter(|unit| unit.code_generation_identity == code_generation_identity)
                     .count(),
@@ -2481,7 +2499,7 @@ impl Runtime {
         }
         if readers || self.collection_phase.get() != CollectionPhase::Idle {
             unsafe {
-                let pending = &mut (&mut *self.state.get()).pending_stackless_retirements;
+                let pending = &mut (&mut *self.state.get()).admission_mut().pending_stackless_retirements;
                 if !pending.contains(&code_generation_identity) {
                     pending.push(code_generation_identity);
                 }
@@ -2490,8 +2508,7 @@ impl Runtime {
         }
         let (holders_clear, permanent_binding) = unsafe {
             let state = &*self.state.get();
-            let methods = state
-                .committed_resumable_units
+            let methods = state.admission().committed_resumable_units
                 .iter()
                 .find(|unit| unit.code_generation_identity == code_generation_identity)
                 .map(|unit| {
@@ -2515,7 +2532,7 @@ impl Runtime {
         let withdrawn = unsafe {
             let state = &mut *self.state.get();
             let mut withdrawn = Vec::new();
-            state.block_vtable_catalog.retain(|entry| {
+            state.admission_mut().block_vtable_catalog.retain(|entry| {
                 if entry.code_generation_identity == code_generation_identity {
                     withdrawn.push(*entry);
                     false
@@ -2526,11 +2543,11 @@ impl Runtime {
             withdrawn
         };
         unsafe {
-            (&mut *self.state.get()).suppressed_registration_generation =
+            (&mut *self.state.get()).admission_mut().suppressed_registration_generation =
                 Some(code_generation_identity)
         };
         let _ = self.gc_collect_active();
-        unsafe { (&mut *self.state.get()).suppressed_registration_generation = None };
+        unsafe { (&mut *self.state.get()).admission_mut().suppressed_registration_generation = None };
         // SAFETY: owner-thread quiescence provides one atomic registry
         // mutation. `unregister_code_generation` validates every holder before
         // changing any slot, so a false result leaves the unit authoritative.
@@ -2540,34 +2557,27 @@ impl Runtime {
             .unregister_code_generation(code_generation_identity)
             .unwrap_or_else(|_| boundary::fatal_invariant("code-generation unregistration failed"));
         if !unregistered {
-            state.block_vtable_catalog.extend(
-                withdrawn
-                    .into_iter()
-                    .filter(|entry| state.vtables.is_registered(entry.vtable)),
-            );
-            if !state
-                .pending_stackless_retirements
+            let surviving = withdrawn.into_iter()
+                .filter(|entry| state.vtables.is_registered(entry.vtable)).collect::<Vec<_>>();
+            state.admission_mut().block_vtable_catalog.extend(surviving);
+            if !state.admission().pending_stackless_retirements
                 .contains(&code_generation_identity)
             {
-                state
-                    .pending_stackless_retirements
+                state.admission_mut().pending_stackless_retirements
                     .push(code_generation_identity);
             }
             return CodeGenerationRetirement::Rejected;
         }
-        state
-            .committed_resumable_units
+        state.admission_mut().committed_resumable_units
             .retain(|unit| unit.code_generation_identity != code_generation_identity);
-        state
-            .registration_tokens
+        state.admission_mut().registration_tokens
             .retain(|record| record.code_generation_identity != code_generation_identity);
-        state
-            .block_vtable_catalog
+        state.admission_mut().block_vtable_catalog
             .retain(|entry| entry.code_generation_identity != code_generation_identity);
         // Descriptor owners can outlive registration. Remove retired candidates
         // explicitly, and release native/loader owners outside the registry borrow.
         let retired = self
-            .native_tier
+            .compiler().native_tier
             .borrow_mut()
             .retire_generation(code_generation_identity);
         drop(retired);
@@ -2576,19 +2586,20 @@ impl Runtime {
 
     fn drain_pending_stackless_retirements(&self) {
         self.assert_owner();
+        if !self.compiler_available() { return; }
         let pending = unsafe {
             let state = &mut *self.state.get();
             if state.execution.has_managed_turn() {
                 return;
             }
-            core::mem::take(&mut state.pending_stackless_retirements)
+            core::mem::take(&mut state.admission_mut().pending_stackless_retirements)
         };
         for code_generation_identity in pending {
             if self.request_stackless_code_generation_retirement(code_generation_identity)
                 != CodeGenerationRetirement::Retired
             {
                 unsafe {
-                    let pending = &mut (&mut *self.state.get()).pending_stackless_retirements;
+                    let pending = &mut (&mut *self.state.get()).admission_mut().pending_stackless_retirements;
                     if !pending.contains(&code_generation_identity) {
                         pending.push(code_generation_identity);
                     }
@@ -2605,12 +2616,11 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread immutable catalog lookup.
         let state = unsafe { &*self.state.get() };
-        let mut matches = state.block_vtable_catalog.iter().filter(|entry| {
+        let mut matches = state.admission().block_vtable_catalog.iter().filter(|entry| {
             entry.authority == authority
                 && entry.manifest_entry_index == manifest_entry_index
                 && !entry.drifted
-                && state
-                    .committed_resumable_units
+                && state.admission().committed_resumable_units
                     .iter()
                     .any(|unit| unit.code_generation_identity == entry.code_generation_identity)
         });
@@ -2634,14 +2644,14 @@ impl Runtime {
         // SAFETY: owner-thread immutable catalog lookup while the staging
         // transaction excludes every other staged unit.
         let state = unsafe { &*self.state.get() };
-        let staged = state.staged_resumable_unit.as_ref()?;
+        let staged = state.admission().staged_resumable_unit.as_ref()?;
         if staged.authority() != authority
             || !staged.is_portable_entry(manifest_entry_index as usize)
         {
             return None;
         }
         let generation = staged.code_generation_identity();
-        let mut matches = state.block_vtable_catalog.iter().filter(|entry| {
+        let mut matches = state.admission().block_vtable_catalog.iter().filter(|entry| {
             entry.authority == authority
                 && entry.manifest_entry_index == manifest_entry_index
                 && entry.code_generation_identity == generation
@@ -2662,6 +2672,7 @@ impl Runtime {
         code_generation_lease: u64,
     ) -> bool {
         self.assert_owner();
+        if !self.compiler_available() { return false; }
         let Ok(staged) = StagedUnit::new(
             manifest,
             authority,
@@ -2672,28 +2683,26 @@ impl Runtime {
         };
         // SAFETY: owner-thread point mutation with no callback.
         let state = unsafe { &mut *self.state.get() };
-        if state.staged_resumable_unit.is_some()
-            || state.staged_resumable_claims.is_some()
-            || state.staged_resumable_publications.is_some()
-            || state.staged_catalog_drift.is_some()
-            || state
-                .committed_resumable_units
+        if state.admission().staged_resumable_unit.is_some()
+            || state.admission().staged_resumable_claims.is_some()
+            || state.admission().staged_resumable_publications.is_some()
+            || state.admission().staged_catalog_drift.is_some()
+            || state.admission().committed_resumable_units
                 .iter()
                 .any(|unit| unit.code_generation_identity == code_generation_identity)
         {
             return false;
         }
-        state.staged_catalog_drift = Some(
-            state
-                .block_vtable_catalog
+        state.admission_mut().staged_catalog_drift = Some(
+            state.admission().block_vtable_catalog
                 .iter()
                 .map(|entry| entry.drifted)
                 .collect(),
         );
-        state.staged_resumable_publications = Some(Vec::new());
-        state.staged_resumable_claims = Some(vec![None; staged.entry_count()]);
-        state.staged_resumable_unit = Some(staged);
-        self.native_tier.borrow_mut().end_stage();
+        state.admission_mut().staged_resumable_publications = Some(Vec::new());
+        state.admission_mut().staged_resumable_claims = Some(vec![None; staged.entry_count()]);
+        state.admission_mut().staged_resumable_unit = Some(staged);
+        self.compiler().native_tier.borrow_mut().end_stage();
         true
     }
 
@@ -2709,6 +2718,7 @@ impl Runtime {
         code_generation_lease: u64,
     ) -> bool {
         self.assert_owner();
+        if !self.compiler_available() { return false; }
         let Ok(staged) = StagedUnit::new_portable(
             programs,
             bindings,
@@ -2723,28 +2733,26 @@ impl Runtime {
         // SAFETY: identical owner-thread staging transaction used by the
         // legacy source-manifest profile.
         let state = unsafe { &mut *self.state.get() };
-        if state.staged_resumable_unit.is_some()
-            || state.staged_resumable_claims.is_some()
-            || state.staged_resumable_publications.is_some()
-            || state.staged_catalog_drift.is_some()
-            || state
-                .committed_resumable_units
+        if state.admission().staged_resumable_unit.is_some()
+            || state.admission().staged_resumable_claims.is_some()
+            || state.admission().staged_resumable_publications.is_some()
+            || state.admission().staged_catalog_drift.is_some()
+            || state.admission().committed_resumable_units
                 .iter()
                 .any(|unit| unit.code_generation_identity == code_generation_identity)
         {
             return false;
         }
-        state.staged_catalog_drift = Some(
-            state
-                .block_vtable_catalog
+        state.admission_mut().staged_catalog_drift = Some(
+            state.admission().block_vtable_catalog
                 .iter()
                 .map(|entry| entry.drifted)
                 .collect(),
         );
-        state.staged_resumable_publications = Some(Vec::new());
-        state.staged_resumable_claims = Some(vec![None; staged.entry_count()]);
-        state.staged_resumable_unit = Some(staged);
-        self.native_tier
+        state.admission_mut().staged_resumable_publications = Some(Vec::new());
+        state.admission_mut().staged_resumable_claims = Some(vec![None; staged.entry_count()]);
+        state.admission_mut().staged_resumable_unit = Some(staged);
+        self.compiler().native_tier
             .borrow_mut()
             .stage(programs, bindings, selection, manifest, authority);
         true
@@ -2759,16 +2767,17 @@ impl Runtime {
     }
 
     fn close_staged_resumable_unit(&self, commit: bool) -> bool {
+        if !self.compiler_available() { return false; }
         self.assert_owner();
-        self.native_tier.borrow_mut().end_stage();
+        self.compiler().native_tier.borrow_mut().end_stage();
         // SAFETY: owner-thread point mutation with no callback.
         let state = unsafe { &mut *self.state.get() };
-        let Some(staged) = state.staged_resumable_unit.take() else {
+        let Some(staged) = state.admission_mut().staged_resumable_unit.take() else {
             return false;
         };
-        let claims = state.staged_resumable_claims.take();
-        let publications = state.staged_resumable_publications.take();
-        let catalog_drift = state.staged_catalog_drift.take();
+        let claims = state.admission_mut().staged_resumable_claims.take();
+        let publications = state.admission_mut().staged_resumable_publications.take();
+        let catalog_drift = state.admission_mut().staged_catalog_drift.take();
         let code_generation_identity = staged.code_generation_identity();
         let authority = staged.authority();
         let manifest_bytes = staged.manifest_bytes().to_vec();
@@ -2827,12 +2836,10 @@ impl Runtime {
                     }
                 })
                 .collect();
-            state
-                .registration_tokens
+            state.admission_mut().registration_tokens
                 .retain(|record| record.code_generation_identity != code_generation_identity);
             if !entries.is_empty() {
-                state
-                    .committed_resumable_units
+                state.admission_mut().committed_resumable_units
                     .push(CommittedResumableUnit {
                         authority,
                         manifest_bytes,
@@ -2877,8 +2884,8 @@ impl Runtime {
         let Some(catalog_drift) = catalog_drift else {
             boundary::fatal_invariant("staged catalog snapshot disappeared");
         };
-        state.block_vtable_catalog.truncate(catalog_drift.len());
-        for (entry, drifted) in state.block_vtable_catalog.iter_mut().zip(catalog_drift) {
+        state.admission_mut().block_vtable_catalog.truncate(catalog_drift.len());
+        for (entry, drifted) in state.admission_mut().block_vtable_catalog.iter_mut().zip(catalog_drift) {
             entry.drifted = drifted;
         }
         if let Some(claims) = claims.as_ref() {
@@ -2893,20 +2900,19 @@ impl Runtime {
                     });
             }
         }
-        let mut index = state.registration_tokens.len();
+        let mut index = state.admission().registration_tokens.len();
         while index != 0 {
             index -= 1;
-            if state.registration_tokens[index].code_generation_identity != code_generation_identity
+            if state.admission().registration_tokens[index].code_generation_identity != code_generation_identity
             {
                 continue;
             }
-            let record = state.registration_tokens.swap_remove(index);
+            let record = state.admission_mut().registration_tokens.swap_remove(index);
             let _ = state
                 .execution
                 .unregister_unpublished_resumable(current_thread_token(), record.capability);
         }
-        state
-            .block_vtable_catalog
+        state.admission_mut().block_vtable_catalog
             .retain(|entry| entry.code_generation_identity != code_generation_identity);
         !commit
     }
@@ -2928,7 +2934,7 @@ impl Runtime {
                     // SAFETY: immutable owner-thread access. The returned
                     // descriptor borrow is bounded by this synchronous call.
                     let state = unsafe { &*self.state.get() };
-                    let Some(staged) = state.staged_resumable_unit.as_ref() else {
+                    let Some(staged) = state.admission().staged_resumable_unit.as_ref() else {
                         return crate::registration::REJECTED_V1;
                     };
                     // SAFETY: forwarded envelope contract.
@@ -2992,14 +2998,13 @@ impl Runtime {
                 else {
                     return crate::registration::REJECTED_V1;
                 };
-                let Some(next_token) = state.next_registration_token.checked_add(1) else {
+                let Some(next_token) = state.admission().next_registration_token.checked_add(1) else {
                     let _ = state
                         .execution
                         .unregister_unpublished_resumable(current_thread_token(), capability);
                     return crate::registration::REJECTED_V1;
                 };
-                let claim = state
-                    .staged_resumable_unit
+                let claim = state.admission_mut().staged_resumable_unit
                     .as_mut()
                     .ok_or(())
                     .and_then(|staged| {
@@ -3013,13 +3018,11 @@ impl Runtime {
                         .unregister_unpublished_resumable(current_thread_token(), capability);
                     return crate::registration::REJECTED_V1;
                 }
-                let claim_slot = state
-                    .staged_resumable_claims
+                let claim_slot = state.admission_mut().staged_resumable_claims
                     .as_mut()
                     .and_then(|claims| claims.get_mut(envelope.manifest_entry_index() as usize));
                 let Some(claim_slot) = claim_slot else {
-                    let _ = state
-                        .staged_resumable_unit
+                    let _ = state.admission_mut().staged_resumable_unit
                         .as_mut()
                         .and_then(|staged| staged.release(envelope.manifest_entry_index()).ok());
                     let _ = state
@@ -3028,8 +3031,7 @@ impl Runtime {
                     return crate::registration::REJECTED_V1;
                 };
                 if claim_slot.is_some() {
-                    let _ = state
-                        .staged_resumable_unit
+                    let _ = state.admission_mut().staged_resumable_unit
                         .as_mut()
                         .and_then(|staged| staged.release(envelope.manifest_entry_index()).ok());
                     let _ = state
@@ -3041,9 +3043,9 @@ impl Runtime {
                     thunk: MethodAddress::from_method(thunk),
                     capability,
                 });
-                let token = state.next_registration_token;
-                state.next_registration_token = next_token;
-                state.registration_tokens.push(RuntimeRegistrationToken {
+                let token = state.admission().next_registration_token;
+                state.admission_mut().next_registration_token = next_token;
+                state.admission_mut().registration_tokens.push(RuntimeRegistrationToken {
                     token,
                     manifest_entry_index: envelope.manifest_entry_index(),
                     thunk: MethodAddress::from_method(thunk),
@@ -3051,7 +3053,7 @@ impl Runtime {
                     code_generation_identity: envelope.code_generation_identity(),
                 });
                 envelope.set_registration_token(token);
-                self.native_tier.borrow_mut().register(
+                self.compiler().native_tier.borrow_mut().register(
                     envelope.manifest_entry_index() as usize,
                     &optimizer_descriptor_bytes,
                     &optimizer_descriptor,
@@ -3065,15 +3067,14 @@ impl Runtime {
                 // SAFETY: owner-thread point mutation after complete shape
                 // validation; token lookup occurs before registry mutation.
                 let state = unsafe { &mut *self.state.get() };
-                let Some(index) = state.registration_tokens.iter().position(|record| {
+                let Some(index) = state.admission().registration_tokens.iter().position(|record| {
                     record.token == envelope.registration_token()
                         && record.manifest_entry_index == envelope.manifest_entry_index()
                 }) else {
                     return crate::registration::REJECTED_V1;
                 };
-                let record = state.registration_tokens[index];
-                let claim_matches = state
-                    .staged_resumable_claims
+                let record = state.admission().registration_tokens[index];
+                let claim_matches = state.admission().staged_resumable_claims
                     .as_ref()
                     .and_then(|claims| claims.get(record.manifest_entry_index as usize))
                     .and_then(Option::as_ref)
@@ -3088,21 +3089,19 @@ impl Runtime {
                 {
                     return crate::registration::REJECTED_V1;
                 }
-                if state
-                    .staged_resumable_unit
+                if state.admission_mut().staged_resumable_unit
                     .as_mut()
                     .is_none_or(|staged| staged.release(record.manifest_entry_index).is_err())
                 {
                     boundary::fatal_invariant("staged registration claim could not be released");
                 }
-                *state
-                    .staged_resumable_claims
+                *state.admission_mut().staged_resumable_claims
                     .as_mut()
                     .and_then(|claims| claims.get_mut(record.manifest_entry_index as usize))
                     .unwrap_or_else(|| {
                         boundary::fatal_invariant("staged Runtime claim disappeared")
                     }) = None;
-                state.registration_tokens.swap_remove(index);
+                state.admission_mut().registration_tokens.swap_remove(index);
                 crate::registration::OK_V1
             }
             _ => crate::registration::REJECTED_V1,
@@ -4838,12 +4837,12 @@ fn upper_roots_with_symbols(state: &RuntimeState, compatibility_symbols: impl In
     }
     for root in state
         .execution
-        .registration_roots_excluding_generation(state.suppressed_registration_generation)
+        .registration_roots_excluding_generation(state.admission.as_ref().and_then(|a| a.suppressed_registration_generation))
     {
         roots.push(root);
     }
-    for entry in &state.block_vtable_catalog {
-        roots.push(entry.vtable);
+    if let Some(admission) = &state.admission {
+        for entry in &admission.block_vtable_catalog { roots.push(entry.vtable); }
     }
     roots
 }
@@ -4872,9 +4871,10 @@ fn block_registration_for_method(
     crate::execution::ResumableEntryCapability,
     u64,
 )> {
+    state.admission.as_ref()?;
     if let (Some(staged), Some(claims)) = (
-        state.staged_resumable_unit.as_ref(),
-        state.staged_resumable_claims.as_ref(),
+        state.admission().staged_resumable_unit.as_ref(),
+        state.admission().staged_resumable_claims.as_ref(),
     ) {
         for (index, claim) in claims.iter().enumerate() {
             let Some(claim) = claim else { continue };
@@ -4891,7 +4891,7 @@ fn block_registration_for_method(
         }
     }
     let mut found = None;
-    for unit in &state.committed_resumable_units {
+    for unit in &state.admission().committed_resumable_units {
         for entry in &unit.entries {
             if entry.thunk != method || entry.implementation_kind != ImplementationKind::BlockBody {
                 continue;
@@ -4920,7 +4920,7 @@ fn note_block_vtable_bound(state: &mut RuntimeState, vtable: Oop, method: Method
         return;
     };
     let mut drifted = false;
-    for entry in &mut state.block_vtable_catalog {
+    for entry in &mut state.admission_mut().block_vtable_catalog {
         if entry.capability == capability || entry.vtable == vtable {
             if entry.capability == capability && entry.vtable == vtable && !entry.drifted {
                 return;
@@ -4929,7 +4929,7 @@ fn note_block_vtable_bound(state: &mut RuntimeState, vtable: Oop, method: Method
             drifted = true;
         }
     }
-    state.block_vtable_catalog.push(BlockVtableCatalogEntry {
+    state.admission_mut().block_vtable_catalog.push(BlockVtableCatalogEntry {
         vtable,
         authority,
         manifest_entry_index,
@@ -4940,8 +4940,9 @@ fn note_block_vtable_bound(state: &mut RuntimeState, vtable: Oop, method: Method
 }
 
 fn note_block_vtable_replaced(state: &mut RuntimeState, vtable: Oop, method: MethodAddress) {
+    if state.admission.is_none() { return; }
     let capability = block_registration_for_method(state, method).map(|entry| entry.2);
-    for entry in &mut state.block_vtable_catalog {
+    for entry in &mut state.admission_mut().block_vtable_catalog {
         if entry.vtable == vtable
             && capability.is_none_or(|capability| entry.capability == capability)
         {
@@ -9653,14 +9654,14 @@ mod tests {
             AddMethod::Added
         );
         assert_eq!(
-            unsafe { (*runtime.state.get()).block_vtable_catalog.len() },
+            unsafe { (*runtime.state.get()).admission().block_vtable_catalog.len() },
             1
         );
 
         assert!(!runtime.finish_staged_resumable_unit());
         assert_eq!(runtime.lookup_method(vtable, selector), None);
         assert_eq!(
-            unsafe { (*runtime.state.get()).block_vtable_catalog.len() },
+            unsafe { (*runtime.state.get()).admission().block_vtable_catalog.len() },
             0
         );
         assert_eq!(

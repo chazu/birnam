@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Construct Runtime with completed Integer, Float, Word and String inputs (v15).
+  Move compiler admission/catalogs and optimization registries into an explicit
+  later native extension, required by Codegen. Base Machine/Block and GC work
+  before compiler services mount.
+
 - Construct native Block identity/layout in Runtime and install Block loops at
   their own module entry. Install Object/Symbol printing before collections, and
   load Boolean control, collections and Store before Artifact, PEG, Lang, TCC

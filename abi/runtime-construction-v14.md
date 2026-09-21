@@ -1,3 +1,5 @@
+> Retired by [Runtime construction v15](runtime-construction-v15.md). The v14 entry is no longer exported.
+
 # Runtime construction v14
 
 `birnam_runtime_init_v14` is the temporary upper constructor used by the

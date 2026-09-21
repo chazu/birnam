@@ -85,7 +85,7 @@ fn loop_reuse_capture_suspend_and_native_retirement_preserve_frames_and_identity
                                 36
                             );
                             let numeric_owner = {
-                                let tier = r.native_tier.borrow();
+                                let tier = r.compiler().native_tier.borrow();
                                 let key = Arc::as_ptr(&calc.descriptor) as usize;
                                 Rc::downgrade(
                                     tier.records
@@ -97,7 +97,7 @@ fn loop_reuse_capture_suspend_and_native_retirement_preserve_frames_and_identity
                                 )
                             };
                             let parent_owner = {
-                                let tier = r.native_tier.borrow();
+                                let tier = r.compiler().native_tier.borrow();
                                 let key = Arc::as_ptr(&parent.descriptor) as usize;
                                 Rc::downgrade(
                                     tier.records.get(&key).unwrap().candidate.as_ref().unwrap(),

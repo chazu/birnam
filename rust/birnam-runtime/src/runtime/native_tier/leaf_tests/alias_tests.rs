@@ -110,7 +110,7 @@ fn production_alias_inline_matches_canonical_boxes_identity_and_effects() {
             let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
             let caller = install(r, &caller(), 740200, None);
             let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-            r.native_tier
+            r.compiler().native_tier
                 .borrow_mut()
                 .records
                 .retain(|key, _| optimized && *key == Arc::as_ptr(&leaf.descriptor) as usize);
@@ -235,7 +235,7 @@ fn production_alias_recovery_precedes_gc_inside_boxing_sequence() {
         let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
         let caller = install(r, &caller(), 740200, None);
         let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-        r.native_tier
+        r.compiler().native_tier
             .borrow_mut()
             .records
             .retain(|key, _| optimized && *key == Arc::as_ptr(&leaf.descriptor) as usize);
@@ -313,7 +313,7 @@ fn production_alias_call_boundary_preserves_source_effects() {
     let leaf = install(r, &bytes, 740100, None);
     let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
     assert!(
-        r.native_tier
+        r.compiler().native_tier
             .borrow()
             .records
             .values()
@@ -322,7 +322,7 @@ fn production_alias_call_boundary_preserves_source_effects() {
     let caller = install(r, &caller(), 740200, None);
     let _caller = ScopedOopRootGuard::new(r, caller.receiver);
     // Existing PC specialization is orthogonal to this entry-inline test.
-    r.native_tier.borrow_mut().records.clear();
+    r.compiler().native_tier.borrow_mut().records.clear();
     SOURCE_EFFECTS.set(0);
     INLINE_HITS.set(0);
     for _ in 0..96 {
@@ -402,7 +402,7 @@ fn small_callee_timing() {
     let prepare_ns = prep.elapsed().as_nanos();
     let caller = install(r, &caller(), 740200, None);
     let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-    r.native_tier.borrow_mut().records.retain(|key, record| {
+    r.compiler().native_tier.borrow_mut().records.retain(|key, record| {
         mode != "off"
             && *key == Arc::as_ptr(&leaf.descriptor) as usize
             && (mode != "74p" || record.leaf.as_ref().is_some_and(|p| p.alias_count() == 0))

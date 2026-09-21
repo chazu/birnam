@@ -109,7 +109,7 @@ unsafe extern "C" fn mutate_operand_at_collection(mark: crate::abi::MarkFn) {
         GC_OBSERVATIONS.set(GC_OBSERVATIONS.get() + 1);
         let input = GC_OPERAND.get();
         assert!(unsafe { (*r.state.get()).heap.write_payload_word(input, 0, 1000) });
-        r.numeric.borrow_mut().records.clear();
+        r.compiler().numeric.borrow_mut().records.clear();
         unsafe { mark(input) };
     });
 }

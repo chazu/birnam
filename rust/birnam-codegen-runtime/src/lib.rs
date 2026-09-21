@@ -1752,6 +1752,17 @@ unsafe fn floor_symbol(api: &IdApi, name: &[u8]) -> Option<usize> {
     if handle == 0 {
         return None;
     }
+    let bare = &name[..name.len()-1];
+    if birnam_abi::runtime_compiler::SYMBOLS.contains(&bare) {
+        let provider = unsafe { (api.dlsym)(handle as *mut c_void, c"birnam_runtime_compiler_provider_v1".as_ptr()) };
+        if provider.is_null() { return None; }
+        let provider: birnam_abi::runtime_compiler::ProviderV1 = unsafe { std::mem::transmute(provider) };
+        let compiler = unsafe { provider() };
+        if !unsafe { birnam_abi::runtime_compiler::valid(compiler) } { return None; }
+        let compiler = unsafe { *compiler };
+        let address = unsafe { compiler.resolve.unwrap()(compiler.context, bare.as_ptr(), bare.len()) };
+        return (!address.is_null()).then_some(address as usize);
+    }
     let address = unsafe { (api.dlsym)(handle as *mut c_void, name.as_ptr().cast()) };
     (!address.is_null()).then_some(address as usize)
 }
@@ -13017,6 +13028,9 @@ unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespa
     }
     let host_api = unsafe { &*api_pointer };
     let runtime = *RUNTIME.get_or_init(|| {
+        if unsafe { floor_symbol(host_api, b"birnam_register_resumable_v1\0") }.is_none() {
+            abort("Codegen requires the completed Runtime compiler extension");
+        }
         let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, RUST_CODEGEN_NAME.as_ptr().cast()) != 0 };
         let (rust_codegen_vt, rust_codegen) = if reloading {
             (

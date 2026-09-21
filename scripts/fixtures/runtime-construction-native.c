@@ -7,21 +7,21 @@
 
 /* Handwritten C declaration: validation must precede any ownership transfer. */
 static void check_runtime_constructor(const BirnamProtocol *id, void *image) {
-    typedef void *(*RuntimeV14)(const BirnamProtocol *, const void *, const void *,
-        const void *, const void *, const void *, const void *, const void *, const void *, const void *);
-    RuntimeV14 initialize = (RuntimeV14)dlsym(image, "birnam_runtime_init_v14");
-    assert(initialize && !dlsym(image, "birnam_runtime_init_v13"));
-    assert(!initialize(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    typedef void *(*RuntimeV15)(const BirnamProtocol *, const void *, const void *,
+        const void *, const void *, const void *, const void *, const void *, const void *, const void *, const void *);
+    RuntimeV15 initialize = (RuntimeV15)dlsym(image, "birnam_runtime_init_v15");
+    assert(initialize && !dlsym(image, "birnam_runtime_init_v14"));
+    assert(!initialize(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
     BirnamProtocol bad = *id;
     bad.version = 99;
-    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
     bad = *id;
     bad.byte_size = 8;
-    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
     bad = *id;
     bad.message = NULL;
-    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
-    assert(!initialize(id, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    assert(!initialize(id, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
 
 }
 
@@ -38,10 +38,10 @@ static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *a
     const BirnamModule *module = dlsym(image, "birnam_native_module_v1");
     assert(module && module->version == 1 && module->byte_size == sizeof(*module));
     assert(module->initialize(id, NULL, 0).status == BIRNAM_INVALID_REQUEST);
-    BirnamOperand invalid[9] = {0};
-    assert(module->initialize(id, invalid, 9).status == BIRNAM_INVALID_REQUEST);
-    for (size_t i=0; i<9; i++) invalid[i].kind = BIRNAM_WORD;
-    assert(module->initialize(id, invalid, 9).status == BIRNAM_INVALID_REQUEST);
+    BirnamOperand invalid[10] = {0};
+    assert(module->initialize(id, invalid, 10).status == BIRNAM_INVALID_REQUEST);
+    for (size_t i=0; i<10; i++) invalid[i].kind = BIRNAM_WORD;
+    assert(module->initialize(id, invalid, 10).status == BIRNAM_INVALID_REQUEST);
     assert(args[1].data.bytes.length == sizeof(invalid));
     memcpy(invalid,args[1].data.bytes.pointer,sizeof(invalid));
     const RuntimeFactoriesV1 *complete=(const void *)invalid[8].data.word;
@@ -59,7 +59,25 @@ static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *a
             case 7: bad.verdict.read=NULL; break;
         }
         invalid[8].data.word=(size_t)&bad;
-        assert(module->initialize(id,invalid,9).status==BIRNAM_INVALID_REQUEST);
+        assert(module->initialize(id,invalid,10).status==BIRNAM_INVALID_REQUEST);
+    }
+    invalid[8].data.word=(size_t)complete;
+    typedef struct { uint32_t version; size_t byte_size; void *integer, *floating, *word, *string; } RuntimeValuesV1;
+    _Static_assert(sizeof(RuntimeValuesV1)==48, "value descriptor size");
+    const RuntimeValuesV1 *values=(const void *)invalid[9].data.word;
+    assert(values && values->version==1 && values->byte_size==sizeof(*values));
+    for(unsigned fault=0;fault<6;fault++) {
+        RuntimeValuesV1 bad=*values;
+        switch(fault) {
+            case 0: bad.version=99; break;
+            case 1: bad.byte_size=16; break;
+            case 2: bad.integer=NULL; break;
+            case 3: bad.floating=NULL; break;
+            case 4: bad.word=NULL; break;
+            case 5: bad.string=NULL; break;
+        }
+        invalid[9].data.word=(size_t)&bad;
+        assert(module->initialize(id,invalid,10).status==BIRNAM_INVALID_REQUEST);
     }
     const char *setters[]={"birnam_method_observation_dependency_v1", "birnam_storage_observation_dependency_v1",
         "birnam_deferred_identity_dependency_v1", "birnam_deferred_index_dependency_v1",

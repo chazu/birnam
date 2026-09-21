@@ -125,15 +125,15 @@ unsafe extern "C" fn retire_metadata(context: *mut c_void) {
         if source.runtime.collection_owner.is_some() || source.runtime.id_storage.is_some() {
             let dead = state.heap.dead_collectable_addresses();
             if source.runtime.collection_owner.is_none() { state.vtables.retire_metadata(&dead); }
-            state
-                .block_vtable_catalog
-                .retain(|entry| !dead.contains(&entry.vtable.addr()));
+            if let Some(admission) = &mut state.admission {
+                admission.block_vtable_catalog.retain(|entry| !dead.contains(&entry.vtable.addr()));
+            }
             source.runtime.collection_owner.is_none().then_some(dead)
         } else {
             let dead_vtables = state.vtables.remove_dead_collectable(&state.heap);
-            state
-                .block_vtable_catalog
-                .retain(|entry| !dead_vtables.contains(&entry.vtable));
+            if let Some(admission) = &mut state.admission {
+                admission.block_vtable_catalog.retain(|entry| !dead_vtables.contains(&entry.vtable));
+            }
             if state.symbol_compaction_enabled {
                 state.vtables.remove_dead_weak_bindings(&state.heap);
                 state
@@ -230,7 +230,7 @@ unsafe extern "C" fn reset_accounting(context: *mut c_void) {
 
 unsafe extern "C" fn prune(context: *mut c_void) {
     let source = unsafe { &*context.cast::<Source<'_>>() };
-    source.runtime.native_tier.borrow_mut().prune();
+    if source.runtime.compiler_available() { source.runtime.compiler().native_tier.borrow_mut().prune(); }
 }
 
 unsafe extern "C" fn upper_roots(

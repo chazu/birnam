@@ -4,6 +4,8 @@
 #include "../../abi/fixtures/integer-v1/integer_v1.h"
 #include "../../abi/fixtures/string-v1/string_v1.h"
 #include <assert.h>
+#include <dlfcn.h>
+#include <stdlib.h>
 #include <string.h>
 static IdApi *api;
 static const NamespaceImportV1 *imports;
@@ -33,15 +35,64 @@ static Oop native_block(const char *selector,Method method,Oop captured) {
     api->method(vt,api->intern(selector),method);
     Oop block=keep(api->alloc(vt,sizeof(Oop))); *(Oop *)block=captured; return block;
 }
+typedef struct {
+    uint32_t version; size_t byte_size; void *context;
+    void *(*resolve)(void *,const uint8_t *,size_t);
+} RuntimeCompilerV1;
+_Static_assert(sizeof(RuntimeCompilerV1)==32,"compiler descriptor extent");
+static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,int install) {
+    assert(path->kind==BIRNAM_BYTES);
+    char *name=malloc(path->data.bytes.length+1);assert(name);
+    memcpy(name,path->data.bytes.pointer,path->data.bytes.length);name[path->data.bytes.length]=0;
+    void *image=dlopen(name,RTLD_NOW|RTLD_LOCAL);free(name);assert(image);
+    const RuntimeCompilerV1 *(*provider)(void)=dlsym(image,"birnam_runtime_compiler_provider_v1");
+    assert(provider && !provider());
+    const BirnamModule *module=dlsym(image,"birnam_native_module_v1");assert(module);
+    BirnamOperand request[2]={{.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)"compiler",8}},
+        {.kind=BIRNAM_WORD,.data.word=0}};
+    assert(module->initialize(id,request,2).status==BIRNAM_INVALID_REQUEST && !provider());
+    request[1].data.word=(size_t)api;
+    BirnamProtocol foreign=*id;foreign.receiver=api->nil_obj;
+    assert(module->initialize(&foreign,request,2).status==BIRNAM_INVALID_REQUEST && !provider());
+    if(install) {
+        BirnamOutcome result=module->initialize(id,request,2);
+        assert(result.status==BIRNAM_LOADED && result.value.kind==BIRNAM_WORD);
+        const RuntimeCompilerV1 *compiler=(const void *)result.value.data.word;
+        assert(compiler==provider() && compiler->version==1 && compiler->byte_size==32);
+        assert(compiler->context && compiler->resolve);
+        const char *symbols[]={
+            "birnam_register_resumable_v1","birnam_register_resumable_v2",
+            "birnam_id_begin_resumable_unit_v1","birnam_id_begin_portable_resumable_unit_v1",
+            "birnam_id_finish_resumable_unit_v1","birnam_id_cancel_resumable_unit_v1",
+            "birnam_id_try_acquire_stackless_generation_lease_v1","birnam_id_release_stackless_generation_lease_v1",
+            "birnam_id_retire_stackless_code_generation_v1","birnam_id_stackless_block_vtable_image_reference_v1",
+            "birnam_id_stackless_block_vtable_matches_v1","birnam_id_staged_portable_block_vtable_v1",
+            "birnam_id_stackless_resumable_manifest_matches_v1",
+            "birnam_id_warm_block_construction_v1","birnam_id_try_closure_elision_v2"};
+        for(size_t i=0;i<sizeof(symbols)/sizeof(symbols[0]);i++)
+            assert(compiler->resolve(compiler->context,(const uint8_t *)symbols[i],strlen(symbols[i]))==dlsym(image,symbols[i]));
+        assert(!compiler->resolve(compiler->context,(const uint8_t *)"unknown",7));
+        result=module->initialize(id,request,2);
+        assert(result.status==BIRNAM_LOADED && result.value.data.word==(size_t)compiler);
+    }
+    assert(!dlclose(image));
+}
 static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
-    (void)id; assert(count==5);
-    for(size_t i=0;i<count;i++) assert(args[i].kind==BIRNAM_WORD);
+    assert(count==7 && args[6].kind==BIRNAM_WORD);
+    for(size_t i=0;i<5;i++) assert(args[i].kind==BIRNAM_WORD);
     api=(void *)args[0].data.word; imports=(void *)args[1].data.word;
     const RootRegistryV1 *registry=(void *)args[2].data.word;
     integer=*(IntegerApiV1 *)args[3].data.word; string=*(StringApiV1 *)args[4].data.word;
     assert(!namespace_import_v1(imports,"RustCodegen"));
     assert(!namespace_import_v1(imports,"TCC"));
     assert(!namespace_import_v1(imports,"Peg"));
+    if(!args[6].data.word) {
+        Oop machine=send0(named("Machine"),"new");
+        assert(number(send0(machine,"liveFrameCount"))==0);
+        assert(named("Block") && named("BlockVt"));
+        check_compiler(id,&args[5],0);
+        return (BirnamOutcome){.status=BIRNAM_LOADED};
+    }
     root_registry_register_v1(registry,mark);
     Oop block_proto=named("Block"), block_vt=named("BlockVt");
     assert(api->vtable_of(block_proto)==block_vt && vtable_owner(api,block_vt)==block_proto);
@@ -83,6 +134,7 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     assert(number(send0(machine,"liveFrameCount"))==0);
     api->gc_collect();
     assert(send0(closure,"value")==expected && send1(globals,"at:",key)==expected);
+    check_compiler(id,&args[5],1);
     return (BirnamOutcome){.value={.kind=BIRNAM_OBJECT,.data.object=block_proto}};
 }
 const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize};

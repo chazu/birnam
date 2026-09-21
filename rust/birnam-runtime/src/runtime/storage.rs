@@ -56,9 +56,8 @@ impl Runtime {
             let state = &*self.state.get();
             if state.execution.has_managed_turn()
                 || !(&*self.entry_scopes.get()).is_empty()
-                || state.staged_resumable_unit.is_some()
-                || state.staged_resumable_publications.is_some()
-                || !state.pending_stackless_retirements.is_empty()
+                || state.admission.as_ref().is_some_and(|a| a.staged_resumable_unit.is_some()
+                    || a.staged_resumable_publications.is_some() || !a.pending_stackless_retirements.is_empty())
             {
                 return BUSY;
             }

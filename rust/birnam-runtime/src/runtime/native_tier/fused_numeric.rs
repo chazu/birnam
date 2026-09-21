@@ -20,7 +20,7 @@ pub(super) fn controls(runtime: &Runtime, machine: Oop) -> bool {
     let Some(objects) = state.execution.objects() else {
         return false;
     };
-    if state.vtables.mutation_epoch() == u64::MAX || !state.pending_stackless_retirements.is_empty()
+    if state.vtables.mutation_epoch() == u64::MAX || !state.admission().pending_stackless_retirements.is_empty()
     {
         return false;
     }

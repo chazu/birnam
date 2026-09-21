@@ -10,8 +10,25 @@ thread_local! {
     static FINISH_FAIL: Cell<bool> = const { Cell::new(false) };
 }
 fn oop(address: usize) -> Oop { ptr::without_provenance_mut(address) }
-unsafe extern "C" fn open(_: *const c_char, _: c_int) -> *mut c_void { panic!("unexpected native open"); }
-unsafe extern "C" fn symbol(_: *mut c_void, _: *const c_char) -> *mut c_void { panic!("unexpected native symbol"); }
+// This fixture supplies the completed compiler predecessor required at first
+// construction. No generated code is executed by this commit-timing test.
+unsafe extern "C" fn open(_: *const c_char, _: c_int) -> *mut c_void { oop(1) }
+unsafe extern "C" fn resolve(_: *mut c_void, name: *const u8, length: usize) -> *mut c_void {
+    assert_eq!(unsafe { core::slice::from_raw_parts(name,length) }, b"birnam_register_resumable_v1");
+    finish as *const () as *mut c_void
+}
+unsafe extern "C" fn compiler() -> *const birnam_abi::runtime_compiler::ApiV1 {
+    thread_local! {
+        static COMPILER: birnam_abi::runtime_compiler::ApiV1 = birnam_abi::runtime_compiler::ApiV1 {
+            version: 1, byte_size: 32, context: oop(1), resolve: Some(resolve),
+        };
+    }
+    COMPILER.with(core::ptr::from_ref)
+}
+unsafe extern "C" fn symbol(_: *mut c_void, name: *const c_char) -> *mut c_void {
+    assert_eq!(unsafe { CStr::from_ptr(name) }, c"birnam_runtime_compiler_provider_v1");
+    compiler as *const () as *mut c_void
+}
 unsafe extern "C" fn intern(_: *const c_char) -> Oop { oop(10) }
 unsafe extern "C" fn identity(value: Oop) -> Oop { value }
 unsafe extern "C" fn method(_: Oop, _: Oop, _: Method) {}

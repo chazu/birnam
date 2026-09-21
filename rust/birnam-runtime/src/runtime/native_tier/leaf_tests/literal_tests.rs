@@ -43,7 +43,7 @@ fn literal_callee_preserves_fresh_identity_allocation_trace_and_recovery() {
             let leaf = install(r, &bytes, 740100, None);
             let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
             assert_eq!(
-                r.native_tier
+                r.compiler().native_tier
                     .borrow()
                     .records
                     .get(&(Arc::as_ptr(&leaf.descriptor) as usize))
@@ -52,7 +52,7 @@ fn literal_callee_preserves_fresh_identity_allocation_trace_and_recovery() {
             );
             let caller = install(r, &caller(), 740200, None);
             let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-            r.native_tier
+            r.compiler().native_tier
                 .borrow_mut()
                 .records
                 .retain(|key, _| optimized && *key == Arc::as_ptr(&leaf.descriptor) as usize);

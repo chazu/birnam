@@ -42,14 +42,15 @@ impl Registry {
 
 impl Runtime {
     fn numeric_summary(&self, method: NativeEntry) -> Option<Rc<NumericSummary>> {
-        let (query, mut summary) = self.numeric.borrow_mut().observe(method);
+        if !self.compiler_available() { return None; }
+        let (query, mut summary) = self.compiler().numeric.borrow_mut().observe(method);
         if query {
             // Discovery enters a native declaration. No RuntimeState or
             // registry borrow survives that call. Native code owns its pure
             // declaration contract; the returned image pin is retained here.
             summary = NumericSummary::discover_native(method, self).map(Rc::new);
             if let Some(record) = self
-                .numeric
+                .compiler().numeric
                 .borrow_mut()
                 .records
                 .get_mut(&entry_key(method))

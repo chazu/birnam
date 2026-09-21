@@ -104,7 +104,7 @@ unsafe extern "C" fn prepare(_: Oop, args: *const Oop, count: usize) -> Oop {
         unsafe { (*r.state.get()).execution.release_acquired_entry(entry) }.unwrap();
         drop(target);
         let mut owners = Owners::default();
-        r.native_tier
+        r.compiler().native_tier
             .borrow()
             .watch_generation(generation, &mut owners);
         // At least the actual descriptor and cold candidate input are observed.
@@ -163,7 +163,7 @@ unsafe extern "C" fn warm(_: Oop, args: *const Oop, count: usize) -> Oop {
         );
         WATCH.with_borrow_mut(|watch| {
             let watch = watch.as_mut().unwrap();
-            r.native_tier
+            r.compiler().native_tier
                 .borrow()
                 .watch_generation(watch.generation, &mut watch.owners);
             Storage::read().print(

@@ -543,7 +543,7 @@ fn compare_recovery(forced_exit: Option<usize>, projections: usize, cases: &[Cas
                 // Keep one checkout live while the real driver and a collecting
                 // nested observer use this same compiled candidate.
                 let candidate = r
-                    .native_tier
+                    .compiler().native_tier
                     .borrow()
                     .records
                     .get(&(Arc::as_ptr(&block.descriptor) as usize))
@@ -1011,7 +1011,7 @@ fn virtual_field_timing() {
                         assert_eq!(materialized, if eligible && shape == 1 { calls } else { 0 });
                         assert_eq!(r.stackless_registration_diagnostics().active_frame_pins, 0);
                         let metadata_bytes = r
-                            .native_tier
+                            .compiler().native_tier
                             .borrow()
                             .records
                             .values()

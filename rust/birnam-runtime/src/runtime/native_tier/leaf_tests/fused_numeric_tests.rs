@@ -674,7 +674,7 @@ fn fused_numeric_preparation_waits_for_hot_chain_starts() {
                 let elapsed = start.elapsed().as_nanos();
                 cold_calls_ns += elapsed;
                 assert_eq!(r.integer_value(answer), length as i64 + 1);
-                let registry = r.native_tier.borrow();
+                let registry = r.compiler().native_tier.borrow();
                 let record = registry.records.get(&key).unwrap();
                 let compiled = record.numeric_candidate.is_some();
                 if compiled && !prepared {

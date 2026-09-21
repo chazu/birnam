@@ -365,7 +365,7 @@ static void check_id_image(const BirnamProtocol *id) {
     assert(image);
     assert(!dlsym(image, "id_init"));
     assert(!dlsym(image, "birnam_runtime_init_v13"));
-    assert(!dlsym(image, "birnam_runtime_init_v14"));
+    assert(!dlsym(image, "birnam_runtime_init_v15"));
     assert(!dlsym(image, "birnam_register_resumable_v2"));
     assert(!dlsym(image, "birnam_namespace_dependency_v8"));
     assert(!dlclose(image));

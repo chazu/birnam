@@ -5,12 +5,13 @@
 > runtime. Core Id allocation, Symbols, dictionaries and typed dispatch no longer
 > require upper services. Siphon now loads the real Id through the common native
 > protocol before upper preparation. Runtime now borrows the native Id carrier
-> and original entries through the temporary [v14 constructor](../../abi/runtime-construction-v14.md),
+> and original entries through the temporary [v15 constructor](../../abi/runtime-construction-v15.md),
 > without taking Id's Rust owner or referencing its primitive functions for
 > lookup/Integer admission. Id is independently packaged with only the ABI crate;
 > Runtime/compiler code is in a separate upper library loaded through Id. Native
-> Block and native value/control operations now precede compiler modules. The
-> Execution/compiler extension boundary and owned Method consumer migration remain open.
+> Block and native value/control operations now precede compiler modules.
+> Compiler admission is now a later explicit extension. Owned Method consumers
+> and the full entry-level construction manifest remain open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -549,8 +550,9 @@ establish it before declaring Id decoupled.
 The production Id crate depends only on `birnam-abi`. Its dylib exports the native
 module descriptor and identity; Runtime and compiler/artifact code live in the
 separate `birnam-runtime` crate. Both are installed and the host initializes
-Runtime through Id's loader after its predecessors. Execution/compiler separation,
-owned Method consumers and the complete construction graph remain unfinished.
+Runtime through Id's loader after its predecessors. Compiler admission is an
+explicit later extension; base Execution has its value dependencies at construction.
+Owned Method consumers and the complete construction graph remain unfinished.
 
 The host's [`Siphon`](../../rust/birnam-host/src/siphon.rs) supplies the small ad
 hoc loading protocol and invokes `birnam_native_module_v1`. The real Id descriptor
@@ -596,7 +598,7 @@ steps. `InitialFloor::finish` constructs the remaining Runtime with the same own
 `start` use this path, while `start_with_floor` continues an explicitly constructed
 prefix. Runtime's native entry in `libbirnam_runtime.dylib` receives nine
 completed predecessor pointers as Word operands and invokes the temporary
-[v14 constructor](../../abi/runtime-construction-v14.md). Earlier Runtime bridges
+[v15 constructor](../../abi/runtime-construction-v15.md). Earlier Runtime bridges
 and normal `id_init` exports are removed. Explicit Runtime diagnostic builds
 retain the old local initialization path for fixtures that have not yet migrated;
 that path is absent from normal Id and Runtime libraries. The host's obsolete
@@ -1772,3 +1774,44 @@ on that installation. Block Loop source/compiled/native-Code-image/baked tests
 pass after its installation and reentry changes; the broader storage-observation
 source/compiled/mapped/rebuilt/baked suite also passes after the Block and value
 ordering changes. Release validation remains waived.
+
+
+### Execution base and explicit compiler extension
+
+Runtime v15 receives the already constructed Integer, Float, Word and String
+APIs before it publishes Machine/Block or installs collector extensions. These
+are mandatory constructor inputs; legacy value entries reuse them. Machine's
+Integer-valued queries work immediately after construction, before those legacy
+entries run.
+
+Artifact admission/catalogs and speculative native/numeric registries now belong
+to an optional compiler extension. Production constructs it through Id with
+`Bytes("compiler"), Word(Runtime API)` after Store, Artifact, PEG, Lang and TCC,
+immediately before Codegen. Its provider returns null beforehand. Codegen
+requires the completed extension and resolves compiler operations through its
+[descriptor](../../abi/runtime-compiler-v1.md), without raw-export fallback.
+Native Execution, Block and collecting value/control operations work while the
+extension is absent. Both entries share a library, as section 4 permits.
+
+This change does not finish owned Method reflection, the entry-level manifest,
+legacy driver migration or the outstanding full image/worker acceptance. Those
+remain part of Designs 82/83, not follow-up scope outside this implementation.
+
+
+Validation for this change uses `/tmp/birnam-83-compiler-extension`, a fresh debug
+installation with 56 native libraries and 28 compiled stage-1 modules. Runtime's
+319 unit tests, host/installer's 90 tests and Codegen's 22 tests pass (20 tests
+remain explicitly ignored across those suites). The installed native-loading
+suite passes, including direct constructor rejection of incomplete value inputs,
+immediate Machine queries, compiler-provider absence, foreign-carrier rejection,
+complete extension resolution and repeated construction. The printing source,
+source-free compiled, native-Code image and baked-executable checks also pass.
+The unit suites use a separate unwind build directory from native harness builds;
+release validation remains waived.
+
+Block Loop's source/compiled/native-Code-image/baked checks pass on the same
+installation, preserving captured blocks/cells, aliases, errors, GC and live
+method/factory replacement. The storage-observation suite also passes across
+source, compiled, mapped, rebuilt and baked execution, including host-side BUSY
+checks, nested rejection, visitor failure cleanup, roots and allocation identity.
+The diagnostic `ffi-test-hooks` Runtime configuration still type-checks.

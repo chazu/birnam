@@ -165,7 +165,7 @@ pub(super) unsafe fn execute(
         .is_none();
     let virtual_results = maps.result_count() - usize::from(tail_result);
     let mut lease = r
-        .native_tier
+        .compiler().native_tier
         .borrow_mut()
         .unboxed_scratch
         .get_or_insert_with(scratch::Pool::new)

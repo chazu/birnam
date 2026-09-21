@@ -11,12 +11,12 @@ pub(super) unsafe extern "C" fn prepare(_: Oop, args: *const Oop, count: usize) 
         let _captures = ScopedOopRootGuard::new(r, args[1]);
         let codegen = r.import(b"Codegen").unwrap();
         let selector = r.intern(b"materializeResumable:captures:").unwrap();
-        let before = r.native_tier.borrow().unboxed_resources();
+        let before = r.compiler().native_tier.borrow().unboxed_resources();
         let counters = (PREP_ATTEMPTS.get(), PREPARATIONS.get(), PREP_NS.get());
         let start = Instant::now();
         let block = r.send_slice(codegen, selector, args);
         let ns = start.elapsed().as_nanos();
-        let after = r.native_tier.borrow().unboxed_resources();
+        let after = r.compiler().native_tier.borrow().unboxed_resources();
         println!(
             "unboxed-prepare ns={ns} attempts={} preparations={} preparation_ns={} maps_before={} maps_after={} metadata_before={} metadata_after={}",
             PREP_ATTEMPTS.get() - counters.0,
@@ -96,8 +96,8 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
         };
         r.gc_collect_for_source_probe();
         let before = (COMPLETED.get(), MATERIALIZED.get(), PREPARATIONS.get());
-        let resources = r.native_tier.borrow().unboxed_resources();
-        let scratch = r.native_tier.borrow().unboxed_scratch_resources();
+        let resources = r.compiler().native_tier.borrow().unboxed_resources();
+        let scratch = r.compiler().native_tier.borrow().unboxed_scratch_resources();
         let native_storage = birnam_native_compiler::Unit::resource_totals();
         let (private_native_units, private_relocated_bytes) = native_storage;
         let mut ns = 0;
@@ -136,7 +136,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
                 "private native ownership and relocated storage stay stable after collection"
             );
             assert_eq!(
-                r.native_tier.borrow().unboxed_scratch_resources(),
+                r.compiler().native_tier.borrow().unboxed_scratch_resources(),
                 scratch,
                 "scratch capacity and returned leases stay bounded after collection"
             );
@@ -149,7 +149,7 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
             "no new maps in steady execution"
         );
         assert_eq!(
-            r.native_tier.borrow().unboxed_resources(),
+            r.compiler().native_tier.borrow().unboxed_resources(),
             resources,
             "bounded retained maps/native owners"
         );

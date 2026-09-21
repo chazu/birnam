@@ -9,21 +9,26 @@ fn main() {
         assert!(!prefix.join(format!("libbirnam_{library}.dylib")).exists());
     }
     let resources = birnam_host::resolve_from_exe_dir(prefix, Overrides { lib_dir: Some(prefix), ..Overrides::default() }).unwrap();
-    let floor = birnam_host::begin_id(&resources.id_dylib, None, None).unwrap().finish().unwrap();
+    let mut initial = birnam_host::begin_id(&resources.id_dylib, None, None).unwrap();
+    let values = initial.initialize_runtime_values().unwrap();
+    let floor = initial.finish().unwrap();
     let mut stack = LoadedStack::new(floor);
+    let runtime_path = prefix.join("libbirnam_runtime.dylib");
+    let arguments = [
+        Operand::word((stack.api() as *const birnam_abi::IdApi).addr()),
+        Operand::word(stack.imports().addr()), Operand::word(stack.root_registry().addr()),
+        Operand::word(values.integer.addr()), Operand::word(values.string.addr()),
+        Operand::bytes(runtime_path.as_os_str().as_bytes()), Operand::word(0),
+    ];
+    assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &arguments) }.status, native::LOADED);
+    println!("Runtime Machine works immediately at construction, before legacy module entries");
     match stack.load_script_modules(&resources) {
         Err(ModuleError::OpenFailed { path }) => assert_eq!(path, prefix.join("libbirnam_id_artifact.dylib")),
         other => panic!("expected completed native prefix before missing Artifact, got {other:?}"),
     }
     unsafe { birnam_abi::gc_settings::set_precise(stack.gc_settings(), 1) };
-    let integer = unsafe { birnam_abi::integer::operations() };
-    let string = unsafe { birnam_abi::string::operations() };
-    let arguments = [
-        Operand::word((stack.api() as *const birnam_abi::IdApi).addr()),
-        Operand::word(stack.imports().addr()), Operand::word(stack.root_registry().addr()),
-        Operand::word((&integer as *const birnam_abi::integer::IntegerApiV1).addr()),
-        Operand::word((&string as *const birnam_abi::string::StringApiV1).addr()),
-    ];
+    let mut arguments = arguments;
+    arguments[6] = Operand::word(1);
     let result = unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &arguments) };
     assert_eq!(result.status, native::LOADED);
     let original = result.value.as_object().unwrap();

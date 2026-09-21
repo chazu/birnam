@@ -261,7 +261,7 @@ fn production_projection_inline_preserves_identity_allocations_and_malleability(
             let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
             let caller = install(r, &caller(), 740200, None);
             let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-            r.native_tier
+            r.compiler().native_tier
                 .borrow_mut()
                 .records
                 .retain(|key, _| optimized && *key == Arc::as_ptr(&leaf.descriptor) as usize);
@@ -581,7 +581,7 @@ fn projection_timing() {
     let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
     let caller = install(r, &caller(), 740200, None);
     let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-    r.native_tier.borrow_mut().records.retain(|key, record| {
+    r.compiler().native_tier.borrow_mut().records.retain(|key, record| {
         // Preserve 74P eligibility for its historical timing control;
         // alias inlining has its own 74R measurement and refusal controls.
         optimized
@@ -693,7 +693,7 @@ fn production_projection_recovers_before_gc_and_preserves_current_targets() {
             let _leaf = ScopedOopRootGuard::new(r, leaf.receiver);
             let caller = install(r, &caller(), 740200, None);
             let _caller = ScopedOopRootGuard::new(r, caller.receiver);
-            r.native_tier
+            r.compiler().native_tier
                 .borrow_mut()
                 .records
                 .retain(|key, _| optimized && *key == Arc::as_ptr(&leaf.descriptor) as usize);

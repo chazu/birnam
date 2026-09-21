@@ -44,8 +44,8 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
             HITS.get(),
             COMPLETED.get(),
         );
-        let resources = r.native_tier.borrow().loop_resources();
-        let units = r.native_tier.borrow().unboxed_resources();
+        let resources = r.compiler().native_tier.borrow().loop_resources();
+        let units = r.compiler().native_tier.borrow().unboxed_resources();
         let native_storage = birnam_native_compiler::Unit::resource_totals();
         let (private_native_units, private_relocated_bytes) = native_storage;
         let mut ns = 0;
@@ -75,12 +75,12 @@ pub(super) unsafe extern "C" fn run(_: Oop, args: *const Oop, count: usize) -> O
             assert!(r.is_integer(answer));
             assert_eq!(r.integer_value(answer), expected);
             assert_eq!(
-                r.native_tier.borrow().loop_resources(),
+                r.compiler().native_tier.borrow().loop_resources(),
                 resources,
                 "loop owner/cache capacity stays bounded across runs and GC"
             );
             assert_eq!(
-                r.native_tier.borrow().unboxed_resources(),
+                r.compiler().native_tier.borrow().unboxed_resources(),
                 units,
                 "no new numeric/native units or recovery maps in steady loops"
             );

@@ -46,7 +46,7 @@ impl Runtime {
         }
         let key = Arc::as_ptr(descriptor) as usize;
         let compiled = {
-            let registry = self.native_tier.borrow();
+            let registry = self.compiler().native_tier.borrow();
             let record = registry.records.get(&key)?;
             if record.disabled
                 || !record

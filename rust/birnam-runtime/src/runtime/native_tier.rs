@@ -700,7 +700,8 @@ pub(super) fn select(
     descriptor_key: usize,
     pc: usize,
 ) -> Option<Selected> {
-    let mut registry = runtime.native_tier.borrow_mut();
+    if !runtime.compiler_available() { return None; }
+    let mut registry = runtime.compiler().native_tier.borrow_mut();
     let record = registry.records.get_mut(&descriptor_key)?;
     let descriptor = record.descriptor.upgrade()?;
     if Arc::as_ptr(&descriptor) as usize != descriptor_key
@@ -848,9 +849,10 @@ pub(super) fn inline_call(
     descriptor: &Arc<FrameDescriptor>,
     initial: &[(usize, Oop)],
 ) -> Result<bool, crate::execution::ExecutionError> {
+    if !runtime.compiler_available() { return Ok(false); }
     let epoch = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
     let leaf = {
-        let mut registry = runtime.native_tier.borrow_mut();
+        let mut registry = runtime.compiler().native_tier.borrow_mut();
         let Some(record) = registry
             .records
             .get_mut(&(Arc::as_ptr(descriptor) as usize))
@@ -889,7 +891,7 @@ pub(super) fn inline_call(
             // Recover this activation once; use ordinary entry thereafter until
             // dictionary mutation gives this optional optimization another chance.
             if let Some(record) = runtime
-                .native_tier
+                .compiler().native_tier
                 .borrow_mut()
                 .records
                 .get_mut(&(Arc::as_ptr(descriptor) as usize))

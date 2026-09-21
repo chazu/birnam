@@ -95,7 +95,7 @@ pub(super) fn admit<'a>(
         return None;
     }
     let candidate = {
-        let registry = runtime.native_tier.borrow();
+        let registry = runtime.compiler().native_tier.borrow();
         let record = registry.records.get(&(Arc::as_ptr(&descriptor) as usize))?;
         if record.disabled {
             return None;
