@@ -5657,6 +5657,7 @@ unsafe fn emit_source(
         return None;
     }
     let tree = unsafe { cst_tree(api, cst, 0) }?;
+    let metadata = artifact.then(|| EmittedMetadata::from_tree(&tree, &source));
     let root = if source_path_is_root {
         source_path.map(ToOwned::to_owned)
     } else {
@@ -5719,6 +5720,7 @@ unsafe fn emit_source(
     unit.push_body(&body);
     Some(EmittedSource {
         bytes: unit.finish(),
+        metadata,
     })
 }
 
@@ -5737,6 +5739,7 @@ unsafe fn emit_image_recovery_source(
         return None;
     }
     let tree = unsafe { cst_tree(api, cst, 0) }?;
+    let metadata = Some(EmittedMetadata::from_tree(&tree, &source));
     let tree = rewrite_embedded(tree, &source, b".")?;
     let program = lower_program(&tree, &source).ok()?;
     let digest = sha256_hex(&source);
@@ -5757,11 +5760,34 @@ unsafe fn emit_image_recovery_source(
     unit.push_body(&body);
     Some(EmittedSource {
         bytes: unit.finish(),
+        metadata,
     })
 }
 
 struct EmittedSource {
     bytes: Vec<u8>,
+    metadata: Option<EmittedMetadata>,
+}
+
+/// Descriptor facts from the same parse used for this emission. Kept only for
+/// this operation, before embedded-source rewriting, with no language objects.
+struct EmittedMetadata {
+    module: Option<ModuleMetadata>,
+    native_requires: Vec<Vec<u8>>,
+    source_digest: [u8; 64],
+    revision_digest: [u8; 64],
+}
+impl EmittedMetadata {
+    fn from_tree(tree: &OwnedCst, source: &[u8]) -> Self {
+        let mut module = None;
+        let mut native_requires = Vec::new();
+        collect_artifact_metadata(tree, source, 0, &mut module, &mut native_requires);
+        let source_digest = sha256_hex(source);
+        let revision_digest = revision_metadata(tree, source)
+            .map(|metadata| metadata.revision_digest)
+            .unwrap_or(source_digest);
+        Self { module, native_requires, source_digest, revision_digest }
+    }
 }
 
 unsafe extern "C" fn rust_codegen_emit(
@@ -8076,26 +8102,24 @@ unsafe fn write_emitted_artifact(
         note_error(b"RustCodegen output path was not a String");
         return api.nilObj;
     };
-    let (identity, requires, native_requires) = if image_artifact {
-        let native_requires = unsafe { artifact_metadata(api, source_object) }
-            .map(|(_, native_requires)| native_requires)
-            .unwrap_or_default();
-        (artifact_identity(&path_bytes), Vec::new(), native_requires)
-    } else {
-        match unsafe { artifact_metadata(api, source_object) } {
-            Some((Some((identity, requires)), native_requires)) => {
-                (identity, requires, native_requires)
-            }
-            Some((None, native_requires)) => {
-                (artifact_identity(&path_bytes), Vec::new(), native_requires)
-            }
-            None => (artifact_identity(&path_bytes), Vec::new(), Vec::new()),
-        }
+    let Some(metadata) = source.metadata else {
+        note_error(b"RustCodegen artifact emission has no source metadata");
+        return api.nilObj;
     };
+    // Reentrant callbacks during emission must not let changed source bytes
+    // acquire the descriptor of a different parse.
     let source_digest = sha256_hex(&source_bytes);
-    let revision_digest = unsafe { parse_revision_metadata(api, source_object) }
-        .map(|(_, metadata)| metadata.revision_digest)
-        .unwrap_or(source_digest);
+    if source_digest != metadata.source_digest {
+        note_error(b"RustCodegen artifact source changed during emission");
+        return api.nilObj;
+    }
+    let (identity, requires) = if image_artifact {
+        (artifact_identity(&path_bytes), Vec::new())
+    } else {
+        metadata.module.unwrap_or_else(|| (artifact_identity(&path_bytes), Vec::new()))
+    };
+    let native_requires = metadata.native_requires;
+    let revision_digest = metadata.revision_digest;
     let artifact = artifact_source(
         &source_bytes,
         &identity,

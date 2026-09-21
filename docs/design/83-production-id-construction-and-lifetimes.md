@@ -2543,3 +2543,36 @@ cases execute. A five-second sample of that failing worker includes substantial
 authored-module bootstrap work as well as image loading; the startup delay is
 not confined to post-load recovery. The ten-second production deadline is
 unchanged. Full worker acceptance remains open.
+
+### Artifact emission shares its parsed source
+
+A complete worker profile on `e864ea09` confirmed repeated whole-source parsing
+inside artifact writing after image code had already been emitted. Codegen now
+computes module/native requirements and source/revision digests from the same
+owned tree used for emission, before embedded-source rewriting. These Rust values
+last for that compilation only. Every later compilation still sends the current
+`Lang parse:`; no parser or language-object cache is introduced. Artifact writing
+checks the source digest again before using those descriptor facts.
+
+The debug installation `/tmp/birnam-83-emission-metadata` reaches worker ready in
+17.04 seconds, down from the preceding 20.99 seconds, and passes all twelve exact
+wire round trips and orderly stop. It still misses the production ten-second
+readiness deadline; this is not worker-service acceptance. All 28 installed
+authored modules have byte-identical artifact descriptors compared with
+`/tmp/birnam-83-native-entries-final`, including identities, dependencies,
+native requirements, digests and capabilities. Codegen unit tests pass (22,
+with four ignored).
+
+The existing TCC artifact test now counts a replacement parser: one invocation
+per compilation, a second compilation invokes it again, and replacing it with
+a rejecting parser prevents artifact creation. The previous installed binary
+fails the new count assertion; the current binary passes, including separate-
+process compiled activation and exact failure output. This locks down both the
+removed duplicate work and live parser replacement.
+
+The complete `portable-image-v8-smoke.sh` passes on the same prefix: forged
+authority/selection rejection, source-less nested portable meaning, aliases,
+boxed identity, CodeBinding recovery, mapped/rebuilt/baked application entry,
+resave and boundary-object rejection. The changed Codegen source matches the
+installed copy. Evidence is `.cargo-target/83-emission-metadata-evidence.json`.
+Release validation remains waived.

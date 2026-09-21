@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Derive compiled-artifact descriptors from the same parsed source used for
+  emission, removing two repeated parses during ordinary and image compilation.
+  Each compilation still observes the current parser; metadata retains the
+  original source identity before embedded-file rewriting.
+
 - Remove every aggregate native `module_init` entry and exported dependency
   setter, together with duplicate value methods and obsolete Collection,
   Prelude and Object Model initialization code. Native construction now has one
