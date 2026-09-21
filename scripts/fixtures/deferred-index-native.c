@@ -1,3 +1,4 @@
+#include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #define _DARWIN_C_SOURCE
 #include "storage_v1.h"
 #include "../../abi/fixtures/deferred-index-v1/deferred_index_v1.h"
@@ -135,9 +136,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(api->send(held_block,value_selector,&held_value,1)==held_value);probe=NULL;
     Oop result=held_value;held_block=held_value=identity_probe=NULL;return result;
 }
-__attribute__((visibility("default")))
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *selected_settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizers) {
-    (void)prior;(void)presence;(void)exports;(void)vtables;(void)observation;(void)layouts;(void)hooks;(void)finalizers;
+static void initialize_fixture(IdApi *selected,const NamespaceImportV1 *imports,const RootRegistryV1 *root_registry,const GcSettingsV1 *selected_settings,const FinalizersV1 *finalizers) {
     if(api)assert(api==selected);api=selected;settings=selected_settings;finalizer_api=finalizers;
     Dl_info owner;assert(dladdr((void *)api->dlsym_fn,&owner));
     void *floor=dlopen(owner.dli_fname,RTLD_NOW|RTLD_NOLOAD);assert(floor);
@@ -160,8 +159,16 @@ void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presenc
     Oop system=namespace_import_v1(imports,"System");assert(system);
     api->method(api->vtable_of(system),api->intern("deferredIndexCheckpoint:"),checkpoint);
     api->method(api->object_vt,api->intern("deferredIndexIdentity"),identity);
-    api->method(api->vtable_of(system),api->intern("deferredIndexExercise:value:"),exercise);return NULL;
+    api->method(api->vtable_of(system),api->intern("deferredIndexExercise:value:"),exercise);
 }
+static BirnamOutcome initialize_native(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
+    assert(id && id->version==1 && count==5);
+    for(size_t i=0;i<count;i++) assert(args[i].kind==BIRNAM_WORD && args[i].data.word);
+    initialize_fixture((void *)args[0].data.word,(void *)args[1].data.word,(void *)args[2].data.word,
+        (void *)args[3].data.word,(void *)args[4].data.word);
+    return (BirnamOutcome){0};
+}
+const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize_native};
 __attribute__((visibility("default"))) int birnam_symbol_borrow_v1(void) { return 1; }
 
 /* Host checks the idle view before work and the retained retirement guard after eviction. */

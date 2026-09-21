@@ -24,7 +24,12 @@ fn main() {
     };
     assert_eq!(outcome, if args[2] == "rebuilt" { ImageLoadOutcome::SourceRecovery } else { ImageLoadOutcome::Mapped });
     // Initialize the fixture through the host before its idle storage check.
-    runtime.stack.load_module(Path::new(&args[4])).unwrap();
+    use birnam_abi::id_protocol::{self as native, Operand};
+    let stack = &runtime.stack;
+    let inputs = [Operand::word((stack.api() as *const birnam_abi::IdApi).addr()),
+        Operand::word(stack.imports().addr()), Operand::word(stack.root_registry().addr()),
+        Operand::word(stack.gc_settings().addr()), Operand::word(stack.finalizers().addr())];
+    assert_eq!(unsafe { stack.load_native(args[4].as_bytes(), &inputs) }.status, native::LOADED);
     let library = std::ffi::CString::new(args[4].as_bytes()).unwrap();
     let api = runtime.stack.api();
     let image = unsafe { (api.dlopen)(library.as_ptr(), 2 | 0x10) };

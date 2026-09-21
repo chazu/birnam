@@ -984,7 +984,6 @@ pub struct LoadedFloor {
     native_stack: NonNull<birnam_abi::native_stack::ApiV1>,
     method_observation: NonNull<birnam_abi::method_observation::ApiV1>,
     vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV2>,
-    namespace_names: NonNull<birnam_abi::namespace_names::ApiV1>,
     namespace_presence: NonNull<birnam_abi::namespace_presence::ApiV1>,
     namespace_import: NonNull<birnam_abi::namespace_import::ApiV1>,
     namespace_export: NonNull<birnam_abi::namespace_export::ApiV1>,
@@ -998,96 +997,6 @@ pub struct LoadedFloor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleError {
     NativeConstruction { stage: String, status: u32, detail: usize },
-    EmbeddedNul,
-    OpenFailed {
-        path: PathBuf,
-    },
-    IntegerDependencyRejected { path: PathBuf },
-    FloatDependencyRejected { path: PathBuf },
-    WordDependencyRejected { path: PathBuf },
-    StringDependencyRejected { path: PathBuf },
-    RangeDependencyRejected { path: PathBuf },
-    VectorDependencyRejected { path: PathBuf },
-    CollectionValueDependencyRejected { path: PathBuf },
-    MapDependencyRejected { path: PathBuf },
-    StringCollectionDependencyRejected { path: PathBuf },
-    PrintingDependencyRejected { path: PathBuf },
-    SystemGcDependencyRejected { path: PathBuf },
-    TextViewDependencyRejected { path: PathBuf },
-    ErrorValueDependencyRejected { path: PathBuf },
-    SystemOutputDependencyRejected { path: PathBuf },
-    SystemInputDependencyRejected { path: PathBuf },
-    EnvironmentDependencyRejected { path: PathBuf },
-    FileIoDependencyRejected { path: PathBuf },
-    BlockLoopDependencyRejected { path: PathBuf },
-    NativeLoaderDependencyRejected { path: PathBuf },
-    SourceLoaderDependencyRejected { path: PathBuf },
-    NamespaceNamesDependencyRejected { path: PathBuf },
-    TraceDependencyRejected { path: PathBuf },
-    CollectDependencyRejected { path: PathBuf },
-    MissingModuleInit {
-        path: PathBuf,
-    },
-    MissingSymbolCompactionControl {
-        path: PathBuf,
-    },
-    MissingSymbolCompatibilityLimit {
-        path: PathBuf,
-        variable: &'static str,
-    },
-    InvalidSymbolCompatibilityLimit {
-        path: PathBuf,
-        variable: &'static str,
-    },
-    SymbolCompatibilityLimitRejected {
-        path: PathBuf,
-    },
-}
-
-const SYMBOL_COUNT_LIMIT_ENV: &str = "BIRNAM_SYMBOL_LIMIT";
-
-const SYMBOL_NAME_BYTES_LIMIT_ENV: &str = "BIRNAM_SYMBOL_BYTES_LIMIT";
-
-type SymbolCompactionControl = unsafe extern "C" fn(c_int, usize, usize) -> c_int;
-
-type SymbolBorrowDeclaration = unsafe extern "C" fn() -> c_int;
-
-
-
-fn parse_positive_limit(value: &OsStr) -> Option<usize> {
-    value
-        .to_str()?
-        .parse::<usize>()
-        .ok()
-        .filter(|limit| *limit != 0)
-}
-
-fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleError> {
-    let count = env::var_os(SYMBOL_COUNT_LIMIT_ENV).ok_or_else(|| {
-        ModuleError::MissingSymbolCompatibilityLimit {
-            path: path.to_path_buf(),
-            variable: SYMBOL_COUNT_LIMIT_ENV,
-        }
-    })?;
-    let bytes = env::var_os(SYMBOL_NAME_BYTES_LIMIT_ENV).ok_or_else(|| {
-        ModuleError::MissingSymbolCompatibilityLimit {
-            path: path.to_path_buf(),
-            variable: SYMBOL_NAME_BYTES_LIMIT_ENV,
-        }
-    })?;
-    let count = parse_positive_limit(&count).ok_or_else(|| {
-        ModuleError::InvalidSymbolCompatibilityLimit {
-            path: path.to_path_buf(),
-            variable: SYMBOL_COUNT_LIMIT_ENV,
-        }
-    })?;
-    let bytes = parse_positive_limit(&bytes).ok_or_else(|| {
-        ModuleError::InvalidSymbolCompatibilityLimit {
-            path: path.to_path_buf(),
-            variable: SYMBOL_NAME_BYTES_LIMIT_ENV,
-        }
-    })?;
-    Ok((count, bytes))
 }
 
 /// Source-backed self-hosted modules. `modules` is intentionally separate:
@@ -2042,18 +1951,10 @@ pub unsafe fn bootstrap_self_hosted(
     Ok(loaded)
 }
 
-/// Process-lifetime native stack owned by the host. Higher rungs are opened
-/// through `IdApi`; successful handles are retained because methods/finalizers
-/// may retain code pointers after `module_init` returns.
+/// Host access to the native stack constructed by Bootstrap through Id.
+/// The common loader retains entered primitive native images for process life.
 pub struct LoadedStack {
     pub floor: LoadedFloor,
-    modules: Vec<NonNull<std::ffi::c_void>>,
-    symbol_compaction_control: Option<SymbolCompactionControl>,
-    all_modules_borrow_safe: bool,
-    integer: *mut birnam_abi::integer::IntegerApiV1,
-    float: *mut birnam_abi::float::FloatApiV1,
-    word: *mut birnam_abi::word::WordApiV1,
-    string: *mut birnam_abi::string::StringApiV1,
     range: *const birnam_abi::range::ApiV6,
     vector: *const birnam_abi::vector::ApiV6,
     map: *const birnam_abi::map::ApiV6,
@@ -2067,7 +1968,6 @@ pub struct LoadedStack {
     environment: *const birnam_abi::environment::ApiV3,
     file_io: *const birnam_abi::file_io::ApiV3,
     block_loop: *const birnam_abi::block_loop::ApiV3,
-    native_loader: *const birnam_abi::native_loader::ApiV12,
     source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
 }
@@ -2098,16 +1998,6 @@ impl LoadedStack {
     pub fn native_stack(&self) -> *const birnam_abi::native_stack::ApiV1 { self.floor.native_stack() }
 
     pub fn new(floor: LoadedFloor) -> Self {
-        let control = unsafe {
-            (floor.api().dlsym)(
-                floor.handle().as_ptr(),
-                c"birnam_id_symbol_compaction_configure_v1".as_ptr().cast(),
-            )
-        };
-        let symbol_compaction_control = NonNull::new(control).map(|control| {
-            // SAFETY: the private floor symbol has this versioned frozen shape.
-            unsafe { std::mem::transmute(control.as_ptr()) }
-        });
         // Bootstrap supplied these completed values to Runtime already. The
         // host's legacy consumers select the same descriptors, without another
         // preparation or module-initialization pass.
@@ -2120,13 +2010,6 @@ impl LoadedStack {
         }
         Self {
             floor,
-            modules: Vec::new(),
-            symbol_compaction_control,
-            all_modules_borrow_safe: true,
-            integer: values.integer,
-            float: values.float,
-            word: values.word,
-            string: values.string,
             range: std::ptr::null(),
             vector: std::ptr::null(),
             map: std::ptr::null(),
@@ -2140,498 +2023,13 @@ impl LoadedStack {
             environment: std::ptr::null(),
             file_io: std::ptr::null(),
             block_loop: std::ptr::null(),
-            native_loader: std::ptr::null(),
             source_loader: std::ptr::null(),
             collection_value: std::ptr::null(),
         }
     }
 
-    pub fn module_count(&self) -> usize {
-        self.modules.len()
-    }
-
     pub fn api(&self) -> &IdApi {
         self.floor.api()
-    }
-
-    fn configure_symbol_borrow(&mut self, path: &Path, handle: NonNull<std::ffi::c_void>) -> Result<(), ModuleError> {
-        let declaration = unsafe {
-            (self.floor.api().dlsym)(handle.as_ptr(), c"birnam_symbol_borrow_v1".as_ptr().cast())
-        };
-        let borrow_safe = NonNull::new(declaration).is_some_and(|declaration| {
-            // SAFETY: a module opting into the versioned marker promises this
-            // exact no-argument declaration signature.
-            let declaration: SymbolBorrowDeclaration =
-                unsafe { std::mem::transmute(declaration.as_ptr()) };
-            unsafe { declaration() == 1 }
-        });
-        let Some(control) = self.symbol_compaction_control else {
-            return Err(ModuleError::MissingSymbolCompactionControl {
-                path: path.to_path_buf(),
-            });
-        };
-        if borrow_safe && self.all_modules_borrow_safe {
-            if unsafe { control(1, 0, 0) } != 1 {
-                return Err(ModuleError::SymbolCompatibilityLimitRejected {
-                    path: path.to_path_buf(),
-                });
-            }
-        } else if !borrow_safe {
-            let (count_limit, name_byte_limit) = symbol_compatibility_limits(path)?;
-            if unsafe { control(0, count_limit, name_byte_limit) } != 1 {
-                return Err(ModuleError::SymbolCompatibilityLimitRejected {
-                    path: path.to_path_buf(),
-                });
-            }
-            self.all_modules_borrow_safe = false;
-        }
-        Ok(())
-    }
-
-    fn attach_float(&mut self, path: &Path, ops: *mut birnam_abi::float::FloatApiV1) -> Result<(), ModuleError> {
-        if (!self.float.is_null() && self.float != ops) || unsafe { birnam_abi::float::attach(ops) } != 1 {
-            return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
-        }
-        let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_float_dependency_v1".as_ptr()) };
-        if dependency.is_null() { return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() }); }
-        let attach: birnam_abi::float::FloatDependencyV1 = unsafe { std::mem::transmute(dependency) };
-        if unsafe { attach(ops) } != 1 { return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() }); }
-        self.float = ops;
-        Ok(())
-    }
-
-    fn attach_word(&mut self, path: &Path, ops: *mut birnam_abi::word::WordApiV1) -> Result<(), ModuleError> {
-        if (!self.word.is_null() && self.word != ops) || unsafe { birnam_abi::word::attach(ops) } != 1 {
-            return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() });
-        }
-        let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_word_dependency_v1".as_ptr()) };
-        if dependency.is_null() { return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() }); }
-        let attach: birnam_abi::word::WordDependencyV1 = unsafe { std::mem::transmute(dependency) };
-        if unsafe { attach(ops) } != 1 { return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() }); }
-        self.word = ops;
-        Ok(())
-    }
-
-    fn attach_string(&mut self, path: &Path, ops: *mut birnam_abi::string::StringApiV1) -> Result<(), ModuleError> {
-        if (!self.string.is_null() && self.string != ops) || unsafe { birnam_abi::string::attach(ops) } != 1 {
-            return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() });
-        }
-        let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_string_dependency_v1".as_ptr()) };
-        if dependency.is_null() { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
-        let attach: birnam_abi::string::StringDependencyV1 = unsafe { std::mem::transmute(dependency) };
-        if unsafe { attach(ops) } != 1 { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
-        self.string = ops;
-        Ok(())
-    }
-
-    /// Load one higher rung through the selected floor's dynamic-loader API.
-    /// No host-side `dlopen` is used after the floor has initialized.
-    fn load_module_handle(
-        &mut self,
-        path: &Path,
-    ) -> Result<NonNull<std::ffi::c_void>, ModuleError> {
-        let path_bytes = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
-        // SAFETY: the floor API is process-owned and the C string lives across
-        // this synchronous call.
-        let handle = unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) };
-        let Some(handle) = NonNull::new(handle) else {
-            return Err(ModuleError::OpenFailed {
-                path: path.to_path_buf(),
-            });
-        };
-        let init_name = c"module_init";
-        // SAFETY: the handle came from the selected floor's successful dlopen.
-        let init = unsafe { (self.floor.api().dlsym)(handle.as_ptr(), init_name.as_ptr().cast()) };
-        let Some(init) = NonNull::new(init) else {
-            return Err(ModuleError::MissingModuleInit {
-                path: path.to_path_buf(),
-            });
-        };
-        self.configure_symbol_borrow(path, handle)?;
-        let dependency = unsafe {
-            (self.api().dlsym)(
-                handle.as_ptr(),
-                c"birnam_namespace_names_dependency_v1".as_ptr(),
-            )
-        };
-        if !dependency.is_null() {
-            let attach: birnam_abi::namespace_names::DependencyV1 =
-                unsafe { std::mem::transmute(dependency) };
-            if unsafe { attach(self.floor.namespace_names.as_ptr()) } != 1 {
-                return Err(ModuleError::NamespaceNamesDependencyRejected {
-                    path: path.to_path_buf(),
-                });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_integer_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::integer::IntegerDependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.integer.is_null() || unsafe { attach(self.integer) } != 1 {
-                return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_float_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::float::FloatDependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.float.is_null() || unsafe { attach(self.float) } != 1 {
-                return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::string::StringDependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.string.is_null() || unsafe { attach(self.string) } != 1 {
-                return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_dependency_v6".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::range::DependencyV6 = unsafe { std::mem::transmute(dependency) };
-            if self.range.is_null() || unsafe { attach(self.range) } != 1 {
-                return Err(ModuleError::RangeDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_vector_dependency_v6".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::vector::DependencyV6 = unsafe { std::mem::transmute(dependency) };
-            if self.vector.is_null() || unsafe { attach(self.vector) } != 1 {
-                return Err(ModuleError::VectorDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_collection_value_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::collection_value::DependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.collection_value.is_null() || unsafe { attach(self.collection_value) } != 1 {
-                return Err(ModuleError::CollectionValueDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_error_value_dependency_v3".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::error_value::DependencyV3 = unsafe { std::mem::transmute(dependency) };
-            if self.error_value.is_null() || unsafe { attach(self.error_value) } != 1 {
-                return Err(ModuleError::ErrorValueDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_text_view_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::text_view::DependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.text_view.is_null() || unsafe { attach(self.text_view) } != 1 {
-                return Err(ModuleError::TextViewDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_output_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::system_output::DependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.system_output.is_null() || unsafe { attach(self.system_output) } != 1 {
-                return Err(ModuleError::SystemOutputDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_input_dependency_v3".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::system_input::DependencyV3 = unsafe { std::mem::transmute(dependency) };
-            if self.system_input.is_null() || unsafe { attach(self.system_input) } != 1 {
-                return Err(ModuleError::SystemInputDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_environment_dependency_v3".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::environment::DependencyV3 = unsafe { std::mem::transmute(dependency) };
-            if self.environment.is_null() || unsafe { attach(self.environment) } != 1 {
-                return Err(ModuleError::EnvironmentDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_file_io_dependency_v3".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::file_io::DependencyV3 = unsafe { std::mem::transmute(dependency) };
-            if self.file_io.is_null() || unsafe { attach(self.file_io) } != 1 {
-                return Err(ModuleError::FileIoDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_block_loop_dependency_v3".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::block_loop::DependencyV3 = unsafe { std::mem::transmute(dependency) };
-            if self.block_loop.is_null() || unsafe { attach(self.block_loop) } != 1 {
-                return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_dependency_v12".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::native_loader::DependencyV12 = unsafe { std::mem::transmute(dependency) };
-            if self.native_loader.is_null() || unsafe { attach(self.native_loader) } != 1 {
-                return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_source_loader_dependency_v3".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::source_loader::DependencyV3 = unsafe { std::mem::transmute(dependency) };
-            if self.source_loader.is_null() || unsafe { attach(self.source_loader) } != 1 {
-                return Err(ModuleError::SourceLoaderDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_dependency_v2".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::system_gc::DependencyV2 = unsafe { std::mem::transmute(dependency) };
-            if self.system_gc.is_null() || unsafe { attach(self.system_gc) } != 1 {
-                return Err(ModuleError::SystemGcDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_printing_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::printing::DependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.printing.is_null() || unsafe { attach(self.printing) } != 1 {
-                return Err(ModuleError::PrintingDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_collection_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::string_collection::DependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.string_collection.is_null() || unsafe { attach(self.string_collection) } != 1 {
-                return Err(ModuleError::StringCollectionDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_map_dependency_v6".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::map::DependencyV6 = unsafe { std::mem::transmute(dependency) };
-            if self.map.is_null() || unsafe { attach(self.map) } != 1 {
-                return Err(ModuleError::MapDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let word_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_provider_v1".as_ptr()) };
-        let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_dependency_v1".as_ptr()) };
-        if !dependency.is_null() {
-            let attach: birnam_abi::word::WordDependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if self.word.is_null() || unsafe { attach(self.word) } != 1 {
-                return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        // SAFETY: module_init is the frozen higher-rung ABI and the floor table
-        // remains live for the module's initialization call.
-        let init: birnam_abi::ModuleInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
-        unsafe {
-            init(
-                self.floor.api() as *const IdApi as *mut IdApi,
-                std::ptr::null_mut(),
-                self.floor.presence(),
-                self.floor.imports(),
-                self.floor.exports(),
-                self.floor.vtables(),
-                self.floor.observation(),
-                self.floor.root_registry(),
-                self.floor.gc_settings(),
-                self.floor.payload_layout(),
-                self.floor.trace_hooks(),
-                self.floor.finalizers(),
-            )
-        };
-        let range_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_range_provider_v6".as_ptr()) };
-        if !range_provider.is_null() {
-            let provide: birnam_abi::range::ProviderV6 = unsafe { std::mem::transmute(range_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::range::attach(provided) } != 1 {
-                return Err(ModuleError::RangeDependencyRejected { path: path.to_path_buf() });
-            }
-            self.range = provided;
-        }
-        let vector_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_vector_provider_v6".as_ptr()) };
-        if !vector_provider.is_null() {
-            let provide: birnam_abi::vector::ProviderV6 = unsafe { std::mem::transmute(vector_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::vector::attach(provided) } != 1 {
-                return Err(ModuleError::VectorDependencyRejected { path: path.to_path_buf() });
-            }
-            self.vector = provided;
-        }
-        let collection_value_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_collection_value_provider_v1".as_ptr()) };
-        if !collection_value_provider.is_null() {
-            let provide: birnam_abi::collection_value::ProviderV1 = unsafe { std::mem::transmute(collection_value_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::collection_value::attach(provided) } != 1 {
-                return Err(ModuleError::CollectionValueDependencyRejected { path: path.to_path_buf() });
-            }
-            self.collection_value = provided;
-        }
-        let error_value_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_error_value_provider_v3".as_ptr()) };
-        if !error_value_provider.is_null() {
-            let provide: birnam_abi::error_value::ProviderV3 = unsafe { std::mem::transmute(error_value_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::error_value::attach(provided) } != 1 {
-                return Err(ModuleError::ErrorValueDependencyRejected { path: path.to_path_buf() });
-            }
-            self.error_value = provided;
-        }
-        let text_view_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_text_view_provider_v1".as_ptr()) };
-        if !text_view_provider.is_null() {
-            let provide: birnam_abi::text_view::ProviderV1 = unsafe { std::mem::transmute(text_view_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::text_view::attach(provided) } != 1 {
-                return Err(ModuleError::TextViewDependencyRejected { path: path.to_path_buf() });
-            }
-            self.text_view = provided;
-        }
-        let system_output_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_output_provider_v1".as_ptr()) };
-        if !system_output_provider.is_null() {
-            let provide: birnam_abi::system_output::ProviderV1 = unsafe { std::mem::transmute(system_output_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::system_output::attach(provided) } != 1 {
-                return Err(ModuleError::SystemOutputDependencyRejected { path: path.to_path_buf() });
-            }
-            self.system_output = provided;
-        }
-        let system_input_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_input_provider_v3".as_ptr()) };
-        if !system_input_provider.is_null() {
-            let provide: birnam_abi::system_input::ProviderV3 = unsafe { std::mem::transmute(system_input_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::system_input::attach(provided) } != 1 {
-                return Err(ModuleError::SystemInputDependencyRejected { path: path.to_path_buf() });
-            }
-            self.system_input = provided;
-        }
-        let environment_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_environment_provider_v3".as_ptr()) };
-        if !environment_provider.is_null() {
-            let provide: birnam_abi::environment::ProviderV3 = unsafe { std::mem::transmute(environment_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::environment::attach(provided) } != 1 {
-                return Err(ModuleError::EnvironmentDependencyRejected { path: path.to_path_buf() });
-            }
-            self.environment = provided;
-        }
-        let file_io_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_file_io_provider_v3".as_ptr()) };
-        if !file_io_provider.is_null() {
-            let provide: birnam_abi::file_io::ProviderV3 = unsafe { std::mem::transmute(file_io_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::file_io::attach(provided) } != 1 {
-                return Err(ModuleError::FileIoDependencyRejected { path: path.to_path_buf() });
-            }
-            self.file_io = provided;
-        }
-        let block_loop_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_block_loop_provider_v3".as_ptr()) };
-        if !block_loop_provider.is_null() {
-            let provide: birnam_abi::block_loop::ProviderV3 = unsafe { std::mem::transmute(block_loop_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::block_loop::attach(provided) } != 1 {
-                return Err(ModuleError::BlockLoopDependencyRejected { path: path.to_path_buf() });
-            }
-            self.block_loop = provided;
-        }
-        let native_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_native_loader_provider_v12".as_ptr()) };
-        if !native_loader_provider.is_null() {
-            let provide: birnam_abi::native_loader::ProviderV12 = unsafe { std::mem::transmute(native_loader_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::native_loader::attach(provided) } != 1 {
-                return Err(ModuleError::NativeLoaderDependencyRejected { path: path.to_path_buf() });
-            }
-            self.native_loader = provided;
-        }
-        let source_loader_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_source_loader_provider_v3".as_ptr()) };
-        if !source_loader_provider.is_null() {
-            let provide: birnam_abi::source_loader::ProviderV3 = unsafe { std::mem::transmute(source_loader_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::source_loader::attach(provided) } != 1 {
-                return Err(ModuleError::SourceLoaderDependencyRejected { path: path.to_path_buf() });
-            }
-            self.source_loader = provided;
-        }
-        let system_gc_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_system_gc_provider_v2".as_ptr()) };
-        if !system_gc_provider.is_null() {
-            let provide: birnam_abi::system_gc::ProviderV2 = unsafe { std::mem::transmute(system_gc_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::system_gc::attach(provided) } != 1 {
-                return Err(ModuleError::SystemGcDependencyRejected { path: path.to_path_buf() });
-            }
-            self.system_gc = provided;
-        }
-        let printing_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_printing_provider_v1".as_ptr()) };
-        if !printing_provider.is_null() {
-            let provide: birnam_abi::printing::ProviderV1 = unsafe { std::mem::transmute(printing_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::printing::attach(provided) } != 1 {
-                return Err(ModuleError::PrintingDependencyRejected { path: path.to_path_buf() });
-            }
-            self.printing = provided;
-        }
-        let string_collection_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_collection_provider_v1".as_ptr()) };
-        if !string_collection_provider.is_null() {
-            let provide: birnam_abi::string_collection::ProviderV1 = unsafe { std::mem::transmute(string_collection_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::string_collection::attach(provided) } != 1 {
-                return Err(ModuleError::StringCollectionDependencyRejected { path: path.to_path_buf() });
-            }
-            self.string_collection = provided;
-        }
-        let map_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_map_provider_v6".as_ptr()) };
-        if !map_provider.is_null() {
-            let provide: birnam_abi::map::ProviderV6 = unsafe { std::mem::transmute(map_provider) };
-            let provided = unsafe { provide() };
-            if unsafe { birnam_abi::map::attach(provided) } != 1 {
-                return Err(ModuleError::MapDependencyRejected { path: path.to_path_buf() });
-            }
-            self.map = provided;
-        }
-        let provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_integer_provider_v1".as_ptr()) };
-        if !provider.is_null() {
-            let provide: unsafe extern "C" fn() -> *mut birnam_abi::integer::IntegerApiV1 = unsafe { std::mem::transmute(provider) };
-            let integer = unsafe { provide() };
-            if self.integer != integer || unsafe { birnam_abi::integer::attach(integer) } != 1 {
-                return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() });
-            }
-            let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_integer_dependency_v1".as_ptr()) };
-            if dependency.is_null() { return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() }); }
-            let attach: birnam_abi::integer::IntegerDependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if unsafe { attach(integer) } != 1 { return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() }); }
-            self.integer = integer;
-        }
-        let provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_float_provider_v1".as_ptr()) };
-        if !provider.is_null() {
-            let provide: birnam_abi::float::FloatProviderV1 = unsafe { std::mem::transmute(provider) };
-            self.attach_float(path, unsafe { provide() })?;
-        }
-        let string_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_provider_v1".as_ptr()) };
-        if !string_provider.is_null() {
-            let provide: birnam_abi::string::StringProviderV1 = unsafe { std::mem::transmute(string_provider) };
-            self.attach_string(path, unsafe { provide() })?;
-        }
-        if !word_provider.is_null() {
-            let provide: birnam_abi::word::WordProviderV1 = unsafe { std::mem::transmute(word_provider) };
-            self.attach_word(path, unsafe { provide() })?;
-        }
-        let provider = unsafe {
-            (self.api().dlsym)(handle.as_ptr(), c"birnam_trace_provider_v1".as_ptr())
-        };
-        if !provider.is_null() {
-            let provide: birnam_abi::trace_live::ProviderV1 = unsafe { std::mem::transmute(provider) };
-            let dependency = unsafe {
-                (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_trace_dependency_v1".as_ptr())
-            };
-            if dependency.is_null() {
-                return Err(ModuleError::TraceDependencyRejected { path: path.to_path_buf() });
-            }
-            let attach: birnam_abi::trace_live::DependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if unsafe { attach(provide()) } != 1 {
-                return Err(ModuleError::TraceDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        let provider = unsafe {
-            (self.api().dlsym)(handle.as_ptr(), c"birnam_collect_provider_v1".as_ptr())
-        };
-        if !provider.is_null() {
-            let provide: birnam_abi::collect::ProviderV1 = unsafe { std::mem::transmute(provider) };
-            let dependency = unsafe {
-                (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_collect_dependency_v1".as_ptr())
-            };
-            if dependency.is_null() {
-                return Err(ModuleError::CollectDependencyRejected { path: path.to_path_buf() });
-            }
-            let attach: birnam_abi::collect::DependencyV1 = unsafe { std::mem::transmute(dependency) };
-            if unsafe { attach(provide()) } != 1 {
-                return Err(ModuleError::CollectDependencyRejected { path: path.to_path_buf() });
-            }
-        }
-        self.modules.push(handle);
-        Ok(handle)
-    }
-
-    pub fn load_module(&mut self, path: &Path) -> Result<(), ModuleError> {
-        self.load_module_handle(path).map(|_| ())
     }
 
     fn construct(&self, stage: &[u8]) -> Result<birnam_abi::id_protocol::Operand, ModuleError> {
@@ -2687,8 +2085,7 @@ impl LoadedStack {
         assert_eq!(unsafe { birnam_abi::environment::attach(self.environment) }, 1);
         self.file_io = self.construction_word(b"fileIo")? as _;
         assert_eq!(unsafe { birnam_abi::file_io::attach(self.file_io) }, 1);
-        self.native_loader = self.construction_word(b"nativeLoader")? as _;
-        assert_eq!(unsafe { birnam_abi::native_loader::attach(self.native_loader) }, 1);
+        self.construct(b"nativeLoader")?;
         Ok(())
     }
     pub fn initialize_system(&mut self) -> Result<(), ModuleError> {
@@ -3090,27 +2487,6 @@ impl InitialFloor {
         let runtime_name = CString::new(path_bytes(&runtime_path)).map_err(|_| FloorError::EmbeddedNul)?;
         let handle = NonNull::new(unsafe { system_dlopen(runtime_name.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
             .ok_or(FloorError::OpenFailed)?;
-        let names_provider = unsafe {
-            system_dlsym(
-                handle.as_ptr(),
-                c"birnam_namespace_names_provider_v1".as_ptr(),
-            )
-        };
-        if names_provider.is_null() {
-            return Err(FloorError::Namespace {
-                path: namespace_path,
-                reason: "missing names capability",
-            });
-        }
-        let provide: birnam_abi::namespace_names::ProviderV1 =
-            unsafe { std::mem::transmute(names_provider) };
-        let names = unsafe { provide() };
-        if !unsafe { birnam_abi::namespace_names::valid(names) } {
-            return Err(FloorError::Namespace {
-                path: namespace_path,
-                reason: "invalid names capability",
-            });
-        }
         let presence_provider = unsafe {
             system_dlsym(handle.as_ptr(), c"birnam_namespace_presence_provider_v1".as_ptr())
         };
@@ -3231,7 +2607,6 @@ impl InitialFloor {
             namespace_export: NonNull::new(export).unwrap(),
             namespace_import: NonNull::new(import).unwrap(),
             namespace_presence: NonNull::new(presence).unwrap(),
-            namespace_names: NonNull::new(names).unwrap(),
             handle,
             api,
             _owner_thread: PhantomData,
@@ -3315,14 +2690,6 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    #[test]
-    fn compatibility_symbol_limits_require_positive_machine_word_values() {
-        assert_eq!(parse_positive_limit(OsStr::new("1")), Some(1));
-        assert_eq!(parse_positive_limit(OsStr::new("1048576")), Some(1_048_576));
-        assert_eq!(parse_positive_limit(OsStr::new("0")), None);
-        assert_eq!(parse_positive_limit(OsStr::new("-1")), None);
-        assert_eq!(parse_positive_limit(OsStr::new("unbounded")), None);
-    }
 
     fn artifact_field(value: &[u8], output: &mut Vec<u8>) {
         output.extend_from_slice(&(value.len() as u32).to_le_bytes());

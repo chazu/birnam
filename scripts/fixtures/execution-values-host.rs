@@ -36,7 +36,6 @@ fn main() {
         std::fs::rename(&path, path.with_extension("later")).unwrap();
     }
     stack.initialize_control().unwrap();
-    assert_eq!(stack.module_count(), 0, "control used legacy module initialization");
     let mut control_arguments = arguments;
     control_arguments[6] = Operand::word(2);
     assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &control_arguments) }.status, native::LOADED);
@@ -48,10 +47,10 @@ fn main() {
         }
         unsafe {
             std::env::set_var("BIRNAM_83_SYSTEM_VALUE", "native-system");
+            std::env::set_var("BIRNAM_83_NATIVE_FIXTURES", &args[3]);
             std::env::set_var("BIRNAM_83_SYSTEM_FILE", prefix.join("system-io.txt"));
         }
         stack.initialize_system_io().unwrap();
-        assert_eq!(stack.module_count(), 0, "System IO used legacy initialization");
         let system = unsafe { birnam_abi::namespace_import::import(stack.imports(), c"System".as_ptr()) };
         control_arguments[6] = Operand::word(6);
         assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &control_arguments) }.status, native::LOADED);
@@ -67,21 +66,18 @@ fn main() {
     let store_path = prefix.join("libbirnam_store.dylib");
     std::fs::rename(&store_path, store_path.with_extension("later")).unwrap();
     stack.initialize_collections().unwrap();
-    assert_eq!(stack.module_count(), 0, "collections used legacy initialization");
     let mut collection_arguments = arguments;
     collection_arguments[6] = Operand::word(3);
     assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &collection_arguments) }.status, native::LOADED);
     println!("complete native collections work before Store and all parser/compiler libraries");
     std::fs::rename(store_path.with_extension("later"), &store_path).unwrap();
     stack.initialize_store().unwrap();
-    assert_eq!(stack.module_count(), 0, "Store used legacy initialization");
     if args.len() > 4 {
         for library in ["id_artifact", "id_peg", "id_lang"] {
             let file = format!("libbirnam_{library}.dylib");
             std::fs::copy(Path::new(&args[4]).join(&file), prefix.join(&file)).unwrap();
         }
         stack.initialize_parsers().unwrap();
-        assert_eq!(stack.module_count(), 0, "parsers used legacy initialization");
         let mut parser_arguments = arguments;
         parser_arguments[6] = Operand::word(4);
         assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) }.status, native::LOADED);
@@ -98,7 +94,6 @@ fn main() {
             std::fs::rename(prefix.join("libbirnam_id_tcc.dylib"), &selected_tcc).unwrap();
             unsafe { std::env::set_var("BIRNAM_TCC_DYLIB", &selected_tcc); }
             stack.initialize_compiler().unwrap();
-            assert_eq!(stack.module_count(), 0, "compiler used legacy initialization");
             parser_arguments[6] = Operand::word(5);
             assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) }.status, native::LOADED);
             stack.initialize_compiler().unwrap();
@@ -108,12 +103,10 @@ fn main() {
                 std::fs::copy(Path::new(&args[4]).join(&file), prefix.join(&file)).unwrap();
             }
             stack.initialize_application_base().unwrap();
-            assert_eq!(stack.module_count(), 0, "application base used legacy initialization");
             parser_arguments[6] = Operand::word(7);
             assert_eq!(unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) }.status, native::LOADED);
             std::fs::copy(Path::new(&args[4]).join("libbirnam_id_image.dylib"), prefix.join("libbirnam_id_image.dylib")).unwrap();
             stack.load_script_modules(&resources).unwrap();
-            assert_eq!(stack.module_count(), 0, "native startup used legacy initialization");
             parser_arguments[6] = Operand::word(8);
             let result = unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &parser_arguments) };
             assert_eq!(result.status, native::LOADED);
@@ -130,14 +123,13 @@ fn main() {
     }
     // dyld can reuse an already mapped image even after its file was moved.
     // Missing native parsers stop construction before any legacy entry runs.
-    assert_eq!(stack.module_count(), 0, "completed lower modules initialized again");
     unsafe { birnam_abi::gc_settings::set_precise(stack.gc_settings(), 1) };
     let mut arguments = arguments;
     arguments[6] = Operand::word(1);
     let result = unsafe { stack.load_native(Path::new(&args[2]).as_os_str().as_bytes(), &arguments) };
     assert_eq!(result.status, native::LOADED);
     let original = result.value.as_object().unwrap();
-    stack.load_module(&prefix.join("libbirnam_block_loop.dylib")).unwrap();
+    stack.initialize_control().unwrap();
     assert_eq!(unsafe { birnam_abi::namespace_import::import(stack.imports(), c"Block".as_ptr()) }, original);
     let scratch = Path::new(&args[3]);
     let path = std::ffi::CString::new(prefix.join("libbirnam_error_value.dylib").as_os_str().as_bytes()).unwrap();

@@ -200,7 +200,7 @@ Word(namespace export), Word(root owner v1)` and returns the rooted System
 object. It publishes no IO, GC or source-loading method before its implementer
 is constructed. In the following table `S` means `Word(Runtime), Word(root
 owner v1), Object(System)`. Each entry installs its methods before returning
-its existing callable descriptor as a Word; repeated construction preserves the
+its existing callable descriptor as a Word (Native Loader returns System); repeated construction preserves the
 same Runtime and System selection. Constructor selectors have temporary roots.
 
 | Library | Operands after Id | Operations available on return |
@@ -211,18 +211,17 @@ same Runtime and System selection. Constructor selectors have temporary roots.
 | System Input | S, Word(namespace presence), Word(namespace import), Word(String), Word(Error helpers) | `readLine` |
 | Environment | S, Word(namespace presence), Word(namespace import), Word(String), Word(Error helpers), Word(Text View) | `getEnv:` |
 | File IO | Same as Environment | `readFile:`, `writeFile:contents:` |
-| Native Loader | S, Word(namespace presence), Word(namespace import), Word(namespace export), Word(vtable enumeration), Word(method observation), Word(GC settings), Word(payload layouts), Word(trace hooks), Word(finalizers), Word(Error helpers), Word(Text View) | Existing `loadModule:` and its errors |
+| Native Loader | S, Word(namespace presence), Word(namespace import), Word(Integer), Word(Error helpers), Word(Text View) | `loadModule:` and `loadModule:arguments:` through Id |
 | Source Loader | S, Word(namespace presence), Word(namespace import), Word(Integer), Word(String), Word(Error helpers), Word(Text View), Object(Codegen) | `load:` and its errors |
 
 `systemBase` returns System; `systemIo` completes all entries except Source
 Loader and returns Unit. It needs no collections, Store, parsers or compiler.
 `system` also completes Source Loader and returns System. Named stages
 `textView`, `systemGc`, `systemOutput`, `systemInput`, `environment`, `fileIo`,
-`nativeLoader` and `sourceLoader` return their completed descriptors.
-The host delegates to this sequence and retains descriptors for remaining
-legacy native consumers. The language-facing `loadModule:` implementation still
-uses the old module ABI; migrating that consumer and removing its compatibility
-descriptors remain required by Design 83.
+and `sourceLoader` return their completed descriptors; `nativeLoader` returns System.
+The host delegates to this sequence. Native Loader supplies only the explicit
+Object operands selected by its caller to Id; it has no aggregate initializer
+or provider/installer export. See [the language contract](../../native-loading.md).
 
 
 The application constructors complete the native stack. `F` has the same six

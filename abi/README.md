@@ -26,11 +26,11 @@ stack-anchor ownership into [Native Stack](native-stack-v1.md), exposing its
 setter directly to the host. Design [81BN](../docs/design/81bn-production-finalizers.md)
 moves native finalizer registration and inline callback construction into
 [Finalizers](finalizers-v1.md).
-Initializers receive `(api, state, presence, imports, exports, vtables,
-observation, roots, settings, layouts, hooks, finalizers)`. [Native Loader v12](native-loader-v12.md)
-forwards the matching finalizer selection. Legacy String preparation is v4;
-Float/Word preparation and Range/Vector/Map installation are v6. Native
-consumers require rebuilding; image encoding is unchanged.
+Production native modules use Id's common descriptor and explicit constructor
+operands; the host and System no longer call the aggregate `module_init` ABI.
+[System native loading](native-loading.md) exposes that same protocol to language
+callers. Remaining old module exports and their direct test clients are migration
+work, not a second supported production loader.
 [IdApi v20 manifest](idapi-v20.json) and the
 [C fixture](fixtures/idapi-v20/README.md) describe the current boundary.
 
@@ -42,7 +42,7 @@ Design 81BG removes `vtableCount` and `vtableAt` into [Object Model enumeration]
 Design 81BF removes `exportObj` into the explicit [Namespace export capability](namespace-export-v1.md).
 Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
 following 81BB's [presence capability](namespace-presence-v1.md).
-Native initialization takes `(IdApi *, void *prior_state, const NamespacePresenceV1 *, const NamespaceImportV1 *, const NamespaceExportV1 *, const VtableEnumerationV2 *, const MethodObservationV1 *, const RootRegistryV1 *, const GcSettingsV1 *, const PayloadLayoutV1 *, const TraceHooksV1 *, const FinalizersV1 *)`.
+The earlier aggregate initialization signature is retained only by unmigrated native exports and fixtures.
 All native modules must be rebuilt for this signature and IdApi v20.
 After `id_init`, the selected floor exposes `birnam_namespace_presence_provider_v1`,
 `birnam_namespace_import_provider_v1` and `birnam_namespace_export_provider_v1`. The host and Native Loader pass these
@@ -234,10 +234,9 @@ initialization. Authored stackless control still replaces them later. The
 [export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
 encoding.
 
-[Native Loader v12](native-loader-v12.md) owns System loadModule: through a 24-byte
-installer, preserving the existing direct path without host dependency admission.
-The [export inventory](rust-native-loader-dylib-v1.json) adds no IdApi fields,
-objects or image encoding.
+[Native loading through System](native-loading.md) invokes Id with explicit Object
+arguments and exposes owned language results. The [export inventory](rust-native-loader-dylib-v1.json)
+contains only its common module descriptor. Native Loader v12 is retired.
 
 [Source Loader v3](source-loader-v3.md) owns System load: through a 24-byte
 installer. Integer, String, Text View and Error Value attachments move with their

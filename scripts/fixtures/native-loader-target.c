@@ -1,34 +1,41 @@
-#include "idapi_v20.h"
+#include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include <assert.h>
-#include <dlfcn.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #ifdef NATIVE_LOADER_NO_INIT
 int not_a_module(void) { return 1; }
 #else
-#ifndef EXPECT_NATIVE_LOADER_LIBRARY
-#define EXPECT_NATIVE_LOADER_LIBRARY "libbirnam_native_loader.dylib"
-#endif
-static IdApi *first_api;
+static BirnamProtocol carrier;
 static unsigned calls;
-static Oop count_loads(Oop self,const Oop *args,size_t count) {
-    (void)self;assert(!args && !count);char value[64];snprintf(value,sizeof(value),"native-load-%u",calls);
-    return first_api->intern(value);
+static BirnamOutcome intern(const char *name) {
+    BirnamOperand argument={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)name,strlen(name)}};
+    return carrier.message(carrier.context,carrier.receiver,carrier.intern,&argument,1);
 }
-/* The direct System loader must not perform host dependency admission. */
-int birnam_native_loader_dependency_v12(const void *provider) {
-    (void)provider;assert(!"direct loader attached dependencies");return 0;
+static BirnamOutcome send(BirnamObject receiver,const char *selector,const BirnamOperand *args,size_t count) {
+    BirnamOutcome symbol=intern(selector);assert(symbol.status==BIRNAM_LOADED && symbol.value.kind==BIRNAM_OBJECT);
+    return carrier.message(carrier.context,receiver,symbol.value.data.object,args,count);
 }
-void *module_init(IdApi *api,void *state,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizer_cap) { (void)finalizer_cap; (void)hooks; (void)layouts; (void)settings; (void)root_registry; (void)observation; (void)vtables;
-    (void)exports;
-    (void)presence;
-    assert(api && !state);if(first_api) assert(api==first_api);else first_api=api;
-    Oop type=namespace_import_v1(imports,"SystemVt"),selector=api->intern("loadModule:");
-    Method method=(Method)api->send(type,api->intern("lookup"),&selector,1);Dl_info owner;
-    assert(method && dladdr((const void *)method,&owner));const char *base=strrchr(owner.dli_fname,'/');
-    assert(base && !strcmp(base+1,EXPECT_NATIVE_LOADER_LIBRARY));
-    api->gc_collect();calls++;api->method(type,api->intern("nativeLoaderCount"),count_loads);
-    return (void *)(uintptr_t)0x1234;
+static BirnamOutcome count_loads(void *context,BirnamObject self,const BirnamOperand *args,size_t count) {
+    (void)context;(void)self;(void)args;assert(!count);
+    char value[64];snprintf(value,sizeof(value),"native-load-%u",calls);return intern(value);
 }
-int birnam_symbol_borrow_v1(void) { return 1; }
+/* Neither dependency discovery nor the retired initializer may be invoked. */
+int birnam_native_loader_dependency_v12(const void *provider) { (void)provider;abort(); }
+void *module_init(void) { abort(); }
+static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
+    assert(id && count==1 && args[0].kind==BIRNAM_OBJECT);
+    if(calls) assert(id->context==carrier.context);
+    carrier=*id;
+    BirnamObject system=args[0].data.object;
+    BirnamOutcome behavior=send(carrier.receiver,"behaviorOf:",args,1);
+    assert(behavior.status==BIRNAM_LOADED && behavior.value.kind==BIRNAM_OBJECT);
+    assert(send(system,"gc",NULL,0).status==BIRNAM_LOADED);
+    calls++;
+    BirnamOutcome selector=intern("nativeLoaderCount");assert(selector.status==BIRNAM_LOADED);
+    BirnamOperand install[]={selector.value,{.kind=BIRNAM_NATIVE_ENTRY,.data.entry={count_loads,NULL}}};
+    assert(send(behavior.value.data.object,"addMethod",install,2).status==BIRNAM_LOADED);
+    return (BirnamOutcome){0};
+}
+const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize};
 #endif

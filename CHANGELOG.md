@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- System native loading now uses Id's common descriptor message. Explicit
+  `loadModule:arguments:` supplies only caller-selected Objects; the twelve-service
+  initializer bundle and Native Loader provider/installer exports are removed.
+  The obsolete host loader and its service discovery are also removed.
+
+
 - Use one checked message-send path for generated code, the host and native
   modules. Native reflection now returns owned Methods or nil, and message-based
   method installation rejects raw function addresses. TCC and Portable Code use

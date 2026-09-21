@@ -123,7 +123,7 @@ cmp "$scratch/expected.out" "$scratch/baked.out"
 rg -Fq '/libbirnam_storage.dylib' "$scratch/baked.err"
 cache_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 mise exec -- cargo build --offline --locked -p birnam-host
-mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/deferred-index-image-host.rs --extern "birnam_host=$cache_target/debug/libbirnam_host.rlib" -L "dependency=$cache_target/debug/deps" -o "$scratch/image-host"
+mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/deferred-index-image-host.rs --extern "birnam_host=$cache_target/debug/libbirnam_host.rlib" --extern "birnam_abi=$cache_target/debug/libbirnam_abi.rlib" -L "dependency=$cache_target/debug/deps" -o "$scratch/image-host"
 for mode in mapped rebuilt baked; do
   artifact="$scratch/app.image"
   if [[ $mode == baked ]]; then artifact="$scratch/app"; fi

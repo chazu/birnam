@@ -1133,17 +1133,11 @@
         "system",
         "runtime.namespacePresence",
         "runtime.namespaceImport",
-        "runtime.namespaceExport",
-        "runtime.vtables",
-        "runtime.methodObservation",
-        "gc_settings",
-        "payload_layout",
-        "trace_hooks",
-        "finalizers",
+        "integer",
         "error_value",
         "text_view"
       ],
-      "operations": "Existing System loadModule:; its legacy loaded-module ABI is still a consumer-migration item"
+      "operations": "System loadModule: and loadModule:arguments: through Id; explicit Object operands, Object or Unit result"
     },
     {
       "name": "source_loader",

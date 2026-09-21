@@ -27,6 +27,40 @@ static Oop visit(Oop receiver,const Oop *args,size_t count) { (void)receiver; as
 static Oop condition(Oop receiver,const Oop *args,size_t count) { (void)receiver;(void)args; assert(!count);return calls<limit?api->true_obj:api->false_obj; }
 static Oop body(Oop receiver,const Oop *args,size_t count) { (void)receiver;(void)args;assert(!count);calls++;return api->nil_obj; }
 static Oop bad_condition(Oop receiver,const Oop *args,size_t count) { (void)receiver;(void)args;assert(!count);return api->nil_obj; }
+static Oop module_argument_count(Oop self,const Oop *args,size_t count) {
+    (void)self; (void)args; assert(!count); return integer.make(integer.context,2);
+}
+static Oop module_argument_at(Oop self,const Oop *args,size_t count) {
+    (void)self; assert(count==1); int64_t index=number(args[0]); assert(index==0 || index==1);
+    api->gc_collect();
+    /* No fixture root: the loader must retain each result across the next send. */
+    return string.make(string.context,(const uint8_t *)(index?"second":"first"),index?6:5);
+}
+static void check_native_loading(Oop system) {
+    size_t saved=root_count;
+    char buffer[4096];
+    snprintf(buffer,sizeof(buffer),"%s/system-native-0.dylib",getenv("BIRNAM_83_NATIVE_FIXTURES"));
+    Oop path=text(buffer);
+    assert(send1(system,"loadModule:",path)==system);
+    Oop behavior=keep(api->proto(named("ObjectVt")));
+    api->method(behavior,api->intern("size"),module_argument_count);
+    api->method(behavior,api->intern("at:"),module_argument_at);
+    Oop sequence=keep(api->alloc(behavior,0));
+    Oop arguments[]={path,sequence};
+    assert(send1(system,"preciseGc:",api->true_obj)==system);
+    Oop result=keep(api->send(system,api->intern("loadModule:arguments:"),arguments,2));
+    size_t length=0; const uint8_t *bytes=string.bytes(string.context,result,&length);
+    assert(length==5 && !memcmp(bytes,"first",5));
+    api->method(behavior,api->intern("size"),body);
+    Oop error=keep(api->send(system,api->intern("loadModule:arguments:"),arguments,2));
+    assert(send0(error,"kind")==api->intern("typeError"));
+    for(int mode=1;mode<=4;mode++) {
+        snprintf(buffer,sizeof(buffer),"%s/system-native-%d.dylib",getenv("BIRNAM_83_NATIVE_FIXTURES"),mode);
+        error=keep(send1(system,"loadModule:",text(buffer)));
+        assert(send0(error,"kind")==api->intern(mode==1?"moduleError":mode==2?"typeError":"notAModule"));
+    }
+    root_count=saved;
+}
 static void printed(Oop value,const char *expected) {
     Oop result=send0(value,"printString");size_t size=0;
     const uint8_t *bytes=string.bytes(string.context,result,&size);
@@ -220,6 +254,7 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
         assert(send0(error,"kind")==api->intern("ioError"));
         error=keep(send1(system,"loadModule:",path));
         assert(send0(error,"kind")==api->intern("ioError"));
+        check_native_loading(system);
         assert(send1(system,"readLine",api->nil_obj)==api->nil_obj);
         assert(send1(system,"print:",text(""))==system);
         assert(number(send0(system,"liveObjects"))>0);

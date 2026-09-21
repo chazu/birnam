@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real direct native loading through startup, compiled code and saved/baked images.
+# Common Id descriptor loading through startup, compiled code and saved/baked images.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 prefix=${1:?usage: native-loader-image-smoke.sh PREFIX}
@@ -10,18 +10,17 @@ if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then
 else
   printf 'native loader image smoke root: %s\n' "$scratch"
 fi
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 \
-  -DEXPECT_NATIVE_LOADER_LIBRARY='"libbirnam_native_loader.dylib"' \
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib \
   scripts/fixtures/native-loader-target.c -o "$scratch/target.dylib"
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 \
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib \
   -DNATIVE_LOADER_NO_INIT scripts/fixtures/native-loader-target.c -o "$scratch/not-module.dylib"
 cat >"$scratch/probe.birnam" <<BIRNAM
-[System println: [[[System loadModule: "$scratch/target.dylib"] == System] printString]];
+[System println: [[[System loadModule: "$scratch/target.dylib" arguments: #[System]] == System] printString]];
 [System println: [System nativeLoaderCount]];
-[System loadModule: "$scratch/target.dylib"];
+[System loadModule: "$scratch/target.dylib" arguments: #[System]];
 [System println: [System nativeLoaderCount]];
-[System println: [[System loadModule: "$scratch/missing.dylib"] kind]];
-[System println: [[System loadModule: "$scratch/not-module.dylib"] kind]];
+[System println: [[System loadModule: "$scratch/missing.dylib" arguments: #[System]] kind]];
+[System println: [[System loadModule: "$scratch/not-module.dylib" arguments: #[System]] kind]];
 [System println: "native-loader-startup-ok"]
 BIRNAM
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/probe.birnam" >"$scratch/startup.out" 2>"$scratch/startup.err"
@@ -45,23 +44,23 @@ let main := [|
   [System gc];
   [System println: [[receiver == alias] printString]];
   [System println: [[path == pathAlias] printString]];
-  [System println: [[[receiver loadModule: path] == alias] printString]];
+  [System println: [[[receiver loadModule: path arguments: #[System]] == alias] printString]];
   [System println: [System nativeLoaderCount]];
-  [receiver loadModule: path];
+  [receiver loadModule: path arguments: #[System]];
   [System println: [System nativeLoaderCount]];
-  [System println: [[receiver loadModule: "$scratch/missing.dylib"] kind]];
-  [System println: [[receiver loadModule: "$scratch/missing.dylib"] message]];
-  [System println: [[receiver loadModule: "$scratch/not-module.dylib"] kind]];
-  [System println: [[receiver loadModule: "$scratch/not-module.dylib"] message]];
+  [System println: [[receiver loadModule: "$scratch/missing.dylib" arguments: #[System]] kind]];
+  [System println: [[receiver loadModule: "$scratch/missing.dylib" arguments: #[System]] message]];
+  [System println: [[receiver loadModule: "$scratch/not-module.dylib" arguments: #[System]] kind]];
+  [System println: [[receiver loadModule: "$scratch/not-module.dylib" arguments: #[System]] message]];
   [Reflect defineMethod: ["kind:message:" asSymbol] on: Error as: [:self :kind :message | answer]];
-  [System println: [[[receiver loadModule: "$scratch/missing.dylib"] == answer] printString]];
+  [System println: [[[receiver loadModule: "$scratch/missing.dylib" arguments: #[System]] == answer] printString]];
   [Reflect defineMethod: ["kind:message:" asSymbol] on: Error as: [:self :kind :message | nil]];
-  [System println: [[[receiver loadModule: "$scratch/not-module.dylib"] == nil] printString]];
-  [Reflect defineMethod: #loadModule: on: receiver as: [:self :name | answer]];
+  [System println: [[[receiver loadModule: "$scratch/not-module.dylib" arguments: #[System]] == nil] printString]];
+  [Reflect defineMethod: #loadModule:arguments: on: receiver as: [:self :name :arguments | answer]];
   [System gc];
-  [System println: [[[receiver loadModule: path] == answer] printString]];
+  [System println: [[[receiver loadModule: path arguments: #[System]] == answer] printString]];
   [System println: [System nativeLoaderCount]];
-  [System loadModule: path];
+  [System loadModule: path arguments: #[System]];
   [System println: [System nativeLoaderCount]];
   [System preciseGc: false];
   [System autoGc: true];
@@ -85,7 +84,7 @@ while offset < len(data):
 assert offset == len(data) and records[-1][0] == 4 and records[-1][1] > 72, records
 PY
 rm "$scratch/save.birnam"
-printf 'true\ntrue\ntrue\n#native-load-1\n#native-load-2\n#ioError\ncould not load module dylib\n#notAModule\ndylib has no module_init\ntrue\ntrue\ntrue\n#native-load-2\n#native-load-3\nnative-loader-image-ok\n' >"$scratch/expected.out"
+printf 'true\ntrue\ntrue\n#native-load-1\n#native-load-2\n#ioError\ncould not load module dylib\n#notAModule\nmissing or incompatible birnam_native_module_v1\ntrue\ntrue\ntrue\n#native-load-2\n#native-load-3\nnative-loader-image-ok\n' >"$scratch/expected.out"
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
 cmp "$scratch/expected.out" "$scratch/image.out"
 grep -Fq '/libbirnam_native_loader.dylib' "$scratch/image.err"
@@ -93,4 +92,4 @@ grep -Fq '/libbirnam_native_loader.dylib' "$scratch/image.err"
 BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
 grep -Fq '/libbirnam_native_loader.dylib' "$scratch/baked.err"
-printf 'native-loader-image-smoke: native owner and direct repeated initialization verified in startup, source-free compiled module, v8 native Code image and baked executable; state, receiver, aliases, errors, GC and method/factory replacement preserved\n'
+printf 'native-loader-image-smoke: common descriptor and repeated initialization verified in startup, source-free compiled module, v8 native Code image and baked executable; state, receiver, aliases, errors, GC and method/factory replacement preserved\n'

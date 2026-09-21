@@ -599,7 +599,6 @@ fn main() {
     assert_eq!(invoke(saved_lookup, &[Operand::object(early)]).value.as_entry(), Some(echo));
     println!("saved Id lookup remains directly callable after Runtime adoption");
     // Ordinary language sends must invoke the same typed entry and context.
-    assert_eq!(runtime.stack.module_count(), 0, "production startup used legacy module initialization");
     let api = runtime.stack.api();
     assert_eq!(
         unsafe { (api.send)(id.receiver, early, &id.receiver, 1) },

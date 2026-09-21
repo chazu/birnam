@@ -1,5 +1,8 @@
 # Native Loader v12
 
+> Superseded in production by [Id-based native loading](native-loading.md).
+> This document records the retired aggregate installer contract.
+
 Version 12 preserves [v11](native-loader-v11.md) except for the explicit
 [Finalizers v1](finalizers-v1.md) capability. The installer receives this
 capability after Trace Hooks and before the behavior and selector. It retains

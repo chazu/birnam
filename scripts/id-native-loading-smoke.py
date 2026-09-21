@@ -16,6 +16,11 @@ def run(*args, **kwargs):
     return subprocess.run(args, cwd=root, check=True, **kwargs)
 
 
+# The retired loader no longer exists; a counter on that path would be vacuous.
+for path in ("rust/birnam-host/src/startup.rs", "rust/birnam-native-loader/src/lib.rs"):
+    source = (root / path).read_text()
+    assert "ModuleInitFn" not in source and 'c"module_init"' not in source, path
+
 # Check the installed images, not just source-level module visibility.
 for stem in ("id", "bootstrap", "runtime", "method-observation", "storage", "dispatch-cache",
              "block-loop", "collection-value", "error-value", "map", "printing", "range",
@@ -140,6 +145,9 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
         shutil.copy2(prefix / "lib" / file, values_prefix / file)
     run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
         "scripts/fixtures/execution-values-native.c", "-o", str(scratch / "execution-values.dylib"))
+    for mode in range(5):
+        run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib", f"-DMODE={mode}",
+            "scripts/fixtures/system-native-module.c", "-o", str(scratch / f"system-native-{mode}.dylib"))
     values_driver = scratch / "values-driver"
     run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
         "scripts/fixtures/execution-values-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",

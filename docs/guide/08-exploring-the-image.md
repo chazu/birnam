@@ -257,3 +257,14 @@ Then inspect a method's `#selector` and use `Reflect methodSource:` when the
 source is available. Use `birnam doc <module>` or `birnam docgen` for the
 human-facing explanations, and the `db` query surface when you need a more
 relational view of the same facts.
+
+
+## Loading native implementation modules
+
+`[System loadModule: path]` loads a native module through Id's descriptor API
+with no constructor arguments. Use `[System loadModule: path arguments: inputs]`
+to pass a sequence of explicit Objects to its initializer. `inputs` supplies
+`size` and zero-based `at:`; a Vector is the usual choice. The native initializer
+returns an Object, or Unit to return the receiving System object. It must export
+`birnam_native_module_v1`; the former `module_init` entry is no longer loaded.
+See [native loading](../../abi/native-loading.md) for the native contract and errors.

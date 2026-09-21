@@ -85,7 +85,6 @@ fn exported_output_contract() {
             Operand::object(named(c"Map")),
         ];
         assert_eq!(initialize_native(stack.id_protocol(), operands.as_ptr(), operands.len()).status, native::LOADED);
-        assert_eq!(stack.module_count(), 0);
         let integer = |n| (birnam_abi::integer::make)(n);
         let null = ptr::null_mut();
         let attribute = integer(7);

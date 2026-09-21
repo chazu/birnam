@@ -22,7 +22,6 @@ pub mod system_input;
 pub mod environment;
 pub mod file_io;
 pub mod block_loop;
-pub mod native_loader;
 pub mod source_loader;
 pub mod namespace;
 pub mod namespace_names;

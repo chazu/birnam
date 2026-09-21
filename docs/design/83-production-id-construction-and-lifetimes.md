@@ -204,8 +204,9 @@ The native C layout is frozen in
 and mirrored by [`id_protocol.rs`](../../rust/birnam-abi/src/id_protocol.rs).
 The current production Id dictionaries and core dispatch use these typed
 operands. The common descriptor loader and production Siphon handoff are wired.
-Upper modules still use the aggregate construction path after Id has loaded;
-do not preserve that twelve-argument initializer as the final compatibility layer.
+Upper modules now construct through this protocol with explicit predecessors.
+The production host and System no longer call the twelve-argument initializer;
+remaining old exports and direct fixtures still require cleanup.
 
 On the supported 64-bit target, an operand is a 32-bit kind, 32 reserved zero
 bits and a 16-byte union (24 bytes total). A native entry is a function and native
@@ -2306,3 +2307,51 @@ leave the upper lookup cache cold; the full affected unit suite passed afterward
 Evidence is in `.cargo-target/83-checked-send-evidence.json`. Remaining C fixtures
 that cast lookup answers to function pointers require migration; these checks
 do not establish whole-project acceptance. Release validation remains waived.
+
+
+### System native loading through Id
+
+The production System wrapper now calls Id's loading message with a byte path
+and explicit Object operands. `loadModule:` supplies none;
+`loadModule:arguments:` reads a sequence via `size` and zero-based `at:`. This
+requires Integer but no collection implementation. The wrapper copies the path
+and roots the sequence and each selected argument across effectful sends and
+initialization. Object results are returned; Unit returns System; native-only
+results and load failures become Errors. See [the contract](../../abi/native-loading.md).
+
+Native Loader no longer exports `module_init`, a provider, an installer, or
+private dependency attachment entries. Its constructor returns completed System.
+Prelude no longer reinstalls its operations through the retired installer. The
+host legacy loader, its aggregate dependency discovery, private Symbol
+compatibility configuration and obsolete error variants are removed. Existing
+C test consumers still need migration; this change does not claim their acceptance.
+
+The old host module counter is removed with its only caller path; zero on a
+deleted path is not a useful test. The native suite now audits the absence of
+aggregate initializer calls in the production host and System sources. Existing
+deferred-index/identity host fixtures now request their five actual dependencies
+through the common descriptor. Their raw lookup bodies and older language
+loading scripts still need migration before those full suites can pass.
+
+Validation on `/tmp/birnam-83-id-module-loader-final`:
+
+- The complete native suite passes, including loading before collections and
+  compilers, explicit argument Objects retained across GC, Unit/Object results,
+  malformed sequence size, native-only result rejection, failed initialization,
+  missing/incompatible descriptors and no fallback to `module_init`. The twenty-four
+  native export inventories match; Native Loader exports only its descriptor.
+- The migrated native-loader image suite passes startup, source-free compiled
+  execution, mapped image and baked execution. It retains repeated initialization,
+  receiver/alias identity, GC, errors and live method/Error-factory replacement.
+- Affected Rust tests: 91 passed, two ignored. The removed test covered only the
+  deleted host Symbol compatibility-limit parser. Both deferred-index/identity C
+  constructors and Rust image drivers compile against the explicit native API;
+  this is not execution acceptance for their remaining old reflection bodies.
+- All five changed production Rust sources and the relational test source match
+  the final installation byte for byte. The deleted Native Loader installer
+  module is absent from that installation too.
+
+The evidence receipt is `.cargo-target/83-native-loader-evidence.json`. Remaining
+work includes the old C consumers and internal raw lookup adapters, obsolete
+module exports/factories, worker readiness, and the complete Design 82/83
+acceptance audit and documentation consolidation. Release validation is waived.

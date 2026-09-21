@@ -1016,18 +1016,15 @@ impl Construction {
             "nativeLoader" => {
                 let errors = self.initialize_error_value()?;
                 args.extend([self.runtime_service(b"namespacePresence")?, self.runtime_service(b"namespaceImport")?,
-                    self.runtime_service(b"namespaceExport")?, self.runtime_service(b"vtables")?, self.runtime_service(b"methodObservation")?,
-                    Operand::word(unsafe { (*self.collection.unwrap()).settings }.addr()),
-                    Operand::word(unsafe { (*self.lifetime.unwrap()).layouts }.addr()),
-                    Operand::word(unsafe { (*self.lifetime.unwrap()).hooks }.addr()),
-                    Operand::word(unsafe { (*self.lifetime.unwrap()).finalizers }.addr()),
-                    Operand::word(errors.addr()), Operand::word(self.initialize_system_service("textView")?)]);
+                    Operand::word(self.integer.unwrap().addr()), Operand::word(errors.addr()),
+                    Operand::word(self.initialize_system_service("textView")?)]);
                 "libbirnam_native_loader.dylib"
             },
             _ => return Err(invalid()),
         };
         let result = self.load(library, &args)?;
-        let pointer = result.as_word().filter(|p| *p != 0).ok_or_else(invalid)?;
+        let pointer = if name == "nativeLoader" { result.as_object().map(|p| p.addr()) } else { result.as_word() }
+            .filter(|p| *p != 0).ok_or_else(invalid)?;
         self.system_services.insert(name, pointer);
         Ok(pointer)
     }
@@ -1188,7 +1185,7 @@ impl Construction {
             b"systemInput" => Ok(Operand::word(self.initialize_system_service("systemInput")?)),
             b"environment" => Ok(Operand::word(self.initialize_system_service("environment")?)),
             b"fileIo" => Ok(Operand::word(self.initialize_system_service("fileIo")?)),
-            b"nativeLoader" => Ok(Operand::word(self.initialize_system_service("nativeLoader")?)),
+            b"nativeLoader" => Ok(Operand::object(self.initialize_system_service("nativeLoader")? as birnam_abi::Oop)),
             b"sourceLoader" => Ok(Operand::word(self.initialize_system_service("sourceLoader")?)),
             b"codegen" => Ok(Operand::object(self.initialize_codegen()?)),
             b"artifact" => Ok(Operand::object(self.initialize_artifact()?)),
