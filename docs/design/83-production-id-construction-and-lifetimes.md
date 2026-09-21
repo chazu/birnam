@@ -2935,3 +2935,21 @@ This closes these two behavioral fixture groups, not all legacy fixture setup.
 The old shared `namespace-support.h` chain still references deferred-storage
 setters for its remaining consumers. Its migration, worker readiness/service
 acceptance and the full section 6 audit remain open. Release validation is waived.
+
+
+### Bounded driver return beneath a synchronous caller
+
+The Runtime lifetime regression now sends to a real synchronous native method
+which queues a native retirement, starts a two-step Machine with a one-step
+budget, and resumes it to completion. It checks the live Frame at the bounded
+return and its removal at completion. Both returns remain beneath the synchronous
+caller; attempted checkpoints there release nothing. Returning through the
+outer application entry releases the record once, and another outer checkpoint
+does not release it again.
+
+All four `runtime::turn_tests` pass. This adds the explicit bounded-driver case
+to the existing outward-result rooting, callback reentry, collection-in-turn and
+detached finalized-owner tests. It uses a counted native release callback to
+observe checkpoint ordering; the installed image tests separately exercise
+mapped code. No production policy or deadline changed. Full section 6 acceptance
+still requires the remaining migration and worker checks recorded above.

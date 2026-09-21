@@ -8,6 +8,9 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Verify that bounded and completed Machine returns beneath a synchronous
+  native caller defer queued code release until the outer application return.
+
 - Migrate deferred identity and index fixtures to production native construction
   and typed method lookup. Remove their retired factory/module-init forwarding,
   share the image host and unit/admission runner, and run the full independent

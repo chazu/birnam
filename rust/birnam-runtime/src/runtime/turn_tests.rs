@@ -111,3 +111,64 @@ fn finalized_owner_is_freed_before_its_detached_native_record_is_released() {
     runtime.enter_application(|| runtime.canonical().nil);
     assert_eq!(calls.get(), 1);
 }
+
+unsafe extern "C" fn bounded_step(machine: Oop, args: *const Oop, count: usize) -> Oop {
+    assert_eq!(count, 1);
+    with_active(|runtime| {
+        if runtime.integer_value(unsafe { args.read() }) == 0 {
+            runtime.stackless_continue_at(machine, 1).unwrap()
+        } else {
+            runtime.stackless_return_at(machine, 0).unwrap()
+        }
+    })
+}
+
+unsafe extern "C" fn synchronous_bounded_caller(receiver: Oop, _: *const Oop, count: usize) -> Oop {
+    assert_eq!(count, 0);
+    with_active(|runtime| {
+        // Transfer the test's native ownership exactly once, as code-owner
+        // finalization does. The synchronous caller still has work to execute.
+        let record = unsafe { receiver.cast::<*mut Release>().replace(core::ptr::null_mut()) };
+        assert!(!record.is_null());
+        let calls = unsafe { (*record).calls.clone() };
+        runtime.queue_native_retirement(record.cast(), release);
+        let machine = runtime.create_stackless_machine().unwrap();
+        let _root = ScopedOopRootGuard::new(runtime, machine);
+        let descriptor = FrameDescriptor::validate_v2(crate::execution::FrameDescriptorV2Spec {
+            step_method: bounded_step,
+            edges: vec![crate::execution::probe_continue(0, 1, 1)],
+            ..crate::execution::probe_spec(1, 2)
+        }).unwrap();
+        assert_eq!(runtime.drive_stackless_budget(machine, descriptor, &[(0, receiver)], 1), Ok(machine));
+        assert_eq!(runtime.stackless_runtime_diagnostics().live_frames, 1);
+        runtime.retirement_checkpoint();
+        assert_eq!(calls.get(), 0, "yield beneath a synchronous caller cannot release code");
+        assert_eq!(runtime.continue_stackless_budget(machine, 1), Ok(receiver));
+        assert_eq!(runtime.stackless_runtime_diagnostics().live_frames, 0);
+        runtime.destroy_stackless_machine(machine).unwrap();
+        runtime.retirement_checkpoint();
+        assert_eq!(calls.get(), 0, "completed inner drive still has a synchronous caller");
+        receiver
+    })
+}
+
+#[test]
+fn bounded_driver_beneath_synchronous_caller_waits_for_outer_checkpoint() {
+    let bootstrap = build_bootstrap();
+    let runtime = &bootstrap.runtime;
+    runtime.publish_canonical_exports();
+    runtime.install_execution_objects();
+    let calls = Rc::new(Cell::new(0));
+    let receiver = runtime.allocate_instance(runtime.globals().object_vt, size_of::<*mut Release>());
+    let _root = ScopedOopRootGuard::new(runtime, receiver);
+    let record = Box::into_raw(Box::new(Release {
+        calls: calls.clone(), result: core::ptr::null_mut(), reenter: false,
+    }));
+    unsafe { receiver.cast::<*mut Release>().write(record) };
+    let selector = runtime.intern(b"boundedRetirementProbe").unwrap();
+    runtime.add_method(runtime.globals().object_vt, selector, synchronous_bounded_caller);
+    assert_eq!(runtime.send_slice(receiver, selector, &[]), receiver);
+    assert_eq!(calls.get(), 1, "release follows the synchronous caller's outer return");
+    runtime.enter_application(|| runtime.canonical().nil);
+    assert_eq!(calls.get(), 1, "later checkpoints cannot release the same owner again");
+}
