@@ -7,8 +7,6 @@ use crate::vtable::Vtables;
 
 pub(crate) struct InitialObjects {
     pub(crate) protocol: Box<crate::native_id::State>,
-    pub(crate) dictionaries: crate::owned::Owned<Vtables>,
-    pub(crate) symbols: crate::owned::Owned<Symbols>,
     pub(crate) vtable_vt: Oop,
     pub(crate) object_vt: Oop,
     pub(crate) symbol_vt: Oop,
@@ -44,8 +42,8 @@ impl InitialObjects {
                 Operand::object(remove_method), Operand::entry(entry(crate::id_dispatch::vtable_remove_method)),
             ]).status, LOADED);
         }) };
-        let protocol = unsafe { crate::native_id::State::new(memory, dictionaries.pointer(), symbols.pointer(), vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
-        Self { protocol, dictionaries, symbols, vtable_vt, object_vt, symbol_vt,
+        let protocol = unsafe { crate::native_id::State::new(memory, dictionaries, symbols, vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
+        Self { protocol, vtable_vt, object_vt, symbol_vt,
             lookup, does_not_understand, object_prototype, symbol_prototype }
     }
 }
@@ -65,10 +63,11 @@ mod tests {
             (allocation.object, allocation.identity, allocation.requested_size)
         ).collect();
         let last_identity = allocations.iter().map(|entry| entry.1).max().unwrap();
-        let name = initial.symbols.c_name_of(initial.lookup);
+        let client = crate::id_registries::Client::new(initial.protocol.protocol);
+        let mut symbols = crate::id_registries::Symbols::Id(client.clone());
+        let name = symbols.c_name_of(initial.lookup);
         heap.retain_initial_objects(&[initial.vtable_vt, initial.object_vt, initial.symbol_vt, initial.object_prototype]);
-        let behaviors = Behaviors::adopt(initial.dictionaries);
-        let mut symbols = initial.symbols;
+        let behaviors = Behaviors::adopt(crate::id_registries::Dictionaries::Id(client));
         let roots: Vec<_> = (0..symbols.count()).map(|index| symbols.at(index)).collect();
         crate::gc::trace_conservative_for_test(&mut heap, &roots);
         assert!(heap.dead_collectable_addresses().is_empty());

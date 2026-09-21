@@ -80,26 +80,24 @@ impl Runtime {
         };
         let protocol = id.protocol;
         let context = core::ptr::from_ref(self).cast_mut().cast();
-        let dictionaries =
-            unsafe { &mut *crate::behaviors::Behaviors::dictionaries_ptr(&mut state.vtables) };
-        dictionaries.add_method(
+        let add = state.symbols.existing(b"addMethod").unwrap();
+        let remove = state.symbols.existing(b"removeMethod:").unwrap();
+        state.vtables.add_native_method(
             protocol.receiver,
             protocol.intern,
             NativeEntry::new(intern, context),
         );
-        dictionaries.add_method(
+        state.vtables.add_native_method(
             protocol.receiver,
             protocol.load,
             NativeEntry::new(load, context),
         );
-        let add = state.symbols.existing(b"addMethod").unwrap();
-        let remove = state.symbols.existing(b"removeMethod:").unwrap();
-        dictionaries.add_method(
+        state.vtables.add_native_method(
             protocol.receiver,
             add,
             NativeEntry::new(add_method, context),
         );
-        dictionaries.add_method(
+        state.vtables.add_native_method(
             protocol.receiver,
             remove,
             NativeEntry::new(remove_method, context),
@@ -115,7 +113,7 @@ impl Runtime {
             (b"parentOf:put:".as_slice(), parent_put as native::Method),
         ] {
             let selector = state.symbols.existing(name).unwrap();
-            dictionaries.add_method(
+            state.vtables.add_native_method(
                 protocol.receiver,
                 selector,
                 NativeEntry::new(method, context),

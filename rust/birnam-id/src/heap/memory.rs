@@ -210,7 +210,7 @@ impl Memory {
     }
     pub(super) fn intern(
         &mut self,
-        symbols: &mut Owned<crate::symbol::Symbols>,
+        symbols: &mut crate::id_registries::Symbols,
         behavior: Oop,
         bytes: &[u8],
     ) -> Result<Oop, crate::symbol::EmbeddedNul> {
@@ -218,7 +218,7 @@ impl Memory {
             return Err(crate::symbol::EmbeddedNul);
         }
         match self {
-            Self::Local(memory) => symbols.intern(memory, behavior, bytes),
+            Self::Local(memory) => symbols.local().intern(memory, behavior, bytes),
             Self::Id(client) => Ok(client
                 .invoke(
                     client.primitives.intern,

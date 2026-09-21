@@ -26,18 +26,18 @@ use crate::vtable::Vtables;
 use crate::abi::SLOT_UNKNOWN;
 
 pub(crate) struct Behaviors {
-    dictionaries: crate::owned::Owned<Vtables>,
+    dictionaries: crate::id_registries::Dictionaries,
     legacy_lookup: Oop,
     owners: crate::object_model::Records,
     layouts: crate::payload_layout::Service,
     hooks: crate::trace_hooks::Service,
 }
 impl core::ops::Deref for Behaviors {
-    type Target = Vtables;
-    fn deref(&self) -> &Vtables { &self.dictionaries }
+    type Target = crate::id_registries::Dictionaries;
+    fn deref(&self) -> &Self::Target { &self.dictionaries }
 }
 impl core::ops::DerefMut for Behaviors {
-    fn deref_mut(&mut self) -> &mut Vtables { &mut self.dictionaries }
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.dictionaries }
 }
 impl Behaviors {
     pub(crate) fn native_lookup(&self, vtable: Oop, selector: Oop) -> Option<crate::abi::id_protocol::NativeEntry> { self.dictionaries.lookup(vtable, selector) }
@@ -67,20 +67,15 @@ impl Behaviors {
     }
     pub(crate) fn native_lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<crate::abi::id_protocol::NativeEntry>, Oop> { self.dictionaries.lookup_head(vtable, selector) }
 
-    /// # Safety
-    /// The caller keeps the containing Behaviors live for the entire Id scope.
-    pub(crate) unsafe fn dictionaries_ptr(this: *mut Self) -> *mut Vtables {
-        unsafe { (*this).dictionaries.pointer() }
-    }
     pub(crate) fn new() -> Self {
-        Self::adopt(crate::owned::Owned::new(Vtables::new()))
+        Self::adopt(crate::owned::Owned::new(Vtables::new()).into())
     }
 
     /// Add upper metadata without replacing existing behavior objects or keys.
-    pub(crate) fn adopt(dictionaries: crate::owned::Owned<Vtables>) -> Self {
+    pub(crate) fn adopt(dictionaries: crate::id_registries::Dictionaries) -> Self {
         Self::adopt_with(dictionaries, None, None)
     }
-    pub(crate) fn adopt_with(dictionaries: crate::owned::Owned<Vtables>, lifetime: Option<crate::lifetime::Shared>, model: Option<crate::object_model::Shared>) -> Self {
+    pub(crate) fn adopt_with(dictionaries: crate::id_registries::Dictionaries, lifetime: Option<crate::lifetime::Shared>, model: Option<crate::object_model::Shared>) -> Self {
         let layouts = lifetime.clone().map(crate::payload_layout::Service::from_lifetime).unwrap_or_else(crate::payload_layout::Service::new);
         let hooks = lifetime.map(crate::trace_hooks::Service::from_lifetime).unwrap_or_else(crate::trace_hooks::Service::new);
         Self { dictionaries, legacy_lookup: core::ptr::null_mut(), owners: crate::object_model::Records::new(model), layouts, hooks }
@@ -108,10 +103,7 @@ impl Behaviors {
             parent.is_null() || self.is_registered(parent),
             "vtable parent is not registered",
         );
-        let object = heap.allocate_with_behavior(Vtables::PAYLOAD_SIZE, permanence, metavtable);
-        // SAFETY: Heap retains this fresh behavior payload until collection.
-        unsafe { self.dictionaries.register(object, parent) };
-        object
+        self.dictionaries.create(heap, parent, metavtable, permanence)
     }
     fn require_registered(&self, object: Oop) {
         boundary::require_invariant(self.dictionaries.is_registered(object), "unregistered vtable");
@@ -123,7 +115,7 @@ impl Behaviors {
         edges
     }
     pub(crate) fn permanent_strong_edges(&self, heap: &Heap) -> Vec<Oop> {
-        self.dictionaries.ordered
+        self.dictionaries.ordered()
             .iter()
             .copied()
             .filter(|vtable| heap.permanence_of(*vtable) == Some(Permanence::Permanent))
@@ -131,13 +123,13 @@ impl Behaviors {
             .collect()
     }
     pub(crate) fn has_permanent_binding(&self, heap: &Heap, methods: &[MethodAddress]) -> bool {
-        self.dictionaries.ordered.iter().copied().any(|vtable| {
+        self.dictionaries.ordered().iter().copied().any(|vtable| {
             heap.permanence_of(vtable) == Some(Permanence::Permanent)
                 && self.dictionaries.methods(vtable).any(|method| legacy_method::try_decode(method).is_some_and(|method| methods.contains(&method)))
         })
     }
     pub(crate) fn dead_collectable_bindings(&self, heap: &Heap) -> Vec<(Oop, Vec<MethodAddress>)> {
-        self.dictionaries.ordered
+        self.dictionaries.ordered()
             .iter()
             .copied()
             .filter(|vtable| {
@@ -152,7 +144,7 @@ impl Behaviors {
     }
     pub(crate) fn remove_dead_collectable(&mut self, heap: &Heap) -> Vec<Oop> {
         let dead = self
-            .ordered
+            .ordered()
             .iter()
             .copied()
             .filter(|vtable| {

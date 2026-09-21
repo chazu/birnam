@@ -1383,3 +1383,83 @@ suite also passes mapped/rebuilt/baked recovery with actual write counts
 `(386, 150)` normally and `(386, 75)` under forced recovery in every mode.
 No release validation was run. These checks establish the allocation migration;
 the broader construction and package-separation acceptance remains open.
+
+
+### Removing upper access to Id registries
+
+Production now keeps Symbol names and ordered method dictionaries in Id
+alongside allocations. Runtime retains native operations, not Rust registry
+owners or pointers. Existing `symbolBytesOf:`, `behaviorCount`, `behaviorAt:`,
+`parentOf:`, `parentOf:put:`, `referencesOf:do:` and retirement operations remain
+the sources of those facts. The following native-only operations cover actual
+remaining Runtime consumers; they use the existing typed operand carrier.
+
+| Selector | Arguments to Id | Result and purpose |
+|---|---|---|
+| `symbolNamed:` | Bytes name | Existing Symbol or Unit, without interning; optimizer admission and compatibility checks |
+| `symbolCount` | None | Word live Symbol count |
+| `symbolAt:` | Word ordered index | Symbol or Unit |
+| `symbolNameBytes` | None | Word bytes owned by names, including NUL terminators; compatibility limits |
+| `behaviorEpoch` | None | Saturating Word dictionary mutation epoch; existing dispatch/optimizer guards |
+| `isBehavior:` | Object candidate | Word zero/one exact membership |
+| `behaviorView` | None | Borrowed Bytes encoding the ordered Object array |
+| `selectorsIn:` | Object behavior | Borrowed Bytes encoding its ordered key array |
+| `bindingOf:in:` | Object key, Object behavior | Direct typed value or Unit if absent; an opaque Object value still hides the parent binding |
+| `lookup:in:` | Object selector, Object behavior | Canonical inherited NativeEntry or Unit; no application lookup |
+| `bindingsIn:do:` | Object behavior, NativeEntry visitor | Visits copied key/value/weak-flag triples in dictionary order; used for executable retirement |
+| `addMethod:to:as:` | Object key, Word behavior address, NativeEntry | Previous entry or Unit; primitive mutation below Store and Execution policy |
+| `removeMethod:from:` | Object key, Word behavior address | Removed entry or Unit |
+| `addWeakBinding:to:as:` | Object key, Word behavior address, Object opaque value | Unit; existing compatibility dictionaries |
+| `newBehaviorWithParent:` | Word parent address, zero for none | New registered behavior, without collection; upper constructors account it |
+| `bind:to:` | Object selector, Object receiver | Exact selected NativeEntry or Unit, or unchanged native failure; performs effectful metacircular lookup once |
+
+Policy-free registry mutations require native Word addresses. Ordinary all-Object
+language sends are rejected before mutation or allocation; they continue to use
+the existing upper methods with collection and executable-lifetime bookkeeping.
+Addresses resolve through Id membership to their original pointers.
+
+Borrowed Object arrays are public native views, not Rust dictionary records.
+They remain valid until the corresponding registry changes; callers copy them
+before callbacks. Binding visitors receive copied entries with no registry
+borrow held across invocation. Id neither owns executable generations nor changes
+turn policy. Runtime's existing notification, rooting and lifetime bookkeeping
+still surrounds primitive dictionary mutation. It snapshots dead selected entries
+before Id retires their dictionaries.
+
+`bind:to:` establishes Id's own dispatch context. Runtime no longer establishes
+that context with a raw dictionary pointer. Legacy lookup/add/remove adapters
+use the completed primitive registry operations instead of relying on an ambient
+Id scope. The isolated local unit backend can retain its local scope until its
+legacy harness is removed. Application sends still use fresh effectful lookup;
+canonical dictionary queries are used only where the existing guards or trusted
+bootstrap/collector contracts already permit them.
+
+
+The initial Id graph contains no upper registry clients. Runtime constructs those
+clients from the completed protocol, and retains Id until its own state is gone.
+Only isolated local harnesses own local registry backends. Production executable
+retirement enumerates copied bindings before Id removes their dictionaries;
+Store notification and managed-turn ownership remain upper responsibilities.
+
+This removes production Runtime's Symbol/dictionary ownership, direct registry
+access and raw-pointer entry into Id dispatch. The legacy all-Oop Method adapter
+still recognizes core primitive function identities in the shared crate. Native
+Method reflection, removing that adapter and the local fallback, native Execution
+construction and the final package split remain required; this change does not
+establish independent Id packaging.
+
+
+Validation: all 311 Id unit tests pass (15 ignored). A fresh debug installation
+passes the independent native-loading harness, including registry queries and
+mutations before and after Runtime, rejection of all-Object raw mutations,
+ordered views, weak opaque shadowing, exact selected contexts, and visitor
+mutation/failure propagation. Its 68 installed Id exports match the existing
+manifest plus installer wrappers; the native carrier and Runtime v11 bridge are
+unchanged.
+
+Dispatch-cache and protected storage-observation scripts pass source, source-free
+compiled, mapped/rebuilt image and baked execution, including host observations,
+custom lookup effects, mutation, shadow removal, GC, aliases and failure cleanup.
+The deferred-identity image suite passes with actual writes `(386, 150)` normally
+and `(386, 75)` under forced recovery in all three image modes. No release
+validation was run. The full construction/package acceptance remains open.

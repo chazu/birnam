@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn repeated_equal_bytes_return_one_live_collectable_identity() {
         let (mut heap, symbol_vtable) = symbol_harness();
-        let mut symbols = crate::owned::Owned::new(Symbols::new());
+        let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
         let first = heap.intern_symbol(&mut symbols, symbol_vtable, b"lookup").unwrap();
         let second = heap.intern_symbol(&mut symbols, symbol_vtable, b"lookup").unwrap();
         assert_eq!(first, second);
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn arbitrary_non_nul_bytes_never_require_utf8() {
         let (mut heap, symbol_vtable) = symbol_harness();
-        let mut symbols = crate::owned::Owned::new(Symbols::new());
+        let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
         let cases: [&[u8]; 6] = [
             b"",
             b"ascii",
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn enumeration_order_and_rooted_c_name_pointers_survive_unrelated_growth() {
         let (mut heap, symbol_vtable) = symbol_harness();
-        let mut symbols = crate::owned::Owned::new(Symbols::new());
+        let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
         let anchor = heap.intern_symbol(&mut symbols, symbol_vtable, b"anchor:")
             .unwrap();
         let anchor_pointer = symbols.c_name_of(anchor);
@@ -295,7 +295,7 @@ mod tests {
         use crate::gc::trace_conservative_for_test;
 
         let (mut heap, symbol_vtable) = symbol_harness();
-        let mut symbols = crate::owned::Owned::new(Symbols::new());
+        let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
         let rooted = heap.intern_symbol(&mut symbols, symbol_vtable, b"rooted").unwrap();
         let first_dead = heap.intern_symbol(&mut symbols, symbol_vtable, b"ephemeral")
             .unwrap();
@@ -321,7 +321,7 @@ mod tests {
         use crate::gc::trace_conservative_for_test;
 
         let (mut heap, vt) = symbol_harness();
-        let mut symbols = crate::owned::Owned::new(Symbols::new());
+        let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
         let first = heap.intern_symbol_hashed(&mut symbols, vt, b"first", 7);
         let middle = heap.intern_symbol_hashed(&mut symbols, vt, b"middle", 7);
         let last = heap.intern_symbol_hashed(&mut symbols, vt, b"last", 7);
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(heap.intern_symbol_hashed(&mut symbols, vt, b"first", 7), first);
         assert_eq!(heap.intern_symbol_hashed(&mut symbols, vt, b"middle", 7), middle);
         assert_eq!(heap.intern_symbol_hashed(&mut symbols, vt, b"last", 7), last);
-        assert_eq!(symbols.find_hashed(b"absent", 7), None);
+        assert_eq!(symbols.local().find_hashed(b"absent", 7), None);
 
         heap.clear_marks();
         trace_conservative_for_test(&mut heap, &[middle, last]);
@@ -337,23 +337,23 @@ mod tests {
         assert_eq!(symbols.at(0), middle);
         assert_eq!(symbols.at(1), last);
         assert_eq!(symbols.c_name_of(middle), middle_name);
-        assert_eq!(symbols.find_hashed(b"first", 7), None);
-        assert_eq!(symbols.find_hashed(b"middle", 7), Some(middle));
-        assert_eq!(symbols.find_hashed(b"last", 7), Some(last));
+        assert_eq!(symbols.local().find_hashed(b"first", 7), None);
+        assert_eq!(symbols.local().find_hashed(b"middle", 7), Some(middle));
+        assert_eq!(symbols.local().find_hashed(b"last", 7), Some(last));
         assert_eq!(symbols.owned_name_bytes(), b"middle\0last\0".len());
 
         let grown = heap.intern_symbol_hashed(&mut symbols, vt, b"grown", 7);
         assert_eq!(symbols.at(2), grown);
-        assert_eq!(symbols.find_hashed(b"middle", 7), Some(middle));
+        assert_eq!(symbols.local().find_hashed(b"middle", 7), Some(middle));
         heap.clear_marks();
         assert_eq!(symbols.remove_objects(&heap.dead_collectable_addresses()), 3);
         assert_eq!(symbols.owned_name_bytes(), 0);
-        assert_eq!(symbols.find_hashed(b"middle", 7), None);
+        assert_eq!(symbols.local().find_hashed(b"middle", 7), None);
         assert!(symbols.bytes_of(middle).is_none());
         let recreated = heap.intern_symbol_hashed(&mut symbols, vt, b"middle", 7);
         assert_ne!(recreated, middle);
         assert_eq!(symbols.at(0), recreated);
-        assert_eq!(symbols.find_hashed(b"middle", 7), Some(recreated));
+        assert_eq!(symbols.local().find_hashed(b"middle", 7), Some(recreated));
     }
 
     #[test]
@@ -362,8 +362,8 @@ mod tests {
 
         let (mut heap, vt) = symbol_harness();
         let (mut other_heap, other_vt) = symbol_harness();
-        let mut symbols = crate::owned::Owned::new(Symbols::new());
-        let mut other = crate::owned::Owned::new(Symbols::new());
+        let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
+        let mut other = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
         let dead = heap.intern_symbol(&mut symbols, vt, b"dead").unwrap();
         let live = heap.intern_symbol(&mut symbols, vt, b"live").unwrap();
         let independent = other_heap.intern_symbol(&mut other, other_vt, b"live").unwrap();
@@ -396,7 +396,7 @@ mod tests {
 
         for population in [1000, 10_000, 100_000] {
             let (mut heap, vt) = symbol_harness();
-            let mut symbols = crate::owned::Owned::new(Symbols::new());
+            let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
             for index in 0..population {
                 heap.intern_symbol(&mut symbols, vt, format!("name-{index:06}").as_bytes())
                     .unwrap();
@@ -411,7 +411,7 @@ mod tests {
                             let result = if strategy == "indexed" {
                                 symbols.contains_bytes(black_box(bytes))
                             } else {
-                                symbols
+                                symbols.local()
                                     .ordered
                                     .iter()
                                     .any(|record| record.bytes() == black_box(bytes))
@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn foreign_carriers_are_not_symbols() {
         let (mut heap, symbol_vtable) = symbol_harness();
-        let mut symbols = crate::owned::Owned::new(Symbols::new());
+        let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(Symbols::new()));
         let _ = heap.intern_symbol(&mut symbols, symbol_vtable, b"real").unwrap();
         let mut foreign = 0usize;
         let foreign: Oop = core::ptr::from_mut(&mut foreign).cast();

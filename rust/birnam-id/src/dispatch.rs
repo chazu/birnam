@@ -7,7 +7,7 @@ use crate::execution::{ExecutionError, StacklessTarget};
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
 use crate::runtime::{CanonicalObjects, DispatchGlobals, Runtime, with_active};
-use crate::symbol::Symbols;
+use crate::id_registries::Symbols;
 use crate::values::allocate_empty;
 use crate::behaviors::Behaviors;
 
@@ -41,7 +41,7 @@ impl Runtime {
             return Ok(self.cached_default_lookup(receiver_vtable, selector));
         }
 
-        unsafe { crate::id_dispatch::bind(receiver, selector) }
+        unsafe { self.bind_through_id(receiver, selector) }
     }
 
     /// Send while preserving the raw C argument-buffer contract.
@@ -308,7 +308,7 @@ pub(crate) struct Bootstrap {
     pub(crate) selectors: BootstrapSelectors,
 }
 
-fn static_selector(symbols: &mut crate::owned::Owned<Symbols>, heap: &mut Heap, symbol_vtable: Oop, name: &[u8]) -> Oop {
+fn static_selector(symbols: &mut Symbols, heap: &mut Heap, symbol_vtable: Oop, name: &[u8]) -> Oop {
     heap.intern_symbol(symbols, symbol_vtable, name)
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"))
 }
@@ -323,10 +323,13 @@ pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjec
 pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::primitive_allocation::PrimitivesV1>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
-        dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
+        vtable_vt, object_vt, symbol_vt,
         lookup, does_not_understand, object_prototype, symbol_prototype,
     } = initial;
-    // Only completed Id objects cross this boundary. No allocation is copied.
+    // Only completed Id objects cross this boundary. No registry is transferred.
+    let client = crate::id_registries::Client::new(protocol.protocol);
+    let dictionaries = crate::id_registries::Dictionaries::Id(client.clone());
+    let mut symbols = crate::id_registries::Symbols::Id(client);
     let primitives = primitives.unwrap_or_else(|| unsafe { birnam_abi::primitive_allocation::select(protocol.protocol) }.unwrap_or_else(|_| panic!("select Id primitives before Runtime")));
     let mut heap = Heap::from_id(protocol.protocol, object_vt, primitives, lifetime.clone().map(crate::finalizers::Service::from_lifetime), collection.clone());
     heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
@@ -516,7 +519,7 @@ pub(crate) fn build_harness() -> DispatchHarness {
     boundary::require_invariant(heap.set_vtable(meta, meta), "metavtable was not registered");
     let object_vtable = vtables.create(&mut heap, core::ptr::null_mut(), meta);
     let symbol_vtable = vtables.create(&mut heap, object_vtable, meta);
-    let mut symbols = crate::owned::Owned::new(Symbols::new());
+    let mut symbols = crate::id_registries::Symbols::Local(crate::owned::Owned::new(crate::symbol::Symbols::new()));
     let lookup = heap.intern_symbol(&mut symbols, symbol_vtable, b"lookup")
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
     let does_not_understand = heap.intern_symbol(&mut symbols, symbol_vtable, b"doesNotUnderstand:")
@@ -859,7 +862,7 @@ mod tests {
         }
 
         // Initial Id names exist before the upper runtime installs methods.
-        let selector_names: [&[u8]; 42] = [
+        let selector_names: [&[u8]; 58] = [
             b"lookup",
             b"doesNotUnderstand:",
             b"Symbol",
@@ -887,6 +890,22 @@ mod tests {
             b"referencesOf:do:",
             b"retireIndexesFor:",
             b"detachAllocationAt:",
+            b"symbolNamed:",
+            b"symbolCount",
+            b"symbolAt:",
+            b"symbolNameBytes",
+            b"behaviorEpoch",
+            b"isBehavior:",
+            b"behaviorView",
+            b"selectorsIn:",
+            b"bindingOf:in:",
+            b"lookup:in:",
+            b"bindingsIn:do:",
+            b"addMethod:to:as:",
+            b"removeMethod:from:",
+            b"addWeakBinding:to:as:",
+            b"newBehaviorWithParent:",
+            b"bind:to:",
             b"clone",
             b"new",
             b"==",
@@ -948,6 +967,22 @@ mod tests {
             runtime.intern(b"referencesOf:do:").unwrap(),
             runtime.intern(b"retireIndexesFor:").unwrap(),
             runtime.intern(b"detachAllocationAt:").unwrap(),
+            runtime.intern(b"symbolNamed:").unwrap(),
+            runtime.intern(b"symbolCount").unwrap(),
+            runtime.intern(b"symbolAt:").unwrap(),
+            runtime.intern(b"symbolNameBytes").unwrap(),
+            runtime.intern(b"behaviorEpoch").unwrap(),
+            runtime.intern(b"isBehavior:").unwrap(),
+            runtime.intern(b"behaviorView").unwrap(),
+            runtime.intern(b"selectorsIn:").unwrap(),
+            runtime.intern(b"bindingOf:in:").unwrap(),
+            runtime.intern(b"lookup:in:").unwrap(),
+            runtime.intern(b"bindingsIn:do:").unwrap(),
+            runtime.intern(b"addMethod:to:as:").unwrap(),
+            runtime.intern(b"removeMethod:from:").unwrap(),
+            runtime.intern(b"addWeakBinding:to:as:").unwrap(),
+            runtime.intern(b"newBehaviorWithParent:").unwrap(),
+            runtime.intern(b"bind:to:").unwrap(),
             runtime.intern(b"prepareBehaviorMutationOf:").unwrap(),
             runtime.intern(b"ownerOf:").unwrap(),
             runtime.intern(b"ownerOf:put:").unwrap(),

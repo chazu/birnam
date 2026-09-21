@@ -158,26 +158,6 @@ impl PayloadWords {
 }
 
 impl ObjectMemory {
-    pub(crate) fn payload_words(&self, address: usize) -> Option<PayloadWords> {
-        let block = self.get(address)?;
-        let payload_size = block.total_size - VTABLE_HEADER_SIZE;
-        debug_assert_eq!(payload_size % size_of::<usize>(), 0);
-        Some(PayloadWords {
-            pointer: block.payload().as_ptr().cast_const().cast(),
-            length: payload_size / size_of::<usize>(),
-        })
-    }
-
-    pub(crate) fn read_payload_word(&self, object: Oop, index: usize) -> Option<usize> {
-        let words = self.payload_words(object.addr())?;
-        if index >= words.len() {
-            return None;
-        }
-        // SAFETY: exact membership keeps the block live, and the bounds check
-        // above confines the read to its pointer-sized payload.
-        Some(unsafe { words.read(index) })
-    }
-
     pub(crate) fn write_payload_word(&mut self, object: Oop, index: usize, value: usize) -> bool {
         let Some(block) = self.get(object.addr()) else {
             return false;

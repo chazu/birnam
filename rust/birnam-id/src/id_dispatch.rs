@@ -201,18 +201,13 @@ mod tests {
     }
     #[test]
     fn actual_initial_graph_installs_invokes_and_forwards_without_runtime() {
-        let mut id = InitialObjects::new();
-        let add = id.symbols.existing(b"addMethod").unwrap();
-        let remove = id.symbols.existing(b"removeMethod:").unwrap();
+        let id = InitialObjects::new();
+        let add = intern(&id, b"addMethod");
+        let remove = intern(&id, b"removeMethod:");
         let selector = intern(&id, b"identity");
         let missing = intern(&id, b"missing:");
         unsafe {
-            enter(
-                &mut *id.dictionaries,
-                id.vtable_vt,
-                id.lookup,
-                id.does_not_understand,
-                || {
+            id.protocol.enter(|| {
                     assert_eq!(
                         send(
                             id.object_vt,
@@ -288,8 +283,8 @@ mod tests {
         let address = unsafe { crate::loader::symbol(image, c"birnam_id_protocol_echo".as_ptr()) };
         assert!(!address.is_null());
         let method: native::Method = unsafe { core::mem::transmute(address) };
-        let mut id = InitialObjects::new();
-        let add = id.symbols.existing(b"addMethod").unwrap();
+        let id = InitialObjects::new();
+        let add = intern(&id, b"addMethod");
         let echo = intern(&id, b"echo:");
         let foreign = NativeEntry::new(method, id.object_prototype);
         let protocol = native::Protocol {
@@ -310,12 +305,7 @@ mod tests {
             Operand::protocol(&protocol),
         ];
         unsafe {
-            enter(
-                &mut *id.dictionaries,
-                id.vtable_vt,
-                id.lookup,
-                id.does_not_understand,
-                || {
+            id.protocol.enter(|| {
                     assert_eq!(
                         send(
                             id.object_vt,

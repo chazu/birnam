@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Keep Symbol names and method dictionaries owned by Id through upper construction.
+  Runtime uses completed native registry operations and asks Id to perform
+  effectful binding without supplying a raw dictionary pointer. Preserve exact
+  method/context selection, ordered views, opaque weak-key shadowing, mutation
+  epochs and upper executable-retirement accounting.
+
 - Keep production allocation ownership in Id through Runtime construction.
   Heap uses native Id entries and copied allocation facts instead of owning or
   borrowing the allocation registry. Retain working non-collecting primitives

@@ -249,27 +249,23 @@ pub(crate) unsafe extern "C" fn lookup_method(
     if count == 0 || args.is_null() {
         boundary::fatal_invariant("lookup requires selector");
     }
-    old_result(unsafe {
-        id_dispatch::vtable_lookup_method(
-            core::ptr::null_mut(),
-            receiver,
-            &[Operand::object(args.read())] as *const Operand,
-            1,
-        )
-    })
+    let selector = unsafe { args.read() };
+    old_result(crate::runtime::with_active(|runtime| {
+        let entry = unsafe { runtime.lookup_native_method_active(receiver, selector) };
+        Outcome::loaded(entry.map(Operand::entry).unwrap_or_else(Operand::unit))
+    }))
 }
 pub(crate) unsafe extern "C" fn add_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     if count < 2 || args.is_null() {
         boundary::fatal_invariant("addMethod requires selector and method");
     }
     let method = unsafe { MethodAddress::from_oop(args.add(1).read()) }.expect("null method");
-    let converted = [
-        Operand::object(unsafe { args.read() }),
-        Operand::entry(encode(method.to_method(), false)),
-    ];
-    old_result(unsafe {
-        id_dispatch::vtable_add_method(core::ptr::null_mut(), receiver, converted.as_ptr(), 2)
-    })
+    let selector = unsafe { args.read() };
+    let entry = encode(method.to_method(), false);
+    crate::runtime::with_active(|runtime| {
+        runtime.primitive_add_method(receiver, selector, entry);
+    });
+    old_result(Outcome::loaded(Operand::entry(entry)))
 }
 pub(crate) unsafe extern "C" fn remove_method(
     receiver: Oop,
@@ -279,14 +275,11 @@ pub(crate) unsafe extern "C" fn remove_method(
     if count == 0 || args.is_null() {
         boundary::fatal_invariant("removeMethod: requires selector");
     }
-    old_result(unsafe {
-        id_dispatch::vtable_remove_method(
-            core::ptr::null_mut(),
-            receiver,
-            &[Operand::object(args.read())] as *const Operand,
-            1,
-        )
-    })
+    let selector = unsafe { args.read() };
+    old_result(crate::runtime::with_active(|runtime| {
+        let removed = runtime.primitive_remove_method(receiver, selector);
+        Outcome::loaded(removed.map(Operand::entry).unwrap_or_else(Operand::unit))
+    }))
 }
 
 #[cfg(test)]

@@ -184,7 +184,7 @@ impl Heap {
     }
     pub(crate) fn uses_id_memory(&self) -> bool { matches!(self.memory, memory::Memory::Id(_)) }
 
-    fn track_allocation(&mut self, object: Oop, permanence: Permanence) {
+    pub(crate) fn track_allocation(&mut self, object: Oop, permanence: Permanence) {
         let total_size = self.memory.get(object.addr()).unwrap().total_size;
         self.blocks.insert(object, BlockLifetime {
             metadata: if permanence == Permanence::Permanent { 2 } else { 0 },
@@ -192,15 +192,15 @@ impl Heap {
         boundary::require_invariant(self.budget.charge(total_size), "GC allocation byte counter overflow");
     }
 
-    pub(crate) fn intern_symbol(&mut self, symbols: &mut crate::owned::Owned<crate::symbol::Symbols>, behavior: Oop, bytes: &[u8]) -> Result<Oop, crate::symbol::EmbeddedNul> {
+    pub(crate) fn intern_symbol(&mut self, symbols: &mut crate::id_registries::Symbols, behavior: Oop, bytes: &[u8]) -> Result<Oop, crate::symbol::EmbeddedNul> {
         let object = self.memory.intern(symbols, behavior, bytes)?;
         if !self.blocks.contains_key(&object.addr()) { self.track_allocation(object, Permanence::Collectable); }
         Ok(object)
     }
 
     #[cfg(test)]
-    pub(crate) fn intern_symbol_hashed(&mut self, symbols: &mut crate::owned::Owned<crate::symbol::Symbols>, behavior: Oop, bytes: &[u8], hash: u64) -> Oop {
-        let object = symbols.intern_hashed(self.memory.local(), behavior, bytes, hash);
+    pub(crate) fn intern_symbol_hashed(&mut self, symbols: &mut crate::id_registries::Symbols, behavior: Oop, bytes: &[u8], hash: u64) -> Oop {
+        let object = symbols.local().intern_hashed(self.memory.local(), behavior, bytes, hash);
         if !self.blocks.contains_key(&object.addr()) { self.track_allocation(object, Permanence::Collectable); }
         object
     }

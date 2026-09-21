@@ -25,7 +25,8 @@ use crate::raw::MethodAddress;
 use crate::registration::{
     ABORT_V1, DescriptorAdmission, PREPARE_V1, ResumableRegistrationEnvelope, StagedUnit,
 };
-use crate::symbol::{EmbeddedNul, Symbols};
+use crate::symbol::EmbeddedNul;
+use crate::id_registries::Symbols;
 use crate::behaviors::AddMethod;
 use crate::abi::id_protocol::NativeEntry;
 use crate::behaviors::Behaviors;
@@ -142,7 +143,7 @@ struct RuntimeState {
     vtable_enumeration: crate::vtable_enumeration::Service,
     // Registry teardown does not dereference payloads. Production allocations
     // remain owned by Id until the final field below is dropped.
-    symbols: crate::owned::Owned<Symbols>,
+    symbols: Symbols,
     vtables: Behaviors,
     heap: Heap,
     globals: DispatchGlobals,
@@ -418,7 +419,7 @@ impl Runtime {
     pub(crate) fn new(
         heap: Heap,
         vtables: Behaviors,
-        symbols: crate::owned::Owned<Symbols>,
+        symbols: Symbols,
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
     ) -> Self {
@@ -427,7 +428,7 @@ impl Runtime {
     pub(crate) fn new_with_owners(
         heap: Heap,
         vtables: Behaviors,
-        symbols: crate::owned::Owned<Symbols>,
+        symbols: Symbols,
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
         roots: Option<crate::root_registry::Service>,
@@ -564,6 +565,20 @@ impl Runtime {
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         let entry = crate::legacy_method::encode(method, selector == self.globals().lookup);
         AddMethod::from_native(self.add_native_method(vtable, selector, entry))
+    }
+
+    pub(crate) unsafe fn bind_through_id(&self, receiver: Oop, selector: Oop) -> Result<Option<NativeEntry>, crate::abi::id_protocol::Outcome> {
+        let client = unsafe { (*self.state.get()).vtables.client() };
+        if let Some(client) = client { client.bind(receiver, selector) }
+        else { unsafe { crate::id_dispatch::bind(receiver, selector) } }
+    }
+    // Legacy primitive adapters bypass upper notifications just as their Id
+    // predecessors did, while leaving all registry access behind native entries.
+    pub(crate) fn primitive_add_method(&self, behavior: Oop, selector: Oop, entry: NativeEntry) {
+        unsafe { (*self.state.get()).vtables.add_native_method(behavior, selector, entry) };
+    }
+    pub(crate) fn primitive_remove_method(&self, behavior: Oop, selector: Oop) -> Option<NativeEntry> {
+        unsafe { (*self.state.get()).vtables.remove_native_method(behavior, selector) }
     }
 
     pub(crate) fn add_native_method(&self, vtable: Oop, selector: Oop, entry: NativeEntry) -> crate::vtable::AddMethod {
@@ -4316,13 +4331,15 @@ impl Runtime {
                 active,
                 previous: current,
             };
-            let (dictionaries, globals) = unsafe {
-                let state = self.state.get();
-                (Behaviors::dictionaries_ptr(core::ptr::addr_of_mut!((*state).vtables)), (*state).globals)
+            let (local, globals) = unsafe {
+                let state = &*self.state.get();
+                (state.vtables.local_pointer(), state.globals)
             };
-            // Id receives only its own dictionary registry and real selectors.
-            let result = unsafe { crate::id_dispatch::enter(dictionaries,
-                globals.vtable_vt, globals.lookup, globals.does_not_understand, operation) };
+            let result = if let Some(dictionaries) = local {
+                // Only isolated local harnesses need a directly established scope.
+                unsafe { crate::id_dispatch::enter(dictionaries,
+                    globals.vtable_vt, globals.lookup, globals.does_not_understand, operation) }
+            } else { operation() };
             drop(guard);
             result
         })

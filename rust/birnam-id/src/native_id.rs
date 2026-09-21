@@ -1,6 +1,7 @@
 //! The real Id carrier: only Id-owned state and the native loading protocol.
 pub(crate) mod objects;
 mod storage;
+mod registries;
 
 use crate::abi::{
     Oop,
@@ -19,6 +20,8 @@ pub(crate) struct State {
     _memory: crate::owned::Owned<ObjectMemory>,
     dictionaries: *mut Vtables,
     symbols: *mut Symbols,
+    _symbols: crate::owned::Owned<Symbols>,
+    _dictionaries: crate::owned::Owned<Vtables>,
     symbol_vtable: Oop,
     object_prototype: Oop,
     lookup: Oop,
@@ -28,8 +31,8 @@ pub(crate) struct State {
 impl State {
     pub(crate) unsafe fn new(
         memory_owner: crate::owned::Owned<ObjectMemory>,
-        dictionaries: *mut Vtables,
-        symbols: *mut Symbols,
+        dictionary_owner: crate::owned::Owned<Vtables>,
+        symbol_owner: crate::owned::Owned<Symbols>,
         metavtable: Oop,
         symbol_vtable: Oop,
         object_prototype: Oop,
@@ -37,6 +40,8 @@ impl State {
         does_not_understand: Oop,
     ) -> Box<Self> {
         let memory = memory_owner.pointer();
+        let dictionaries = dictionary_owner.pointer();
+        let symbols = symbol_owner.pointer();
         let intern =
             unsafe { (&mut *symbols).intern(&mut *memory, symbol_vtable, b"intern:") }.unwrap();
         let load =
@@ -56,6 +61,8 @@ impl State {
             _memory: memory_owner,
             dictionaries,
             symbols,
+            _symbols: symbol_owner,
+            _dictionaries: dictionary_owner,
             symbol_vtable,
             object_prototype,
             lookup,
@@ -90,10 +97,18 @@ impl State {
                     }
                     objects::install(&state, context, add);
                     storage::install(&state, context, add);
+                    registries::install(&state, context, add);
                 },
             )
         };
         state
+    }
+    pub(crate) unsafe fn enter<R>(&self, operation: impl FnOnce() -> R) -> R {
+        unsafe { id_dispatch::enter(self.dictionaries, self.protocol.receiver, self.lookup, self.does_not_understand, operation) }
+    }
+    #[cfg(test)]
+    pub(crate) unsafe fn exhaust_epoch(context: *mut c_void) {
+        unsafe { (&mut *(*context.cast::<Self>()).dictionaries).exhaust_mutation_epoch_for_test() };
     }
     pub(crate) fn roots(&self) -> [Oop; 7] {
         [
@@ -181,9 +196,9 @@ pub(crate) unsafe extern "C" fn load_module(
     unsafe { crate::abi::native_module::load(&protocol, path, arguments) }
 }
 
-// Production initializes Id once, then transfers ownership of the same boxed
-// registries to the upper Runtime. Published carrier/context addresses do not
-// change. Tests construct ordinary InitialObjects without this process slot.
+// Production initializes Id once. Upper Runtime retains that Id owner; its
+// clients never take ownership of the registries. Carrier/context addresses
+// stay fixed. Tests construct InitialObjects without this process slot.
 static PHASE: AtomicU8 = AtomicU8::new(0);
 static PENDING: AtomicPtr<InitialObjects> = AtomicPtr::new(core::ptr::null_mut());
 static PROTOCOL: AtomicPtr<Protocol> = AtomicPtr::new(core::ptr::null_mut());

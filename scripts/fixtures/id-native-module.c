@@ -191,6 +191,107 @@ static void retire_disposable(const BirnamProtocol *id, BirnamObject parent, Bir
         assert(released.status == BIRNAM_LOADED && released.value.kind == BIRNAM_UNIT);
     }
 }
+struct RegistryVisit {
+    const BirnamProtocol *id;
+    BirnamObject child, add, key, first;
+    size_t calls;
+};
+static BirnamOutcome visit_binding(void *context, BirnamObject receiver, const BirnamOperand *args, size_t count) {
+    struct RegistryVisit *visit=context;
+    assert(receiver==visit->child && count==3 && args[0].kind==BIRNAM_OBJECT);
+    assert(args[0].data.object==visit->first && args[1].kind==BIRNAM_NATIVE_ENTRY);
+    assert(args[2].kind==BIRNAM_WORD && args[2].data.word==0);
+    visit->calls++;
+    BirnamOperand install[]={ {.kind=BIRNAM_OBJECT,.data.object=visit->key},
+        {.kind=BIRNAM_WORD,.data.word=(size_t)visit->child},
+        {.kind=BIRNAM_NATIVE_ENTRY,.data.entry={echo,&cookie}} };
+    assert(send(visit->id,visit->id->receiver,visit->add,install,3).value.kind==BIRNAM_UNIT);
+    return (BirnamOutcome){0};
+}
+static void inspect_registries(const BirnamProtocol *id, BirnamObject object, BirnamObject behavior, BirnamObject method) {
+    /* Resolve all names before counting. None of the operations below collects. */
+    BirnamObject named=name(id,"symbolNamed:"), symbol_count=name(id,"symbolCount");
+    BirnamObject symbol_at=name(id,"symbolAt:"), name_bytes=name(id,"symbolNameBytes");
+    BirnamObject epoch=name(id,"behaviorEpoch"), member=name(id,"isBehavior:");
+    BirnamObject view=name(id,"behaviorView"), selectors=name(id,"selectorsIn:");
+    BirnamObject binding=name(id,"bindingOf:in:"), lookup=name(id,"lookup:in:");
+    BirnamObject bindings=name(id,"bindingsIn:do:"), add=name(id,"addMethod:to:as:");
+    BirnamObject remove=name(id,"removeMethod:from:"), weak=name(id,"addWeakBinding:to:as:");
+    BirnamObject create=name(id,"newBehaviorWithParent:"), bind=name(id,"bind:to:");
+    BirnamObject extra=name(id,"registrySnapshotAdded"), retire=name(id,"retireIndexesFor:");
+    BirnamObject detach=name(id,"detachAllocationAt:");
+    size_t count=send(id,id->receiver,symbol_count,NULL,0).value.data.word;
+    size_t bytes=send(id,id->receiver,name_bytes,NULL,0).value.data.word;
+    const char *missing="registryNameThatWasNeverInterned";
+    BirnamOperand spelling={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)missing,strlen(missing)}};
+    assert(send(id,id->receiver,named,&spelling,1).value.kind==BIRNAM_UNIT);
+    assert(send(id,id->receiver,symbol_count,NULL,0).value.data.word==count);
+    assert(send(id,id->receiver,name_bytes,NULL,0).value.data.word==bytes);
+    spelling.data.bytes.pointer=(const uint8_t *)"privateNativeEcho:";
+    spelling.data.bytes.length=strlen("privateNativeEcho:");
+    assert(send(id,id->receiver,named,&spelling,1).value.data.object==method);
+    size_t found=0;
+    for(size_t i=0;i<=count;i++) {
+        BirnamOperand index={.kind=BIRNAM_WORD,.data.word=i};
+        BirnamOutcome value=send(id,id->receiver,symbol_at,&index,1);
+        if(i==count) assert(value.value.kind==BIRNAM_UNIT);
+        else { assert(value.value.kind==BIRNAM_OBJECT);found+=value.value.data.object==method; }
+    }
+    assert(found==1 && bytes>count);
+    BirnamOperand parent={.kind=BIRNAM_OBJECT,.data.object=behavior};
+    assert(id->message(id->context,id->receiver,create,&parent,1).status==BIRNAM_INVALID_REQUEST);
+    parent=(BirnamOperand){.kind=BIRNAM_WORD,.data.word=(size_t)behavior};
+    BirnamObject child=send(id,id->receiver,create,&parent,1).value.data.object;
+    BirnamOperand child_arg={.kind=BIRNAM_OBJECT,.data.object=child};
+    assert(send(id,id->receiver,member,&child_arg,1).value.data.word==1);
+    BirnamOperand object_arg={.kind=BIRNAM_OBJECT,.data.object=object};
+    assert(send(id,id->receiver,member,&object_arg,1).value.data.word==0);
+    BirnamOutcome list=send(id,id->receiver,view,NULL,0);assert(list.value.kind==BIRNAM_BYTES);
+    found=0;
+    for(size_t i=0;i<list.value.data.bytes.length/sizeof(BirnamObject);i++)
+        found+=((const BirnamObject *)list.value.data.bytes.pointer)[i]==child;
+    assert(found==1);
+    BirnamOperand query[]={ {.kind=BIRNAM_OBJECT,.data.object=method}, child_arg };
+    assert(send(id,id->receiver,binding,query,2).value.kind==BIRNAM_UNIT);
+    assert(send(id,id->receiver,lookup,query,2).value.data.entry.method==echo);
+    BirnamOperand install[]={query[0],child_arg,object_arg};
+    size_t rejected_epoch=send(id,id->receiver,epoch,NULL,0).value.data.word;
+    assert(id->message(id->context,id->receiver,weak,install,3).status==BIRNAM_INVALID_REQUEST);
+    assert(id->message(id->context,id->receiver,remove,query,2).status==BIRNAM_INVALID_REQUEST);
+    assert(send(id,id->receiver,epoch,NULL,0).value.data.word==rejected_epoch);
+    install[1]=(BirnamOperand){.kind=BIRNAM_WORD,.data.word=(size_t)child};
+    send(id,id->receiver,weak,install,3);
+    assert(send(id,id->receiver,binding,query,2).value.data.object==object);
+    assert(send(id,id->receiver,lookup,query,2).value.kind==BIRNAM_UNIT); /* Opaque shadow. */
+    assert(send(id,id->receiver,remove,install,2).value.kind==BIRNAM_UNIT);
+    install[2]=(BirnamOperand){.kind=BIRNAM_NATIVE_ENTRY,.data.entry={echo,&cookie}};
+    size_t before=send(id,id->receiver,epoch,NULL,0).value.data.word;
+    assert(send(id,id->receiver,add,install,3).value.kind==BIRNAM_UNIT);
+    assert(send(id,id->receiver,epoch,NULL,0).value.data.word==before+1);
+    BirnamOutcome previous=send(id,id->receiver,add,install,3);
+    assert(previous.value.kind==BIRNAM_NATIVE_ENTRY && previous.value.data.entry.method==echo && previous.value.data.entry.context==&cookie);
+    struct RegistryVisit visit={id,child,add,extra,method,0};
+    BirnamOperand scan[]={child_arg,{.kind=BIRNAM_NATIVE_ENTRY,.data.entry={visit_binding,&visit}}};
+    assert(send(id,id->receiver,bindings,scan,2).value.kind==BIRNAM_UNIT && visit.calls==1);
+    list=send(id,id->receiver,selectors,&child_arg,1);
+    assert(list.value.kind==BIRNAM_BYTES && list.value.data.bytes.length==2*sizeof(BirnamObject));
+    assert(((const BirnamObject *)list.value.data.bytes.pointer)[0]==method);
+    assert(((const BirnamObject *)list.value.data.bytes.pointer)[1]==extra);
+    size_t calls=0;scan[1].data.entry=(BirnamNativeEntry){stop_visit,&calls};
+    BirnamOutcome failure=id->message(id->context,id->receiver,bindings,scan,2);
+    assert(calls==1 && failure.status==BIRNAM_INVALID_REQUEST && failure.detail==83 && failure.value.data.word==84);
+    BirnamOperand selection[]={query[0],object_arg};
+    BirnamOutcome selected=send(id,id->receiver,bind,selection,2);
+    assert(selected.value.kind==BIRNAM_NATIVE_ENTRY && selected.value.data.entry.method==echo && selected.value.data.entry.context==&cookie);
+    /* This trusted temporary behavior never escapes or participates in upper ownership. */
+    size_t address=(size_t)child;
+    BirnamOperand dead={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)&address,sizeof(address)}};
+    send(id,id->receiver,retire,&dead,1);
+    assert(send(id,id->receiver,member,&child_arg,1).value.data.word==0);
+    BirnamOperand word={.kind=BIRNAM_WORD,.data.word=address};
+    BirnamNativeEntry release=send(id,id->receiver,detach,&word,1).value.data.entry;
+    assert(release.method(release.context,NULL,NULL,0).status==BIRNAM_LOADED);
+}
 static void construct_objects(const BirnamProtocol *id, BirnamObject add, const BirnamNativeEntry *collect) {
     /* Resolve names before construction. These temporary objects do not escape
        initialization; the caller's upper loading turn protects native code. */
@@ -237,6 +338,7 @@ static void construct_objects(const BirnamProtocol *id, BirnamObject add, const 
     assert(answer.value.kind == BIRNAM_OBJECT && answer.value.data.object == object);
     assert(((size_t *)object)[0] == 83 && ((size_t *)object)[1] == 84);
     BirnamObject temporary=inspect_storage(id, object, behavior, echo_name, identity, collect == NULL);
+    inspect_registries(id, object, behavior, echo_name);
     if (!collect) {
         /* These Id-only probes precede Lifetime. Destroy their temporary raw
            payloads before entering the later validated production bootstrap. */

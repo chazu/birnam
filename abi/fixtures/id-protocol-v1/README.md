@@ -62,3 +62,12 @@ boundary; `allocationSizeOf:` continues to return only the requested extent.
 Runtime retains completed [Id allocation primitives](../../primitive-allocation-v1.md)
 for its internal construction and deferred materialization; production Heap no
 longer owns or borrows Id allocation records.
+
+[Registry operations](../../../docs/design/83-production-id-construction-and-lifetimes.md#removing-upper-access-to-id-registries)
+keep Symbol and dictionary ownership in Id. The independent C consumer checks
+non-interning name lookup and counts, ordered Symbol/behavior/key views,
+opaque shadowing, exact method/context results, mutation epochs and dictionary
+snapshot visitation with nested mutation and failure propagation, before and
+after Runtime. Raw registry mutations reject all-Object arguments before changing
+state; their Word addresses distinguish them from ordinary language sends. The
+carrier ABI remains version 1.
