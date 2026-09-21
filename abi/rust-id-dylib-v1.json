@@ -68,6 +68,6 @@
     "id_init",
     "birnam_deferred_identity_dependency_v1",
     "birnam_deferred_index_dependency_v1",
-    "birnam_runtime_init_v11"
+    "birnam_runtime_init_v12"
   ]
 }

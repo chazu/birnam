@@ -2,7 +2,7 @@
 
 This temporary Bootstrap-to-Runtime descriptor carries two completed native Id
 entries selected through `lookup` before collecting construction methods mount.
-It is the final argument of `birnam_runtime_init_v11`. It has no installer or
+It is the final argument of `birnam_runtime_init_v12`. It has no installer or
 future callback slots and does not change the Id protocol carrier.
 
 On the supported 64-bit target its C layout is:

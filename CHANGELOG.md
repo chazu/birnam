@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Keep Id's production state in Id and pass its native carrier explicitly into
+  Runtime construction. Query live initial objects through messages and retain
+  query results across construction. Remove the private Rust owner handoff and
+  stale Symbol-prototype pointer; publish the temporary Runtime v12 constructor.
+
 - Make saved Id lookup/add/remove entries independently callable with their own
   dictionary context. Remove Id's thread-local dispatch scope and preserve the
   exact native function/context through the upper legacy invocation bridge.

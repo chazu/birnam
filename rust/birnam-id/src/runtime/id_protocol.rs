@@ -81,7 +81,7 @@ impl Runtime {
         let Some(id) = state.id_protocol.as_ref() else {
             return;
         };
-        let protocol = id.protocol;
+        let protocol = *id;
         let context = core::ptr::from_ref(self).cast_mut().cast();
         let add = state.symbols.existing(b"addMethod").unwrap();
         let remove = state.symbols.existing(b"removeMethod:").unwrap();
@@ -264,9 +264,7 @@ unsafe extern "C" fn load(
     let protocol = unsafe {
         (&*runtime.state.get())
             .id_protocol
-            .as_ref()
             .unwrap()
-            .protocol
     };
     let mut result = Outcome::failed(native::INITIALIZER_FAILED, 0);
     runtime.enter_application(|| {

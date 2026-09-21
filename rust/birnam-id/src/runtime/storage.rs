@@ -109,10 +109,15 @@ impl Runtime {
             if status != OK { return status; }
             Some(inventory)
         } else { None };
+        // The compatibility path asks the completed Id for its roots too.
+        // No RuntimeState reference survives that native callback.
+        let id_roots = if native.is_none() {
+            self.id_storage.map(|id| id.roots()).unwrap_or_default()
+        } else { Vec::new() };
         let (allocations, roots, edges, providers, deferred_count, deferred_bytes, precise) = unsafe {
             let state = &*self.state.get();
             let Inventory { mut allocations, mut roots, edges, symbols } =
-                native.unwrap_or_else(|| legacy_inventory(state));
+                native.unwrap_or_else(|| legacy_inventory(state, id_roots));
             let addresses: std::collections::HashSet<_> = allocations.iter().map(|entry| entry.object.addr()).collect();
             let mut permanent = std::collections::HashSet::new();
             for allocation in &mut allocations {
@@ -200,7 +205,7 @@ unsafe extern "C" fn copy_inventory(context: *mut core::ffi::c_void, snapshot: *
 
 // Local/legacy construction has no separately loaded graph. This branch goes
 // away with id_init and the aggregate Runtime constructor; production uses Trace.
-fn legacy_inventory(state: &RuntimeState) -> Inventory {
+fn legacy_inventory(state: &RuntimeState, roots: Vec<Oop>) -> Inventory {
     let mut allocations = state.heap.storage_allocations();
     let mut edges = Vec::new();
     let mut symbols = Vec::new();
@@ -221,7 +226,7 @@ fn legacy_inventory(state: &RuntimeState) -> Inventory {
     }
     Inventory {
         allocations, edges, symbols,
-        roots: state.id_protocol.as_ref().map(|id| id.roots().to_vec()).unwrap_or_default(),
+        roots,
     }
 }
 

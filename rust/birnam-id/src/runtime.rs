@@ -141,8 +141,8 @@ struct RuntimeState {
     method_observation: crate::method_observation::Service,
     root_registry: crate::root_registry::Service,
     vtable_enumeration: crate::vtable_enumeration::Service,
-    // Registry teardown does not dereference payloads. Production allocations
-    // remain owned by Id until the final field below is dropped.
+    // Registry clients do not own or free Id allocations. The caller retains
+    // the completed Id owner for this Runtime's lifetime.
     symbols: Symbols,
     vtables: Behaviors,
     heap: Heap,
@@ -164,8 +164,8 @@ struct RuntimeState {
     next_registration_token: u64,
     suppressed_registration_generation: Option<u64>,
     pending_stackless_retirements: Vec<u64>,
-    // Id keeps the allocations alive until all upper state has been dropped.
-    id_protocol: Option<Box<crate::native_id::State>>,
+    // The native carrier is the complete Id dependency, not a Rust owner.
+    id_protocol: Option<crate::abi::id_protocol::Protocol>,
 }
 
 #[derive(Clone, Copy)]
@@ -261,6 +261,9 @@ pub(crate) struct Runtime {
     generated_deopt_trial: core::cell::RefCell<Option<generated_deopt_experiment::Trial>>,
     #[cfg(all(test, target_os = "macos"))]
     read_reuse_gc_epoch: Cell<u64>,
+    // Last: drop all upper state before the independently owned test Id.
+    #[cfg(test)]
+    pub(crate) test_id_owner: Option<Box<dyn core::any::Any>>,
 }
 
 use crate::collection_phase::Phase as CollectionPhase;
@@ -420,7 +423,7 @@ impl Runtime {
         heap: Heap,
         vtables: Behaviors,
         symbols: Symbols,
-        id_protocol: Option<Box<crate::native_id::State>>,
+        id_protocol: Option<crate::abi::id_protocol::Protocol>,
         globals: DispatchGlobals,
     ) -> Self {
         Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None, None, None)
@@ -429,7 +432,7 @@ impl Runtime {
         heap: Heap,
         vtables: Behaviors,
         symbols: Symbols,
-        id_protocol: Option<Box<crate::native_id::State>>,
+        id_protocol: Option<crate::abi::id_protocol::Protocol>,
         globals: DispatchGlobals,
         roots: Option<crate::root_registry::Service>,
         namespace: Option<Environment>,
@@ -437,7 +440,7 @@ impl Runtime {
         trace_graph: Option<birnam_abi::trace_graph::GraphV2>,
         collection_owner: Option<crate::collection_state::Shared>,
     ) -> Self {
-        let id_storage = if collection_owner.is_none() { id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol)) } else { None };
+        let id_storage = if collection_owner.is_none() { id_protocol.as_ref().map(|id| id_storage::Storage::new(*id)) } else { None };
         Self {
             id_storage,
             trace_graph,
@@ -480,6 +483,8 @@ impl Runtime {
             generated_deopt_trial: core::cell::RefCell::new(None),
             #[cfg(all(test, target_os = "macos"))]
             read_reuse_gc_epoch: Cell::new(0),
+            #[cfg(test)]
+            test_id_owner: None,
             state: UnsafeCell::new(RuntimeState {
                 method_observation: crate::method_observation::Service::new(),
                 root_registry: roots.unwrap_or_else(crate::root_registry::Service::new),
@@ -992,7 +997,7 @@ impl Runtime {
             let object = if value.kind() == native::UNIT { core::ptr::null_mut() }
                 else { let Some(object) = value.as_object().filter(|object| !object.is_null()) else { return invalid(); }; object };
             let runtime = unsafe { &*context.cast::<Runtime>() };
-            let id = unsafe { (*runtime.state.get()).id_protocol.as_ref().unwrap().protocol };
+            let id = unsafe { (*runtime.state.get()).id_protocol.unwrap() };
             let selector = runtime.intern(b"symbolBytesOf:").unwrap();
             let argument = Operand::object(name);
             let result = unsafe { id.message.unwrap()(id.context, id.receiver, selector, &argument, 1) };
@@ -4822,7 +4827,6 @@ fn upper_roots(state: &RuntimeState) -> Vec<Oop> {
 // Legacy diagnostic and test roots; production inspection gets Id facts from Trace.
 fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
     let mut roots = upper_roots(state);
-    roots.extend(state.id_protocol.as_ref().into_iter().flat_map(|id| id.roots()));
     roots.extend(state.heap.permanent_vtables());
     roots.extend(state.vtables.permanent_strong_edges(&state.heap));
     roots

@@ -1519,3 +1519,42 @@ execution, including host observations and forced recovery. Actual writes remain
 No release validation was run. The remaining Rust `InitialObjects` handoff,
 legacy Method adaptation, native Execution construction and independent Id
 packaging are still architectural work, not acceptance established by these tests.
+
+
+### Runtime receives Id through its native carrier
+
+Production Id now keeps its state for process life, like its pinned primitive
+native image. There is no `PENDING` owner slot or `take_initial_objects` transfer.
+The [Runtime v12 constructor](../../abi/runtime-construction-v12.md) takes the
+completed native Id carrier explicitly, followed by the existing completed lower
+owners. Runtime stores a copied `Protocol`; it neither owns nor inspects a boxed
+Id `State`. The host passes the same carrier it received from Siphon.
+
+The upper constructor obtains Object/Symbol prototypes, behaviors and lookup/DNU
+selectors through Id messages. It roots each query result before another native
+call, preserves the current collecting interner and keeps those temporary roots
+through construction. This also removes a stale private Symbol-prototype pointer:
+if the early unbound Symbol has been retired, Runtime uses the current interned
+identity. Compatibility storage inspection obtains Id roots through the native
+root operation without retaining a RuntimeState borrow across the call.
+
+Tests use the same constructor through an opaque forwarding carrier whose context
+has a different Rust layout. Their separately created Id instances are kept alive
+by a test-only erased lifetime guard, dropped after upper state. Production has
+no such guard and no private Id owner handoff. The legacy `id_init` entry still
+obtains a carrier from the process slot before calling this constructor; it is a
+compatibility path, not the production constructor's implicit dependency.
+
+The actual Cargo/package split, native Execution/Block construction, owned Method
+reflection and remaining temporary interfaces are still outstanding. In
+particular, native primitive identities in the legacy adapter/compiler admission
+and local test registry layouts still need to be separated; this change does not
+claim that moving a Rust pointer alone completes Id independence.
+
+Validation: 345 ABI/Id unit tests pass (15 ignored), including the opaque-carrier
+constructor and early Symbol retirement cases. The fresh debug installation
+builds 55 native libraries and 28 stage-1 modules. The independent native-loading
+harness passes, including collection during Runtime construction, invocation of
+saved primitives afterward, and C rejection of malformed v12 inputs before and
+after initialization without consuming owners. All 68 installed Id exports match
+the manifest and installer wrappers. Release validation remains waived.

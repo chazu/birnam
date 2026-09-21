@@ -114,12 +114,12 @@ impl Runtime {
         let state = unsafe { &*self.state.get() };
         let Some(id) = state.id_protocol.as_ref() else { return false; };
         let Some(roots) = state.root_registry.native_owner() else { return false; };
-        facts.id.same_contract(&id.protocol)
+        facts.id.same_contract(id)
             && facts.roots.context == roots.context
             && facts.roots.retain.map(|f| f as usize) == roots.retain.map(|f| f as usize)
             && facts.roots.release.map(|f| f as usize) == roots.release.map(|f| f as usize)
-            && facts.allocation_size == NativeEntry::new(crate::native_id::objects::allocation_size, id.protocol.context)
-            && facts.behavior_of == NativeEntry::new(crate::native_id::objects::behavior_of, id.protocol.context)
+            && facts.allocation_size == NativeEntry::new(crate::native_id::objects::allocation_size, id.context)
+            && facts.behavior_of == NativeEntry::new(crate::native_id::objects::behavior_of, id.context)
             && state.symbols.existing(b"allocate") == Some(facts.allocate)
             && state.vtables.native_lookup(state.globals.vtable_vt, facts.allocate)
                 == Some(NativeEntry::new(super::id_protocol::allocate, core::ptr::from_ref(self).cast_mut().cast()))

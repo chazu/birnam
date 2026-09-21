@@ -221,6 +221,25 @@ impl Protocol {
             && self.intern == other.intern && self.load == other.load
     }
 }
+/// Validate a completed carrier without calling any of its operations.
+/// # Safety
+/// The pointer names a readable header, and the declared extent if admitted.
+pub unsafe fn valid_protocol(pointer: *const Protocol) -> bool {
+    if pointer.is_null() || !pointer.addr().is_multiple_of(align_of::<Protocol>()) {
+        return false;
+    }
+    unsafe {
+        if core::ptr::addr_of!((*pointer).version).read() != VERSION
+            || core::ptr::addr_of!((*pointer).byte_size).read() as usize != size_of::<Protocol>()
+        {
+            return false;
+        }
+        let protocol = *pointer;
+        protocol.message.is_some() && !protocol.receiver.is_null()
+            && !protocol.intern.is_null() && !protocol.load.is_null()
+    }
+}
+
 const _: () = {
     assert!(size_of::<NativeEntry>() == 16);
     assert!(size_of::<Operand>() == 24);
@@ -238,3 +257,32 @@ const _: () = {
     assert!(core::mem::offset_of!(Protocol, load) == 40);
     assert!(core::mem::offset_of!(Module, initialize) == 8);
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn carrier_validation_is_inert_and_checks_the_header_before_fields() {
+        #[repr(C)]
+        struct Header { version: u32, byte_size: u32 }
+        #[repr(align(8))]
+        struct Aligned(Header);
+        let short = Aligned(Header { version: VERSION, byte_size: 8 });
+        assert!(!unsafe { valid_protocol((&raw const short).cast()) });
+        assert!(!unsafe { valid_protocol(core::ptr::null()) });
+        unsafe extern "C" fn message(_: *mut c_void, _: Oop, _: Oop, _: *const Operand, _: usize) -> Outcome {
+            panic!("validation must not invoke the carrier")
+        }
+        let mut protocol = Protocol {
+            version: VERSION, byte_size: size_of::<Protocol>() as u32, message: Some(message),
+            context: core::ptr::null_mut(), receiver: core::ptr::without_provenance_mut(1),
+            intern: core::ptr::without_provenance_mut(2), load: core::ptr::without_provenance_mut(3),
+        };
+        assert!(unsafe { valid_protocol(&protocol) });
+        protocol.message = None;
+        assert!(!unsafe { valid_protocol(&protocol) });
+        protocol.message = Some(message);
+        protocol.load = core::ptr::null_mut();
+        assert!(!unsafe { valid_protocol(&protocol) });
+    }
+}

@@ -177,11 +177,10 @@ pub(crate) unsafe extern "C" fn load_module(
     unsafe { crate::abi::native_module::load(&protocol, path, arguments) }
 }
 
-// Production initializes Id once. Upper Runtime retains that Id owner; its
-// clients never take ownership of the registries. Carrier/context addresses
-// stay fixed. Tests construct InitialObjects without this process slot.
+// Production initializes and retains Id for process life, like its native image.
+// Upper constructors borrow the protocol; no private Rust owner crosses the boundary.
+// Tests may separately own an InitialObjects instance.
 static PHASE: AtomicU8 = AtomicU8::new(0);
-static PENDING: AtomicPtr<InitialObjects> = AtomicPtr::new(core::ptr::null_mut());
 static PROTOCOL: AtomicPtr<Protocol> = AtomicPtr::new(core::ptr::null_mut());
 unsafe extern "C" fn initialize(_: *const Protocol, _: *const Operand, count: usize) -> Outcome {
     if count != 0 {
@@ -189,9 +188,9 @@ unsafe extern "C" fn initialize(_: *const Protocol, _: *const Operand, count: us
     }
     match PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
         Ok(_) => {
-            let mut initial = Box::new(InitialObjects::new());
-            let protocol = core::ptr::from_mut(&mut initial.protocol.protocol);
-            PENDING.store(Box::into_raw(initial), Ordering::Release);
+            let initial = InitialObjects::new();
+            let state = Box::leak(initial.protocol);
+            let protocol = core::ptr::from_mut(&mut state.protocol);
             PROTOCOL.store(protocol, Ordering::Release);
             PHASE.store(2, Ordering::Release);
         }
@@ -211,10 +210,10 @@ pub static birnam_native_module_v1: native::Module = native::Module {
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };
-pub(crate) fn take_initial_objects() -> InitialObjects {
+/// Compatibility entry for id_init. The production constructor receives this
+/// carrier explicitly from its caller instead of consulting this process slot.
+pub(crate) fn protocol() -> Protocol {
     let outcome = unsafe { initialize(core::ptr::null(), core::ptr::null(), 0) };
     assert_eq!(outcome.status, native::LOADED, "Id construction failed");
-    let pending = PENDING.swap(core::ptr::null_mut(), Ordering::AcqRel);
-    crate::boundary::require_invariant(!pending.is_null(), "Rust id_init called more than once");
-    unsafe { *Box::from_raw(pending) }
+    unsafe { *PROTOCOL.load(Ordering::Acquire) }
 }

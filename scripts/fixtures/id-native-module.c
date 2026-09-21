@@ -2,6 +2,7 @@
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #include "../../abi/fixtures/root-registry-v1/root_registry_v1.h"
 #include <assert.h>
+#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -356,7 +357,31 @@ static void construct_objects(const BirnamProtocol *id, BirnamObject add, const 
     }
     if (!collect) retire_disposable(id, parent, add);
 }
+/* Handwritten C declaration: validation must precede any ownership transfer. */
+static void check_runtime_constructor(const BirnamProtocol *id) {
+    typedef void *(*RuntimeV12)(const BirnamProtocol *, const void *, const void *,
+        const void *, const void *, const void *, const void *, const void *, const void *);
+    Dl_info owner;
+    assert(dladdr((void *)id->message, &owner));
+    void *image = dlopen(owner.dli_fname, RTLD_NOW | RTLD_LOCAL);
+    assert(image);
+    RuntimeV12 initialize = (RuntimeV12)dlsym(image, "birnam_runtime_init_v12");
+    assert(initialize && !dlsym(image, "birnam_runtime_init_v11"));
+    assert(!initialize(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    BirnamProtocol bad = *id;
+    bad.version = 99;
+    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    bad = *id;
+    bad.byte_size = 8;
+    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    bad = *id;
+    bad.message = NULL;
+    assert(!initialize(&bad, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    assert(!initialize(id, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
+    assert(!dlclose(image));
+}
 static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *arguments, size_t count) {
+    check_runtime_constructor(id);
     assert(id && id->version == 1 && id->byte_size == sizeof(*id));
     assert((count == 2 || count == 4) && arguments[0].kind == BIRNAM_BYTES && arguments[1].kind == BIRNAM_WORD);
     if (count == 4) {

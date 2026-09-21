@@ -2,7 +2,7 @@
 
 use core::ffi::{c_char, c_int, c_void};
 use std::ffi::CStr;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 use crate::abi::{IdApi, Method, Oop};
 use crate::boundary;
@@ -10,6 +10,8 @@ use crate::dispatch::Bootstrap;
 #[cfg(test)]
 use crate::dispatch::build_bootstrap;
 use crate::runtime::{Runtime, with_active_if_present};
+
+static CONSTRUCTION_STARTED: AtomicBool = AtomicBool::new(false);
 
 static PUBLIC_API: AtomicPtr<IdApi> = AtomicPtr::new(core::ptr::null_mut());
 
@@ -307,11 +309,15 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
 
 /// Perform the one supported process-lifetime initialization transition.
 pub(crate) fn initialize_once() -> *mut IdApi {
-    initialize_with_owners(None, None, None, None, None, None, None, None)
+    initialize_with_owners(crate::native_id::protocol(), None, None, None, None, None, None, None, None)
 }
-pub(crate) fn initialize_with_owners(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::primitive_allocation::PrimitivesV1>) -> *mut IdApi {
+pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::primitive_allocation::PrimitivesV1>) -> *mut IdApi {
+    // This is Runtime's one-shot transition. Id keeps its owner and does not
+    // police upper construction by handing out a Rust value exactly once.
+    boundary::require_invariant(!CONSTRUCTION_STARTED.swap(true, Ordering::AcqRel),
+        "Rust id_init called more than once");
     let namespace_exists = namespace.is_some();
-    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(crate::native_id::take_initial_objects(), roots, lifetime, values, namespace, model, graph, collection, primitives));
+    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(id, roots, lifetime, values, namespace, model, graph, collection, primitives));
     let construction_roots = bootstrap.runtime.retain_construction_roots();
     bootstrap.runtime.install_id_runtime_extensions();
     bootstrap.runtime.install_namespace_runtime_extension();

@@ -43,7 +43,7 @@ policy. It does not fill a missing provider. No Execution or Runtime pointer is
 needed to construct or use the early owner.
 
 `InitialFloor::initialize_collection` builds this owner after the Trace graph.
-The temporary `birnam_runtime_init_v11` bridge transfers it to Runtime, alongside
+The temporary `birnam_runtime_init_v12` bridge transfers it to Runtime, alongside
 the existing completed owners and graph. Adoption retains its existing records
 and budget, then registers and charges only Id allocations made since the early
 snapshot. Subsequent production allocation, deferred settlement, marking,

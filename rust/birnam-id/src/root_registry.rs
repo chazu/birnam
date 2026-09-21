@@ -92,12 +92,16 @@ pub(crate) struct Retained {
 }
 impl Retained {
     pub(crate) fn new(owner: birnam_abi::root_registry::OwnedV1, objects: &[crate::abi::Oop]) -> Self {
-        let tokens = objects.iter().filter(|object| !object.is_null()).map(|object| {
-            let token = unsafe { owner.retain.unwrap()(owner.context, *object) };
+        let mut retained = Self { owner, tokens: Vec::new() };
+        for object in objects { retained.retain(*object); }
+        retained
+    }
+    pub(crate) fn retain(&mut self, object: crate::abi::Oop) {
+        if !object.is_null() {
+            let token = unsafe { self.owner.retain.unwrap()(self.owner.context, object) };
             assert_ne!(token, 0);
-            token
-        }).collect();
-        Self { owner, tokens }
+            self.tokens.push(token);
+        }
     }
 }
 impl Drop for Retained {

@@ -1,5 +1,7 @@
 //! The initial Id object graph, constructed before any upper runtime service.
-use crate::abi::{Oop, id_protocol::{Operand, LOADED}};
+use crate::abi::id_protocol::{Operand, LOADED};
+#[cfg(test)]
+use crate::abi::Oop;
 use crate::abi::id_protocol::NativeEntry;
 use crate::object_memory::ObjectMemory;
 use crate::symbol::Symbols;
@@ -7,12 +9,19 @@ use crate::vtable::Vtables;
 
 pub(crate) struct InitialObjects {
     pub(crate) protocol: Box<crate::native_id::State>,
+    #[cfg(test)]
     pub(crate) vtable_vt: Oop,
+    #[cfg(test)]
     pub(crate) object_vt: Oop,
+    #[cfg(test)]
     pub(crate) symbol_vt: Oop,
+    #[cfg(test)]
     pub(crate) lookup: Oop,
+    #[cfg(test)]
     pub(crate) does_not_understand: Oop,
+    #[cfg(test)]
     pub(crate) object_prototype: Oop,
+    #[cfg(test)]
     pub(crate) symbol_prototype: Oop,
 }
 
@@ -30,7 +39,7 @@ impl InitialObjects {
         assert!(memory.set_vtable(object_prototype, object_vt));
         let lookup = symbols.intern(&mut memory, symbol_vt, b"lookup").unwrap();
         let does_not_understand = symbols.intern(&mut memory, symbol_vt, b"doesNotUnderstand:").unwrap();
-        let symbol_prototype = symbols.intern(&mut memory, symbol_vt, b"Symbol").unwrap();
+        let _symbol_prototype = symbols.intern(&mut memory, symbol_vt, b"Symbol").unwrap();
         let add_method = symbols.intern(&mut memory, symbol_vt, b"addMethod").unwrap();
         let remove_method = symbols.intern(&mut memory, symbol_vt, b"removeMethod:").unwrap();
         let context = crate::id_dispatch::Context {
@@ -47,8 +56,22 @@ impl InitialObjects {
             ]).status, LOADED);
         }
         let protocol = unsafe { crate::native_id::State::new(memory, dictionaries, symbols, vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
-        Self { protocol, vtable_vt, object_vt, symbol_vt,
-            lookup, does_not_understand, object_prototype, symbol_prototype }
+        Self { protocol,
+            #[cfg(test)]
+            vtable_vt,
+            #[cfg(test)]
+            object_vt,
+            #[cfg(test)]
+            symbol_vt,
+            #[cfg(test)]
+            lookup,
+            #[cfg(test)]
+            does_not_understand,
+            #[cfg(test)]
+            object_prototype,
+            #[cfg(test)]
+            symbol_prototype: _symbol_prototype,
+        }
     }
 }
 
