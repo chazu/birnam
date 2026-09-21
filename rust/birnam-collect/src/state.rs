@@ -9,11 +9,11 @@ use birnam_abi::{
     native_stack,
 };
 use core::{cell::Cell, ffi::c_void, ptr};
-use std::collections::HashMap;
+use birnam_abi::address_map::AddressMap;
 
 struct Records {
     api: RecordsV1,
-    entries: HashMap<usize, RecordV1>,
+    entries: AddressMap<RecordV1>,
     snapshot: Vec<RecordV1>,
     thread: std::thread::ThreadId,
 }
@@ -114,7 +114,7 @@ impl Records {
                 snapshot,
                 remove_dead,
             },
-            entries: HashMap::new(),
+            entries: AddressMap::default(),
             snapshot: Vec::new(),
             thread: std::thread::current().id(),
         });

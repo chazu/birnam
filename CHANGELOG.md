@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Share the existing address hasher between Id, Runtime, Collect and Lifetime;
+  remove duplicate implementations and general-purpose hashing from GC address
+  indexes. Native interfaces and string-keyed hashing are unchanged.
+
 - Reuse one parsed source snapshot within generation validation and image-code
   compilation. Preserve authority/digest checks while avoiding repeated parser
   heaps. Index dead allocation addresses once when retiring Block vtables.

@@ -9,7 +9,7 @@ use core::{
     ffi::{c_int, c_void},
     ptr,
 };
-use std::collections::HashMap;
+use birnam_abi::address_map::AddressMap;
 
 struct State {
     owner: OwnedV2,
@@ -17,10 +17,10 @@ struct State {
     access: AccessV1,
     id: Protocol,
     references: NativeEntry,
-    layouts: HashMap<usize, layouts::OwnedV1>,
-    hooks: HashMap<usize, hooks::SlotV1>,
-    finalizers: HashMap<usize, finalizers::SlotV1>,
-    edges: HashMap<usize, Vec<abi::EdgeV1>>,
+    layouts: AddressMap<layouts::OwnedV1>,
+    hooks: AddressMap<hooks::SlotV1>,
+    finalizers: AddressMap<finalizers::SlotV1>,
+    edges: AddressMap<Vec<abi::EdgeV1>>,
 }
 unsafe extern "C" fn edges(context: *mut c_void, object: Oop) -> abi::EdgesV1 {
     unsafe { check(context) };
@@ -311,10 +311,10 @@ unsafe extern "C" fn initialize(
         },
         id,
         references,
-        layouts: HashMap::new(),
-        hooks: HashMap::new(),
-        finalizers: HashMap::new(),
-        edges: HashMap::new(),
+        layouts: AddressMap::default(),
+        hooks: AddressMap::default(),
+        finalizers: AddressMap::default(),
+        edges: AddressMap::default(),
     });
     let context = ptr::from_mut(&mut *state).cast();
     state.owner.context = context;

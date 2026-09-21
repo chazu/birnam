@@ -2467,3 +2467,21 @@ production worker requirement remains unsatisfied; the nineteen-case service
 acceptance is not claimed. The broader obsolete-interface/fixture cleanup and
 complete Design 82/83 acceptance audit also remain open. Release validation
 remains waived.
+
+
+### Shared address indexes in storage owners
+
+The worker profile also showed substantial general-purpose hashing in Collect
+and Lifetime. Both now use the address hasher already used by Id and Runtime.
+The implementation is a shared Rust helper in the ABI crate; no container or new
+service crosses the native ABI. Keys remain exact allocation/behavior addresses.
+Language names and string-keyed maps retain their existing hashing. The duplicate
+Id and Runtime hasher implementations are removed.
+
+Against `/tmp/birnam-83-address-indexes`, the same real worker is ready in 21.22
+seconds and passes all twelve exact wire round trips and orderly stop. This
+still does not meet the production ten-second deadline. Id/Collect/Runtime tests
+pass (333 total, 15 ignored); Lifetime has no Rust unit tests in this run. The
+complete native suite passes, including early Lifetime/collection and independent
+Id startup. All six changed Rust files match installed sources. Evidence is
+`.cargo-target/83-address-indexes-evidence.json`. Release validation remains waived.
