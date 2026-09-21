@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Construct the production Namespace through Id after Lifetime/base values and
+  before String or Runtime (Design 83). Retain bindings through its native root
+  provider, adopt the same table in upper startup, and preserve early names and
+  aliases. Remove Namespace's production factory preparation and replace the
+  temporary Runtime v3 bridge with v4. Object Model, remaining value stages,
+  collector activation and Runtime/compiler separation remain unfinished.
+
 - Construct Nil/Boolean identities and basic operations through Id and Lifetime
   before String, numbers, Block or Runtime (Design 83). Upper startup adopts the
   same objects, layouts and method bindings; later Nil/Boolean entries add

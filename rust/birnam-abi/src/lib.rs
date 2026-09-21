@@ -559,3 +559,5 @@ pub mod lifetime;
 pub mod bootstrap;
 
 pub mod base_values;
+
+pub mod namespace_owner;

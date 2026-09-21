@@ -163,6 +163,18 @@ fn main() {
     assert_eq!(unsafe { initial.load_native(nil_path.as_os_str().as_bytes(), &[Operand::word(values as usize)]) }.status, native::LOADED);
     let base_check = intern(&id, b"checkBaseValues");
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 9);
+    symlink(prefix.join("lib/libbirnam_namespace.dylib"), isolated.join("libbirnam_namespace.dylib")).unwrap();
+    let namespace_path = isolated.join("libbirnam_namespace.dylib");
+    assert_eq!(unsafe { initial.load_native(namespace_path.as_os_str().as_bytes(), &[]) }.status, native::INVALID_REQUEST);
+    let namespace = initial.initialize_namespace().unwrap().unwrap();
+    assert_eq!(initial.initialize_namespace().unwrap(), Some(namespace));
+    let path = scratch.join("early-namespace.dylib");
+    let answer = unsafe { initial.load_native(path.as_os_str().as_bytes(), &[Operand::word(namespace as usize)]) };
+    assert_eq!(answer.status, native::LOADED);
+    let namespace_identity = answer.value.as_word().unwrap();
+    let namespace_check = intern(&id, b"earlyNamespaceCheck");
+    let namespace_release = intern(&id, b"releaseEarlyNamespaceAlias");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 10);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -190,6 +202,18 @@ fn main() {
         (base.nil, base.true_object, base.false_object));
     assert_eq!(send(&id, base_check, &[]).value.as_word(), Some(1));
     println!("Nil/Boolean bases work before successors; identities, layouts and live replacements survive reload/adoption/GC");
+    assert_eq!(send(&id, namespace_check, &[]).value.as_word(), Some(namespace_identity));
+    let first = unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"earlyNamespaceFirst".as_ptr()) };
+    let second = unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"earlyNamespaceSecond".as_ptr()) };
+    assert!(!first.is_null()); assert_eq!(first, second);
+    assert_eq!(send(&id, namespace_release, &[Operand::word(0)]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, namespace_check, &[]).value.as_word(), Some(namespace_identity));
+    assert_eq!(send(&id, namespace_release, &[Operand::word(1)]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, namespace_check, &[]).value.kind(), native::UNIT);
+    assert!(unsafe { birnam_abi::namespace_import::import(runtime.stack.imports(), c"earlyNamespaceSecond".as_ptr()) }.is_null());
+    println!("Namespace binds/enumerates before successors; aliases survive adoption and release permits reclamation");
     assert_eq!(send(&id, root_identity, &[]).value.as_word(), Some(early_identity));
     assert_eq!(send(&id, release_root, &[]).value.as_word(), Some(1));
     unsafe { (runtime.stack.api().gcCollect)(); }

@@ -318,9 +318,9 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     build_bootstrap_from(crate::initial_objects::InitialObjects::new())
 }
 pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
-    build_bootstrap_with(initial, None, None, None)
+    build_bootstrap_with(initial, None, None, None, None)
 }
-pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>) -> Bootstrap {
+pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
         memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
@@ -361,7 +361,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
         identical: static_selector(&mut symbols, &mut heap, symbol_vt, b"=="),
     };
 
-    let runtime = Runtime::new_with_roots(
+    let runtime = Runtime::new_with_owners(
         heap,
         vtables,
         symbols,
@@ -374,6 +374,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
             does_not_understand: selectors.does_not_understand,
         },
         roots,
+        namespace,
     );
     runtime.install_internal_dictionaries(symbol_list, environment);
 

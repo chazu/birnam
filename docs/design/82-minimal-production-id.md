@@ -51,8 +51,8 @@ to undo an extraction when it made the intended dependency direction worse.
 
 The table records the pre-migration failure at `e928780c`. Production now enters
 Id through the common native protocol, then constructs Bootstrap and its upper
-root/Lifetime owners and Nil/Boolean base values before the remaining thirteen
-preparations. Bootstrap owns
+root/Lifetime owners, Nil/Boolean base values and Namespace before the remaining
+twelve preparations. Bootstrap owns
 native initialization results and transfers its early roots to the root registry. Normal startup adopts that
 same initial graph and those native records. The installed
 Id has been exercised with upper libraries absent. Compiler code and aggregate

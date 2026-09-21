@@ -977,7 +977,7 @@ impl fmt::Debug for FloorError {
 pub struct LoadedFloor {
     bootstrap: Option<crate::native_bootstrap::Owner>,
     id_protocol: birnam_abi::id_protocol::Protocol,
-    _namespace: NonNull<std::ffi::c_void>,
+    _namespace: Option<NonNull<std::ffi::c_void>>,
     _object_model: NonNull<std::ffi::c_void>,
     _deferred_identity: NonNull<std::ffi::c_void>,
     _deferred_index: NonNull<std::ffi::c_void>,
@@ -3147,13 +3147,13 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v3".as_ptr()) });
+    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v4".as_ptr()) });
     let bootstrap = if runtime_init.is_some() {
         let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3165,6 +3165,7 @@ pub struct InitialFloor {
     runtime_init: Option<NonNull<std::ffi::c_void>>,
     lifetime: Option<*const birnam_abi::lifetime::OwnedV1>,
     base_values: Option<*const birnam_abi::base_values::ValuesV1>,
+    namespace: Option<*const birnam_abi::namespace_owner::OwnedV1>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
@@ -3241,11 +3242,25 @@ impl InitialFloor {
         self.base_values = Some(values);
         Ok(self.base_values)
     }
+    /// Native publication/import and Word-valued enumeration, before String.
+    pub fn initialize_namespace(&mut self) -> Result<Option<*const birnam_abi::namespace_owner::OwnedV1>, FloorError> {
+        if self.runtime_init.is_none() || self.namespace.is_some() { return Ok(self.namespace); }
+        self.initialize_base_values()?;
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let path = self.source_path.with_file_name("libbirnam_namespace.dylib");
+        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize), Operand::word(self.base_values.unwrap() as usize)];
+        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        let namespace = answer.value.as_word().unwrap_or(0) as *const birnam_abi::namespace_owner::OwnedV1;
+        if !unsafe { birnam_abi::namespace_owner::valid(namespace) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
+        self.namespace = Some(namespace);
+        Ok(self.namespace)
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
-        self.initialize_base_values()?;
-        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, bootstrap, .. } = self;
+        self.initialize_namespace()?;
+        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3265,13 +3280,13 @@ impl InitialFloor {
 
         // These inert factories still feed the legacy upper Runtime constructor.
         // They are no longer prerequisites for constructing Id itself.
-        let namespace = match unsafe { prepare_namespace(handle, &namespace_path) } {
+        let namespace_image = if namespace.is_some() { None } else { Some(match unsafe { prepare_namespace(handle, &namespace_path) } {
             Ok(namespace) => namespace,
             Err(error) => {
                 unsafe { system_dlclose(handle.as_ptr()) };
                 return Err(error);
             }
-        };
+        }) };
         let object_model = match unsafe { prepare_vtable_enumeration(handle, &object_model_path) } {
             Ok(image) => image,
             Err(error) => {
@@ -3384,9 +3399,9 @@ impl InitialFloor {
                 return Err(error);
             }
         };
-        let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values)) = (runtime_init, roots, lifetime, base_values) {
-            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
-            unsafe { initialize(roots, lifetime, values) }
+        let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values), Some(namespace)) = (runtime_init, roots, lifetime, base_values, namespace) {
+            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
+            unsafe { initialize(roots, lifetime, values, namespace) }
         } else {
             let initialize: IdInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
             unsafe { initialize() }
@@ -3552,7 +3567,7 @@ impl InitialFloor {
             namespace_import: NonNull::new(import).unwrap(),
             namespace_presence: NonNull::new(presence).unwrap(),
             namespace_names: NonNull::new(names).unwrap(),
-            _namespace: namespace,
+            _namespace: namespace_image,
             handle,
             api,
             _owner_thread: PhantomData,

@@ -3,6 +3,7 @@
   "scope": "Per-runtime raw export namespace storage",
   "install_name": "@rpath/libbirnam_namespace.dylib",
   "exported_symbols": [
+    "birnam_native_module_v1",
     "birnam_namespace_provider_v8",
     "birnam_symbol_borrow_v1",
     "module_init"

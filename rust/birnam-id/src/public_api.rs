@@ -290,7 +290,7 @@ pub(crate) fn closure_codegen_context_matches(api: &IdApi, nil: Oop, integer: &b
         && api.nilObj == nil
 }
 
-fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool) {
+fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, namespace_exists: bool) {
     let canonical = bootstrap.runtime.canonical();
     for vtable in [
         canonical.nil_vt,
@@ -301,18 +301,20 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool) {
             .runtime
             .set_layout(vtable, core::ptr::null(), 0, crate::abi::SLOT_RAW);
     }
-    bootstrap.runtime.publish_canonical_exports();
+    if !namespace_exists { bootstrap.runtime.publish_canonical_exports(); }
     bootstrap.runtime.install_execution_objects();
 }
 
 /// Perform the one supported process-lifetime initialization transition.
 pub(crate) fn initialize_once() -> *mut IdApi {
-    initialize_with_values(None, None, None)
+    initialize_with_owners(None, None, None, None)
 }
-pub(crate) fn initialize_with_values(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>) -> *mut IdApi {
-    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(crate::native_id::take_initial_objects(), roots, lifetime, values));
+pub(crate) fn initialize_with_owners(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>) -> *mut IdApi {
+    let namespace_exists = namespace.is_some();
+    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with(crate::native_id::take_initial_objects(), roots, lifetime, values, namespace));
     bootstrap.runtime.install_id_runtime_extensions();
-    install_bootstrap_metadata(&bootstrap, values.is_some());
+    bootstrap.runtime.install_namespace_runtime_extension();
+    install_bootstrap_metadata(&bootstrap, values.is_some(), namespace_exists);
     let mut api = Box::new(table_for(&bootstrap));
     let api_pointer = core::ptr::from_mut(api.as_mut());
     let runtime_pointer = core::ptr::from_ref(&bootstrap.runtime).cast_mut();
@@ -409,7 +411,7 @@ mod tests {
     #[test]
     fn complete_table_has_bootstrap_identities_and_no_null_function_slots() {
         let bootstrap = build_bootstrap();
-        install_bootstrap_metadata(&bootstrap, false);
+        install_bootstrap_metadata(&bootstrap, false, false);
         let table = table_for(&bootstrap);
         let globals = bootstrap.runtime.globals();
         let canonical = bootstrap.runtime.canonical();

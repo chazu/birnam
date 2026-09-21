@@ -1,5 +1,6 @@
 //! Raw export bindings and their storage, independently owned per Runtime.
 #![allow(clippy::missing_safety_doc)]
+mod native;
 mod index;
 mod enumeration;
 mod names;

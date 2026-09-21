@@ -89,13 +89,13 @@ pub extern "C" fn id_init() -> *mut core::ffi::c_void {
     public_api::initialize_once().cast()
 }
 
-/// Upper Runtime construction from already completed roots, Lifetime and values.
+/// Upper Runtime construction from already completed roots, Lifetime, values and Namespace.
 /// # Safety
-/// Transfer the two native owners once; retain the base-value module and objects.
+/// Transfer the three native owners once; retain the base-value module and objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_runtime_init_v3(roots: *const birnam_abi::root_registry::OwnedV1, records: *const birnam_abi::lifetime::OwnedV1, values: *const birnam_abi::base_values::ValuesV1) -> *mut core::ffi::c_void {
-    if !unsafe { birnam_abi::root_registry::valid_owned(roots) && birnam_abi::lifetime::valid(records) && birnam_abi::base_values::valid(values) } { return core::ptr::null_mut(); }
-    public_api::initialize_with_values(Some(unsafe { root_registry::Service::adopt(roots) }), Some(unsafe { lifetime::Owner::adopt(records) }), Some(unsafe { *values })).cast()
+pub unsafe extern "C" fn birnam_runtime_init_v4(roots: *const birnam_abi::root_registry::OwnedV1, records: *const birnam_abi::lifetime::OwnedV1, values: *const birnam_abi::base_values::ValuesV1, namespace: *const birnam_abi::namespace_owner::OwnedV1) -> *mut core::ffi::c_void {
+    if !unsafe { birnam_abi::root_registry::valid_owned(roots) && birnam_abi::lifetime::valid(records) && birnam_abi::base_values::valid(values) && birnam_abi::namespace_owner::valid(namespace) } { return core::ptr::null_mut(); }
+    public_api::initialize_with_owners(Some(unsafe { root_registry::Service::adopt(roots) }), Some(unsafe { lifetime::Owner::adopt(records) }), Some(unsafe { *values }), Some(unsafe { env::Environment::adopt(namespace) })).cast()
 }
 
 /// Private host/floor admission seam for Design 60J Symbol compaction.

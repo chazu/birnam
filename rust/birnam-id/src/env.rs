@@ -6,6 +6,7 @@ use core::ptr::NonNull;
 
 pub(crate) struct Environment {
     api: ApiV8,
+    native_owner: Option<birnam_abi::namespace_owner::OwnedV1>,
     context: NonNull<c_void>,
     enumeration: NonNull<birnam_abi::namespace_enumeration::ApiV1>,
     names: NonNull<birnam_abi::namespace_names::ApiV1>,
@@ -27,6 +28,15 @@ impl Environment {
         let api = unsafe { birnam_abi::namespace::operations() };
         let context =
             NonNull::new(unsafe { api.create.unwrap()() }).expect("Namespace create returned null");
+        Self::with_storage(api, context, None)
+    }
+    /// Transfer the completed native namespace, preserving all early bindings.
+    pub(crate) unsafe fn adopt(pointer: *const birnam_abi::namespace_owner::OwnedV1) -> Self {
+        assert!(unsafe { birnam_abi::namespace_owner::valid(pointer) });
+        let owner = unsafe { *pointer };
+        Self::with_storage(unsafe { *owner.api }, NonNull::new(owner.storage).unwrap(), Some(owner))
+    }
+    fn with_storage(api: ApiV8, context: NonNull<c_void>, native_owner: Option<birnam_abi::namespace_owner::OwnedV1>) -> Self {
         let names = NonNull::new(unsafe {
             api.create_names.unwrap()(
                 context.as_ptr(),
@@ -46,6 +56,7 @@ impl Environment {
         let exports = NonNull::new(unsafe { api.create_export.unwrap()(context.as_ptr(), api.bind, api.publish, &crate::public_api::namespace_export_access()) }).expect("Namespace export creation failed");
         let canonical_exports = unsafe { *exports.as_ptr() };
         Self {
+            native_owner,
             exports, canonical_exports,
             imports, canonical_imports,
             presence, canonical_presence,
@@ -56,6 +67,7 @@ impl Environment {
             enumeration,
         }
     }
+    pub(crate) fn native_receiver(&self) -> Option<Oop> { self.native_owner.map(|owner| owner.receiver) }
     pub(crate) fn exports(&self) -> *mut birnam_abi::namespace_export::ApiV1 { self.exports.as_ptr() }
     pub(crate) fn canonical_exports(&self) -> birnam_abi::namespace_export::ApiV1 { self.canonical_exports }
     pub(crate) fn imports(&self) -> *mut birnam_abi::namespace_import::ApiV1 { self.imports.as_ptr() }
@@ -109,6 +121,10 @@ impl Drop for Environment {
         unsafe { self.api.destroy_presence.unwrap()(self.presence.as_ptr()) };
         unsafe { self.api.destroy_enumeration.unwrap()(self.enumeration.as_ptr()) };
         unsafe { self.api.destroy_names.unwrap()(self.names.as_ptr()) };
-        unsafe { self.api.destroy.unwrap()(self.context.as_ptr()) };
+        if let Some(owner) = self.native_owner {
+            unsafe { owner.destroy.unwrap()(owner.context) };
+        } else {
+            unsafe { self.api.destroy.unwrap()(self.context.as_ptr()) };
+        }
     }
 }

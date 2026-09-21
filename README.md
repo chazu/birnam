@@ -710,7 +710,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-bootstrap/` — sequential native loading through Id and ownership of initialization results; see [the native contract](abi/fixtures/bootstrap-v1/README.md).
 - `rust/birnam-root-registry/` — native root ownership, initialized through Id before Runtime.
 - `rust/birnam-lifetime/` — payload descriptions, trace hooks and finalizer records, initialized through Id and adopted by Runtime; see [the native contract](abi/fixtures/lifetime-v1/README.md).
-- `rust/birnam-namespace/` — per-runtime raw export bindings, reverse aliases and enumeration; its factory currently feeds upper Runtime construction after Id initialization.
+- `rust/birnam-namespace/` — early publication/import, reverse aliases and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/namespace-owner-v1/README.md).
 - `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for native System, Block and numeric methods.
 - `rust/birnam-source-loader/` — System source reading, staging, evaluation and diagnostics.
 - `rust/birnam-native-loader/` — System direct native-module loading, installed by Prelude.

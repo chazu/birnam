@@ -419,15 +419,16 @@ impl Runtime {
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
     ) -> Self {
-        Self::new_with_roots(heap, vtables, symbols, id_protocol, globals, None)
+        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None)
     }
-    pub(crate) fn new_with_roots(
+    pub(crate) fn new_with_owners(
         heap: Heap,
         vtables: Behaviors,
         symbols: crate::owned::Owned<Symbols>,
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
         roots: Option<crate::root_registry::Service>,
+        namespace: Option<Environment>,
     ) -> Self {
         let id_storage = id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol));
         Self {
@@ -484,7 +485,7 @@ impl Runtime {
                 symbol_compaction_enabled: false,
                 symbol_compatibility_limits: None,
                 metadata: MetadataShell::new(),
-                environment: Environment::new(),
+                environment: namespace.unwrap_or_else(Environment::new),
                 execution: ExecutionState::new(current_thread_token()),
                 staged_resumable_unit: None,
                 staged_resumable_claims: None,
@@ -934,12 +935,46 @@ impl Runtime {
             "internal dictionaries installed twice",
         );
         state.internal_dictionaries = Some((symbols, environment));
+        // Initialize the legacy weak view from the already populated owner.
+        for binding in state.environment.roots().chunks_exact(2) {
+            state.vtables.add_weak_opaque_binding(environment, binding[0], binding[1]);
+        }
         for index in 0..state.symbols.count() {
             let symbol = state.symbols.at(index);
             state
                 .vtables
                 .add_weak_opaque_binding(symbols, symbol, core::ptr::null_mut());
         }
+    }
+
+    /// Add completed observation/mirror policy to the native publication method.
+    /// The early Namespace already owns and roots the same binding table.
+    pub(crate) fn install_namespace_runtime_extension(&self) {
+        let Some(receiver) = (unsafe { (*self.state.get()).environment.native_receiver() }) else { return; };
+        unsafe extern "C" fn publish(context: *mut core::ffi::c_void, _: Oop, args: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
+            use birnam_abi::id_protocol::{self as native, Outcome, Operand};
+            let invalid = || Outcome::failed(native::INVALID_REQUEST, 0);
+            let Some([name, value]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
+            let Some(name) = name.as_object() else { return invalid(); };
+            let object = if value.kind() == native::UNIT { core::ptr::null_mut() }
+                else { let Some(object) = value.as_object().filter(|object| !object.is_null()) else { return invalid(); }; object };
+            let runtime = unsafe { &*context.cast::<Runtime>() };
+            let id = unsafe { (*runtime.state.get()).id_protocol.as_ref().unwrap().protocol };
+            let selector = runtime.intern(b"symbolBytesOf:").unwrap();
+            let argument = Operand::object(name);
+            let result = unsafe { id.message.unwrap()(id.context, id.receiver, selector, &argument, 1) };
+            if result.status != native::LOADED { return result; }
+            let Some(bytes) = result.value.as_bytes() else { return invalid(); };
+            let Some(bytes) = (unsafe { birnam_abi::borrowed_slice(bytes.pointer, bytes.length) }) else { return invalid(); };
+            let bytes = bytes.to_vec();
+            match runtime.export(&bytes, object) {
+                Ok(object) => Outcome::loaded(if object.is_null() { Operand::unit() } else { Operand::object(object) }),
+                Err(_) => invalid(),
+            }
+        }
+        let selector = self.intern(b"bindingAt:put:").unwrap();
+        self.add_native_method(self.checked_vtable_of(receiver), selector,
+            NativeEntry::new(publish, core::ptr::from_ref(self).cast_mut().cast()));
     }
 
     pub(crate) fn canonical(&self) -> CanonicalObjects {

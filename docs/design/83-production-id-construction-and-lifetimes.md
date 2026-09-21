@@ -542,8 +542,8 @@ entered images, including failed initializers with partial publication.
 
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
-slot is retargeted. Thirteen upper factory preparations still run in the host
-after native Id/Bootstrap/root-registry/Lifetime/base-value initialization and feed the aggregate Runtime constructor. That
+slot is retargeted. Twelve upper factory preparations still run in the host
+after native Id/Bootstrap/root-registry/Lifetime/base-value/Namespace initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
 
 The first upper native entry is now
@@ -573,9 +573,9 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v3` is an upper construction entry taking the completed
-root and representation owners plus the completed base values, temporarily packaged in the Id library along with
-Runtime. The intermediate v1/v2 Runtime bridges are removed. The old `id_init` and factory preparation path remain
+prefix. `birnam_runtime_init_v4` is an upper construction entry taking the completed
+root and representation owners plus completed base values and Namespace, temporarily packaged in the Id library along with
+Runtime. The intermediate v1/v2/v3 Runtime bridges are removed. The old `id_init` and factory preparation path remain
 for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
@@ -595,7 +595,7 @@ admission, membership and record operations. They do not point forward to Runtim
 
 [`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
-that owner through `birnam_runtime_init_v3`; its behavior/heap tables retain no
+that owner through `birnam_runtime_init_v4`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
 same records through the native boundary. Public APIs retain their existing ABI
 and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
@@ -629,6 +629,27 @@ policy for the five canonical objects/behaviors without promoting unrelated earl
 allocations. Later Boolean/Nil entries preserve the basic method bindings. The
 legacy `id_init` path still constructs local constants until its consumers move.
 The remaining value stages and full construction graph remain unimplemented.
+
+`InitialFloor::initialize_namespace` then loads Namespace's native entry with
+completed roots, Lifetime and base values. Its
+[native owner](../../abi/fixtures/namespace-owner-v1/README.md) owns the actual
+ordered binding table and a receiver exposing Symbol-based publication/import,
+Word-valued count/index access and reverse aliases. Initial names refer only to
+completed objects. String, Integer, Error and Block are neither loaded nor
+required by this entry. Missing names, malformed operands and bounds have native
+outcomes. Its registered root provider visits current binding names/values and
+the receiver, copying references before marking. Rebinding does not retain old
+values in a second root table.
+
+Runtime adopts the same Namespace storage and adds its existing C-name adapters.
+It preserves early published names and initializes the legacy weak dictionary
+view from them. The native publication method gains completed Runtime observation
+and mirror policy; subsequent native and upper publication still use one table.
+The former Namespace preparation is skipped in production. Native destruction
+clears the root provider's selection and releases its owned storage; the provider
+then reports no roots. Object Model and the remaining construction stages still
+need migration, and the legacy weak dictionary mirror remains to be retired
+with its consumers.
 
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
@@ -738,7 +759,18 @@ Current debug evidence:
   image and baked execution, including live method replacement. The debug
   ABI/host/Id suites pass 24/86/308 tests (plus four host binary tests).
   Installed Boolean/Nil exports match their manifests and link only the platform
-  library; Id exports only the current v3 Runtime bridge.
+  library; Id exports only the current v4 Runtime bridge.
+- With only ten predecessor libraries available, Namespace's independent C
+  consumer verifies publication/import, ordered native enumeration, first reverse
+  alias, malformed operands and bounds with String/Integer/Block/Error absent.
+  The actual table and aliases survive Runtime adoption and precise GC. Removing
+  one alias preserves the object; removing the last permits reclamation, and
+  later C-name imports observe the cleared binding. Both Namespace and Namespace
+  Enumeration workloads pass source, compiled, native image and baked execution.
+  Debug units pass for ABI (24), host (86 plus four binary tests), Id (308) and
+  Namespace (20). The installed Namespace exports match its manifest and it
+  links only the platform library. The v4 Runtime bridge replaces v3; production
+  no longer prepares Namespace's factory inside Id.
 - The root-registry image workload passes for source, source-free compiled,
   native Code images and baked execution, including duplicate provider order,
   callback-time append, nested collection, roots, aliases and reload. Debug unit
