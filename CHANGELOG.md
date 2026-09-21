@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Move the production dependency sequence through Runtime into the loaded
+  Bootstrap module. Host prefix diagnostics use that same constructor; Bootstrap
+  owns predecessor loading, root adoption, collector activation and Runtime inputs.
+
 - Decode generation method selections once per authority calculation instead of
   rescanning the complete wire table for every method during startup and recovery.
 

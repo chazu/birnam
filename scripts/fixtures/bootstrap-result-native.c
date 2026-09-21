@@ -2,6 +2,8 @@
 #include "../../abi/fixtures/bootstrap-v2/bootstrap_v2.h"
 #include <assert.h>
 #include <string.h>
+#include <limits.h>
+#include <stdio.h>
 #ifndef MODE
 #define MODE 0
 #endif
@@ -38,6 +40,24 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
     assert(count==3 && args[0].kind==BIRNAM_WORD && args[1].kind==BIRNAM_BYTES && args[2].kind==BIRNAM_BYTES);
     bootstrap=*(const BootstrapOwnedV2 *)args[0].data.word;
     assert(bootstrap.version==2 && bootstrap.byte_size==sizeof(bootstrap));
+    /* Selecting construction uses the common native entry; executing it from
+       inside a module initializer must not recursively advance the graph. */
+    char path[PATH_MAX];
+    assert(args[2].data.bytes.length < sizeof(path));
+    memcpy(path,args[2].data.bytes.pointer,args[2].data.bytes.length);
+    path[args[2].data.bytes.length]=0;
+    char *slash=strrchr(path,'/'); assert(slash);
+    assert((size_t)(slash-path)+sizeof("/libbirnam_bootstrap.dylib") <= sizeof(path));
+    strcpy(slash,"/libbirnam_bootstrap.dylib");
+    BirnamOperand request[]={
+        {.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)"construction",12}},
+        args[0],args[2]
+    };
+    BirnamOutcome selected=bootstrap.load(bootstrap.context,(const uint8_t *)path,strlen(path),request,3);
+    assert(selected.status==BIRNAM_LOADED && selected.value.kind==BIRNAM_NATIVE_ENTRY);
+    BirnamNativeEntry entry=selected.value.data.entry;
+    BirnamOperand stage={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)"roots",5}};
+    assert(entry.method(entry.context,NULL,&stage,1).status==BIRNAM_INVALID_REQUEST);
     /* Exercise Protocol retention/release using the real Id, not a test Id. */
     BirnamOutcome same_id=bootstrap.load(bootstrap.context,args[2].data.bytes.pointer,args[2].data.bytes.length,NULL,0);
     assert(same_id.status==BIRNAM_LOADED && same_id.value.kind==BIRNAM_PROTOCOL);

@@ -3137,13 +3137,10 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    // Capture original entries before any upper module can replace them.
-    let primitives = Some(unsafe { birnam_abi::id_primitives::select(id_protocol) }
-        .map_err(|failure| FloorError::IdProtocol { status: failure.status, detail: failure.detail })?);
     let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
-    let bootstrap = Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
+    let bootstrap = Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file), &path_bytes(&source_path))
         .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?);
-    Ok(InitialFloor { source_path, handle, id_protocol, primitives, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, graph: None, collection: None, text_ready: false, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, id_protocol, bootstrap, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3151,327 +3148,86 @@ pub fn begin_id(
 pub struct InitialFloor {
     source_path: PathBuf,
     handle: NonNull<std::ffi::c_void>,
-    primitives: Option<birnam_abi::id_primitives::PrimitivesV1>,
-    lifetime: Option<*const birnam_abi::lifetime::OwnedV2>,
-    base_values: Option<*const birnam_abi::base_values::ValuesV1>,
-    namespace: Option<*const birnam_abi::namespace_owner::OwnedV1>,
-    model: Option<*const birnam_abi::object_model::OwnedV1>,
-    string: Option<*mut birnam_abi::string::StringApiV1>,
-    error: Option<birnam_abi::Oop>,
-    integer: Option<*mut birnam_abi::integer::IntegerApiV1>,
-    float: Option<*mut birnam_abi::float::FloatApiV1>,
-    word: Option<*mut birnam_abi::word::WordApiV1>,
-    graph: Option<*const birnam_abi::trace_graph::GraphV2>,
-    collection: Option<*const birnam_abi::collection_state::OwnedV2>,
-    text_ready: bool,
     id_protocol: birnam_abi::id_protocol::Protocol,
-    roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
     _owner_thread: PhantomData<std::rc::Rc<()>>,
 }
 impl InitialFloor {
     pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.id_protocol }
-    /// Completed native Bootstrap, borrowed for this construction's lifetime.
     pub fn bootstrap(&self) -> Option<*const birnam_abi::bootstrap::OwnedV2> {
         self.bootstrap.as_ref().map(crate::native_bootstrap::Owner::descriptor)
     }
-    /// Load through Bootstrap, retaining Object/Protocol results until released.
+    /// Load through the same retained Bootstrap used by production construction.
     /// # Safety
-    /// Native operands and borrowed pointer/code lifetimes obey their ABI contracts.
+    /// Native operand and borrowed pointer/code lifetime contracts apply.
     pub unsafe fn load_native(&self, path: &[u8], args: &[birnam_abi::id_protocol::Operand]) -> birnam_abi::id_protocol::Outcome {
         unsafe { load_native_with_bootstrap(self.bootstrap.as_ref(), self.id_protocol, path, args) }
     }
+    fn construct(&self, stage: &[u8]) -> Result<birnam_abi::id_protocol::Operand, FloorError> {
+        self.bootstrap.as_ref().expect("loaded Bootstrap").construct(stage).into_result()
+            .map_err(|failure| FloorError::IdProtocol { status: failure.status, detail: failure.detail })
+    }
+    fn constructed_word(&self, stage: &[u8]) -> Result<usize, FloorError> {
+        self.construct(stage)?.as_word().filter(|value| *value != 0)
+            .ok_or(FloorError::IdProtocol { status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 })
+    }
+    /// Read the completed root owner without constructing an absent prefix.
+    pub fn roots(&self) -> Option<*const birnam_abi::root_registry::OwnedV1> {
+        self.construct(b"existingRoots").ok()?.as_word().map(|value| value as _)
+    }
     pub fn initialize_roots(&mut self) -> Result<Option<*const birnam_abi::root_registry::OwnedV1>, FloorError> {
-        if self.roots.is_some() { return Ok(self.roots); }
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let path = self.source_path.with_file_name("libbirnam_root_registry.dylib");
-        let answer = unsafe { self.load_native(&path_bytes(&path), &[Operand::object(self.id_protocol.receiver)]) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let pointer = answer.value.as_word().unwrap_or(0) as *const birnam_abi::root_registry::OwnedV1;
-        if !unsafe { birnam_abi::root_registry::valid_owned(pointer) } {
-            return Err(FloorError::RootRegistry { path, reason: "invalid initialized owner" });
-        }
-        if let Some(bootstrap) = &self.bootstrap {
-            let status = unsafe { bootstrap.adopt_roots(pointer) };
-            if status != native::LOADED { return Err(FloorError::IdProtocol { status, detail: 0 }); }
-        }
-        self.roots = Some(pointer);
-        Ok(self.roots)
+        Ok(Some(self.constructed_word(b"roots")? as _))
     }
-    /// The completed native root owner, borrowed through construction/startup.
-    pub fn roots(&self) -> Option<*const birnam_abi::root_registry::OwnedV1> { self.roots }
-    /// Construct complete payload, trace-hook and finalizer records through Id.
-    /// This is the same step used by ordinary production startup.
     pub fn initialize_lifetime(&mut self) -> Result<Option<*const birnam_abi::lifetime::OwnedV2>, FloorError> {
-        if self.lifetime.is_some() { return Ok(self.lifetime); }
-        self.initialize_roots()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let load = |file: &str, arguments: &[Operand]| -> Result<Operand, FloorError> {
-            let path = self.source_path.with_file_name(file);
-            let bytes = path_bytes(&path);
-            let answer = unsafe { self.load_native(&bytes, arguments) };
-            if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-            Ok(answer.value)
-        };
-        let layout = load("libbirnam_payload_layout.dylib", &[])?;
-        let hooks = load("libbirnam_trace_hooks.dylib", &[])?;
-        let finalizers = load("libbirnam_finalizers.dylib", &[])?;
-        let answer = load("libbirnam_lifetime.dylib", &[layout, hooks, finalizers])?;
-        let pointer = answer.as_word().unwrap_or(0) as *const birnam_abi::lifetime::OwnedV2;
-        if !unsafe { birnam_abi::lifetime::valid(pointer) } {
-            return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 });
-        }
-        self.lifetime = Some(pointer);
-        Ok(self.lifetime)
+        Ok(Some(self.constructed_word(b"lifetime")? as _))
     }
-    /// Construct base identities and predicates before String, numbers or Block.
     pub fn initialize_base_values(&mut self) -> Result<Option<*const birnam_abi::base_values::ValuesV1>, FloorError> {
-        if self.base_values.is_some() { return Ok(self.base_values); }
-        self.initialize_lifetime()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let boolean = self.source_path.with_file_name("libbirnam_boolean.dylib");
-        let nil = self.source_path.with_file_name("libbirnam_nil.dylib");
-        let answer = unsafe { self.load_native(&path_bytes(&boolean), &[Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize)]) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let values = answer.value.as_word().unwrap_or(0) as *const birnam_abi::base_values::ValuesV1;
-        if !unsafe { birnam_abi::base_values::valid(values) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        let answer = unsafe { self.load_native(&path_bytes(&nil), &[Operand::word(values as usize)]) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        self.base_values = Some(values);
-        Ok(self.base_values)
+        Ok(Some(self.constructed_word(b"values")? as _))
     }
-    /// Native publication/import and Word-valued enumeration, before String.
     pub fn initialize_namespace(&mut self) -> Result<Option<*const birnam_abi::namespace_owner::OwnedV1>, FloorError> {
-        if self.namespace.is_some() { return Ok(self.namespace); }
-        self.initialize_base_values()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let path = self.source_path.with_file_name("libbirnam_namespace.dylib");
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize), Operand::word(self.base_values.unwrap() as usize)];
-        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let namespace = answer.value.as_word().unwrap_or(0) as *const birnam_abi::namespace_owner::OwnedV1;
-        if !unsafe { birnam_abi::namespace_owner::valid(namespace) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        self.namespace = Some(namespace);
-        Ok(self.namespace)
+        Ok(Some(self.constructed_word(b"namespace")? as _))
     }
-    /// Construct private behaviors and enumeration before Runtime/GC.
     pub fn initialize_object_model(&mut self) -> Result<Option<*const birnam_abi::object_model::OwnedV1>, FloorError> {
-        if self.model.is_some() { return Ok(self.model); }
-        self.initialize_namespace()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let path = self.source_path.with_file_name("libbirnam_object_model.dylib");
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize), Operand::word(self.base_values.unwrap() as usize)];
-        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let model = answer.value.as_word().unwrap_or(0) as *const birnam_abi::object_model::OwnedV1;
-        if !unsafe { birnam_abi::object_model::valid(model) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        self.model = Some(model);
-        Ok(self.model)
+        Ok(Some(self.constructed_word(b"objectModel")? as _))
     }
-    /// Construct usable byte storage before Integer, Error, Float or Runtime.
     pub fn initialize_string(&mut self) -> Result<Option<*mut birnam_abi::string::StringApiV1>, FloorError> {
-        if self.string.is_some() { return Ok(self.string); }
-        self.initialize_object_model()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let path = self.source_path.with_file_name("libbirnam_string.dylib");
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize)];
-        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let string = answer.value.as_word().unwrap_or(0) as *mut birnam_abi::string::StringApiV1;
-        if !unsafe { birnam_abi::string::valid(string) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        self.string = Some(string);
-        Ok(self.string)
+        Ok(Some(self.constructed_word(b"string")? as _))
     }
-    /// Construct Error values and propagation before numbers or Runtime.
-    pub fn initialize_error(&mut self) -> Result<Option<birnam_abi::Oop>, FloorError> {
-        if self.error.is_some() { return Ok(self.error); }
-        self.initialize_string()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let path = self.source_path.with_file_name("libbirnam_id_error.dylib");
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize),
-            Operand::word(self.base_values.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize),
-            Operand::word(self.string.unwrap() as usize)];
-        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let error = answer.value.as_object().filter(|value| !value.is_null())
-            .ok_or(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 })?;
-        // Error has published its own roots and Namespace names. Its factory
-        // no longer needs Bootstrap's temporary initialization-result root.
-        if let Some(bootstrap) = &self.bootstrap { assert_eq!(unsafe { bootstrap.release(answer.value) }, 1); }
-        self.error = Some(error);
-        Ok(self.error)
-    }
-    /// Construct checked Integer arithmetic and errors before Float or Runtime.
     pub fn initialize_integer(&mut self) -> Result<Option<*mut birnam_abi::integer::IntegerApiV1>, FloorError> {
-        if self.integer.is_some() { return Ok(self.integer); }
-        self.initialize_error()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let path = self.source_path.with_file_name("libbirnam_integer.dylib");
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize),
-            Operand::word(self.base_values.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize),
-            Operand::word(self.string.unwrap() as usize), Operand::object(self.error.unwrap())];
-        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let integer = answer.value.as_word().unwrap_or(0) as *mut birnam_abi::integer::IntegerApiV1;
-        if !unsafe { birnam_abi::integer::valid(integer) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        self.integer = Some(integer);
-        Ok(self.integer)
+        Ok(Some(self.constructed_word(b"integer")? as _))
     }
-    /// Construct Float and extend Integer only after the Integer base exists.
     pub fn initialize_float(&mut self) -> Result<Option<*mut birnam_abi::float::FloatApiV1>, FloorError> {
-        if self.float.is_some() { return Ok(self.float); }
-        self.initialize_integer()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let path = self.source_path.with_file_name("libbirnam_float.dylib");
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize),
-            Operand::word(self.base_values.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize),
-            Operand::word(self.string.unwrap() as usize), Operand::object(self.error.unwrap()), Operand::word(self.integer.unwrap() as usize)];
-        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let float = answer.value.as_word().unwrap_or(0) as *mut birnam_abi::float::FloatApiV1;
-        if !unsafe { birnam_abi::float::valid(float) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        self.float = Some(float);
-        Ok(self.float)
+        Ok(Some(self.constructed_word(b"float")? as _))
     }
-    /// Construct Word after Integer without a Float or Runtime dependency.
     pub fn initialize_word(&mut self) -> Result<Option<*mut birnam_abi::word::WordApiV1>, FloorError> {
-        if self.word.is_some() { return Ok(self.word); }
-        self.initialize_integer()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let path = self.source_path.with_file_name("libbirnam_word.dylib");
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize),
-            Operand::word(self.base_values.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize),
-            Operand::word(self.string.unwrap() as usize), Operand::object(self.error.unwrap()), Operand::word(self.integer.unwrap() as usize)];
-        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let word = answer.value.as_word().unwrap_or(0) as *mut birnam_abi::word::WordApiV1;
-        if !unsafe { birnam_abi::word::valid(word) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        self.word = Some(word);
-        Ok(self.word)
+        Ok(Some(self.constructed_word(b"word")? as _))
     }
-    /// Extend existing String storage after both numeric families are complete.
-    pub fn initialize_text(&mut self) -> Result<(), FloorError> {
-        if self.text_ready { return Ok(()); }
-        self.initialize_float()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let id = self.id_protocol;
-        let name = Operand::bytes(b"installText:");
-        let selector = unsafe { id.message.unwrap()(id.context, id.receiver, id.intern, &name, 1) };
-        if selector.status != native::LOADED { return Err(FloorError::IdProtocol { status: selector.status, detail: selector.detail }); }
-        let selector = selector.value.as_object().ok_or(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 })?;
-        let args = [Operand::word(self.base_values.unwrap() as usize), Operand::word(self.integer.unwrap() as usize), Operand::word(self.float.unwrap() as usize)];
-        let result = unsafe { id.message.unwrap()(id.context, (*self.string.unwrap()).prototype, selector, args.as_ptr(), args.len()) };
-        if result.status != native::LOADED { return Err(FloorError::IdProtocol { status: result.status, detail: result.detail }); }
-        if result.value.kind() != native::UNIT { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        let name = Operand::bytes(b"installPrinting:");
-        let selector = unsafe { id.message.unwrap()(id.context, id.receiver, id.intern, &name, 1) };
-        if selector.status != native::LOADED { return Err(FloorError::IdProtocol { status: selector.status, detail: selector.detail }); }
-        let selector = selector.value.as_object().ok_or(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 })?;
-        let values = unsafe { *self.base_values.unwrap() };
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.string.unwrap() as usize)];
-        for receiver in [values.nil, values.true_object] {
-            let result = unsafe { id.message.unwrap()(id.context, receiver, selector, args.as_ptr(), args.len()) };
-            if result.status != native::LOADED { return Err(FloorError::IdProtocol { status: result.status, detail: result.detail }); }
-            if result.value.kind() != native::UNIT { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        }
-        self.text_ready = true;
-        Ok(())
-    }
-    /// Construct live graph access from completed lower owners, before Runtime.
     pub fn initialize_trace(&mut self) -> Result<Option<*const birnam_abi::trace_graph::GraphV2>, FloorError> {
-        if self.graph.is_some() { return Ok(self.graph); }
-        self.initialize_text()?;
-        self.initialize_word()?;
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let mark_path = self.source_path.with_file_name("libbirnam_native_mark.dylib");
-        let mark = unsafe { self.load_native(&path_bytes(&mark_path), &[]) };
-        if mark.status != native::LOADED { return Err(FloorError::IdProtocol { status: mark.status, detail: mark.detail }); }
-        let path = self.source_path.with_file_name("libbirnam_trace.dylib");
-        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize), Operand::word(self.model.unwrap() as usize), mark.value];
-        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let graph = answer.value.as_word().unwrap_or(0) as *const birnam_abi::trace_graph::GraphV2;
-        if !unsafe { birnam_abi::trace_graph::valid(graph) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        self.graph = Some(graph);
-        Ok(self.graph)
+        Ok(Some(self.constructed_word(b"trace")? as _))
     }
-    /// Construct the collection records and controls before aggregate Runtime.
     pub fn initialize_collection(&mut self) -> Result<Option<*const birnam_abi::collection_state::OwnedV2>, FloorError> {
-        if self.collection.is_some() { return Ok(self.collection); }
-        self.initialize_trace()?;
-        use birnam_abi::id_protocol as native;
-        let mut dependencies = Vec::new();
-        for file in ["libbirnam_native_stack.dylib", "libbirnam_gc_settings.dylib", "libbirnam_allocation_budget.dylib"] {
-            let path = self.source_path.with_file_name(file);
-            let answer = unsafe { self.load_native(&path_bytes(&path), &[]) };
-            if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-            dependencies.push(answer.value);
-        }
-        dependencies.extend([native::Operand::word(self.graph.unwrap() as usize),
-            native::Operand::word(self.lifetime.unwrap() as usize), native::Operand::word(self.model.unwrap() as usize)]);
-        let path = self.source_path.with_file_name("libbirnam_collect.dylib");
-        let answer = unsafe { self.load_native(&path_bytes(&path), &dependencies) };
-        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-        let owner = answer.value.as_word().unwrap_or(0) as *const birnam_abi::collection_state::OwnedV2;
-        if !unsafe { birnam_abi::collection_state::valid(owner) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-        self.collection = Some(owner);
-        Ok(self.collection)
+        Ok(Some(self.constructed_word(b"collection")? as _))
     }
-    /// Activate the existing heap and install ordinary collecting constructors.
-    pub fn activate_collection(&mut self) -> Result<(), FloorError> {
-        let Some(owner) = self.initialize_collection()? else { return Ok(()); };
-        let collector = unsafe { *(*owner).collector };
-        if unsafe { (collector.active)(collector.context) } != 0 { return Ok(()); }
-        let bootstrap = self.bootstrap.as_ref().expect("native collection requires Bootstrap");
-        let status = unsafe { (collector.activate)(collector.context, bootstrap.descriptor(), self.roots.unwrap()) };
-        if status != birnam_abi::storage::OK {
-            return Err(FloorError::IdProtocol { status: birnam_abi::id_protocol::INITIALIZER_FAILED, detail: status as usize });
-        }
-        Ok(())
+    pub fn initialize_error(&mut self) -> Result<Option<birnam_abi::Oop>, FloorError> {
+        self.construct(b"error")?.as_object().filter(|value| !value.is_null()).map(Some)
+            .ok_or(FloorError::IdProtocol { status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 })
     }
-    /// Load complete factory operations through Id, with Runtime still absent.
+    pub fn initialize_text(&mut self) -> Result<(), FloorError> { self.construct(b"text").map(|_| ()) }
+    pub fn activate_collection(&mut self) -> Result<(), FloorError> { self.construct(b"activate").map(|_| ()) }
     pub fn initialize_runtime_support(&self) -> Result<birnam_abi::runtime_support::FactoriesV1, FloorError> {
-        use birnam_abi::id_protocol::{self as native, Operand};
-        unsafe fn factory<T: Copy>(initial: &InitialFloor, library: &str, name: &[u8], valid: unsafe fn(*const T) -> bool) -> Result<T, FloorError> {
-            let path = initial.source_path.with_file_name(library);
-            let answer = unsafe { initial.load_native(&path_bytes(&path), &[Operand::bytes(name)]) };
-            if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
-            let pointer = answer.value.as_word().unwrap_or(0) as *const T;
-            if !unsafe { valid(pointer) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
-            Ok(unsafe { *pointer })
-        }
-        Ok(birnam_abi::runtime_support::FactoriesV1 {
-            version: 1, byte_size: size_of::<birnam_abi::runtime_support::FactoriesV1>(),
-            observation: unsafe { factory(self, "libbirnam_method_observation.dylib", b"methodObservation", birnam_abi::method_observation::valid_factory)? },
-            storage: unsafe { factory(self, "libbirnam_storage.dylib", b"observation", birnam_abi::storage_observation::valid)? },
-            identity: unsafe { factory(self, "libbirnam_storage.dylib", b"deferredIdentity", birnam_abi::deferred_identity::valid)? },
-            index: unsafe { factory(self, "libbirnam_storage.dylib", b"deferredIndex", birnam_abi::deferred_index::valid)? },
-            cache: unsafe { factory(self, "libbirnam_dispatch_cache.dylib", b"dispatchCache", birnam_abi::dispatch_cache::valid)? },
-            verdict: unsafe { factory(self, "libbirnam_dispatch_cache.dylib", b"guardVerdict", birnam_abi::guard_verdict::valid)? },
-        })
+        let pointer = self.constructed_word(b"runtimeSupport")? as *const birnam_abi::runtime_support::FactoriesV1;
+        Ok(unsafe { *pointer })
     }
     pub fn initialize_runtime_values(&mut self) -> Result<birnam_abi::runtime_values::ApisV1, FloorError> {
-        self.initialize_text()?;
-        self.initialize_word()?;
-        Ok(birnam_abi::runtime_values::ApisV1 {
-            version: 1, byte_size: size_of::<birnam_abi::runtime_values::ApisV1>(),
-            integer: self.integer.expect("completed Integer"),
-            float: self.float.expect("completed Float"),
-            word: self.word.expect("completed Word"),
-            string: self.string.expect("completed String"),
-        })
+        let pointer = self.constructed_word(b"runtimeValues")? as *const birnam_abi::runtime_values::ApisV1;
+        Ok(unsafe { *pointer })
     }
-    pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
-        self.initialize_roots()?;
-        self.initialize_lifetime()?;
-        self.initialize_float()?;
-        self.initialize_word()?;
-        self.initialize_text()?;
-        self.initialize_trace()?;
-        self.activate_collection()?;
-        let support = self.initialize_runtime_support()?;
-        let operations = self.initialize_runtime_values()?;
-        let Self { source_path, handle, id_protocol, primitives, roots, lifetime, base_values, namespace, model, string, float, word, graph, collection, bootstrap, .. } = self;
+    pub fn finish(self) -> Result<LoadedFloor, FloorError> {
+        let initialized = self.constructed_word(b"runtime")? as *mut IdApi;
+        let string = Some(self.constructed_word(b"string")? as *mut birnam_abi::string::StringApiV1);
+        let float = Some(self.constructed_word(b"float")? as *mut birnam_abi::float::FloatApiV1);
+        let word = Some(self.constructed_word(b"word")? as *mut birnam_abi::word::WordApiV1);
+        let Self { source_path, handle, id_protocol, bootstrap, .. } = self;
         // Id pins every entered native image, including the supporting factories.
         let _id_image = handle;
         let runtime_path = source_path.with_file_name("libbirnam_runtime.dylib");
@@ -3486,24 +3242,6 @@ impl InitialFloor {
         let finalizers_path = path.with_file_name("libbirnam_finalizers.dylib");
         let native_stack_path = path.with_file_name("libbirnam_native_stack.dylib");
 
-        use birnam_abi::id_protocol::{self as native, Operand};
-        let arguments = [
-            Operand::word(roots.expect("completed roots").addr()),
-            Operand::word(lifetime.expect("completed lifetime").addr()),
-            Operand::word(base_values.expect("completed base values").addr()),
-            Operand::word(namespace.expect("completed namespace").addr()),
-            Operand::word(model.expect("completed object model").addr()),
-            Operand::word(graph.expect("completed trace graph").addr()),
-            Operand::word(collection.expect("completed collection").addr()),
-            Operand::word((primitives.as_ref().expect("completed Id primitives") as *const birnam_abi::id_primitives::PrimitivesV1).addr()),
-            Operand::word((&support as *const birnam_abi::runtime_support::FactoriesV1).addr()),
-            Operand::word((&operations as *const birnam_abi::runtime_values::ApisV1).addr()),
-        ];
-        let answer = unsafe { load_native_with_bootstrap(bootstrap.as_ref(), id_protocol, &path_bytes(&runtime_path), &arguments) };
-        if answer.status != native::LOADED {
-            return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail });
-        }
-        let initialized = answer.value.as_word().unwrap_or(0) as *mut IdApi;
         let api = NonNull::new(initialized).ok_or(FloorError::NullApi)?;
         // Acquire a lookup handle only after Id has loaded and initialized Runtime.
         let runtime_name = CString::new(path_bytes(&runtime_path)).map_err(|_| FloorError::EmbeddedNul)?;

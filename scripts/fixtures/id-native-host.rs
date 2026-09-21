@@ -122,6 +122,17 @@ fn main() {
     symlink(prefix.join("lib/libbirnam_bootstrap.dylib"), isolated.join("libbirnam_bootstrap.dylib")).unwrap();
     let mut initial = birnam_host::begin_id(&id_path, None, None).unwrap();
     let bootstrap = initial.bootstrap().unwrap();
+    assert!(initial.roots().is_none());
+    let bootstrap_library = isolated.join("libbirnam_bootstrap.dylib");
+    let construction_args = [Operand::bytes(b"construction"), Operand::word(bootstrap.addr()), Operand::bytes(id_path.as_os_str().as_bytes())];
+    let construction = unsafe { initial.load_native(bootstrap_library.as_os_str().as_bytes(), &construction_args) };
+    assert_eq!(construction.status, native::LOADED);
+    let construction = construction.value.as_entry().expect("Bootstrap construction entry");
+    let construct = |stage: &[u8]| unsafe {
+        construction.method.unwrap()(construction.context, std::ptr::null_mut(), &Operand::bytes(stage), 1)
+    };
+    assert_eq!(construct(b"unknown").status, native::INVALID_REQUEST);
+    assert_eq!(construct(b"existingRoots").value.kind(), native::UNIT);
     let bootstrap_path = scratch.join("bootstrap-result-1.dylib");
     let object_path = scratch.join("bootstrap-result-0.dylib");
     let bootstrap_args = [Operand::word(bootstrap as usize), Operand::bytes(object_path.as_os_str().as_bytes()), Operand::bytes(id_path.as_os_str().as_bytes())];
@@ -136,7 +147,9 @@ fn main() {
     symlink(prefix.join("lib/libbirnam_root_registry.dylib"), isolated.join("libbirnam_root_registry.dylib")).unwrap();
     let root_path = isolated.join("libbirnam_root_registry.dylib");
     assert_eq!(send(&id, id.load, &[Operand::bytes(root_path.as_os_str().as_bytes()), Operand::word(83)]).status, native::INVALID_REQUEST);
-    initial.initialize_roots().unwrap();
+    let direct_roots = construct(b"roots");
+    assert_eq!(direct_roots.status, native::LOADED);
+    assert_eq!(initial.initialize_roots().unwrap().unwrap().addr(), direct_roots.value.as_word().unwrap());
     assert_eq!(initial.id_protocol().context, id.context);
     let roots = initial.roots().expect("production initialized root owner");
     let root_path = scratch.join("early-root.dylib");

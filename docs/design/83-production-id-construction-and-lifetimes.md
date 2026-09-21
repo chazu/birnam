@@ -14,6 +14,8 @@
 > returns owned Methods, including anonymous synchronous/resumable Units;
 > native binding references live in Lifetime above Id. Unsafe native consumers and the full entry-level
 > construction manifest remain open.
+> The loaded Bootstrap now owns the production construction sequence through
+> Runtime; host prefix requests delegate to the same implementation.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -1957,3 +1959,32 @@ previous and updated installations, with byte-identical transcripts. One serial
 comparison observes readiness at 43.63 and 42.21 seconds respectively; this is
 diagnostic timing, not a performance acceptance claim. The production service
 suite remains blocked by its unchanged ten-second readiness limit.
+
+### Bootstrap owns construction through Runtime
+
+The production sequence from roots through Runtime now lives in
+[`birnam-bootstrap/src/construction.rs`](../../rust/birnam-bootstrap/src/construction.rs).
+Bootstrap captures Id's original entries, loads the completed predecessor modules
+through the actual Id carrier, adopts roots, activates collection and supplies
+Runtime's constructor inputs. The host's `InitialFloor` methods now delegate to
+this constructor rather than reimplementing its steps.
+
+Construction is selected through Bootstrap's existing common native descriptor
+and returns a native entry retained by the Bootstrap owner. Its requests and
+result kinds are specified in the [Bootstrap contract](../../abi/fixtures/bootstrap-v2/README.md).
+The 64-byte owner ABI is unchanged. A constructor request removes its mutable
+construction state from the shared owner until it returns; nested construction
+fails, while ordinary nested module loads retain their existing behavior. Prefix
+diagnostics stop this same production constructor before successors are available.
+
+The host still loads later legacy modules and discovers Runtime's aggregate
+capabilities. Their migration, the full predecessor manifest, worker/image
+acceptance and the final architecture audit remain required. Moving this sequence
+does not establish that those later modules satisfy the target construction rule.
+
+Validation on `/tmp/birnam-83-bootstrap-construction` passes the independent native
+prefix suite, all three global-lookup modes, and Method source/compiled/mapped/
+rebuilt/baked checks. Host unit tests pass 86 cases with one existing ignored
+case. The installed constructor and host sources match the tested worktree.
+The native fixture directly obtains Bootstrap's constructor, checks missing
+successors and rejects graph advancement from inside an initializer.

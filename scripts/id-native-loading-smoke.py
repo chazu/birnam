@@ -17,7 +17,7 @@ def run(*args, **kwargs):
 
 
 # Check the installed images, not just source-level module visibility.
-for stem in ("id", "runtime", "method-observation", "storage", "dispatch-cache"):
+for stem in ("id", "bootstrap", "runtime", "method-observation", "storage", "dispatch-cache"):
     library = prefix / ("lib/libbirnam_" + stem.replace("-", "_") + ".dylib")
     manifest = json.loads((root / f"abi/rust-{stem}-dylib-v1.json").read_text())
     exports = set(run("nm", "-gjU", str(library), capture_output=True, text=True).stdout.splitlines())
@@ -35,6 +35,7 @@ def normal_dependencies(name):
     return {dependency["name"] for dependency in packages[name]["dependencies"]
             if dependency["kind"] is None}
 assert normal_dependencies("birnam-id") == {"birnam-abi"}
+assert normal_dependencies("birnam-bootstrap") == {"birnam-abi"}
 assert not normal_dependencies("birnam-abi")
 assert "birnam-id" not in normal_dependencies("birnam-runtime")
 print("Cargo boundary: Id depends only on ABI; Runtime has no Rust dependency on Id")

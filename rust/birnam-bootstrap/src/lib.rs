@@ -1,4 +1,5 @@
 //! Sequential Id loading with ownership of early and managed module results.
+mod construction;
 use birnam_abi::{
     Oop,
     bootstrap::OwnedV2,
@@ -25,6 +26,133 @@ struct State {
     next: usize,
     depth: usize,
     adopting: bool,
+    primitives: birnam_abi::id_primitives::PrimitivesV1,
+    construction: Option<Box<construction::Construction>>,
+    constructing: bool,
+}
+
+// A borrowed view keeps constructor calls out of State borrows. Native module
+// initialization and collection may reenter Bootstrap's ordinary loader.
+#[derive(Clone, Copy)]
+struct BootstrapRef(*const OwnedV2);
+impl BootstrapRef {
+    fn descriptor(&self) -> *const OwnedV2 {
+        self.0
+    }
+    unsafe fn initialize(&self, path: &[u8], args: &[Operand]) -> Outcome {
+        let owner = unsafe { *self.0 };
+        unsafe {
+            (owner.load)(
+                owner.context,
+                path.as_ptr(),
+                path.len(),
+                args.as_ptr(),
+                args.len(),
+            )
+        }
+    }
+    unsafe fn adopt_roots(&self, roots: *const root_registry::OwnedV1) -> u32 {
+        let owner = unsafe { *self.0 };
+        unsafe { (owner.adopt_roots)(owner.context, roots) }
+    }
+    unsafe fn release(&self, result: Operand) -> usize {
+        let owner = unsafe { *self.0 };
+        unsafe { (owner.release_result)(owner.context, result) }
+    }
+}
+
+unsafe extern "C" fn advance(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    unsafe { check(context) };
+    let Some([stage]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Some(stage) = stage.as_bytes() else {
+        return invalid();
+    };
+    let Some(stage) = (unsafe { birnam_abi::borrowed_bytes(stage.pointer, stage.length) }) else {
+        return invalid();
+    };
+    let mut construction = {
+        let state = unsafe { &mut *context.cast::<State>() };
+        if state.constructing || state.depth != 0 || state.adopting {
+            return invalid();
+        }
+        let Some(construction) = state.construction.take() else {
+            return invalid();
+        };
+        state.constructing = true;
+        construction
+    };
+    let result = construction.advance(stage);
+    let state = unsafe { &mut *context.cast::<State>() };
+    state.construction = Some(construction);
+    state.constructing = false;
+    match result {
+        Ok(value) => Outcome::loaded(value),
+        Err(error) => error,
+    }
+}
+
+unsafe fn select_construction(id: Protocol, args: &[Operand]) -> Outcome {
+    use std::os::unix::ffi::OsStrExt;
+    let [request, owner, path] = args else {
+        return invalid();
+    };
+    let Some(request) = request.as_bytes() else {
+        return invalid();
+    };
+    if unsafe { birnam_abi::borrowed_bytes(request.pointer, request.length) }
+        != Some(b"construction")
+    {
+        return invalid();
+    }
+    let Some(owner) = owner.as_word().map(|value| value as *const OwnedV2) else {
+        return invalid();
+    };
+    if !unsafe { birnam_abi::bootstrap::valid(owner) } {
+        return invalid();
+    }
+    // This descriptor must be owned by this module, on the selected Id thread.
+    if !std::ptr::fn_addr_eq(
+        unsafe { (*owner).load },
+        load as unsafe extern "C" fn(_, _, _, _, _) -> _,
+    ) {
+        return invalid();
+    }
+    let context = unsafe { (*owner).context };
+    unsafe { check(context) };
+    let Some(path) = path.as_bytes() else {
+        return invalid();
+    };
+    let Some(path) = (unsafe { birnam_abi::borrowed_bytes(path.pointer, path.length) }) else {
+        return invalid();
+    };
+    if path.is_empty() || path.contains(&0) {
+        return invalid();
+    }
+    let path = std::path::Path::new(std::ffi::OsStr::from_bytes(path));
+    let state = unsafe { &mut *context.cast::<State>() };
+    if state.id.context != id.context || state.constructing || state.adopting {
+        return invalid();
+    }
+    if let Some(construction) = &state.construction {
+        if !construction.has_path(path) {
+            return invalid();
+        }
+    } else {
+        state.construction = Some(Box::new(construction::Construction::new(
+            path.to_path_buf(),
+            id,
+            state.primitives,
+            BootstrapRef(owner),
+        )));
+    }
+    Outcome::loaded(Operand::entry(native::NativeEntry::new(advance, context)))
 }
 unsafe fn check(context: *mut c_void) {
     assert_eq!(
@@ -231,7 +359,11 @@ unsafe extern "C" fn release_result(context: *mut c_void, result: Operand) -> us
 unsafe extern "C" fn destroy(context: *mut c_void) {
     unsafe { check(context) };
     assert!(
-        unsafe { (*context.cast::<State>()).depth == 0 && !(*context.cast::<State>()).adopting },
+        unsafe {
+            (*context.cast::<State>()).depth == 0
+                && !(*context.cast::<State>()).adopting
+                && !(*context.cast::<State>()).constructing
+        },
         "Bootstrap destroyed during construction"
     );
     // Reject nested entry while releasing the root records, then free the owner.
@@ -243,7 +375,9 @@ unsafe extern "C" fn destroy(context: *mut c_void) {
 }
 unsafe extern "C" fn pause(context: *mut c_void, action: native::NativeEntry) -> Outcome {
     unsafe { check(context) };
-    let Some(method) = action.method else { return invalid(); };
+    let Some(method) = action.method else {
+        return invalid();
+    };
     {
         let state = unsafe { &mut *context.cast::<State>() };
         if state.depth != 0 || state.adopting || !matches!(state.roots, Roots::Managed { .. }) {
@@ -258,11 +392,25 @@ unsafe extern "C" fn pause(context: *mut c_void, action: native::NativeEntry) ->
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
-unsafe extern "C" fn initialize(id: *const Protocol, _: *const Operand, count: usize) -> Outcome {
-    if id.is_null() || count != 0 {
+unsafe extern "C" fn initialize(
+    id: *const Protocol,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    if !unsafe { native::valid_protocol(id) } {
         return invalid();
     }
     let id = unsafe { *id };
+    let Some(args) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    if !args.is_empty() {
+        return unsafe { select_construction(id, args) };
+    }
+    let primitives = match unsafe { birnam_abi::id_primitives::select(id) } {
+        Ok(primitives) => primitives,
+        Err(error) => return error,
+    };
     let mut state = Box::new(State {
         owner: OwnedV2 {
             version: 2,
@@ -281,6 +429,9 @@ unsafe extern "C" fn initialize(id: *const Protocol, _: *const Operand, count: u
         next: 0,
         depth: 0,
         adopting: false,
+        primitives,
+        construction: None,
+        constructing: false,
     });
     state.owner.context = ptr::from_mut(&mut *state).cast();
     let state = Box::into_raw(state);

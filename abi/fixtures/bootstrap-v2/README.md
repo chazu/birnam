@@ -32,13 +32,29 @@ records and the native owner. All operations require the owner thread; the
 owner/registry/code must outlive every user of their descriptors. Destruction
 is forbidden during loading or transfer.
 
-Production `begin_id` constructs Id and Bootstrap. `initialize_roots` uses
-Bootstrap to construct the root registry and transfers its early set.
-`initialize_lifetime` uses that same loader for the complete representation owner.
-`begin_floor` preserves the combined Id/Bootstrap/root prefix, and ordinary host
-startup uses these steps. The loaded host retains Bootstrap until teardown and
-exposes explicit result release. The remaining aggregate Runtime construction
-and legacy module entries still need migration to the complete construction graph.
+Production `begin_id` constructs Id and Bootstrap. Bootstrap captures Id's original
+primitive entries before upper construction. A second common-loader request to
+the same Bootstrap library takes `Bytes("construction"), Word(owner), Bytes(id_path)`
+and returns a native entry owned by that Bootstrap instance. The path is copied,
+fixes the sibling-library directory for this construction, and cannot be retargeted.
+The native entry takes one Bytes stage name and returns a complete native outcome.
+Its receiver is unused. Invoke it outside module initialization; nested graph
+construction is rejected. No Bootstrap-state borrow crosses a module callback.
+
+The loaded Bootstrap module owns the dependency order and arguments from roots
+through Runtime. Stages `roots`, `lifetime`, `values`, `namespace`, `objectModel`,
+`string`, `integer`, `float`, `word`, `trace`, `collection`, `runtimeSupport`,
+`runtimeValues`, and `runtime` return Word pointers to completed descriptors.
+`error` returns its Object; `text` and `activate` return Unit. Each constructs its
+required predecessors first. Repeated successful requests return the same owners.
+`existingRoots` returns the current root descriptor or Unit without constructing
+anything. Unknown stages fail with native InvalidRequest.
+
+Host prefix entry points delegate to this same constructor; they contain no
+second dependency sequence. `begin_floor` requests the roots stage. Normal
+startup requests Runtime and retains Bootstrap until teardown. The host's later
+legacy module entries and aggregate Runtime capability discovery still need
+migration; this constructor is not a claim that the entire upper graph is done.
 
 The installed `scripts/id-native-loading-smoke.py PREFIX` uses an independent C
 module to initiate a nested Bootstrap load before any root-registry library is
