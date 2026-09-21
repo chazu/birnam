@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove the host's second initialization pass for fourteen completed lower
+  modules and its obsolete Float/Word/String preparation path. Upper legacy
+  consumers receive the values already constructed by Bootstrap.
+
 - Move the production dependency sequence through Runtime into the loaded
   Bootstrap module. Host prefix diagnostics use that same constructor; Bootstrap
   owns predecessor loading, root adoption, collector activation and Runtime inputs.

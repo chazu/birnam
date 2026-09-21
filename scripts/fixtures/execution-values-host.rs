@@ -12,6 +12,14 @@ fn main() {
     let mut initial = birnam_host::begin_id(&resources.id_dylib, None, None).unwrap();
     let values = initial.initialize_runtime_values().unwrap();
     let floor = initial.finish().unwrap();
+    // These completed lower modules must not require a second legacy load.
+    // The fixture owns this copied prefix; Id already retains the loaded code.
+    for library in ["namespace", "float", "word", "object_model", "root_registry",
+                    "gc_settings", "payload_layout", "trace_hooks", "finalizers",
+                    "native_stack", "native_mark", "allocation_budget", "nil", "string"] {
+        let path = prefix.join(format!("libbirnam_{library}.dylib"));
+        std::fs::rename(&path, path.with_extension("constructed")).unwrap();
+    }
     let mut stack = LoadedStack::new(floor);
     let runtime_path = prefix.join("libbirnam_runtime.dylib");
     let arguments = [
@@ -26,6 +34,10 @@ fn main() {
         Err(ModuleError::OpenFailed { path }) => assert_eq!(path, prefix.join("libbirnam_id_artifact.dylib")),
         other => panic!("expected completed native prefix before missing Artifact, got {other:?}"),
     }
+    // dyld can reuse an already mapped image even after its file was moved.
+    // Count the actual legacy initialization calls as well: only Trace/Collect,
+    // Error, Integer/Boolean control and the collection/Store extensions remain.
+    assert_eq!(stack.module_count(), 16, "completed lower modules initialized again");
     unsafe { birnam_abi::gc_settings::set_precise(stack.gc_settings(), 1) };
     let mut arguments = arguments;
     arguments[6] = Operand::word(1);
@@ -50,5 +62,5 @@ fn main() {
         assert_eq!(result.status, native::LOADED);
     }
     println!("Block Loop retains the original execution table through first intern and binding reentry");
-    println!("native Block, Boolean control, collections, Store and Machine work before parser/compiler modules, including errors, captures and GC");
+    println!("native Block, Boolean control, collections, Store and Machine work before parser/compiler modules, including errors, captures and GC; completed lower modules are not reopened");
 }

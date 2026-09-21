@@ -973,9 +973,7 @@ impl fmt::Debug for FloorError {
 /// for the lifetime of this value and deliberately never closed: the floor
 /// owns process-wide heap/GC state and may retain function pointers in modules.
 pub struct LoadedFloor {
-    native_string: Option<*mut birnam_abi::string::StringApiV1>,
-    native_float: Option<*mut birnam_abi::float::FloatApiV1>,
-    native_word: Option<*mut birnam_abi::word::WordApiV1>,
+    values: birnam_abi::runtime_values::ApisV1,
     bootstrap: Option<crate::native_bootstrap::Owner>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     root_registry: NonNull<birnam_abi::root_registry::ApiV1>,
@@ -1104,31 +1102,18 @@ fn symbol_compatibility_limits(path: &Path) -> Result<(usize, usize), ModuleErro
     Ok((count, bytes))
 }
 
-/// The native module order is part of the host contract: Store precedes
-/// Codegen, and every later rung sees the same canonical floor/API table.
+/// Remaining legacy extensions above completed Bootstrap/Runtime construction.
+/// Lower native modules are already usable and are not initialized again here.
+/// Store precedes Codegen; all entries see the same completed Runtime API.
 pub const SCRIPT_MODULES: &[&str] = &[
-    "libbirnam_namespace",
     "libbirnam_trace",
     "libbirnam_collect",
     "libbirnam_error_value",
     "libbirnam_integer",
-    "libbirnam_float",
-    "libbirnam_word",
-    "libbirnam_object_model",
-    "libbirnam_root_registry",
-    "libbirnam_gc_settings",
-    "libbirnam_payload_layout",
-    "libbirnam_trace_hooks",
-    "libbirnam_finalizers",
-    "libbirnam_native_stack",
-    "libbirnam_native_mark",
-    "libbirnam_allocation_budget",
     // Complete native value/control behavior before compiler-facing modules.
     "libbirnam_printing",
     "libbirnam_block_loop",
     "libbirnam_boolean",
-    "libbirnam_nil",
-    "libbirnam_string",
     "libbirnam_string_builder",
     "libbirnam_collection_value",
     "libbirnam_vector",
@@ -2143,9 +2128,6 @@ pub struct LoadedStack {
     native_loader: *const birnam_abi::native_loader::ApiV12,
     source_loader: *const birnam_abi::source_loader::ApiV3,
     collection_value: *const birnam_abi::collection_value::ApiV1,
-    prepared_float: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
-    prepared_word: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
-    prepared_string: Option<(PathBuf, NonNull<std::ffi::c_void>)>,
 }
 
 impl LoadedStack {
@@ -2184,15 +2166,25 @@ impl LoadedStack {
             // SAFETY: the private floor symbol has this versioned frozen shape.
             unsafe { std::mem::transmute(control.as_ptr()) }
         });
+        // Bootstrap supplied these completed values to Runtime already. The
+        // host's legacy consumers select the same descriptors, without another
+        // preparation or module-initialization pass.
+        let values = floor.values;
+        unsafe {
+            assert_eq!(birnam_abi::integer::attach(values.integer), 1);
+            assert_eq!(birnam_abi::float::attach(values.float), 1);
+            assert_eq!(birnam_abi::word::attach(values.word), 1);
+            assert_eq!(birnam_abi::string::attach(values.string), 1);
+        }
         Self {
             floor,
             modules: Vec::new(),
             symbol_compaction_control,
             all_modules_borrow_safe: true,
-            integer: std::ptr::null_mut(),
-            float: std::ptr::null_mut(),
-            word: std::ptr::null_mut(),
-            string: std::ptr::null_mut(),
+            integer: values.integer,
+            float: values.float,
+            word: values.word,
+            string: values.string,
             range: std::ptr::null(),
             vector: std::ptr::null(),
             map: std::ptr::null(),
@@ -2209,9 +2201,6 @@ impl LoadedStack {
             native_loader: std::ptr::null(),
             source_loader: std::ptr::null(),
             collection_value: std::ptr::null(),
-            prepared_float: None,
-            prepared_word: None,
-            prepared_string: None,
         }
     }
 
@@ -2255,62 +2244,6 @@ impl LoadedStack {
             self.all_modules_borrow_safe = false;
         }
         Ok(())
-    }
-
-    /// Prepare Float before Integer installs any mixed numeric methods. The
-    /// handle is pinned before publishing callbacks, including on startup failure.
-    fn prepare_float(&mut self, path: &Path) -> Result<(), ModuleError> {
-        if let Some(ops) = self.floor.native_float { return self.attach_float(path, ops); }
-        if self.prepared_float.is_some() { return Ok(()); }
-        let encoded = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
-        let handle = unsafe { (self.api().dlopen)(encoded.as_ptr(), RTLD_LAZY) };
-        let handle = NonNull::new(handle).ok_or_else(|| ModuleError::OpenFailed { path: path.to_path_buf() })?;
-        self.prepared_float = Some((path.to_path_buf(), handle));
-        self.configure_symbol_borrow(path, handle)?;
-        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_float_prepare_v6".as_ptr()) };
-        if prepare.is_null() { return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() }); }
-        let prepare: birnam_abi::float::FloatPrepareV6 = unsafe { std::mem::transmute(prepare) };
-        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi, self.presence(), self.imports(), self.exports(), self.root_registry(), self.payload_layout()) };
-        self.attach_float(path, ops)
-    }
-
-    /// Prepare Word before Integer installs any numeric methods. The
-    /// handle is pinned before publishing callbacks, including on startup failure.
-    fn prepare_word(&mut self, path: &Path) -> Result<(), ModuleError> {
-        if let Some(ops) = self.floor.native_word { return self.attach_word(path, ops); }
-        if self.prepared_word.is_some() { return Ok(()); }
-        let encoded = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
-        let handle = unsafe { (self.api().dlopen)(encoded.as_ptr(), RTLD_LAZY) };
-        let handle = NonNull::new(handle).ok_or_else(|| ModuleError::OpenFailed { path: path.to_path_buf() })?;
-        self.prepared_word = Some((path.to_path_buf(), handle));
-        self.configure_symbol_borrow(path, handle)?;
-        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v6".as_ptr()) };
-        if prepare.is_null() { return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() }); }
-        let prepare: birnam_abi::word::WordPrepareV6 = unsafe { std::mem::transmute(prepare) };
-        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi, self.presence(), self.imports(), self.exports(), self.root_registry(), self.payload_layout()) };
-        self.attach_word(path, ops)
-    }
-
-    fn prepare_string(&mut self, path: &Path) -> Result<(), ModuleError> {
-        if let Some(ops) = self.floor.native_string {
-            return self.attach_string(path, ops);
-        }
-        if self.prepared_string.is_some() { return Ok(()); }
-        let encoded = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
-        let handle = unsafe { (self.api().dlopen)(encoded.as_ptr(), RTLD_LAZY) };
-        let handle = NonNull::new(handle).ok_or_else(|| ModuleError::OpenFailed { path: path.to_path_buf() })?;
-        self.prepared_string = Some((path.to_path_buf(), handle));
-        self.configure_symbol_borrow(path, handle)?;
-        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_prepare_v4".as_ptr()) };
-        if prepare.is_null() { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
-        let prepare: birnam_abi::string::StringPrepareV4 = unsafe { std::mem::transmute(prepare) };
-        let provider = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_native_allocation_provider_v1".as_ptr()) };
-        if provider.is_null() { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
-        let provider: birnam_abi::native_allocation::NativeAllocationProviderV1 = unsafe { std::mem::transmute(provider) };
-        let allocation = unsafe { provider() };
-        if allocation.is_null() { return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() }); }
-        let ops = unsafe { prepare(self.api() as *const IdApi as *mut IdApi, self.exports(), allocation, self.root_registry(), self.payload_layout()) };
-        self.attach_string(path, ops)
     }
 
     fn attach_float(&mut self, path: &Path, ops: *mut birnam_abi::float::FloatApiV1) -> Result<(), ModuleError> {
@@ -2358,13 +2291,7 @@ impl LoadedStack {
         let path_bytes = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
         // SAFETY: the floor API is process-owned and the C string lives across
         // this synchronous call.
-        let prepared = self.prepared_float.as_ref().filter(|(prepared, _)| prepared == path)
-            .or_else(|| self.prepared_word.as_ref().filter(|(prepared, _)| prepared == path))
-            .or_else(|| self.prepared_string.as_ref().filter(|(prepared, _)| prepared == path));
-        let handle = match prepared {
-            Some((_, handle)) => handle.as_ptr(),
-            None => unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) },
-        };
+        let handle = unsafe { (self.floor.api().dlopen)(path_bytes.as_ptr(), RTLD_LAZY) };
         let Some(handle) = NonNull::new(handle) else {
             return Err(ModuleError::OpenFailed {
                 path: path.to_path_buf(),
@@ -2527,19 +2454,7 @@ impl LoadedStack {
                 return Err(ModuleError::MapDependencyRejected { path: path.to_path_buf() });
             }
         }
-        let prepare = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_prepare_v6".as_ptr()) };
         let word_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_provider_v1".as_ptr()) };
-        let canonical_word = path.file_name().and_then(|name| name.to_str()) == Some("libbirnam_word.dylib");
-        if prepare.is_null() != word_provider.is_null() || (canonical_word && prepare.is_null()) {
-            return Err(ModuleError::WordDependencyRejected { path: path.to_path_buf() });
-        }
-        if !prepare.is_null() {
-            // This opened library remains pinned even if startup fails after
-            // it publishes roots. Attach primitives before publication reentry.
-            let prepare: birnam_abi::word::WordPrepareV6 = unsafe { std::mem::transmute(prepare) };
-            let operations = unsafe { prepare(self.api() as *const IdApi as *mut IdApi, self.presence(), self.imports(), self.exports(), self.root_registry(), self.payload_layout()) };
-            self.attach_word(path, operations)?;
-        }
         let dependency = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_word_dependency_v1".as_ptr()) };
         if !dependency.is_null() {
             let attach: birnam_abi::word::WordDependencyV1 = unsafe { std::mem::transmute(dependency) };
@@ -2714,7 +2629,7 @@ impl LoadedStack {
         if !provider.is_null() {
             let provide: unsafe extern "C" fn() -> *mut birnam_abi::integer::IntegerApiV1 = unsafe { std::mem::transmute(provider) };
             let integer = unsafe { provide() };
-            if !self.integer.is_null() || unsafe { birnam_abi::integer::attach(integer) } != 1 {
+            if self.integer != integer || unsafe { birnam_abi::integer::attach(integer) } != 1 {
                 return Err(ModuleError::IntegerDependencyRejected { path: path.to_path_buf() });
             }
             let dependency = unsafe { (self.api().dlsym)(self.floor.handle().as_ptr(), c"birnam_integer_dependency_v1".as_ptr()) };
@@ -2727,15 +2642,11 @@ impl LoadedStack {
         if !provider.is_null() {
             let provide: birnam_abi::float::FloatProviderV1 = unsafe { std::mem::transmute(provider) };
             self.attach_float(path, unsafe { provide() })?;
-        } else if self.prepared_float.as_ref().is_some_and(|(prepared, _)| prepared == path) {
-            return Err(ModuleError::FloatDependencyRejected { path: path.to_path_buf() });
         }
         let string_provider = unsafe { (self.api().dlsym)(handle.as_ptr(), c"birnam_string_provider_v1".as_ptr()) };
         if !string_provider.is_null() {
             let provide: birnam_abi::string::StringProviderV1 = unsafe { std::mem::transmute(string_provider) };
             self.attach_string(path, unsafe { provide() })?;
-        } else if self.prepared_string.as_ref().is_some_and(|(prepared, _)| prepared == path) {
-            return Err(ModuleError::StringDependencyRejected { path: path.to_path_buf() });
         }
         if !word_provider.is_null() {
             let provide: birnam_abi::word::WordProviderV1 = unsafe { std::mem::transmute(word_provider) };
@@ -2788,11 +2699,6 @@ impl LoadedStack {
         let tcc_override = env::var_os("BIRNAM_TCC_DYLIB").map(PathBuf::from);
         let mut store_compensation_api = None;
         for name in SCRIPT_MODULES {
-            if *name == "libbirnam_error_value" {
-                self.prepare_string(&resources.lib_dir.join("libbirnam_string.dylib"))?;
-                self.prepare_word(&resources.lib_dir.join("libbirnam_word.dylib"))?;
-                self.prepare_float(&resources.lib_dir.join("libbirnam_float.dylib"))?;
-            }
             let path = if *name == "libbirnam_id_tcc" {
                 tcc_override
                     .as_deref()
@@ -3132,7 +3038,7 @@ pub fn begin_id(
         }
     }
     // Actual Id construction runs through Siphon before any upper services.
-    // The remaining preparations below belong to the upper Runtime migration.
+    // The loaded Bootstrap module constructs the dependencies through Runtime.
     let id_protocol = crate::siphon::load(path.as_bytes()).map_err(|(status, detail)| {
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
@@ -3222,11 +3128,9 @@ impl InitialFloor {
         let pointer = self.constructed_word(b"runtimeValues")? as *const birnam_abi::runtime_values::ApisV1;
         Ok(unsafe { *pointer })
     }
-    pub fn finish(self) -> Result<LoadedFloor, FloorError> {
+    pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         let initialized = self.constructed_word(b"runtime")? as *mut IdApi;
-        let string = Some(self.constructed_word(b"string")? as *mut birnam_abi::string::StringApiV1);
-        let float = Some(self.constructed_word(b"float")? as *mut birnam_abi::float::FloatApiV1);
-        let word = Some(self.constructed_word(b"word")? as *mut birnam_abi::word::WordApiV1);
+        let values = self.initialize_runtime_values()?;
         let Self { source_path, handle, id_protocol, bootstrap, .. } = self;
         // Id pins every entered native image, including the supporting factories.
         let _id_image = handle;
@@ -3374,9 +3278,7 @@ impl InitialFloor {
             return Err(FloorError::NativeStack { path: native_stack_path, reason: "invalid capability" });
         }
         Ok(LoadedFloor {
-            native_string: string,
-            native_float: float,
-            native_word: word,
+            values,
             bootstrap,
             id_protocol,
             root_registry: NonNull::new(root_registry).unwrap(),

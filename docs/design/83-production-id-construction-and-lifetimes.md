@@ -1988,3 +1988,31 @@ rebuilt/baked checks. Host unit tests pass 86 cases with one existing ignored
 case. The installed constructor and host sources match the tested worktree.
 The native fixture directly obtains Bootstrap's constructor, checks missing
 successors and rejects graph advancement from inside an initializer.
+
+### Remove repeated lower initialization
+
+The upper host sequence no longer invokes `module_init` on completed Namespace,
+Float, Word, Object Model, Root Registry, GC Settings, Payload Layout, Trace Hooks,
+Finalizers, Native Stack, Native Mark, Allocation Budget, Nil or String modules.
+Their entries and values are already available from Bootstrap's construction.
+`LoadedFloor` carries the completed value descriptors; `LoadedStack` uses them
+immediately. The host no longer has a second Float/Word/String preparation path
+or prepared-library handles.
+
+Integer and Boolean control extensions remain in the upper sequence because they
+install behavior requiring Runtime's Block representation. Trace/Collect legacy
+provider attachment and other upper module entries also remain pending migration.
+The compiler-free prefix fixture removes the fourteen completed library paths
+after Runtime construction, then exercises the real remaining startup sequence.
+It also checks the number of legacy initializations, since the platform loader
+can reuse a mapped library even after its file is moved. The previous host
+executes thirty initializations before Artifact; the updated host executes
+sixteen. The same fixture rejects the previous host at that check and passes
+with the updated host, including its execution, collection and Store assertions.
+
+Validation on `/tmp/birnam-83-no-repeat` passes installed/forced-source/compiled
+global lookup and Method source/compiled/mapped/rebuilt/baked execution with image
+rejection. Host unit tests pass 86 cases with one existing ignored case. The
+native prefix suite passes with the rebuilt host and the preceding installation's
+native libraries, all 56 of which are byte-identical to the new installation.
+The installed host source matches the worktree used for these checks.
