@@ -30,6 +30,8 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
             "scripts/fixtures/id-native-module.c", "-o", str(scratch / f"{mode}.dylib"))
     run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
         "scripts/fixtures/early-root-native.c", "-o", str(scratch / "early-root.dylib"))
+    run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-dynamiclib",
+        "scripts/fixtures/early-lifetime-native.c", "-o", str(scratch / "early-lifetime.dylib"))
     driver = scratch / "driver"
     run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
         "scripts/fixtures/id-native-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",

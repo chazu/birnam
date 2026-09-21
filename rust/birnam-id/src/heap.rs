@@ -24,7 +24,6 @@ pub(crate) enum Permanence {
 // can be installed when Lifetime adopts an already populated Id allocation set.
 struct BlockLifetime {
     metadata: u64,
-    finalizer: SlotV1,
 }
 
 impl BlockLifetime {
@@ -104,8 +103,11 @@ impl Heap {
     /// identities. The caller retains early roots until the collector is ready.
     /// Construction does not collect or run finalizers.
     pub(crate) fn adopt(memory: crate::owned::Owned<ObjectMemory>) -> Self {
+        Self::adopt_with_finalizers(memory, None)
+    }
+    pub(crate) fn adopt_with_finalizers(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>) -> Self {
         let blocks = memory.iter().map(|(address, _)| (address, BlockLifetime {
-            metadata: 0, finalizer: SlotV1::EMPTY,
+            metadata: 0,
         })).collect();
         let mut budget = crate::allocation_budget::Service::new();
         for (_, allocation) in memory.iter() {
@@ -120,7 +122,7 @@ impl Heap {
             counted_frame_indices: None,
             deferred_allocations: dead_allocations::deferred_index::Index::new(),
             next_deferred_id: crate::deferred_identity::Service::new(),
-            finalizers: crate::finalizers::Service::new(),
+            finalizers: finalizers.unwrap_or_else(crate::finalizers::Service::new),
         }
     }
 
@@ -164,7 +166,6 @@ impl Heap {
         let total_size = self.memory.get(object.addr()).unwrap().total_size;
         let previous = self.blocks.insert(object.addr(), BlockLifetime {
             metadata: if permanence == Permanence::Permanent { 2 } else { 0 },
-            finalizer: SlotV1::EMPTY,
         });
         boundary::require_invariant(previous.is_none(), "allocator reused a live payload address");
         boundary::require_invariant(self.budget.charge(total_size), "GC allocation byte counter overflow");
@@ -194,7 +195,7 @@ impl Heap {
             allocation_bytes: block.total_size,
             behavior: unsafe { vtable_slot_from_payload(block.payload()).read() },
             flags: if block.permanence() == Permanence::Permanent { PERMANENT } else { 0 }
-                | if block.lifetime.finalizer.callback.is_some() { HAS_FINALIZER } else { 0 },
+                | if self.finalizers.get(block.payload().as_ptr().cast()).callback.is_some() { HAS_FINALIZER } else { 0 },
             trace_hook: None,
         }).collect();
         result.sort_unstable_by_key(|entry| entry.identity);
@@ -338,17 +339,15 @@ impl Heap {
         if block.permanence() != Permanence::Collectable || block.marked() {
             return None;
         }
-        let block = self
-            .blocks
-            .remove(&address)
+        self.blocks.remove(&address)
             .unwrap_or_else(|| boundary::fatal_invariant("dead GC block disappeared"));
-        Some(block.finalizer)
+        Some(self.finalizers.detach(address))
     }
 
     pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {
         self.blocks
             .get(&object.addr())
-            .map(|block| block.finalizer.callback.is_some())
+            .map(|_| self.finalizers.get(object).callback.is_some())
     }
 
     pub(crate) fn set_finalizer(&mut self, object: Oop, finalizer: Finalizer) -> bool {
@@ -359,7 +358,7 @@ impl Heap {
         if slot.callback.is_none() {
             return false;
         }
-        block.finalizer = slot;
+        self.finalizers.replace(object, slot);
         true
     }
 
@@ -369,9 +368,9 @@ impl Heap {
 
     /// Apply an accepted attachment to the record whose fact was just read.
     pub(crate) fn replace_finalizer(&mut self, object: Oop, slot: SlotV1) {
-        let block = self.blocks.get_mut(&object.addr())
+        self.blocks.get(&object.addr())
             .unwrap_or_else(|| boundary::fatal_invariant("finalizer record disappeared"));
-        block.finalizer = slot;
+        self.finalizers.replace(object, slot);
     }
 
     pub(crate) fn set_vtable(&mut self, object: Oop, vtable: Oop) -> bool {

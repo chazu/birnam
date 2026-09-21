@@ -32,7 +32,12 @@ retains an object before Runtime exists, checks repeated retain/release and toke
 nonreuse, and publishes methods that later query/release it. Only then does the
 fixture expose the remaining libraries. Normal host startup adopts the same Id
 graph, carrier and root registry; precise collection preserves the early object
-until release and reclaims it afterward. It then invokes typed
+until release and reclaims it afterward. A further prefix exposes only the three
+primitive description libraries and Lifetime. Independent C registers payload
+layouts, native trace edges and finalizers before Runtime, including a finalizer
+on a behavior. Actual precise collection after adoption follows those edges;
+release permits reclamation, invokes the declared finalizers and removes the
+weak descriptions. It then invokes typed
 methods through ordinary sends and verifies native failures and unwrapped scalar
 results become language Errors. For construction after adoption, the fixture
 passes the already-created root registry and collector as explicit initializer

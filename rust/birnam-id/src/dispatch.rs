@@ -321,15 +321,18 @@ pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjec
     build_bootstrap_with_roots(initial, None)
 }
 pub(crate) fn build_bootstrap_with_roots(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>) -> Bootstrap {
+    build_bootstrap_with_lifetime(initial, roots, None)
+}
+pub(crate) fn build_bootstrap_with_lifetime(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
         memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
         lookup, does_not_understand, object_prototype, symbol_prototype,
     } = initial;
     // Only completed Id objects cross this boundary. No allocation is copied.
-    let mut heap = Heap::adopt(memory);
+    let mut heap = Heap::adopt_with_finalizers(memory, lifetime.clone().map(crate::finalizers::Service::from_lifetime));
     heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
-    let mut vtables = Behaviors::adopt(dictionaries);
+    let mut vtables = Behaviors::adopt_with_lifetime(dictionaries, lifetime);
     vtables.set_legacy_lookup(lookup);
 
     let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);

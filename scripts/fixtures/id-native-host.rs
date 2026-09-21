@@ -103,7 +103,7 @@ fn main() {
     symlink(prefix.join("lib/libbirnam_root_registry.dylib"), isolated.join("libbirnam_root_registry.dylib")).unwrap();
     let root_path = isolated.join("libbirnam_root_registry.dylib");
     assert_eq!(send(&id, id.load, &[Operand::bytes(root_path.as_os_str().as_bytes()), Operand::word(83)]).status, native::INVALID_REQUEST);
-    let initial = birnam_host::begin_floor(&id_path, None, None).unwrap();
+    let mut initial = birnam_host::begin_floor(&id_path, None, None).unwrap();
     assert_eq!(initial.id_protocol().context, id.context);
     let roots = initial.roots().expect("production initialized root owner");
     let root_path = scratch.join("early-root.dylib");
@@ -116,11 +116,25 @@ fn main() {
     let release_root = intern(&id, b"releaseEarlyRoot");
     let early_identity = send(&id, root_identity, &[]).value.as_word().unwrap();
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 2);
+    // Complete Lifetime with only Id, roots and the three primitive record
+    // algorithms present; every value/collector/Runtime dependency is absent.
+    for name in ["payload_layout", "trace_hooks", "finalizers", "lifetime"] {
+        let name = format!("libbirnam_{name}.dylib");
+        symlink(prefix.join("lib").join(&name), isolated.join(&name)).unwrap();
+    }
+    let lifetime_path = isolated.join("libbirnam_lifetime.dylib");
+    assert_eq!(send(&id, id.load, &[Operand::bytes(lifetime_path.as_os_str().as_bytes())]).status, native::INVALID_REQUEST);
+    let records = initial.initialize_lifetime().unwrap().unwrap();
+    let path = scratch.join("early-lifetime.dylib");
+    assert_eq!(send(&id, id.load, &[Operand::bytes(path.as_os_str().as_bytes()), Operand::word(roots as usize), Operand::word(records as usize)]).status, native::LOADED);
+    let lifetime_check = intern(&id, b"earlyLifetimeCheck");
+    let lifetime_release = intern(&id, b"releaseEarlyLifetime");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 6);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
         let entry = entry.unwrap();
-        if entry.file_name() != "libbirnam_id.dylib" && entry.file_name() != "libbirnam_root_registry.dylib" {
+        if !isolated.join(entry.file_name()).exists() {
             symlink(entry.path(), isolated.join(entry.file_name())).unwrap();
         }
     }
@@ -144,6 +158,11 @@ fn main() {
     assert_eq!(send(&id, root_identity, &[]).value.kind(), native::UNIT);
     assert_eq!(send(&id, release_root, &[]).value.as_word(), Some(0));
     println!("native module root registered before Runtime survives adoption/GC and is reclaimed after release");
+    assert_eq!(send(&id, lifetime_check, &[]).value.as_word(), Some(0));
+    assert_eq!(send(&id, lifetime_release, &[]).value.as_word(), Some(1));
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, lifetime_check, &[]).value.as_word(), Some(7));
+    println!("pre-Runtime Lifetime layouts/hooks/finalizers survive adoption, trace exact edges and retire after release");
     let adopted = runtime.stack.id_protocol();
     assert_eq!(
         (

@@ -4668,6 +4668,15 @@ impl Runtime {
     }
 
     pub(crate) fn admit_payload_layout(&self) { self.assert_owner(); }
+    pub(crate) fn lifetime_facts(&self, object: Oop) -> u32 {
+        self.assert_owner();
+        let state = unsafe { &*self.state.get() };
+        let Some(permanence) = state.heap.permanence_of(object) else { return 0; };
+        birnam_abi::lifetime::ALLOCATED
+            | if state.vtables.is_registered(object) { birnam_abi::lifetime::BEHAVIOR } else { 0 }
+            | if permanence == crate::heap::Permanence::Permanent { birnam_abi::lifetime::PERMANENT } else { 0 }
+    }
+
 
     // The public capability has already admitted access; these floor operations
     // neither call out nor repeat admission. No view survives replacement.

@@ -984,11 +984,11 @@ pub struct LoadedFloor {
     root_registry: NonNull<birnam_abi::root_registry::ApiV1>,
     _gc_settings: NonNull<std::ffi::c_void>,
     gc_settings: NonNull<birnam_abi::gc_settings::ApiV1>,
-    _payload_layout: NonNull<std::ffi::c_void>,
+    _payload_layout: Option<NonNull<std::ffi::c_void>>,
     payload_layout: NonNull<birnam_abi::payload_layout::ApiV1>,
-    _trace_hooks: NonNull<std::ffi::c_void>,
+    _trace_hooks: Option<NonNull<std::ffi::c_void>>,
     trace_hooks: NonNull<birnam_abi::trace_hooks::ApiV1>,
-    _finalizers: NonNull<std::ffi::c_void>,
+    _finalizers: Option<NonNull<std::ffi::c_void>>,
     finalizers: NonNull<birnam_abi::finalizers::ApiV1>,
     _native_stack: NonNull<std::ffi::c_void>,
     _native_mark: NonNull<std::ffi::c_void>,
@@ -3137,7 +3137,8 @@ pub fn begin_floor(
         FloorError::IdProtocol { status, detail }
     })?;
     let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v1".as_ptr()) });
-    let roots = if runtime_init.is_some() {
+    let runtime_init_v2 = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v2".as_ptr()) });
+    let roots = if runtime_init.is_some() || runtime_init_v2.is_some() {
         use birnam_abi::id_protocol::{self as native, Operand};
         let root_path_bytes = path_bytes(&root_registry_path);
         let args = [Operand::bytes(&root_path_bytes), Operand::object(id_protocol.receiver)];
@@ -3151,7 +3152,7 @@ pub fn begin_floor(
         }
         Some(pointer)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, roots, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, runtime_init_v2, id_protocol, roots, lifetime: None, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3161,6 +3162,8 @@ pub struct InitialFloor {
     handle: NonNull<std::ffi::c_void>,
     init: NonNull<std::ffi::c_void>,
     runtime_init: Option<NonNull<std::ffi::c_void>>,
+    runtime_init_v2: Option<NonNull<std::ffi::c_void>>,
+    lifetime: Option<*const birnam_abi::lifetime::OwnedV1>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     _owner_thread: PhantomData<std::rc::Rc<()>>,
@@ -3169,8 +3172,35 @@ impl InitialFloor {
     pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.id_protocol }
     /// The completed native root owner, borrowed through construction/startup.
     pub fn roots(&self) -> Option<*const birnam_abi::root_registry::OwnedV1> { self.roots }
-    pub fn finish(self) -> Result<LoadedFloor, FloorError> {
-        let Self { source_path, handle, init, runtime_init, id_protocol, roots, .. } = self;
+    /// Construct complete payload, trace-hook and finalizer records through Id.
+    /// This is the same step used by ordinary production startup.
+    pub fn initialize_lifetime(&mut self) -> Result<Option<*const birnam_abi::lifetime::OwnedV1>, FloorError> {
+        if self.runtime_init_v2.is_none() || self.lifetime.is_some() { return Ok(self.lifetime); }
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let load = |file: &str, arguments: &[Operand]| -> Result<Operand, FloorError> {
+            let path = self.source_path.with_file_name(file);
+            let bytes = path_bytes(&path);
+            let mut args = vec![Operand::bytes(&bytes)];
+            args.extend_from_slice(arguments);
+            let id = self.id_protocol;
+            let answer = unsafe { id.message.unwrap()(id.context, id.receiver, id.load, args.as_ptr(), args.len()) };
+            if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+            Ok(answer.value)
+        };
+        let layout = load("libbirnam_payload_layout.dylib", &[])?;
+        let hooks = load("libbirnam_trace_hooks.dylib", &[])?;
+        let finalizers = load("libbirnam_finalizers.dylib", &[])?;
+        let answer = load("libbirnam_lifetime.dylib", &[layout, hooks, finalizers])?;
+        let pointer = answer.as_word().unwrap_or(0) as *const birnam_abi::lifetime::OwnedV1;
+        if !unsafe { birnam_abi::lifetime::valid(pointer) } {
+            return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 });
+        }
+        self.lifetime = Some(pointer);
+        Ok(self.lifetime)
+    }
+    pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
+        self.initialize_lifetime()?;
+        let Self { source_path, handle, init, runtime_init, runtime_init_v2, id_protocol, roots, lifetime, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3225,27 +3255,27 @@ impl InitialFloor {
                 return Err(error);
             }
         };
-        let payload_layout_image = match unsafe { prepare_payload_layout(handle, &payload_layout_path) } {
+        let payload_layout_image = if lifetime.is_some() { None } else { Some(match unsafe { prepare_payload_layout(handle, &payload_layout_path) } {
             Ok(image) => image,
             Err(error) => {
                 unsafe { system_dlclose(handle.as_ptr()) };
                 return Err(error);
             }
-        };
-        let trace_hooks_image = match unsafe { prepare_trace_hooks(handle, &trace_hooks_path) } {
+        }) };
+        let trace_hooks_image = if lifetime.is_some() { None } else { Some(match unsafe { prepare_trace_hooks(handle, &trace_hooks_path) } {
             Ok(image) => image,
             Err(error) => {
                 unsafe { system_dlclose(handle.as_ptr()) };
                 return Err(error);
             }
-        };
-        let finalizers_image = match unsafe { prepare_finalizers(handle, &finalizers_path) } {
+        }) };
+        let finalizers_image = if lifetime.is_some() { None } else { Some(match unsafe { prepare_finalizers(handle, &finalizers_path) } {
             Ok(image) => image,
             Err(error) => {
                 unsafe { system_dlclose(handle.as_ptr()) };
                 return Err(error);
             }
-        };
+        }) };
         let native_stack_image = match unsafe { prepare_native_stack(handle, &native_stack_path) } {
             Ok(image) => image,
             Err(error) => {
@@ -3309,7 +3339,10 @@ impl InitialFloor {
                 return Err(error);
             }
         };
-        let initialized = if let (Some(initialize), Some(roots)) = (runtime_init, roots) {
+        let initialized = if let (Some(initialize), Some(roots), Some(lifetime)) = (runtime_init_v2, roots, lifetime) {
+            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
+            unsafe { initialize(roots, lifetime) }
+        } else if let (Some(initialize), Some(roots)) = (runtime_init, roots) {
             let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
             unsafe { initialize(roots) }
         } else {

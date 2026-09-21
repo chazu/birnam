@@ -71,6 +71,8 @@ impl Runtime {
         self.assert_owner();
         let roots = unsafe { (&*self.state.get()).root_registry.native_owner() };
         if let Some(roots) = roots { crate::root_registry::install_admission(roots, self); }
+        let lifetime = unsafe { (&*self.state.get()).vtables.lifetime_owner() };
+        if let Some(owner) = lifetime { crate::lifetime::install_access(owner, self); }
         let state = unsafe { &mut *self.state.get() };
         let Some(id) = state.id_protocol.as_ref() else {
             return;

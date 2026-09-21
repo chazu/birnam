@@ -707,7 +707,9 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `.beads/` — active issue tracker; run `br ready` in this checkout. See
   [work tracker conventions](docs/misc/TASKS.md).
 - `rust/birnam-id/` — Rust `libid` and remaining Machine/runtime components behind IdApi v20 (18 fields / 144 bytes).
-- `rust/birnam-namespace/` — per-runtime raw export bindings, reverse aliases and enumeration; its factory is prepared before Id initialization.
+- `rust/birnam-root-registry/` — native root ownership, initialized through Id before Runtime.
+- `rust/birnam-lifetime/` — payload descriptions, trace hooks and finalizer records, initialized through Id and adopted by Runtime; see [the native contract](abi/fixtures/lifetime-v1/README.md).
+- `rust/birnam-namespace/` — per-runtime raw export bindings, reverse aliases and enumeration; its factory currently feeds upper Runtime construction after Id initialization.
 - `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for native System, Block and numeric methods.
 - `rust/birnam-source-loader/` — System source reading, staging, evaluation and diagnostics.
 - `rust/birnam-native-loader/` — System direct native-module loading, installed by Prelude.

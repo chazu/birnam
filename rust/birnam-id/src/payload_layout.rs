@@ -13,6 +13,7 @@ pub(crate) struct Owned {
 }
 impl Owned {
     pub(crate) fn view(&self) -> ViewV1 { self.carrier.view }
+    pub(crate) fn into_carrier(mut self) -> OwnedV1 { core::mem::replace(&mut self.carrier, OwnedV1::UNSET) }
 }
 impl Drop for Owned {
     fn drop(&mut self) {
@@ -24,6 +25,8 @@ impl Drop for Owned {
 pub(crate) struct Service {
     api: NonNull<ApiV1>,
     factory: FactoryV1,
+    native: Option<crate::lifetime::Shared>,
+    records: crate::raw::AddressMap<Owned>,
 }
 impl Service {
     pub(crate) fn new() -> Self {
@@ -36,13 +39,28 @@ impl Service {
         let floor = crate::public_api::payload_layout_access();
         let api = NonNull::new(unsafe { factory.create.unwrap()(&floor) })
             .expect("payload-layout capability creation failed");
-        Self { api, factory }
+        Self { api, factory, native: None, records: Default::default() }
+    }
+    pub(crate) fn from_lifetime(owner: crate::lifetime::Shared) -> Self {
+        Self { api: NonNull::new(owner.0.layouts).unwrap(), factory: unsafe { *owner.0.layout_factory }, native: Some(owner), records: Default::default() }
+    }
+    pub(crate) fn native_owner(&self) -> Option<birnam_abi::lifetime::OwnedV1> { self.native.as_ref().map(|owner| owner.0) }
+    pub(crate) fn view(&self, object: crate::abi::Oop) -> ViewV1 {
+        if let Some(owner) = &self.native { unsafe { (owner.0.layout)(owner.0.context, object) } }
+        else { self.records.get(&object.addr()).map_or(ViewV1::UNSET, Owned::view) }
+    }
+    pub(crate) fn replace(&mut self, object: crate::abi::Oop, owned: OwnedV1) {
+        if let Some(owner) = &self.native { unsafe { (owner.0.replace_layout)(owner.0.context, object, owned) }; }
+        else { let owned = self.adopt(owned); self.records.insert(object.addr(), owned); }
+    }
+    pub(crate) fn retire(&mut self, addresses: &[usize]) {
+        if let Some(owner) = &self.native { unsafe { (owner.0.retire)(owner.0.context, addresses.as_ptr(), addresses.len()) }; }
+        else { for address in addresses { self.records.remove(address); } }
     }
     pub(crate) fn api(&self) -> *mut ApiV1 { self.api.as_ptr() }
     pub(crate) fn adopt(&self, carrier: OwnedV1) -> Owned {
         Owned { carrier, release: self.factory.release.unwrap() }
     }
-    pub(crate) fn empty(&self) -> Owned { self.adopt(OwnedV1::UNSET) }
     pub(crate) fn copy(&self, kinds: *const u8, count: usize, rest: u8) -> Owned {
         self.adopt(unsafe { self.factory.copy.unwrap()(kinds, count, rest) })
     }
@@ -57,5 +75,5 @@ impl Service {
     }
 }
 impl Drop for Service {
-    fn drop(&mut self) { unsafe { self.factory.destroy.unwrap()(self.api.as_ptr()) }; }
+    fn drop(&mut self) { self.records.clear(); if self.native.is_none() { unsafe { self.factory.destroy.unwrap()(self.api.as_ptr()) }; } }
 }

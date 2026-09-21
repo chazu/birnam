@@ -307,7 +307,10 @@ pub(crate) fn initialize_once() -> *mut IdApi {
     initialize_with_roots(None)
 }
 pub(crate) fn initialize_with_roots(roots: Option<crate::root_registry::Service>) -> *mut IdApi {
-    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with_roots(crate::native_id::take_initial_objects(), roots));
+    initialize_with_lifetime(roots, None)
+}
+pub(crate) fn initialize_with_lifetime(roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>) -> *mut IdApi {
+    let bootstrap = Box::new(crate::dispatch::build_bootstrap_with_lifetime(crate::native_id::take_initial_objects(), roots, lifetime));
     bootstrap.runtime.install_id_runtime_extensions();
     install_bootstrap_metadata(&bootstrap);
     let mut api = Box::new(table_for(&bootstrap));

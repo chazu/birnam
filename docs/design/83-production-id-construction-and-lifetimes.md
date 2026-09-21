@@ -542,8 +542,8 @@ entered images, including failed initializers with partial publication.
 
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
-slot is retargeted. Sixteen upper factory preparations still run in the host
-after native Id/root-registry initialization and feed the aggregate Runtime constructor. That
+slot is retargeted. Thirteen upper factory preparations still run in the host
+after native Id/root-registry/Lifetime initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
 
 The first actual upper native entry is now
@@ -560,9 +560,10 @@ remains intact.
 The host's `begin_floor` initializes Id and this root owner; `InitialFloor::finish`
 constructs the remaining Runtime with that same owner. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v1` is an upper construction entry taking the completed
-owner, temporarily packaged in the Id library along with Runtime. The old
-`id_init`/factory preparation path remains for legacy consumers and fixtures; it
+prefix. `birnam_runtime_init_v2` is an upper construction entry taking the completed
+root and representation owners, temporarily packaged in the Id library along with
+Runtime. The old `id_init`, v1 root-only entry and factory preparation path remain
+for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
 prepares a root-registry factory inside Id or constructs a second registry.
@@ -572,16 +573,38 @@ in actual GC and diagnostic roots. Releasing a record removes its reference;
 tokens are local to the registry and never reused. Released records are removed,
 so native storage tracks live roots rather than cumulative registrations. The returned root view is
 borrowed until registry mutation and must be copied before invoking callbacks.
-This implements the early root-owner portion of Lifetime. Payload descriptions,
-finalizer declarations, complete Bootstrap result ownership and staged collector
-activation still require their production construction changes.
+The remaining Lifetime records now initialize in `libbirnam_lifetime.dylib`
+through Id, before Runtime or any value/collector library is available. Its
+predecessors are Id and the complete native factories returned by
+`libbirnam_payload_layout`, `libbirnam_trace_hooks` and `libbirnam_finalizers`.
+Those factories construct their public capabilities with Lifetime's own working
+admission, membership and record operations. They do not point forward to Runtime.
 
-`ObjectMemory` owns allocations and identities. `Heap` adds mark/finalizer
+[`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
+byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
+that owner through `birnam_runtime_init_v2`; its behavior/heap tables retain no
+copies of these records. Collection, diagnostics, Image and recovery query the
+same records through the native boundary. Public APIs retain their existing ABI
+and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
+policy with its completed observation/permanence policy. Canonical queries do not
+invoke that policy or arbitrary lookup during collection.
+
+`InitialFloor::initialize_lifetime` exposes the completed prefix; ordinary
+`finish` invokes the same step. Weak layout/hook retirement is separate from
+finalizer detachment, so a finalizer attached to a behavior still runs after its
+behavior metadata retires. Native Lifetime destruction releases all description
+bytes before destroying its capabilities and never invokes object finalizers.
+Legacy `id_init`/v1 construction and unit harnesses retain local service records
+until their consumers migrate; current production uses only the native owner.
+Automatic Bootstrap result ownership and staged collector activation remain
+required. This prefix does not move Runtime/compiler code out of Id.
+
+`ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
-three native words and GC records two, in separate maps; this metadata overhead
-is outside payload-byte accounting. `Vtables` and `Symbols` require only Id
-allocation and their own indexes. `Behaviors` adds layouts, trace hooks and
-private-owner metadata. The obsolete allocation-identity, dictionary-index and
+three native words and GC records one, in separate maps; Lifetime owns the
+separate finalizer entries. This metadata overhead is outside payload-byte
+accounting. `Vtables` and `Symbols` require only Id allocation and their own
+indexes. `Behaviors` adds private-owner metadata and accesses Lifetime descriptions. The obsolete allocation-identity, dictionary-index and
 mutation-counter factories and their host preparations are removed.
 
 The current behavior payload is five words (40 bytes): capacity, tally, keys,
@@ -607,9 +630,9 @@ legacy Symbol compatibility mode, adoption and Execution's dead-binding accounti
 still access internal Rust storage. Production index retirement, allocation
 detachment and release now use the native storage callables. Upper behavior
 metadata and per-allocation finalizer records retire separately; the coordinator
-keeps detached payloads readable until their finalizers return. A separate
-Lifetime/GC construction and the full adoption cutover are not yet implemented;
-early retained roots now transfer through the initialized root registry.
+keeps detached payloads readable until their finalizers return. Lifetime's root and representation owners now initialize before Runtime;
+separate GC activation and the full Id allocation/registry adoption cutover
+remain required.
 
 Ordinary binding, inherited caching and Machine synchronous targets carry the
 complete native function/context pair. Context-only replacement is observable.
@@ -644,7 +667,7 @@ Current debug evidence:
   collector acquisition test installs an Id root callable before construction,
   replaces the method afterward, and proves the existing collector retains the
   selected callable while a new consumer observes the replacement.
-- A fresh debug install publishes **53 native libraries and 28 authored modules**.
+- A fresh debug install publishes **54 native libraries and 28 authored modules**.
   `scripts/id-native-loading-smoke.py PREFIX` loads that actual installed Id with
   upper libraries absent, constructs objects and installs methods from independent
   C, and then starts the normal host using the same carrier and graph. The C
@@ -660,12 +683,26 @@ Current debug evidence:
   exists. The same retained record survives adoption and precise collection;
   release then permits reclamation. Repeated retain/release removes records
   without reusing tokens. Invalid initializer operands fail before publication.
+  With only Id, roots, the three primitive description libraries and Lifetime
+  available, another independent C initializer declares payload layouts, a native
+  trace edge and three finalizers, including one on a behavior. The same records
+  survive normal adoption and precise collection; releasing the root permits
+  reclamation, runs every finalizer once and removes the weak descriptions.
 - The root-registry image workload passes for source, source-free compiled,
   native Code images and baked execution, including duplicate provider order,
   callback-time append, nested collection, roots, aliases and reload. Debug unit
   checks pass for ABI (24), host (86), Id (308) and root registry (5). The installed
   root-registry exports match its manifest; Id has the declared exports plus the
   installer's existing `module_init` and `birnam_symbol_borrow_v1` wrappers.
+  The Lifetime change additionally passes 431 debug unit tests across ABI, host,
+  Id, payload layout, trace hooks and finalizers. Installed Lifetime and all three
+  primitive description libraries match their export manifests. Lifetime's only
+  Cargo dependency is `birnam-abi`; its dylib links only the platform library.
+- The installed payload-layout, trace-hooks and finalizers image workloads pass
+  with native Lifetime records across source, source-free compiled, native Code
+  image and baked execution. They preserve borrowed-prefix replacement, arbitrary
+  layout kinds and image rejection/restoration, hook-marked children, finalizer
+  replacement/detachment, native cleanup, roots, aliases and reload.
 - `scripts/allocation-identity-image-smoke.sh PREFIX` exercises source, source-free
   compiled, mapped/rebuilt native images and baked execution, with identity,
   dictionary replacement, finalization, active Frames, aliases, GC and reload.
@@ -680,9 +717,10 @@ Remaining architectural acceptance requires all of the following:
 
 1. Move Runtime, compiler/artifact dependencies and upper ownership out of Id;
    remove temporary forwarding exports and migrate native/reflective consumers.
-2. Complete Bootstrap and Lifetime construction beyond the initialized root
-   registry: payload/finalizer ownership and automatic retention of initializer
-   results, with explicit transfer before collection becomes active.
+2. Complete Bootstrap construction with automatic retention of initializer
+   results and explicit transfer before collection becomes active. Lifetime's
+   initialized root and representation owners are available; migrate the remaining
+   legacy local-service construction paths along with their consumers.
 3. Finish storage-consumer migration in adoption, diagnostics, compatibility and
    Execution accounting. Collection now uses Id's native retirement/release path;
    the remaining Rust allocation/registry handoff must not become a permanent

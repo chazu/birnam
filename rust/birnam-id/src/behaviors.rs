@@ -27,8 +27,6 @@ use crate::abi::SLOT_UNKNOWN;
 
 struct Metadata {
     owner: Oop,
-    trace_hook: birnam_abi::trace_hooks::SlotV1,
-    layout: crate::payload_layout::Owned,
 }
 pub(crate) struct Behaviors {
     dictionaries: crate::owned::Owned<Vtables>,
@@ -83,11 +81,15 @@ impl Behaviors {
 
     /// Add upper metadata without replacing existing behavior objects or keys.
     pub(crate) fn adopt(dictionaries: crate::owned::Owned<Vtables>) -> Self {
-        let layouts = crate::payload_layout::Service::new();
+        Self::adopt_with_lifetime(dictionaries, None)
+    }
+    pub(crate) fn adopt_with_lifetime(dictionaries: crate::owned::Owned<Vtables>, lifetime: Option<crate::lifetime::Shared>) -> Self {
+        let layouts = lifetime.clone().map(crate::payload_layout::Service::from_lifetime).unwrap_or_else(crate::payload_layout::Service::new);
+        let hooks = lifetime.map(crate::trace_hooks::Service::from_lifetime).unwrap_or_else(crate::trace_hooks::Service::new);
         let metadata = dictionaries.ordered.iter().map(|object| (object.addr(), Metadata {
-            owner: core::ptr::null_mut(), trace_hook: birnam_abi::trace_hooks::SlotV1::EMPTY, layout: layouts.empty(),
+            owner: core::ptr::null_mut(),
         })).collect();
-        Self { dictionaries, legacy_lookup: core::ptr::null_mut(), metadata, layouts, hooks: crate::trace_hooks::Service::new() }
+        Self { dictionaries, legacy_lookup: core::ptr::null_mut(), metadata, layouts, hooks }
     }
     pub(crate) fn create(&mut self, heap: &mut Heap, parent: Oop, metavtable: Oop) -> Oop {
         self.create_with_permanence(heap, parent, metavtable, Permanence::Permanent)
@@ -116,7 +118,7 @@ impl Behaviors {
         // SAFETY: Heap retains this fresh behavior payload until collection.
         unsafe { self.dictionaries.register(object, parent) };
         self.metadata.insert(object.addr(), Metadata {
-            owner: core::ptr::null_mut(), trace_hook: birnam_abi::trace_hooks::SlotV1::EMPTY, layout: self.layouts.empty(),
+            owner: core::ptr::null_mut(),
         });
         object
     }
@@ -175,6 +177,9 @@ impl Behaviors {
                 boundary::fatal_invariant("dead vtable registry record disappeared")
             });
         }
+        let addresses: Vec<_> = dead.iter().map(|object| object.addr()).collect();
+        self.layouts.retire(&addresses);
+        self.hooks.retire_local(&addresses);
         self.dictionaries.remove_objects(&dead);
         dead
     }
@@ -182,6 +187,8 @@ impl Behaviors {
     /// separately through the storage protocol, after this borrow ends.
     pub(crate) fn retire_metadata(&mut self, addresses: &[usize]) {
         for address in addresses { self.metadata.remove(address); }
+        self.layouts.retire(addresses);
+        self.hooks.retire_local(addresses);
     }
     pub(crate) fn owner_of(&self, candidate: Oop) -> Oop {
         self.metadata
@@ -198,8 +205,8 @@ impl Behaviors {
         self.replace_trace_hook(vtable, slot);
     }
     pub(crate) fn replace_trace_hook(&mut self, vtable: Oop, slot: birnam_abi::trace_hooks::SlotV1) {
-        let record = self.record_mut(vtable);
-        record.trace_hook = slot;
+        self.record(vtable);
+        self.hooks.replace(vtable, slot);
     }
     pub(crate) fn trace_hooks_api(&self) -> *mut birnam_abi::trace_hooks::ApiV1 {
         self.hooks.api()
@@ -208,8 +215,8 @@ impl Behaviors {
         use birnam_abi::trace_hooks::{EntryV1, SourceV1};
         unsafe extern "C" fn read(context: *const core::ffi::c_void, vtable: Oop, output: *mut EntryV1) -> core::ffi::c_int {
             let registry = unsafe { &*context.cast::<Behaviors>() };
-            let Some(record) = registry.metadata.get(&vtable.addr()) else { return 0; };
-            unsafe { output.write(EntryV1 { parent: registry.parent_of(vtable), slot: record.trace_hook }) };
+            if !registry.is_registered(vtable) { return 0; }
+            unsafe { output.write(EntryV1 { parent: registry.parent_of(vtable), slot: registry.hooks.get(vtable) }) };
             1
         }
         // Canonical selection uses only synchronous, immutable registry facts.
@@ -221,32 +228,29 @@ impl Behaviors {
         // Keep copying before the exact membership lookup, including when the
         // supplied bytes are the current record's own borrowed prefix.
         let owned = self.layouts.copy(kinds, count, rest);
-        let record = self.record_mut(vtable);
-        record.layout = owned;
+        self.record(vtable);
+        self.layouts.replace(vtable, owned.into_carrier());
     }
     pub(crate) fn replace_layout(&mut self, vtable: Oop, owned: birnam_abi::payload_layout::OwnedV1) {
-        let owned = self.layouts.adopt(owned);
-        let record = self.record_mut(vtable);
-        record.layout = owned;
+        self.record(vtable);
+        self.layouts.replace(vtable, owned);
     }
     pub(crate) fn layout_view(&self, vtable: Oop) -> birnam_abi::payload_layout::ViewV1 {
-        self.record(vtable).layout.view()
+        self.record(vtable);
+        self.layouts.view(vtable)
     }
+    pub(crate) fn lifetime_owner(&self) -> Option<birnam_abi::lifetime::OwnedV1> { self.layouts.native_owner() }
     pub(crate) fn layout_api(&self) -> *mut birnam_abi::payload_layout::ApiV1 {
         self.layouts.api()
     }
     pub(crate) fn slot_kind(&self, vtable: Oop, word: usize) -> u8 {
-        self.layouts.slot_kind(self.record(vtable).layout.view(), word)
+        self.layouts.slot_kind(self.layout_view(vtable), word)
     }
     pub(crate) fn all_oop_layout(&self, vtable: Oop, words: usize) -> bool {
-        self.metadata.get(&vtable.addr()).is_some_and(|record| {
-            self.layouts.all_oop(record.layout.view(), words)
-        })
+        self.is_registered(vtable) && self.layouts.all_oop(self.layouts.view(vtable), words)
     }
     pub(crate) fn has_layout(&self, vtable: Oop) -> bool {
-        self.metadata
-            .get(&vtable.addr())
-            .is_some_and(|record| self.layouts.has_layout(record.layout.view()))
+        self.is_registered(vtable) && self.layouts.has_layout(self.layouts.view(vtable))
     }
     pub(crate) fn checked_vtable_of(heap: &Heap, object: Oop) -> Oop {
         heap.vtable_of(object).unwrap_or(core::ptr::null_mut())
@@ -555,7 +559,7 @@ mod tests {
         assert_eq!(vtables.slot_kind(parent, 0), SLOT_UNKNOWN);
         vtables.set_trace_hook(parent, trace_hook);
         vtables.set_layout(parent, FIRST.as_ptr(), FIRST.len(), crate::abi::SLOT_RAW);
-        let first_pointer = vtables.record(parent).layout.view().kinds;
+        let first_pointer = vtables.layout_view(parent).kinds;
         assert_ne!(first_pointer, FIRST.as_ptr());
         assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_OOP);
         assert!(vtables.trace_hook(child).is_some());
@@ -564,7 +568,7 @@ mod tests {
         assert_eq!(vtables.slot_kind(parent, 3), crate::abi::SLOT_RAW);
 
         vtables.set_layout(parent, SECOND.as_ptr(), SECOND.len(), crate::abi::SLOT_OOP);
-        let second_pointer = vtables.record(parent).layout.view().kinds;
+        let second_pointer = vtables.layout_view(parent).kinds;
         assert_ne!(second_pointer, SECOND.as_ptr());
         assert_eq!(vtables.slot_kind(parent, 0), crate::abi::SLOT_CODE);
         assert_eq!(vtables.slot_kind(parent, 1), crate::abi::SLOT_OOP);
@@ -583,14 +587,14 @@ mod tests {
         vtables.set_trace_hook(parent, trace_hook);
         assert_eq!(vtables.mutation_epoch(), epoch);
         assert_eq!(address(vtables.trace_hook(child)), first);
-        assert_eq!(address(vtables.record(parent).trace_hook.hook), first);
-        assert!(vtables.record(child).trace_hook.hook.is_none());
+        assert_eq!(address(vtables.hooks.get(parent).hook), first);
+        assert!(vtables.hooks.get(child).hook.is_none());
         vtables.set_trace_hook(parent, nearer);
         assert_eq!(vtables.mutation_epoch(), epoch);
         assert_eq!(address(vtables.trace_hook(child)), second);
         vtables.set_owner(parent, child);
         vtables.set_layout(parent, core::ptr::null(), 0, crate::abi::SLOT_RAW);
-        assert_eq!(address(vtables.record(parent).trace_hook.hook), second);
+        assert_eq!(address(vtables.hooks.get(parent).hook), second);
         vtables.set_parent(child, child);
         assert!(vtables.trace_hook(child).is_none());
         vtables.set_parent(child, parent);
@@ -600,8 +604,8 @@ mod tests {
         assert!(vtables.trace_hook(core::ptr::null_mut()).is_none());
         assert!(vtables.trace_hook(core::ptr::without_provenance_mut(1)).is_none());
         // Internal damaged links retain absence and count-bound behavior.
-        vtables.record_mut(parent).trace_hook = birnam_abi::trace_hooks::SlotV1::EMPTY;
-        vtables.record_mut(child).trace_hook = birnam_abi::trace_hooks::SlotV1::EMPTY;
+        vtables.replace_trace_hook(parent, birnam_abi::trace_hooks::SlotV1::EMPTY);
+        vtables.replace_trace_hook(child, birnam_abi::trace_hooks::SlotV1::EMPTY);
         vtables.dictionaries.record_mut(parent).parent = child;
         assert!(vtables.trace_hook(child).is_none());
         vtables.dictionaries.record_mut(parent).parent = core::ptr::without_provenance_mut(1);
@@ -640,7 +644,6 @@ mod tests {
         vtables.set_owner(parent, child);
         vtables.set_trace_hook(parent, trace_hook);
         assert_eq!(vtables.layout_view(parent).kinds, first.kinds);
-        assert_eq!(vtables.record(parent).layout.view().kinds, first.kinds);
         vtables.set_layout(parent, first.kinds, first.count, crate::abi::SLOT_OOP);
         let second = vtables.layout_view(parent);
         assert_ne!(second.kinds, first.kinds);
