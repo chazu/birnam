@@ -1,5 +1,6 @@
-//! Native root-anchor state and word scanning. Physical capture stays in Id.
-use birnam_abi::native_stack::{ApiV1, FactoryV2, FloorV1};
+//! Native root-anchor state, register capture and word scanning.
+mod capture;
+use birnam_abi::native_stack::{ApiV1, FactoryV3, FloorV1};
 use core::ffi::{c_int, c_void};
 use core::ptr;
 
@@ -38,7 +39,7 @@ unsafe extern "C" fn create(floor: *const FloorV1) -> *mut ApiV1 {
 unsafe extern "C" fn destroy(api: *mut ApiV1) {
     unsafe { drop(Box::from_raw(api.cast::<Anchor>())) };
 }
-// Capture and interval validation remain in Id. This loop runs below that frame.
+// The scanner runs below the live register-capture frame.
 unsafe extern "C" fn scan(pointer: *const birnam_abi::trace_live::SinkV1, start: usize, bottom: usize) {
     let sink = unsafe { &*pointer };
     let mut address = start.next_multiple_of(size_of::<usize>());
@@ -53,14 +54,14 @@ unsafe extern "C" fn scan(pointer: *const birnam_abi::trace_live::SinkV1, start:
         address += size_of::<usize>();
     }
 }
-static FACTORY: FactoryV2 = FactoryV2 {
-    version: 2, byte_size: size_of::<FactoryV2>(), create: Some(create), destroy: Some(destroy),
-    set: Some(set), get: Some(get), scan: Some(scan),
+static FACTORY: FactoryV3 = FactoryV3 {
+    version: 3, byte_size: size_of::<FactoryV3>(), create: Some(create), destroy: Some(destroy),
+    set: Some(set), get: Some(get), scan: Some(scan), capture: Some(capture::capture),
 };
 /// # Safety
 /// Owner-thread operations require the declared descriptor and code lifetimes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_native_stack_factory_v2() -> *const FactoryV2 { &FACTORY }
+pub unsafe extern "C" fn birnam_native_stack_factory_v3() -> *const FactoryV3 { &FACTORY }
 
 /// # Safety
 /// All descriptors and code have the native initialization lifetime.
@@ -91,7 +92,7 @@ mod tests;
 unsafe extern "C" fn initialize_native(_: *const birnam_abi::id_protocol::Protocol, _: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
     use birnam_abi::id_protocol::{self as native, Operand, Outcome};
     if count != 0 { return Outcome::failed(native::INVALID_REQUEST, 0); }
-    Outcome::loaded(Operand::word(&FACTORY as *const FactoryV2 as usize))
+    Outcome::loaded(Operand::word(&FACTORY as *const FactoryV3 as usize))
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {

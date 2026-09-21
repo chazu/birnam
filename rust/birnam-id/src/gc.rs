@@ -9,57 +9,32 @@ use crate::heap::Heap;
 use birnam_abi::storage::OK;
 use birnam_abi::trace_live::SinkV1;
 
-const MAX_STACK_SCAN_BYTES: usize = 128 << 20;
-
-#[repr(align(16))]
-struct RegisterSave([usize; 24]);
-
-const _: () = {
-    // Darwin arm64 setjmp.h defines jmp_buf as 48 ints: 192 bytes. Keep the
-    // buffer exact and strengthen its natural alignment for word scanning.
-    assert!(size_of::<RegisterSave>() == 192);
-    assert!(align_of::<RegisterSave>() == 16);
-};
-
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-unsafe extern "C" {
-    fn _setjmp(buffer: *mut usize) -> core::ffi::c_int;
-}
-
-/// Flush callee-saved registers in a shallow outer frame, validate the
-/// downward-growing native stack interval, and run collection below that frame.
-/// Keeping the collector's own frames below `start` prevents stale mark and
-/// sweep locals from becoming roots on the next collection.
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-pub(crate) fn with_native_root_range<T>(
+/// Adapt a Rust operation to the native owner's synchronous capture boundary.
+/// No register capture or platform stack policy remains in Id.
+pub(crate) fn with_native_root_range<T, F: FnOnce(usize) -> T>(
+    capture: birnam_abi::native_stack::CaptureV1,
     stack_bottom: usize,
-    operation: impl FnOnce(usize) -> T,
+    operation: F,
 ) -> Option<T> {
-    if stack_bottom == 0 {
-        return None;
+    struct Call<F, T> { operation: Option<F>, result: Option<T> }
+    unsafe extern "C" fn invoke<F: FnOnce(usize) -> T, T>(
+        context: *mut core::ffi::c_void, start: usize, _: usize,
+    ) {
+        let call = unsafe { &mut *context.cast::<Call<F, T>>() };
+        let operation = call.operation.take().expect("native capture invoked twice");
+        call.result = Some(operation(start));
     }
-    let mut registers = RegisterSave([0; 24]);
-    // SAFETY: RegisterSave provides more storage and at least the alignment
-    // required by Darwin arm64's _setjmp implementation.
-    unsafe { _setjmp(registers.0.as_mut_ptr()) };
-    let start = core::ptr::addr_of!(registers).addr();
-    let distance = stack_bottom.checked_sub(start)?;
-    if distance > MAX_STACK_SCAN_BYTES {
-        return None;
-    }
-    Some(operation(start))
-}
-
-#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-pub(crate) fn with_native_root_range<T>(_: usize, _: impl FnOnce(usize) -> T) -> Option<T> {
-    None
+    let mut call = Call { operation: Some(operation), result: None };
+    let status = unsafe { capture(stack_bottom, (&raw mut call).cast(), Some(invoke::<F, T>)) };
+    boundary::require_invariant(status == i32::from(call.result.is_some()), "invalid native capture result");
+    call.result
 }
 
 /// Emit native words in their existing low-to-high order. The tracer performs
 /// immediate first-mark admission; its frames stay below the captured interval.
 pub(crate) fn emit_native_root_range(sink: &SinkV1, start: usize, stack_bottom: usize) {
     #[cfg(test)]
-    let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v2() };
+    let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v3() };
     #[cfg(not(test))]
     let factory = unsafe { birnam_abi::native_stack::operations() };
     unsafe { factory.scan.unwrap()(sink, start, stack_bottom) };
@@ -187,6 +162,10 @@ impl MetadataShell {
 
     pub(crate) fn set_precise(&mut self, enabled: bool) {
         self.settings.set_precise(enabled);
+    }
+
+    pub(crate) fn native_capture(&self) -> birnam_abi::native_stack::CaptureV1 {
+        self.native_stack.capture()
     }
 
     pub(crate) fn stack_bottom(&self) -> usize {

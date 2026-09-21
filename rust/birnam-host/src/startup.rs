@@ -4054,7 +4054,7 @@ unsafe fn prepare_native_stack(
         reason,
     };
     let attach =
-        unsafe { system_dlsym(floor.as_ptr(), c"birnam_native_stack_dependency_v2".as_ptr()) };
+        unsafe { system_dlsym(floor.as_ptr(), c"birnam_native_stack_dependency_v3".as_ptr()) };
     if attach.is_null() {
         return Err(error("missing floor dependency"));
     }
@@ -4063,14 +4063,14 @@ unsafe fn prepare_native_stack(
         .ok_or_else(|| error("open failed"))?;
     let result = (|| {
         let provider =
-            unsafe { system_dlsym(image.as_ptr(), c"birnam_native_stack_factory_v2".as_ptr()) };
+            unsafe { system_dlsym(image.as_ptr(), c"birnam_native_stack_factory_v3".as_ptr()) };
         if provider.is_null() {
             return Err(error("missing provider"));
         }
-        let provide: birnam_abi::native_stack::FactoryProviderV2 = unsafe { std::mem::transmute(provider) };
+        let provide: birnam_abi::native_stack::FactoryProviderV3 = unsafe { std::mem::transmute(provider) };
         let descriptor = unsafe { provide() };
         if !unsafe { birnam_abi::native_stack::valid_factory(descriptor) } { return Err(error("invalid descriptor")); }
-        let attach: birnam_abi::native_stack::DependencyV2 = unsafe { std::mem::transmute(attach) };
+        let attach: birnam_abi::native_stack::DependencyV3 = unsafe { std::mem::transmute(attach) };
         if unsafe { attach(descriptor) } != 1 { return Err(error("dependency rejected")); }
         Ok(image)
     })();

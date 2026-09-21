@@ -4624,7 +4624,8 @@ impl Runtime {
         if stack_bottom == 0 {
             return 0;
         }
-        with_native_root_range(stack_bottom, |root_start| {
+        let capture = unsafe { (*self.state.get()).metadata.native_capture() };
+        with_native_root_range(capture, stack_bottom, |root_start| {
             self.gc_collect_from_native_range(root_start, stack_bottom)
         })
         .unwrap_or(0)

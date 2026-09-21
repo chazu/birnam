@@ -45,7 +45,7 @@ Production constructs the graph in `InitialFloor::initialize_trace`, passes the
 same descriptor through the temporary `birnam_runtime_init_v7` bridge, and uses
 it for native roots, payloads, hooks and owner edges in actual collection.
 Collect now owns the [mark records and controls](collection-state-v1.md).
-Runtime still supplies Execution roots, native register capture, its collection
+Native Stack supplies register capture. Runtime still supplies Execution roots, its collection
 source adapter and retirement policy. Explicit collector activation before Runtime remains pending.
 
 `scripts/id-native-loading-smoke.py PREFIX` builds independent C fixtures against

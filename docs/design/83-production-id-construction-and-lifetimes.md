@@ -816,9 +816,9 @@ retains that path.
 The eighteen-library prefix exercises this construction with the remaining
 libraries unavailable. Validation examines the actual early allocation graph and
 rejects missing payload descriptions without marking or reclaiming anything.
-This is not the collector activation transition: native register capture,
-construction wrappers, the disabled/adopting/active gate and retirement ownership
-still need to move out of aggregate Runtime. Native root/hook completeness must
+Native Stack now supplies register capture through its complete v3 factory.
+This is not the collector activation transition: construction wrappers, the
+disabled/adopting/active gate and retirement ownership still need to move out of aggregate Runtime. Native root/hook completeness must
 also be established by the eventual activation policy; the graph validator alone
 does not prove arbitrary native ownership declarations correct.
 
@@ -1069,6 +1069,21 @@ Current debug evidence:
   library. Installed Id matches its manifest plus the two module wrappers and
   replaces the intermediate bridge with `birnam_runtime_init_v7`. This verifies
   state adoption, not the remaining explicit collector activation transition.
+- Native Stack v3 owns Darwin arm64 register capture and interval validation.
+  The independent C scanner fixture passes at default optimization and `-O2`,
+  observing an x19 value in the real save area, callback frame ordering, rejected
+  intervals and nested capture. The native loading harness invokes that operation
+  before Runtime; later collection uses the same factory. ABI/host/Id/Native Stack
+  units pass (425 total, 16 ignored), including source-probe root coverage. The
+  legacy native client preserves automatic collection, native/provider roots,
+  callback/finalizer anchor resets, nested GC and owner/observation admission.
+  Native Stack's source, source-free compiled, mapped/rebuilt image and baked
+  workloads pass. The installed-host anchor-selection test also passes; its
+  harness uses consistent unwind flags to avoid Cargo's abort/unwind artifact
+  collision. Installed Native Stack and Id match their 4/68 export manifests;
+  the GC-specific Darwin `_setjmp` dependency now belongs to Native Stack. Id's
+  separate compiler-linked `setjmp` dependency remains with the pending compiler
+  package extraction. The explicit activation transition remains unimplemented.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.

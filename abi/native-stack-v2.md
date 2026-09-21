@@ -1,5 +1,8 @@
 # Native Stack factory v2
 
+Historical contract; current production uses [factory v3](native-stack-v3.md),
+which also owns register capture. The v2 factory exports have been removed.
+
 [81BQ](../docs/design/81bq-production-native-stack-scanning.md) moves native word
 scanning into Native Stack. The immutable 56-byte factory adds a synchronous
 `scan(sink, start, bottom)` operation after create/destroy/canonical set/get.

@@ -63,10 +63,18 @@ static BirnamOutcome release(void *context,void *receiver,const BirnamOperand *a
     assert(roots.release(roots.context,token)==1);token=0;
     return (BirnamOutcome){.value={.kind=BIRNAM_UNIT}};
 }
+static void captured_before_runtime(void *context,uintptr_t start,uintptr_t bottom) {
+    size_t local=0;assert((uintptr_t)&local<start && start<bottom);
+    assert(bottom==*(uintptr_t *)context);
+    *(uintptr_t *)context=1;
+}
 static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOperand *args,size_t count) {
     assert(count==3);id=*protocol;owner=*(CollectionStateV1 *)args[0].data.word;
     roots=*(RootRegistryOwnedV1 *)args[1].data.word;lifetime=*(LifetimeOwnedV1 *)args[2].data.word;
     assert(owner.version==1 && owner.byte_size==sizeof(owner));records=*owner.records;
+    size_t native_anchor=0;uintptr_t captured=(uintptr_t)&native_anchor;
+    assert(owner.stack_factory->capture((uintptr_t)&native_anchor,&captured,captured_before_runtime)==1);
+    assert(captured==1);
     size_t rejected_count=99;
     assert(owner.collect(NULL,&rejected_count)==1 && rejected_count==99);
     size_t expected=0;

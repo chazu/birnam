@@ -47,7 +47,7 @@ pub struct OwnedV1 {
     pub context: *mut c_void,
     pub records: *const RecordsV1,
     pub stack: *mut native_stack::ApiV1,
-    pub stack_factory: *const native_stack::FactoryV2,
+    pub stack_factory: *const native_stack::FactoryV3,
     pub settings: *mut gc_settings::ApiV1,
     pub settings_factory: *const gc_settings::FactoryV1,
     pub budget_context: *mut c_void,

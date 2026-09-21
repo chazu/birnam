@@ -2,7 +2,7 @@
 
 `libbirnam_collect.dylib:birnam_native_module_v1` constructs the production mark
 records, allocation budget, collection phase, native stack anchor and GC settings
-before Runtime exists. It takes three Words: completed Native Stack factory v2,
+before Runtime exists. It takes three Words: completed Native Stack factory v3,
 GC Settings factory v1 and Allocation Budget factory v1 descriptors. Those three
 modules now publish their existing factories through zero-argument native entries.
 Collect supplies its own existing phase implementation.
@@ -49,9 +49,11 @@ finalization and reclamation all update these same records. Settings and stack
 providers return the exact original capabilities. Normal startup skips the four
 legacy factory preparations inside Id; legacy `id_init` clients retain them.
 
+Native register capture is also available through the completed stack factory;
+Runtime uses it for collection and source probes.
+
 This completes the state ownership portion of Design 83 step 9. The explicit
-collector activation transition, native register capture, construction wrappers
-and upper retirement policy still need to move out of aggregate Runtime. Until
+collector activation transition, construction wrappers and upper retirement policy still need to move out of aggregate Runtime. Until
 activation is implemented, early native allocations are non-collecting and their
 record registrations are reconciled at adoption. The coordinator takes complete
 scoped operations per call; the early owner advertises no heap-collection operation depending on a future service.

@@ -28,5 +28,6 @@ assert result.returncode==-6 and result.stdout=='candidate 0\n' and result.stder
 print('scan rejection: no later candidate emitted')
 PYSCAN
 if [[ $# -gt 0 ]]; then
-  BIRNAM_NATIVE_STACK_PREFIX="$1" mise exec -- cargo test --offline --locked -p birnam-host --test native_stack -- --ignored
+  # Cargo otherwise reuses colliding abort/unwind rlib filenames for the host test.
+  RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C panic=unwind" BIRNAM_NATIVE_STACK_PREFIX="$1" mise exec -- cargo test --offline --locked -p birnam-host --test native_stack -- --ignored
 fi

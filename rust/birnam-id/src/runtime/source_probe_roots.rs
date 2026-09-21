@@ -43,7 +43,8 @@ pub(super) fn with_source_probe_native_roots<T>(body: impl FnOnce(&Runtime) -> T
             return body(runtime);
         }
         let bottom = unsafe { (*runtime.state.get()).metadata.stack_bottom() };
-        with_native_root_range(bottom, |start| {
+        let capture = unsafe { (*runtime.state.get()).metadata.native_capture() };
+        with_native_root_range(capture, bottom, |start| {
             let _restore = Restore(OUTER.replace(Some(Range {
                 runtime,
                 start,

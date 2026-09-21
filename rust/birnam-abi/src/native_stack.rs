@@ -1,4 +1,4 @@
-//! Native stack-anchor ownership and word scanning (81BO/81BQ); capture stays in Id.
+//! Native stack anchor, register capture and word scanning.
 use core::ffi::{c_int, c_void};
 use core::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -19,9 +19,13 @@ pub struct ApiV1 {
     pub context: *mut c_void,
     pub set: Option<unsafe extern "C" fn(*mut c_void, usize)>,
 }
+/// Run below the captured register frame. The native interval is live only
+/// during this synchronous, non-unwinding callback.
+pub type CapturedV1 = unsafe extern "C" fn(*mut c_void, usize, usize);
+pub type CaptureV1 = unsafe extern "C" fn(usize, *mut c_void, Option<CapturedV1>) -> c_int;
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct FactoryV2 {
+pub struct FactoryV3 {
     pub version: u32,
     pub byte_size: usize,
     pub create: Option<unsafe extern "C" fn(*const FloorV1) -> *mut ApiV1>,
@@ -29,14 +33,15 @@ pub struct FactoryV2 {
     pub set: Option<unsafe extern "C" fn(*mut ApiV1, usize)>,
     pub get: Option<unsafe extern "C" fn(*const ApiV1) -> usize>,
     pub scan: Option<unsafe extern "C" fn(*const crate::trace_live::SinkV1, usize, usize)>,
+    pub capture: Option<CaptureV1>,
 }
 const _: () = {
     assert!(size_of::<FloorV1>() == 32 && core::mem::offset_of!(FloorV1, admit) == 24);
     assert!(size_of::<ApiV1>() == 32 && core::mem::offset_of!(ApiV1, set) == 24);
-    assert!(size_of::<FactoryV2>() == 56 && core::mem::offset_of!(FactoryV2, scan) == 48);
+    assert!(size_of::<FactoryV3>() == 64 && core::mem::offset_of!(FactoryV3, scan) == 48);
 };
-pub type FactoryProviderV2 = unsafe extern "C" fn() -> *const FactoryV2;
-pub type DependencyV2 = unsafe extern "C" fn(*const FactoryV2) -> c_int;
+pub type FactoryProviderV3 = unsafe extern "C" fn() -> *const FactoryV3;
+pub type DependencyV3 = unsafe extern "C" fn(*const FactoryV3) -> c_int;
 pub type ProviderV1 = unsafe extern "C" fn() -> *mut ApiV1;
 
 /// # Safety
@@ -55,17 +60,17 @@ pub unsafe fn set(pointer: *const ApiV1, address: usize) {
 }
 /// # Safety
 /// Readable immutable descriptor; validation invokes no operations.
-pub unsafe fn valid_factory(pointer: *const FactoryV2) -> bool {
+pub unsafe fn valid_factory(pointer: *const FactoryV3) -> bool {
     if pointer.is_null() { return false; }
     let factory = unsafe { *pointer };
-    factory.version == 2 && factory.byte_size == size_of::<FactoryV2>()
+    factory.version == 3 && factory.byte_size == size_of::<FactoryV3>()
         && factory.create.is_some() && factory.destroy.is_some()
-        && factory.set.is_some() && factory.get.is_some() && factory.scan.is_some()
+        && factory.set.is_some() && factory.get.is_some() && factory.scan.is_some() && factory.capture.is_some()
 }
-static FACTORY: AtomicPtr<FactoryV2> = AtomicPtr::new(ptr::null_mut());
+static FACTORY: AtomicPtr<FactoryV3> = AtomicPtr::new(ptr::null_mut());
 /// # Safety
 /// Owner-thread preparation before Id startup; factory and code stay pinned.
-pub unsafe fn attach(pointer: *const FactoryV2) -> c_int {
+pub unsafe fn attach(pointer: *const FactoryV3) -> c_int {
     if !unsafe { valid_factory(pointer) } { return 0; }
     match FACTORY.compare_exchange(ptr::null_mut(), pointer.cast_mut(), Ordering::AcqRel, Ordering::Acquire) {
         Ok(_) => 1,
@@ -74,7 +79,7 @@ pub unsafe fn attach(pointer: *const FactoryV2) -> c_int {
 }
 /// # Safety
 /// Call after the host attaches the declared factory dependency.
-pub unsafe fn operations() -> FactoryV2 {
+pub unsafe fn operations() -> FactoryV3 {
     let pointer = FACTORY.load(Ordering::Acquire);
     assert!(!pointer.is_null(), "native stack factory was not mounted");
     unsafe { *pointer }
@@ -88,9 +93,10 @@ mod tests {
     unsafe extern "C" fn set(_: *mut ApiV1, _: usize) { panic!("admission called set"); }
     unsafe extern "C" fn get(_: *const ApiV1) -> usize { panic!("admission called get"); }
     unsafe extern "C" fn scan(_: *const crate::trace_live::SinkV1, _: usize, _: usize) { panic!("admission called scan"); }
-    static FIRST: FactoryV2 = FactoryV2 { version: 2, byte_size: size_of::<FactoryV2>(),
-        create: Some(create), destroy: Some(destroy), set: Some(set), get: Some(get), scan: Some(scan) };
-    static SECOND: FactoryV2 = FIRST;
+    unsafe extern "C" fn capture(_: usize, _: *mut c_void, _: Option<CapturedV1>) -> c_int { panic!("admission called capture"); }
+    static FIRST: FactoryV3 = FactoryV3 { version: 3, byte_size: size_of::<FactoryV3>(),
+        create: Some(create), destroy: Some(destroy), set: Some(set), get: Some(get), scan: Some(scan), capture: Some(capture) };
+    static SECOND: FactoryV3 = FIRST;
     #[test]
     fn factory_admission_is_inert_repeatable_and_rejects_retargeting() {
         unsafe {
@@ -102,6 +108,7 @@ mod tests {
             bad = FIRST; bad.set = None; assert_eq!(attach(&bad), 0);
             bad = FIRST; bad.get = None; assert_eq!(attach(&bad), 0);
             bad = FIRST; bad.scan = None; assert_eq!(attach(&bad), 0);
+            bad = FIRST; bad.capture = None; assert_eq!(attach(&bad), 0);
             assert_eq!(attach(&FIRST), 1); assert_eq!(attach(&FIRST), 1);
             assert_eq!(attach(&SECOND), 0);
         }

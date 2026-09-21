@@ -1,5 +1,5 @@
 #define _DARWIN_C_SOURCE
-#include "../../abi/fixtures/native-stack-v2/native_stack_v2.h"
+#include "../../abi/fixtures/native-stack-v3/native_stack_v3.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -20,13 +20,58 @@ static int emit(void *context,uintptr_t value) {
     }
     return 0;
 }
+#ifndef NATIVE_SCAN_BASELINE
+static NativeStackCaptureV1 capture;
+static uintptr_t captured_start;
+static int captured_calls;
+static void captured(void *context,uintptr_t start,uintptr_t bottom) {
+    assert(start && start<=bottom && bottom-start<=((uintptr_t)128<<20));
+    uintptr_t local=0;assert((uintptr_t)&local<start);
+    assert(bottom==(uintptr_t)context);
+    captured_start=start;captured_calls++;
+    /* The first 192 bytes are the actual Darwin arm64 register save area. */
+    const uintptr_t *registers=(const uintptr_t *)start;
+    int found=0;
+    for(size_t i=0;i<24;i++)if(registers[i]==UINT64_C(0x13579bdf2468ace0))found=1;
+    assert(found);
+}
+__attribute__((noinline)) static void capture_register(uintptr_t bottom) {
+#if defined(__aarch64__) && defined(__APPLE__)
+    register uintptr_t root __asm__("x19")=UINT64_C(0x13579bdf2468ace0);
+    __asm__ volatile("" : "+r"(root));
+    assert(capture(bottom,(void *)bottom,captured)==1);
+    __asm__ volatile("" : "+r"(root));
+    assert(root==UINT64_C(0x13579bdf2468ace0));
+#else
+    (void)bottom;
+#endif
+}
+static void nested(void *context,uintptr_t start,uintptr_t bottom) {
+    assert(start<captured_start && bottom==(uintptr_t)context);captured_calls++;
+}
+static void nesting(void *context,uintptr_t start,uintptr_t bottom) {
+    captured_start=start;captured_calls++;
+    assert(capture(bottom,context,nested)==1);
+}
+static void capture_checks(const NativeStackFactoryV3 *api) {
+    capture=api->capture;assert(capture);
+    Dl_info owner;assert(dladdr((void *)capture,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
+    uintptr_t anchor=0;
+    capture_register((uintptr_t)&anchor);assert(captured_calls==1);
+    assert(!capture(0,NULL,captured));assert(!capture(1,NULL,captured));
+    assert(!capture(UINTPTR_MAX,NULL,captured));assert(!capture((uintptr_t)&anchor,NULL,NULL));
+    assert(captured_calls==1);
+    assert(capture((uintptr_t)&anchor,&anchor,nesting)==1);assert(captured_calls==3);
+    puts("native-stack-capture: native register ownership, shallow frame, interval rejection and nested capture pass");
+}
+#endif
 int main(int argc,char **argv) {
     assert(argc==3);void *image=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(image);
 #ifdef NATIVE_SCAN_BASELINE
     scan=(Scan)dlsym(image,"birnam_test_scan");assert(scan);
 #else
-    NativeStackFactoryProviderV2 provide=(NativeStackFactoryProviderV2)dlsym(image,"birnam_native_stack_factory_v2");assert(provide);
-    const NativeStackFactoryV2 *api=provide();assert(api && api->version==2 && api->byte_size==sizeof(*api));scan=api->scan;assert(scan);
+    NativeStackFactoryProviderV3 provide=(NativeStackFactoryProviderV3)dlsym(image,"birnam_native_stack_factory_v3");assert(provide);
+    const NativeStackFactoryV3 *api=provide();assert(api && api->version==3 && api->byte_size==sizeof(*api));scan=api->scan;assert(scan);
     Dl_info owner;assert(dladdr((void *)scan,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
 #endif
     TraceLiveSinkV1 sink={values,emit};
@@ -42,5 +87,8 @@ int main(int argc,char **argv) {
     mutate=1;scan(&sink,(uintptr_t)words,(uintptr_t)words+sizeof(words));
     const uintptr_t expected[]={0,41,43,7,99,UINTPTR_MAX,UINTPTR_MAX/2+1,19};
     assert(count==sizeof(expected)/sizeof(*expected) && !memcmp(values,expected,sizeof(expected)));
+#ifndef NATIVE_SCAN_BASELINE
+    capture_checks(api);
+#endif
     puts("native-stack-scan: all byte boundaries, exact candidates, empty intervals, incremental reads and emission reentry preserved");
 }

@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Moved register capture and native stack interval validation from Id into Native
+  Stack's v3 factory. Collect receives the complete operation before Runtime;
+  collection and source probes use the same native implementation. Replaced the
+  v2 factory/dependency exports and retained the public setter and image formats.
+
 ### Changed
 
 - Construct production collection records and controls through Id before Runtime.

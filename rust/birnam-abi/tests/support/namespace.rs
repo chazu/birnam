@@ -87,11 +87,11 @@ pub unsafe fn prepare(floor: *mut c_void, floor_path: &Path) {
     let path = CString::new(floor_path.with_file_name("libbirnam_native_stack.dylib").as_os_str().as_encoded_bytes()).unwrap();
     let image = unsafe { dlopen(path.as_ptr(), 6) };
     assert!(!image.is_null());
-    let provider = unsafe { dlsym(image, c"birnam_native_stack_factory_v2".as_ptr()) };
-    let dependency = unsafe { dlsym(floor, c"birnam_native_stack_dependency_v2".as_ptr()) };
+    let provider = unsafe { dlsym(image, c"birnam_native_stack_factory_v3".as_ptr()) };
+    let dependency = unsafe { dlsym(floor, c"birnam_native_stack_dependency_v3".as_ptr()) };
     assert!(!provider.is_null() && !dependency.is_null());
-    let provider: birnam_abi::native_stack::FactoryProviderV2 = unsafe { std::mem::transmute(provider) };
-    let attach: birnam_abi::native_stack::DependencyV2 = unsafe { std::mem::transmute(dependency) };
+    let provider: birnam_abi::native_stack::FactoryProviderV3 = unsafe { std::mem::transmute(provider) };
+    let attach: birnam_abi::native_stack::DependencyV3 = unsafe { std::mem::transmute(dependency) };
     assert_eq!(unsafe { attach(provider()) }, 1);
     let path = CString::new(floor_path.with_file_name("libbirnam_native_mark.dylib").as_os_str().as_encoded_bytes()).unwrap();
     let image = unsafe { dlopen(path.as_ptr(), 6) };
