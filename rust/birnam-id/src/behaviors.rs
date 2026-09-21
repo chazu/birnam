@@ -178,6 +178,11 @@ impl Behaviors {
         self.dictionaries.remove_objects(&dead);
         dead
     }
+    /// Retire upper layout/hook/owner records only. Id retires its dictionaries
+    /// separately through the storage protocol, after this borrow ends.
+    pub(crate) fn retire_metadata(&mut self, addresses: &[usize]) {
+        for address in addresses { self.metadata.remove(address); }
+    }
     pub(crate) fn owner_of(&self, candidate: Oop) -> Oop {
         self.metadata
             .get(&candidate.addr())

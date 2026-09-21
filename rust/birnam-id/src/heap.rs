@@ -325,6 +325,15 @@ impl Heap {
     /// Remove one previously identified dead block while leaving its allocation
     /// live for a finalizer. Marked and permanent blocks cannot be detached.
     pub(crate) fn detach_dead_collectable(&mut self, address: usize) -> Option<DetachedBlock> {
+        let finalizer = self.detach_dead_metadata(address)?;
+        Some(DetachedBlock {
+            block: self.memory.detach(address).expect("dead Id allocation disappeared"),
+            finalizer,
+        })
+    }
+
+    /// Upper metadata retirement, separate from Id allocation detachment.
+    pub(crate) fn detach_dead_metadata(&mut self, address: usize) -> Option<SlotV1> {
         let block = self.blocks.get(&address)?;
         if block.permanence() != Permanence::Collectable || block.marked() {
             return None;
@@ -333,10 +342,7 @@ impl Heap {
             .blocks
             .remove(&address)
             .unwrap_or_else(|| boundary::fatal_invariant("dead GC block disappeared"));
-        Some(DetachedBlock {
-            block: self.memory.detach(address).expect("dead Id allocation disappeared"),
-            finalizer: block.finalizer,
-        })
+        Some(block.finalizer)
     }
 
     pub(crate) fn has_finalizer(&self, object: Oop) -> Option<bool> {

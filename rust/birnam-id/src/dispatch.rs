@@ -838,7 +838,7 @@ mod tests {
         }
 
         // Initial Id names exist before the upper runtime installs methods.
-        let selector_names: [&[u8]; 35] = [
+        let selector_names: [&[u8]; 37] = [
             b"lookup",
             b"doesNotUnderstand:",
             b"Symbol",
@@ -856,6 +856,8 @@ mod tests {
             b"rootsDo:",
             b"allocationsDo:",
             b"referencesOf:do:",
+            b"retireIndexesFor:",
+            b"detachAllocationAt:",
             b"clone",
             b"new",
             b"==",
@@ -910,6 +912,8 @@ mod tests {
             runtime.intern(b"rootsDo:").unwrap(),
             runtime.intern(b"allocationsDo:").unwrap(),
             runtime.intern(b"referencesOf:do:").unwrap(),
+            runtime.intern(b"retireIndexesFor:").unwrap(),
+            runtime.intern(b"detachAllocationAt:").unwrap(),
             runtime.intern(b"prepareBehaviorMutationOf:").unwrap(),
             runtime.intern(b"reassociateBehaviorOf:with:").unwrap(),
             runtime.intern(b"ownerOf:").unwrap(),

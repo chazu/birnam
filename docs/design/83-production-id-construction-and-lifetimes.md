@@ -314,6 +314,8 @@ These additional selectors use the same carrier and operand ABI:
 | `rootsDo:` | Native entry visitor | One Object per actual Id-held reference; returns Unit |
 | `allocationsDo:` | Native entry visitor | Object, Word requested payload bytes, Word allocation identity; returns Unit |
 | `referencesOf:do:` | Object candidate, Native entry visitor | One Object per Id reference; returns Word representation kind, or Unit for an unknown candidate |
+| `retireIndexesFor:` | Bytes containing native-endian allocation addresses | Retires Id behavior/Symbol indexes and weak keys naming those addresses; returns Unit |
+| `detachAllocationAt:` | Word allocation address | Removes the allocation from Id and returns a one-use native release entry; Unit if unknown |
 
 Representation kinds are 0 for an ordinary allocation, 1 for a registered
 behavior, and 2 for a Symbol. Reference visitation reports the header behavior
@@ -334,9 +336,9 @@ visitation immediately and returns its complete native outcome unchanged;
 successful visitor values are ignored. Wrong operand kinds/counts or a visitor
 without a method produce InvalidRequest.
 
-GC acquires these three native callables through Id's `lookup` messages during
+GC acquires these five native callables through Id's `lookup` messages during
 its construction, before application execution. It retains those exact entries
-and their owners, then invokes them during marking without another lookup.
+and their owners, then invokes them during collection without another lookup.
 Running arbitrary application lookup merely to inspect an allocation would
 introduce allocation and mutation into marking. This is ordinary retention of
 selected callables: the methods remain replaceable, and a later message or new
@@ -344,6 +346,24 @@ consumer observes the replacement. It does not seal selectors or change fresh
 lookup for application sends. Initial Id code stays pinned, and the collector
 retains Id's state; another implementation must provide equally live owners.
 No future GC callback or upper root record is stored in Id.
+
+Retirement is a trusted native storage operation. The caller first establishes
+that allocations are unreachable and retires upper metadata and binding owners.
+`retireIndexesFor:` borrows an array of native `usize` addresses encoded as Bytes;
+its length must be a whole number of addresses. Duplicate/unknown addresses are
+harmless. It does not free payloads or invoke callbacks. `detachAllocationAt:`
+then removes one exact allocation while preserving its payload. The returned
+entry owns that detached allocation and releases it when called with no arguments.
+Invoke it exactly once, after the finalizer and every other payload access have
+finished. There is no GC/finalizer callback in Id and no borrowed dead Oop stored
+for later cleanup. Unknown addresses return Unit without detachment.
+
+These operands are native Bytes/Word, not ordinary language Objects. Passing
+Object operands fails before mutation. Safe language wrappers do not expose raw
+retirement/release, and native callers must coordinate the complete retirement
+sequence with Lifetime/GC. The collector removes upper per-object metadata before
+Id detachment, retains the returned release entry across the finalizer, then
+invokes it through the existing collection coordinator's reclaim operation.
 
 ## 4. Construction with no dormant dependencies
 
@@ -548,14 +568,17 @@ construction, its prototype, allocation extent/identity, behavior and Symbol
 bytes before language value modules exist. Native caller roots and upper
 payload descriptions remain explicit obligations.
 
-The production collector acquires the three Id storage callables described
+The production collector acquires the five Id storage callables described
 above through Id lookup during construction. It uses them for primordial roots,
 permanent allocation references and each marked object's Id references. Upper
 roots, behavior owners, payload layouts/hooks and mark metadata stay above the
 interface. No Id registry borrow crosses a visitor. The diagnostic storage view,
-legacy Symbol compatibility mode, adoption and retirement still access internal
-Rust storage. A separate Lifetime/GC module and native retirement/release
-protocol are not yet implemented.
+legacy Symbol compatibility mode, adoption and Execution's dead-binding accounting
+still access internal Rust storage. Production index retirement, allocation
+detachment and release now use the native storage callables. Upper behavior
+metadata and per-allocation finalizer records retire separately; the coordinator
+keeps detached payloads readable until their finalizers return. A separate
+Lifetime/GC module and the adoption cutover are not yet implemented.
 
 Ordinary binding, inherited caching and Machine synchronous targets carry the
 complete native function/context pair. Context-only replacement is observable.
@@ -595,7 +618,10 @@ Current debug evidence:
   upper libraries absent, constructs objects and installs methods from independent
   C, and then starts the normal host using the same carrier and graph. The C
   visitor reenters Id, allocates during allocation enumeration, verifies snapshot
-  membership, and checks complete failure propagation. After upper adoption it
+  membership, and checks complete failure propagation. It also retires independent
+  behavior/Symbol indexes and detaches/releases allocations before Runtime exists,
+  verifies immediate membership removal and live detached bytes, and rejects
+  ordinary Object arguments to the native destruction operations. After upper adoption it
   supplies completed roots/collector explicitly and verifies actual collection
   preserves the rooted object's identity and payload. Ordinary typed sends and
   native-to-language Error outcomes also pass.
@@ -605,6 +631,9 @@ Current debug evidence:
   Existing dispatch and lifecycle coverage additionally exercises exact adapter
   entry, context-only replacement, nested callbacks, outward-result rooting,
   detached-owner release, portable resumable eviction and CodeBinding self-removal.
+  The installed `portable-resumable-lifecycle-smoke.sh` and
+  `portable-code-binding-lifecycle-smoke.sh` checks also pass with native Id
+  detachment/release, including eviction survival, replacement and self-removal.
 
 Remaining architectural acceptance requires all of the following:
 
@@ -612,8 +641,10 @@ Remaining architectural acceptance requires all of the following:
    remove temporary forwarding exports and migrate native/reflective consumers.
 2. Construct Bootstrap and Lifetime as working upper modules. Retain early module
    roots and initializer results before publication, then transfer them explicitly.
-3. Finish Id index retirement and allocation-release operations and migrate the
-   production collector/adoption consumers without leaving stale upper metadata.
+3. Finish storage-consumer migration in adoption, diagnostics, compatibility and
+   Execution accounting. Collection now uses Id's native retirement/release path;
+   the remaining Rust allocation/registry handoff must not become a permanent
+   coupling between separately packaged modules.
 4. Implement disabled → adopting → active collector activation, complete root and
    representation checks, and failed activation without partial collection.
 5. Replace the aggregate preparations/initialization with real base and extension

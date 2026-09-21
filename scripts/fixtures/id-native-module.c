@@ -135,6 +135,43 @@ static void inspect_storage(const BirnamProtocol *id, BirnamObject object, Birna
     assert(calls == 1 && answer.status == BIRNAM_INVALID_REQUEST && answer.detail == 83);
     assert(answer.value.kind == BIRNAM_WORD && answer.value.data.word == 84);
 }
+static void retire_disposable(const BirnamProtocol *id, BirnamObject parent, BirnamObject add) {
+    BirnamObject delegated=name(id, "delegated"), allocate=name(id, "allocate");
+    BirnamObject retire=name(id, "retireIndexesFor:"), detach=name(id, "detachAllocationAt:");
+    BirnamObject identity=name(id, "identityOf:"), symbol_bytes=name(id, "symbolBytesOf:");
+    BirnamObject behavior=send(id, parent, delegated, NULL, 0).value.data.object;
+    BirnamOperand size={ .kind=BIRNAM_WORD, .data.word=16 };
+    BirnamObject object=send(id, behavior, allocate, &size, 1).value.data.object;
+    BirnamObject selector=name(id, "retirementOnlyNativeSelector");
+    BirnamOperand method[]={ { .kind=BIRNAM_OBJECT, .data.object=selector },
+        { .kind=BIRNAM_NATIVE_ENTRY, .data.entry={echo, &cookie} } };
+    send(id, behavior, add, method, 2);
+    ((size_t *)object)[0]=83; ((size_t *)object)[1]=84;
+    /* Ordinary Object arguments cannot invoke storage destruction. */
+    BirnamOperand wrong={ .kind=BIRNAM_OBJECT, .data.object=object };
+    assert(id->message(id->context, id->receiver, detach, &wrong, 1).status == BIRNAM_INVALID_REQUEST);
+    assert(id->message(id->context, id->receiver, retire, &wrong, 1).status == BIRNAM_INVALID_REQUEST);
+    size_t addresses[]={ (size_t)object, (size_t)behavior, (size_t)selector };
+    BirnamOperand dead={ .kind=BIRNAM_BYTES, .data.bytes={ (const uint8_t *)addresses, sizeof(addresses) } };
+    send(id, id->receiver, retire, &dead, 1);
+    wrong.data.object=selector;
+    assert(send(id, id->receiver, symbol_bytes, &wrong, 1).value.kind == BIRNAM_UNIT);
+    /* Retiring a name removes canonicalization before the old address is freed. */
+    assert(name(id, "retirementOnlyNativeSelector") != selector);
+    for (size_t i=0;i<3;i++) {
+        BirnamOperand address={ .kind=BIRNAM_WORD, .data.word=addresses[i] };
+        BirnamOutcome detached=send(id, id->receiver, detach, &address, 1);
+        assert(detached.value.kind == BIRNAM_NATIVE_ENTRY && detached.value.data.entry.method);
+        wrong.data.object=(BirnamObject)addresses[i];
+        assert(send(id, id->receiver, identity, &wrong, 1).value.kind == BIRNAM_UNIT);
+        assert(send(id, id->receiver, detach, &address, 1).value.kind == BIRNAM_UNIT);
+        /* Finalizers run at this point: detached bytes are still readable. */
+        if (i == 0) assert(((size_t *)object)[0] == 83 && ((size_t *)object)[1] == 84);
+        BirnamNativeEntry release=detached.value.data.entry;
+        BirnamOutcome released=release.method(release.context, NULL, NULL, 0);
+        assert(released.status == BIRNAM_LOADED && released.value.kind == BIRNAM_UNIT);
+    }
+}
 static void construct_objects(const BirnamProtocol *id, BirnamObject add, const BirnamNativeEntry *collect) {
     /* Resolve names before construction. These temporary objects do not escape
        initialization; the caller's upper loading turn protects native code. */
@@ -181,6 +218,7 @@ static void construct_objects(const BirnamProtocol *id, BirnamObject add, const 
     assert(answer.value.kind == BIRNAM_OBJECT && answer.value.data.object == object);
     assert(((size_t *)object)[0] == 83 && ((size_t *)object)[1] == 84);
     inspect_storage(id, object, behavior, echo_name, identity, collect == NULL);
+    if (!collect) retire_disposable(id, parent, add);
 }
 static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *arguments, size_t count) {
     assert(id && id->version == 1 && id->byte_size == sizeof(*id));

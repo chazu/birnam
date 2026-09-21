@@ -12,6 +12,8 @@ pub(super) struct Storage {
     roots: NativeEntry,
     allocations: NativeEntry,
     references: NativeEntry,
+    retire_indexes: NativeEntry,
+    detach: NativeEntry,
 }
 
 pub(super) struct References {
@@ -51,6 +53,8 @@ impl Storage {
             roots: bind(b"rootsDo:"),
             allocations: bind(b"allocationsDo:"),
             references: bind(b"referencesOf:do:"),
+            retire_indexes: bind(b"retireIndexesFor:"),
+            detach: bind(b"detachAllocationAt:"),
         }
     }
 
@@ -61,6 +65,35 @@ impl Storage {
         loaded(unsafe {
             entry.method.unwrap()(entry.context, self.receiver, args.as_ptr(), args.len())
         })
+    }
+
+    pub(super) fn retire_indexes(self, addresses: &[usize]) {
+        // The native protocol uses a borrowed native-endian address array.
+        let bytes = unsafe {
+            core::slice::from_raw_parts(
+                addresses.as_ptr().cast(),
+                core::mem::size_of_val(addresses),
+            )
+        };
+        self.invoke(self.retire_indexes, &[Operand::bytes(bytes)]);
+    }
+
+    pub(super) fn detach(self, address: usize) -> Option<NativeEntry> {
+        self.invoke(self.detach, &[Operand::word(address)])
+            .as_entry()
+    }
+
+    pub(super) fn release(entry: NativeEntry) {
+        loaded(unsafe {
+            entry
+                .method
+                .expect("allocation release entry missing method")(
+                entry.context,
+                core::ptr::null_mut(),
+                core::ptr::null(),
+                0,
+            )
+        });
     }
 
     pub(super) fn roots(self) -> Vec<Oop> {

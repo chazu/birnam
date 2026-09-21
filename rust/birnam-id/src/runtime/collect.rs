@@ -1,9 +1,7 @@
 //! Owner operations consumed by the loaded collection coordinator.
 use super::*;
 use crate::heap::DetachedBlock;
-use birnam_abi::collect::{
-    ApiV1, DeadV1, DetachedV1, SourceV1, VERSION,
-};
+use birnam_abi::collect::{ApiV1, DeadV1, DetachedV1, SourceV1, VERSION};
 use birnam_abi::storage::OK;
 use core::ffi::c_void;
 
@@ -12,7 +10,36 @@ struct Source<'a> {
     native_range: (usize, usize),
     dead_bindings: Vec<(Oop, Vec<MethodAddress>)>,
     dead: Vec<usize>,
-    detached: Option<DetachedBlock>,
+    detached: Option<Detached>,
+}
+
+enum Detached {
+    Local(DetachedBlock),
+    Native {
+        object: Oop,
+        finalizer: Option<crate::abi::Finalizer>,
+        release: crate::abi::id_protocol::NativeEntry,
+    },
+}
+impl Detached {
+    fn object(&self) -> Oop {
+        match self {
+            Self::Local(block) => block.object(),
+            Self::Native { object, .. } => *object,
+        }
+    }
+    fn finalizer(&self) -> Option<crate::abi::Finalizer> {
+        match self {
+            Self::Local(block) => block.finalizer(),
+            Self::Native { finalizer, .. } => *finalizer,
+        }
+    }
+    fn reclaim(self) {
+        match self {
+            Self::Local(block) => block.reclaim(),
+            Self::Native { release, .. } => super::id_storage::Storage::release(release),
+        }
+    }
 }
 
 unsafe extern "C" fn phase(context: *mut c_void, phase: u32) {
@@ -23,8 +50,11 @@ unsafe extern "C" fn phase(context: *mut c_void, phase: u32) {
 #[cfg(test)]
 pub(super) fn assign_phase_for_test(runtime: &Runtime, code: u32) {
     let mut source = Source {
-        runtime, native_range: (0, 0), dead_bindings: Vec::new(),
-        dead: Vec::new(), detached: None,
+        runtime,
+        native_range: (0, 0),
+        dead_bindings: Vec::new(),
+        dead: Vec::new(),
+        detached: None,
     };
     unsafe { phase((&raw mut source).cast(), code) };
 }
@@ -54,9 +84,8 @@ unsafe extern "C" fn inspect_retirement(context: *mut c_void) -> i32 {
                     // and owned storage cannot observe the physical sweep.
                     // It still runs normally below. Wrappers, replacement
                     // finalizers and missing owners retain ordinary settlement.
-                    let string_cleanup =
-                        runtime.string_cleanup_matches_runtime(finalizer)
-                            && runtime.string_bytes(object).is_some();
+                    let string_cleanup = runtime.string_cleanup_matches_runtime(finalizer)
+                        && runtime.string_bytes(object).is_some();
                     !string_cleanup
                         && !state
                             .execution
@@ -75,7 +104,7 @@ unsafe extern "C" fn settle_deferred(context: *mut c_void) {
 unsafe extern "C" fn retire_metadata(context: *mut c_void) {
     let source = unsafe { &*context.cast::<Source<'_>>() };
     // No foreign call occurs while the current metadata owners are borrowed.
-    unsafe {
+    let native_dead = unsafe {
         let state = &mut *source.runtime.state.get();
         for (_, methods) in &source.dead_bindings {
             for method in methods {
@@ -91,14 +120,29 @@ unsafe extern "C" fn retire_metadata(context: *mut c_void) {
                 });
             }
         }
-        let dead_vtables = state.vtables.remove_dead_collectable(&state.heap);
-        state
-            .block_vtable_catalog
-            .retain(|entry| !dead_vtables.contains(&entry.vtable));
-        if state.symbol_compaction_enabled {
-            state.vtables.remove_dead_weak_bindings(&state.heap);
-            state.symbols.remove_objects(&state.heap.dead_collectable_addresses());
+        if source.runtime.id_storage.is_some() {
+            let dead = state.heap.dead_collectable_addresses();
+            state.vtables.retire_metadata(&dead);
+            state
+                .block_vtable_catalog
+                .retain(|entry| !dead.contains(&entry.vtable.addr()));
+            Some(dead)
+        } else {
+            let dead_vtables = state.vtables.remove_dead_collectable(&state.heap);
+            state
+                .block_vtable_catalog
+                .retain(|entry| !dead_vtables.contains(&entry.vtable));
+            if state.symbol_compaction_enabled {
+                state.vtables.remove_dead_weak_bindings(&state.heap);
+                state
+                    .symbols
+                    .remove_objects(&state.heap.dead_collectable_addresses());
+            }
+            None
         }
+    };
+    if let Some(dead) = native_dead {
+        source.runtime.id_storage.unwrap().retire_indexes(&dead);
     }
 }
 
@@ -120,9 +164,32 @@ unsafe extern "C" fn snapshot_dead(context: *mut c_void, out: *mut DeadV1) {
 unsafe extern "C" fn detach(context: *mut c_void, address: usize, out: *mut DetachedV1) -> i32 {
     let source = unsafe { &mut *context.cast::<Source<'_>>() };
     boundary::require_invariant(source.detached.is_none(), "GC block still detached");
-    let detached =
-        unsafe { (&mut (*source.runtime.state.get()).heap).detach_dead_collectable(address) }
-            .unwrap_or_else(|| boundary::fatal_invariant("dead GC block could not be detached"));
+    let detached = if let Some(id) = source.runtime.id_storage {
+        // Retain the actual allocation pointer for the finalizer, rather than
+        // reconstructing pointer provenance from the integer registry key.
+        let object = unsafe { (&*source.runtime.state.get()).heap.object_at_address(address) }
+            .unwrap_or_else(|| boundary::fatal_invariant("dead Id allocation disappeared"));
+        let finalizer =
+            unsafe { (&mut (*source.runtime.state.get()).heap).detach_dead_metadata(address) }
+                .unwrap_or_else(|| {
+                    boundary::fatal_invariant("dead GC metadata could not be detached")
+                });
+        let release = id.detach(address).unwrap_or_else(|| {
+            boundary::fatal_invariant("dead Id allocation could not be detached")
+        });
+        Detached::Native {
+            object,
+            finalizer: finalizer.callback,
+            release,
+        }
+    } else {
+        Detached::Local(
+            unsafe { (&mut (*source.runtime.state.get()).heap).detach_dead_collectable(address) }
+                .unwrap_or_else(|| {
+                    boundary::fatal_invariant("dead GC block could not be detached")
+                }),
+        )
+    };
     unsafe {
         out.write(DetachedV1 {
             object: detached.object(),

@@ -10,12 +10,20 @@ loader ports are complete.
 
 ### Changed
 
+- Move production collection's Id index retirement, allocation detachment and
+  release onto the native storage protocol (Design 83). Upper GC metadata retires
+  separately; finalizers retain readable detached payloads until the collector
+  invokes their one-use release entries. Native Bytes/Word operands distinguish
+  these operations from safe language Object sends. Lifetime construction and
+  the remaining internal storage-consumer migration are still unfinished.
+
 - Expose Id roots, allocations and representation references through native
   visitor messages (Design 83). The production collector acquires the completed
   storage callables through Id during construction and uses them during marking;
   payload policy and native owners remain upper responsibilities. Snapshot
   visitors may reenter Id, and failed visitors stop with their exact outcome.
-  Lifetime construction and storage retirement migration remain unfinished.
+  Lifetime construction and the remaining upper storage-consumer migration
+  remain unfinished.
 
 - Let native module initializers construct behaviors and objects through Id
   messages before upper modules exist (Design 83). Add native queries for the
