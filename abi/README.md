@@ -1,5 +1,13 @@
 # ABI evidence
 
+Production now enters through [the typed Id protocol](fixtures/id-protocol-v1/README.md),
+then constructs Bootstrap, roots, Lifetime and [Nil/Boolean base values](fixtures/base-values-v1/README.md).
+The remaining aggregate Runtime and module interfaces below are migration
+boundaries. Earlier descriptions of factory preparation before `id_init` apply
+to the legacy path; current startup loads the real Id first. See
+[Design 83](../docs/design/83-production-id-construction-and-lifetimes.md#implementation-evidence-and-remaining-boundary)
+for the current construction and remaining package separation.
+
 The current boundary is **IdApi v20**, with 18 fields / 144 bytes. Design
 [81BO](../docs/design/81bo-production-native-stack-anchor.md) moves native
 stack-anchor ownership into [Native Stack](native-stack-v1.md), exposing its

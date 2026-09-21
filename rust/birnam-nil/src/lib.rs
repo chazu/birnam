@@ -1,6 +1,7 @@
 //! Existing Object/nil protocol, independently loaded from Collection (81V).
-//! Singleton representation remains in Id for this checkpoint.
+//! Native predicates precede the later String printing extension.
 #![allow(clippy::missing_safety_doc)]
+mod base;
 use birnam_abi::{IdApi, Oop};
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -59,11 +60,13 @@ pub unsafe extern "C" fn module_init(api_pointer: *mut IdApi, _: *mut c_void, _p
     let api = unsafe { &*api_pointer };
     let _ = API.get_or_init(|| api_pointer as usize);
     unsafe {
-        (api.method)(api.object_vt, intern(api, b"isNil\0"), object_is_nil);
-        (api.method)(api.object_vt, intern(api, b"notNil\0"), object_not_nil);
         let nil_vt = (api.vtableOf)(api.nilObj);
-        (api.method)(nil_vt, intern(api, b"isNil\0"), nil_is_nil);
-        (api.method)(nil_vt, intern(api, b"notNil\0"), nil_not_nil);
+        if !base::matches(api) {
+            (api.method)(api.object_vt, intern(api, b"isNil\0"), object_is_nil);
+            (api.method)(api.object_vt, intern(api, b"notNil\0"), object_not_nil);
+            (api.method)(nil_vt, intern(api, b"isNil\0"), nil_is_nil);
+            (api.method)(nil_vt, intern(api, b"notNil\0"), nil_not_nil);
+        }
         (api.method)(nil_vt, intern(api, b"printString\0"), nil_print_string);
     }
     ptr::null_mut()

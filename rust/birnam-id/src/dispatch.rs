@@ -318,12 +318,9 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     build_bootstrap_from(crate::initial_objects::InitialObjects::new())
 }
 pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
-    build_bootstrap_with_roots(initial, None)
+    build_bootstrap_with(initial, None, None, None)
 }
-pub(crate) fn build_bootstrap_with_roots(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>) -> Bootstrap {
-    build_bootstrap_with_lifetime(initial, roots, None)
-}
-pub(crate) fn build_bootstrap_with_lifetime(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>) -> Bootstrap {
+pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
         memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
@@ -337,12 +334,20 @@ pub(crate) fn build_bootstrap_with_lifetime(initial: crate::initial_objects::Ini
 
     let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
     let environment = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
-    let nil_vt = vtables.create(&mut heap, object_vt, vtable_vt);
-    let bool_vt = vtables.create(&mut heap, object_vt, vtable_vt);
-
-    let nil = allocate_empty(&mut heap, nil_vt, Permanence::Permanent);
-    let true_object = allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
-    let false_object = allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
+    let (nil_vt, bool_vt, nil, true_object, false_object) = if let Some(values) = values {
+        // Preserve the existing canonical-value permanence policy, without
+        // making unrelated early module allocations permanent.
+        heap.retain_initial_objects(&[values.nil_behavior, values.boolean_behavior, values.nil, values.true_object, values.false_object]);
+        (values.nil_behavior, values.boolean_behavior, values.nil, values.true_object, values.false_object)
+    } else {
+        // Legacy IdApi construction and local unit harnesses until migration.
+        let nil_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+        let bool_vt = vtables.create(&mut heap, object_vt, vtable_vt);
+        let nil = allocate_empty(&mut heap, nil_vt, Permanence::Permanent);
+        let true_object = allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
+        let false_object = allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
+        (nil_vt, bool_vt, nil, true_object, false_object)
+    };
 
     let selectors = BootstrapSelectors {
         lookup,
@@ -412,6 +417,7 @@ pub(crate) fn build_bootstrap_with_lifetime(initial: crate::initial_objects::Ini
                 object_identical as crate::abi::Method,
             ),
         ] {
+            if values.is_some() && selector == selectors.identical { continue; }
             let arguments = [selector, MethodAddress::from_method(method).as_oop()];
             let installed = runtime.send_slice(vtable, selectors.add_method, &arguments);
             boundary::require_invariant(

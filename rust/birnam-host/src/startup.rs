@@ -3147,14 +3147,13 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v1".as_ptr()) });
-    let runtime_init_v2 = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v2".as_ptr()) });
-    let bootstrap = if runtime_init_v2.is_some() {
+    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v3".as_ptr()) });
+    let bootstrap = if runtime_init.is_some() {
         let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, runtime_init_v2, id_protocol, bootstrap, roots: None, lifetime: None, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3164,8 +3163,8 @@ pub struct InitialFloor {
     handle: NonNull<std::ffi::c_void>,
     init: NonNull<std::ffi::c_void>,
     runtime_init: Option<NonNull<std::ffi::c_void>>,
-    runtime_init_v2: Option<NonNull<std::ffi::c_void>>,
     lifetime: Option<*const birnam_abi::lifetime::OwnedV1>,
+    base_values: Option<*const birnam_abi::base_values::ValuesV1>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
@@ -3184,7 +3183,7 @@ impl InitialFloor {
         unsafe { load_native_with_bootstrap(self.bootstrap.as_ref(), self.id_protocol, path, args) }
     }
     pub fn initialize_roots(&mut self) -> Result<Option<*const birnam_abi::root_registry::OwnedV1>, FloorError> {
-        if self.roots.is_some() || (self.runtime_init.is_none() && self.runtime_init_v2.is_none()) { return Ok(self.roots); }
+        if self.roots.is_some() || self.runtime_init.is_none() { return Ok(self.roots); }
         use birnam_abi::id_protocol::{self as native, Operand};
         let path = self.source_path.with_file_name("libbirnam_root_registry.dylib");
         let answer = unsafe { self.load_native(&path_bytes(&path), &[Operand::object(self.id_protocol.receiver)]) };
@@ -3205,7 +3204,7 @@ impl InitialFloor {
     /// Construct complete payload, trace-hook and finalizer records through Id.
     /// This is the same step used by ordinary production startup.
     pub fn initialize_lifetime(&mut self) -> Result<Option<*const birnam_abi::lifetime::OwnedV1>, FloorError> {
-        if self.runtime_init_v2.is_none() || self.lifetime.is_some() { return Ok(self.lifetime); }
+        if self.runtime_init.is_none() || self.lifetime.is_some() { return Ok(self.lifetime); }
         self.initialize_roots()?;
         use birnam_abi::id_protocol::{self as native, Operand};
         let load = |file: &str, arguments: &[Operand]| -> Result<Operand, FloorError> {
@@ -3226,10 +3225,27 @@ impl InitialFloor {
         self.lifetime = Some(pointer);
         Ok(self.lifetime)
     }
+    /// Construct base identities and predicates before String, numbers or Block.
+    pub fn initialize_base_values(&mut self) -> Result<Option<*const birnam_abi::base_values::ValuesV1>, FloorError> {
+        if self.runtime_init.is_none() || self.base_values.is_some() { return Ok(self.base_values); }
+        self.initialize_lifetime()?;
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let boolean = self.source_path.with_file_name("libbirnam_boolean.dylib");
+        let nil = self.source_path.with_file_name("libbirnam_nil.dylib");
+        let answer = unsafe { self.load_native(&path_bytes(&boolean), &[Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize)]) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        let values = answer.value.as_word().unwrap_or(0) as *const birnam_abi::base_values::ValuesV1;
+        if !unsafe { birnam_abi::base_values::valid(values) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
+        let answer = unsafe { self.load_native(&path_bytes(&nil), &[Operand::word(values as usize)]) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        self.base_values = Some(values);
+        Ok(self.base_values)
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
-        let Self { source_path, handle, init, runtime_init, runtime_init_v2, id_protocol, roots, lifetime, bootstrap, .. } = self;
+        self.initialize_base_values()?;
+        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3368,12 +3384,9 @@ impl InitialFloor {
                 return Err(error);
             }
         };
-        let initialized = if let (Some(initialize), Some(roots), Some(lifetime)) = (runtime_init_v2, roots, lifetime) {
-            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
-            unsafe { initialize(roots, lifetime) }
-        } else if let (Some(initialize), Some(roots)) = (runtime_init, roots) {
-            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
-            unsafe { initialize(roots) }
+        let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values)) = (runtime_init, roots, lifetime, base_values) {
+            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
+            unsafe { initialize(roots, lifetime, values) }
         } else {
             let initialize: IdInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
             unsafe { initialize() }

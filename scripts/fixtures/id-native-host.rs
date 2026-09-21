@@ -143,6 +143,26 @@ fn main() {
     let lifetime_check = intern(&id, b"earlyLifetimeCheck");
     let lifetime_release = intern(&id, b"releaseEarlyLifetime");
     assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 7);
+    // Base values work with no String, Integer, Block or Runtime available.
+    for name in ["boolean", "nil"] {
+        let file = format!("libbirnam_{name}.dylib");
+        symlink(prefix.join("lib").join(&file), isolated.join(&file)).unwrap();
+        let path = isolated.join(&file);
+        assert_eq!(unsafe { initial.load_native(path.as_os_str().as_bytes(), &[]) }.status, native::INVALID_REQUEST);
+    }
+    let values = initial.initialize_base_values().unwrap().unwrap();
+    assert_eq!(initial.initialize_base_values().unwrap(), Some(values));
+    let path = scratch.join("base-values.dylib");
+    assert_eq!(unsafe { initial.load_native(path.as_os_str().as_bytes(), &[Operand::word(values as usize), Operand::word(records as usize)]) }.status, native::LOADED);
+    // Loading completed base entries again must preserve live replacements.
+    let boolean_path = isolated.join("libbirnam_boolean.dylib");
+    let repeated = unsafe { initial.load_native(boolean_path.as_os_str().as_bytes(), &[Operand::word(roots as usize), Operand::word(records as usize)]) };
+    assert_eq!(repeated.status, native::LOADED);
+    assert_eq!(repeated.value.as_word(), Some(values as usize));
+    let nil_path = isolated.join("libbirnam_nil.dylib");
+    assert_eq!(unsafe { initial.load_native(nil_path.as_os_str().as_bytes(), &[Operand::word(values as usize)]) }.status, native::LOADED);
+    let base_check = intern(&id, b"checkBaseValues");
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 9);
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -165,6 +185,11 @@ fn main() {
     unsafe { runtime.prepare_execution(&mut anchor) };
     let settings = runtime.stack.gc_settings();
     unsafe { birnam_abi::gc_settings::set_precise(settings, 1); (runtime.stack.api().gcCollect)(); }
+    let base = unsafe { *values };
+    assert_eq!((runtime.stack.api().nilObj, runtime.stack.api().trueObj, runtime.stack.api().falseObj),
+        (base.nil, base.true_object, base.false_object));
+    assert_eq!(send(&id, base_check, &[]).value.as_word(), Some(1));
+    println!("Nil/Boolean bases work before successors; identities, layouts and live replacements survive reload/adoption/GC");
     assert_eq!(send(&id, root_identity, &[]).value.as_word(), Some(early_identity));
     assert_eq!(send(&id, release_root, &[]).value.as_word(), Some(1));
     unsafe { (runtime.stack.api().gcCollect)(); }

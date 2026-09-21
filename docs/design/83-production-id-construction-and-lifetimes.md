@@ -543,7 +543,7 @@ entered images, including failed initializers with partial publication.
 Upper startup adopts the exact initial registries, objects and carrier. Each
 registry has one owner and a stable address; no graph is copied and no carrier
 slot is retargeted. Thirteen upper factory preparations still run in the host
-after native Id/Bootstrap/root-registry/Lifetime initialization and feed the aggregate Runtime constructor. That
+after native Id/Bootstrap/root-registry/Lifetime/base-value initialization and feed the aggregate Runtime constructor. That
 ordering improvement does not implement the construction graph in section 4.
 
 The first upper native entry is now
@@ -573,9 +573,9 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v2` is an upper construction entry taking the completed
-root and representation owners, temporarily packaged in the Id library along with
-Runtime. The old `id_init`, v1 root-only entry and factory preparation path remain
+prefix. `birnam_runtime_init_v3` is an upper construction entry taking the completed
+root and representation owners plus the completed base values, temporarily packaged in the Id library along with
+Runtime. The intermediate v1/v2 Runtime bridges are removed. The old `id_init` and factory preparation path remain
 for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
@@ -595,7 +595,7 @@ admission, membership and record operations. They do not point forward to Runtim
 
 [`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
-that owner through `birnam_runtime_init_v2`; its behavior/heap tables retain no
+that owner through `birnam_runtime_init_v3`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
 same records through the native boundary. Public APIs retain their existing ABI
 and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
@@ -607,12 +607,28 @@ invoke that policy or arbitrary lookup during collection.
 finalizer detachment, so a finalizer attached to a behavior still runs after its
 behavior metadata retires. Native Lifetime destruction releases all description
 bytes before destroying its capabilities and never invokes object finalizers.
-Legacy `id_init`/v1 construction and unit harnesses retain local service records
+Legacy `id_init` construction and unit harnesses retain local service records
 until their consumers migrate; current production uses only the native owner.
 Bootstrap now owns common-protocol initialization results. Routing the remaining
 legacy constructors through it, completing ownership handoff as module exports
 are published, and staged collector activation remain required. This prefix does
 not move Runtime/compiler code out of Id.
+
+`InitialFloor::initialize_base_values` then loads the existing Boolean and Nil
+libraries through Bootstrap. Boolean's native entry takes completed roots and
+Lifetime, creates the actual Nil/Boolean identities through Id messages, and
+installs identity/basic Boolean operations. Nil's native entry takes those
+completed identities and installs the Object/Nil predicates. Their
+[base-value descriptor](../../abi/fixtures/base-values-v1/README.md) contains only
+already constructed objects. Basic methods use that completed native context;
+they do not read the later String/Block/Runtime API. Printing and Block control
+are absent until the later extension entries install them.
+
+Runtime adopts these same objects and layouts, retaining the existing permanence
+policy for the five canonical objects/behaviors without promoting unrelated early
+allocations. Later Boolean/Nil entries preserve the basic method bindings. The
+legacy `id_init` path still constructs local constants until its consumers move.
+The remaining value stages and full construction graph remain unimplemented.
 
 `ObjectMemory` owns allocations and identities. `Heap` adds mark/permanence
 records, budget accounting and deferred allocations. Allocation records use
@@ -713,6 +729,16 @@ Current debug evidence:
   the platform library. The ABI/host suites pass 24/86 debug tests. Normal host
   startup, compiled modules, images and baked execution pass the root-registry
   workload with this loader in the production path.
+- With only the nine Id/Bootstrap/Lifetime/base libraries available, the
+  independent C base-value fixture exercises Nil/Boolean operations and native
+  failures while printing and Block control are absent. It replaces a Nil
+  predicate, reloads both completed base entries, then verifies the same values,
+  layouts and exact basic function/context pairs after normal startup and
+  precise GC. The Boolean and Nil image workloads pass source, compiled, native
+  image and baked execution, including live method replacement. The debug
+  ABI/host/Id suites pass 24/86/308 tests (plus four host binary tests).
+  Installed Boolean/Nil exports match their manifests and link only the platform
+  library; Id exports only the current v3 Runtime bridge.
 - The root-registry image workload passes for source, source-free compiled,
   native Code images and baked execution, including duplicate provider order,
   callback-time append, nested collection, roots, aliases and reload. Debug unit

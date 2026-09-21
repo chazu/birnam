@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Construct Nil/Boolean identities and basic operations through Id and Lifetime
+  before String, numbers, Block or Runtime (Design 83). Upper startup adopts the
+  same objects, layouts and method bindings; later Nil/Boolean entries add
+  printing and Block control. Replace the temporary v1/v2 Runtime bridges with
+  one v3 constructor accepting these completed values. Remaining value stages,
+  collector activation and Runtime/compiler separation are still unfinished.
+
 - Load Bootstrap immediately after Id and retain native initialization results
   before Lifetime exists (Design 83). Transfer the early roots into the actual
   root registry, retain later results there, and release them explicitly when

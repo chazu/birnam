@@ -729,8 +729,8 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-string-builder/` — independently loaded StringBuilder buffer ownership and methods.
 - `rust/birnam-string/` — independently loaded String representation, byte owner and core methods.
 - `rust/birnam-string-collection/` — late String split adapter using native Vector construction.
-- `rust/birnam-nil/` — independently loaded Object/nil methods; singleton identity remains in Id.
-- `rust/birnam-boolean/` — independently loaded Boolean methods; singleton objects remain in Id.
+- `rust/birnam-nil/` — early Object/Nil predicates, followed by the String printing extension.
+- `rust/birnam-boolean/` — early Nil/Boolean identities and basic operations, followed by printing and Block control; see [base values](abi/fixtures/base-values-v1/README.md).
 - `rust/birnam-word/` — independently loaded Word representation and methods;
   [native dependency contract](abi/word-v1.md).
 - `rust/birnam-float/` — independently loaded Float representation and behavior;
