@@ -2823,3 +2823,44 @@ The prefix is unchanged; fixture sources, proxy/overlay and output hashes are
 recorded in `.cargo-target/83-service-images-evidence.json`. ABI pages now document
 the test entry paths. The wider legacy fixture migration, worker readiness and
 complete acceptance audit remain open. Release validation remains waived.
+
+
+### Image emission reuses block references and validated module trees
+
+Worker profiling identified whole-program block resolution once per emitted
+block, including capture analysis of unrelated subtrees. The inventory now
+retains the block references it visits, so emission directly associates each
+block with its stable key. Resolution for selected resumables also skips roots
+and lexical paths that cannot contain the requested block. Canonical operation
+positions, nested block ordinals and capture order remain unchanged.
+
+Image compilation now retains the Rust syntax trees produced while validating
+its generation sources. Selected resumable emission consumes those same trees
+instead of sending the parser and traversing its CST a second time. Other
+metadata operations discard each tree immediately. No tree or language object
+is cached across operations; every later compilation observes the current
+parser. Authority, digest, source identity and embedded-file checks remain.
+
+The installed regression selects a real resumable module and replaces Lang's
+parser with a counter. The previous binary reports 2 then 4 calls across two
+image compilations; the new binary reports 1 then 2. Replacing the parser again
+with a rejecting implementation prevents artifact creation. Ordinary compilation
+retains its existing fresh-parser and binary-embedding checks. Inventory tests
+retain literal canonical keys and check block identity; nested capture tests
+include an unrelated sibling subtree.
+
+All 119 compiler library tests pass (four ignored). The full portable image-v8
+suite passes boxed identity, nested source-less code, ordinary/rebuilt/baked
+entry, resave, boundary admission and forged-authority rejection. Production
+sources match the debug installation at `/tmp/birnam-83-image-snapshots`.
+
+A sequential wire comparison measured 12.36 seconds for the previous installation
+and 11.54 seconds with block traversal fixed, with identical replies. Reusing
+validated module trees then measured 11.07 seconds and passed all twelve exact
+wire exchanges and orderly shutdown. These timings still exceed the unchanged
+ten-second worker readiness deadline. The full worker-service runner passes its
+Cell checks in ordinary and rebuilt images, then fails AOT startup with
+`#handshakeTimeout`; its nineteen service cases are not reached.
+Evidence is `.cargo-target/83-image-emission-evidence.json`. The remaining fixture
+migration and complete Designs 82/83 acceptance audit stay open. Release
+validation remains waived.

@@ -1098,12 +1098,9 @@ impl Emitter {
         let saved_function_defs_len = self.function_defs.len();
         self.bytes = Vec::new();
         self.bound_names = Vec::new();
-        self.block_keys = resumable::implementation_inventory(program)
+        self.block_keys = resumable::implementation_inventory_with_blocks(program)
             .into_iter()
-            .filter_map(|key| {
-                resumable::resolve_block_implementation(program, &key)
-                    .map(|resolved| (resolved.block as *const Block<'_> as usize, key))
-            })
+            .filter_map(|(key, block)| block.map(|block| (block as *const Block<'_> as usize, key)))
             .collect();
         if self.artifact_mode && !self.block_resumables.is_empty() {
             self.bytes

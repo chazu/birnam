@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reuse block inventory references during code emission and skip unrelated
+  subtrees during block resolution. Image compilation reuses each validated
+  module tree for selected resumable emission; later compilations still observe
+  the current parser.
+
 - Migrate the Root Registry, GC Settings and Native Stack image fixtures to
   explicit native construction. Preserve installed CLI and baked execution,
   with mapped/rebuilt image checks for all three services.

@@ -3516,6 +3516,14 @@ unsafe fn parse_revision_metadata(
     api: &IdApi,
     source_object: Oop,
 ) -> Option<(Vec<u8>, RevisionMetadata)> {
+    let (source, metadata, _) = unsafe { parse_revision_tree(api, source_object) }?;
+    Some((source, metadata))
+}
+
+unsafe fn parse_revision_tree(
+    api: &IdApi,
+    source_object: Oop,
+) -> Option<(Vec<u8>, RevisionMetadata, OwnedCst)> {
     let source = unsafe { string_bytes(api, source_object) }?;
     let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
     let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
@@ -3525,7 +3533,7 @@ unsafe fn parse_revision_metadata(
     }
     let tree = unsafe { cst_tree(api, cst, 0) }?;
     let metadata = revision_metadata(&tree, &source)?;
-    Some((source, metadata))
+    Some((source, metadata, tree))
 }
 
 unsafe fn symbol_bytes(api: &IdApi, symbol: Oop) -> Option<Vec<u8>> {
@@ -3994,6 +4002,16 @@ unsafe fn generation_modules(
     api: &IdApi,
     source_map: Oop,
 ) -> Option<Vec<GenerationModuleProjection>> {
+    unsafe { generation_modules_with_trees(api, source_map, |_, _| {}) }
+}
+
+// A compilation can retain its validated Rust trees for emission. Other callers
+// drop each tree immediately; no parser result persists across operations.
+unsafe fn generation_modules_with_trees(
+    api: &IdApi,
+    source_map: Oop,
+    mut retain_tree: impl FnMut([u8; 32], OwnedCst),
+) -> Option<Vec<GenerationModuleProjection>> {
     let vector_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), VECTOR_VT_NAME.as_ptr().cast()) };
     let count = unsafe { vector_length(api, source_map, vector_vt) }?;
     let mut modules = Vec::with_capacity(count);
@@ -4008,8 +4026,7 @@ unsafe fn generation_modules(
             return None;
         }
         let source_object = unsafe { vector_item(api, revision_object, 3) };
-        let source = unsafe { string_bytes(api, source_object) }?;
-        let (_, metadata) = unsafe { parse_revision_metadata(api, source_object) }?;
+        let (source, metadata, tree) = unsafe { parse_revision_tree(api, source_object) }?;
         if metadata.name != name
             || unsafe { string_bytes(api, vector_item(api, revision_object, 6)) }?
                 != metadata.revision_digest
@@ -4017,6 +4034,7 @@ unsafe fn generation_modules(
             return None;
         }
         let revision = decode_hex_digest(&metadata.revision_digest)?;
+        retain_tree(revision, tree);
         modules.push(GenerationModuleProjection {
             name,
             revision,
@@ -5152,7 +5170,12 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
             &[generation, intern(api, b"sourceMap\0")],
         )
     };
-    let Some(modules) = (unsafe { generation_modules(api, source_map) }) else {
+    let mut parsed_trees = BTreeMap::new();
+    let Some(modules) = (unsafe {
+        generation_modules_with_trees(api, source_map, |revision, tree| {
+            parsed_trees.insert(revision, tree);
+        })
+    }) else {
         note_error(b"RustCodegen durable image source map is malformed");
         return api.nilObj;
     };
@@ -5219,16 +5242,8 @@ unsafe extern "C" fn rust_codegen_compile_image_code(
             .cloned()
             .collect::<Vec<_>>();
         if !module_requests.is_empty() {
-            let source_object = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
-            let lang = unsafe { birnam_abi::namespace_import::import(execution_imports(), LANG_NAME.as_ptr().cast()) };
-            let cst = unsafe { send(api, lang, PARSE_SELECTOR, &[source_object]) };
-            let cst_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), PEG_CST_VT_NAME.as_ptr().cast()) };
-            if cst.is_null() || cst == api.nilObj || unsafe { (api.vtableOf)(cst) != cst_vt } {
-                note_error(b"RustCodegen selected image source could not be parsed");
-                return api.nilObj;
-            }
-            let Some(tree) = (unsafe { cst_tree(api, cst, 0) }) else {
-                note_error(b"RustCodegen selected image CST is invalid");
+            let Some(tree) = parsed_trees.remove(&module.revision) else {
+                note_error(b"RustCodegen selected image source has no validated tree");
                 return api.nilObj;
             };
             let Some(tree) = rewrite_embedded(tree, bytes, b".") else {

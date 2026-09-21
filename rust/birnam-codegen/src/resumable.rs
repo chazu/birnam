@@ -100,6 +100,17 @@ pub fn projected_block_bindings(program: &Program<'_>) -> Vec<ProjectedBlockBind
 /// produce a NamedAdapter row. Block ordinals are source-ordered within their
 /// immediately enclosing implementation.
 pub fn implementation_inventory(program: &Program<'_>) -> Vec<ImplementationKey> {
+    implementation_inventory_with_blocks(program)
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect()
+}
+
+/// Keep the already visited Block alongside its stable key. Emission needs this
+/// association, not a fresh whole-program resolution and capture analysis per key.
+pub(crate) fn implementation_inventory_with_blocks<'a>(
+    program: &'a Program<'a>,
+) -> Vec<(ImplementationKey, Option<&'a Block<'a>>)> {
     let mut inventory = Vec::new();
     let mut operation_index = 0u32;
     let mut non_method_block_ordinal = 0u32;
@@ -109,12 +120,15 @@ pub fn implementation_inventory(program: &Program<'_>) -> Vec<ImplementationKey>
         };
         if let Some(install) = method_operation(expression) {
             if install {
-                inventory.push(ImplementationKey {
-                    root_kind: InventoryRootKind::MethodOperation,
-                    root_index: operation_index,
-                    path: Vec::new(),
-                    implementation_kind: InventoryImplementationKind::NamedAdapter,
-                });
+                inventory.push((
+                    ImplementationKey {
+                        root_kind: InventoryRootKind::MethodOperation,
+                        root_index: operation_index,
+                        path: Vec::new(),
+                        implementation_kind: InventoryImplementationKind::NamedAdapter,
+                    },
+                    None,
+                ));
             }
             let mut ordinal = 0;
             collect_block_keys(
@@ -139,7 +153,7 @@ pub fn implementation_inventory(program: &Program<'_>) -> Vec<ImplementationKey>
             );
         }
     }
-    inventory.sort();
+    inventory.sort_by(|(left, _), (right, _)| left.cmp(right));
     inventory
 }
 
@@ -163,13 +177,13 @@ pub(crate) fn method_operation(expression: &Expr<'_>) -> Option<bool> {
     }
 }
 
-fn collect_block_keys(
-    expression: &Expr<'_>,
+fn collect_block_keys<'a>(
+    expression: &'a Expr<'a>,
     root_kind: InventoryRootKind,
     root_index: u32,
     parent_path: &[u32],
     next_ordinal: &mut u32,
-    inventory: &mut Vec<ImplementationKey>,
+    inventory: &mut Vec<(ImplementationKey, Option<&'a Block<'a>>)>,
 ) {
     match expression {
         Expr::Block(block) => {
@@ -178,12 +192,15 @@ fn collect_block_keys(
             *next_ordinal = next_ordinal
                 .checked_add(1)
                 .expect("normalized block count is bounded by source size");
-            inventory.push(ImplementationKey {
-                root_kind,
-                root_index,
-                path: path.clone(),
-                implementation_kind: InventoryImplementationKind::BlockBody,
-            });
+            inventory.push((
+                ImplementationKey {
+                    root_kind,
+                    root_index,
+                    path: path.clone(),
+                    implementation_kind: InventoryImplementationKind::BlockBody,
+                },
+                Some(block),
+            ));
             let mut nested_ordinal = 0;
             for statement in &block.body {
                 let expression = match statement {
@@ -317,6 +334,14 @@ fn resolve_block_in_expression<'a>(
             let mut path = parent_path.to_vec();
             path.push(*next_ordinal);
             *next_ordinal = next_ordinal.checked_add(1)?;
+            // Descendant ordinals belong to this block, not its siblings. A
+            // different root or path cannot contain the requested implementation.
+            if wanted.root_kind != root_kind
+                || wanted.root_index != root_index
+                || !wanted.path.starts_with(&path)
+            {
+                return None;
+            }
             let captures = lexical_capture_names(block, environment);
             if wanted.root_kind == root_kind
                 && wanted.root_index == root_index
@@ -2486,6 +2511,15 @@ mod tests {
                 },
             ]
         );
+        for (key, block) in implementation_inventory_with_blocks(&program) {
+            match key.implementation_kind {
+                InventoryImplementationKind::NamedAdapter => assert!(block.is_none()),
+                InventoryImplementationKind::BlockBody => {
+                    let resolved = resolve_block_implementation(&program, &key).unwrap();
+                    assert!(std::ptr::eq(block.unwrap(), resolved.block));
+                }
+            }
+        }
     }
 
     #[test]
@@ -2506,7 +2540,18 @@ mod tests {
                 Expr::Global(b"Target"),
                 Expr::Block(Box::new(Block {
                     params: vec![b"self"],
-                    body: vec![Statement::Expr(nested)],
+                    body: vec![
+                        // Skipping this subtree must not consume the following
+                        // sibling's ordinal or change its enclosing captures.
+                        Statement::Expr(Expr::Block(Box::new(Block {
+                            params: vec![b"unrelated"],
+                            body: vec![Statement::Expr(Expr::Block(Box::new(Block {
+                                params: vec![],
+                                body: vec![Statement::Expr(Expr::Global(b"unrelated"))],
+                            })))],
+                        }))),
+                        Statement::Expr(nested),
+                    ],
                 })),
             ],
             source: b"define",
@@ -2536,7 +2581,7 @@ mod tests {
             &ImplementationKey {
                 root_kind: InventoryRootKind::MethodOperation,
                 root_index: 0,
-                path: vec![0, 0],
+                path: vec![0, 1],
                 implementation_kind: InventoryImplementationKind::BlockBody,
             },
         )

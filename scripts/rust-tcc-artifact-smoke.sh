@@ -13,7 +13,11 @@ fi
 : "${tcc:?BIRNAM_TCC_DYLIB or BIRNAM_RUST_TCC_DYLIB must point to TCC}"
 
 tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then
+  trap 'rm -rf "$tmp"' EXIT
+else
+  echo "TCC artifact smoke root: $tmp" >&2
+fi
 src="$tmp/tcc-smoke.birnam"
 artifact="$tmp/libtcc-smoke.dylib"
 work="$tmp/child"
@@ -75,3 +79,42 @@ cmp "$tmp/parse-count-error.expected" "$tmp/parse-count.err"
 test -s "$tmp/parse-count.dylib"
 test ! -e "$tmp/rejected.dylib"
 echo "rust-tcc-artifact: one parse per compilation and live parser replacement passed"
+
+# Image compilation must use the same parsed module for authority validation and
+# selected resumable emission, while observing parser replacement on the next call.
+cat >"$tmp/image-parse-count.birnam" <<EOF
+let source := "[Module named: #imageParseCount requires: #[]]; [Globals at: #ImageParseTarget put: [Object clone]]; [Reflect defineMethod: #answer: on: ImageParseTarget as: [:self :value | [value + 1]]];";
+[Codegen eval: source];
+[Codegen recordModuleSource: source named: #imageParseCount];
+[DispatchGeneration initializeCurrent];
+[CompiledUnit compile: source named: #imageParseCount output: "$tmp/selected.dylib" selection: #resumableRequired];
+let unit := [CompiledUnit open: "$tmp/selected.dylib"];
+[unit map];
+[[unit activate] fulfill];
+[Globals at: #ImageParseSource put: source];
+[Globals at: #ImageOriginalParse put: [Lang methodFor: #parse:]];
+[Globals at: #ImageParseCount put: 0];
+[Reflect defineMethod: #parse: on: Lang as: [:self :text |
+  [[text = [Globals at: #ImageParseSource]] ifTrue: [|
+    [Globals at: #ImageParseCount put: [[Globals at: #ImageParseCount] + 1]]
+  ]];
+  [[Globals at: #ImageOriginalParse] invokeOn: self arguments: #[text]]
+]];
+[Codegen compileImageCode: "$tmp/image-code.dylib"];
+[System println: [Globals at: #ImageParseCount]];
+[Codegen compileImageCode: "$tmp/image-code.dylib"];
+[System println: [Globals at: #ImageParseCount]];
+[Reflect defineMethod: #parse: on: Lang as: [:self :text | nil]];
+[System println: [[Codegen compileImageCode: "$tmp/image-rejected.dylib"] isNil]]
+EOF
+status=0
+BIRNAM_LIB_DIR="$lib_dir" BIRNAM_TCC_DYLIB="$tcc" \
+  "$bin" "$tmp/image-parse-count.birnam" >"$tmp/image-parse-count.out" 2>"$tmp/image-parse-count.err" || status=$?
+test "$status" -eq 1
+printf '1\n2\ntrue\n' >"$tmp/image-parse-count.expected"
+cmp "$tmp/image-parse-count.expected" "$tmp/image-parse-count.out"
+printf 'birnam: script: EvaluationRejected\n' >"$tmp/image-parse-count-error.expected"
+cmp "$tmp/image-parse-count-error.expected" "$tmp/image-parse-count.err"
+test -s "$tmp/image-code.dylib"
+test ! -e "$tmp/image-rejected.dylib"
+echo "rust-tcc-artifact: image validation and selected emission share a fresh parse"
