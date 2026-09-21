@@ -568,4 +568,4 @@ pub mod namespace_owner;
 pub mod object_model;
 
 pub mod collector;
-pub mod primitive_allocation;
+pub mod id_primitives;

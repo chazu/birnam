@@ -7,7 +7,7 @@ use crate::{
 };
 use birnam_abi::{
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-    primitive_allocation::PrimitivesV1,
+    id_primitives::PrimitivesV1,
 };
 use core::{ffi::c_void, ptr::NonNull};
 

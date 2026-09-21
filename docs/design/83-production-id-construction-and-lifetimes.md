@@ -4,8 +4,11 @@
 > and managed-turn checkpoints are implemented in the existing production
 > runtime. Core Id allocation, Symbols, dictionaries and typed dispatch no longer
 > require upper services. Siphon now loads the real Id through the common native
-> protocol before upper preparation. Library ownership, upper construction and
-> consumer migration remain open.
+> protocol before upper preparation. Runtime now borrows the native Id carrier
+> and original entries through the temporary [v13 constructor](../../abi/runtime-construction-v13.md),
+> without taking Id's Rust owner or referencing its primitive functions for
+> lookup/Integer admission. Independent packaging, native upper construction
+> and owned Method consumer migration remain open.
 > Resolves the four adversarial-review findings against
 > [82](82-minimal-production-id.md). Design 82 remains the failure record and
 > dependency constraints. This document specifies construction, native loading,
@@ -1558,3 +1561,44 @@ harness passes, including collection during Runtime construction, invocation of
 saved primitives afterward, and C rejection of malformed v12 inputs before and
 after initialization without consuming owners. All 68 installed Id exports match
 the manifest and installer wrappers. Release validation remains waived.
+
+The same v12 installation also passes the deferred-identity image suite through
+source, compiled, mapped/rebuilt and baked execution. Its independently compiled
+host uses the matching v12 constructor. Actual writes remain `(386, 150)` normally
+and `(386, 75)` under forced recovery in all image modes.
+
+### Original Id entries cross the boundary as a completed dependency
+
+Bootstrap retains the original allocation, interning, lookup, add/remove,
+allocation-size, behavior and Symbol-byte entries immediately after Siphon loads
+Id, before loading Bootstrap or any other upper module. The temporary
+[Runtime v13 constructor](../../abi/runtime-construction-v13.md) receives this
+[complete record](../../abi/id-primitives-v1.md). It replaces the allocation-only
+record without changing the Id carrier, native selectors or Id initialization.
+
+Runtime's lookup and Integer admission compare exact retained entries, including
+contexts. The legacy bridge recognizes operand conventions from those entries
+and invokes the selected function/context. It no longer refers to private Id
+primitive functions. Capturing current lookup after upper preparation is not a
+substitute: an earlier effectful replacement must not become the default merely
+because Runtime sees it first. Test construction retains the initial entries
+before allowing early mutations, matching the production order.
+
+This removes private primitive-symbol dependencies from those consumers. It does
+not remove the remaining local registry/layout variants, complete owned Method
+reflection or separate the Runtime package. Those remain acceptance work.
+
+Validation: 347 ABI/Id unit tests pass (15 ignored). A production-constructor test
+uses a provider whose lookup/add/remove implementations share one forwarding
+function with distinct opaque contexts; another confirms an earlier effectful
+lookup replacement is not admitted as the original primitive. The fresh debug
+installation builds 55 native libraries and 28 stage-1 modules. The independent
+native-loading suite passes, including automatic collection during construction,
+saved-context invocation and malformed-constructor rejection. Integer admission
+preserves optimization-disabled/enabled effects for all eight replacement paths.
+All 68 installed exports match the v13 manifest and installer wrappers.
+
+The v13 dispatch-cache image suite also passes source-free compiled, mapped,
+rebuilt and baked execution, including the separately compiled host observations.
+It preserves lookup effects, mutation, shadow removal, collection, aliases and
+reload. No release validation was run.

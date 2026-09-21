@@ -314,12 +314,12 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
 }
 #[cfg(test)]
 pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
-    let mut bootstrap = build_bootstrap_with(initial.protocol.protocol, None, None, None, None, None, None, None, None);
+    let mut bootstrap = build_bootstrap_with(initial.protocol.protocol, None, None, None, None, None, None, None, Some(initial.primitives));
     bootstrap.runtime.test_id_owner = Some(initial.protocol);
     bootstrap
 }
-pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::primitive_allocation::PrimitivesV1>) -> Bootstrap {
-    let primitives = primitives.unwrap_or_else(|| unsafe { birnam_abi::primitive_allocation::select(protocol) }.unwrap_or_else(|_| panic!("select Id primitives before Runtime")));
+pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::id_primitives::PrimitivesV1>) -> Bootstrap {
+    let primitives = primitives.unwrap_or_else(|| unsafe { birnam_abi::id_primitives::select(protocol) }.unwrap_or_else(|_| panic!("select Id primitives before Runtime")));
     let mut initial_roots = roots.as_ref().and_then(|roots| roots.native_owner())
         .map(|owner| crate::root_registry::Retained::new(owner, &[]));
     let crate::id_objects::Objects { vtable_vt, object_vt, symbol_vt, lookup,
@@ -328,7 +328,7 @@ pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, 
             if let Some(roots) = &mut initial_roots { roots.retain(object); }
         });
     // Only native identities and entries cross this boundary. Id keeps its owner.
-    let client = crate::id_registries::Client::new(protocol);
+    let client = crate::id_registries::Client::new(protocol, primitives);
     let dictionaries = crate::id_registries::Dictionaries::Id(client.clone());
     let mut symbols = crate::id_registries::Symbols::Id(client);
     let mut heap = Heap::from_id(protocol, object_vt, primitives, lifetime.clone().map(crate::finalizers::Service::from_lifetime), collection.clone());

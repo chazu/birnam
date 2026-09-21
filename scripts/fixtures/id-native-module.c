@@ -359,14 +359,14 @@ static void construct_objects(const BirnamProtocol *id, BirnamObject add, const 
 }
 /* Handwritten C declaration: validation must precede any ownership transfer. */
 static void check_runtime_constructor(const BirnamProtocol *id) {
-    typedef void *(*RuntimeV12)(const BirnamProtocol *, const void *, const void *,
+    typedef void *(*RuntimeV13)(const BirnamProtocol *, const void *, const void *,
         const void *, const void *, const void *, const void *, const void *, const void *);
     Dl_info owner;
     assert(dladdr((void *)id->message, &owner));
     void *image = dlopen(owner.dli_fname, RTLD_NOW | RTLD_LOCAL);
     assert(image);
-    RuntimeV12 initialize = (RuntimeV12)dlsym(image, "birnam_runtime_init_v12");
-    assert(initialize && !dlsym(image, "birnam_runtime_init_v11"));
+    RuntimeV13 initialize = (RuntimeV13)dlsym(image, "birnam_runtime_init_v13");
+    assert(initialize && !dlsym(image, "birnam_runtime_init_v12"));
     assert(!initialize(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL));
     BirnamProtocol bad = *id;
     bad.version = 99;

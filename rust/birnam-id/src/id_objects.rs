@@ -118,6 +118,79 @@ mod tests {
     }
 
     #[test]
+    fn retained_entries_support_an_id_with_different_primitive_implementations() {
+        // A provider may use one forwarding implementation and distinct opaque
+        // contexts for all three operations. Runtime must use declared entries,
+        // not private Id function addresses or a function-only classification.
+        unsafe extern "C" fn forward(
+            context: *mut c_void,
+            receiver: Oop,
+            args: *const Operand,
+            count: usize,
+        ) -> Outcome {
+            let entry = unsafe { &*context.cast::<native::NativeEntry>() };
+            unsafe { entry.method.unwrap()(entry.context, receiver, args, count) }
+        }
+        let initial = crate::initial_objects::InitialObjects::new();
+        let id = initial.protocol.protocol;
+        let originals = Box::new([
+            initial.primitives.lookup,
+            initial.primitives.add_method,
+            initial.primitives.remove_method,
+        ]);
+        for (name, original) in [b"lookup".as_slice(), b"addMethod", b"removeMethod:"]
+            .into_iter()
+            .zip(originals.iter())
+        {
+            let selector = unsafe {
+                id.message.unwrap()(id.context, id.receiver, id.intern, &Operand::bytes(name), 1)
+            }
+            .value
+            .as_object()
+            .unwrap();
+            let args = [
+                Operand::object(selector),
+                Operand::entry(native::NativeEntry::new(
+                    forward,
+                    core::ptr::from_ref(original).cast_mut().cast(),
+                )),
+            ];
+            let add = initial.primitives.add_method;
+            assert_eq!(
+                unsafe { add.method.unwrap()(add.context, id.receiver, args.as_ptr(), args.len()) }
+                    .status,
+                native::LOADED
+            );
+        }
+        // This is the provider's completed initial graph. Capture it before
+        // constructing any upper module, as production Bootstrap does.
+        let primitives = unsafe { birnam_abi::id_primitives::select(id) }
+            .unwrap_or_else(|_| panic!("completed provider"));
+        let mut bootstrap = crate::dispatch::build_bootstrap_with(
+            id,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(primitives),
+        );
+        bootstrap.runtime.test_id_owner = Some(Box::new((originals, initial.protocol)));
+        let runtime = &bootstrap.runtime;
+        let _turn = runtime.enter_managed_turn();
+        assert!(runtime.guarded_default_lookup_eligible(runtime.globals().object_vt));
+        let selector = runtime.intern(b"clone").unwrap();
+        let object = runtime.send_slice(runtime.canonical().object_prototype, selector, &[]);
+        assert_eq!(
+            runtime.checked_vtable_of(object),
+            runtime.globals().object_vt
+        );
+        assert_ne!(object, runtime.canonical().object_prototype);
+    }
+
+    #[test]
     fn construction_queries_the_live_symbol_prototype_after_early_retirement() {
         let initial = crate::initial_objects::InitialObjects::new();
         let id = initial.protocol.protocol;

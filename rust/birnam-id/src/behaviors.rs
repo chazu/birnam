@@ -8,10 +8,10 @@ pub(crate) enum AddMethod {
     OverwroteNative(crate::abi::id_protocol::NativeEntry),
 }
 impl AddMethod {
-    pub(crate) fn from_native(change: NativeAddMethod) -> Self {
+    pub(crate) fn from_native(change: NativeAddMethod, decode: impl FnOnce(crate::abi::id_protocol::NativeEntry) -> Option<MethodAddress>) -> Self {
         match change {
             NativeAddMethod::Added => Self::Added,
-            NativeAddMethod::Overwrote(previous) => match legacy_method::try_decode(previous) {
+            NativeAddMethod::Overwrote(previous) => match decode(previous) {
                 Some(method) => Self::Overwrote(method), None => Self::OverwroteNative(previous),
             },
         }
@@ -43,7 +43,8 @@ impl Behaviors {
     pub(crate) fn native_lookup(&self, vtable: Oop, selector: Oop) -> Option<crate::abi::id_protocol::NativeEntry> { self.dictionaries.lookup(vtable, selector) }
     pub(crate) fn set_legacy_lookup(&mut self, selector: Oop) { self.legacy_lookup = selector; }
     pub(crate) fn add_method(&mut self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
-        AddMethod::from_native(self.dictionaries.add_method(vtable, selector, self.dictionaries.encode_legacy(method, selector == self.legacy_lookup)))
+        let change = self.dictionaries.add_method(vtable, selector, self.dictionaries.encode_legacy(method, selector == self.legacy_lookup));
+        AddMethod::from_native(change, |entry| self.dictionaries.try_decode(entry))
     }
     pub(crate) fn add_native_method(&mut self, vtable: Oop, selector: Oop, entry: crate::abi::id_protocol::NativeEntry) -> NativeAddMethod {
         self.dictionaries.add_method(vtable, selector, entry)
@@ -55,15 +56,15 @@ impl Behaviors {
         self.dictionaries.direct_lookup(vtable, selector)
     }
     pub(crate) fn remove_method(&mut self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
-        self.dictionaries.remove_method(vtable, selector).map(legacy_method::decode)
+        self.dictionaries.remove_method(vtable, selector).map(|entry| self.dictionaries.decode(entry))
     }
     // Optimizer/legacy-registration queries recognize only the old convention.
     // Actual dispatch uses native_lookup and retains arbitrary typed entries.
     pub(crate) fn lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
-        self.dictionaries.lookup(vtable, selector).and_then(legacy_method::try_decode)
+        self.dictionaries.lookup(vtable, selector).and_then(|entry| self.dictionaries.try_decode(entry))
     }
     pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
-        self.dictionaries.direct_lookup(vtable, selector).and_then(legacy_method::try_decode)
+        self.dictionaries.direct_lookup(vtable, selector).and_then(|entry| self.dictionaries.try_decode(entry))
     }
     pub(crate) fn native_lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<crate::abi::id_protocol::NativeEntry>, Oop> { self.dictionaries.lookup_head(vtable, selector) }
 

@@ -1,5 +1,7 @@
 # Retained Id allocation primitives v1
 
+Historical descriptor; superseded by [retained Id entries](id-primitives-v1.md).
+
 This temporary Bootstrap-to-Runtime descriptor carries two completed native Id
 entries selected through `lookup` before collecting construction methods mount.
 It is the final argument of `birnam_runtime_init_v12`. It has no installer or
@@ -49,5 +51,5 @@ The deferred-identity image workload checks ordinary and forced materialization
 through source, compiled and image execution.
 
 This descriptor exists for the temporary aggregate Runtime constructor. It is
-not a new language service. Symbol/dictionary ownership and their upper private
-interfaces still require migration before Id can be packaged independently.
+not a new language service. Other upper private interfaces still require migration before Id can be packaged
+independently.

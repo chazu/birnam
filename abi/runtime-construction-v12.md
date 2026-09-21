@@ -1,5 +1,7 @@
 # Runtime construction v12
 
+Historical constructor; superseded by [v13](runtime-construction-v13.md).
+
 `birnam_runtime_init_v12` is the temporary upper constructor used by the
 production host while Design 83's Execution and package migration continues.
 Version 12 adds the completed Id carrier as the first argument. The Id native

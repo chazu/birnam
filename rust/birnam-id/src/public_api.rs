@@ -311,7 +311,7 @@ fn install_bootstrap_metadata(bootstrap: &Bootstrap, base_values_exist: bool, na
 pub(crate) fn initialize_once() -> *mut IdApi {
     initialize_with_owners(crate::native_id::protocol(), None, None, None, None, None, None, None, None)
 }
-pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::primitive_allocation::PrimitivesV1>) -> *mut IdApi {
+pub(crate) fn initialize_with_owners(id: birnam_abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::id_primitives::PrimitivesV1>) -> *mut IdApi {
     // This is Runtime's one-shot transition. Id keeps its owner and does not
     // police upper construction by handing out a Rust value exactly once.
     boundary::require_invariant(!CONSTRUCTION_STARTED.swap(true, Ordering::AcqRel),

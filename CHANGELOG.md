@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Retain original Id entries before loading upper modules, and pass them to
+  Runtime through the temporary v13 constructor. Remove private Id function
+  references from legacy method adaptation and Integer/lookup admission;
+  preserve exact function/context checks and effects of earlier replacements.
+
 - Keep Id's production state in Id and pass its native carrier explicitly into
   Runtime construction. Query live initial objects through messages and retain
   query results across construction. Remove the private Rust owner handoff and

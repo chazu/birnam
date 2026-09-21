@@ -11,11 +11,8 @@ use core::ffi::{c_char, c_void};
 use std::rc::Rc;
 pub(crate) struct Client {
     id: Protocol,
-    // Captured before Runtime installs its upper mutations. Lookup guards also
-    // verify primitive identity, since an earlier module may replace lookup.
-    initial_lookup: NativeEntry,
-    primitive_add: NativeEntry,
-    primitive_remove: NativeEntry,
+    // Captured before upper modules load, not inferred from current bindings.
+    primitives: birnam_abi::id_primitives::PrimitivesV1,
     retire: NativeEntry,
     symbol_named: NativeEntry,
     symbol_count: NativeEntry,
@@ -41,7 +38,7 @@ pub(crate) struct Client {
     references: NativeEntry,
 }
 impl Client {
-    pub(crate) fn new(id: Protocol) -> Rc<Self> {
+    pub(crate) fn new(id: Protocol, primitives: birnam_abi::id_primitives::PrimitivesV1) -> Rc<Self> {
         let intern = |name| {
             loaded(unsafe {
                 id.message.unwrap()(id.context, id.receiver, id.intern, &Operand::bytes(name), 1)
@@ -66,9 +63,7 @@ impl Client {
         };
         Rc::new(Self {
             id,
-            initial_lookup: select(b"lookup"),
-            primitive_add: select(b"addMethod"),
-            primitive_remove: select(b"removeMethod:"),
+            primitives,
             retire: select(b"retireIndexesFor:"),
             symbol_named: select(b"symbolNamed:"),
             symbol_count: select(b"symbolCount"),
@@ -239,22 +234,44 @@ impl Dictionaries {
     pub(crate) fn encode_legacy(&self, method: crate::abi::Method, lookup: bool) -> NativeEntry {
         if let Self::Id(id) = self {
             for (legacy, entry) in [
-                (crate::legacy_method::lookup_method as crate::abi::Method, id.initial_lookup),
-                (crate::legacy_method::add_method as crate::abi::Method, id.primitive_add),
-                (crate::legacy_method::remove_method as crate::abi::Method, id.primitive_remove),
+                (crate::legacy_method::lookup_method as crate::abi::Method, id.primitives.lookup),
+                (crate::legacy_method::add_method as crate::abi::Method, id.primitives.add_method),
+                (crate::legacy_method::remove_method as crate::abi::Method, id.primitives.remove_method),
             ] {
                 if method as usize == legacy as usize { return entry; }
             }
         }
         crate::legacy_method::encode(method, lookup)
     }
+    pub(crate) fn primitives(&self) -> Option<birnam_abi::id_primitives::PrimitivesV1> {
+        match self { Self::Id(id) => Some(id.primitives), Self::Local(_) => None }
+    }
+    pub(crate) fn core_legacy_method(&self, entry: NativeEntry) -> Option<crate::raw::MethodAddress> {
+        let primitives = self.primitives()?;
+        let mappings = [
+            (primitives.lookup, crate::legacy_method::lookup_method as crate::abi::Method),
+            (primitives.add_method, crate::legacy_method::add_method as crate::abi::Method),
+            (primitives.remove_method, crate::legacy_method::remove_method as crate::abi::Method),
+        ];
+        if let Some((_, legacy)) = mappings.iter().find(|(expected, _)| entry == *expected) {
+            return Some(crate::raw::MethodAddress::from_method(*legacy));
+        }
+        // Saved entries from another Id may share the implementation but carry
+        // a different dictionary. Recognize only an unambiguous convention;
+        // always invoke that entry's context, never the current Id's context.
+        let mut matches = mappings.iter().filter(|(expected, _)|
+            entry.method.map(|f| f as usize) == expected.method.map(|f| f as usize));
+        let (_, legacy) = matches.next()?;
+        matches.next().is_none().then(|| crate::raw::MethodAddress::from_method(*legacy))
+    }
+    pub(crate) fn try_decode(&self, entry: NativeEntry) -> Option<crate::raw::MethodAddress> {
+        self.core_legacy_method(entry).or_else(|| crate::legacy_method::try_decode(entry))
+    }
+    pub(crate) fn decode(&self, entry: NativeEntry) -> crate::raw::MethodAddress {
+        self.try_decode(entry).unwrap_or_else(|| crate::boundary::fatal_invariant("typed native entry has no legacy Method adapter"))
+    }
     pub(crate) fn is_default_lookup(&self, entry: Option<NativeEntry>) -> bool {
-        let expected = self.encode_legacy(crate::legacy_method::lookup_method, true);
-        entry == Some(expected)
-            && match self {
-                Self::Local(_) => true,
-                Self::Id(_) => crate::legacy_method::is_id_lookup(expected),
-            }
+        entry == Some(self.encode_legacy(crate::legacy_method::lookup_method, true))
     }
     pub(crate) fn local_pointer(&self) -> Option<*mut Vtables> {
         match self {

@@ -114,12 +114,13 @@ impl Runtime {
         let state = unsafe { &*self.state.get() };
         let Some(id) = state.id_protocol.as_ref() else { return false; };
         let Some(roots) = state.root_registry.native_owner() else { return false; };
+        let Some(primitives) = state.vtables.primitives() else { return false; };
         facts.id.same_contract(id)
             && facts.roots.context == roots.context
             && facts.roots.retain.map(|f| f as usize) == roots.retain.map(|f| f as usize)
             && facts.roots.release.map(|f| f as usize) == roots.release.map(|f| f as usize)
-            && facts.allocation_size == NativeEntry::new(crate::native_id::objects::allocation_size, id.context)
-            && facts.behavior_of == NativeEntry::new(crate::native_id::objects::behavior_of, id.context)
+            && facts.allocation_size == primitives.allocation_size
+            && facts.behavior_of == primitives.behavior_of
             && state.symbols.existing(b"allocate") == Some(facts.allocate)
             && state.vtables.native_lookup(state.globals.vtable_vt, facts.allocate)
                 == Some(NativeEntry::new(super::id_protocol::allocate, core::ptr::from_ref(self).cast_mut().cast()))
@@ -134,6 +135,7 @@ impl Runtime {
         let Some(behavior) = state.heap.vtable_of(facts.namespace) else { return false; };
         if !self.guarded_default_lookup_eligible(behavior) { return false; }
         let Some(symbol_bytes) = state.symbols.existing(b"symbolBytesOf:") else { return false; };
+        let Some(primitives) = state.vtables.primitives() else { return false; };
         state.environment.native_receiver() == Some(facts.namespace)
             && state.symbols.existing(b"bindingAt:") == Some(facts.binding)
             && state.symbols.existing(b"ErrorVt") == Some(facts.error_behavior_name)
@@ -141,7 +143,7 @@ impl Runtime {
             && state.vtables.native_lookup(facts.id.receiver, facts.id.intern)
                 == Some(NativeEntry::new(super::id_protocol::intern, core::ptr::from_ref(self).cast_mut().cast()))
             && state.vtables.native_lookup(facts.id.receiver, symbol_bytes)
-                == Some(NativeEntry::new(crate::native_id::objects::symbol_bytes, facts.id.context))
+                == Some(primitives.symbol_bytes)
     }
     #[cfg(feature = "ffi-test-hooks")]
     pub(crate) fn integer_live_pointer(&self) -> *mut IntegerApiV1 {

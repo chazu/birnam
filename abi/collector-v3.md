@@ -30,7 +30,7 @@ A failed transition remains disabled, keeps bootstrap owners/roots and performs
 no sweep. Repeated or nested activation returns BUSY; no automatic retry or
 rollback is promised. The host reports a native startup error. `active` returns
 one only after successful completion of every step. The [C mirror](fixtures/collector-v3/collector_v3.h)
-fixes layouts. The temporary upper constructor is `birnam_runtime_init_v12`.
+fixes layouts. The temporary upper constructor is `birnam_runtime_init_v13`.
 
 Allocation, behavior construction and cloning collect at a safe point **before**
 invoking the retained non-collecting Id primitive. Their input remains explicitly

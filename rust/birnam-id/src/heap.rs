@@ -115,7 +115,7 @@ impl Heap {
     pub(crate) fn adopt_with_collection(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
         Self::with_memory(memory::Memory::Local(memory), finalizers, owner)
     }
-    pub(crate) fn from_id(id: crate::abi::id_protocol::Protocol, behavior: Oop, primitives: birnam_abi::primitive_allocation::PrimitivesV1, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
+    pub(crate) fn from_id(id: crate::abi::id_protocol::Protocol, behavior: Oop, primitives: birnam_abi::id_primitives::PrimitivesV1, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
         Self::with_memory(memory::Memory::Id(memory::Client::new(id, behavior, primitives)), finalizers, owner)
     }
     fn with_memory(memory: memory::Memory, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {

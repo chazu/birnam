@@ -10,6 +10,8 @@ use crate::vtable::Vtables;
 pub(crate) struct InitialObjects {
     pub(crate) protocol: Box<crate::native_id::State>,
     #[cfg(test)]
+    pub(crate) primitives: birnam_abi::id_primitives::PrimitivesV1,
+    #[cfg(test)]
     pub(crate) vtable_vt: Oop,
     #[cfg(test)]
     pub(crate) object_vt: Oop,
@@ -56,7 +58,11 @@ impl InitialObjects {
             ]).status, LOADED);
         }
         let protocol = unsafe { crate::native_id::State::new(memory, dictionaries, symbols, vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
+        #[cfg(test)]
+        let primitives = unsafe { birnam_abi::id_primitives::select(protocol.protocol) }.unwrap_or_else(|_| panic!("initial Id entries"));
         Self { protocol,
+            #[cfg(test)]
+            primitives,
             #[cfg(test)]
             vtable_vt,
             #[cfg(test)]
@@ -84,13 +90,13 @@ mod tests {
     #[test]
     fn upper_adoption_preserves_the_initial_graph_and_first_collection() {
         let initial = InitialObjects::new();
-        let primitives = unsafe { birnam_abi::primitive_allocation::select(initial.protocol.protocol) }.unwrap_or_else(|_| panic!("Id primitives"));
+        let primitives = unsafe { birnam_abi::id_primitives::select(initial.protocol.protocol) }.unwrap_or_else(|_| panic!("Id primitives"));
         let mut heap = Heap::from_id(initial.protocol.protocol, initial.object_vt, primitives, None, None);
         let allocations: Vec<_> = heap.storage_allocations().into_iter().map(|allocation|
             (allocation.object, allocation.identity, allocation.requested_size)
         ).collect();
         let last_identity = allocations.iter().map(|entry| entry.1).max().unwrap();
-        let client = crate::id_registries::Client::new(initial.protocol.protocol);
+        let client = crate::id_registries::Client::new(initial.protocol.protocol, primitives);
         let mut symbols = crate::id_registries::Symbols::Id(client.clone());
         let name = symbols.c_name_of(initial.lookup);
         heap.retain_initial_objects(&[initial.vtable_vt, initial.object_vt, initial.symbol_vt, initial.object_prototype]);

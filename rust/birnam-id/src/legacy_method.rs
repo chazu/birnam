@@ -6,7 +6,7 @@ use crate::abi::{
     id_protocol::{self as native, NativeEntry, Operand, Outcome},
 };
 use crate::raw::MethodAddress;
-use crate::{boundary, id_dispatch};
+use crate::boundary;
 use core::cell::RefCell;
 use core::ffi::c_void;
 
@@ -96,7 +96,7 @@ pub(crate) fn native_arguments(
         return vec![Operand::word(size.addr())];
     }
     if (address == Some(crate::runtime::id_protocol::add_method as native::Method as usize)
-        || address == Some(id_dispatch::vtable_add_method as native::Method as usize))
+        || runtime.core_legacy_method(entry) == Some(MethodAddress::from_method(add_method)))
         && let [selector, method] = arguments
         && let Some(method) = unsafe { MethodAddress::from_oop(*method) }
     {
@@ -115,13 +115,10 @@ pub(crate) fn native_arguments(
 
 /// Preserve the old lookup/mutation result convention only for representable
 /// entries. Arbitrary native entries go through the checked language boundary.
-pub(crate) fn native_result(entry: NativeEntry, outcome: Outcome) -> Option<Oop> {
+pub(crate) fn native_result(entry: NativeEntry, outcome: Outcome, runtime: &crate::runtime::Runtime) -> Option<Oop> {
     let address = entry.method.map(|method| method as usize);
-    let old_entry_result = [
-        id_dispatch::vtable_lookup_method as native::Method,
-        id_dispatch::vtable_add_method,
-        id_dispatch::vtable_remove_method,
-        crate::runtime::id_protocol::add_method,
+    let old_entry_result = runtime.core_legacy_method(entry).is_some() || [
+        crate::runtime::id_protocol::add_method as native::Method,
         crate::runtime::id_protocol::remove_method,
     ]
     .iter()
@@ -129,18 +126,12 @@ pub(crate) fn native_result(entry: NativeEntry, outcome: Outcome) -> Option<Oop>
     if old_entry_result
         && outcome.status == native::LOADED
         && (outcome.value.kind() == native::UNIT
-            || outcome.value.as_entry().and_then(try_decode).is_some())
+            || outcome.value.as_entry().and_then(|entry| runtime.try_decode_legacy_method(entry)).is_some())
     {
-        Some(old_result(outcome))
+        Some(old_result(runtime, outcome))
     } else {
         None
     }
-}
-
-pub(crate) fn is_id_lookup(entry: NativeEntry) -> bool {
-    entry.method.map(|method| method as usize)
-        == Some(id_dispatch::vtable_lookup_method as native::Method as usize)
-        && !entry.context.is_null()
 }
 
 pub(crate) fn decode(entry: NativeEntry) -> MethodAddress {
@@ -175,24 +166,6 @@ pub(crate) fn try_decode(entry: NativeEntry) -> Option<MethodAddress> {
             return Some(MethodAddress::from_method(old));
         }
     }
-    for (new, old) in [
-        (
-            id_dispatch::vtable_lookup_method as native::Method,
-            lookup_method as Method,
-        ),
-        (
-            id_dispatch::vtable_add_method as native::Method,
-            add_method as Method,
-        ),
-        (
-            id_dispatch::vtable_remove_method as native::Method,
-            remove_method as Method,
-        ),
-    ] {
-        if address == Some(new as usize) && !entry.context.is_null() {
-            return Some(MethodAddress::from_method(old));
-        }
-    }
     None
 }
 unsafe fn invoke(
@@ -213,7 +186,7 @@ unsafe fn invoke(
         .iter()
         .map(|arg| {
             arg.as_object()
-                .or_else(|| arg.as_entry().map(|entry| decode(entry).as_oop()))
+                .or_else(|| arg.as_entry().map(|entry| crate::runtime::with_active(|runtime| runtime.decode_legacy_method(entry).as_oop())))
         })
         .collect();
     let Some(converted) = converted else {
@@ -279,7 +252,7 @@ unsafe extern "C" fn invoke_entry(
 ) -> Outcome {
     unsafe { invoke_method_result(context, receiver, args, count, false) }
 }
-fn old_result(result: Outcome) -> Oop {
+fn old_result(runtime: &crate::runtime::Runtime, result: Outcome) -> Oop {
     if result.status != native::LOADED {
         boundary::fatal_invariant("Id primitive rejected legacy Method arguments");
     }
@@ -290,7 +263,7 @@ fn old_result(result: Outcome) -> Oop {
         .value
         .as_entry()
         .expect("Id primitive returned a non-entry");
-    let method = decode(entry);
+    let method = runtime.decode_legacy_method(entry);
     RESULTS.with(|results| {
         if let Some(scope) = results.borrow_mut().last_mut() {
             scope.push((method, entry));
@@ -307,10 +280,10 @@ pub(crate) unsafe extern "C" fn lookup_method(
         boundary::fatal_invariant("lookup requires selector");
     }
     let selector = unsafe { args.read() };
-    old_result(crate::runtime::with_active(|runtime| {
+    crate::runtime::with_active(|runtime| {
         let entry = unsafe { runtime.lookup_native_method_active(receiver, selector) };
-        Outcome::loaded(entry.map(Operand::entry).unwrap_or_else(Operand::unit))
-    }))
+        old_result(runtime, Outcome::loaded(entry.map(Operand::entry).unwrap_or_else(Operand::unit)))
+    })
 }
 pub(crate) unsafe extern "C" fn add_method(receiver: Oop, args: *const Oop, count: usize) -> Oop {
     if count < 2 || args.is_null() {
@@ -322,7 +295,7 @@ pub(crate) unsafe extern "C" fn add_method(receiver: Oop, args: *const Oop, coun
         let entry =
             runtime.encode_legacy_method(method.to_method(), selector == runtime.globals().lookup);
         runtime.primitive_add_method(receiver, selector, entry);
-        old_result(Outcome::loaded(Operand::entry(entry)))
+        old_result(runtime, Outcome::loaded(Operand::entry(entry)))
     })
 }
 pub(crate) unsafe extern "C" fn remove_method(
@@ -334,10 +307,10 @@ pub(crate) unsafe extern "C" fn remove_method(
         boundary::fatal_invariant("removeMethod: requires selector");
     }
     let selector = unsafe { args.read() };
-    old_result(crate::runtime::with_active(|runtime| {
+    crate::runtime::with_active(|runtime| {
         let removed = runtime.primitive_remove_method(receiver, selector);
-        Outcome::loaded(removed.map(Operand::entry).unwrap_or_else(Operand::unit))
-    }))
+        old_result(runtime, Outcome::loaded(removed.map(Operand::entry).unwrap_or_else(Operand::unit)))
+    })
 }
 
 #[cfg(test)]
@@ -357,7 +330,7 @@ mod tests {
         with_active(|runtime| {
             let selector = unsafe { args.read() };
             let entry = unsafe { runtime.lookup_native_method_active(receiver, selector) }.unwrap();
-            let selected = old_result(Outcome::loaded(Operand::entry(entry)));
+            let selected = old_result(runtime, Outcome::loaded(Operand::entry(entry)));
             runtime.add_method(receiver, selector, identity);
             // A nested lookup returns a newly supplied legacy callback. It must
             // neither inherit nor erase the outer lookup's selected entry.
@@ -429,11 +402,11 @@ mod tests {
         let second_entry = entry(&second.runtime);
         {
             let outer = ResultScope::new();
-            let address = old_result(Outcome::loaded(Operand::entry(first_entry)));
+            let address = old_result(&first.runtime, Outcome::loaded(Operand::entry(first_entry)));
             {
                 let inner = ResultScope::new();
                 assert_eq!(
-                    old_result(Outcome::loaded(Operand::entry(second_entry))),
+                    old_result(&second.runtime, Outcome::loaded(Operand::entry(second_entry))),
                     address
                 );
                 assert_eq!(
@@ -445,12 +418,12 @@ mod tests {
                 outer.selected(decode(first_entry)).ok().unwrap(),
                 Some(first_entry)
             );
-            old_result(Outcome::loaded(Operand::entry(first_entry)));
+            old_result(&first.runtime, Outcome::loaded(Operand::entry(first_entry)));
             assert_eq!(
                 outer.selected(decode(first_entry)).ok().unwrap(),
                 Some(first_entry)
             );
-            old_result(Outcome::loaded(Operand::entry(second_entry)));
+            old_result(&second.runtime, Outcome::loaded(Operand::entry(second_entry)));
             assert_eq!(
                 outer.selected(decode(first_entry)).unwrap_err().status,
                 native::INVALID_REQUEST

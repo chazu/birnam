@@ -572,9 +572,21 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.encode_legacy(method, lookup) }
     }
 
+    pub(crate) fn core_legacy_method(&self, entry: NativeEntry) -> Option<MethodAddress> {
+        self.assert_owner();
+        unsafe { (*self.state.get()).vtables.core_legacy_method(entry) }
+    }
+    pub(crate) fn try_decode_legacy_method(&self, entry: NativeEntry) -> Option<MethodAddress> {
+        self.assert_owner();
+        unsafe { (*self.state.get()).vtables.try_decode(entry) }
+    }
+    pub(crate) fn decode_legacy_method(&self, entry: NativeEntry) -> MethodAddress {
+        self.try_decode_legacy_method(entry).unwrap_or_else(|| boundary::fatal_invariant("typed native entry has no legacy Method adapter"))
+    }
+
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
         let entry = self.encode_legacy_method(method, selector == self.globals().lookup);
-        AddMethod::from_native(self.add_native_method(vtable, selector, entry))
+        AddMethod::from_native(self.add_native_method(vtable, selector, entry), |entry| self.try_decode_legacy_method(entry))
     }
 
     pub(crate) unsafe fn bind_through_id(&self, receiver: Oop, selector: Oop) -> Result<Option<NativeEntry>, crate::abi::id_protocol::Outcome> {
@@ -639,7 +651,7 @@ impl Runtime {
     }
 
     pub(crate) fn remove_method(&self, vtable: Oop, selector: Oop) -> Option<MethodAddress> {
-        self.remove_native_method(vtable, selector).map(crate::legacy_method::decode)
+        self.remove_native_method(vtable, selector).map(|entry| self.decode_legacy_method(entry))
     }
     pub(crate) fn remove_native_method(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         self.assert_owner();

@@ -80,7 +80,7 @@ adoption. This exercises direct native invocation without an ambient Id scope;
 the native carrier remains version 1.
 
 
-[Runtime v12](../../runtime-construction-v12.md) receives the completed Id carrier
+[Runtime v13](../../runtime-construction-v13.md) receives the completed Id carrier
 explicitly. Id keeps its own state; Runtime no longer takes the private Rust
 initial-object graph. The production host's before/after tests still compare the
 same carrier and early identities across upper construction and collection.

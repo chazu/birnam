@@ -35,7 +35,7 @@ impl Runtime {
                 entry.context, receiver, arguments.as_ptr(), arguments.len(),
             )
         };
-        crate::legacy_method::native_result(entry, outcome)
+        crate::legacy_method::native_result(entry, outcome, self)
             .unwrap_or_else(|| self.native_language_outcome(outcome))
     }
 
