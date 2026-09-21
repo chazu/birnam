@@ -1139,14 +1139,30 @@ Current debug evidence:
   `portable-code-binding-lifecycle-smoke.sh` checks also pass with native Id
   detachment/release, including eviction survival, replacement and self-removal.
 
-The deferred-identity image workload currently fails in its legacy custom-lookup
-case with `birnam Rust Integer: native Integer construction failed`. A separate
-debug installation of the preceding commit (`e8045b44`) reproduces the same
-failure. Instrumenting the fixture places it in lookup mode 3, with automatic
-collection disabled and before its explicit GC calls. This is not passing
-collector evidence. The legacy Method round trip for native construction must be
-resolved as part of the remaining native/reflective consumer migration; the test
-and its assertions remain intact.
+The deferred-identity fixture exposed a legacy custom-lookup failure that also
+reproduced on `e8045b44`: converting a selected native allocator to a legacy
+Method address and back discarded its context and typed Word argument contract.
+The upper legacy adapter now retains the original native entry for the duration
+of that lookup. Nested lookups have separate temporary records; later binding
+mutation does not change the entry already selected. Different native contexts
+represented by the same legacy address in one lookup are rejected as ambiguous.
+This supports existing callable legacy adapters only; arbitrary native entries
+still require migration of reflective consumers, not invented Method addresses.
+
+The unchanged deferred-identity workload now produces its expected output in
+source and compiled form, including custom lookup and explicit collection. Its
+full image smoke test is still **not passing**: it stops at the compiled closure
+optimization report assertions before saving an image. Production Integer's
+message-based constructor deliberately returns zero from the old direct-allocator
+admission query, so `integer_context_current` refuses these optimizations.
+Native-aware compiler admission must prove the current dispatch and effects
+before those optimizations can resume. The fixture and its assertions remain
+intact; this result is not evidence for the later image/recovery checks.
+
+The legacy adapter tests exercise the actual native allocator with a Word size
+after nested lookup and binding replacement, and distinct live Runtime contexts
+sharing one legacy address. The complete Id unit suite passes (310 passed,
+15 ignored). These compatibility tests do not close native reflection migration.
 
 Remaining architectural acceptance requires all of the following:
 

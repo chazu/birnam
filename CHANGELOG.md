@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Preserve native method context and typed operands when a legacy custom lookup
+  delegates to Id's lookup. Nested lookups keep separate temporary results, and
+  replacing a binding does not change the callable already selected. This fixes
+  Integer construction through the deferred-identity fixture's custom lookup.
+
 - Moved production tracing, weak metadata retirement, finalizer detachment and
   allocation release into Collect, constructed from completed native owners before
   Runtime. Runtime supplies scoped upper roots and Execution/deferred retirement
