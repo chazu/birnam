@@ -332,8 +332,8 @@ mod tests {
         let mut values = heap
             .blocks
             .keys()
-            .filter(|&&p| p != vt.addr())
-            .map(|&p| {
+            .filter(|&p| p != vt.addr())
+            .map(|p| {
                 heap.read_payload_word(core::ptr::with_exposed_provenance_mut(p), 0)
                     .unwrap() as i64
             })

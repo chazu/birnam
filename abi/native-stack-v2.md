@@ -36,3 +36,8 @@ reuse the unchanged v1 public capability and floor.
 Run `scripts/native-stack-test.sh PREFIX` for focused scanner/anchor and actual
 host preparation checks; `scripts/native-stack-image-smoke.sh PREFIX` verifies
 startup, compiled callers, mapped/rebuilt native Code images and baked execution.
+
+Current production constructs and owns these controls in the early
+[collection-state owner](collection-state-v1.md), then Runtime adopts the same
+context. Normal startup no longer prepares this dependency inside Id. The
+existing factory ABI remains available for legacy clients.

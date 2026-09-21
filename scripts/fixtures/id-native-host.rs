@@ -284,6 +284,19 @@ fn main() {
     let trace_arguments = [Operand::word(graph as usize), Operand::word(roots as usize), Operand::word(records as usize), Operand::word(model as usize), Operand::word(0)];
     assert_eq!(unsafe { initial.load_native(trace_fixture.as_os_str().as_bytes(), &trace_arguments) }.status, native::LOADED);
     let trace_check = intern(&id, b"earlyTraceCheck");
+    for module in ["native_stack", "gc_settings", "allocation_budget", "collect"] {
+        let file = format!("libbirnam_{module}.dylib");
+        symlink(prefix.join("lib").join(&file), isolated.join(file)).unwrap();
+    }
+    let collection = initial.initialize_collection().unwrap().unwrap();
+    assert_eq!(initial.initialize_collection().unwrap(), Some(collection));
+    assert_eq!(std::fs::read_dir(&isolated).unwrap().count(), 22);
+    let collection_fixture = scratch.join("early-collection.dylib");
+    let arguments = [Operand::word(collection as usize), Operand::word(roots as usize), Operand::word(records as usize)];
+    assert_eq!(unsafe { initial.load_native(collection_fixture.as_os_str().as_bytes(), &arguments) }.status, native::LOADED);
+    let collection_check = intern(&id, b"earlyCollectionCheck");
+    let collection_release = intern(&id, b"releaseEarlyCollection");
+    let collection_adopted = intern(&id, b"earlyCollectionAdopted");
     // Only now make the remaining upper libraries available and continue the
     // same production construction, adopting the already initialized registry.
     for entry in std::fs::read_dir(prefix.join("lib")).unwrap() {
@@ -300,12 +313,21 @@ fn main() {
         },
     )
     .unwrap();
+    let floor = initial.finish().unwrap();
+    assert_eq!(floor.gc_settings(), unsafe { (*collection).settings }.cast_const());
+    assert_eq!(floor.native_stack(), unsafe { (*collection).stack }.cast_const());
+    assert_eq!(send(&id, collection_adopted, &[]).value.as_word(), Some(1));
     let runtime =
-        unsafe { birnam_host::start_with_floor(resources, StartupPolicy::from_flags(false, false), initial.finish().unwrap()) }.unwrap();
+        unsafe { birnam_host::start_with_floor(resources, StartupPolicy::from_flags(false, false), floor) }.unwrap();
     let mut anchor = 0usize;
     unsafe { runtime.prepare_execution(&mut anchor) };
     let settings = runtime.stack.gc_settings();
     unsafe { birnam_abi::gc_settings::set_precise(settings, 1); (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, collection_check, &[]).value.as_word(), Some(2));
+    assert_eq!(send(&id, collection_release, &[]).status, native::LOADED);
+    unsafe { (runtime.stack.api().gcCollect)(); }
+    assert_eq!(send(&id, collection_check, &[]).value.as_word(), Some(3));
+    println!("native collection records/controls survive adoption; real marking, phase, budget, finalization and removal use the same owner");
     assert_eq!(send(&id, trace_check, &[]).value.as_word(), Some(1));
     println!("native Trace roots, layouts, inherited hooks and behavior owners work before Runtime and after adoption/GC");
     let base = unsafe { *values };

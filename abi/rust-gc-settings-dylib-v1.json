@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
-  "scope": "Independent Runtime-local automatic and precise GC settings",
+  "scope": "Automatic and precise GC settings ownership",
   "install_name": "@rpath/libbirnam_gc_settings.dylib",
   "exported_symbols": [
+    "birnam_native_module_v1",
     "birnam_gc_settings_factory_v1",
     "birnam_symbol_borrow_v1",
     "module_init"

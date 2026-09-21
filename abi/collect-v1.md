@@ -1,12 +1,15 @@
 # Collection coordination v1
 
 `libbirnam_collect.dylib` exports `birnam_collect_v1(source, out_count)` and
-`birnam_collect_provider_v1()`. The host mounts its immutable entry through Id's
-`birnam_collect_dependency_v1(api)` after the tracer and before Integer. The
-canonical module must publish a provider. Missing/rejected dependencies fail
-startup, and actual collection without the mounted coordinator aborts. Bare Id
-initialization and collection without a native stack anchor retain their prior
-behavior. There is no production implementation link or fallback in Id.
+`birnam_collect_provider_v1()`. Its native entry constructs complete
+[collection state](collection-state-v1.md), including the coordinator, before
+Runtime. Runtime adopts that same coordinator at construction. The later legacy
+mount through Id's `birnam_collect_dependency_v1(api)` verifies the identical
+entry; it does not supply a missing production dependency. Legacy `id_init`
+clients still require that mount. Missing/rejected dependencies fail startup,
+and actual collection without a coordinator aborts. Bare Id initialization and
+collection without a native stack anchor retain their prior behavior. There is
+no production implementation link or fallback in Id.
 
 The [independent C mirror](fixtures/collect-v1/collect_v1.h) describes
 [`birnam-abi::collect`](../rust/birnam-abi/src/collect.rs). Version is 1; carriers

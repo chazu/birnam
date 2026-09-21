@@ -205,7 +205,7 @@ mod tests {
         let prototype = heap.allocate(8, Permanence::Collectable);
         heap.set_vtable(prototype, vt);
         heap.write_payload_word(prototype, 0, 77);
-        let original: std::collections::HashSet<_> = heap.blocks.keys().copied().collect();
+        let original: std::collections::HashSet<_> = heap.blocks.keys().collect();
         let clone = heap.prepare_dead_clone(prototype).unwrap();
         let clone_id = heap.record_virtual_clone(clone).unwrap();
         let batch = heap.prepare_numeric_batch(vt, vec![17]).unwrap();
@@ -224,7 +224,6 @@ mod tests {
             .blocks
             .keys()
             .filter(|p| !original.contains(p))
-            .copied()
             .collect::<Vec<_>>();
         assert_eq!(fresh.len(), 7);
         assert!(fresh.contains(&realized.addr()));

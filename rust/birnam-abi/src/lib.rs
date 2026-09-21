@@ -40,6 +40,7 @@ pub mod native_stack;
 pub mod native_mark;
 pub mod allocation_budget;
 pub mod collection_phase;
+pub mod collection_state;
 pub mod dispatch_cache;
 pub mod guard_verdict;
 pub mod deferred_identity;

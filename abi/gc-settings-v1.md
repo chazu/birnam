@@ -40,3 +40,8 @@ the two old setters. Early value preparation and image encoding are unchanged.
 
 Run `mise run gc-settings` and `scripts/gc-settings-image-smoke.sh PREFIX` for
 focused debug checks and installed startup/compiled-image coverage.
+
+Current production constructs and owns these controls in the early
+[collection-state owner](collection-state-v1.md), then Runtime adopts the same
+context. Normal startup no longer prepares this dependency inside Id. The
+existing factory ABI remains available for legacy clients.

@@ -5,8 +5,12 @@ use core::ptr::NonNull;
 pub(crate) struct Service {
     api: NonNull<ApiV1>,
     factory: FactoryV2,
+    native: Option<crate::collection_state::Shared>,
 }
 impl Service {
+    pub(crate) fn from_collection(owner: crate::collection_state::Shared) -> Self {
+        Self { api: NonNull::new(owner.0.stack).unwrap(), factory: unsafe { *owner.0.stack_factory }, native: Some(owner) }
+    }
     pub(crate) fn new() -> Self {
         #[cfg(test)]
         let factory = unsafe { *birnam_native_stack::birnam_native_stack_factory_v2() };
@@ -15,7 +19,7 @@ impl Service {
         let floor = crate::public_api::native_stack_access();
         let api = NonNull::new(unsafe { factory.create.unwrap()(&floor) })
             .expect("native stack creation failed");
-        Self { api, factory }
+        Self { api, factory, native: None }
     }
     pub(crate) fn api(&self) -> *mut ApiV1 { self.api.as_ptr() }
     /// Runtime has already performed owner/observation admission.
@@ -28,5 +32,5 @@ impl Service {
     }
 }
 impl Drop for Service {
-    fn drop(&mut self) { unsafe { self.factory.destroy.unwrap()(self.api.as_ptr()) }; }
+    fn drop(&mut self) { if self.native.is_none() { unsafe { self.factory.destroy.unwrap()(self.api.as_ptr()) }; } }
 }

@@ -70,6 +70,7 @@ impl Runtime {
     pub(crate) fn install_id_runtime_extensions(&self) {
         self.assert_owner();
         let roots = unsafe { (&*self.state.get()).root_registry.native_owner() };
+        if let Some(owner) = &self.collection_owner { crate::collection_state::install_access(owner, self); }
         if let Some(roots) = roots { crate::root_registry::install_admission(roots, self); }
         let lifetime = unsafe { (&*self.state.get()).vtables.lifetime_owner() };
         if let Some(owner) = lifetime { crate::lifetime::install_access(owner, self); }

@@ -1,8 +1,9 @@
 {
   "schema_version": 1,
-  "scope": "Synchronous production collection coordinator; depends only on birnam-abi",
+  "scope": "Production collection records, controls and synchronous coordinator; depends only on birnam-abi",
   "install_name": "@rpath/libbirnam_collect.dylib",
   "exported_symbols": [
+    "birnam_native_module_v1",
     "birnam_collect_provider_v1",
     "birnam_collect_v1",
     "birnam_collection_phase_factory_v1",

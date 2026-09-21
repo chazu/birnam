@@ -16,7 +16,11 @@ struct Source<'a> {
 unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
     let (source, sink) = unsafe { (&*context.cast::<Source<'_>>(), &*sink) };
     let runtime = source.runtime;
-    emit_native_root_range(sink, source.native_range.0, source.native_range.1);
+    if let Some(owner) = &runtime.collection_owner {
+        unsafe { (*owner.0.stack_factory).scan.unwrap()(sink, source.native_range.0, source.native_range.1) };
+    } else {
+        emit_native_root_range(sink, source.native_range.0, source.native_range.1);
+    }
     for root in source.initial_roots {
         emit_candidate(sink, root.addr());
     }

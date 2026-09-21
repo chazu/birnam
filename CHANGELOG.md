@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Construct production collection records and controls through Id before Runtime.
+  Collect owns the mark table, allocation budget, phase, stack anchor and settings;
+  Runtime adopts those same records, preserving early flags/settings/accounting
+  and registering only later allocations. Remove four legacy factory preparations
+  from normal startup. Explicit collector activation and retirement-policy
+  separation remain unfinished.
+
 - Construct the production live Trace graph through Id before Runtime, using
   completed root, Lifetime, Object Model and Native Mark owners. Actual collection
   uses that same graph for payloads, inherited hooks and behavior-owner edges.

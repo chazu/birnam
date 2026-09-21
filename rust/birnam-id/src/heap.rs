@@ -8,7 +8,7 @@ pub(crate) use crate::object_memory::{BLOCK_ALIGNMENT, VTABLE_HEADER_SIZE, PAYLO
 use crate::abi::{Finalizer, Oop};
 use birnam_abi::finalizers::SlotV1;
 use crate::boundary;
-use crate::raw::AddressMap;
+mod records;
 
 #[cfg(feature = "ffi-test-hooks")]
 pub(crate) type LayoutProbe =
@@ -22,6 +22,7 @@ pub(crate) enum Permanence {
 
 // Collection policy is owned separately from physical storage. These records
 // can be installed when Lifetime adopts an already populated Id allocation set.
+#[derive(Clone, Copy)]
 struct BlockLifetime {
     metadata: u64,
 }
@@ -39,7 +40,7 @@ impl BlockLifetime {
 /// A short-lived joined view, never an owner or a callback-bearing Id record.
 struct Block<'a> {
     allocation: &'a Allocation,
-    lifetime: &'a BlockLifetime,
+    lifetime: BlockLifetime,
 }
 impl core::ops::Deref for Block<'_> {
     type Target = Allocation;
@@ -76,7 +77,7 @@ impl DetachedBlock {
 /// Registry keys are exact payload addresses. Hash iteration order is never
 /// exposed as language behavior.
 pub(crate) struct Heap {
-    blocks: AddressMap<BlockLifetime>,
+    blocks: records::Records,
     memory: crate::owned::Owned<ObjectMemory>,
     budget: crate::allocation_budget::Service,
     dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
@@ -106,12 +107,18 @@ impl Heap {
         Self::adopt_with_finalizers(memory, None)
     }
     pub(crate) fn adopt_with_finalizers(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>) -> Self {
-        let blocks = memory.iter().map(|(address, _)| (address, BlockLifetime {
-            metadata: 0,
-        })).collect();
-        let mut budget = crate::allocation_budget::Service::new();
-        for (_, allocation) in memory.iter() {
-            boundary::require_invariant(budget.charge(allocation.total_size), "GC allocation byte counter overflow");
+        Self::adopt_with_collection(memory, finalizers, None)
+    }
+    pub(crate) fn adopt_with_collection(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
+        let mut blocks = records::Records::new(owner.clone());
+        let mut budget = owner.map(crate::allocation_budget::Service::from_collection).unwrap_or_else(crate::allocation_budget::Service::new);
+        // Native records already describe the early heap. Add only allocations
+        // made since their construction, preserving all existing flags/accounting.
+        for (address, allocation) in memory.iter() {
+            if !blocks.contains_key(&address) {
+                blocks.insert(allocation.payload().as_ptr().cast(), BlockLifetime { metadata: 0 });
+                boundary::require_invariant(budget.charge(allocation.total_size), "GC allocation byte counter overflow");
+            }
         }
         Self {
             blocks,
@@ -130,8 +137,7 @@ impl Heap {
     /// production permanence policy. Symbol objects remain ordinary collectables.
     pub(crate) fn retain_initial_objects(&mut self, objects: &[Oop]) {
         for object in objects {
-            let record = self.blocks.get_mut(&object.addr()).expect("initial object is not allocated");
-            record.metadata |= 2;
+            self.blocks.retain(object.addr());
         }
     }
 
@@ -164,10 +170,9 @@ impl Heap {
 
     fn track_allocation(&mut self, object: Oop, permanence: Permanence) {
         let total_size = self.memory.get(object.addr()).unwrap().total_size;
-        let previous = self.blocks.insert(object.addr(), BlockLifetime {
+        self.blocks.insert(object, BlockLifetime {
             metadata: if permanence == Permanence::Permanent { 2 } else { 0 },
         });
-        boundary::require_invariant(previous.is_none(), "allocator reused a live payload address");
         boundary::require_invariant(self.budget.charge(total_size), "GC allocation byte counter overflow");
     }
 
@@ -280,14 +285,7 @@ impl Heap {
     /// Mark exactly one registered collectable payload address. Interior,
     /// header, foreign, null, and permanent addresses are rejected.
     pub(crate) fn mark_collectable_address(&mut self, address: usize) -> bool {
-        let Some(block) = self.blocks.get_mut(&address) else {
-            return false;
-        };
-        if block.permanence() == Permanence::Permanent || block.marked() {
-            return false;
-        }
-        block.set_marked(true);
-        true
+        self.blocks.mark(address)
     }
 
     /// Copy only the coordinates of one exact live payload for allocation-free
@@ -307,9 +305,7 @@ impl Heap {
     }
 
     pub(crate) fn clear_marks(&mut self) {
-        for block in self.blocks.values_mut() {
-            block.set_marked(false);
-        }
+        self.blocks.clear();
     }
 
     /// Snapshot unreachable collectable identities before sweep mutates the
@@ -318,7 +314,7 @@ impl Heap {
         self.blocks
             .iter()
             .filter_map(|(address, block)| {
-                (block.permanence() == Permanence::Collectable && !block.marked()).then_some(*address)
+                (block.permanence() == Permanence::Collectable && !block.marked()).then_some(address)
             })
             .collect()
     }
@@ -339,8 +335,7 @@ impl Heap {
         if block.permanence() != Permanence::Collectable || block.marked() {
             return None;
         }
-        self.blocks.remove(&address)
-            .unwrap_or_else(|| boundary::fatal_invariant("dead GC block disappeared"));
+        boundary::require_invariant(self.blocks.remove_dead(address), "dead GC block disappeared");
         Some(self.finalizers.detach(address))
     }
 
@@ -351,7 +346,7 @@ impl Heap {
     }
 
     pub(crate) fn set_finalizer(&mut self, object: Oop, finalizer: Finalizer) -> bool {
-        let Some(block) = self.blocks.get_mut(&object.addr()) else {
+        let Some(block) = self.blocks.get(&object.addr()) else {
             return false;
         };
         let slot = self.finalizers.slot(block.permanence(), finalizer);

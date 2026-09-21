@@ -223,6 +223,7 @@ struct BlockVtableCatalogEntry {
 pub(crate) struct Runtime {
     id_storage: Option<id_storage::Storage>,
     trace_graph: Option<birnam_abi::trace_graph::GraphV1>,
+    collection_owner: Option<crate::collection_state::Shared>,
     owner: u64,
     observation: storage::ObservationState,
     collection_phase: crate::collection_phase::Service,
@@ -420,7 +421,7 @@ impl Runtime {
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
     ) -> Self {
-        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None, None)
+        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None, None, None)
     }
     pub(crate) fn new_with_owners(
         heap: Heap,
@@ -432,6 +433,7 @@ impl Runtime {
         namespace: Option<Environment>,
         model: Option<crate::object_model::Shared>,
         trace_graph: Option<birnam_abi::trace_graph::GraphV1>,
+        collection_owner: Option<crate::collection_state::Shared>,
     ) -> Self {
         let id_storage = id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol));
         Self {
@@ -439,7 +441,8 @@ impl Runtime {
             trace_graph,
             owner: current_thread_token(),
             observation: storage::ObservationState::new(),
-            collection_phase: crate::collection_phase::Service::new(),
+            collection_phase: collection_owner.clone().map(crate::collection_phase::Service::from_collection).unwrap_or_else(crate::collection_phase::Service::new),
+            collection_owner: collection_owner.clone(),
             entry_scopes: UnsafeCell::new(Vec::new()),
             native_retirements: core::cell::RefCell::new(Vec::new()),
             draining_retirements: Cell::new(false),
@@ -457,7 +460,7 @@ impl Runtime {
             #[cfg(test)]
             trace: Cell::new(Some(birnam_trace::live::birnam_trace_live_v1)),
             #[cfg(not(test))]
-            collect: Cell::new(None),
+            collect: Cell::new(collection_owner.as_ref().map(|owner| owner.0.collect)),
             #[cfg(test)]
             collect: Cell::new(Some(birnam_collect::birnam_collect_v1)),
             #[cfg(test)]
@@ -488,7 +491,7 @@ impl Runtime {
                 internal_dictionaries: None,
                 symbol_compaction_enabled: false,
                 symbol_compatibility_limits: None,
-                metadata: MetadataShell::new(),
+                metadata: collection_owner.map(MetadataShell::from_collection).unwrap_or_else(MetadataShell::new),
                 environment: namespace.unwrap_or_else(Environment::new),
                 execution: ExecutionState::new(current_thread_token()),
                 staged_resumable_unit: None,

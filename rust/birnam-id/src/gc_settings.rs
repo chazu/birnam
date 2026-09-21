@@ -5,8 +5,12 @@ use core::ptr::NonNull;
 pub(crate) struct Service {
     api: NonNull<ApiV1>,
     factory: FactoryV1,
+    native: Option<crate::collection_state::Shared>,
 }
 impl Service {
+    pub(crate) fn from_collection(owner: crate::collection_state::Shared) -> Self {
+        Self { api: NonNull::new(owner.0.settings).unwrap(), factory: unsafe { *owner.0.settings_factory }, native: Some(owner) }
+    }
     pub(crate) fn new() -> Self {
         #[cfg(test)]
         let factory = unsafe { *birnam_gc_settings::birnam_gc_settings_factory_v1() };
@@ -15,7 +19,7 @@ impl Service {
         let floor = crate::public_api::gc_settings_access();
         let api = NonNull::new(unsafe { factory.create.unwrap()(&floor) })
             .expect("GC settings creation failed");
-        Self { api, factory }
+        Self { api, factory, native: None }
     }
     pub(crate) fn api(&self) -> *mut ApiV1 { self.api.as_ptr() }
     /// Runtime has already performed owner/observation admission.
@@ -36,5 +40,5 @@ impl Service {
     }
 }
 impl Drop for Service {
-    fn drop(&mut self) { unsafe { self.factory.destroy.unwrap()(self.api.as_ptr()) }; }
+    fn drop(&mut self) { if self.native.is_none() { unsafe { self.factory.destroy.unwrap()(self.api.as_ptr()) }; } }
 }

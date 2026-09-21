@@ -318,16 +318,16 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     build_bootstrap_from(crate::initial_objects::InitialObjects::new())
 }
 pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
-    build_bootstrap_with(initial, None, None, None, None, None, None)
+    build_bootstrap_with(initial, None, None, None, None, None, None, None)
 }
-pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV1>) -> Bootstrap {
+pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV1>, collection: Option<crate::collection_state::Shared>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
         memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
         lookup, does_not_understand, object_prototype, symbol_prototype,
     } = initial;
     // Only completed Id objects cross this boundary. No allocation is copied.
-    let mut heap = Heap::adopt_with_finalizers(memory, lifetime.clone().map(crate::finalizers::Service::from_lifetime));
+    let mut heap = Heap::adopt_with_collection(memory, lifetime.clone().map(crate::finalizers::Service::from_lifetime), collection.clone());
     heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
     let mut vtables = Behaviors::adopt_with(dictionaries, lifetime, model.clone());
     vtables.set_legacy_lookup(lookup);
@@ -379,6 +379,7 @@ pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjec
         namespace,
         model,
         graph,
+        collection,
     );
     runtime.install_internal_dictionaries(symbol_list, environment);
 

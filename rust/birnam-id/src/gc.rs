@@ -167,6 +167,9 @@ pub(crate) struct MetadataShell {
 }
 
 impl MetadataShell {
+    pub(crate) fn from_collection(owner: crate::collection_state::Shared) -> Self {
+        Self { native_stack: crate::native_stack::Service::from_collection(owner.clone()), settings: crate::gc_settings::Service::from_collection(owner) }
+    }
     pub(crate) fn new() -> Self {
         Self {
             native_stack: crate::native_stack::Service::new(),

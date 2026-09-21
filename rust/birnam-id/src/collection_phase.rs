@@ -1,4 +1,4 @@
-//! Per-Runtime owner handle and Id's existing phase-assignment diagnostic.
+//! Borrow Collect's phase in production; preserve legacy assignment diagnostics.
 use birnam_abi::collect::{FINALIZING, IDLE, MARKING};
 use birnam_abi::collection_phase::FactoryV1;
 use core::{ffi::c_void, ptr::NonNull};
@@ -12,8 +12,12 @@ pub(crate) enum Phase {
 pub(crate) struct Service {
     context: NonNull<c_void>,
     factory: FactoryV1,
+    native: Option<crate::collection_state::Shared>,
 }
 impl Service {
+    pub(crate) fn from_collection(owner: crate::collection_state::Shared) -> Self {
+        Self { context: NonNull::new(owner.0.phase_context).unwrap(), factory: unsafe { *owner.0.phase_factory }, native: Some(owner) }
+    }
     pub(crate) fn new() -> Self {
         #[cfg(test)]
         let factory = unsafe { *birnam_collect::birnam_collection_phase_factory_v1() };
@@ -21,7 +25,7 @@ impl Service {
         let factory = unsafe { birnam_abi::collection_phase::operations() };
         let context = NonNull::new(unsafe { factory.create.unwrap()() })
             .expect("collection phase creation failed");
-        Self { context, factory }
+        Self { context, factory, native: None }
     }
     pub(crate) fn get(&self) -> Phase {
         match unsafe { self.factory.read.unwrap()(self.context.as_ptr()) } {
@@ -47,6 +51,6 @@ impl Service {
 }
 impl Drop for Service {
     fn drop(&mut self) {
-        unsafe { self.factory.destroy.unwrap()(self.context.as_ptr()) };
+        if self.native.is_none() { unsafe { self.factory.destroy.unwrap()(self.context.as_ptr()) }; }
     }
 }
