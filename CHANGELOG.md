@@ -10,6 +10,13 @@ loader ports are complete.
 
 ### Changed
 
+- Expose Id roots, allocations and representation references through native
+  visitor messages (Design 83). The production collector acquires the completed
+  storage callables through Id during construction and uses them during marking;
+  payload policy and native owners remain upper responsibilities. Snapshot
+  visitors may reenter Id, and failed visitors stop with their exact outcome.
+  Lifetime construction and storage retirement migration remain unfinished.
+
 - Let native module initializers construct behaviors and objects through Id
   messages before upper modules exist (Design 83). Add native queries for the
   Object prototype, behavior, allocation size/identity and Symbol bytes. Adopt

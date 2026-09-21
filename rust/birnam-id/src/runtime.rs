@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use birnam_artifact::stackless_selection::ImplementationKind;
 
 pub(crate) mod id_protocol;
+mod id_storage;
 
 use crate::abi::SLOT_OOP;
 use crate::abi::{MarkFn, Method, Oop};
@@ -220,6 +221,7 @@ struct BlockVtableCatalogEntry {
 
 /// One runtime owned by the thread that constructed it.
 pub(crate) struct Runtime {
+    id_storage: Option<id_storage::Storage>,
     owner: u64,
     observation: storage::ObservationState,
     collection_phase: crate::collection_phase::Service,
@@ -417,7 +419,9 @@ impl Runtime {
         id_protocol: Option<Box<crate::native_id::State>>,
         globals: DispatchGlobals,
     ) -> Self {
+        let id_storage = id_protocol.as_ref().map(|id| id_storage::Storage::new(id.protocol));
         Self {
+            id_storage,
             owner: current_thread_token(),
             observation: storage::ObservationState::new(),
             collection_phase: crate::collection_phase::Service::new(),
@@ -4694,7 +4698,7 @@ impl Runtime {
     }
 }
 
-fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
+fn upper_roots(state: &RuntimeState) -> Vec<Oop> {
     let mut roots = Vec::new();
     let export_roots = state.environment.roots();
     let globals = state.globals.roots();
@@ -4715,17 +4719,12 @@ fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
         })
         .into_iter()
         .flatten();
-    let permanent_vtable_headers = state.heap.permanent_vtables();
-    let permanent_vtable_edges = state.vtables.permanent_strong_edges(&state.heap);
     for root in export_roots
         .into_iter()
         .chain(globals)
-        .chain(state.id_protocol.as_ref().into_iter().flat_map(|id| id.roots()))
         .chain(canonical)
         .chain(execution_objects)
         .chain(compatibility_symbols)
-        .chain(permanent_vtable_headers)
-        .chain(permanent_vtable_edges)
     {
         roots.push(root);
     }
@@ -4738,6 +4737,16 @@ fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
     for entry in &state.block_vtable_catalog {
         roots.push(entry.vtable);
     }
+    roots
+}
+
+// Diagnostic snapshots still use their separately admitted storage view. The
+// live collector obtains the Id portion through its native message protocol.
+fn floor_roots(state: &RuntimeState) -> Vec<Oop> {
+    let mut roots = upper_roots(state);
+    roots.extend(state.id_protocol.as_ref().into_iter().flat_map(|id| id.roots()));
+    roots.extend(state.heap.permanent_vtables());
+    roots.extend(state.vtables.permanent_strong_edges(&state.heap));
     roots
 }
 

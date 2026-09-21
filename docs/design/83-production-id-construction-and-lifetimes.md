@@ -305,6 +305,46 @@ queries continue to read the same registries. Native callers retain their own
 objects across calls and supply upper payload descriptions and roots before GC.
 The old all-object native convention is still adapted separately during migration.
 
+### Id storage traversal
+
+These additional selectors use the same carrier and operand ABI:
+
+| Selector | Arguments to Id | Visitor arguments and result |
+|---|---|---|
+| `rootsDo:` | Native entry visitor | One Object per actual Id-held reference; returns Unit |
+| `allocationsDo:` | Native entry visitor | Object, Word requested payload bytes, Word allocation identity; returns Unit |
+| `referencesOf:do:` | Object candidate, Native entry visitor | One Object per Id reference; returns Word representation kind, or Unit for an unknown candidate |
+
+Representation kinds are 0 for an ordinary allocation, 1 for a registered
+behavior, and 2 for a Symbol. Reference visitation reports the header behavior
+first, including a null header if unset. A behavior then reports its parent
+(including null) and strong method keys in dictionary order. Weak keys, native
+entry contexts, and upper owner/payload references are excluded. Keeping the
+parent position lets an upper collector insert its owner edge before the keys.
+Symbol bytes contain no Id object references. A visitor to roots/allocations
+receives Id as its receiver; a reference visitor receives the queried object.
+
+Each operation copies its facts before invoking the visitor. No Id registry
+borrow crosses the callback. A nested query or allocation is permitted; an
+allocation made by a visitor is absent from the already captured allocation
+snapshot. The caller keeps snapshot objects live and coordinates collection or
+reclamation. This is borrowed enumeration, not a new owning snapshot service.
+Allocation/root enumeration makes no ordering promise. A failed visitor stops
+visitation immediately and returns its complete native outcome unchanged;
+successful visitor values are ignored. Wrong operand kinds/counts or a visitor
+without a method produce InvalidRequest.
+
+GC acquires these three native callables through Id's `lookup` messages during
+its construction, before application execution. It retains those exact entries
+and their owners, then invokes them during marking without another lookup.
+Running arbitrary application lookup merely to inspect an allocation would
+introduce allocation and mutation into marking. This is ordinary retention of
+selected callables: the methods remain replaceable, and a later message or new
+consumer observes the replacement. It does not seal selectors or change fresh
+lookup for application sends. Initial Id code stays pinned, and the collector
+retains Id's state; another implementation must provide equally live owners.
+No future GC callback or upper root record is stored in Id.
+
 ## 4. Construction with no dormant dependencies
 
 **Available means every operation advertised by that initialization result is
@@ -466,263 +506,119 @@ establish it before declaring Id decoupled.
 
 ### Implementation evidence and remaining boundary
 
-The production emitter now enters the exact registered adapter rather than
-resending its selector. JIT symbol binding and native TCC exports use the same
-entry; current image runtime ABI 6 (`5582a42725e647a6`) retains that required
-import, first admitted by ABI 5.
-Machine's missing-send path now proceeds directly to fresh DNU lookup rather
-than repeating the original lookup. A paired native/Machine regression verifies
-one original lookup and preservation of the forwarded argument.
+**Production migration is in progress. Id is not yet independently packaged.**
+The same production Id now initializes before upper libraries are present, but
+its crate still contains Runtime and statically linked compiler/artifact code.
+Independent first entry is evidence for the loading path, not architectural
+acceptance of the complete design.
 
-Public application sends now establish an Execution turn; nested sends share
-it. Machine driving retains the turn across its complete native extent. The
-per-send/per-lookup guards and the optimizer's shorter read scope are removed.
-The outer pinned return roots its result, ends logical protection, then drains
-retirements with a reentrancy guard. Explicit GC also checkpoints when no turn
-or collection is active. Bounded driver returns beneath a caller do not drain.
+The host's [`Siphon`](../../rust/birnam-host/src/siphon.rs) supplies the small ad
+hoc loading protocol and invokes `birnam_native_module_v1`. The real Id descriptor
+constructs `InitialObjects` using only Id allocation, dictionaries and Symbols;
+its own bind/invoke path then installs native loading, construction and storage
+operations. Core Id dispatch has no Runtime, GC, Execution or future-provider
+slot. Native descriptor admission closes rejected images before entry and pins
+entered images, including failed initializers with partial publication.
 
-TCC Unit and mapped-image finalizers transfer their native handles into detached
-queue records before their Oop payloads are freed. Candidate and CodeBinding
-reaping also schedules checkpoint work. A retained CodeBinding can consequently
-disappear at the preceding outer return: a subsequent explicit reap can report
-zero. The lifecycle smoke now asserts this timing and verifies that self-removal
-still retains the executing binding inside its turn.
+Upper startup adopts the exact initial registries, objects and carrier. Each
+registry has one owner and a stable address; no graph is copied and no carrier
+slot is retargeted. Seventeen upper factory preparations still run in the host
+after real Id initialization and feed the aggregate Runtime constructor. That
+ordering improvement does not implement the construction graph in section 4.
 
-Debug evidence covers exact adapter entry after binding replacement, checkpoint
-GC with native stack roots excluded, nested callback protection and nonrecursive
-draining, and release after a finalized owner payload is gone. The installed
-source/compiled/source-free checks, mapped/rebuilt/baked image checks, portable
-resumable eviction and CodeBinding replacement/self-removal checks pass.
-Alien's external callbacks already retain their Block and TCC Unit in the
-callback registry before exposing their address. Its explicit unsafe release
-contract remains the native caller's responsibility; nested callback sends use
-the active turn.
+`ObjectMemory` owns allocations and identities. `Heap` adds mark/finalizer
+records, budget accounting and deferred allocations. Allocation records use
+three native words and GC records two, in separate maps; this metadata overhead
+is outside payload-byte accounting. `Vtables` and `Symbols` require only Id
+allocation and their own indexes. `Behaviors` adds layouts, trace hooks and
+private-owner metadata. The obsolete allocation-identity, dictionary-index and
+mutation-counter factories and their host preparations are removed.
 
-Object allocation now uses `ObjectMemory` inside Id without GC services. It
-contains addresses, extents and identities; `Heap` supplies marks, finalizers,
-budget accounting and deferred allocation separately. The allocation identity
-counter is back inside Id, and its Storage factory, Id dependency export and
-host preparation are removed. `Heap::adopt` accepts existing allocations without
-copying objects or resetting identities. This is an internal implementation
-boundary, not a new module or service.
+The current behavior payload is five words (40 bytes): capacity, tally, keys,
+values and parent. Each dictionary value is a typed 24-byte Operand. Image
+runtime ABI is **7 (`f57d502f7c1c0437`)**, image format is 8, and upper IdApi
+remains version 20. [Dispatch Cache ABI v2](../../abi/dispatch-cache-v2.md) stores
+complete 16-byte native entries in 40-byte slots; its descriptor is 56 bytes.
+These versions reject older incompatible native representations.
 
-The split preserves object layout and payload-byte accounting. Native metadata
-now uses a three-word allocation record and a separate two-word GC record in
-two maps, replacing the combined four-word record in one map. That overhead is
-outside payload-byte accounting. The adoption unit test exercises nonempty
-allocation handoff. Production now builds `InitialObjects` with Id allocation
-first, then adopts those objects into Heap and Behaviors. This does not yet
-prove staged collector activation or early module-root adoption.
+Runtime installs completed GC-accounted construction/interning, managed native
+loading and observed mutation as ordinary method replacements. The same native
+carrier works before and after adoption. Id provides allocation/behavior
+construction, its prototype, allocation extent/identity, behavior and Symbol
+bytes before language value modules exist. Native caller roots and upper
+payload descriptions remain explicit obligations.
 
-Allocation validation passes in debug: Host 86, Id 299 and Storage 7 unit tests;
-a fresh installation of 53 native libraries and 28 authored modules; the loaded
-identity/finalization fixture; source, source-free compiled, mapped/rebuilt/baked
-image checks; and deferred-index loaded execution with forced recovery. The
-installed Storage exports match its manifest; installed Id matches its bare
-manifest plus the two published wrapper exports.
+The production collector acquires the three Id storage callables described
+above through Id lookup during construction. It uses them for primordial roots,
+permanent allocation references and each marked object's Id references. Upper
+roots, behavior owners, payload layouts/hooks and mark metadata stay above the
+interface. No Id registry borrow crosses a visitor. The diagnostic storage view,
+legacy Symbol compatibility mode, adoption and retirement still access internal
+Rust storage. A separate Lifetime/GC module and native retirement/release
+protocol are not yet implemented.
 
-Id's `Vtables` and `Symbols` now use only object allocation and their own
-indexes. `Behaviors` composes the dictionaries with GC layouts, trace hooks and
-private-owner metadata; Heap adds accounting when Symbol creation allocates.
-GC chooses dead objects, and Id retires their weak dictionary/name records before
-allocation release. No stored provider or GC callback is needed by these core
-implementations. The key index and mutation counter are local again; their
-factories and two more host preparations are removed. Seventeen of the original
-twenty pre-Id preparations remain until the upper construction cutover.
+Ordinary binding, inherited caching and Machine synchronous targets carry the
+complete native function/context pair. Context-only replacement is observable.
+Effectful lookup can replace a binding while the current send invokes its exact
+selected entry once; the next lookup sees the replacement. DNU performs a fresh
+handler lookup without repeating the original lookup. Generated adapters enter
+their exact registered implementation rather than resending the selector.
 
-The behavior payload is now the five-word dictionary view (40 bytes): capacity,
-tally, keys, values and parent. Layout, hook and private-owner fields no longer
-occupy its payload. Existing language-facing metadata operations still use the
-separate upper records. The key-index threshold, ordered mutation transcript and
-epoch saturation are preserved. Image runtime ABI 6 (`5582a42725e647a6`) separates
-this representation from older native images; image format 8 and IdApi v20's
-table shape are unchanged. The aggregate production Runtime still composes these
-parts inside the Id crate pending the loading/ownership cutover.
+Execution owns managed outer turns across sends, Machine work and nested native
+callbacks. The pinned outer return roots its result before draining retirements;
+a bounded Machine return under a native caller does not drain. Finalizers of TCC
+Units and mapped owners transfer native resources into detached queue records
+before their Oop payloads are freed. Candidate and CodeBinding disposal use the
+same checkpoint mechanism. Alien's callback registry retains its Block and Unit
+before publishing the callback address. These ownership implementations still
+reside in Runtime inside `birnam-id` and must move together to upper Execution.
 
-This boundary passes 300 Id, 86 Host, 12 Image and 4 Object Model debug unit
-checks, including construction of the actual dictionary/Symbol implementations
-using only Id allocation. A fresh 53-native/28-authored installation passes the
-loaded layout fixture, dictionary source/compiled/mapped/rebuilt/baked image
-workload, and layout image workload. The latter verifies callback-time layout
-replacement, nested collection, rejection during encoding and successful image
-saving after restoration. Installed Id and Object Model export checks confirm
-the removed dictionary factories and dependency entries are absent.
+At the upper language boundary, native Object results remain objects, Unit
+becomes Nil, invalid arguments become `nativeInvalidRequest`, and other failures
+become `nativeFailure`. Successful native scalars/bytes/entries/protocols require
+a language wrapper and currently produce `nativeResultRequiresWrapper`. Error
+construction is an ordinary upper send; bare Id has no Error dependency.
+`legacy_method.rs` still adapts existing all-Oop consumers, preserving their raw
+argument-buffer convention. Legacy reflective lookup/removal cannot represent
+arbitrary native function/context pairs and remain a required migration.
 
-Production `build_bootstrap` now constructs the primordial Object/Symbol/behavior
-graph through `InitialObjects` before creating Heap or behavior metadata. Upper
-construction adopts those exact addresses and allocation identities, then adds
-Namespace, Nil/Boolean and the remaining runtime. The initial `lookup`,
-`doesNotUnderstand:` and `Symbol` names are consequently the first three interned
-names; the old aggregate constructor interned the latter two later. Method and
-behavior enumeration order is unchanged. Initial behaviors and Object retain the
-existing permanence policy; initial Symbols remain collectable and use the normal
-runtime roots. The host still prepares upper services before entering `id_init`,
-so this graph handoff alone does not establish independent Id initialization.
+Current debug evidence:
 
-The graph handoff passes the 301-test Id debug suite, including a check that
-adoption and first collection preserve addresses, identities and interned names.
-The fresh 53-native/28-authored installation passes the allocation-identity
-source, source-free compiled and mapped/rebuilt/baked image workload, including
-finalization, active Frames, live behavior replacement, aliases and reload.
+- The Id suite passes **308 tests**, with 15 existing ignored tests. It covers
+  early object/behavior creation, adoption, identity/field preservation through
+  first GC, post-adoption accounting and reclamation after dropping roots. The
+  collector acquisition test installs an Id root callable before construction,
+  replaces the method afterward, and proves the existing collector retains the
+  selected callable while a new consumer observes the replacement.
+- A fresh debug install publishes **53 native libraries and 28 authored modules**.
+  `scripts/id-native-loading-smoke.py PREFIX` loads that actual installed Id with
+  upper libraries absent, constructs objects and installs methods from independent
+  C, and then starts the normal host using the same carrier and graph. The C
+  visitor reenters Id, allocates during allocation enumeration, verifies snapshot
+  membership, and checks complete failure propagation. After upper adoption it
+  supplies completed roots/collector explicitly and verifies actual collection
+  preserves the rooted object's identity and payload. Ordinary typed sends and
+  native-to-language Error outcomes also pass.
+- `scripts/allocation-identity-image-smoke.sh PREFIX` exercises source, source-free
+  compiled, mapped/rebuilt native images and baked execution, with identity,
+  dictionary replacement, finalization, active Frames, aliases, GC and reload.
+  Existing dispatch and lifecycle coverage additionally exercises exact adapter
+  entry, context-only replacement, nested callbacks, outward-result rooting,
+  detached-owner release, portable resumable eviction and CodeBinding self-removal.
 
-The production lookup primitive and metacircular bind/native-invoke path now
-operate on Id dictionaries without Runtime, GC or Execution. Initial Id installs
-`lookup` and `addMethod` directly, then installs `removeMethod:` through its own
-message send. Upper construction replaces the two mutation primitives with its
-observation/Execution-aware versions. The Id entry scope carries only its live
-dictionaries and primordial selectors; no future service slot is involved.
-Native lookup calls the selected function itself. A resumable lookup must supply
-a native adapter entering its exact registration, as generated methods do;
-attaching Execution metadata to an unrelated primitive address does not replace
-that primitive's behavior during Id lookup. Machine classification remains above
-Id. The debug suite passes 303 tests, including the actual initial graph sending
-before Runtime exists, guard invalidation and a resumable lookup adapter invoked
-once with all Frame pins released. This first dispatch change still used the
-legacy Oop method ABI; the subsequent typed transition is described below.
-A fresh 53-native/28-authored debug installation also passes the allocation
-identity source/compiled/mapped/rebuilt/baked image workload and both portable
-resumable and CodeBinding lifecycle checks (including self-removal and retirement
-after the outer turn).
+Remaining architectural acceptance requires all of the following:
 
-Core Id now stores typed dictionary values and invokes native entries with typed
-operands/results. Lookup returns Native entry or Unit, and DNU forwards the
-original operand kinds. Its primitive argument failures return native status.
-A dictionary value now occupies 24 bytes instead of one 8-byte Oop; the behavior
-payload remains 40 bytes. Internal Namespace/Symbol mirrors also expose typed
-values. Image runtime ABI 7 (`f57d502f7c1c0437`) rejects the older representation;
-image format 8 and the upper IdApi v20 table shape are unchanged.
-
-`legacy_method.rs` is an upper Runtime migration adapter for existing native
-modules, generated code and reflection. It converts their all-Oop convention at
-that boundary, including method-valued lookup answers; core Id does not know
-about this adapter or Execution. At this transition, the upper binder still
-required a legacy adapter for entries exposed through the old Method interface. The subsequent upper dispatch change
-below removes that restriction from ordinary sends; reflective Method consumers
-still require migration. This restriction does not belong in the final Id protocol. The independent
-C fixture checks all operand kinds and native failure detail through the actual
-Id dictionary/bind/invoke path, without constructing Runtime. The existing
-303-test Id suite also passes the typed transition. The separate C interoperability
-check and 12 Image unit tests pass. A fresh 53-native/28-authored debug install
-passes the allocation-identity source/compiled/mapped/rebuilt/baked workload,
-portable resumable and CodeBinding retirement checks, and the loaded Namespace
-oracle including its typed raw mirror, aliases, precise GC and reload. The
-custom Namespace fixture now uses the same complete aggregate-floor preparation
-as the ordinary fixture; its stale two-service setup failed before reaching the
-runtime under test.
-
-The production host now uses [`siphon.rs`](../../rust/birnam-host/src/siphon.rs)
-for the first request. Its ad-hoc message calls the same stateless native loader
-as Id's `loadNative:` method. The actual installed Id descriptor constructs only
-`InitialObjects` and returns its real carrier; no upper factory is prepared or
-called by this initialization. `intern:` and `loadNative:` are ordinary native
-methods on the root metabehavior. They follow the original five primordial
-names in Symbol enumeration. The loader admits the fixed version/size/initializer
-and forwards explicit initializer operands. It closes rejected images before
-entry and retains each image once its initializer has been entered, including
-failure after partial publication.
-
-Initial allocation, dictionary and Symbol registries have stable addresses under
-one owner apiece. Upper construction adopts those same registries and retains the
-original carrier, rather than constructing another graph or retargeting a carrier
-slot. After Runtime is fully constructed at its stable address, it installs
-GC-accounted interning, loading within an Execution turn, and observed mutation
-as ordinary replacements of the corresponding Id methods. Mutation and staged
-publication record the exact native function/context pair; Execution binding
-accounting applies to entries belonging to its existing registration interface.
-The raw native caller still owns its rooting and Execution-turn obligations.
-
-`scripts/id-native-loading-smoke.py PREFIX` copies the installed production Id
-into a directory with no upper libraries, uses the real Siphon to load it, and
-loads an independent C module through Id messages. It checks initializer operands,
-method/context invocation, failed-initializer publication, missing files and
-entry points, wrong versions/sizes and null initializers. Destructor observations
-prove admission failures close immediately and entered images remain until
-process exit. Only then does it make the upper libraries available and run normal
-host startup. That startup adopts the same carrier, interned Symbols and installed
-methods, and subsequent native loading uses the retained carrier successfully.
-This is an actual production-path fixture, not another Id implementation.
-
-Debug validation passes 305 Id and 86 Host unit tests. The adoption/GC check uses
-the production Execution roots, verifies old and new Symbol identity, and
-reclaims a later Symbol after its explicit root is dropped. A fresh installation
-contains 53 native libraries and 28 authored modules, and the installed native
-loading fixture passes. The allocation-identity source, source-free compiled,
-mapped/rebuilt/baked image workload and both portable resumable and CodeBinding
-lifetime checks pass, including self-removal and retirement after the outer turn.
-
-Upper binding, the inherited lookup cache and Machine synchronous targets now
-carry the complete native entry. Existing Execution registrations are classified
-through the legacy adapter; arbitrary typed native entries are invoked with their
-own function and context. Canonical guards and optimizer probes decline entries
-outside their supported convention instead of aborting. [Cache ABI v2](../../abi/dispatch-cache-v2.md) stores the
-16-byte entry, growing each native slot from 32 to 40 bytes, and its versioned
-provider/dependency exports replace v1. Dictionary/image representation is
-unchanged; image runtime ABI remains 7.
-
-At the upper language boundary, Object results remain objects and Unit becomes
-Nil. Native call or lookup failure becomes an Error (`nativeInvalidRequest` for
-invalid arguments, otherwise `nativeFailure`). A successful Word, Bytes, Native
-entry or Protocol result needs a language value wrapper and produces
-`nativeResultRequiresWrapper` through the ordinary Error constructor. Id itself
-still returns typed operands and scalar failure detail. The existing legacy
-calling convention, including null versus non-null zero-argument buffers on raw
-sends, remains unchanged during consumer migration.
-
-The native dispatch regression exercises inherited cache hits, replacement of
-only the context, effectful lookup that replaces the selected binding, and
-lookup failure. Ordinary sends, Machine calls and tail calls invoke the original
-selected entry once or return the language Error, and the next lookup observes
-the replacement. The installed C fixture also invokes its typed methods through
-ordinary sends and checks actual Error objects for failed calls and unwrapped
-native results. The native cache and host admission fixtures use the v2 C ABI;
-the rejection-only host fixtures now supply the initial protocol descriptor so
-they reach the intended upper dependency failure.
-
-Debug evidence includes 306 Id, 86 Host, 24 ABI and 4 Dispatch Cache unit tests;
-the loaded cache fixture; all 25 cache/guard host admission cases; matching
-installed Id/cache exports; and a fresh 53-native/28-authored installation.
-The inherited-cache source/compiled/mapped/rebuilt/baked workload passes. The
-final lookup-failure handling also passes the full Id suite and the installed
-native-loading fixture with ordinary sends and actual Error construction.
-
-Id now exposes actual object construction through messages, rather than requiring
-a loaded initializer to reach into Runtime to obtain its first behavior/object.
-It also exposes its own prototype, behavior, allocation extent/identity and Symbol
-bytes. `allocate` and `delegated` are installed during initial Id construction;
-five additional fact selectors follow them in Symbol and root-method enumeration.
-The native carrier and object/image layouts are unchanged. Its retained Id facts
-now include Object, Symbol behavior and the lookup/DNU selectors as well as the
-carrier's receiver/intern/load selectors.
-
-The production adoption test constructs a behavior, an object with an Oop field
-and a raw field, and its child entirely through the initial carrier. After
-adoption it supplies the upper payload layout and root, verifies first-GC
-identity/field preservation, checks later native allocations have GC metadata,
-and verifies reclamation after dropping roots. The 307-test Id debug suite passes.
-The installed C module creates its own behavior and object while upper libraries
-are absent, reads Symbol bytes without String and installs/invokes a method on
-that object. Its later construction receives the already-complete root registry
-and collector explicitly, registers its temporary roots before allocation, and
-verifies an actual collection callback and unchanged identity/payload. The fresh
-53-native/28-authored installation passes this fixture and the allocation-identity
-source/compiled/mapped/rebuilt/baked image workload.
-
-These operations do not yet supply the complete allocation/root/edge enumeration
-and retirement protocol required by a separate Lifetime/GC owner. That owner and
-Bootstrap's early-root adoption still need the actual construction cutover; the
-current upper collector continues to access the internal Rust storage interface.
-
-These changes establish first-entry loading and the lifetime mechanism,
-**not an independently packaged minimal Id**. Its
-registration owner, turn state and temporary private retirement queue export
-still reside in the existing Runtime inside `birnam-id`. Move these together
-to upper Execution during the ownership cutover and migrate their consumers;
-do not retain Id forwarding exports as the final architecture. The upper
-base/extension construction entries, staged collector activation and removal of the
-remaining aggregate preparation path are still required. Those seventeen factory
-preparations now run after real Id initialization, but remain in the host and feed
-the old Runtime constructor. Moving them later is not the required upper-module
-construction graph. The Id crate still statically links compiler/artifact code,
-and legacy reflective Method results and native module/registration interfaces
-still require migration to typed entries. In particular, old reflective lookup
-and removal still cannot represent an arbitrary native function/context pair. No full architectural acceptance is claimed from these results.
+1. Move Runtime, compiler/artifact dependencies and upper ownership out of Id;
+   remove temporary forwarding exports and migrate native/reflective consumers.
+2. Construct Bootstrap and Lifetime as working upper modules. Retain early module
+   roots and initializer results before publication, then transfer them explicitly.
+3. Finish Id index retirement and allocation-release operations and migrate the
+   production collector/adoption consumers without leaving stale upper metadata.
+4. Implement disabled → adopting → active collector activation, complete root and
+   representation checks, and failed activation without partial collection.
+5. Replace the aggregate preparations/initialization with real base and extension
+   entries. Publish the entry-level predecessor manifest, map every SCRIPT_MODULES
+   entry or removal, reject cycles/missing predecessors, and update the diagram.
+6. Prove real construction prefixes, source/compiled/image/worker behavior and
+   the source/Cargo/private-export independence audits specified above. Passing
+   the current tests does not close these unimplemented requirements.

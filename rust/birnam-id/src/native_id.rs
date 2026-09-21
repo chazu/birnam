@@ -1,5 +1,6 @@
 //! The real Id carrier: only Id-owned state and the native loading protocol.
 pub(crate) mod objects;
+mod storage;
 
 use crate::abi::{
     Oop,
@@ -85,6 +86,7 @@ impl State {
                         );
                     }
                     objects::install(&state, context, add);
+                    storage::install(&state, context, add);
                 },
             )
         };

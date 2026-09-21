@@ -5,7 +5,8 @@ specified by [Design 83](../../../docs/design/83-production-id-construction-and-
 It is frozen separately from the upper, legacy IdApi table. The
 [initial object operations](../../../docs/design/83-production-id-construction-and-lifetimes.md#initial-id-object-operations)
 create behaviors/objects and query Id-owned facts through messages without
-requiring language value modules.
+requiring language value modules. [Storage traversal](../../../docs/design/83-production-id-construction-and-lifetimes.md#id-storage-traversal)
+provides roots, allocation facts and Id references using native visitors.
 
 `entry.c` checks the actual C field layout and call/return convention. The Id
 unit test loads this entry and installs/invokes it through production Id's own
@@ -21,7 +22,8 @@ python3 scripts/id-native-loading-smoke.py /path/to/debug-prefix
 That fixture uses the actual host Siphon and installed Id, with upper libraries
 absent at first. The independent C module checks explicit initializer operands,
 object/behavior construction, Symbol byte access, method/context publication
-and invocation, admission rejection, and image pinning
+and invocation, nested storage queries, allocation during snapshot visitation,
+visitor-failure propagation, admission rejection, and image pinning
 after initializer failure. It then makes the upper libraries available and proves
 normal host startup adopts the same Id graph and carrier. It then invokes typed
 methods through ordinary sends and verifies native failures and unwrapped scalar

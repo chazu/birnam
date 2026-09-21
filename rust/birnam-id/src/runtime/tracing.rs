@@ -9,6 +9,7 @@ struct Source<'a> {
     runtime: &'a Runtime,
     native_range: (usize, usize),
     initial_roots: &'a [Oop],
+    id: Option<super::id_storage::Storage>,
 }
 
 unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
@@ -26,10 +27,41 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
         .set(runtime.read_reuse_gc_epoch.get().saturating_add(1));
     let (roots, providers) = unsafe {
         let state = &*runtime.state.get();
-        (floor_roots(state), state.root_registry.snapshot())
+        (
+            if source.id.is_some() {
+                upper_roots(state)
+            } else {
+                floor_roots(state)
+            },
+            state.root_registry.snapshot(),
+        )
     };
     for root in roots {
         emit_candidate(sink, root.addr());
+    }
+    if let Some(id) = source.id {
+        for root in id.roots() {
+            emit_candidate(sink, root.addr());
+        }
+        // Permanent allocations are not admitted to the tracing worklist. Their
+        // Id references and upper behavior owners must still seed the walk.
+        for (object, _, _) in id.allocations() {
+            let permanent = unsafe { (&*runtime.state.get()).heap.permanence_of(object) }
+                == Some(Permanence::Permanent);
+            if !permanent {
+                continue;
+            }
+            let mut facts = id
+                .references(object)
+                .expect("permanent Id allocation disappeared");
+            if facts.kind == 1 {
+                let owner = unsafe { (&*runtime.state.get()).vtables.owner_of(object) };
+                facts.edges.insert(2, owner);
+            }
+            for edge in facts.edges {
+                emit_candidate(sink, edge.addr());
+            }
+        }
     }
     #[cfg(test)]
     {
@@ -101,25 +133,39 @@ unsafe extern "C" fn admit(context: *mut c_void, address: usize) -> i32 {
 unsafe extern "C" fn edges(context: *mut c_void, address: usize, sink: *const SinkV1) -> i32 {
     let (source, sink) = unsafe { (&*context.cast::<Source<'_>>(), &*sink) };
     let runtime = source.runtime;
-    let (object, vtable, registered) = unsafe {
-        let state = &*runtime.state.get();
-        let object = state
-            .heap
-            .object_at_address(address)
-            .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
-        let vtable = state
-            .heap
-            .vtable_of(object)
-            .unwrap_or_else(|| boundary::fatal_invariant("marked GC block lost its vtable"));
-        (object, vtable, state.vtables.is_registered_address(address))
-    };
-    emit_candidate(sink, vtable.addr());
-    if registered {
-        let edges = unsafe { (&*runtime.state.get()).vtables.strong_edges(object) };
+    let object = unsafe { (&*runtime.state.get()).heap.object_at_address(address) }
+        .unwrap_or_else(|| boundary::fatal_invariant("marked GC block disappeared"));
+    let (vtable, registered, symbol) = if let Some(id) = source.id {
+        let mut facts = id
+            .references(object)
+            .expect("marked Id allocation disappeared");
+        let vtable = facts.edges[0];
+        if facts.kind == 1 {
+            let owner = unsafe { (&*runtime.state.get()).vtables.owner_of(object) };
+            facts.edges.insert(2, owner);
+        }
+        for edge in facts.edges {
+            emit_candidate(sink, edge.addr());
+        }
+        (vtable, facts.kind == 1, facts.kind == 2)
+    } else {
+        // Minimal unit harnesses have no native carrier. Production always uses
+        // the message-based branch above.
+        let (vtable, registered, edges) = unsafe {
+            let state = &*runtime.state.get();
+            (
+                state.heap.vtable_of(object).unwrap(),
+                state.vtables.is_registered(object),
+                state.vtables.strong_edges(object),
+            )
+        };
+        emit_candidate(sink, vtable.addr());
         for edge in edges {
             emit_candidate(sink, edge.addr());
         }
-    } else {
+        (vtable, registered, false)
+    };
+    if !registered {
         let (words, precise) = unsafe {
             let state = &*runtime.state.get();
             (
@@ -127,7 +173,7 @@ unsafe extern "C" fn edges(context: *mut c_void, address: usize, sink: *const Si
                 state.metadata.precise() && state.vtables.has_layout(vtable),
             )
         };
-        for index in 0..words.len() {
+        for index in 0..if symbol { 0 } else { words.len() } {
             let selected = !precise
                 || unsafe { (&*runtime.state.get()).vtables.slot_kind(vtable, index) == SLOT_OOP };
             if selected {
@@ -171,8 +217,10 @@ impl Runtime {
             .trace
             .get()
             .unwrap_or_else(|| boundary::fatal_invariant("GC tracer dependency not mounted"));
+        let id = self.id_storage;
         let mut context = Source {
             runtime: self,
+            id,
             native_range,
             initial_roots,
         };

@@ -57,6 +57,84 @@ static BirnamOutcome send(const BirnamProtocol *id, BirnamObject receiver, Birna
     assert(answer.status == BIRNAM_LOADED);
     return answer;
 }
+struct Traversal {
+    const BirnamProtocol *id;
+    BirnamObject target, behavior, identity, allocate, created;
+    size_t visited, found, expected_identity;
+    int grow;
+};
+static BirnamOutcome visit_object(void *context, BirnamObject receiver, const BirnamOperand *args, size_t count) {
+    (void)receiver;
+    struct Traversal *visit = context;
+    assert(count == 1 && args[0].kind == BIRNAM_OBJECT);
+    visit->visited++;
+    if (args[0].data.object == visit->target) visit->found++;
+    return (BirnamOutcome){0};
+}
+static BirnamOutcome visit_allocation(void *context, BirnamObject receiver, const BirnamOperand *args, size_t count) {
+    struct Traversal *visit = context;
+    assert(receiver == visit->id->receiver && count == 3);
+    assert(args[0].kind == BIRNAM_OBJECT && args[1].kind == BIRNAM_WORD && args[2].kind == BIRNAM_WORD);
+    assert(args[2].data.word != 0);
+    /* Reenter Id while visiting its allocation snapshot. */
+    BirnamOutcome actual = send(visit->id, receiver, visit->identity, args, 1);
+    assert(actual.value.kind == BIRNAM_WORD && actual.value.data.word == args[2].data.word);
+    assert(args[0].data.object != visit->created);
+    if (args[0].data.object == visit->target) {
+        assert(args[1].data.word == 16 && args[2].data.word == visit->expected_identity);
+        visit->found++;
+    }
+    if (visit->grow && !visit->created) {
+        BirnamOperand size = { .kind = BIRNAM_WORD, .data.word = 3 };
+        actual = send(visit->id, visit->behavior, visit->allocate, &size, 1);
+        assert(actual.value.kind == BIRNAM_OBJECT);
+        visit->created = actual.value.data.object;
+    }
+    visit->visited++;
+    return (BirnamOutcome){0};
+}
+static BirnamOutcome stop_visit(void *context, BirnamObject receiver, const BirnamOperand *args, size_t count) {
+    (void)receiver;(void)args;(void)count;
+    (*(size_t *)context)++;
+    return (BirnamOutcome){ .status = BIRNAM_INVALID_REQUEST, .detail = 83,
+        .value = { .kind = BIRNAM_WORD, .data.word = 84 } };
+}
+static void inspect_storage(const BirnamProtocol *id, BirnamObject object, BirnamObject behavior,
+                            BirnamObject method_name, size_t identity, int grow) {
+    BirnamObject roots = name(id, "rootsDo:"), allocations = name(id, "allocationsDo:");
+    BirnamObject references = name(id, "referencesOf:do:");
+    struct Traversal visit = { .id=id, .target=id->receiver, .behavior=behavior,
+        .identity=name(id, "identityOf:"), .allocate=name(id, "allocate"),
+        .expected_identity=identity, .grow=grow };
+    BirnamOperand callback = { .kind=BIRNAM_NATIVE_ENTRY, .data.entry={visit_object, &visit} };
+    BirnamOutcome answer = send(id, id->receiver, roots, &callback, 1);
+    assert(answer.value.kind == BIRNAM_UNIT && visit.found == 1);
+    visit.target=object; visit.found=visit.visited=0;
+    callback.data.entry.method=visit_allocation;
+    answer = send(id, id->receiver, allocations, &callback, 1);
+    assert(answer.value.kind == BIRNAM_UNIT && visit.found == 1 && visit.visited > 7);
+    assert(!grow || visit.created);
+    callback.data.entry.method=visit_object;
+    BirnamOperand query[] = { { .kind=BIRNAM_OBJECT, .data.object=behavior }, callback };
+    visit.target=method_name; visit.found=visit.visited=0;
+    answer = send(id, id->receiver, references, query, 2);
+    assert(answer.value.kind == BIRNAM_WORD && answer.value.data.word == 1 && visit.found == 1);
+    query[0].data.object=object; visit.target=behavior; visit.found=visit.visited=0;
+    answer = send(id, id->receiver, references, query, 2);
+    assert(answer.value.kind == BIRNAM_WORD && answer.value.data.word == 0 && visit.found == 1 && visit.visited == 1);
+    query[0].data.object=method_name; visit.found=visit.visited=0;
+    answer = send(id, id->receiver, references, query, 2);
+    assert(answer.value.kind == BIRNAM_WORD && answer.value.data.word == 2 && visit.visited == 1);
+    query[0].data.object=NULL; visit.visited=0;
+    answer = send(id, id->receiver, references, query, 2);
+    assert(answer.value.kind == BIRNAM_UNIT && visit.visited == 0);
+    /* Visitor failure stops enumeration and preserves the entire native result. */
+    size_t calls=0;
+    callback.data.entry=(BirnamNativeEntry){stop_visit, &calls};
+    answer=id->message(id->context, id->receiver, allocations, &callback, 1);
+    assert(calls == 1 && answer.status == BIRNAM_INVALID_REQUEST && answer.detail == 83);
+    assert(answer.value.kind == BIRNAM_WORD && answer.value.data.word == 84);
+}
 static void construct_objects(const BirnamProtocol *id, BirnamObject add, const BirnamNativeEntry *collect) {
     /* Resolve names before construction. These temporary objects do not escape
        initialization; the caller's upper loading turn protects native code. */
@@ -102,6 +180,7 @@ static void construct_objects(const BirnamProtocol *id, BirnamObject add, const 
     answer = send(id, object, echo_name, &argument, 1);
     assert(answer.value.kind == BIRNAM_OBJECT && answer.value.data.object == object);
     assert(((size_t *)object)[0] == 83 && ((size_t *)object)[1] == 84);
+    inspect_storage(id, object, behavior, echo_name, identity, collect == NULL);
 }
 static BirnamOutcome initialize(const BirnamProtocol *id, const BirnamOperand *arguments, size_t count) {
     assert(id && id->version == 1 && id->byte_size == sizeof(*id));
