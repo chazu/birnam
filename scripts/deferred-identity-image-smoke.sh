@@ -30,6 +30,8 @@ check_reports() {
   if rg -v '^(closure-elision: (hit |completed calls=|forced constructor recovery)|deferred-identity: phase=)' "$1"; then return 1; fi
 }
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 scripts/fixtures/deferred-identity-native.c -o "$scratch/deferred-identity-native.dylib"
+service=deferred-identity
+source scripts/runtime-services-image-setup.sh
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/deferred-identity-native.dylib"];
 $(cat scripts/fixtures/deferred-identity-workload.birnam)
@@ -117,17 +119,17 @@ filter_reports "$scratch/rebuilt.out" "$scratch/rebuilt.err"
 cmp "$scratch/expected.out" "$scratch/rebuilt.out"
 check_reports "$scratch/rebuilt.err"
 "$bin" --bake "$scratch/app.image" "$scratch/app"
-BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
+DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 filter_reports "$scratch/baked.out" "$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
 rg -Fq '/libbirnam_storage.dylib' "$scratch/baked.err"
 cache_target=$(mise exec -- cargo metadata --locked --offline --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')
 mise exec -- cargo build --offline --locked -p birnam-host
-mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/deferred-identity-image-host.rs --extern "birnam_host=$cache_target/debug/libbirnam_host.rlib" --extern "birnam_abi=$cache_target/debug/libbirnam_abi.rlib" -L "dependency=$cache_target/debug/deps" -o "$scratch/image-host"
+mise exec -- rustc --edition=2024 -Cpanic=abort scripts/fixtures/deferred-image-host.rs --extern "birnam_host=$cache_target/debug/libbirnam_host.rlib" --extern "birnam_abi=$cache_target/debug/libbirnam_abi.rlib" -L "dependency=$cache_target/debug/deps" -o "$scratch/image-host"
 for mode in mapped rebuilt baked; do
   artifact="$scratch/app.image"
   if [[ $mode == baked ]]; then artifact="$scratch/app"; fi
-  "$scratch/image-host" "$prefix" "$mode" "$artifact" "$scratch/deferred-identity-native.dylib" >"$scratch/host-$mode.out" 2>"$scratch/host-$mode.err"
+  "$scratch/image-host" "$prefix" "$mode" "$artifact" "$scratch/deferred-identity-native.dylib" identity >"$scratch/host-$mode.out" 2>"$scratch/host-$mode.err"
   filter_reports "$scratch/host-$mode.out" "$scratch/host-$mode.err"
   cmp "$scratch/expected.out" "$scratch/host-$mode.out"
   check_reports "$scratch/host-$mode.err"
@@ -135,7 +137,7 @@ done
 # Additional harness runs observe the actual cell while every operation forwards
 # to ordinary installed Storage. The six ordinary carrier checks above use no spy.
 mkdir "$scratch/spy-lib"
-python3 - "$prefix/lib" "$scratch/spy-lib" <<'PY'
+python3 - "$BIRNAM_LIB_DIR" "$scratch/spy-lib" <<'PY'
 from pathlib import Path
 import shutil,sys
 source,target=map(Path,sys.argv[1:])
@@ -151,7 +153,7 @@ for recovery in 0 1; do
   for mode in mapped rebuilt baked; do
     artifact="$scratch/app.image";if [[ $mode == baked ]]; then artifact="$scratch/app";fi
     BIRNAM_LIB_DIR="$scratch/spy-lib" BIRNAM_DEFERRED_REAL_STORAGE="$prefix/lib/libbirnam_storage.dylib" \
-      "$scratch/image-host" "$prefix" "$mode" "$artifact" "$scratch/deferred-identity-native.dylib" >"$scratch/spy-$recovery-$mode.out" 2>"$scratch/spy-$recovery-$mode.err"
+      "$scratch/image-host" "$prefix" "$mode" "$artifact" "$scratch/deferred-identity-native.dylib" identity >"$scratch/spy-$recovery-$mode.out" 2>"$scratch/spy-$recovery-$mode.err"
     filter_reports "$scratch/spy-$recovery-$mode.out" "$scratch/spy-$recovery-$mode.err"
     cmp "$scratch/expected.out" "$scratch/spy-$recovery-$mode.out"
     check_reports "$scratch/spy-$recovery-$mode.err"

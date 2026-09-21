@@ -49,7 +49,9 @@ results, and each factory's invalid header or missing operation. A C proxy
 changes only the selected result of the real native entry; other support requests
 continue to use the installed implementation. Each descriptor fault records that
 the intended request was reached. A final unmodified prefix exercises every
-factory operation and repeated selection.
+factory operation and repeated selection. Its independent deferred-index model
+also checks 128 rows covering every bit, repair writes, exact swap removal,
+misses that preserve output, retained capacity and moved ownership.
 
 This replaces the five old per-factory host matrices that constructed fake Id
 images and tested dependency setters. Missing/rejected setter cases are obsolete;

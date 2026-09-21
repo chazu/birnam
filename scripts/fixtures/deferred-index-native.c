@@ -1,6 +1,7 @@
 #include "../../abi/fixtures/id-protocol-v1/id_protocol.h"
 #define _DARWIN_C_SOURCE
 #include "storage_v1.h"
+#include "native-method-fixture.h"
 #include "../../abi/fixtures/deferred-index-v1/deferred_index_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -10,6 +11,11 @@
 #include <string.h>
 
 static IdApi *api;
+static BirnamProtocol selected_protocol;
+static const BirnamProtocol *protocol=&selected_protocol;
+static const NamespaceImportV1 *saved_imports;
+static const RootRegistryV1 *saved_roots;
+static char *storage_path;
 static StorageObserveV1 observe;
 static const FinalizersV1 *finalizer_api;
 static Oop identity_probe,final_owner;
@@ -45,7 +51,7 @@ __attribute__((noinline)) static void collect_after_return(void) {
 static const GcSettingsV1 *settings;
 static Oop probe;
 static Oop held_block,held_value,machine_vt,read_selector,write_selector,lookup_selector;
-static Method canonical_read,canonical_write,canonical_lookup,frame_view;
+static BirnamNativeEntry canonical_read,canonical_write,canonical_lookup,frame_view;
 static unsigned registered,read_calls,write_calls,lookup_reads,lookup_writes;
 static void (*fixture_counts)(uint64_t *);
 static uint64_t phase_start[3];
@@ -68,18 +74,19 @@ static Oop checkpoint(Oop self,const Oop *args,size_t count) {
 static Oop identity(Oop self,const Oop *args,size_t count) { (void)args;assert(!count);return self; }
 static Oop nil(Oop self,const Oop *args,size_t count) { (void)self;(void)args;assert(!count);return api->nil_obj; }
 static Oop read_override(Oop machine,const Oop *args,size_t count) {
-    assert(frame_view(machine,NULL,0)!=api->nil_obj);read_calls++;
-    return canonical_read(machine,args,count);
+    assert(fixture_invoke_native(api,frame_view,machine,NULL,0)!=api->nil_obj);read_calls++;
+    return fixture_invoke_native(api,canonical_read,machine,args,count);
 }
 static Oop write_override(Oop machine,const Oop *args,size_t count) {
-    assert(count==2 && frame_view(machine,NULL,0)!=api->nil_obj);write_calls++;
-    Oop answer=canonical_write(machine,args,count);assert(answer==args[1]);return answer;
+    assert(count==2 && fixture_invoke_native(api,frame_view,machine,NULL,0)!=api->nil_obj);write_calls++;
+    Oop answer=fixture_invoke_native(api,canonical_write,machine,args,count);assert(answer==args[1]);return answer;
 }
-static Oop lookup_override(Oop self,const Oop *args,size_t count) {
-    if(self==machine_vt && count==1) {
-        lookup_reads+=args[0]==read_selector;lookup_writes+=args[0]==write_selector;
+static BirnamOutcome lookup_override(void *context,Oop self,const BirnamOperand *args,size_t count) {
+    (void)context;
+    if(self==machine_vt && count==1 && args[0].kind==BIRNAM_OBJECT) {
+        lookup_reads+=args[0].data.object==read_selector;lookup_writes+=args[0].data.object==write_selector;
     }
-    return canonical_lookup(self,args,count);
+    return canonical_lookup.method(canonical_lookup.context,self,args,count);
 }
 static void roots(MarkFn mark) { mark(held_block);mark(held_value);mark(probe);mark(identity_probe); }
 static Oop exercise(Oop self,const Oop *args,size_t count) {
@@ -90,9 +97,11 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(observe(&request)==STORAGE_BUSY && !busy_result);
     Oop value_selector=api->intern("value:");
     for(unsigned mode=0;mode<4;mode++) {
-        api->method(machine_vt,read_selector,mode==1?read_override:canonical_read);
-        api->method(machine_vt,write_selector,mode==2?write_override:canonical_write);
-        api->method(api->vtable_vt,lookup_selector,mode==3?lookup_override:canonical_lookup);
+        if(mode==1)api->method(machine_vt,read_selector,read_override);
+        else fixture_install_native(protocol,api,machine_vt,read_selector,canonical_read);
+        if(mode==2)api->method(machine_vt,write_selector,write_override);
+        else fixture_install_native(protocol,api,machine_vt,write_selector,canonical_write);
+        fixture_install_native(protocol,api,api->vtable_vt,lookup_selector,mode==3?(BirnamNativeEntry){lookup_override,NULL}:canonical_lookup);
         read_calls=write_calls=lookup_reads=lookup_writes=0;
         for(unsigned repeat=0;repeat<3;repeat++)assert(api->send(held_block,value_selector,&held_value,1)==held_value);
         if(mode==1)assert(read_calls>=3 && !write_calls);
@@ -100,7 +109,7 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
         else if(mode==3)assert(lookup_reads>=3 && lookup_writes>=3 && !read_calls && !write_calls);
         else assert(!read_calls && !write_calls && !lookup_reads && !lookup_writes);
     }
-    api->method(api->vtable_vt,lookup_selector,canonical_lookup);
+    fixture_install_native(protocol,api,api->vtable_vt,lookup_selector,canonical_lookup);
     assert(api->send(held_block,value_selector,&held_value,1)==held_value);
     Oop parent=api->proto(api->object_vt),shape=api->proto(parent),other=api->proto(api->object_vt);
     probe=api->alloc(shape,0);Oop answer=api->intern("deferredIndexImageAnswer");
@@ -141,20 +150,22 @@ static void initialize_fixture(IdApi *selected,const NamespaceImportV1 *imports,
     Dl_info owner;assert(dladdr((void *)api->dlsym_fn,&owner));
     void *floor=dlopen(owner.dli_fname,RTLD_NOW|RTLD_NOLOAD);assert(floor);
     observe=(StorageObserveV1)dlsym(floor,"birnam_id_observe_storage_v1");assert(observe);
-    const char *slash=strrchr(owner.dli_fname,'/');assert(slash);char path[PATH_MAX];
-    int length=snprintf(path,sizeof(path),"%.*s/libbirnam_storage.dylib",(int)(slash-owner.dli_fname),owner.dli_fname);
-    assert(length>0 && (size_t)length<sizeof(path));void *image=dlopen(path,RTLD_NOW|RTLD_NOLOAD);assert(image);
-    DeferredIndexFactoryProviderV1 provide=(DeferredIndexFactoryProviderV1)dlsym(image,"birnam_deferred_index_factory_v1");assert(provide);
+    void *image=dlopen(storage_path,RTLD_NOW|RTLD_NOLOAD);assert(image);
+    BirnamOperand request[]={{.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)storage_path,strlen(storage_path)}},
+        {.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)"deferredIndex",13}}};
+    BirnamOutcome loaded=protocol->message(protocol->context,protocol->receiver,protocol->load,request,2);
+    assert(loaded.status==BIRNAM_LOADED);
+    const DeferredIndexFactoryV1 *factory=(void *)fixture_word(loaded.value);
+    assert(factory && factory->version==1 && factory->byte_size==sizeof(*factory));
     fixture_counts=(void (*)(uint64_t *))dlsym(image,"deferred_index_fixture_counts_v1");
-    const DeferredIndexFactoryV1 *factory=provide();assert(factory && factory->version==1 && factory->byte_size==sizeof(*factory));
     assert(dladdr((void *)factory->read,&owner) && strstr(owner.dli_fname,"libbirnam_storage.dylib"));
     machine_vt=api->vtable_of(namespace_import_v1(imports,"Machine"));
     lookup_selector=api->intern("lookup");read_selector=api->intern("oopAt:");write_selector=api->intern("oopAt:put:");
-    canonical_lookup=(Method)api->send(api->vtable_vt,lookup_selector,&lookup_selector,1);
-    canonical_read=(Method)api->send(machine_vt,lookup_selector,&read_selector,1);
-    canonical_write=(Method)api->send(machine_vt,lookup_selector,&write_selector,1);
-    Oop view_selector=api->intern("currentFrameView");frame_view=(Method)api->send(machine_vt,lookup_selector,&view_selector,1);
-    assert(canonical_lookup && canonical_read && canonical_write && frame_view);
+    canonical_lookup=fixture_select_native(protocol,api,api->vtable_vt,lookup_selector);
+    canonical_read=fixture_select_native(protocol,api,machine_vt,read_selector);
+    canonical_write=fixture_select_native(protocol,api,machine_vt,write_selector);
+    Oop view_selector=api->intern("currentFrameView");frame_view=fixture_select_native(protocol,api,machine_vt,view_selector);
+    assert(canonical_lookup.method && canonical_read.method && canonical_write.method && frame_view.method);
     if(!registered) { root_registry_register_v1(root_registry,roots);registered=1; }
     Oop system=namespace_import_v1(imports,"System");assert(system);
     api->method(api->vtable_of(system),api->intern("deferredIndexCheckpoint:"),checkpoint);
@@ -162,10 +173,18 @@ static void initialize_fixture(IdApi *selected,const NamespaceImportV1 *imports,
     api->method(api->vtable_of(system),api->intern("deferredIndexExercise:value:"),exercise);
 }
 static BirnamOutcome initialize_native(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
-    assert(id && id->version==1 && count==5);
-    for(size_t i=0;i<count;i++) assert(args[i].kind==BIRNAM_WORD && args[i].data.word);
-    initialize_fixture((void *)args[0].data.word,(void *)args[1].data.word,(void *)args[2].data.word,
-        (void *)args[3].data.word,(void *)args[4].data.word);
+    assert(id && id->version==1);selected_protocol=*id;
+    if(!count) {
+        assert(api && storage_path && saved_imports && saved_roots);
+        initialize_fixture(api,saved_imports,saved_roots,settings,finalizer_api);
+    } else {
+        assert(count==6);
+        for(size_t i=0;i<5;i++)assert(args[i].kind==BIRNAM_WORD && args[i].data.word);
+        free(storage_path);storage_path=fixture_text(args[5]);
+        saved_imports=(void *)args[1].data.word;saved_roots=(void *)args[2].data.word;
+        initialize_fixture((void *)args[0].data.word,saved_imports,saved_roots,
+            (void *)args[3].data.word,(void *)args[4].data.word);
+    }
     return (BirnamOutcome){0};
 }
 const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize_native};

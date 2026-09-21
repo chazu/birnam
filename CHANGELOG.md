@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate deferred identity and index fixtures to production native construction
+  and typed method lookup. Remove their retired factory/module-init forwarding,
+  share the image host and unit/admission runner, and run the full independent
+  row model through Id and Bootstrap. Update both ABI guides for the current
+  Storage and Runtime boundary.
+
 - Remove repeated dead-address indexing and allocation-record copies during GC.
   Id shares one retirement set across its indexes; collection removes dead
   records with one lookup, retaining marked/permanent objects and finalizer order.

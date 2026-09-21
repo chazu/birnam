@@ -21,9 +21,17 @@ static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *ar
     int length=snprintf(runtime,sizeof(runtime),"%.*s/libbirnam_runtime.dylib",(int)(slash-original),original);
     assert(length>0 && (size_t)length<sizeof(runtime));
     const char *kind=getenv("BIRNAM_SERVICE_TEST_KIND");assert(kind);
-    BirnamOperand inputs[5]={args[0],args[4],service(id,runtime,"rootRegistry",args[0])};
+    BirnamOperand inputs[6]={args[0],args[4],service(id,runtime,"rootRegistry",args[0])};
     size_t inputs_count=3;
-    if(strcmp(kind,"root-registry")) {
+    if(!strcmp(kind,"deferred-index") || !strcmp(kind,"deferred-identity")) {
+        inputs[3]=service(id,runtime,"gcSettings",args[0]);
+        inputs[4]=service(id,runtime,"finalizers",args[0]);
+        const char *directory=getenv("BIRNAM_LIB_DIR");assert(directory);
+        length=snprintf(factory,sizeof(factory),"%s/libbirnam_storage.dylib",directory);
+        assert(length>0 && (size_t)length<sizeof(factory));
+        inputs[5]=(BirnamOperand){.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)factory,(size_t)length}};
+        inputs_count=6;
+    } else if(strcmp(kind,"root-registry")) {
         int stack=!strcmp(kind,"native-stack");assert(stack || !strcmp(kind,"gc-settings"));
         inputs[3]=service(id,runtime,stack?"nativeStack":"gcSettings",args[0]);
         length=snprintf(factory,sizeof(factory),"%.*s/libbirnam_%s.dylib",(int)(slash-original),original,stack?"native_stack":"gc_settings");

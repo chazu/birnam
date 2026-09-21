@@ -1,15 +1,17 @@
 # Deferred Identity v1
 
-Storage owns an opaque `u64` cell for each Heap. Id owns the shared sequence of
+Storage owns an opaque `u64` cell for each Heap. Runtime owns the shared sequence of
 deferred clone and numeric-result handles, all admission and charging, and
 materialization, settlement and reclaim. This sequence remains distinct from
 physical allocation identities.
 
-`birnam_deferred_identity_factory_v1` exports an immutable 48-byte descriptor.
-`birnam_deferred_identity_dependency_v1` attaches it to Id after Allocation
-Identity preparation and before `id_init`. The host pins Storage's library.
-Admission checks exact version 1, size and all four operations without invoking
-them. Repeating the same descriptor succeeds; retargeting fails.
+Id loads Storage through `birnam_native_module_v1` with the Bytes request
+`deferredIdentity`. The initializer returns the immutable 48-byte descriptor as a
+Word. Bootstrap validates version 1, exact size and all four operations,
+then supplies its copy as an explicit predecessor to Runtime construction.
+Storage is usable before Runtime exists; no dependency setter or later
+initialization is needed. Id pins the native library after entering its initializer.
+See [native Runtime support factories](runtime-support-v1.md).
 
 | Field | Offset | Contract |
 |---|---:|---|
@@ -26,7 +28,7 @@ preserves its cell. Other Heaps have independent cells. All bit patterns and
 repeated/reordered assignments are valid native storage; the module supplies no
 issuance, saturation, limit or reset policy.
 
-Id still issues the current value after checking its successor and completing
+Runtime issues the current value after checking its successor and completing
 the existing charge/record steps. First handle: zero. Last handle: `u64::MAX - 1`.
 At `u64::MAX`, another handle request returns `None`, while zero-count admission
 and unhandled dead allocations retain their existing separate capacity rules.
@@ -36,8 +38,7 @@ Settlement, reclaim and budget reset do not reset deferred issuance. No global
 or cross-Heap uniqueness policy is added.
 
 There is no new language method, image field or public-format version. Heap
-journals remain native process state. IdApi v20, twelve-argument ModuleInit,
-Native Loader v12, image v8 and the installed library inventory are unchanged.
+journals remain native process state. The cell ABI and image v8 format are unchanged.
 
 Run `mise run deferred-identity` for storage, Heap and host admission coverage.
 With a debug installation, run:
@@ -56,3 +57,11 @@ reports prove that the deferred path actually executes. Additional forwarding
 runs count both journals in mapped/rebuilt/baked execution and forced recovery.
 Host checks assert loader outcomes and exact physical identities before the
 workload, then preserve the existing `BUSY` observation result after eviction.
+
+The fixtures use the actual native entry for Storage and explicit Runtime
+services for their constructors. Saved native methods are typed entries selected
+through Id; they are never recovered by casting a language Method to a function.
+The shared image host requires exact mapped/rebuilt outcomes and checks the idle
+storage view before execution and its guarded result afterward. Storage forwarding
+fixtures replace only their named factory result; all other requests reach the
+installed native initializer unchanged.

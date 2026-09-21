@@ -4,21 +4,14 @@ cd "$(dirname "$0")/.."
 prefix=${1:?usage: deferred-index-loaded-smoke.sh PREFIX}
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-deferred-index-loaded.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'deferred-index loaded root: %s\n' "$scratch"; fi
-mkdir "$scratch/lib"
-python3 - "$prefix/lib" "$scratch/lib" <<'PY'
-from pathlib import Path
-import shutil,sys
-source,target=map(Path,sys.argv[1:])
-for library in source.glob('*.dylib'):
-    if library.name=='libbirnam_storage.dylib':continue
-    if library.name=='libbirnam_id.dylib':shutil.copy2(library,target/library.name)
-    else:(target/library.name).symlink_to(library.resolve())
-PY
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 scripts/fixtures/deferred-index-native.c -o "$scratch/deferred-index-native.dylib"
+service=deferred-index
+source scripts/runtime-services-image-setup.sh
+rm "$scratch/lib/libbirnam_storage.dylib"
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 scripts/fixtures/deferred-index-storage-spy.c -o "$scratch/lib/libbirnam_storage.dylib"
-cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 scripts/fixtures/deferred-index-native.c -o "$scratch/probe.dylib"
-printf '[System loadModule: "%s/probe.dylib"];\n' "$scratch" >"$scratch/probe.birnam"
+printf '[System loadModule: "%s/deferred-index-native.dylib"];\n' "$scratch" >"$scratch/probe.birnam"
 cat scripts/fixtures/deferred-index-workload.birnam >>"$scratch/probe.birnam"
-export BIRNAM_LIB_DIR="$scratch/lib" BIRNAM_DEFERRED_REAL_STORAGE="$prefix/lib/libbirnam_storage.dylib"
+export BIRNAM_DEFERRED_REAL_STORAGE="$prefix/lib/libbirnam_storage.dylib"
 unset BIRNAM_DEV_CLOSURE_FORCE_AT
 "$prefix/bin/birnam" --compile-module "$scratch/probe.birnam" "$scratch/compiled.dylib"
 for mode in disabled enabled recovery; do

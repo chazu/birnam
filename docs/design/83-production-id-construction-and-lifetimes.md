@@ -2899,3 +2899,39 @@ nineteen service cases run. Evidence is
 `.cargo-target/83-retirement-index-evidence.json`; worker-service acceptance,
 legacy fixture migration and the full Designs 82/83 audit remain open. Release
 validation remains waived.
+
+
+### Deferred storage fixtures use production construction
+
+Deferred Identity and Deferred Index now enter through Id with explicit Runtime
+services and the selected Storage path. Their forwarding libraries call Storage's
+common native entry and replace only the requested factory result. They no longer
+forward removed `module_init`, dependency setters or factory-provider exports.
+The fixtures copy the borrowed initialization protocol before retaining it, and
+select pinned native method entries through Id instead of casting language
+Method objects to C functions. Custom lookup delegates directly to its selected
+native entry and preserves the original lookup result.
+
+The two image hosts are one shared host with explicit fixture selection. Both
+retain exact `Mapped`/`SourceRecovery` assertions, idle storage checks and the
+post-eviction `BUSY` result. The unit/admission runners are shared too. The full
+independent 128-row index model moved from an obsolete direct-export caller into
+the existing production Id/Bootstrap support fixture, retaining all-bit values,
+misses, repair writes, exact swap removal, capacity and moved-ownership checks.
+Both ABI guides now describe the current Storage/Runtime responsibilities.
+
+On `/tmp/birnam-83-retirement-index`, both loaded matrices pass source and
+compiled execution with optimization disabled, enabled and forced recovery,
+including source removal. Both complete image matrices pass ordinary startup,
+source-free compiled execution, mapped/rebuilt/baked execution, exact host loader
+outcomes, and forwarding runs with and without forced recovery. They preserve
+allocation identities, finalization, saved 24-method dictionaries, replaced
+lookup and Machine slot methods, parent/behavior changes, aliases and GC. The
+102 relevant unit tests pass (eight existing ignored tests); all 76 support
+admission cases and the Storage export/install-name audit pass. Evidence is
+`.cargo-target/83-deferred-storage-evidence.json`.
+
+This closes these two behavioral fixture groups, not all legacy fixture setup.
+The old shared `namespace-support.h` chain still references deferred-storage
+setters for its remaining consumers. Its migration, worker readiness/service
+acceptance and the full section 6 audit remain open. Release validation is waived.

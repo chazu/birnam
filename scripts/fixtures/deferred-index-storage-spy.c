@@ -1,5 +1,6 @@
 /* Harness-only forwarding library; all row storage remains in real Storage. */
 #include "storage_v1.h"
+#include "native-fixture.h"
 #include "../../abi/fixtures/deferred-index-v1/deferred_index_v1.h"
 #include <assert.h>
 #include <dlfcn.h>
@@ -59,17 +60,21 @@ static int swap_remove(void *context,size_t position,DeferredIndexRowV1 *out) {
 }
 static void clear(void *context) { check(context);real_factory->clear(context);length=0;all_rows(); }
 static const DeferredIndexFactoryV1 spy={1,sizeof(spy),destroy,row_len,row_capacity,push,read_row,write_row,swap_remove,clear};
-const DeferredIndexFactoryV1 *birnam_deferred_index_factory_v1(void) {
-    if(!real_factory)real_factory=((DeferredIndexFactoryProviderV1)symbol("birnam_deferred_index_factory_v1"))();
-    assert(real_factory && real_factory->version==1 && real_factory->byte_size==sizeof(*real_factory));return &spy;
-}
 /* Fixture-only counters. No row, owner or observer authority is published by Id. */
 void deferred_index_fixture_counts_v1(uint64_t *out) { all_rows();out[0]=pushes;out[1]=removes;out[2]=writes; }
-const void *birnam_deferred_identity_factory_v1(void) { return ((const void *(*)(void))symbol("birnam_deferred_identity_factory_v1"))(); }
-
-const void *birnam_storage_observation_factory_v1(void) { return ((const void *(*)(void))symbol("birnam_storage_observation_factory_v1"))(); }
-int birnam_storage_describe_v1(const StorageViewV1 *view,const StorageDescribeRequestV1 *request) { return ((StorageDescribeV1)symbol("birnam_storage_describe_v1"))(view,request); }
-void *module_init(IdApi *api,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *roots,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizers) {
-    return ((ModuleInitFn)symbol("module_init"))(api,prior,presence,imports,exports,vtables,observation,roots,settings,layouts,hooks,finalizers);
+/* Forward the common native entry, replacing only this factory result. */
+static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
+    const BirnamModule *module=symbol("birnam_native_module_v1");
+    BirnamOutcome result=module->initialize(id,args,count);
+    if(count==1 && args[0].kind==BIRNAM_BYTES && args[0].data.bytes.length==13 &&
+        !memcmp(args[0].data.bytes.pointer,"deferredIndex",13)) {
+        assert(result.status==BIRNAM_LOADED);real_factory=(void *)fixture_word(result.value);
+        assert(real_factory && real_factory->version==1 && real_factory->byte_size==sizeof(*real_factory));
+        result.value.data.word=(uintptr_t)&spy;
+    }
+    return result;
 }
-int birnam_symbol_borrow_v1(void) { return ((int (*)(void))symbol("birnam_symbol_borrow_v1"))(); }
+const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize};
+int birnam_storage_describe_v1(const StorageViewV1 *view,const StorageDescribeRequestV1 *request) {
+    return ((StorageDescribeV1)symbol("birnam_storage_describe_v1"))(view,request);
+}
