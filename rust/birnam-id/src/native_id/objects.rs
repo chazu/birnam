@@ -6,6 +6,8 @@ use core::ffi::c_void;
 pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
     for (name, method) in [
         (b"allocate".as_slice(), allocate as native::Method),
+        (b"allocationAt:".as_slice(), allocation_at as native::Method),
+        (b"allocationCount".as_slice(), allocation_count as native::Method),
         (b"delegated".as_slice(), delegated as native::Method),
         (
             b"objectPrototype".as_slice(),
@@ -52,6 +54,19 @@ pub(crate) fn valid_size(size: usize) -> bool {
 }
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
+}
+unsafe extern "C" fn allocation_at(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    let Some([address]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else { return invalid(); };
+    let Some(address) = address.as_word() else { return invalid(); };
+    let state = unsafe { &*context.cast::<State>() };
+    let allocation = unsafe { (&*state.memory).get(address) };
+    Outcome::loaded(allocation.map(|entry| Operand::object(entry.payload().as_ptr().cast()))
+        .unwrap_or_else(Operand::unit))
+}
+unsafe extern "C" fn allocation_count(context: *mut c_void, _: Oop, _: *const Operand, count: usize) -> Outcome {
+    if count != 0 { return invalid(); }
+    let state = unsafe { &*context.cast::<State>() };
+    Outcome::loaded(Operand::word(unsafe { (&*state.memory).len() }))
 }
 unsafe fn candidate(args: *const Operand, count: usize) -> Option<Oop> {
     let [argument] = (unsafe { crate::abi::borrowed_slice(args, count) })? else {

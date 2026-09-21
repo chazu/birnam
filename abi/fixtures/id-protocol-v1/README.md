@@ -24,7 +24,8 @@ That fixture uses the actual host Siphon and installed Id, with upper libraries
 absent at first. The independent C module checks explicit initializer operands,
 object/behavior construction, Symbol byte access, method/context publication
 and invocation, nested storage queries, allocation during snapshot visitation,
-visitor-failure propagation, index retirement and detached allocation release,
+visitor-failure propagation, exact address membership, allocation counts, index
+retirement and detached allocation release,
 admission rejection, and image pinning
 after initializer failure. Next it exposes Bootstrap alone. Independent C uses
 its loader recursively to construct an otherwise unrooted Object result, and
@@ -57,3 +58,7 @@ inherited hooks and behavior-owner references before Runtime, then reuse that
 same graph after adoption and precise collection. Id's object-allocation contract
 provides native-word alignment and zero-initialized padding to a native-word
 boundary; `allocationSizeOf:` continues to return only the requested extent.
+
+Runtime retains completed [Id allocation primitives](../../primitive-allocation-v1.md)
+for its internal construction and deferred materialization; production Heap no
+longer owns or borrows Id allocation records.

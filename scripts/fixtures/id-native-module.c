@@ -103,6 +103,17 @@ static BirnamObject inspect_storage(const BirnamProtocol *id, BirnamObject objec
                             BirnamObject method_name, size_t identity, int grow) {
     BirnamObject roots = name(id, "rootsDo:"), allocations = name(id, "allocationsDo:");
     BirnamObject references = name(id, "referencesOf:do:");
+    BirnamObject at = name(id, "allocationAt:"), allocation_count = name(id, "allocationCount");
+    BirnamOperand address = { .kind=BIRNAM_WORD, .data.word=(size_t)object };
+    assert(send(id, id->receiver, at, &address, 1).value.data.object == object);
+    size_t absent[] = { 0, (size_t)object + 1, (size_t)object - sizeof(size_t), (size_t)&address };
+    for (size_t i=0;i<sizeof(absent)/sizeof(absent[0]);i++) {
+        address.data.word=absent[i];
+        assert(send(id, id->receiver, at, &address, 1).value.kind == BIRNAM_UNIT);
+    }
+    BirnamOperand wrong = { .kind=BIRNAM_OBJECT, .data.object=object };
+    assert(id->message(id->context, id->receiver, at, &wrong, 1).status == BIRNAM_INVALID_REQUEST);
+    assert(id->message(id->context, id->receiver, allocation_count, &wrong, 1).status == BIRNAM_INVALID_REQUEST);
     struct Traversal visit = { .id=id, .target=id->receiver, .behavior=behavior,
         .identity=name(id, "identityOf:"), .allocate=name(id, "allocate"),
         .expected_identity=identity, .grow=grow };
@@ -111,7 +122,10 @@ static BirnamObject inspect_storage(const BirnamProtocol *id, BirnamObject objec
     assert(answer.value.kind == BIRNAM_UNIT && visit.found == 1);
     visit.target=object; visit.found=visit.visited=0;
     callback.data.entry.method=visit_allocation;
+    size_t before = send(id, id->receiver, allocation_count, NULL, 0).value.data.word;
     answer = send(id, id->receiver, allocations, &callback, 1);
+    assert(visit.visited == before);
+    assert(send(id, id->receiver, allocation_count, NULL, 0).value.data.word == before + !!grow);
     assert(answer.value.kind == BIRNAM_UNIT && visit.found == 1 && visit.visited > 7);
     assert(!grow || visit.created);
     callback.data.entry.method=visit_object;
@@ -140,6 +154,7 @@ static void retire_disposable(const BirnamProtocol *id, BirnamObject parent, Bir
     BirnamObject delegated=name(id, "delegated"), allocate=name(id, "allocate");
     BirnamObject retire=name(id, "retireIndexesFor:"), detach=name(id, "detachAllocationAt:");
     BirnamObject identity=name(id, "identityOf:"), symbol_bytes=name(id, "symbolBytesOf:");
+    BirnamObject at=name(id, "allocationAt:"), allocation_count=name(id, "allocationCount");
     BirnamObject behavior=send(id, parent, delegated, NULL, 0).value.data.object;
     BirnamOperand size={ .kind=BIRNAM_WORD, .data.word=16 };
     BirnamObject object=send(id, behavior, allocate, &size, 1).value.data.object;
@@ -159,12 +174,15 @@ static void retire_disposable(const BirnamProtocol *id, BirnamObject parent, Bir
     assert(send(id, id->receiver, symbol_bytes, &wrong, 1).value.kind == BIRNAM_UNIT);
     /* Retiring a name removes canonicalization before the old address is freed. */
     assert(name(id, "retirementOnlyNativeSelector") != selector);
+    size_t before=send(id, id->receiver, allocation_count, NULL, 0).value.data.word;
     for (size_t i=0;i<3;i++) {
         BirnamOperand address={ .kind=BIRNAM_WORD, .data.word=addresses[i] };
         BirnamOutcome detached=send(id, id->receiver, detach, &address, 1);
         assert(detached.value.kind == BIRNAM_NATIVE_ENTRY && detached.value.data.entry.method);
         wrong.data.object=(BirnamObject)addresses[i];
         assert(send(id, id->receiver, identity, &wrong, 1).value.kind == BIRNAM_UNIT);
+        assert(send(id, id->receiver, at, &address, 1).value.kind == BIRNAM_UNIT);
+        assert(send(id, id->receiver, allocation_count, NULL, 0).value.data.word == before - i - 1);
         assert(send(id, id->receiver, detach, &address, 1).value.kind == BIRNAM_UNIT);
         /* Finalizers run at this point: detached bytes are still readable. */
         if (i == 0) assert(((size_t *)object)[0] == 83 && ((size_t *)object)[1] == 84);

@@ -32,7 +32,7 @@ This works before Block/Runtime and does not put a future String slot in either
 base owner. Late `module_init` preserves native printing and predicates; Boolean
 Block control still mounts later with Execution.
 
-The temporary upper Runtime constructor `birnam_runtime_init_v10` takes completed
+The temporary upper Runtime constructor `birnam_runtime_init_v11` takes completed
 roots, Lifetime, this descriptor, Namespace, Object Model, the live Trace graph
 and collection state. It adopts the same identities and layouts.
 This replaces the intermediate v1/v2/v3/v4/v5/v6/v7 Runtime bridges; legacy `id_init` remains

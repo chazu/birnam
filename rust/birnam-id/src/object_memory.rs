@@ -134,6 +134,11 @@ pub(crate) struct PayloadWords {
 }
 
 impl PayloadWords {
+    /// # Safety
+    /// The caller retains this exact aligned live payload and its complete extent.
+    pub(crate) unsafe fn from_raw_parts(pointer: *const usize, length: usize) -> Self {
+        Self { pointer, length }
+    }
     pub(crate) fn len(self) -> usize {
         self.length
     }

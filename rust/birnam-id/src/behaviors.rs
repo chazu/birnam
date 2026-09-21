@@ -108,8 +108,7 @@ impl Behaviors {
             parent.is_null() || self.is_registered(parent),
             "vtable parent is not registered",
         );
-        let object = heap.allocate(Vtables::PAYLOAD_SIZE, permanence);
-        boundary::require_invariant(heap.set_vtable(object, metavtable), "new vtable block was not registered");
+        let object = heap.allocate_with_behavior(Vtables::PAYLOAD_SIZE, permanence, metavtable);
         // SAFETY: Heap retains this fresh behavior payload until collection.
         unsafe { self.dictionaries.register(object, parent) };
         object

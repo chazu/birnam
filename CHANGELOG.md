@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Keep production allocation ownership in Id through Runtime construction.
+  Heap uses native Id entries and copied allocation facts instead of owning or
+  borrowing the allocation registry. Retain working non-collecting primitives
+  for deferred materialization; ordinary construction preserves collection and
+  accounting. Add exact address/count queries and the temporary Runtime v11 bridge.
+
 - Produce diagnostic allocation and representation snapshots in native Trace
   through Id's message protocol. Runtime joins these facts with its own roots,
   collection permanence and deferred journals without reading Id's private

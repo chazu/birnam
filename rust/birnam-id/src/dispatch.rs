@@ -308,7 +308,7 @@ pub(crate) struct Bootstrap {
     pub(crate) selectors: BootstrapSelectors,
 }
 
-fn static_selector(symbols: &mut Symbols, heap: &mut Heap, symbol_vtable: Oop, name: &[u8]) -> Oop {
+fn static_selector(symbols: &mut crate::owned::Owned<Symbols>, heap: &mut Heap, symbol_vtable: Oop, name: &[u8]) -> Oop {
     heap.intern_symbol(symbols, symbol_vtable, name)
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"))
 }
@@ -318,16 +318,17 @@ pub(crate) fn build_bootstrap() -> Bootstrap {
     build_bootstrap_from(crate::initial_objects::InitialObjects::new())
 }
 pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
-    build_bootstrap_with(initial, None, None, None, None, None, None, None)
+    build_bootstrap_with(initial, None, None, None, None, None, None, None, None)
 }
-pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>) -> Bootstrap {
+pub(crate) fn build_bootstrap_with(initial: crate::initial_objects::InitialObjects, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::primitive_allocation::PrimitivesV1>) -> Bootstrap {
     let crate::initial_objects::InitialObjects {
         protocol,
-        memory, dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
+        dictionaries, mut symbols, vtable_vt, object_vt, symbol_vt,
         lookup, does_not_understand, object_prototype, symbol_prototype,
     } = initial;
     // Only completed Id objects cross this boundary. No allocation is copied.
-    let mut heap = Heap::adopt_with_collection(memory, lifetime.clone().map(crate::finalizers::Service::from_lifetime), collection.clone());
+    let primitives = primitives.unwrap_or_else(|| unsafe { birnam_abi::primitive_allocation::select(protocol.protocol) }.unwrap_or_else(|_| panic!("select Id primitives before Runtime")));
+    let mut heap = Heap::from_id(protocol.protocol, object_vt, primitives, lifetime.clone().map(crate::finalizers::Service::from_lifetime), collection.clone());
     heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
     let mut vtables = Behaviors::adopt_with(dictionaries, lifetime, model.clone());
     vtables.set_legacy_lookup(lookup);
@@ -515,7 +516,7 @@ pub(crate) fn build_harness() -> DispatchHarness {
     boundary::require_invariant(heap.set_vtable(meta, meta), "metavtable was not registered");
     let object_vtable = vtables.create(&mut heap, core::ptr::null_mut(), meta);
     let symbol_vtable = vtables.create(&mut heap, object_vtable, meta);
-    let mut symbols = Symbols::new();
+    let mut symbols = crate::owned::Owned::new(Symbols::new());
     let lookup = heap.intern_symbol(&mut symbols, symbol_vtable, b"lookup")
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"));
     let does_not_understand = heap.intern_symbol(&mut symbols, symbol_vtable, b"doesNotUnderstand:")
@@ -524,7 +525,7 @@ pub(crate) fn build_harness() -> DispatchHarness {
     let runtime = Runtime::new(
         heap,
         vtables,
-        crate::owned::Owned::new(symbols),
+        symbols,
         None,
         DispatchGlobals {
             vtable_vt: meta,
@@ -858,7 +859,7 @@ mod tests {
         }
 
         // Initial Id names exist before the upper runtime installs methods.
-        let selector_names: [&[u8]; 40] = [
+        let selector_names: [&[u8]; 42] = [
             b"lookup",
             b"doesNotUnderstand:",
             b"Symbol",
@@ -867,6 +868,8 @@ mod tests {
             b"intern:",
             b"loadNative:",
             b"allocate",
+            b"allocationAt:",
+            b"allocationCount",
             b"delegated",
             b"objectPrototype",
             b"behaviorOf:",
@@ -926,6 +929,8 @@ mod tests {
             runtime.intern(b"intern:").unwrap(),
             runtime.intern(b"loadNative:").unwrap(),
             bootstrap.selectors.allocate,
+            runtime.intern(b"allocationAt:").unwrap(),
+            runtime.intern(b"allocationCount").unwrap(),
             bootstrap.selectors.delegated,
             runtime.intern(b"objectPrototype").unwrap(),
             runtime.intern(b"behaviorOf:").unwrap(),

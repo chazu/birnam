@@ -17,6 +17,7 @@ static void initialized_hook(void *object,void (*mark)(void *)) {
     (void)mark;if(verify_initialized)assert(((uintptr_t *)object)[1]==0x83);
 }
 static BirnamNativeEntry allocation,delegation,interning,cloning;
+static BirnamNativeEntry primitive_allocate,primitive_intern;
 static BirnamOperand oop(void *p) { return (BirnamOperand){.kind=BIRNAM_OBJECT,.data.object=p}; }
 static BirnamOperand word(size_t n) { return (BirnamOperand){.kind=BIRNAM_WORD,.data.word=n}; }
 static BirnamOutcome send(void *receiver,void *selector,const BirnamOperand *args,size_t count) {
@@ -62,6 +63,21 @@ static BirnamOutcome exercise(void *context,void *receiver,const BirnamOperand *
     assert(owner.collector->active(owner.collector->context)==1);
     owner.settings->set_precise(owner.settings->context,1);
     BirnamOperand size=word(16);
+    /* Entries selected before activation remain non-collecting even after both
+       activation and Runtime have replaced the corresponding bindings. */
+    owner.budget_factory->replace(owner.budget_context,16u<<20);
+    size_t primitive_visits=visits;
+    BirnamOutcome raw=primitive_allocate.method(primitive_allocate.context,held[0],&size,1);
+    assert(raw.status==BIRNAM_LOADED && raw.value.kind==BIRNAM_OBJECT);
+    held[2]=raw.value.data.object;((uintptr_t *)held[2])[1]=0x83;
+    static unsigned primitive_run;
+    const char *primitive_text=primitive_run++ ? "primitiveInternAfterRuntime" : "primitiveInternAfterActivation";
+    BirnamOperand primitive_bytes={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)primitive_text,strlen(primitive_text)}};
+    raw=primitive_intern.method(primitive_intern.context,id.receiver,&primitive_bytes,1);
+    assert(raw.status==BIRNAM_LOADED && raw.value.kind==BIRNAM_OBJECT);
+    held[4]=raw.value.data.object;
+    assert(visits==primitive_visits && owner.budget_factory->read(owner.budget_context)==(16u<<20));
+    assert(allocated(held[2]) && allocated(held[4]));
     /* During this collection only the previously completed instance exists.
        A post-allocation collection would incorrectly trace zeroed new bytes. */
     trace_hooks_set_v1(lifetime.hooks,held[0],initialized_hook);
@@ -102,6 +118,8 @@ static BirnamOutcome initialize(const BirnamProtocol *protocol,const BirnamOpera
     assert(bootstrap.pause(bootstrap.context,(BirnamNativeEntry){forbidden,NULL}).status==BIRNAM_INVALID_REQUEST);
     root_registry_register_v1(roots.api,provider); /* Before populating native ownership. */
     size_selector=name("allocationSizeOf:");
+    primitive_allocate=select(id.receiver,name("allocate"));
+    primitive_intern=select(id.receiver,id.intern);
     BirnamOutcome prototype=send(id.receiver,name("objectPrototype"),NULL,0);
     void *base=send(id.receiver,name("behaviorOf:"),&prototype.value,1).value.data.object;
     held[0]=send(base,name("delegated"),NULL,0).value.data.object;

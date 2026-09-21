@@ -2,13 +2,16 @@
 //! ObjectMemory supplies object allocation independently of this GC bookkeeping.
 #![allow(dead_code)]
 
-use crate::object_memory::{Allocation, ObjectMemory, vtable_slot_from_payload};
-pub(crate) use crate::object_memory::{BLOCK_ALIGNMENT, VTABLE_HEADER_SIZE, PAYLOAD_ALIGNMENT, PayloadWords};
+use crate::object_memory::ObjectMemory;
+#[cfg(test)]
+use crate::object_memory::{Allocation, BLOCK_ALIGNMENT, PAYLOAD_ALIGNMENT};
+pub(crate) use crate::object_memory::{VTABLE_HEADER_SIZE, PayloadWords};
 
 use crate::abi::{Finalizer, Oop};
 use birnam_abi::finalizers::SlotV1;
 use crate::boundary;
 mod records;
+mod memory;
 
 #[cfg(feature = "ffi-test-hooks")]
 pub(crate) type LayoutProbe =
@@ -38,15 +41,15 @@ impl BlockLifetime {
 }
 
 /// A short-lived joined view, never an owner or a callback-bearing Id record.
-struct Block<'a> {
-    allocation: &'a Allocation,
+struct Block {
+    allocation: memory::View,
     lifetime: BlockLifetime,
 }
-impl core::ops::Deref for Block<'_> {
-    type Target = Allocation;
-    fn deref(&self) -> &Allocation { self.allocation }
+impl core::ops::Deref for Block {
+    type Target = memory::View;
+    fn deref(&self) -> &memory::View { &self.allocation }
 }
-impl Block<'_> {
+impl Block {
     fn permanence(&self) -> Permanence { self.lifetime.permanence() }
     fn marked(&self) -> bool { self.lifetime.marked() }
 }
@@ -54,13 +57,13 @@ impl Block<'_> {
 /// An allocation detached for collection, with its finalizer.
 /// The collector invokes the finalizer; releasing storage never does.
 pub(crate) struct DetachedBlock {
-    block: Allocation,
+    block: memory::Detached,
     finalizer: SlotV1,
 }
 
 impl DetachedBlock {
     pub(crate) fn object(&self) -> Oop {
-        self.block.payload().as_ptr().cast()
+        self.block.object()
     }
 
     pub(crate) fn finalizer(&self) -> Option<Finalizer> {
@@ -78,7 +81,7 @@ impl DetachedBlock {
 /// exposed as language behavior.
 pub(crate) struct Heap {
     blocks: records::Records,
-    memory: crate::owned::Owned<ObjectMemory>,
+    memory: memory::Memory,
     budget: crate::allocation_budget::Service,
     dead_allocations: Vec<std::rc::Rc<dead_allocations::DeadAllocation>>,
     deferred_allocations: dead_allocations::deferred_index::Index,
@@ -110,6 +113,12 @@ impl Heap {
         Self::adopt_with_collection(memory, finalizers, None)
     }
     pub(crate) fn adopt_with_collection(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
+        Self::with_memory(memory::Memory::Local(memory), finalizers, owner)
+    }
+    pub(crate) fn from_id(id: crate::abi::id_protocol::Protocol, behavior: Oop, primitives: birnam_abi::primitive_allocation::PrimitivesV1, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
+        Self::with_memory(memory::Memory::Id(memory::Client::new(id, behavior, primitives)), finalizers, owner)
+    }
+    fn with_memory(memory: memory::Memory, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
         let mut blocks = records::Records::new(owner.clone());
         let mut budget = owner.map(crate::allocation_budget::Service::from_collection).unwrap_or_else(crate::allocation_budget::Service::new);
         // Native records already describe the early heap. Add only allocations
@@ -151,11 +160,11 @@ impl Heap {
         ObjectMemory::allocation_total_size(payload_size)
     }
 
-    fn block(&self, address: usize) -> Option<Block<'_>> {
+    fn block(&self, address: usize) -> Option<Block> {
         Some(Block { allocation: self.memory.get(address)?, lifetime: self.blocks.get(&address)? })
     }
 
-    fn block_views(&self) -> impl Iterator<Item = Block<'_>> {
+    fn block_views(&self) -> impl Iterator<Item = Block> {
         self.memory.iter().map(|(address, allocation)| Block {
             allocation,
             lifetime: self.blocks.get(&address).expect("Id allocation has no Lifetime record"),
@@ -163,10 +172,17 @@ impl Heap {
     }
 
     pub(crate) fn allocate(&mut self, payload_size: usize, permanence: Permanence) -> Oop {
-        let object = self.memory.allocate(payload_size);
+        let object = self.memory.allocate(payload_size, None);
         self.track_allocation(object, permanence);
         object
     }
+
+    pub(crate) fn allocate_with_behavior(&mut self, payload_size: usize, permanence: Permanence, behavior: Oop) -> Oop {
+        let object = self.memory.allocate(payload_size, Some(behavior));
+        self.track_allocation(object, permanence);
+        object
+    }
+    pub(crate) fn uses_id_memory(&self) -> bool { matches!(self.memory, memory::Memory::Id(_)) }
 
     fn track_allocation(&mut self, object: Oop, permanence: Permanence) {
         let total_size = self.memory.get(object.addr()).unwrap().total_size;
@@ -176,15 +192,15 @@ impl Heap {
         boundary::require_invariant(self.budget.charge(total_size), "GC allocation byte counter overflow");
     }
 
-    pub(crate) fn intern_symbol(&mut self, symbols: &mut crate::symbol::Symbols, behavior: Oop, bytes: &[u8]) -> Result<Oop, crate::symbol::EmbeddedNul> {
-        let object = symbols.intern(&mut self.memory, behavior, bytes)?;
+    pub(crate) fn intern_symbol(&mut self, symbols: &mut crate::owned::Owned<crate::symbol::Symbols>, behavior: Oop, bytes: &[u8]) -> Result<Oop, crate::symbol::EmbeddedNul> {
+        let object = self.memory.intern(symbols, behavior, bytes)?;
         if !self.blocks.contains_key(&object.addr()) { self.track_allocation(object, Permanence::Collectable); }
         Ok(object)
     }
 
     #[cfg(test)]
-    pub(crate) fn intern_symbol_hashed(&mut self, symbols: &mut crate::symbol::Symbols, behavior: Oop, bytes: &[u8], hash: u64) -> Oop {
-        let object = symbols.intern_hashed(&mut self.memory, behavior, bytes, hash);
+    pub(crate) fn intern_symbol_hashed(&mut self, symbols: &mut crate::owned::Owned<crate::symbol::Symbols>, behavior: Oop, bytes: &[u8], hash: u64) -> Oop {
+        let object = symbols.intern_hashed(self.memory.local(), behavior, bytes, hash);
         if !self.blocks.contains_key(&object.addr()) { self.track_allocation(object, Permanence::Collectable); }
         object
     }
@@ -198,7 +214,7 @@ impl Heap {
             requested_size: block.requested_size(),
             padded_size: block.total_size - VTABLE_HEADER_SIZE,
             allocation_bytes: block.total_size,
-            behavior: unsafe { vtable_slot_from_payload(block.payload()).read() },
+            behavior: self.memory.vtable_of(block.payload().as_ptr().cast()).unwrap_or(core::ptr::null_mut()),
             flags: if block.permanence() == Permanence::Permanent { PERMANENT } else { 0 }
                 | if self.finalizers.get(block.payload().as_ptr().cast()).callback.is_some() { HAS_FINALIZER } else { 0 },
             trace_hook: None,
@@ -208,7 +224,7 @@ impl Heap {
     }
 
     pub(crate) fn contains(&self, object: Oop) -> bool {
-        self.memory.get(object.addr()).is_some()
+        self.memory.contains(object)
     }
 
     pub(crate) fn allocation_count(&self) -> usize {
@@ -257,8 +273,7 @@ impl Heap {
 
     /// Report the padded payload extent, matching `objectPayloadSize`.
     pub(crate) fn payload_size(&self, object: Oop) -> Option<usize> {
-        self.memory.get(object.addr())
-            .map(|block| block.total_size - VTABLE_HEADER_SIZE)
+        self.memory.payload_size(object)
     }
 
     pub(crate) fn permanence_of(&self, object: Oop) -> Option<Permanence> {
@@ -275,7 +290,7 @@ impl Heap {
             .map(|block| {
                 // SAFETY: every registered block owns one initialized vtable
                 // header immediately before its payload.
-                unsafe { vtable_slot_from_payload(block.payload()).read() }
+                self.memory.vtable_of(block.payload().as_ptr().cast()).unwrap_or(core::ptr::null_mut())
             })
             .filter(|vtable| !vtable.is_null())
             .collect()
@@ -389,11 +404,7 @@ impl Heap {
             std::slice::from_raw_parts(object.cast::<u8>().cast_const(), payload_size).to_vec()
         };
         let vtable = self.vtable_of(object)?;
-        let clone = self.allocate(payload_size, Permanence::Collectable);
-        boundary::require_invariant(
-            self.set_vtable(clone, vtable),
-            "cloned object block was not registered",
-        );
+        let clone = self.allocate_with_behavior(payload_size, Permanence::Collectable, vtable);
         if payload_size != 0 {
             // SAFETY: clone owns payload_size writable bytes and bytes contains
             // exactly that many initialized source bytes.

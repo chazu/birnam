@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 pub(crate) struct State {
     pub(crate) protocol: Protocol,
     memory: *mut ObjectMemory,
+    _memory: crate::owned::Owned<ObjectMemory>,
     dictionaries: *mut Vtables,
     symbols: *mut Symbols,
     symbol_vtable: Oop,
@@ -26,7 +27,7 @@ pub(crate) struct State {
 }
 impl State {
     pub(crate) unsafe fn new(
-        memory: *mut ObjectMemory,
+        memory_owner: crate::owned::Owned<ObjectMemory>,
         dictionaries: *mut Vtables,
         symbols: *mut Symbols,
         metavtable: Oop,
@@ -35,6 +36,7 @@ impl State {
         lookup: Oop,
         does_not_understand: Oop,
     ) -> Box<Self> {
+        let memory = memory_owner.pointer();
         let intern =
             unsafe { (&mut *symbols).intern(&mut *memory, symbol_vtable, b"intern:") }.unwrap();
         let load =
@@ -51,6 +53,7 @@ impl State {
                 load,
             },
             memory,
+            _memory: memory_owner,
             dictionaries,
             symbols,
             symbol_vtable,

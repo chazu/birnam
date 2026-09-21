@@ -7,7 +7,6 @@ use crate::vtable::Vtables;
 
 pub(crate) struct InitialObjects {
     pub(crate) protocol: Box<crate::native_id::State>,
-    pub(crate) memory: crate::owned::Owned<ObjectMemory>,
     pub(crate) dictionaries: crate::owned::Owned<Vtables>,
     pub(crate) symbols: crate::owned::Owned<Symbols>,
     pub(crate) vtable_vt: Oop,
@@ -45,8 +44,8 @@ impl InitialObjects {
                 Operand::object(remove_method), Operand::entry(entry(crate::id_dispatch::vtable_remove_method)),
             ]).status, LOADED);
         }) };
-        let protocol = unsafe { crate::native_id::State::new(memory.pointer(), dictionaries.pointer(), symbols.pointer(), vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
-        Self { protocol, memory, dictionaries, symbols, vtable_vt, object_vt, symbol_vt,
+        let protocol = unsafe { crate::native_id::State::new(memory, dictionaries.pointer(), symbols.pointer(), vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
+        Self { protocol, dictionaries, symbols, vtable_vt, object_vt, symbol_vt,
             lookup, does_not_understand, object_prototype, symbol_prototype }
     }
 }
@@ -60,12 +59,13 @@ mod tests {
     #[test]
     fn upper_adoption_preserves_the_initial_graph_and_first_collection() {
         let initial = InitialObjects::new();
-        let allocations: Vec<_> = initial.memory.iter().map(|(_, allocation)|
-            (allocation.payload().as_ptr().cast(), allocation.identity(), allocation.requested_size())
+        let primitives = unsafe { birnam_abi::primitive_allocation::select(initial.protocol.protocol) }.unwrap_or_else(|_| panic!("Id primitives"));
+        let mut heap = Heap::from_id(initial.protocol.protocol, initial.object_vt, primitives, None, None);
+        let allocations: Vec<_> = heap.storage_allocations().into_iter().map(|allocation|
+            (allocation.object, allocation.identity, allocation.requested_size)
         ).collect();
-        let last_identity = initial.memory.last_identity();
+        let last_identity = allocations.iter().map(|entry| entry.1).max().unwrap();
         let name = initial.symbols.c_name_of(initial.lookup);
-        let mut heap = Heap::adopt(initial.memory);
         heap.retain_initial_objects(&[initial.vtable_vt, initial.object_vt, initial.symbol_vt, initial.object_prototype]);
         let behaviors = Behaviors::adopt(initial.dictionaries);
         let mut symbols = initial.symbols;

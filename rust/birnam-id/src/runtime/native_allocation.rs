@@ -31,11 +31,7 @@ unsafe extern "C" fn allocate(context: *mut c_void, plan: *const NativeAllocatio
     let state = unsafe { &mut *runtime.state.get() };
     let object = state
         .heap
-        .allocate(plan.payload_size, Permanence::Collectable);
-    boundary::require_invariant(
-        state.heap.set_vtable(object, plan.behavior),
-        "new native block not registered",
-    );
+        .allocate_with_behavior(plan.payload_size, Permanence::Collectable, plan.behavior);
     unsafe { (plan.initialize)(plan.context, object) };
     if let Some(finalizer) = plan.finalizer {
         boundary::require_invariant(

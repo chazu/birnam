@@ -287,6 +287,8 @@ Id-registered behavior object.
 | `behaviorOf:` | Id, Object candidate | Its behavior, or Unit for an unknown candidate |
 | `delegated` | Parent behavior, no arguments | A new empty behavior delegating to that parent |
 | `allocate` | Behavior, Word byte count | A zeroed object with that behavior |
+| `allocationAt:` | Id, Word address | Exact live allocation Object with its original pointer provenance, or Unit; never dereferences an unknown address |
+| `allocationCount` | Id, no arguments | Current live allocation count as Word |
 | `allocationSizeOf:` | Id, Object candidate | Requested payload bytes as Word, excluding header/padding; Unit if unknown |
 | `identityOf:` | Id, Object candidate | Stable allocation identity as Word; Unit if unknown |
 | `symbolBytesOf:` | Id, Object candidate | Borrowed name bytes without the trailing NUL; Unit for a non-Symbol |
@@ -585,9 +587,11 @@ The host's `begin_id` initializes Id and Bootstrap; `initialize_roots` construct
 the root registry and adopts Bootstrap's early set. `begin_floor` combines those
 steps. `InitialFloor::finish` constructs the remaining Runtime with the same owners. Ordinary `load_floor` and
 `start` use this path, while `start_with_floor` continues an explicitly constructed
-prefix. `birnam_runtime_init_v10` is an upper construction entry taking the completed
-root and representation owners plus completed base values, Namespace, Object Model, the live Trace graph and collection state, temporarily packaged in the Id library along with
-Runtime. The intermediate v1 through v9 Runtime bridges are removed. The old `id_init` and factory preparation path remain
+prefix. `birnam_runtime_init_v11` is an upper construction entry taking the completed
+root and representation owners plus completed base values, Namespace, Object Model,
+the live Trace graph, collection state and retained non-collecting Id primitives,
+temporarily packaged in the Id library along with
+Runtime. The intermediate v1 through v10 Runtime bridges are removed. The old `id_init` and factory preparation path remain
 for legacy consumers and fixtures; this legacy construction
 is not used by the current production host with the current Id. Remove it with
 those consumers during the ownership cutover. The production path no longer
@@ -607,7 +611,7 @@ admission, membership and record operations. They do not point forward to Runtim
 
 [`LifetimeOwnedV1`](../../abi/fixtures/lifetime-v1/README.md) owns the exact payload
 byte descriptions, trace-hook attachments and finalizer records. Runtime adopts
-that owner through `birnam_runtime_init_v10`; its behavior/heap tables retain no
+that owner through `birnam_runtime_init_v11`; its behavior/heap tables retain no
 copies of these records. Collection, diagnostics, Image and recovery query the
 same records through the native boundary. Public APIs retain their existing ABI
 and code ownership. Runtime replaces Lifetime's initial Id-based admission/facts
@@ -1221,7 +1225,7 @@ Normal Runtime collection now passes only the captured native interval, while
 trace probes pass only their additional roots. Runtime's extension owns the full
 upper retirement sequence and rejects a competing per-call retirement table.
 The outer collection owner keeps its 128-byte layout and requires collector v2;
-the temporary upper constructor becomes `birnam_runtime_init_v10`.
+the temporary upper constructor becomes `birnam_runtime_init_v11`.
 
 This extension closed the saved-entry obligation needed for section 5's
 construction wrappers. Activation was separate work; its production
@@ -1264,9 +1268,9 @@ Aggregate Runtime construction temporarily retains its actual canonical objects
 and compatibility Symbols while it creates Execution objects, then releases those
 roots after installing its complete collector extension. This transitional
 constructor still installs Runtime's existing upper methods and deferred-accounting
-adapter. Those duplicates and the Rust allocation/registry handoff must disappear
-with the native Execution/package migration; activation does not claim that cut
-is complete. The matching temporary upper entry is `birnam_runtime_init_v10`.
+adapter. Those duplicates and the remaining Rust Symbol/dictionary handoff must
+disappear with the native Execution/package migration; activation does not claim that cut
+is complete. The matching temporary upper entry is `birnam_runtime_init_v11`.
 
 The C activation fixture forces automatic collection through all four construction
 paths with only twenty-two predecessor libraries present. It checks result/input
@@ -1335,3 +1339,47 @@ mapped, rebuilt and baked observations with epochs, nested rejection, failure
 cleanup, aliases and post-GC allocation identity. Id, Trace and Collect exports
 match their manifests. No release validation was run. This closes the production
 diagnostic inventory migration, not the remaining Runtime/package separation.
+
+
+### Production allocation ownership stays in Id
+
+Id now retains its allocation registry from the moment the initial graph is
+created. The aggregate Runtime constructor no longer takes that registry away.
+Its Heap calls completed native Id entries for allocation, interning, membership,
+size/identity, enumeration, behavior association and detached release. Temporary
+views copy coordinates and facts; they neither own an allocation nor borrow its
+private record. Id is destroyed after upper Runtime state at harness teardown.
+The local allocation backend remains only for legacy isolated harnesses.
+
+Bootstrap selects the working, non-collecting `allocate` and `intern:` entries
+before activation replaces their bindings. The temporary upper constructor is
+`birnam_runtime_init_v11`, taking the completed
+[primitive allocation descriptor](../../abi/primitive-allocation-v1.md) alongside
+its existing predecessors. This is a concrete bootstrap seam: deferred identity
+materialization may occur during collection and must not recursively collect or
+charge its already-accounted journal entries again. Ordinary upper construction
+still performs its existing admission, rooting, collection and accounting before
+using these primitives. No future callback is installed in Id.
+
+`allocationAt:` supplies the original pointer for an exact live payload address;
+`allocationCount` supplies the current registry length without a copied index or
+full enumeration. New objects are allocated with their final behavior, so their
+construction does not spuriously advance the method mutation epoch. Explicit
+reassociation advances that epoch once, in Id.
+
+This removes production Heap's allocation-registry ownership and direct access.
+It does not finish Symbol/dictionary ownership, their private upper interfaces,
+native Execution construction or the final Id package separation.
+
+
+Validation: 337 ABI/Id unit tests pass, with 15 intentionally ignored. A fresh
+debug installation passes the independent native-loading harness, including exact
+allocation address/count queries, detached storage, non-collecting primitive
+retention across activation/adoption and collecting upper constructors. Installed
+Id exports match all 68 expected symbols, including its two installation wrappers.
+Collection-value, finalizer and protected storage-observation workloads pass
+source, source-free compiled, image and baked execution. The deferred-identity
+suite also passes mapped/rebuilt/baked recovery with actual write counts
+`(386, 150)` normally and `(386, 75)` under forced recovery in every mode.
+No release validation was run. These checks establish the allocation migration;
+the broader construction and package-separation acceptance remains open.

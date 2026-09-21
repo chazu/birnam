@@ -11,7 +11,7 @@ fn counts(heap: &Heap) -> (usize, usize, usize) {
     (heap.allocation_count(), heap.allocated_bytes(), heap.bytes_since_collection())
 }
 fn report(name: &str, heap: &Heap) {
-    let mut physical = heap.block_views().map(|b| (b.identity(), b.total_size, b.geometry | b.lifetime.metadata)).collect::<Vec<_>>();
+    let mut physical = heap.block_views().map(|b| (b.identity(), b.total_size, heap.memory.geometry(b.payload().as_ptr().addr()) | b.lifetime.metadata)).collect::<Vec<_>>();
     physical.sort_unstable();
     let handles = heap.deferred_allocations.iter().map(|(id, index)| (id.0, index)).collect::<Vec<_>>();
     println!("deferred-identity {name}: counts={:?} physical={physical:?} clones={handles:?} numeric={}", counts(heap), heap.numeric_allocations.len());

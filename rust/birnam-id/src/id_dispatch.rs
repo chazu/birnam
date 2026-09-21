@@ -175,6 +175,13 @@ pub(crate) unsafe extern "C" fn vtable_remove_method(
 mod tests {
     use super::*;
     use crate::initial_objects::InitialObjects;
+    fn intern(id: &InitialObjects, bytes: &[u8]) -> Oop {
+        let protocol = id.protocol.protocol;
+        let answer = unsafe { protocol.message.unwrap()(protocol.context, protocol.receiver, protocol.intern, &Operand::bytes(bytes), 1) };
+        assert_eq!(answer.status, native::LOADED);
+        answer.value.as_object().unwrap()
+    }
+
     unsafe extern "C" fn identity(
         _: *mut c_void,
         receiver: Oop,
@@ -197,14 +204,8 @@ mod tests {
         let mut id = InitialObjects::new();
         let add = id.symbols.existing(b"addMethod").unwrap();
         let remove = id.symbols.existing(b"removeMethod:").unwrap();
-        let selector = id
-            .symbols
-            .intern(&mut id.memory, id.symbol_vt, b"identity")
-            .unwrap();
-        let missing = id
-            .symbols
-            .intern(&mut id.memory, id.symbol_vt, b"missing:")
-            .unwrap();
+        let selector = intern(&id, b"identity");
+        let missing = intern(&id, b"missing:");
         unsafe {
             enter(
                 &mut *id.dictionaries,
@@ -289,10 +290,7 @@ mod tests {
         let method: native::Method = unsafe { core::mem::transmute(address) };
         let mut id = InitialObjects::new();
         let add = id.symbols.existing(b"addMethod").unwrap();
-        let echo = id
-            .symbols
-            .intern(&mut id.memory, id.symbol_vt, b"echo:")
-            .unwrap();
+        let echo = intern(&id, b"echo:");
         let foreign = NativeEntry::new(method, id.object_prototype);
         let protocol = native::Protocol {
             version: native::VERSION,

@@ -3155,13 +3155,14 @@ pub fn begin_id(
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v10".as_ptr()) });
+    let runtime_init = NonNull::new(unsafe { system_dlsym(handle.as_ptr(), c"birnam_runtime_init_v11".as_ptr()) });
     let bootstrap = if runtime_init.is_some() {
         let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, graph: None, collection: None, text_ready: false, _owner_thread: PhantomData })
+    let primitives = if runtime_init.is_some() { Some(unsafe { birnam_abi::primitive_allocation::select(id_protocol) }.map_err(|failure| FloorError::IdProtocol { status: failure.status, detail: failure.detail })?) } else { None };
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, primitives, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, graph: None, collection: None, text_ready: false, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3171,6 +3172,7 @@ pub struct InitialFloor {
     handle: NonNull<std::ffi::c_void>,
     init: NonNull<std::ffi::c_void>,
     runtime_init: Option<NonNull<std::ffi::c_void>>,
+    primitives: Option<birnam_abi::primitive_allocation::PrimitivesV1>,
     lifetime: Option<*const birnam_abi::lifetime::OwnedV1>,
     base_values: Option<*const birnam_abi::base_values::ValuesV1>,
     namespace: Option<*const birnam_abi::namespace_owner::OwnedV1>,
@@ -3456,7 +3458,7 @@ impl InitialFloor {
         self.initialize_text()?;
         self.initialize_trace()?;
         self.activate_collection()?;
-        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, float, word, graph, collection, bootstrap, .. } = self;
+        let Self { source_path, handle, init, runtime_init, id_protocol, primitives, roots, lifetime, base_values, namespace, model, string, float, word, graph, collection, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3596,8 +3598,8 @@ impl InitialFloor {
             }
         };
         let initialized = if let (Some(initialize), Some(roots), Some(lifetime), Some(values), Some(namespace), Some(model), Some(graph), Some(collection)) = (runtime_init, roots, lifetime, base_values, namespace, model, graph, collection) {
-            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1, *const birnam_abi::trace_graph::GraphV2, *const birnam_abi::collection_state::OwnedV2) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
-            unsafe { initialize(roots, lifetime, values, namespace, model, graph, collection) }
+            let initialize: unsafe extern "C" fn(*const birnam_abi::root_registry::OwnedV1, *const birnam_abi::lifetime::OwnedV1, *const birnam_abi::base_values::ValuesV1, *const birnam_abi::namespace_owner::OwnedV1, *const birnam_abi::object_model::OwnedV1, *const birnam_abi::trace_graph::GraphV2, *const birnam_abi::collection_state::OwnedV2, *const birnam_abi::primitive_allocation::PrimitivesV1) -> *mut IdApi = unsafe { std::mem::transmute(initialize.as_ptr()) };
+            unsafe { initialize(roots, lifetime, values, namespace, model, graph, collection, primitives.as_ref().expect("Runtime requires completed Id primitives")) }
         } else {
             let initialize: IdInitFn = unsafe { std::mem::transmute(init.as_ptr()) };
             unsafe { initialize() }

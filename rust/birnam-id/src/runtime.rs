@@ -140,10 +140,9 @@ struct RuntimeState {
     method_observation: crate::method_observation::Service,
     root_registry: crate::root_registry::Service,
     vtable_enumeration: crate::vtable_enumeration::Service,
-    // Ordered authorities are dropped before the raw heap owner at harness
-    // teardown. No destructor dereferences a heap payload.
+    // Registry teardown does not dereference payloads. Production allocations
+    // remain owned by Id until the final field below is dropped.
     symbols: crate::owned::Owned<Symbols>,
-    id_protocol: Option<Box<crate::native_id::State>>,
     vtables: Behaviors,
     heap: Heap,
     globals: DispatchGlobals,
@@ -164,6 +163,8 @@ struct RuntimeState {
     next_registration_token: u64,
     suppressed_registration_generation: Option<u64>,
     pending_stackless_retirements: Vec<u64>,
+    // Id keeps the allocations alive until all upper state has been dropped.
+    id_protocol: Option<Box<crate::native_id::State>>,
 }
 
 #[derive(Clone, Copy)]
@@ -679,12 +680,7 @@ impl Runtime {
         self.maybe_collect_before_allocation();
         // SAFETY: owner-thread serialization and no foreign call in this scope.
         let state = unsafe { &mut *self.state.get() };
-        let object = state.heap.allocate(payload_size, Permanence::Collectable);
-        boundary::require_invariant(
-            state.heap.set_vtable(object, vtable),
-            "new instance block was not registered",
-        );
-        object
+        state.heap.allocate_with_behavior(payload_size, Permanence::Collectable, vtable)
     }
 
     pub(crate) fn clone_object(&self, object: Oop) -> Oop {
@@ -728,7 +724,7 @@ impl Runtime {
             state.heap.set_vtable(object, behavior),
             "behavior receiver is not a floor object",
         );
-        state.vtables.note_mutation();
+        if !state.heap.uses_id_memory() { state.vtables.note_mutation(); }
     }
 
     #[cfg(test)]

@@ -34,8 +34,8 @@ fn snapshot(heap: &Heap, label: &str) {
         let block=heap.block(entry.object.addr()).unwrap();
         let total=(8+entry.requested_size+7)&!7;
         assert_eq!(entry.allocation_bytes,total);assert_eq!(entry.padded_size,total-8);
-        assert_eq!((block.geometry | block.lifetime.metadata)>>5,entry.identity);
-        assert_eq!(((block.geometry | block.lifetime.metadata)>>2)&7,(total-8-entry.requested_size) as u64);
+        assert_eq!((heap.memory.geometry(block.payload().as_ptr().addr()) | block.lifetime.metadata)>>5,entry.identity);
+        assert_eq!(((heap.memory.geometry(block.payload().as_ptr().addr()) | block.lifetime.metadata)>>2)&7,(total-8-entry.requested_size) as u64);
         assert_eq!(block.permanence()==Permanence::Permanent,entry.flags & birnam_abi::storage::PERMANENT !=0);
         assert_eq!(heap.has_finalizer(entry.object),Some(entry.flags & birnam_abi::storage::HAS_FINALIZER !=0));
         assert_eq!(heap.base_address(entry.object).unwrap()%16,0);
@@ -99,7 +99,7 @@ fn last_valid_identity_preserves_metadata() {
     let mut heap=Heap::new();heap.set_allocation_identity_for_test((u64::MAX>>5)-1);
     let object=heap.allocate(3,Permanence::Permanent);
     assert_eq!(heap.block(object.addr()).unwrap().identity(),u64::MAX>>5);
-    assert_eq!((heap.block(object.addr()).unwrap().geometry | heap.block(object.addr()).unwrap().lifetime.metadata),((u64::MAX>>5)<<5)|(5<<2)|2);
+    assert_eq!((heap.memory.geometry(object.addr()) | heap.block(object.addr()).unwrap().lifetime.metadata),((u64::MAX>>5)<<5)|(5<<2)|2);
     snapshot(&heap,"last valid identity");
 }
 #[test]

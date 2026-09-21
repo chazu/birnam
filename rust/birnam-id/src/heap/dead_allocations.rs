@@ -225,11 +225,7 @@ impl Heap {
         // Construction realizes a previously charged allocation; it must not
         // overflow by charging that allocation for a second time.
         self.budget.replace(0);
-        let object = self.allocate(payload.len(), Permanence::Collectable);
-        boundary::require_invariant(
-            self.set_vtable(object, core::ptr::with_exposed_provenance_mut(vtable)),
-            "materialized allocation missing from heap",
-        );
+        let object = self.allocate_with_behavior(payload.len(), Permanence::Collectable, core::ptr::with_exposed_provenance_mut(vtable));
         unsafe {
             core::ptr::copy_nonoverlapping(payload.as_ptr(), object.cast::<u8>(), payload.len())
         };
