@@ -9,6 +9,8 @@ followed by [String storage](fixtures/string-v1/README.md) and
 [Integer base](integer-v1.md#production-construction) before Float or Runtime.
 [Float construction](float-v1.md#production-construction) then installs Float's
 operations and Integer's mixed-number extension before Word/Block/Runtime.
+[Word construction](word-v1.md#production-construction) follows with working
+conversion, overflow errors, printing and equality before Block/Runtime.
 The remaining aggregate Runtime and module interfaces below are migration
 boundaries. Earlier descriptions of factory preparation before `id_init` apply
 to the legacy path; current startup loads the real Id first. See

@@ -733,7 +733,7 @@ artifact required. The Rust host owns the complete runtime and build closure.
 - `rust/birnam-string-collection/` — late String split adapter using native Vector construction.
 - `rust/birnam-nil/` — early Object/Nil predicates, followed by the String printing extension.
 - `rust/birnam-boolean/` — early Nil/Boolean identities and basic operations, followed by printing and Block control; see [base values](abi/fixtures/base-values-v1/README.md).
-- `rust/birnam-word/` — independently loaded Word representation and methods;
+- `rust/birnam-word/` — Word construction, printing and checked Integer conversion through Id before Runtime;
   [native dependency contract](abi/word-v1.md).
 - `rust/birnam-float/` — Float construction and operations before Runtime, followed by Integer's mixed-number extension;
   [native dependency contract](abi/float-v1.md).

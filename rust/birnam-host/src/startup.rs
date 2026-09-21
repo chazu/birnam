@@ -977,6 +977,7 @@ impl fmt::Debug for FloorError {
 pub struct LoadedFloor {
     native_string: Option<*mut birnam_abi::string::StringApiV1>,
     native_float: Option<*mut birnam_abi::float::FloatApiV1>,
+    native_word: Option<*mut birnam_abi::word::WordApiV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     _namespace: Option<NonNull<std::ffi::c_void>>,
@@ -2296,6 +2297,7 @@ impl LoadedStack {
     /// Prepare Word before Integer installs any numeric methods. The
     /// handle is pinned before publishing callbacks, including on startup failure.
     fn prepare_word(&mut self, path: &Path) -> Result<(), ModuleError> {
+        if let Some(ops) = self.floor.native_word { return self.attach_word(path, ops); }
         if self.prepared_word.is_some() { return Ok(()); }
         let encoded = CString::new(path_bytes(path)).map_err(|_| ModuleError::EmbeddedNul)?;
         let handle = unsafe { (self.api().dlopen)(encoded.as_ptr(), RTLD_LAZY) };
@@ -3159,7 +3161,7 @@ pub fn begin_id(
         Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file))
             .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?)
     } else { None };
-    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, _owner_thread: PhantomData })
+    Ok(InitialFloor { source_path, handle, init, runtime_init, id_protocol, bootstrap, roots: None, lifetime: None, base_values: None, namespace: None, model: None, string: None, error: None, integer: None, float: None, word: None, _owner_thread: PhantomData })
 }
 
 /// Complete Id and early root ownership. No upper Runtime has been constructed.
@@ -3177,6 +3179,7 @@ pub struct InitialFloor {
     error: Option<birnam_abi::Oop>,
     integer: Option<*mut birnam_abi::integer::IntegerApiV1>,
     float: Option<*mut birnam_abi::float::FloatApiV1>,
+    word: Option<*mut birnam_abi::word::WordApiV1>,
     id_protocol: birnam_abi::id_protocol::Protocol,
     roots: Option<*const birnam_abi::root_registry::OwnedV1>,
     bootstrap: Option<crate::native_bootstrap::Owner>,
@@ -3346,11 +3349,28 @@ impl InitialFloor {
         self.float = Some(float);
         Ok(self.float)
     }
+    /// Construct Word after Integer without a Float or Runtime dependency.
+    pub fn initialize_word(&mut self) -> Result<Option<*mut birnam_abi::word::WordApiV1>, FloorError> {
+        if self.runtime_init.is_none() || self.word.is_some() { return Ok(self.word); }
+        self.initialize_integer()?;
+        use birnam_abi::id_protocol::{self as native, Operand};
+        let path = self.source_path.with_file_name("libbirnam_word.dylib");
+        let args = [Operand::word(self.roots.unwrap() as usize), Operand::word(self.lifetime.unwrap() as usize),
+            Operand::word(self.base_values.unwrap() as usize), Operand::word(self.namespace.unwrap() as usize),
+            Operand::word(self.string.unwrap() as usize), Operand::object(self.error.unwrap()), Operand::word(self.integer.unwrap() as usize)];
+        let answer = unsafe { self.load_native(&path_bytes(&path), &args) };
+        if answer.status != native::LOADED { return Err(FloorError::IdProtocol { status: answer.status, detail: answer.detail }); }
+        let word = answer.value.as_word().unwrap_or(0) as *mut birnam_abi::word::WordApiV1;
+        if !unsafe { birnam_abi::word::valid(word) } { return Err(FloorError::IdProtocol { status: native::INVALID_REQUEST, detail: 0 }); }
+        self.word = Some(word);
+        Ok(self.word)
+    }
     pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
         self.initialize_roots()?;
         self.initialize_lifetime()?;
         self.initialize_float()?;
-        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, float, bootstrap, .. } = self;
+        self.initialize_word()?;
+        let Self { source_path, handle, init, runtime_init, id_protocol, roots, lifetime, base_values, namespace, model, string, float, word, bootstrap, .. } = self;
         let path = &source_path;
         let namespace_path = path.with_file_name("libbirnam_namespace.dylib");
         let object_model_path = path.with_file_name("libbirnam_object_model.dylib");
@@ -3629,6 +3649,7 @@ impl InitialFloor {
         Ok(LoadedFloor {
             native_string: string,
             native_float: float,
+            native_word: word,
             bootstrap,
             id_protocol,
             _root_registry: root_registry_image,

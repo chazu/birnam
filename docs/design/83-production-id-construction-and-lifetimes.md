@@ -763,8 +763,19 @@ Production skips Float's legacy preparation and adopts the identical operations
 table into upper consumers; legacy preparation now returns that table if called
 on the same native Id. The legacy-only constructor remains for native clients.
 
-This delivers Float and the mixed-number part of step 8. Word construction,
-String numeric/text extensions and Nil/Boolean printing still need native entries.
+`InitialFloor::initialize_word` constructs Word through Bootstrap with completed
+roots, Lifetime, base values, Namespace, String, Error and Integer. It takes no
+Float input. Its [native entry](../../abi/word-v1.md#production-construction)
+constructs the existing unsigned representation, raw layout and canonical names.
+`fromBits:`/`bits` use native Words; equality, hexadecimal printing and checked
+Integer conversion work before Block/Runtime, including overflow errors through
+current Error factory messages. Cached selectors and canonical identities are
+rooted. Production skips legacy Word preparation; upper consumers adopt the same
+table and late mounting preserves native methods, layouts and replacements.
+Legacy preparation returns that table if called on the same native Id.
+
+This delivers Float, Word and mixed-number operations in step 8. String
+numeric/text extensions and Nil/Boolean printing still need native entries.
 Collector activation, Execution/Block, native-aware compiler admission and the
 remaining upper/package separation are still open.
 
@@ -946,6 +957,16 @@ Current debug evidence:
   and baked-image workloads pass, including live arithmetic replacement and Error
   factory rebinding. Integer's error-value image workload also passes with the
   native mixed extension installed. The Runtime v5 bridge is unchanged.
+- The sixteen-library prefix constructs Word before Block/Runtime. Independent C
+  checks 262 unsigned payloads against hexadecimal formatting and conversion
+  bounds, exact equality, fresh identity, malformed operands and allocation size.
+  The fixture repeats with precise GC after adoption: method/context replacements
+  and retained bits survive, and released Words are reclaimed. Word (1), host (86)
+  and ABI (24) debug units pass. The legacy Word client passes 81 equality cases
+  plus representation, conversion, replacement and collection checks. Both Word
+  image workloads pass source, source-free compiled, saved-image and baked runs,
+  including overflow and live Error factory replacement. Installed Word matches
+  its eight-symbol manifest and links only the platform library.
 - Serial debug unit suites pass for Object Model (4), Id (308), host (86) and ABI
   (24). The combined multi-package command encountered Cargo's existing
   abort/unwind artifact filename collision; separate package runs passed.

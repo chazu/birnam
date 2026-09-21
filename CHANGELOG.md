@@ -10,6 +10,11 @@ loader ports are complete.
 
 ### Changed
 
+- Construct production Word through Id before Block or Runtime (Design 83), with
+  the existing unsigned payload, equality, hexadecimal printing and checked
+  Integer conversion. Overflow errors use the current Error factory. Skip legacy
+  Word preparation, adopt the same table into upper consumers and preserve early
+  native methods and replacements through collection.
 - Construct production Float through Id after Integer and before Word, Block or
   Runtime (Design 83). Install Float arithmetic, comparison, conversion and
   printing using completed predecessors, then add Integer's mixed-number methods
