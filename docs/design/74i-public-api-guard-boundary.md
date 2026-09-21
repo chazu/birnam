@@ -98,7 +98,7 @@ the metatable does not escape custom lookup effects.
 In [runtime.rs](../../rust/birnam-id/src/runtime.rs),
 `guarded_slot_access_eligible` verifies private dictionary entries against the
 actual canonical Machine read/write functions and floor lookup function.
-The dictionary epoch lives in [vtable.rs](../../rust/birnam-id/src/vtable.rs).
+The dictionary epoch lives in [vtable.rs](../../rust/birnam-id/src/id/vtable.rs).
 74H's GC epoch and 74F/74G's entry selection are test-only Runtime state.
 Changing their compilation gates would change the production floor, even
 while leaving the 432-byte IdApi table untouched. Supplying these routines

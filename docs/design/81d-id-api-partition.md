@@ -276,7 +276,7 @@ is a current implementation convention, not a property of Id.
 The important comparison is behavior, not matching field names to the paper.
 
 **Default delegation currently walks Rust records.**
-[`Vtables::lookup`](../../rust/birnam-id/src/vtable.rs) loops over registered
+[`Vtables::lookup`](../../rust/birnam-id/src/id/vtable.rs) loops over registered
 parents; `set_parent` requires a registered vtable or null. The canonical lookup
 method in [`dispatch.rs`](../../rust/birnam-id/src/dispatch.rs) calls that walker.
 Our proposed boundary must allow a parent to participate through its own lookup

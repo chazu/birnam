@@ -7,7 +7,7 @@ use crate::abi::{
     Oop,
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
 };
-use crate::{
+use super::{
     id_dispatch, initial_objects::InitialObjects, object_memory::ObjectMemory, symbol::Symbols,
     vtable::Vtables,
 };

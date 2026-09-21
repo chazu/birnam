@@ -504,6 +504,7 @@ pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, 
     bootstrap
 }
 
+#[cfg(test)]
 pub(crate) struct DispatchHarness {
     pub(crate) runtime: Runtime,
     pub(crate) meta: Oop,
@@ -512,6 +513,7 @@ pub(crate) struct DispatchHarness {
     pub(crate) does_not_understand: Oop,
 }
 
+#[cfg(test)]
 pub(crate) fn build_harness() -> DispatchHarness {
     let mut heap = Heap::new();
     let mut vtables = Behaviors::new();

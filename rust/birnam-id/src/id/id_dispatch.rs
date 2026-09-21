@@ -3,8 +3,8 @@ use crate::abi::{
     Oop,
     id_protocol::{self as native, NativeEntry, Operand, Outcome},
 };
-use crate::object_memory::ObjectMemory;
-use crate::vtable::Vtables;
+use crate::id::object_memory::ObjectMemory;
+use crate::id::vtable::Vtables;
 use core::ffi::c_void;
 
 /// Copied Id facts for one dispatch. Each nested send carries its own context;
@@ -155,7 +155,7 @@ pub(crate) unsafe extern "C" fn vtable_remove_method(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::initial_objects::InitialObjects;
+    use crate::id::initial_objects::InitialObjects;
     fn intern(id: &InitialObjects, bytes: &[u8]) -> Oop {
         let protocol = id.protocol.protocol;
         let answer = unsafe {

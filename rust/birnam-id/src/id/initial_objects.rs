@@ -3,12 +3,12 @@ use crate::abi::id_protocol::{Operand, LOADED};
 #[cfg(test)]
 use crate::abi::Oop;
 use crate::abi::id_protocol::NativeEntry;
-use crate::object_memory::ObjectMemory;
-use crate::symbol::Symbols;
-use crate::vtable::Vtables;
+use crate::id::object_memory::ObjectMemory;
+use crate::id::symbol::Symbols;
+use crate::id::vtable::Vtables;
 
 pub(crate) struct InitialObjects {
-    pub(crate) protocol: Box<crate::native_id::State>,
+    pub(crate) protocol: Box<crate::id::native_id::State>,
     #[cfg(test)]
     pub(crate) primitives: birnam_abi::id_primitives::PrimitivesV1,
     #[cfg(test)]
@@ -44,20 +44,20 @@ impl InitialObjects {
         let _symbol_prototype = symbols.intern(&mut memory, symbol_vt, b"Symbol").unwrap();
         let add_method = symbols.intern(&mut memory, symbol_vt, b"addMethod").unwrap();
         let remove_method = symbols.intern(&mut memory, symbol_vt, b"removeMethod:").unwrap();
-        let context = crate::id_dispatch::Context {
+        let context = crate::id::id_dispatch::Context {
             dictionaries: dictionaries.pointer(), metavtable: vtable_vt,
             lookup, does_not_understand,
         };
         let entry = |method| NativeEntry::new(method, context.dictionaries.cast());
-        dictionaries.add_method(vtable_vt, lookup, entry(crate::id_dispatch::vtable_lookup_method));
-        dictionaries.add_method(vtable_vt, add_method, entry(crate::id_dispatch::vtable_add_method));
+        dictionaries.add_method(vtable_vt, lookup, entry(crate::id::id_dispatch::vtable_lookup_method));
+        dictionaries.add_method(vtable_vt, add_method, entry(crate::id::id_dispatch::vtable_add_method));
         // Only the first two bindings are ad hoc. The next uses Id's message path.
         unsafe {
-            assert_eq!(crate::id_dispatch::send(context, vtable_vt, add_method, &[
-                Operand::object(remove_method), Operand::entry(entry(crate::id_dispatch::vtable_remove_method)),
+            assert_eq!(crate::id::id_dispatch::send(context, vtable_vt, add_method, &[
+                Operand::object(remove_method), Operand::entry(entry(crate::id::id_dispatch::vtable_remove_method)),
             ]).status, LOADED);
         }
-        let protocol = unsafe { crate::native_id::State::new(memory, dictionaries, symbols, vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
+        let protocol = unsafe { crate::id::native_id::State::new(memory, dictionaries, symbols, vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
         #[cfg(test)]
         let primitives = unsafe { birnam_abi::id_primitives::select(protocol.protocol) }.unwrap_or_else(|_| panic!("initial Id entries"));
         Self { protocol,

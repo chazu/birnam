@@ -136,7 +136,7 @@ pub(crate) unsafe extern "C" fn allocate(
     };
     let Some(size) = size
         .as_word()
-        .filter(|size| crate::native_id::objects::valid_size(*size))
+        .filter(|size| birnam_abi::object_layout::valid_payload_size(*size))
     else {
         return Outcome::failed(native::INVALID_REQUEST, 0);
     };

@@ -223,7 +223,7 @@ unsafe extern "C" fn lookup(
 // A Word address keeps these policy-free mutations outside ordinary language
 // sends. Resolve it through Id to preserve the original allocation pointer.
 fn behavior_address(
-    dictionaries: &crate::vtable::Vtables,
+    dictionaries: &crate::id::vtable::Vtables,
     argument: &Operand,
     allow_null: bool,
 ) -> Option<Oop> {
@@ -258,8 +258,8 @@ unsafe extern "C" fn add_method(
         return invalid();
     };
     entry(match dictionaries.add_method(behavior, key, method) {
-        crate::vtable::AddMethod::Added => None,
-        crate::vtable::AddMethod::Overwrote(entry) => Some(entry),
+        crate::id::vtable::AddMethod::Added => None,
+        crate::id::vtable::AddMethod::Overwrote(entry) => Some(entry),
     })
 }
 unsafe extern "C" fn remove_method(

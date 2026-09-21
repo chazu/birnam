@@ -1,6 +1,5 @@
 //! Id's own object construction and facts, available before upper modules.
 use super::{NativeEntry, Oop, Operand, Outcome, State, id_dispatch, native};
-use crate::object_memory::ObjectMemory;
 use core::ffi::c_void;
 
 pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
@@ -48,11 +47,7 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
     }
 }
 
-pub(crate) fn valid_size(size: usize) -> bool {
-    ObjectMemory::allocation_total_size(size).is_some_and(|total| {
-        std::alloc::Layout::from_size_align(total, crate::object_memory::BLOCK_ALIGNMENT).is_ok()
-    })
-}
+
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
@@ -85,7 +80,7 @@ pub(crate) unsafe extern "C" fn allocate(
     let Some([size]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
         return invalid();
     };
-    let Some(size) = size.as_word().filter(|size| valid_size(*size)) else {
+    let Some(size) = size.as_word().filter(|size| birnam_abi::object_layout::valid_payload_size(*size)) else {
         return invalid();
     };
     let state = unsafe { &*context.cast::<State>() };

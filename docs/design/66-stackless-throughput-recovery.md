@@ -109,7 +109,7 @@ Verified implementation facts:
    `emit_get`, `emit_store_prefix`, `emit_call_staging` and `emit_publish`,
    generates `birnam_intern`, `MKV` and ordinary `birnam_send` operations for
    frame transport. Slot numbers and action operands become boxed Integers.
-3. [`symbol.rs`](../../rust/birnam-id/src/symbol.rs), `Symbols::intern`, scans
+3. [`symbol.rs`](../../rust/birnam-id/src/id/symbol.rs), `Symbols::intern`, scans
    `ordered` with `iter().find(...)`; `contains_bytes` also scans.
    `intern_in_state` can call both in compatibility mode. `by_address` indexes
    object addresses, not bytes, so it does not accelerate these name lookups.
@@ -139,7 +139,7 @@ Beads is authoritative for execution status. The dependency order is:
 
 ### R1 — Index weak Symbol lookup
 
-Scope: `rust/birnam-id/src/symbol.rs`, its caller in `runtime.rs`, focused tests
+Scope: `rust/birnam-id/src/id/symbol.rs`, its caller in `runtime.rs`, focused tests
 and a small Rust lookup benchmark. Keep `ordered` as enumeration/name ownership
 authority and add a derived byte-lookup index. Prefer safe owned byte keys or
 hash-to-index buckets with byte equality; choose based on measured lookup cost

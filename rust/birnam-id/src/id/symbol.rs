@@ -9,7 +9,7 @@ use std::hash::BuildHasher;
 
 use crate::abi::Oop;
 use crate::boundary;
-use crate::object_memory::ObjectMemory;
+use crate::id::object_memory::ObjectMemory;
 use crate::raw::AddressMap;
 
 #[repr(C)]
@@ -256,7 +256,7 @@ mod tests {
         assert_eq!(symbols.count(), cases.len());
         assert_eq!(
             heap.intern_symbol(&mut symbols, symbol_vtable, b"bad\0name"),
-            Err(EmbeddedNul)
+            Err(crate::id_registries::EmbeddedNul)
         );
     }
 

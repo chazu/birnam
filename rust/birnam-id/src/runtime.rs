@@ -25,7 +25,7 @@ use crate::raw::MethodAddress;
 use crate::registration::{
     ABORT_V1, DescriptorAdmission, PREPARE_V1, ResumableRegistrationEnvelope, StagedUnit,
 };
-use crate::symbol::EmbeddedNul;
+use crate::id_registries::EmbeddedNul;
 use crate::id_registries::Symbols;
 use crate::behaviors::AddMethod;
 use crate::abi::id_protocol::NativeEntry;
@@ -581,7 +581,8 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.try_decode(entry) }
     }
     pub(crate) fn decode_legacy_method(&self, entry: NativeEntry) -> MethodAddress {
-        self.try_decode_legacy_method(entry).unwrap_or_else(|| boundary::fatal_invariant("typed native entry has no legacy Method adapter"))
+        self.assert_owner();
+        unsafe { (*self.state.get()).vtables.decode(entry) }
     }
 
     pub(crate) fn add_method(&self, vtable: Oop, selector: Oop, method: Method) -> AddMethod {
@@ -593,6 +594,10 @@ impl Runtime {
         let client = unsafe { (*self.state.get()).vtables.client() };
         if let Some(client) = client { client.bind(receiver, selector) }
         else {
+            #[cfg(not(any(test, feature = "ffi-test-hooks")))]
+            unreachable!("production Runtime requires the native Id client");
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
+            {
             let context = unsafe {
                 let state = &*self.state.get();
                 crate::id_dispatch::Context {
@@ -602,6 +607,7 @@ impl Runtime {
                 }
             };
             unsafe { crate::id_dispatch::bind(context, receiver, selector) }
+            }
         }
     }
     // Legacy primitive adapters bypass upper notifications just as their Id
@@ -613,7 +619,7 @@ impl Runtime {
         unsafe { (*self.state.get()).vtables.remove_native_method(behavior, selector) }
     }
 
-    pub(crate) fn add_native_method(&self, vtable: Oop, selector: Oop, entry: NativeEntry) -> crate::vtable::AddMethod {
+    pub(crate) fn add_native_method(&self, vtable: Oop, selector: Oop, entry: NativeEntry) -> crate::id_registries::AddMethod {
         self.assert_owner();
         let (direct, notify, observation) = unsafe {
             let state = &*self.state.get();
@@ -625,7 +631,7 @@ impl Runtime {
         // native entry is mutated once, preserving both code and context.
         unsafe { notify(observation, i32::from(direct), vtable, selector) };
         let result = unsafe { (&mut *self.state.get()).vtables.add_native_method(vtable, selector, entry) };
-        let previous = match result { crate::vtable::AddMethod::Added => None, crate::vtable::AddMethod::Overwrote(previous) => Some(previous) };
+        let previous = match result { crate::id_registries::AddMethod::Added => None, crate::id_registries::AddMethod::Overwrote(previous) => Some(previous) };
         if previous != Some(entry) {
             let state = unsafe { &mut *self.state.get() };
             let staged = state.staged_resumable_publications.is_some();
@@ -2846,7 +2852,7 @@ impl Runtime {
                 }
             }
             if let Some(previous) = publication.previous {
-                if state.vtables.add_native_method(publication.vtable, publication.selector, previous) != crate::vtable::AddMethod::Added {
+                if state.vtables.add_native_method(publication.vtable, publication.selector, previous) != crate::id_registries::AddMethod::Added {
                     boundary::fatal_invariant("staged prior binding could not be restored during rollback");
                 }
                 if let Some(method) = previous_legacy.filter(|method| Some(*method) != installed_legacy) {
@@ -6455,7 +6461,7 @@ mod tests {
         for bootstrap in &runtimes {
             let runtime = &bootstrap.runtime;
             let before = unsafe { (*runtime.state.get()).symbols.count() };
-            assert_eq!(runtime.import(b"namespace-lookup-invalid\0name"), Err(crate::symbol::EmbeddedNul));
+            assert_eq!(runtime.import(b"namespace-lookup-invalid\0name"), Err(crate::id_registries::EmbeddedNul));
             assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before);
             assert_eq!(runtime.import(name), Ok(core::ptr::null_mut()));
             assert_eq!(unsafe { (*runtime.state.get()).symbols.count() }, before + 1);
@@ -6491,7 +6497,7 @@ mod tests {
                 (state.symbols.count(), state.environment.count(), state.vtables.mutation_epoch())
             };
             let before = snapshot();
-            assert_eq!(runtime.export(b"invalid\0publication", value), Err(crate::symbol::EmbeddedNul));
+            assert_eq!(runtime.export(b"invalid\0publication", value), Err(crate::id_registries::EmbeddedNul));
             assert_eq!(snapshot(), before);
             let symbol = runtime.intern(name).unwrap();
             let mirror = || unsafe {

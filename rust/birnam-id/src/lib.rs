@@ -8,13 +8,16 @@ compile_error!("every runnable birnam_id cdylib profile must use panic=abort");
 
 pub(crate) use birnam_abi as abi;
 mod boundary;
+mod id;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+pub(crate) use id::{id_dispatch, object_memory, symbol, vtable};
+#[cfg(test)]
+pub(crate) use id::{initial_objects, native_id};
 #[cfg(feature = "dev-guarded-slots")]
 mod dev_slot_access;
 mod dispatch;
-mod id_dispatch;
 mod id_registries;
 mod id_objects;
-mod native_id;
 mod legacy_method;
 mod env;
 mod object_model;
@@ -32,9 +35,7 @@ mod payload_layout;
 mod trace_hooks;
 mod finalizers;
 mod heap;
-mod object_memory;
 mod owned;
-mod initial_objects;
 mod loader;
 #[cfg(feature = "ffi-test-hooks")]
 mod membership_bench;
@@ -42,9 +43,7 @@ mod public_api;
 mod raw;
 mod registration;
 mod runtime;
-mod symbol;
 mod values;
-mod vtable;
 mod behaviors;
 mod vtable_enumeration;
 mod method_observation;

@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Make Id's allocation, Symbol and dictionary implementations private to its
+  module. Ordinary Runtime uses native clients; local registry backends compile
+  only for tests and explicit diagnostic builds. Share the existing object-header
+  geometry through the ABI and keep the payload scanner above Id.
+
 - Retain original Id entries before loading upper modules, and pass them to
   Runtime through the temporary v13 constructor. Remove private Id function
   references from legacy method adaptation and Integer/lookup admission;

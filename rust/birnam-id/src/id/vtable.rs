@@ -7,7 +7,7 @@ use core::ptr::NonNull;
 use crate::abi::Oop;
 use crate::abi::id_protocol::{NativeEntry, Operand};
 use crate::boundary;
-use crate::object_memory::ObjectMemory;
+use crate::id::object_memory::ObjectMemory;
 use crate::raw::AddressMap;
 
 /// The payload shape retained for vtable objects themselves.
@@ -412,7 +412,7 @@ mod core_tests {
         assert_eq!(memory.get(child.addr()).map(|allocation| allocation.requested_size()), Some(40));
         unsafe extern "C" fn identity(_: *mut core::ffi::c_void, receiver: Oop, _: *const crate::abi::id_protocol::Operand, _: usize) -> crate::abi::id_protocol::Outcome { crate::abi::id_protocol::Outcome::loaded(crate::abi::id_protocol::Operand::object(receiver)) }
         let identity = NativeEntry::new(identity, core::ptr::null_mut());
-        let mut symbols = crate::symbol::Symbols::new();
+        let mut symbols = crate::id::symbol::Symbols::new();
         let symbol_behavior = tables.create(&mut memory, core::ptr::null_mut(), meta);
         let keys: Vec<_> = (0..24).map(|index| symbols.intern(&mut memory, symbol_behavior, format!("key-{index}").as_bytes()).unwrap()).collect();
         assert_eq!(symbols.intern(&mut memory, symbol_behavior, b"key-7").unwrap(), keys[7]);

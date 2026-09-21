@@ -145,8 +145,8 @@ metadata retirement across L1/L2/L5. The other obligations remain unexecuted.
 **Evidence:** `Runtime::ensure_private_vtable` in
 [runtime.rs](../../rust/birnam-id/src/runtime.rs) reads owner metadata, creates a
 vtable, sets its owner, writes the object's header through `Heap::set_vtable`,
-and records mutation. [vtable.rs](../../rust/birnam-id/src/vtable.rs) owns
-registered parents, direct bindings and enumeration. [symbol.rs](../../rust/birnam-id/src/symbol.rs)
+and records mutation. [vtable.rs](../../rust/birnam-id/src/id/vtable.rs) owns
+registered parents, direct bindings and enumeration. [symbol.rs](../../rust/birnam-id/src/id/symbol.rs)
 owns borrowed Symbol bytes separately from the object payload.
 
 **Construction:** implement private-vtable reuse and owner bookkeeping above Id,
@@ -211,7 +211,7 @@ required merely to add an exported name.
 ### L4. Representation descriptions — tracing subset witnessed; image/external storage pending
 
 **Evidence:** default vtable layouts are stored in
-[vtable.rs](../../rust/birnam-id/src/vtable.rs); both GC and
+[vtable.rs](../../rust/birnam-id/src/id/vtable.rs); both GC and
 [Image](../../rust/birnam-image/src/lib.rs) consume slot kinds/payload size.
 
 **Construction:** layer-owned descriptions distinguish object references, raw

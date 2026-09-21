@@ -1,6 +1,6 @@
 //! GC and private-behavior metadata above Id's method dictionaries.
 use crate::abi::{Method, Oop, TraceHook};
-use crate::vtable::AddMethod as NativeAddMethod;
+use crate::id_registries::AddMethod as NativeAddMethod;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AddMethod {
     Added,
@@ -21,7 +21,7 @@ use crate::legacy_method;
 use crate::boundary;
 use crate::heap::{Heap, Permanence};
 use crate::raw::MethodAddress;
-use crate::vtable::Vtables;
+
 #[cfg(test)]
 use crate::abi::SLOT_UNKNOWN;
 
@@ -68,8 +68,9 @@ impl Behaviors {
     }
     pub(crate) fn native_lookup_head(&self, vtable: Oop, selector: Oop) -> Result<Option<crate::abi::id_protocol::NativeEntry>, Oop> { self.dictionaries.lookup_head(vtable, selector) }
 
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn new() -> Self {
-        Self::adopt(crate::owned::Owned::new(Vtables::new()).into())
+        Self::adopt(crate::owned::Owned::new(crate::vtable::Vtables::new()).into())
     }
 
     /// Add upper metadata without replacing existing behavior objects or keys.
@@ -231,7 +232,7 @@ impl Behaviors {
         self.dictionaries.remove_weak_keys(&heap.dead_collectable_addresses())
     }
     pub(crate) unsafe fn dispatch_vtable_of(object: Oop) -> Oop {
-        unsafe { Vtables::dispatch_vtable_of(object) }
+        unsafe { birnam_abi::object_layout::behavior_of_live_object(object) }
     }
 }
 

@@ -1,10 +1,9 @@
 //! Upper allocation client. Production retains native Id operations, never a
 //! Rust allocation registry. The local backend is for legacy isolated harnesses.
-use crate::{
-    abi::Oop,
-    object_memory::{Allocation, ObjectMemory, PayloadWords},
-    owned::Owned,
-};
+use crate::abi::Oop;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+use crate::{object_memory::{Allocation, ObjectMemory}, owned::Owned};
+use super::PayloadWords;
 use birnam_abi::{
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
     id_primitives::PrimitivesV1,
@@ -40,6 +39,7 @@ impl View {
     }
 }
 pub(super) enum Detached {
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     Local(Allocation),
     Native { object: Oop, release: NativeEntry },
 }
@@ -47,12 +47,14 @@ impl Detached {
     #[cfg(test)]
     pub(super) fn identity(&self) -> u64 {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(allocation) => allocation.identity(),
             Self::Native { .. } => panic!("test requires local detached allocation"),
         }
     }
     pub(super) fn object(&self) -> Oop {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(allocation) => allocation.payload().as_ptr().cast(),
             Self::Native { object, .. } => *object,
         }
@@ -60,7 +62,12 @@ impl Detached {
 }
 impl Drop for Detached {
     fn drop(&mut self) {
-        if let Self::Native { release, .. } = self {
+        let release = match self {
+            Self::Native { release, .. } => release,
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
+            Self::Local(_) => return,
+        };
+        {
             loaded(unsafe {
                 release.method.unwrap()(
                     release.context,
@@ -73,6 +80,7 @@ impl Drop for Detached {
     }
 }
 pub(super) enum Memory {
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     Local(Owned<ObjectMemory>),
     Id(Client),
 }
@@ -191,6 +199,7 @@ fn loaded(outcome: Outcome) -> Operand {
 impl Memory {
     pub(super) fn allocate(&mut self, bytes: usize, behavior: Option<Oop>) -> Oop {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => {
                 let object = memory.allocate(bytes);
                 if let Some(behavior) = behavior {
@@ -210,15 +219,16 @@ impl Memory {
     }
     pub(super) fn intern(
         &mut self,
-        symbols: &mut crate::id_registries::Symbols,
-        behavior: Oop,
+        _symbols: &mut crate::id_registries::Symbols,
+        _behavior: Oop,
         bytes: &[u8],
-    ) -> Result<Oop, crate::symbol::EmbeddedNul> {
+    ) -> Result<Oop, crate::id_registries::EmbeddedNul> {
         if bytes.contains(&0) {
-            return Err(crate::symbol::EmbeddedNul);
+            return Err(crate::id_registries::EmbeddedNul);
         }
         match self {
-            Self::Local(memory) => symbols.local().intern(memory, behavior, bytes),
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
+            Self::Local(memory) => _symbols.local().intern(memory, _behavior, bytes).map_err(|_| crate::id_registries::EmbeddedNul),
             Self::Id(client) => Ok(client
                 .invoke(
                     client.primitives.intern,
@@ -231,6 +241,7 @@ impl Memory {
     }
     pub(super) fn get(&self, address: usize) -> Option<View> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.get(address).map(|entry| {
                 View::new(
                     entry.payload().as_ptr().cast(),
@@ -243,6 +254,7 @@ impl Memory {
     }
     pub(super) fn iter(&self) -> std::vec::IntoIter<(usize, View)> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory
                 .iter()
                 .map(|(address, entry)| {
@@ -262,6 +274,7 @@ impl Memory {
     }
     pub(super) fn len(&self) -> usize {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.len(),
             Self::Id(client) => client
                 .invoke(client.count, client.receiver, &[])
@@ -271,12 +284,14 @@ impl Memory {
     }
     pub(super) fn contains(&self, object: Oop) -> bool {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.get(object.addr()).is_some(),
             Self::Id(client) => client.object(object.addr()).is_some(),
         }
     }
     pub(super) fn payload_size(&self, object: Oop) -> Option<usize> {
         let size = match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.get(object.addr())?.requested_size(),
             Self::Id(client) => client
                 .invoke(client.size, client.receiver, &[Operand::object(object)])
@@ -286,6 +301,7 @@ impl Memory {
     }
     pub(super) fn detach(&mut self, address: usize) -> Option<Detached> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.detach(address).map(Detached::Local),
             Self::Id(client) => {
                 let object = client.object(address)?;
@@ -298,6 +314,7 @@ impl Memory {
     }
     pub(super) fn vtable_of(&self, object: Oop) -> Option<Oop> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.vtable_of(object),
             Self::Id(client) => {
                 client.object(object.addr())?;
@@ -316,6 +333,7 @@ impl Memory {
     }
     pub(super) fn set_vtable(&mut self, object: Oop, behavior: Oop) -> bool {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.set_vtable(object, behavior),
             Self::Id(client) => {
                 if client.object(object.addr()).is_none()
@@ -336,6 +354,7 @@ impl Memory {
     }
     pub(super) fn payload_words(&self, address: usize) -> Option<PayloadWords> {
         let object = match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.get(address)?.payload().as_ptr().cast(),
             Self::Id(client) => client.object(address)?,
         };
@@ -369,6 +388,7 @@ impl Memory {
     #[cfg(test)]
     pub(super) fn geometry(&self, address: usize) -> u64 {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.get(address).unwrap().geometry,
             Self::Id(_) => panic!("packed geometry is private to Id"),
         }
@@ -376,6 +396,7 @@ impl Memory {
     #[cfg(test)]
     pub(super) fn local(&mut self) -> &mut ObjectMemory {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory,
             Self::Id(_) => panic!("local test requires local memory"),
         }
@@ -387,6 +408,7 @@ impl Memory {
     #[cfg(test)]
     pub(super) fn last_identity(&self) -> u64 {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(memory) => memory.last_identity(),
             Self::Id(client) => client
                 .views()

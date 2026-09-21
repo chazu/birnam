@@ -1,11 +1,19 @@
 //! Upper clients of Id's native Symbol and dictionary protocol.
 //! The local variants support isolated unit harnesses, not production ownership.
-use crate::{
-    abi::Oop,
-    owned::Owned,
-    symbol::Symbols as LocalSymbols,
-    vtable::{AddMethod, Vtables},
-};
+use crate::abi::Oop;
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+use crate::{owned::Owned, symbol::Symbols as LocalSymbols, vtable::Vtables};
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct EmbeddedNul;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum AddMethod { Added, Overwrote(NativeEntry) }
+#[cfg(any(test, feature = "ffi-test-hooks"))]
+impl From<crate::vtable::AddMethod> for AddMethod {
+    fn from(value: crate::vtable::AddMethod) -> Self {
+        match value { crate::vtable::AddMethod::Added => Self::Added,
+            crate::vtable::AddMethod::Overwrote(entry) => Self::Overwrote(entry) }
+    }
+}
 use birnam_abi::id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol};
 use core::ffi::{c_char, c_void};
 use std::rc::Rc;
@@ -139,9 +147,11 @@ fn query_view(value: Operand) -> birnam_abi::vtable_enumeration::ViewV1 {
     }
 }
 pub(crate) enum Symbols {
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     Local(Owned<LocalSymbols>),
     Id(Rc<Client>),
 }
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 impl From<Owned<LocalSymbols>> for Symbols {
     fn from(value: Owned<LocalSymbols>) -> Self {
         Self::Local(value)
@@ -150,6 +160,7 @@ impl From<Owned<LocalSymbols>> for Symbols {
 impl Symbols {
     pub(crate) fn existing(&self, bytes: &[u8]) -> Option<Oop> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.existing(bytes),
             Self::Id(id) => id
                 .call(id.symbol_named, &[Operand::bytes(bytes)])
@@ -158,18 +169,21 @@ impl Symbols {
     }
     pub(crate) fn count(&self) -> usize {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.count(),
             Self::Id(id) => id.call(id.symbol_count, &[]).as_word().unwrap(),
         }
     }
     pub(crate) fn at(&self, index: usize) -> Oop {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.at(index),
             Self::Id(id) => query_object(id.call(id.symbol_at, &[Operand::word(index)])),
         }
     }
     pub(crate) fn owned_name_bytes(&self) -> usize {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.owned_name_bytes(),
             Self::Id(id) => id.call(id.symbol_name_bytes, &[]).as_word().unwrap(),
         }
@@ -179,6 +193,7 @@ impl Symbols {
     }
     pub(crate) fn bytes_of(&self, symbol: Oop) -> Option<&[u8]> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.bytes_of(symbol),
             Self::Id(id) => {
                 let bytes = id
@@ -194,6 +209,7 @@ impl Symbols {
     }
     pub(crate) fn remove_objects(&mut self, dead: &[usize]) -> usize {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.remove_objects(dead),
             Self::Id(id) => {
                 let before = id.call(id.symbol_count, &[]).as_word().unwrap();
@@ -208,17 +224,21 @@ impl Symbols {
             }
         }
     }
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn local(&mut self) -> &mut LocalSymbols {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local,
             Self::Id(_) => panic!("production Symbols belong to Id"),
         }
     }
 }
 pub(crate) enum Dictionaries {
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     Local(Owned<Vtables>),
     Id(Rc<Client>),
 }
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 impl From<Owned<Vtables>> for Dictionaries {
     fn from(value: Owned<Vtables>) -> Self {
         Self::Local(value)
@@ -227,16 +247,17 @@ impl From<Owned<Vtables>> for Dictionaries {
 impl Dictionaries {
     pub(crate) fn client(&self) -> Option<Rc<Client>> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(_) => None,
             Self::Id(id) => Some(id.clone()),
         }
     }
     pub(crate) fn encode_legacy(&self, method: crate::abi::Method, lookup: bool) -> NativeEntry {
-        if let Self::Id(id) = self {
+        if let Some(primitives) = self.primitives() {
             for (legacy, entry) in [
-                (crate::legacy_method::lookup_method as crate::abi::Method, id.primitives.lookup),
-                (crate::legacy_method::add_method as crate::abi::Method, id.primitives.add_method),
-                (crate::legacy_method::remove_method as crate::abi::Method, id.primitives.remove_method),
+                (crate::legacy_method::lookup_method as crate::abi::Method, primitives.lookup),
+                (crate::legacy_method::add_method as crate::abi::Method, primitives.add_method),
+                (crate::legacy_method::remove_method as crate::abi::Method, primitives.remove_method),
             ] {
                 if method as usize == legacy as usize { return entry; }
             }
@@ -244,7 +265,7 @@ impl Dictionaries {
         crate::legacy_method::encode(method, lookup)
     }
     pub(crate) fn primitives(&self) -> Option<birnam_abi::id_primitives::PrimitivesV1> {
-        match self { Self::Id(id) => Some(id.primitives), Self::Local(_) => None }
+        match self { Self::Id(id) => Some(id.primitives), #[cfg(any(test, feature = "ffi-test-hooks"))] Self::Local(_) => None }
     }
     pub(crate) fn core_legacy_method(&self, entry: NativeEntry) -> Option<crate::raw::MethodAddress> {
         let primitives = self.primitives()?;
@@ -273,20 +294,24 @@ impl Dictionaries {
     pub(crate) fn is_default_lookup(&self, entry: Option<NativeEntry>) -> bool {
         entry == Some(self.encode_legacy(crate::legacy_method::lookup_method, true))
     }
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn local_pointer(&self) -> Option<*mut Vtables> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => Some(local.pointer()),
             Self::Id(_) => None,
         }
     }
     pub(crate) fn mutation_epoch(&self) -> u64 {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.mutation_epoch(),
             Self::Id(id) => id.call(id.epoch, &[]).as_word().unwrap() as u64,
         }
     }
     pub(crate) fn note_mutation(&mut self) {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.note_mutation(),
             Self::Id(id) => {
                 let parent = id.call(id.parent, &[Operand::object(id.id.receiver)]);
@@ -297,24 +322,28 @@ impl Dictionaries {
     #[cfg(test)]
     pub(crate) fn exhaust_mutation_epoch_for_test(&mut self) {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.exhaust_mutation_epoch_for_test(),
             Self::Id(id) => unsafe { crate::native_id::State::exhaust_epoch(id.id.context) },
         }
     }
     pub(crate) fn count(&self) -> usize {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.count(),
             Self::Id(id) => id.call(id.count, &[]).as_word().unwrap(),
         }
     }
     pub(crate) fn at(&self, index: usize) -> Oop {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.at(index),
             Self::Id(id) => query_object(id.call(id.at, &[Operand::word(index)])),
         }
     }
     pub(crate) fn view(&self) -> birnam_abi::vtable_enumeration::ViewV1 {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.view(),
             Self::Id(id) => query_view(id.call(id.behaviors, &[])),
         }
@@ -327,6 +356,7 @@ impl Dictionaries {
     }
     pub(crate) fn selector_view(&self, behavior: Oop) -> birnam_abi::vtable_enumeration::ViewV1 {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.selector_view(behavior),
             Self::Id(id) => query_view(id.call(id.selectors, &[Operand::object(behavior)])),
         }
@@ -341,6 +371,7 @@ impl Dictionaries {
     }
     pub(crate) fn is_registered(&self, behavior: Oop) -> bool {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.is_registered(behavior),
             Self::Id(id) => {
                 id.call(id.membership, &[Operand::object(behavior)])
@@ -351,12 +382,14 @@ impl Dictionaries {
     }
     pub(crate) fn parent_of(&self, behavior: Oop) -> Oop {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.parent_of(behavior),
             Self::Id(id) => query_object(id.call(id.parent, &[Operand::object(behavior)])),
         }
     }
     pub(crate) fn set_parent(&mut self, behavior: Oop, parent: Oop) {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.set_parent(behavior, parent),
             Self::Id(id) => {
                 id.call(
@@ -368,6 +401,7 @@ impl Dictionaries {
     }
     pub(crate) fn direct_lookup(&self, behavior: Oop, key: Oop) -> Option<NativeEntry> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.direct_lookup(behavior, key),
             Self::Id(id) => id
                 .call(
@@ -379,6 +413,7 @@ impl Dictionaries {
     }
     pub(crate) fn lookup(&self, behavior: Oop, key: Oop) -> Option<NativeEntry> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.lookup(behavior, key),
             Self::Id(id) => id
                 .call(
@@ -390,6 +425,7 @@ impl Dictionaries {
     }
     pub(crate) fn lookup_head(&self, behavior: Oop, key: Oop) -> Result<Option<NativeEntry>, Oop> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.lookup_head(behavior, key),
             Self::Id(id) => {
                 let value = id.call(
@@ -406,7 +442,8 @@ impl Dictionaries {
     }
     pub(crate) fn add_method(&mut self, behavior: Oop, key: Oop, method: NativeEntry) -> AddMethod {
         match self {
-            Self::Local(local) => local.add_method(behavior, key, method),
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
+            Self::Local(local) => local.add_method(behavior, key, method).into(),
             Self::Id(id) => id
                 .call(
                     id.add,
@@ -422,6 +459,7 @@ impl Dictionaries {
     }
     pub(crate) fn remove_method(&mut self, behavior: Oop, key: Oop) -> Option<NativeEntry> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.remove_method(behavior, key),
             Self::Id(id) => id
                 .call(
@@ -433,6 +471,7 @@ impl Dictionaries {
     }
     pub(crate) fn add_weak_opaque_binding(&mut self, behavior: Oop, key: Oop, value: Oop) {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.add_weak_opaque_binding(behavior, key, value),
             Self::Id(id) => {
                 id.call(
@@ -454,6 +493,7 @@ impl Dictionaries {
         permanence: crate::heap::Permanence,
     ) -> Oop {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => {
                 let value = heap.allocate_with_behavior(Vtables::PAYLOAD_SIZE, permanence, meta);
                 unsafe { local.register(value, parent) };
@@ -472,6 +512,7 @@ impl Dictionaries {
     }
     pub(crate) fn methods(&self, behavior: Oop) -> std::vec::IntoIter<NativeEntry> {
         let entries = match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.methods(behavior).collect(),
             Self::Id(id) => {
                 unsafe extern "C" fn visit(
@@ -504,6 +545,7 @@ impl Dictionaries {
     }
     pub(crate) fn strong_edges(&self, behavior: Oop) -> Vec<Oop> {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.strong_edges(behavior),
             Self::Id(id) => {
                 unsafe extern "C" fn visit(
@@ -535,21 +577,24 @@ impl Dictionaries {
             }
         }
     }
-    pub(crate) fn remove_objects(&mut self, dead: &[Oop]) {
+    pub(crate) fn remove_objects(&mut self, _dead: &[Oop]) {
         match self {
-            Self::Local(local) => local.remove_objects(dead),
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
+            Self::Local(local) => local.remove_objects(_dead),
             Self::Id(_) => panic!("Id retires production dictionaries"),
         }
     }
-    pub(crate) fn remove_weak_keys(&mut self, dead: &[usize]) -> usize {
+    pub(crate) fn remove_weak_keys(&mut self, _dead: &[usize]) -> usize {
         match self {
-            Self::Local(local) => local.remove_weak_keys(dead),
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
+            Self::Local(local) => local.remove_weak_keys(_dead),
             Self::Id(_) => panic!("Id retires production weak keys"),
         }
     }
     #[cfg(test)]
     pub(crate) fn record(&self, behavior: Oop) -> &crate::vtable::VtableRecord {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.record(behavior),
             Self::Id(_) => panic!("local dictionary test"),
         }
@@ -557,6 +602,7 @@ impl Dictionaries {
     #[cfg(test)]
     pub(crate) fn record_mut(&mut self, behavior: Oop) -> &mut crate::vtable::VtableRecord {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.record_mut(behavior),
             Self::Id(_) => panic!("local dictionary test"),
         }
@@ -564,6 +610,7 @@ impl Dictionaries {
     #[cfg(test)]
     pub(crate) fn dictionary_capacity(&self, behavior: Oop) -> usize {
         match self {
+            #[cfg(any(test, feature = "ffi-test-hooks"))]
             Self::Local(local) => local.dictionary_capacity(behavior),
             Self::Id(_) => panic!("local dictionary test"),
         }

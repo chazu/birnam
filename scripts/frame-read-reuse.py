@@ -34,7 +34,7 @@ SOURCES = [
     "rust/birnam-native-compiler/Cargo.toml", "rust/birnam-native-compiler/build.rs",
     "rust/birnam-native-compiler/src/lib.rs", "rust/birnam-native-compiler/src/unit.rs",
     "rust/birnam-id/src/execution.rs", "rust/birnam-id/src/dispatch.rs",
-    "rust/birnam-id/src/vtable.rs", "rust/birnam-id/src/runtime/guarded_dispatch.rs",
+    "rust/birnam-id/src/id/vtable.rs", "rust/birnam-id/src/runtime/guarded_dispatch.rs",
     "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs",
     "rust/birnam-codegen/Cargo.toml", "rust/birnam-codegen/src/resumable_c.rs",
     "rust/birnam-id/Cargo.toml", "rust/birnam-id/src/runtime.rs",

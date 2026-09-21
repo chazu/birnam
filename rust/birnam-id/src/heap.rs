@@ -2,10 +2,15 @@
 //! ObjectMemory supplies object allocation independently of this GC bookkeeping.
 #![allow(dead_code)]
 
+#[cfg(any(test, feature = "ffi-test-hooks"))]
 use crate::object_memory::ObjectMemory;
 #[cfg(test)]
-use crate::object_memory::{Allocation, BLOCK_ALIGNMENT, PAYLOAD_ALIGNMENT};
-pub(crate) use crate::object_memory::{VTABLE_HEADER_SIZE, PayloadWords};
+use crate::object_memory::{Allocation, BLOCK_ALIGNMENT};
+#[cfg(test)]
+use birnam_abi::object_layout::PAYLOAD_ALIGNMENT;
+pub(crate) use birnam_abi::object_layout::VTABLE_HEADER_SIZE;
+mod payload_words;
+pub(crate) use payload_words::PayloadWords;
 
 use crate::abi::{Finalizer, Oop};
 use birnam_abi::finalizers::SlotV1;
@@ -99,6 +104,7 @@ pub(crate) use dead_allocations::MAX_DEAD_ALLOCATIONS;
 pub(crate) use dead_allocations::{DeadAllocation, DeferredAllocation, MAX_DEAD_PAYLOAD_BYTES};
 
 impl Heap {
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn new() -> Self {
         Self::adopt(crate::owned::Owned::new(ObjectMemory::new()))
     }
@@ -106,12 +112,15 @@ impl Heap {
     /// Adopt the existing Id allocations without copying payloads or resetting
     /// identities. The caller retains early roots until the collector is ready.
     /// Construction does not collect or run finalizers.
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn adopt(memory: crate::owned::Owned<ObjectMemory>) -> Self {
         Self::adopt_with_finalizers(memory, None)
     }
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn adopt_with_finalizers(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>) -> Self {
         Self::adopt_with_collection(memory, finalizers, None)
     }
+    #[cfg(any(test, feature = "ffi-test-hooks"))]
     pub(crate) fn adopt_with_collection(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
         Self::with_memory(memory::Memory::Local(memory), finalizers, owner)
     }
@@ -157,7 +166,7 @@ impl Heap {
     fn set_allocation_identity_for_test(&mut self, value: u64) { self.memory.set_last_identity(value); }
 
     pub(crate) fn allocation_total_size(payload_size: usize) -> Option<usize> {
-        ObjectMemory::allocation_total_size(payload_size)
+        birnam_abi::object_layout::allocation_total_size(payload_size)
     }
 
     fn block(&self, address: usize) -> Option<Block> {
@@ -192,7 +201,7 @@ impl Heap {
         boundary::require_invariant(self.budget.charge(total_size), "GC allocation byte counter overflow");
     }
 
-    pub(crate) fn intern_symbol(&mut self, symbols: &mut crate::id_registries::Symbols, behavior: Oop, bytes: &[u8]) -> Result<Oop, crate::symbol::EmbeddedNul> {
+    pub(crate) fn intern_symbol(&mut self, symbols: &mut crate::id_registries::Symbols, behavior: Oop, bytes: &[u8]) -> Result<Oop, crate::id_registries::EmbeddedNul> {
         let object = self.memory.intern(symbols, behavior, bytes)?;
         if !self.blocks.contains_key(&object.addr()) { self.track_allocation(object, Permanence::Collectable); }
         Ok(object)
@@ -426,7 +435,7 @@ impl Heap {
     ///
     /// `object` must be the exact non-null payload address of a live block.
     pub(crate) unsafe fn vtable_of_valid_object(object: Oop) -> Oop {
-        unsafe { ObjectMemory::vtable_of_valid_object(object) }
+        unsafe { birnam_abi::object_layout::behavior_of_live_object(object) }
     }
 
     #[cfg(test)]

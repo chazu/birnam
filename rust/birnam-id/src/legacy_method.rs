@@ -134,6 +134,7 @@ pub(crate) fn native_result(entry: NativeEntry, outcome: Outcome, runtime: &crat
     }
 }
 
+#[cfg(test)]
 pub(crate) fn decode(entry: NativeEntry) -> MethodAddress {
     try_decode(entry).unwrap_or_else(|| {
         boundary::fatal_invariant("typed native entry has no legacy Method adapter")

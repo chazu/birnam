@@ -5,10 +5,7 @@ use std::alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error};
 
 use crate::{abi::Oop, boundary, raw::AddressMap};
 
-pub(crate) const BLOCK_ALIGNMENT: usize = 16;
-pub(crate) const VTABLE_HEADER_SIZE: usize = size_of::<Oop>();
-pub(crate) const PAYLOAD_ALIGNMENT: usize = align_of::<Oop>();
-const _: () = assert!(PAYLOAD_ALIGNMENT == 8);
+pub(crate) use birnam_abi::object_layout::{BLOCK_ALIGNMENT, VTABLE_HEADER_SIZE};
 
 /// Owns exactly one allocation, including when detached from the registry.
 /// Dropping it releases storage and never invokes a language callback.
@@ -57,10 +54,7 @@ impl ObjectMemory {
     }
 
     pub(crate) fn allocation_total_size(payload_size: usize) -> Option<usize> {
-        VTABLE_HEADER_SIZE
-            .checked_add(payload_size)?
-            .checked_add(PAYLOAD_ALIGNMENT - 1)
-            .map(|size| size & !(PAYLOAD_ALIGNMENT - 1))
+        birnam_abi::object_layout::allocation_total_size(payload_size)
     }
 
     pub(crate) fn allocate(&mut self, payload_size: usize) -> Oop {
@@ -120,41 +114,6 @@ impl ObjectMemory {
 pub(crate) unsafe fn vtable_slot_from_payload(payload: NonNull<u8>) -> *mut Oop {
     // SAFETY: the caller supplies the allocation's live payload provenance.
     unsafe { payload.as_ptr().sub(VTABLE_HEADER_SIZE).cast() }
-}
-
-/// Copied coordinates for scanning one live object's pointer-sized payload
-/// words without allocating a per-object snapshot.
-///
-/// This deliberately carries no Rust borrow of `ObjectMemory`: the collector must
-/// mutate mark metadata while reading the separately allocated object payload.
-#[derive(Clone, Copy)]
-pub(crate) struct PayloadWords {
-    pointer: *const usize,
-    length: usize,
-}
-
-impl PayloadWords {
-    /// # Safety
-    /// The caller retains this exact aligned live payload and its complete extent.
-    pub(crate) unsafe fn from_raw_parts(pointer: *const usize, length: usize) -> Self {
-        Self { pointer, length }
-    }
-    pub(crate) fn len(self) -> usize {
-        self.length
-    }
-
-    /// Read one word from the described live payload.
-    ///
-    /// # Safety
-    ///
-    /// The originating block must remain registered and its payload must not
-    /// be mutated for the duration of the scan. `index` must be below `len`.
-    pub(crate) unsafe fn read(self, index: usize) -> usize {
-        debug_assert!(index < self.length);
-        // SAFETY: forwarded caller contract keeps the live aligned allocation
-        // stable and bounds index to this payload range.
-        unsafe { self.pointer.add(index).read() }
-    }
 }
 
 impl ObjectMemory {

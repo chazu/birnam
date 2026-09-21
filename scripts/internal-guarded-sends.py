@@ -28,7 +28,7 @@ AUTHORITIES = [
 ]
 SOURCES = [
     "rust/birnam-id/src/runtime.rs", "rust/birnam-id/src/dispatch.rs",
-    "rust/birnam-id/src/execution.rs", "rust/birnam-id/src/vtable.rs",
+    "rust/birnam-id/src/execution.rs", "rust/birnam-id/src/id/vtable.rs",
     "rust/birnam-id/src/runtime/guarded_dispatch.rs",
     "rust/birnam-id/src/runtime/guarded_dispatch/tests.rs",
     "scripts/internal-guarded-sends.py", "scripts/fixtures/internal-guarded-sends.c",

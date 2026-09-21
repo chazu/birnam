@@ -167,7 +167,7 @@ on every `Vtables::add_method`, `remove_method`, `add_weak_opaque_binding`,
 vtable object (private vtable of a vtable), and on image restore. Conservative
 over-bumping is acceptable (Design 74 §6.2); missing a site is not. The
 authoritative list is the set of `pub(crate)` mutators in
-[`vtable.rs`](../../rust/birnam-id/src/vtable.rs) plus `Heap::set_vtable`; a
+[`vtable.rs`](../../rust/birnam-id/src/id/vtable.rs) plus `Heap::set_vtable`; a
 unit test should assert that every mutator bumps the epoch.
 
 The Runtime caches `(verified_epoch, verified: bool)` for conditions 2–4.

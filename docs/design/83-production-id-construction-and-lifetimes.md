@@ -1602,3 +1602,37 @@ The v13 dispatch-cache image suite also passes source-free compiled, mapped,
 rebuilt and baked execution, including the separately compiled host observations.
 It preserves lookup effects, mutation, shadow removal, collection, aliases and
 reload. No release validation was run.
+
+### Private Id implementation and production-only native clients
+
+The Id graph, allocation registry, Symbol registry, dictionaries and native
+dispatch now live behind the private modules in
+[`id.rs`](../../rust/birnam-id/src/id.rs). Ordinary upper code cannot name their
+Rust implementation types. The sole Rust facade is the existing legacy `id_init`
+carrier getter; production construction continues to receive its carrier and
+original entries explicitly. Tests and explicit `ffi-test-hooks` diagnostics
+retain only the internal access required by their local harnesses.
+
+Runtime's local Heap/Symbol/dictionary variants and constructors no longer compile
+into the ordinary library. Native mutation results and Symbol-validation errors
+have upper-owned Rust representations. The scanner's borrowed payload coordinates
+belong to Heap. The existing preceding behavior word, allocation alignment and
+rounded extent calculations live in
+[`object_layout`](../../rust/birnam-abi/src/object_layout.rs); no object layout,
+native descriptor or exported symbol changes. These ABI facts do not expose Id's
+allocation records or dictionary layout. Source links and executable measurement
+inventories follow the moved production files.
+
+This is an enforced source boundary, not independent Cargo packaging. Runtime,
+compiler/artifact dependencies and the legacy exports are still built by the
+same crate. Separating those libraries, finishing native Execution construction
+and removing the compatibility initialization path remain required.
+
+Validation: 347 ABI/Id unit tests pass (15 ignored), and the normal and explicit
+diagnostic/guarded-slot configurations compile. The fresh debug installation
+builds all 55 native libraries and 28 stage-1 modules. The independent native
+loading suite passes before and after Runtime construction, including allocation,
+collection and saved contexts. Storage observation passes source, compiled,
+mapped/rebuilt and baked execution, including nested rejection, failure cleanup,
+roots, aliases and reload. All 68 installed exports match the unchanged manifest
+and wrappers. No release validation was run.

@@ -105,7 +105,7 @@ unsafe extern "C" fn release(
     // Native ownership contract: invoke exactly once, after all payload access.
     unsafe {
         drop(Box::from_raw(
-            context.cast::<crate::object_memory::Allocation>(),
+            context.cast::<crate::id::object_memory::Allocation>(),
         ))
     };
     Outcome::loaded(Operand::unit())
