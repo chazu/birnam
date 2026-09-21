@@ -1,9 +1,11 @@
 #define _DARWIN_C_SOURCE
 #include "idapi_v20.h"
+#include "native-fixture.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 static IdApi *api;
+static const NamespaceImportV1 *imports;
 static const GcSettingsV1 *settings;
 static const GcSettingsFactoryV1 *factory;
 static Oop kept;
@@ -38,19 +40,22 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     gc_settings_precise_v1(settings,was_precise);gc_settings_auto_v1(settings,was_auto);
     return result;
 }
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *selected_settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizer_cap) { (void)finalizer_cap; (void)hooks; (void)layouts;
-    (void)presence;(void)exports;(void)vtables;(void)observation;
-    assert(selected && !prior && imports && root_registry && selected_settings);
-    if(api)assert(api==selected && settings==selected_settings);
-    else { api=selected;settings=selected_settings; }
+static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
+    (void)id;
+    if(count) {
+        assert(count==5);IdApi *selected=fixture_word(args[0]);
+        if(api)assert(api==selected);api=selected;imports=fixture_word(args[1]);
+        const RootRegistryV1 *root_registry=fixture_word(args[2]);
+        settings=fixture_word(args[3]);factory=fixture_word(args[4]);
+        if(!registered) { root_registry_register_v1(root_registry,roots);registered=1; }
+    }
+    assert(api && imports && registered);
+    Dl_info owner;
     assert(settings->version==1 && settings->byte_size==sizeof(*settings));
-    Dl_info owner;assert(dladdr((void *)settings->set_auto,&owner));
-    assert(strstr(owner.dli_fname,"libbirnam_gc_settings.dylib"));
-    void *image=api->dlopen_fn(owner.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(image);
-    GcSettingsFactoryProviderV1 provide=(GcSettingsFactoryProviderV1)api->dlsym_fn(image,"birnam_gc_settings_factory_v1");assert(provide);
-    factory=provide();assert(factory);
-    if(!registered) { root_registry_register_v1(root_registry,roots);registered=1; }
-    Oop system=namespace_import_v1(imports,"SystemVt");assert(system);
-    api->method(system,api->intern("gcSettingsExercise:"),exercise);return NULL;
+    assert(factory->version==1 && factory->byte_size==sizeof(*factory));
+    assert(dladdr((void *)settings->set_auto,&owner) && strstr(owner.dli_fname,"libbirnam_gc_settings.dylib"));
+    Oop system=namespace_import_v1(imports,"System");assert(system);
+    api->method(api->vtable_of(system),api->intern("gcSettingsExercise:"),exercise);
+    return (BirnamOutcome){.status=BIRNAM_LOADED};
 }
-int birnam_symbol_borrow_v1(void) { return 1; }
+const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize};

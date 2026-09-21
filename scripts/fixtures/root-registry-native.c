@@ -1,9 +1,11 @@
 #define _DARWIN_C_SOURCE
 #include "idapi_v20.h"
+#include "native-fixture.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 static IdApi *api;
+static const NamespaceImportV1 *imports;
 static const RootRegistryV1 *roots;
 static Oop kept;
 static unsigned active,calls[4],call_count,registered,later_registered;
@@ -32,16 +34,20 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(api->vtable_of(kept)==api->object_vt);kept=NULL;
     return args[0];
 }
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizer_cap) { (void)finalizer_cap; (void)hooks; (void)layouts; (void)settings;
-    (void)presence;(void)exports;(void)vtables;(void)observation;
-    assert(selected && !prior && imports && root_registry);
-    if(api)assert(api==selected && roots==root_registry);
-    else { api=selected;roots=root_registry; }
+static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
+    (void)id;
+    if(count) {
+        assert(count==3);IdApi *selected=fixture_word(args[0]);
+        if(api)assert(api==selected);api=selected;imports=fixture_word(args[1]);
+        roots=fixture_word(args[2]);
+        if(!registered) { root_registry_register_v1(roots,first);root_registry_register_v1(roots,first);registered=1; }
+    }
+    assert(api && imports && registered);
+    Dl_info owner;
     assert(roots->version==1 && roots->byte_size==sizeof(*roots));
-    Dl_info owner;assert(dladdr((void *)roots->register_root,&owner));
-    assert(strstr(owner.dli_fname,"libbirnam_root_registry.dylib"));
-    if(!registered) { root_registry_register_v1(roots,first);root_registry_register_v1(roots,first);registered=1; }
-    Oop system=namespace_import_v1(imports,"SystemVt");assert(system);
-    api->method(system,api->intern("rootRegistryExercise:"),exercise);return NULL;
+    assert(dladdr((void *)roots->register_root,&owner) && strstr(owner.dli_fname,"libbirnam_root_registry.dylib"));
+    Oop system=namespace_import_v1(imports,"System");assert(system);
+    api->method(api->vtable_of(system),api->intern("rootRegistryExercise:"),exercise);
+    return (BirnamOutcome){.status=BIRNAM_LOADED};
 }
-int birnam_symbol_borrow_v1(void) { return 1; }
+const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize};

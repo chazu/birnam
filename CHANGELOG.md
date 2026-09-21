@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate the Root Registry, GC Settings and Native Stack image fixtures to
+  explicit native construction. Preserve installed CLI and baked execution,
+  with mapped/rebuilt image checks for all three services.
+
 - Migrate Root Registry, GC Settings and Native Stack C oracles to production
   startup and Id loading. Share their runner, preserve behavioral and rejection
   checks, and run storage diagnostics at the required idle host boundary.

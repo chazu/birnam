@@ -6,6 +6,8 @@ bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-root-registry-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'root-registry image root: %s\n' "$scratch"; fi
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 scripts/fixtures/root-registry-native.c -o "$scratch/root-registry-native.dylib"
+service=root-registry
+source scripts/runtime-services-image-setup.sh
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/root-registry-native.dylib"];
 let value := [Object clone];
@@ -37,6 +39,7 @@ let main := [|
   [System println: [[[System rootRegistryExercise: alias] == value] printString]];
   [System println: "root-registry-image-ok"]
 ];
+[Globals at: #main put: main];
 [System saveImage: "$scratch/app.image"];
 [System println: true]
 BIRNAM
@@ -59,8 +62,11 @@ printf 'true\ntrue\ntrue\nroot-registry-image-ok\n' >"$scratch/expected.out"
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
 cmp "$scratch/expected.out" "$scratch/image.out"
 grep -Fq '/libbirnam_root_registry.dylib' "$scratch/image.err"
+"$bin" --rebuild "$scratch/app.image" >"$scratch/rebuilt.out" 2>"$scratch/rebuilt.err"
+cmp "$scratch/expected.out" "$scratch/rebuilt.out"
+test ! -s "$scratch/rebuilt.err"
 "$bin" --bake "$scratch/app.image" "$scratch/app"
-BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
+BIRNAM_LIB_DIR="$scratch/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
 grep -Fq '/libbirnam_root_registry.dylib' "$scratch/baked.err"
-printf 'root-registry-image-smoke: startup, source-free compiled caller, v8 native Code image and baked executable preserve duplicate provider order, callback-time append, nested collection, roots, aliases and reload\n'
+printf 'root-registry-image-smoke: startup, source-free compiled caller, mapped/rebuilt v8 native Code images and baked executable preserve duplicate provider order, callback-time append, nested collection, roots, aliases and reload\n'

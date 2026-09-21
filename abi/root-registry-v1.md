@@ -43,3 +43,13 @@ callback-time appends, nested collection, snapshots, overflow and admission.
 Its factory probe loads a separate native root owner through Id and destroys it
 through that owner's factory. Diagnostic observation runs after the loading
 message has returned, at an idle host boundary.
+
+
+`scripts/root-registry-image-smoke.sh PREFIX` exercises source startup,
+source-free compiled callers, mapped/rebuilt images and a baked executable.
+The image fixtures receive completed native inputs from a test proxy around
+Native Loader's actual constructor. The proxy forwards construction unchanged;
+it selects existing Runtime services through Id and initializes only the fixture.
+Subsequent `System loadModule:` calls reload that configured fixture without an
+implicit Runtime argument bundle. Provider order, callback-time append, nested
+collection, roots, aliases and reload remain independently asserted.

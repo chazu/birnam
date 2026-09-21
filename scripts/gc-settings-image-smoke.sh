@@ -6,6 +6,8 @@ bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-gc-settings-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'gc-settings image root: %s\n' "$scratch"; fi
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 scripts/fixtures/gc-settings-native.c -o "$scratch/gc-settings-native.dylib"
+service=gc-settings
+source scripts/runtime-services-image-setup.sh
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/gc-settings-native.dylib"];
 let value := [Object clone];
@@ -37,6 +39,7 @@ let main := [|
   [System println: [[[System gcSettingsExercise: alias] == value] printString]];
   [System println: "gc-settings-image-ok"]
 ];
+[Globals at: #main put: main];
 [System saveImage: "$scratch/app.image"];
 [System println: true]
 BIRNAM
@@ -59,8 +62,11 @@ printf 'true\ntrue\ntrue\ngc-settings-image-ok\n' >"$scratch/expected.out"
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
 cmp "$scratch/expected.out" "$scratch/image.out"
 grep -Fq '/libbirnam_gc_settings.dylib' "$scratch/image.err"
+"$bin" --rebuild "$scratch/app.image" >"$scratch/rebuilt.out" 2>"$scratch/rebuilt.err"
+cmp "$scratch/expected.out" "$scratch/rebuilt.out"
+test ! -s "$scratch/rebuilt.err"
 "$bin" --bake "$scratch/app.image" "$scratch/app"
-BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
+BIRNAM_LIB_DIR="$scratch/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
 grep -Fq '/libbirnam_gc_settings.dylib' "$scratch/baked.err"
-printf 'gc-settings-image-smoke: startup, source-free compiled caller, v8 native Code image and baked executable preserve settings, threshold admission, callback-time mutation, nested collection, roots, aliases and reload\n'
+printf 'gc-settings-image-smoke: startup, source-free compiled caller, mapped/rebuilt v8 native Code images and baked executable preserve settings, threshold admission, callback-time mutation, nested collection, roots, aliases and reload\n'

@@ -6,6 +6,8 @@ bin="$prefix/bin/birnam"
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/birnam-native-stack-image.XXXXXX")
 if [[ -z ${BIRNAM_KEEP_SMOKE_ROOT:-} ]]; then trap 'rm -rf "$scratch"' EXIT; else printf 'native-stack image root: %s\n' "$scratch"; fi
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -Iabi/fixtures/idapi-v20 scripts/fixtures/native-stack-native.c -o "$scratch/native-stack-native.dylib"
+service=native-stack
+source scripts/runtime-services-image-setup.sh
 cat >"$scratch/probe.birnam" <<BIRNAM
 [System loadModule: "$scratch/native-stack-native.dylib"];
 let value := [Object clone];
@@ -66,7 +68,7 @@ grep -Fq '/libbirnam_native_stack.dylib' "$scratch/image.err"
 cmp "$scratch/expected.out" "$scratch/rebuilt.out"
 test ! -s "$scratch/rebuilt.err"
 "$bin" --bake "$scratch/app.image" "$scratch/app"
-BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
+BIRNAM_LIB_DIR="$scratch/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
 grep -Fq '/libbirnam_native_stack.dylib' "$scratch/baked.err"
 printf "native-stack-image-smoke: dynamic startup, source-free compiled caller, mapped/rebuilt native Code image and baked execution preserve exact anchor assignment, native roots, incremental scanning, callback-time reset, aliases and reload\n"

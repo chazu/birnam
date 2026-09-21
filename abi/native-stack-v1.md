@@ -36,5 +36,9 @@ Id, explicitly clear the already initialized anchor for suppression tests, and
 retain checks for callback/finalizer reassignment, native roots, allocation
 budgets, all scan byte boundaries, register capture and exact rejection output.
 `scripts/runtime-services-test.sh PREFIX` combines these C cases with Root
-Registry and GC Settings. The separate `scripts/native-stack-image-smoke.sh PREFIX`
-image gate still has legacy fixtures tracked for migration in Design 83.
+Registry and GC Settings. `scripts/native-stack-image-smoke.sh PREFIX` checks
+source startup, source-free compiled callers, mapped/rebuilt images and baked
+execution. Its test proxy forwards the real Native Loader constructor, then
+supplies explicit completed services and factory inputs to the fixture through
+Id. The installed CLI and baked executable retain native-root, anchor, scanning,
+alias and reload assertions; no production hook is added.

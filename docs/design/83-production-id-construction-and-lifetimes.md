@@ -2788,3 +2788,38 @@ Evidence is `.cargo-target/83-runtime-services-evidence.json`. These tests close
 four legacy fixture migrations, not their separate image fixtures or the wider
 acceptance audit. Worker readiness and the remaining migrations stay open.
 Release validation remains waived.
+
+
+### Service image fixtures use explicit native dependencies
+
+The Root Registry, GC Settings and Native Stack image fixtures now expose only
+the common native entry. They no longer receive the removed aggregate
+`module_init` argument list or discover factory/provider exports. Each declares
+its actual Runtime, namespace-import, roots and optional settings/stack/factory
+inputs. Later no-argument System loads reinstall its test method using the same
+completed inputs and do not register duplicate providers.
+
+These CLI/image tests need native inputs that `System loadModule:` intentionally
+does not manufacture. A shared test-only Native Loader proxy forwards the real
+constructor, unchanged, then selects completed Runtime services through Id and
+initializes the fixture explicitly. A temporary library overlay retains all
+original installed libraries and substitutes only that proxy. There is no new
+production export, service bundle or test hook. The installed CLI and actual
+baked executable still execute the scenarios; they are not replaced by a custom
+image runner.
+
+Root Registry and GC Settings now explicitly publish their image main and add
+an explicit rebuild pass. Across all three services, source startup, source-free
+compiled callers, ordinary image entry, explicit rebuilding and baked execution
+pass with exact output, aliases, collection and repeated fixture loading.
+The independent C assertions retain provider order and callback-time append,
+settings thresholds and mutation, native roots, anchor assignment and scanning.
+This evidence does not by itself distinguish ordinary native mapping from an
+allowed source-recovery fallback; the full image acceptance audit must retain
+its separate exact-outcome check.
+
+All three complete scripts pass against `/tmp/birnam-83-native-constructor`.
+The prefix is unchanged; fixture sources, proxy/overlay and output hashes are
+recorded in `.cargo-target/83-service-images-evidence.json`. ABI pages now document
+the test entry paths. The wider legacy fixture migration, worker readiness and
+complete acceptance audit remain open. Release validation remains waived.

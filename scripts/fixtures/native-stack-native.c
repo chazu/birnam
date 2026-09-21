@@ -1,12 +1,14 @@
-/* The normal initializer stays at twelve arguments; the host owns this entry. */
+/* Explicit completed services, supplied by the test constructor proxy. */
 #define _DARWIN_C_SOURCE
 #include "idapi_v20.h"
+#include "native-fixture.h"
 #include "../../abi/fixtures/native-stack-v4/native_stack_v4.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <string.h>
 
 static IdApi *api;
+static const NamespaceImportV1 *imports;
 static const NativeStackV1 *stack;
 static const NativeStackFactoryV4 *factory;
 static Oop retained;
@@ -41,19 +43,22 @@ static Oop exercise(Oop self,const Oop *args,size_t count) {
     assert(api->vtable_of(native_only)==api->object_vt);
     Oop result=retained;retained=NULL;return result;
 }
-__attribute__((visibility("default")))
-void *module_init(IdApi *selected,void *prior,const NamespacePresenceV1 *presence,const NamespaceImportV1 *imports,const NamespaceExportV1 *exports,const VtableEnumerationV2 *vtables,const MethodObservationV1 *observation,const RootRegistryV1 *root_registry,const GcSettingsV1 *settings,const PayloadLayoutV1 *layouts,const TraceHooksV1 *hooks,const FinalizersV1 *finalizers) {
-    (void)prior;(void)presence;(void)exports;(void)vtables;(void)observation;(void)settings;(void)layouts;(void)hooks;(void)finalizers;
-    if(api)assert(api==selected);api=selected;
-    Dl_info owner;assert(dladdr((void *)api->dlsym_fn,&owner));
-    void *floor=dlopen(owner.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(floor);
-    NativeStackProviderV1 provide=(NativeStackProviderV1)dlsym(floor,"birnam_native_stack_provider_v1");assert(provide);stack=provide();assert(stack);
+static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count) {
+    (void)id;
+    if(count) {
+        assert(count==5);IdApi *selected=fixture_word(args[0]);
+        if(api)assert(api==selected);api=selected;imports=fixture_word(args[1]);
+        const RootRegistryV1 *root_registry=fixture_word(args[2]);
+        stack=fixture_word(args[3]);factory=fixture_word(args[4]);
+        if(!registered) { root_registry_register_v1(root_registry,roots);registered=1; }
+    }
+    assert(api && imports && registered);
+    Dl_info owner;
+    assert(factory->version==4 && factory->byte_size==sizeof(*factory) && factory->scan);
     assert(dladdr((void *)stack->set,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
-    void *image=dlopen(owner.dli_fname,RTLD_NOW|RTLD_LOCAL);assert(image);
-    NativeStackFactoryProviderV4 operations=(NativeStackFactoryProviderV4)dlsym(image,"birnam_native_stack_factory_v4");assert(operations);factory=operations();assert(factory && factory->version==4 && factory->byte_size==sizeof(*factory) && factory->scan);
     assert(dladdr((void *)factory->scan,&owner) && strstr(owner.dli_fname,"libbirnam_native_stack.dylib"));
-    if(!registered) { root_registry_register_v1(root_registry,roots);registered=1; }
     Oop system=namespace_import_v1(imports,"System");assert(system);
-    api->method(api->vtable_of(system),api->intern("nativeStackExercise:"),exercise);return NULL;
+    api->method(api->vtable_of(system),api->intern("nativeStackExercise:"),exercise);
+    return (BirnamOutcome){.status=BIRNAM_LOADED};
 }
-__attribute__((visibility("default"))) int birnam_symbol_borrow_v1(void) { return 1; }
+const BirnamModule birnam_native_module_v1={1,sizeof(BirnamModule),initialize};

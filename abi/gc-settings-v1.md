@@ -39,5 +39,9 @@ Run `scripts/gc-settings-test.sh PREFIX`, or
 The C oracle uses the production startup path and checks independent factory
 state, precise-mode conversion, automatic collection thresholds, suppression,
 stack readiness and exact owner/observation rejection diagnostics.
-`scripts/gc-settings-image-smoke.sh PREFIX` is the separate image coverage gate;
-its legacy fixture migration remains tracked by Design 83.
+`scripts/gc-settings-image-smoke.sh PREFIX` checks source startup, source-free
+compiled callers, mapped/rebuilt images and baked execution. A test proxy forwards
+Native Loader's real constructor unchanged, then supplies the fixture's explicit
+Runtime services and factory through Id. No production hook or implicit loader
+argument bundle is used. Threshold admission, callback-time mutation, nested
+collection, roots, aliases and reload remain asserted.
