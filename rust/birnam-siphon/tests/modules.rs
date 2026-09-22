@@ -76,22 +76,39 @@ unsafe extern "C" fn visit(
 }
 #[test]
 #[ignore = "scripts/native-message-test.sh builds the production modules"]
-fn roots_namespace_use_live_messages_and_preserve_reentrant_snapshots() {
+fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
     unsafe {
         let directory = std::path::PathBuf::from(
             std::env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").expect("production module directory"),
         );
         let id = birnam_siphon::load(directory.join("libbirnam_id.dylib").as_os_str().as_bytes())
             .expect("Siphon loads Id");
-        let roots = object(load(&id, &directory, "root_registry", &[]));
         let namespace = object(load(
             &id,
             &directory,
-            "namespace",
-            &[Operand::object(roots)],
+            "bootstrap",
+            &[Operand::bytes(directory.as_os_str().as_bytes())],
         ));
+        let roots = object(send(
+            &id,
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"Roots").unwrap())],
+        ));
+        assert_eq!(object(load(&id, &directory, "root_registry", &[])), roots);
+        assert_eq!(
+            object(load(
+                &id,
+                &directory,
+                "namespace",
+                &[Operand::object(roots)]
+            )),
+            namespace
+        );
         let key = id.intern_name(b"sample").unwrap();
-        let value = object(send(&id, id.receiver, b"objectPrototype", &[]));
+        let prototype = send(&id, id.receiver, b"objectPrototype", &[]);
+        let parent = object(send(&id, id.receiver, b"behaviorOf:", &[prototype]));
+        let value = object(send(&id, parent, b"allocate", &[Operand::word(0)]));
         assert_eq!(
             send(&id, namespace, b"at:", &[Operand::object(key)]).kind(),
             native::UNIT
@@ -225,6 +242,7 @@ fn roots_namespace_use_live_messages_and_preserve_reentrant_snapshots() {
             &[Operand::object(selector), Operand::entry(original)],
         );
         boolean_nil(&id, &directory, namespace);
+        bootstrap_retention(&id, &directory, namespace);
     }
 }
 
@@ -408,5 +426,166 @@ unsafe fn boolean_nil(id: &Protocol, directory: &std::path::Path, namespace: Oop
         );
         assert_eq!(object(send(id, truth, b"not", &[])), falsity);
         assert_eq!(counter.calls.get(), 1);
+    }
+}
+
+struct ReentrantLoad {
+    id: Protocol,
+    bootstrap: Oop,
+    nested: Oop,
+    depth: Cell<usize>,
+}
+unsafe extern "C" fn reentrant_load(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let state = unsafe { &*context.cast::<ReentrantLoad>() };
+    let arguments = unsafe { birnam_abi::borrowed_slice(args, count) }.unwrap();
+    if state.depth.get() == 0 {
+        state.depth.set(1);
+        let nested = unsafe {
+            send(
+                &state.id,
+                state.bootstrap,
+                b"loadNative:",
+                &[Operand::bytes(b"nested"), Operand::object(state.nested)],
+            )
+        };
+        assert_eq!(object(nested), state.nested);
+        state.depth.set(0);
+    }
+    Outcome::loaded(arguments[1])
+}
+unsafe fn bootstrap_retention(id: &Protocol, directory: &std::path::Path, namespace: Oop) {
+    unsafe {
+        let bootstrap = object(send(
+            id,
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"Bootstrap").unwrap())],
+        ));
+        assert_eq!(
+            object(load(
+                id,
+                directory,
+                "bootstrap",
+                &[Operand::bytes(directory.as_os_str().as_bytes())]
+            )),
+            namespace
+        );
+        let path = directory.join("libbirnam_namespace.dylib");
+        let roots = object(send(
+            id,
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"Roots").unwrap())],
+        ));
+        for _ in 0..2 {
+            assert_eq!(
+                object(send(
+                    id,
+                    bootstrap,
+                    b"loadNative:",
+                    &[
+                        Operand::bytes(path.as_os_str().as_bytes()),
+                        Operand::object(roots)
+                    ]
+                )),
+                namespace
+            );
+        }
+        for expected in [1, 1, 0] {
+            assert_eq!(
+                send(id, bootstrap, b"release:", &[Operand::object(namespace)]).as_word(),
+                Some(expected)
+            );
+        }
+        assert!(
+            id.send_named(
+                bootstrap,
+                b"loadNative:",
+                &[
+                    Operand::bytes(b"/no/such/birnam/module"),
+                    Operand::object(namespace)
+                ]
+            )
+            .is_err()
+        );
+        assert_eq!(
+            send(id, bootstrap, b"release:", &[Operand::object(namespace)]).as_word(),
+            Some(0)
+        );
+        // Replace the real Id loader to exercise a nested initializer returning
+        // one of its inputs. Bootstrap must retain both results independently.
+        let parent = object(send(
+            id,
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"ObjectVt").unwrap())],
+        ));
+        let outer = object(send(id, parent, b"allocate", &[Operand::word(0)]));
+        let nested = object(send(id, parent, b"allocate", &[Operand::word(0)]));
+        let original = send(id, id.receiver, b"lookup", &[Operand::object(id.load)])
+            .as_entry()
+            .unwrap();
+        let state = Box::leak(Box::new(ReentrantLoad {
+            id: *id,
+            bootstrap,
+            nested,
+            depth: Cell::new(0),
+        }));
+        send(
+            id,
+            id.receiver,
+            b"addMethod",
+            &[
+                Operand::object(id.load),
+                Operand::entry(NativeEntry::new(
+                    reentrant_load,
+                    (state as *mut ReentrantLoad).cast(),
+                )),
+            ],
+        );
+        assert_eq!(
+            object(send(
+                id,
+                bootstrap,
+                b"loadNative:",
+                &[Operand::bytes(b"outer"), Operand::object(outer)]
+            )),
+            outer
+        );
+        send(
+            id,
+            id.receiver,
+            b"addMethod",
+            &[Operand::object(id.load), Operand::entry(original)],
+        );
+        let mut snapshot = Snapshot {
+            id: *id,
+            roots,
+            extra: outer,
+            retained: true,
+            token: 0,
+            objects: Vec::new(),
+        };
+        let visitor = Operand::entry(NativeEntry::new(visit, (&raw mut snapshot).cast()));
+        send(id, roots, b"rootsDo:", &[visitor]);
+        for value in [outer, nested] {
+            assert_eq!(
+                snapshot.objects.iter().filter(|o| **o == value).count(),
+                1,
+                "only the result retention remains"
+            );
+            assert_eq!(
+                send(id, bootstrap, b"release:", &[Operand::object(value)]).as_word(),
+                Some(1)
+            );
+        }
+        snapshot.objects.clear();
+        send(id, roots, b"rootsDo:", &[visitor]);
+        assert!(!snapshot.objects.contains(&outer) && !snapshot.objects.contains(&nested));
     }
 }

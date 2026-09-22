@@ -692,30 +692,31 @@ methodology and the measured constants.
 
 ## Architecture
 
-The Rust host starts with Siphon, which uses an ad hoc loading protocol to load
-the actual Id module. Bootstrap constructs the lower owners and Runtime through
-Id's message-based loader. Upper modules still use their legacy `module_init`
-entries; the compiler-extension request uses Id again. The main activation
-stages are:
+The native integration is being rebuilt under
+[Design 84](docs/design/84-message-only-native-modules.md). Siphon loads only Id
+and returns its actual message protocol. A subsequent Id loading message loads
+Bootstrap, which builds the currently converted production prefix:
 
 ```text
 Siphon -> Id -> Bootstrap
-       -> Lifetime, base values, Namespace and Object Model
-       -> String, Error, Integer, Float, Word and text extensions
-       -> Collector -> Runtime Execution and native Block
-       -> value/control extensions, Collections and Store
-       -> Artifact -> PEG -> Lang -> TCC
-       -> Runtime compiler extension -> Codegen
-       -> System, source loading, portable code, Isolate, Relational, Alien, Image
-       -> authored Birnam modules and application execution
+                  -> Roots
+                  -> Namespace(Roots)
+                  -> Boolean(Namespace)
+                  -> Nil(Namespace)
 ```
 
-Id owns object storage, Symbols, behavior dictionaries, primitive dispatch and
-native loading. Collection, managed execution and compiler services are upper
-modules. Native base and extension entries may share a library; each publishes
-behavior after its required inputs exist. [Design 84](docs/design/84-message-only-native-modules.md) now governs removal
-of the remaining cross-module tables; native loading through Id alone does not
-complete that correction.
+Every completed module returns an opaque Object or Unit. Namespace publishes
+completed objects; consumers send messages to them. Bootstrap retains initializer
+arguments and results through Roots messages. It contains the load order;
+Siphon and the shared ABI contain no upper-module catalog. Run
+`mise run native-messages` to build and exercise this production prefix, including
+live method replacement and nested loading.
+
+Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
+loading. Collection, execution, compilers, images and workers belong above it.
+Their implementations are retained, but their old integration still refers to
+deleted APIs: **the complete workspace and installed CLI are not yet buildable**.
+The working prefix is not evidence that the entire language has been restored.
 
 The standard library and most application-facing modules are Birnam source.
 Birnam retains a cold source bootstrap through declared non-Birnam toolchains,
@@ -780,9 +781,8 @@ application and build driver.
   modules, including startup preparation and image recovery.
 - [Self-hosting roadmap](docs/design/81-toward-a-birnam-implementation.md) defines
   the eventual Birnam implementation and retained independent bootstrap.
-  [IdApi v20](abi/idapi-v20.json), [native initialization](abi/native-loader-v12.md),
-  and the [boundary reference](docs/design/81-production-extraction-status.md#subsystems-and-contracts)
-  describe the current interfaces.
+  The [common Id protocol](abi/fixtures/id-protocol-v1/README.md) is the current
+  native boundary; Design 84 supersedes the former module API tables.
 - [Compiled units](docs/design/45-compiled-units.md) defines executable
   authority, image integrity, recovery, and the next live-reload boundary.
 - [Concurrency](docs/design/48-concurrency-reactors-and-isolates.md) and

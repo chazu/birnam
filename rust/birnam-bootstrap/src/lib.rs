@@ -1,265 +1,250 @@
-//! Module-result retention implementation awaiting an object-based initializer.
-//! The former module catalog and descriptor entry have been deleted (Design 84).
+//! Sequential native loading above Id. Initialization takes the native-library
+//! directory as Bytes and returns Namespace. Siphon knows only Id; this module
+//! owns the order of the completed language objects built above it.
+//!
+//! Bootstrap `loadNative:` accepts a path (Bytes), followed by initializer
+//! operands. It retains Object inputs across initialization, retains an Object
+//! result before releasing the inputs, and returns Object or Unit. `release:`
+//! releases one retained occurrence of a result and returns Word 1/0.
 use birnam_abi::{
-    Oop,
-    id_protocol::{self as native, Operand, Outcome, Protocol},
-    root_registry,
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
-use core::{ffi::c_void, ptr};
-
-// Both variants implement complete retention. Moving between them transfers
-// real roots; there is no empty callback waiting for a later module.
-enum Roots {
-    Early(Vec<(usize, Oop)>),
-    Managed {
-        registry: root_registry::OwnedV1,
-        entries: Vec<(usize, usize)>,
-    },
-}
+use core::{cell::RefCell, ffi::c_void, ptr};
+use std::{
+    os::unix::ffi::OsStrExt,
+    path::Path,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 struct State {
     id: Protocol,
-    thread: std::thread::ThreadId,
-    roots: Roots,
-    results: Vec<(usize, Operand)>,
-    next: usize,
-    depth: usize,
-    adopting: bool,
+    roots: Oop,
+    namespace: Oop,
+    directory: Vec<u8>,
+    results: RefCell<Vec<(Oop, usize)>>,
 }
-
-unsafe fn check(context: *mut c_void) {
-    assert_eq!(
-        unsafe { (*context.cast::<State>()).thread },
-        std::thread::current().id(),
-        "Bootstrap used from another thread"
-    );
-}
-unsafe fn objects(value: Operand) -> Vec<Oop> {
-    if let Some(object) = value.as_object() {
-        return (!object.is_null()).then_some(object).into_iter().collect();
-    }
-    if let Some(protocol) = value.as_protocol().filter(|pointer| !pointer.is_null()) {
-        let protocol = unsafe { *protocol };
-        return [protocol.receiver, protocol.intern, protocol.load]
-            .into_iter()
-            .filter(|object| !object.is_null())
-            .collect();
-    }
-    Vec::new()
-}
-unsafe fn next(context: *mut c_void) -> usize {
-    let state = unsafe { &mut *context.cast::<State>() };
-    state.next = state
-        .next
-        .checked_add(1)
-        .expect("Bootstrap retention IDs exhausted");
-    state.next
-}
-unsafe fn retain(context: *mut c_void, group: usize, objects: &[Oop]) {
-    let registry = unsafe {
-        let state = &mut *context.cast::<State>();
-        match &mut state.roots {
-            Roots::Early(entries) => {
-                entries.extend(objects.iter().map(|object| (group, *object)));
-                return;
-            }
-            Roots::Managed { registry, .. } => *registry,
-        }
-    };
-    for object in objects {
-        // Admission can reenter loading. No Bootstrap borrow crosses this call.
-        let token = unsafe { registry.retain.unwrap()(registry.context, *object) };
-        assert_ne!(token, 0, "root registry rejected a non-null Bootstrap root");
-        let Roots::Managed { entries, .. } = (unsafe { &mut (*context.cast::<State>()).roots })
-        else {
-            unreachable!()
-        };
-        entries.push((group, token));
-    }
-}
-unsafe fn release(context: *mut c_void, group: Option<usize>) {
-    let released = unsafe {
-        let state = &mut *context.cast::<State>();
-        match &mut state.roots {
-            Roots::Early(entries) => {
-                entries.retain(|(id, _)| group.is_some_and(|group| group != *id));
-                None
-            }
-            Roots::Managed { registry, entries } => {
-                let mut tokens = Vec::new();
-                entries.retain(|(id, token)| {
-                    if group.is_none_or(|group| group == *id) {
-                        tokens.push(*token);
-                        false
-                    } else {
-                        true
-                    }
-                });
-                Some((*registry, tokens))
-            }
-        }
-    };
-    if let Some((registry, tokens)) = released {
-        for token in tokens {
-            assert_eq!(
-                unsafe { registry.release.unwrap()(registry.context, token) },
-                1
-            );
-        }
-    }
-}
-unsafe extern "C" fn load(
-    context: *mut c_void,
-    path: *const u8,
-    length: usize,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    unsafe { check(context) };
-    if unsafe { (*context.cast::<State>()).adopting } {
-        return invalid();
-    }
-    let Some(path) = (unsafe { birnam_abi::borrowed_bytes(path, length) }) else {
-        return invalid();
-    };
-    let Some(args) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let input = unsafe { next(context) };
-    unsafe { (*context.cast::<State>()).depth += 1 };
-    for argument in args {
-        unsafe { retain(context, input, &objects(*argument)) };
-    }
-    let id = unsafe { (*context.cast::<State>()).id };
-    let mut request = vec![Operand::bytes(path)];
-    request.extend_from_slice(args);
-    let answer = unsafe {
-        id.message.unwrap()(
-            id.context,
-            id.receiver,
-            id.load,
-            request.as_ptr(),
-            request.len(),
-        )
-    };
-    let roots = unsafe { objects(answer.value) };
-    if !roots.is_empty() {
-        let result = unsafe { next(context) };
-        unsafe {
-            retain(context, result, &roots);
-            (*context.cast::<State>())
-                .results
-                .push((result, answer.value));
-        }
-    }
-    // A result is retained before its input roots are removed, including when
-    // an initializer returns one of its arguments or reenters this loader.
-    unsafe {
-        release(context, Some(input));
-        (*context.cast::<State>()).depth -= 1;
-    }
-    answer
-}
-unsafe extern "C" fn adopt_roots(
-    context: *mut c_void,
-    registry: *const root_registry::OwnedV1,
-) -> u32 {
-    unsafe { check(context) };
-    if !unsafe { root_registry::valid_owned(registry) } {
-        return native::INVALID_REQUEST;
-    }
-    let registry = unsafe { *registry };
-    let early = unsafe {
-        let state = &mut *context.cast::<State>();
-        if state.depth != 0 || state.adopting {
-            return native::INVALID_REQUEST;
-        }
-        match &state.roots {
-            Roots::Managed {
-                registry: current, ..
-            } => {
-                return if current.context == registry.context {
-                    native::LOADED
-                } else {
-                    native::INVALID_REQUEST
-                };
-            }
-            Roots::Early(entries) => {
-                state.adopting = true;
-                entries.clone()
-            }
-        }
-    };
-    let mut entries = Vec::with_capacity(early.len());
-    for (group, object) in early {
-        let token = unsafe { registry.retain.unwrap()(registry.context, object) };
-        assert_ne!(token, 0, "root registry rejected a Bootstrap transfer");
-        entries.push((group, token));
-    }
-    unsafe {
-        let state = &mut *context.cast::<State>();
-        state.roots = Roots::Managed { registry, entries };
-        state.adopting = false;
-    }
-    native::LOADED
-}
-fn same_result(first: Operand, second: Operand) -> bool {
-    match (first.kind(), second.kind()) {
-        (native::OBJECT, native::OBJECT) => first.as_object() == second.as_object(),
-        (native::PROTOCOL, native::PROTOCOL) => first.as_protocol() == second.as_protocol(),
-        _ => false,
-    }
-}
-unsafe extern "C" fn release_result(context: *mut c_void, result: Operand) -> usize {
-    unsafe { check(context) };
-    let group = unsafe {
-        let state = &mut *context.cast::<State>();
-        if state.adopting {
-            return 0;
-        }
-        let Some(index) = state
-            .results
-            .iter()
-            .position(|(_, value)| same_result(*value, result))
-        else {
-            return 0;
-        };
-        state.results.swap_remove(index).0
-    };
-    unsafe { release(context, Some(group)) };
-    1
-}
-unsafe extern "C" fn destroy(context: *mut c_void) {
-    unsafe { check(context) };
-    assert!(
-        unsafe {
-            (*context.cast::<State>()).depth == 0
-                && !(*context.cast::<State>()).adopting
-        },
-        "Bootstrap destroyed during construction"
-    );
-    // Reject nested entry while releasing the root records, then free the owner.
-    unsafe {
-        (*context.cast::<State>()).adopting = true;
-        release(context, None);
-        drop(Box::from_raw(context.cast::<State>()));
-    }
-}
-unsafe extern "C" fn pause(context: *mut c_void, action: native::NativeEntry) -> Outcome {
-    unsafe { check(context) };
-    let Some(method) = action.method else {
-        return invalid();
-    };
-    {
-        let state = unsafe { &mut *context.cast::<State>() };
-        if state.depth != 0 || state.adopting || !matches!(state.roots, Roots::Managed { .. }) {
-            return invalid();
-        }
-        state.adopting = true;
-    }
-    let result = unsafe { method(action.context, ptr::null_mut(), ptr::null(), 0) };
-    unsafe { (*context.cast::<State>()).adopting = false };
-    result
-}
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
+fn object(value: Operand) -> Result<Oop, Outcome> {
+    value
+        .as_object()
+        .filter(|p| !p.is_null())
+        .ok_or_else(invalid)
+}
+fn outcome(result: Result<Operand, Outcome>) -> Outcome {
+    match result {
+        Ok(value) => Outcome::loaded(value),
+        Err(error) => error,
+    }
+}
+unsafe fn retain(id: Protocol, roots: Oop, value: Oop) -> Result<usize, Outcome> {
+    unsafe { id.send_named(roots, b"retain:", &[Operand::object(value)]) }?
+        .as_word()
+        .filter(|t| *t != 0)
+        .ok_or_else(invalid)
+}
+unsafe fn release(id: Protocol, roots: Oop, token: usize) -> Result<(), Outcome> {
+    match unsafe { id.send_named(roots, b"release:", &[Operand::word(token)]) }?.as_word() {
+        Some(1) => Ok(()),
+        _ => Err(invalid()),
+    }
+}
+unsafe fn load(state: &State, request: &[Operand]) -> Result<Operand, Outcome> {
+    let Some((path, arguments)) = request.split_first() else {
+        return Err(invalid());
+    };
+    let path = path.as_bytes().ok_or_else(invalid)?;
+    // Own the path before calling a method that could invalidate borrowed bytes.
+    let path = unsafe { borrowed_bytes(path.pointer, path.length) }
+        .ok_or_else(invalid)?
+        .to_vec();
+    let mut input = Vec::new();
+    let answer = (|| unsafe {
+        for argument in arguments {
+            if argument.kind() == native::OBJECT {
+                input.push(retain(state.id, state.roots, object(*argument)?)?);
+            }
+        }
+        let mut request = vec![Operand::bytes(&path)];
+        request.extend_from_slice(arguments);
+        let value = state.id.send(state.id.receiver, state.id.load, &request)?;
+        match value.kind() {
+            native::UNIT => {}
+            native::OBJECT => {
+                let object = object(value)?;
+                let token = retain(state.id, state.roots, object)?;
+                // No Bootstrap storage borrow crosses a dependency send.
+                state.results.borrow_mut().push((object, token));
+            }
+            _ => return Err(invalid()),
+        }
+        Ok(value)
+    })();
+    let mut cleanup = Ok(());
+    for token in input {
+        if let Err(error) = unsafe { release(state.id, state.roots, token) } {
+            cleanup = Err(error);
+        }
+    }
+    cleanup?;
+    answer
+}
+unsafe extern "C" fn load_native(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let Some(arguments) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    outcome(unsafe { load(&*context.cast::<State>(), arguments) })
+}
+unsafe extern "C" fn release_result(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Ok(object) = object(*argument) else {
+        return invalid();
+    };
+    let state = unsafe { &*context.cast::<State>() };
+    let token = {
+        let mut results = state.results.borrow_mut();
+        let Some(index) = results.iter().position(|(value, _)| *value == object) else {
+            return Outcome::loaded(Operand::word(0));
+        };
+        results.swap_remove(index).1
+    };
+    match unsafe { release(state.id, state.roots, token) } {
+        Ok(()) => Outcome::loaded(Operand::word(1)),
+        Err(error) => {
+            state.results.borrow_mut().push((object, token));
+            error
+        }
+    }
+}
+fn module_path(directory: &[u8], name: &str) -> Vec<u8> {
+    Path::new(std::ffi::OsStr::from_bytes(directory))
+        .join(format!("libbirnam_{name}.dylib"))
+        .as_os_str()
+        .as_bytes()
+        .to_vec()
+}
+unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> {
+    unsafe {
+        // Roots is complete before any retaining loader or collector exists.
+        // This removes the old early/managed root table adoption stage entirely.
+        let roots = object(id.send(
+            id.receiver,
+            id.load,
+            &[Operand::bytes(&module_path(directory, "root_registry"))],
+        )?)?;
+        let namespace = object(id.send(
+            id.receiver,
+            id.load,
+            &[
+                Operand::bytes(&module_path(directory, "namespace")),
+                Operand::object(roots),
+            ],
+        )?)?;
+        let prototype = id.send_named(id.receiver, b"objectPrototype", &[])?;
+        let parent = object(id.send_named(id.receiver, b"behaviorOf:", &[prototype])?)?;
+        let behavior = object(id.send_named(parent, b"delegated", &[])?)?;
+        retain(id, roots, behavior)?;
+        let receiver = object(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
+        for value in [roots, namespace, receiver] {
+            retain(id, roots, value)?;
+        }
+        let state = Box::into_raw(Box::new(State {
+            id,
+            roots,
+            namespace,
+            directory: directory.to_vec(),
+            results: RefCell::new(Vec::new()),
+        }));
+        for (name, method) in [
+            (b"loadNative:".as_slice(), load_native as Method),
+            (b"release:", release_result),
+        ] {
+            id.send_named(
+                behavior,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::entry(NativeEntry::new(method, state.cast())),
+                ],
+            )?;
+        }
+        // Publish already constructed identities, not descriptors or placeholders.
+        for (name, value) in [
+            (b"Bootstrap".as_slice(), receiver),
+            (b"Object", object(prototype)?),
+            (b"ObjectVt", parent),
+            (b"Vtable", id.receiver),
+        ] {
+            id.send_named(
+                namespace,
+                b"at:put:",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::object(value),
+                ],
+            )?;
+        }
+        for name in ["boolean", "nil"] {
+            id.send_named(
+                receiver,
+                b"loadNative:",
+                &[
+                    Operand::bytes(&module_path(directory, name)),
+                    Operand::object(namespace),
+                ],
+            )?;
+        }
+        INSTANCE.store(state, Ordering::Release);
+        Ok(Operand::object(namespace))
+    }
+}
+unsafe extern "C" fn initialize(
+    id: *const Protocol,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    if !unsafe { native::valid_protocol(id) } {
+        return invalid();
+    }
+    let Some([directory]) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Some(directory) = directory.as_bytes() else {
+        return invalid();
+    };
+    let Some(directory) = (unsafe { borrowed_bytes(directory.pointer, directory.length) }) else {
+        return invalid();
+    };
+    let directory = directory.to_vec();
+    let id = unsafe { *id };
+    let previous = INSTANCE.load(Ordering::Acquire);
+    if !previous.is_null() {
+        let previous = unsafe { &*previous };
+        return if previous.id.same_contract(&id) && previous.directory == directory {
+            Outcome::loaded(Operand::object(previous.namespace))
+        } else {
+            invalid()
+        };
+    }
+    outcome(unsafe { construct(id, &directory) })
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};

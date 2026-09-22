@@ -1962,7 +1962,7 @@ impl LoadedFloor {
     pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.id_protocol }
 }
 
-/// Initialize Id and Bootstrap through native messages, before Lifetime exists.
+/// Initialize Id through Siphon, before any upper module exists.
 /// Optional digest/identity checks precede all construction.
 pub fn begin_id(
     path: &Path,
@@ -2028,6 +2028,24 @@ pub struct InitialFloor {
 }
 impl InitialFloor {
     pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.id_protocol }
+
+    /// Continue from Siphon through Id's loader. Bootstrap owns the upper-module
+    /// sequence and returns its Namespace object. During Design 84 migration
+    /// this constructs the converted prefix; it does not yet create a Runtime.
+    pub fn load_bootstrap(&self, directory: &Path) -> Result<birnam_abi::Oop, birnam_abi::id_protocol::Outcome> {
+        use birnam_abi::id_protocol::{self as native, Operand, Outcome};
+        let path = directory.join("libbirnam_bootstrap.dylib");
+        let path = path_bytes(&path);
+        let directory = path_bytes(directory);
+        // The Siphon-created protocol is live and InitialFloor is owner-thread
+        // bound. Both borrowed paths remain live for this synchronous send.
+        let namespace = unsafe {
+            self.id_protocol.send(self.id_protocol.receiver, self.id_protocol.load,
+                &[Operand::bytes(&path), Operand::bytes(&directory)])
+        }?;
+        namespace.as_object().filter(|object| !object.is_null())
+            .ok_or_else(|| Outcome::failed(native::INVALID_REQUEST, 0))
+    }
 }
 
 const RTLD_NOW: i32 = 2;

@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Restore Bootstrap as an Id-loaded object that constructs Roots, Namespace,
+  Boolean and Nil in order. Preserve input/result retention and nested loading
+  through Roots messages; remove the old early/managed root-table transfer.
+  Add the host's post-Siphon Bootstrap handoff and correct README status: the
+  converted production prefix works, while full Runtime/CLI migration is pending.
+
 - Convert Boolean and Nil to Id messages and Namespace objects. Remove their
   shared base-values descriptor and Boolean's separate Block initialization pass;
   test truth tables, nil predicates, short circuiting, live Block method replacement

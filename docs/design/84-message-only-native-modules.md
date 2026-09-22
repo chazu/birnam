@@ -432,3 +432,33 @@ nil predicates, all five conditional/short-circuit selectors, unchosen arguments
 without a `value` method, replacement of the chosen block's method, malformed
 operands and repeat loading without overwriting a replaced Boolean method.
 Boolean and Nil build independently with only birnam-abi.
+
+### Production Bootstrap sequence and result retention
+
+Bootstrap now takes a native-library directory (Bytes) through Id's loader,
+constructs Roots then Namespace, publishes its own completed receiver, and loads
+Boolean and Nil through its `loadNative:` message. It returns Namespace. The
+host's `InitialFloor::load_bootstrap` sends this request after Siphon returns Id;
+Siphon remains unchanged. The loader sequence lives only in Bootstrap.
+
+Bootstrap now starts after Roots, eliminating its former early-root table,
+managed-root adoption, factory ownership and callback pause/destroy interface.
+It still retains each Object input across initialization, retains each Object
+result before releasing its inputs, and supports nested loads without borrowing
+its records across sends. `release:` removes one retained result occurrence.
+Roots and module owners are process-lived, as are installed native contexts.
+
+The production integration test enters this Bootstrap initializer, then checks
+Roots/Namespace and Boolean/Nil behavior through the returned Namespace. It also
+checks duplicate result retention, load failure, and replacement of Id's loader
+with a nested initializer returning its input. Only result roots survive those
+calls, and explicit release removes them. This validates actual Bootstrap/Roots
+implementations without a second Id or bootstrap model.
+
+The production prefix test, 12 ABI/Id/Roots/Namespace unit tests, and both
+Siphon handoff tests pass (one existing Namespace timing probe remains ignored).
+The new host handoff is syntax-checked;
+building the whole host is still blocked by unconverted Artifact/Runtime callers.
+Next is the value/lifetime/collection boundary, followed by Runtime, compilers,
+images and workers. None of those retained algorithms have been deleted in this
+pass, and no full language, GC, image or worker acceptance is claimed yet.
