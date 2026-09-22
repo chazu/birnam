@@ -19,7 +19,6 @@ mod env;
 mod object_model;
 mod execution;
 mod gc;
-mod collection_state;
 mod payload_layout;
 mod heap;
 #[cfg(any(test, feature = "ffi-test-hooks"))]
@@ -34,7 +33,6 @@ mod runtime;
 mod values;
 mod behaviors;
 mod root_registry;
-mod lifetime;
 
 use core::ffi::c_char;
 

@@ -208,6 +208,23 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 ],
             )?;
         }
+        let memory = object(id.send_named(
+            receiver,
+            b"loadNative:",
+            &[
+                Operand::bytes(&module_path(directory, "collect")),
+                Operand::object(roots),
+            ],
+        )?)?;
+        id.send_named(
+            namespace,
+            b"at:put:",
+            &[
+                Operand::object(id.intern_name(b"GC")?),
+                Operand::object(memory),
+            ],
+        )?;
+        id.send_named(memory, b"activate", &[])?;
         INSTANCE.store(state, Ordering::Release);
         Ok(Operand::object(namespace))
     }

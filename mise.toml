@@ -48,8 +48,8 @@ run = "scripts/root-registry-test.sh"
 description = "Check native GC settings, allocation policy and admission (debug)"
 run = "scripts/gc-settings-test.sh"
 [tasks.native-stack]
-description = "Check native stack anchor, word scanning and collection (debug)"
-run = "scripts/native-stack-test.sh"
+description = "Check production GC, including native stack and register roots (debug)"
+run = "scripts/native-message-test.sh"
 
 [tasks.mutation-epoch]
 description = "Check Vtable epoch ownership, exact mutation counts, live dispatch and host admission (debug)"

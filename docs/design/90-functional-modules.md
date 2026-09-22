@@ -3,7 +3,7 @@
 > **Status:** Accepted organizing direction, 2026-09-22. Concrete message
 > contracts are specified beside their owning implementations as they are
 > migrated. This is a break with extraction-driven modularization, not another
-> installment of it. No runtime migration is performed by this document.
+> installment of it. Implementation progress is recorded below.
 
 ## Decision
 
@@ -186,6 +186,40 @@ existing Id/Roots prefix**, with reference enumeration, finalization and retirem
 functioning through messages. It must exercise the production owners and provide
 the foundation for restoring values safely. The deliverable is working behavior
 and deleted scaffolding, not seven replacement helper services.
+
+## Memory-management checkpoint (2026-09-22)
+
+The first target now runs in the production prefix: Bootstrap loads Collect with
+Roots, publishes `GC`, and activates collection over the existing Id heap. See the
+[owning protocol](../../rust/birnam-collect/README.md) for receiver/argument/result
+contracts and phase rules. The implementation uses fresh Id messages throughout;
+only selector identities and one-use detached allocation ownership are retained.
+
+Collection owns its state, native capture, immediate-mark/LIFO traversal, live
+reference/finalizer selection and ordered reclamation. No collector singleton,
+foreign layout decoder or replacement service table was introduced. Id supplies
+non-collecting storage operations; complete upper construction methods add phase
+checks and allocation accounting without capturing those Id implementations.
+
+Deleted the obsolete Collect state/coordinator/construction tables, live Trace
+graph adapter, Lifetime, Native Mark, Native Stack, Trace Hooks and Finalizers
+helper crates, their export/install entries and Runtime adoption wrappers.
+Payload-layout's remaining generic language-slot implementation belongs with object
+behavior; it is not loaded or consumed by GC. Diagnostic storage tracing remains
+separate. Neither is a prerequisite for collection over the converted prefix.
+
+Targeted production tests exercise activation failure/retry on one heap, declared
+and native roots, automatic collection, inherited/live enumeration, failed tracing
+without sweep, nested collection suppression, allocation bans during callbacks,
+weak Symbol/behavior retirement and detach/finalize/reclaim with live replacement.
+
+This completes the memory-management portion over the existing prefix, not all of
+item 1 or the full language. Object behavior/value owners still need conversion.
+The retained Execution, concurrency, deoptimization and deferred code-retirement
+algorithms still require their message integration and suspended-task/code-lifetime
+tests when Execution is restored. No thread-hosted domain backend or generalized
+retirement framework is part of this change. Full Runtime/CLI startup is still
+unbuildable during the broader transition.
 
 ## Keep the refactor bounded
 

@@ -1,13 +1,10 @@
-//! Graph traversal and live representation access above Id.
-//! Diagnostic tracing is stateless; the native live graph owns completed lower
-//! inputs and payload reads. Neither owns heap marks, GC policy or reclamation.
+//! Diagnostic traversal of described storage graphs. Live collection belongs
+//! to birnam-collect; this diagnostic adapter awaits storage-message migration.
 use birnam_abi::storage::{self, DescribedViewV1, INCOMPLETE, INVALID, Status};
 use birnam_abi::trace::{AllocationRefV1, ReportV1, RequestV1, VERSION};
 use birnam_abi::borrowed_slice;
 use std::collections::BTreeMap;
 
-pub mod live;
-mod graph;
 
 fn aligned<T>(pointer: *const T) -> bool {
     !pointer.is_null() && pointer.addr().is_multiple_of(align_of::<T>())

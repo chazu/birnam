@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Activate production memory management through Bootstrap, Id and Roots messages.
+  Consolidate collection, marking, finalizers and native roots in `birnam-collect`;
+  remove five helper crates, the old live graph/table adapters and their build
+  entries. Preserve live dispatch, failed-trace safety, weak-index retirement,
+  finalizer replacement, native roots and automatic collection with production
+  dylib tests. Keep concurrency/deoptimization algorithms for upper integration;
+  full Runtime/CLI migration remains incomplete.
+
 - Remove Design 83's cached GC dispatch exception. Clarify Design 90's existing
   collection obligations and their compatibility with owned concurrency domains,
   including suspended roots, code lifetime and the separate thread-hosting gap.

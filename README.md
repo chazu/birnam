@@ -704,6 +704,7 @@ Siphon -> Id -> Bootstrap
                   -> Namespace(Roots)
                   -> Boolean(Namespace)
                   -> Nil(Namespace)
+                  -> GC(Roots), then activate
 ```
 
 Every completed module returns an opaque Object or Unit. Namespace publishes
@@ -711,11 +712,14 @@ completed objects; consumers send messages to them. Bootstrap retains initialize
 arguments and results through Roots messages. It contains the load order;
 Siphon and the shared ABI contain no upper-module catalog. Run
 `mise run native-messages` to build and exercise this production prefix, including
-live method replacement and nested loading.
+live method replacement, nested loading, collection and finalization.
+[GC’s local protocol](rust/birnam-collect/README.md) documents reference owners,
+rooting and native construction.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
-loading. Collection, execution, compilers, images and workers belong above it.
-Their implementations are retained, but their old integration still refers to
+loading. Collection now works over this prefix through Id and Roots messages.
+Execution, compilers, images and workers retain their implementations, but their
+old integration still refers to
 deleted APIs: **the complete workspace and installed CLI are not yet buildable**.
 The working prefix is not evidence that the entire language has been restored.
 
@@ -738,7 +742,9 @@ application and build driver.
   and the stateless OS loader shared by Siphon and Id.
 - `rust/birnam-id/` — native Id allocation, Symbols, dictionaries, message
   dispatch and module loading; depends only on the ABI crate.
-- Other `rust/birnam-*/` crates — native values, compiler/runtime, collector,
+- `rust/birnam-collect/` — instance-owned collection, tracing, finalization and
+  native root capture above Id and Roots. No foreign payload decoding.
+- Other `rust/birnam-*/` crates — native values, compiler/runtime,
   storage, images, workers and language services. Their algorithms are retained;
   integration still needs migration under [Design 90](docs/design/90-functional-modules.md).
 - `src/id/*.birnam` — core modules written in Birnam: module management,

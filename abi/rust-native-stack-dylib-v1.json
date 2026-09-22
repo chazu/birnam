@@ -1,8 +1,0 @@
-{
-  "schema_version": 1,
-  "scope": "Native stack-anchor ownership, register capture and root scanning",
-  "install_name": "@rpath/libbirnam_native_stack.dylib",
-  "exported_symbols": [
-    "birnam_symbol_borrow_v1"
-  ]
-}

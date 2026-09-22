@@ -5,6 +5,7 @@ use core::ffi::c_void;
 pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
     for (name, method) in [
         (b"symbolNamed:".as_slice(), symbol_named as native::Method),
+        (b"internBytes:".as_slice(), super::intern_bytes as native::Method),
         (b"symbolCount".as_slice(), symbol_count as native::Method),
         (b"symbolAt:".as_slice(), symbol_at as native::Method),
         (

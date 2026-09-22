@@ -128,13 +128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-finalizers"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-float"
 version = "0.0.0"
 dependencies = [
@@ -192,13 +185,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-lifetime"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-map"
 version = "0.0.0"
 dependencies = [
@@ -228,20 +214,6 @@ dependencies = [
 
 [[package]]
 name = "birnam-native-loader"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
-name = "birnam-native-mark"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
-name = "birnam-native-stack"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
@@ -329,21 +301,17 @@ dependencies = [
  "birnam-codegen",
  "birnam-collect",
  "birnam-dispatch-cache",
- "birnam-finalizers",
  "birnam-float",
  "birnam-integer",
  "birnam-method-observation",
  "birnam-namespace",
  "birnam-native-compiler",
- "birnam-native-mark",
- "birnam-native-stack",
  "birnam-object-model",
  "birnam-payload-layout",
  "birnam-root-registry",
  "birnam-storage",
  "birnam-string",
  "birnam-trace",
- "birnam-trace-hooks",
  "birnam-word",
  "sha2",
 ]
@@ -429,13 +397,6 @@ dependencies = [
 
 [[package]]
 name = "birnam-trace"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
-name = "birnam-trace-hooks"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",

@@ -5,6 +5,10 @@ use core::ffi::c_void;
 pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
     for (name, method) in [
         (b"allocate".as_slice(), allocate as native::Method),
+        (
+            b"allocate:bytes:".as_slice(),
+            allocate_explicit as native::Method,
+        ),
         (b"allocationAt:".as_slice(), allocation_at as native::Method),
         (b"allocationCount".as_slice(), allocation_count as native::Method),
         (b"delegated".as_slice(), delegated as native::Method),
@@ -91,6 +95,23 @@ pub(crate) unsafe extern "C" fn allocate(
     let object = memory.allocate(size);
     assert!(memory.set_vtable(object, behavior));
     Outcome::loaded(Operand::object(object))
+}
+
+// The non-collecting storage operation has an explicit behavior argument.
+// Upper construction sends it after applying its own policy; no entry is cached.
+unsafe extern "C" fn allocate_explicit(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let Some([behavior, size]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Some(behavior) = behavior.as_object() else {
+        return invalid();
+    };
+    unsafe { allocate(context, behavior, size, 1) }
 }
 
 pub(crate) unsafe extern "C" fn delegated(

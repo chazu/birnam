@@ -1,11 +1,9 @@
 {
   "schema_version": 1,
-  "scope": "Scoped described-graph reports and live production GC traversal; depends only on birnam-abi",
+  "scope": "Described storage graph diagnostics; integration awaits storage-message migration",
   "install_name": "@rpath/libbirnam_trace.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
     "birnam_symbol_borrow_v1",
-    "birnam_trace_described_v1",
-    "birnam_trace_live_v1"
+    "birnam_trace_described_v1"
   ]
 }
