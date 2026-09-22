@@ -9,7 +9,7 @@ Collection invokes Range's construction stages at their original positions.
 
 The descriptor is 56 bytes on arm64: version 2 at offset 0, `size_t byte_size` at
 8, then five function pointers. See the independent
-[C definition](fixtures/range-v2/range_v2.h). Null, wrong-version, wrong-size,
+C definition (`abi/fixtures/range-v2/range_v2.h` at `eb219997`). Null, wrong-version, wrong-size,
 missing-operation and different-descriptor attachments are rejected. Attaching
 the same descriptor again succeeds. The production v1 entry points and external
 bounds operation are removed; historical definitions are test oracles only.

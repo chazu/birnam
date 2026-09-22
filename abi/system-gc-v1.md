@@ -9,7 +9,7 @@ methods. Prelude retains System creation/adoption and all twelve selector intern
 Attach the immutable, process-pinned descriptor through
 `birnam_system_gc_dependency_v1`. It is 24 bytes on arm64: version 1 at offset 0,
 byte size at 8, and one install pointer at 16. The
-[independent C mirror](fixtures/system-gc-v1/system_gc_v1.h) checks the layout.
+independent C mirror (`abi/fixtures/system-gc-v1/system_gc_v1.h` at `eb219997`) checks the layout.
 Admission rejects null, wrong version/size, missing install and retargeting;
 repeat attachment of the same pointer is accepted.
 

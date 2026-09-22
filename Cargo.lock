@@ -15,13 +15,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-allocation-budget"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-artifact"
 version = "0.0.0"
 dependencies = [
@@ -91,13 +84,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-collection-value"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-dispatch-cache"
 version = "0.0.0"
 dependencies = [
@@ -119,13 +105,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-error-value"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-file-io"
 version = "0.0.0"
 dependencies = [
@@ -141,13 +120,6 @@ dependencies = [
 
 [[package]]
 name = "birnam-float"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
-name = "birnam-gc-settings"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
@@ -336,14 +308,12 @@ name = "birnam-runtime"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "birnam-allocation-budget",
  "birnam-artifact",
  "birnam-codegen",
  "birnam-collect",
  "birnam-dispatch-cache",
  "birnam-finalizers",
  "birnam-float",
- "birnam-gc-settings",
  "birnam-integer",
  "birnam-method-observation",
  "birnam-namespace",
@@ -431,13 +401,6 @@ dependencies = [
  "birnam-abi",
  "birnam-host",
  "birnam-native-compiler",
-]
-
-[[package]]
-name = "birnam-text-view"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
 ]
 
 [[package]]

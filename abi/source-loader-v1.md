@@ -10,7 +10,7 @@ Attach its immutable process-pinned descriptor through
 `birnam_source_loader_dependency_v1`. The arm64 layout is 24 bytes: version 1 at
 0, byte size at 8 and install at 16. Null, wrong version/extent, missing install
 and retargeting are rejected; the same pointer may attach again. The
-[independent C mirror](fixtures/source-loader-v1/source_loader_v1.h) checks layout.
+independent C mirror (`abi/fixtures/source-loader-v1/source_loader_v1.h` at `eb219997`) checks layout.
 
 Install receives const registration/execution IdApi pointers, the selected System
 behavior and already interned load: selector. Prelude retains System/Block

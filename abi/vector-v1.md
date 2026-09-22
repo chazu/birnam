@@ -15,7 +15,7 @@ Module initialization enables the provider without constructing any objects.
 
 The arm64 descriptor is 96 bytes: version 1 at offset 0, `size_t byte_size` at 8,
 and ten function pointers from offset 16. The independent definition is
-[`fixtures/vector-v1/vector_v1.h`](fixtures/vector-v1/vector_v1.h). Attachment
+`fixtures/vector-v1/vector_v1.h` (`abi/fixtures/vector-v1/vector_v1.h` at `eb219997`). Attachment
 rejects null, wrong version/size, any missing operation or another descriptor;
 reattaching the same address succeeds. IdApi v7 does not change.
 

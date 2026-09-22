@@ -99,7 +99,7 @@ Consumers send the existing Vector messages. The Vector constructor returns its
 opaque prototype; no consumer reads its layout. Remove obsolete construction
 exports and descriptor fixtures rather than preserving them for tests.
 
-### 2. Replace remaining upper integration and remove obstructing optimizations
+### 2. Replace remaining upper integration; preserve deoptimization and concurrency
 
 Convert values, namespace, roots/lifetime, collection/tracing and Runtime services
 with their actual consumers. Delete `runtime_values`, `runtime_support`, the old
@@ -108,9 +108,13 @@ registries. Compiler-generated calls and host calls must use the same message
 contract. The frozen primitive-entry bundle is also subject to removal; any
 necessary metacircular operation belongs in Id, not in a distributed escape table.
 
-Remove optimizations that require foreign payload layouts, shared storage codecs,
-or captured service implementations. Use the correct message path first; record
-measured regressions rather than retaining a competing interface to avoid them.
+Preserve the deoptimization work and concurrency machinery, as explicitly
+required by the user. This includes the native optimization tier that exercises
+recovery, recovery maps, materialization, continuation state, task scheduling,
+workers, suspended execution and active-code lifetime handling. Their integration
+must be rebuilt above Id through messages; foreign payload layouts, shared
+storage codecs and captured cross-module service implementations are not exempt.
+Do not delete these implementations or their semantic tests to simplify migration.
 Do not remove language features or active-call/root safety as an optimization
 shortcut. Rebuild native artifacts after the ABI change; no compatibility table
 is required. Preserve image semantics and the existing explicit source recovery
@@ -182,7 +186,8 @@ attachment code and host fields. Vector returns its opaque prototype. Range,
 Map and String Collection use live `new`, `add:`, `,`, `do:` and `inject:into:`
 sends; the special comma initializer and captured native entry are gone.
 Installation-only results are Unit. The construction manifest and current ABI
-pages reflect this change. Legacy C table fixtures still await deletion/migration.
+pages reflect this change. The subsequent cleanup removes the obsolete C table
+fixture ecosystem; retained semantic harnesses still need migration.
 
 Validation: workspace `cargo check --offline --locked --workspace`; five targeted
 Vector/System Output unit tests; debug installation at
@@ -241,3 +246,56 @@ is removed. It uses no retired ABI interface. All five Id unit tests pass,
 including metacircular dispatch and the independent C typed-operand round trip.
 The remaining upper callers are still unconverted; these tests do not establish
 that the complete language builds or runs.
+
+### Preservation boundary for the next deletion pass
+
+The user explicitly retained deoptimization and all concurrency machinery. Keep
+the Runtime native tier, numeric/closure specialization and recovery implementations;
+compiler lowering and recovery descriptions; scheduling, task/control state and
+Isolate/worker implementations; image reconstruction; and their semantic tests.
+These remain upper-language features, with no new knowledge added to Id or ABI.
+Preservation of their source is not proof that they run during this broken-build
+transition. Their old native integration still needs migration.
+
+Delete the descriptor-based Bootstrap construction catalog and entry machinery,
+Runtime's aggregate initializer and diagnostic factory catalog, Portable Code's
+published function-table objects and Codegen's table lookup adapters. Retain
+Bootstrap's actual result-retention algorithm and Runtime's execution/retirement
+operations for reconstruction through objects. Delete the standalone Text View,
+Error Value, Collection Value, GC Settings and Allocation Budget packages. String
+conversion, equality/hash semantics, error construction, collection settings and
+checked allocation accounting must be implemented by their actual owners, without
+recreating those five service factories. Keep optimized execution and its guards;
+any remaining descriptor-dependent guard is migration debt, not a valid exception.
+
+Deletion checkpoint: Bootstrap's module catalog and descriptor initializer are
+removed, retaining its load/result-rooting implementation. Runtime no longer
+includes Id source or supports local allocation/symbol/dictionary backends; the
+old diagnostic factory constructor is deleted. Its upper execution, deoptimization,
+recovery and scheduling implementations remain. Portable Code retains its real
+CodeObject/Block representations and constructors, while its four published API
+objects and Codegen's three private API lookup routines are deleted. The five
+helper crates and their Cargo/install/export-inventory entries are removed.
+
+The earlier pending fixture cleanup is included, with deoptimization-related
+`native-block-construction.c`, `closure-api-context.c`,
+`native-numeric-api-context.c`, and the worker-finalization
+fixture retained for migration. The recovery runner still contains its closure
+admission checks. Old factory support includes are not restored: these harnesses
+cannot run until they use the new object integration. Rebuilding test setup must
+not recreate a second Id or the retired module APIs.
+
+This is still a deletion checkpoint, not a completed restoration. Other upper
+consumers, including optimization guards and native entry adapters, still refer
+to removed interfaces. Their presence does not authorize restoring shared tables.
+
+Validation for this deletion pass: 196 files covering Runtime recovery/native-tier,
+execution, compiler lowering, artifact formats, Isolate, Image and Birnam modules
+match the pre-deletion bytes. The one changed file in the wider preservation
+inventory is Codegen Runtime's integration file: only private API imports/lookups
+were removed. Ten focused Codegen recovery tests pass, including alias identity,
+recovery maps, closure recovery and image recovery emission. The seven ABI/Id
+tests pass. Cargo metadata/lock resolution, edited Rust parsing, Python/TOML syntax
+and diff whitespace checks pass. Runtime concurrency and full native/image tests
+cannot run until upper construction is rebuilt; preservation is not execution
+validation. The host's Bootstrap descriptor wrapper is also deleted.

@@ -17,7 +17,7 @@ immutable and process-pinned; all calls run on the runtime owner thread.
 
 The arm64 descriptor is 112 bytes: version 1 at offset 0, size at 8 and twelve
 function pointers starting at 16. See the independent
-[map_v1.h](fixtures/map-v1/map_v1.h). Admission rejects null, wrong version/size,
+map_v1.h (`abi/fixtures/map-v1/map_v1.h` at `eb219997`). Admission rejects null, wrong version/size,
 any missing operation and retargeting; the same pointer is idempotent.
 
 | Operation | Contract |

@@ -1,13 +1,13 @@
-# IdApi v20 native fixture
+# Legacy Runtime table C mirror
 
-Independent C mirror of the 18-field, 144-byte arm64 macOS table. Native
-initialization receives API, prior state, presence, import, export, vtable
-enumeration, method observation, root registry, GC settings, payload-layout, trace-hook and finalizer pointers. The client checks
-canonical runtime protocols and repeated initialization with the same borrowed
-capabilities. Historical fixtures remain frozen. See design 81BO for the
-extraction scope and validation status.
+This header mirrors the still-used 18-field Runtime table. It remains for the
+production native fixtures while Design 84 replaces the table with Id messages.
+It is not the Id protocol and does not define the native module entry.
 
-The removed stack-anchor setter is supplied through Native Stack v1 directly
-to the host; native initialization still has twelve arguments.
+The old aggregate `id_init`/`module_init` client and module programs have been
+deleted. All installed-native acceptance uses
+[the Id protocol](../id-protocol-v1/README.md) and the production Bootstrap path.
+See [Design 84](../../../docs/design/84-message-only-native-modules.md) for the
+remaining deletion work. Historical clients can be recovered from `eb219997`.
 
-`storage_v1.h` keeps Storage v1's unchanged layout with the current IdApi include.
+`storage_v1.h` remains the C mirror consumed by production storage fixtures.

@@ -5,20 +5,10 @@ compile_error!("every runnable birnam_runtime cdylib profile must use panic=abor
 
 pub(crate) use birnam_abi as abi;
 mod boundary;
-#[cfg(any(test, feature = "ffi-test-hooks"))]
-#[path = "../../birnam-id/src/id/mod.rs"]
-mod id;
 #[cfg(test)]
 mod id_adoption_tests;
 #[cfg(test)]
 mod symbol_tests;
-mod native_runtime;
-#[cfg(any(test, feature = "ffi-test-hooks"))]
-mod support;
-#[cfg(any(test, feature = "ffi-test-hooks"))]
-pub(crate) use id::{id_dispatch, object_memory, symbol, vtable};
-#[cfg(test)]
-pub(crate) use id::{initial_objects, native_id};
 #[cfg(feature = "dev-guarded-slots")]
 mod dev_slot_access;
 mod dispatch;
@@ -94,11 +84,6 @@ pub extern "C" fn birnam_id_rust_abi_descriptor_v1() -> *const core::ffi::c_void
 }
 
 /// Initialize the Rust floor exactly once in this process.
-#[unsafe(no_mangle)]
-#[cfg(feature = "ffi-test-hooks")]
-pub extern "C" fn id_init() -> *mut core::ffi::c_void {
-    public_api::initialize_once().cast()
-}
 
 /// Private host/floor admission seam for Design 60J Symbol compaction.
 ///

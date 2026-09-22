@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Preserve deoptimization, the native optimization tier, recovery, concurrency,
+  workers and their semantic tests above Id while deleting more native plumbing:
+  Bootstrap's construction catalog, Runtime's aggregate initializer and local
+  test backends, private Portable Code API objects and five helper packages
+  (Text View, Error Value, Collection Value, GC Settings, Allocation Budget).
+  Remove retired ABI fixture scaffolding and build entries. Full startup remains
+  unavailable until object-based integration is rebuilt.
+
 - Delete the remaining 54 module-specific ABI source files and the Runtime
   `IdApi`, leaving only the generic Id calling/loading contract and buffer helpers.
   This user-directed deletion checkpoint intentionally precedes caller migration;

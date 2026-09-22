@@ -6,7 +6,7 @@ imports to [v2 construction](range-v2.md). Obtain
 The immutable descriptor remains 56 bytes with 5 operations, version 3
 at offset 0 and byte size at 8. Admission still rejects missing fields, wrong
 version/extent and retargeting; repeat attachment of the same pointer succeeds.
-The [independent C mirror](fixtures/range-v3/range_v3.h) fixes the layout.
+The independent C mirror (`abi/fixtures/range-v3/range_v3.h` at `eb219997`) fixes the layout.
 
 `prepare(api, imports, parent, adopting)` receives the incoming API's explicit
 `const NamespaceImportV1 *` immediately after the API. The adoption branch

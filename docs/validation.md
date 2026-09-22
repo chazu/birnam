@@ -1,5 +1,13 @@
 # Validation
 
+During [Design 84](design/84-message-only-native-modules.md), full-language
+validation is unavailable: the old native API and construction interfaces have
+been deliberately deleted before caller migration. ABI/Id checks and independent
+compiler recovery tests can still run. Deoptimization and concurrency assertions
+are retained, but their Runtime/native harnesses need migration. Existing installed
+prefixes do not validate the current source. Release validation is not required
+for this deletion work.
+
 Use `mise run verify` for everyday correctness and `mise run verify-plan` to see
 its steps before execution. This is the current workflow; Design 74's temporary
 controllers and chronological measurement notes are historical evidence.
@@ -66,24 +74,7 @@ admission and loaded startup/compiled-image checks. Release validation was waive
 for this work. The per-contract tasks below remain regression tools, not a queue
 of further extractions.
 
-The production storage-observation boundary has a focused debug check:
-`mise run storage-observation`. It builds only Id, Integer and the stateless
-storage-description library, then runs the independent C fixture. Rust checks
-are `cargo test -p birnam-id runtime::storage` and `cargo test -p birnam-storage`.
-These checks require neither an installation nor release validation. The
-[storage ABI](../abi/storage-v1.md) documents coverage and lifetime limits.
-
-The loaded graph tracer has a separate focused debug check:
-`mise run storage-tracing`. It uses the actual Id, storage, Integer and tracer
-libraries with an independent C graph oracle. `cargo test -p birnam-trace`
-checks graph traversal against transitive closure plus identity, coverage and
-error cases. See the [tracer ABI](../abi/trace-v1.md). These checks do not install
-Birnam or run release validation.
-
-For production GC through the loaded tracer, use `mise run live-tracing`. This
-checks actual explicit/allocation-triggered collection with a C admission/order
-oracle and the current IdApi fixture. `cargo test -p birnam-trace` covers its
-live-driver contract; `cargo test -p birnam-id runtime::tracing` exercises changing
-layout/hook selection during traversal. Id's existing GC, Frame, retirement and
-deferred-allocation tests also use the real upper implementation. See
-[live traversal v1](../abi/trace-live-v1.md).
+The former factory-based storage-observation, storage-tracing and live-tracing
+runners have been removed. Their old task names are not current validation
+commands. Retained semantic tests must use the production Id and upper objects
+when native integration is restored.

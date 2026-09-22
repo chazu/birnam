@@ -274,17 +274,6 @@ fn static_selector(symbols: &mut Symbols, heap: &mut Heap, symbol_vtable: Oop, n
         .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"))
 }
 
-/// Test ownership surrounds the same production native constructor.
-#[cfg(test)]
-pub(crate) fn build_bootstrap() -> Bootstrap {
-    build_bootstrap_from(crate::initial_objects::InitialObjects::new())
-}
-#[cfg(test)]
-pub(crate) fn build_bootstrap_from(initial: crate::initial_objects::InitialObjects) -> Bootstrap {
-    let mut bootstrap = build_bootstrap_with(initial.protocol.protocol, None, None, None, None, None, None, None, Some(initial.primitives), crate::support::diagnostic());
-    bootstrap.runtime.test_id_owner = Some(initial.protocol);
-    bootstrap
-}
 pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::id_primitives::PrimitivesV1>, support: birnam_abi::runtime_support::FactoriesV1) -> Bootstrap {
     let primitives = primitives.unwrap_or_else(|| unsafe { birnam_abi::id_primitives::select(protocol) }.unwrap_or_else(|_| panic!("select Id primitives before Runtime")));
     let mut initial_roots = roots.as_ref().and_then(|roots| roots.native_owner())

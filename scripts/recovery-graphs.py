@@ -36,7 +36,7 @@ def sources():
               ('compatibility_authority.py', 'compatibility-authority-test.py', 'measurement_archive.py',
                'validation_support.py', 'validation_proof.py')]
     paths += [ROOT / 'scripts/fixtures' / name for name in
-              ('native-block-construction.c', 'closure-api-context.c', 'object-model-support.h', 'integer-support.h')]
+              ('native-block-construction.c', 'closure-api-context.c')]
     for folder in ('rust', 'src/id', 'modules', 'abi', 'vendor/libtcc-src'):
         paths.extend(p for p in (ROOT / folder).rglob('*') if p.is_file())
     return {str(p.relative_to(ROOT)): sha(p) for p in sorted(set(paths))}
@@ -478,7 +478,7 @@ def main():
                 + (["--release"] if profile == "release" else []), profile + "-baseline-resource-ownership")
             if args.closures:
                 run(["cargo", "build", "--locked", "--offline",
-                     "-p", "birnam-runtime", "-p", "birnam-object-model", "-p", "birnam-method-observation", "-p", "birnam-root-registry", "-p", "birnam-gc-settings", "-p", "birnam-payload-layout", "-p", "birnam-trace-hooks", "-p", "birnam-finalizers", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-collection",
+                     "-p", "birnam-runtime", "-p", "birnam-object-model", "-p", "birnam-method-observation", "-p", "birnam-root-registry", "-p", "birnam-payload-layout", "-p", "birnam-trace-hooks", "-p", "birnam-finalizers", "-p", "birnam-integer", "-p", "birnam-float", "-p", "birnam-word", "-p", "birnam-prelude", "-p", "birnam-collection",
                      "-p", "birnam-error", "-p", "birnam-portable-code",
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")

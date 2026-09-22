@@ -10,7 +10,7 @@ Attach the immutable process-pinned descriptor with
 `birnam_block_loop_dependency_v2`. Its arm64 layout is 24 bytes: version 2 at 0,
 byte size at 8 and install at 16. Admission rejects null, wrong version/extent,
 missing install and retargeting; the same pointer may attach again. The
-[independent C mirror](fixtures/block-loop-v2/block_loop_v2.h) checks this layout.
+independent C mirror (`abi/fixtures/block-loop-v2/block_loop_v2.h` at `eb219997`) checks this layout.
 
 Install receives const registration/execution IdApi pointers, an execution presence pointer, the selected Block
 behavior and already interned whileTrue:/whileFalse: selectors. Prelude retains

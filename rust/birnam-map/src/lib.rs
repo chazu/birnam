@@ -76,30 +76,16 @@ unsafe extern "C" fn mark_roots(mark: MarkFn) {
         }
     }
 }
-unsafe extern "C" fn prepare(api_pointer: *mut IdApi, imports: *const birnam_abi::namespace_import::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop, adopting: i32) {
+unsafe extern "C" fn prepare(api_pointer: *mut IdApi, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop) {
     if !READY.load(Ordering::Acquire) || api_pointer.is_null() {
         abort("invalid Map preparation");
     }
     let api = unsafe { &*api_pointer };
     ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });
     FAMILY.get_or_init(|| {
-        let map = if adopting != 0 {
-            unsafe { birnam_abi::namespace_import::import(imports, MAP_VT_NAME.as_ptr().cast()) }
-        } else {
-            unsafe { (api.proto)(parent) }
-        };
+        let map = unsafe { (api.proto)(parent) };
         IDENTITY_ROOTS[0].store(map as usize, Ordering::Release);
-        let prototype = if adopting != 0 {
-            unsafe { birnam_abi::namespace_import::import(imports, MAP_NAME.as_ptr().cast()) }
-        } else {
-            ptr::null_mut()
-        };
-        IDENTITY_ROOTS[1].store(prototype as usize, Ordering::Release);
-        let node = if adopting != 0 {
-            unsafe { birnam_abi::namespace_import::import(imports, MAP_NODE_NAME.as_ptr().cast()) }
-        } else {
-            unsafe { (api.proto)(api.object_vt) }
-        };
+        let node = unsafe { (api.proto)(api.object_vt) };
         IDENTITY_ROOTS[2].store(node as usize, Ordering::Release);
         Family {
             api: api_pointer as usize,
@@ -899,7 +885,7 @@ unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand
     }
     VECTOR.store(vector.addr(), Ordering::Release);
     READY.store(true, Ordering::Release);
-    unsafe { prepare(api, imports, (*roots).api, parent, 0); finish_prototype(api); set_layout(api, layouts); }
+    unsafe { prepare(api, (*roots).api, parent); finish_prototype(api); set_layout(api, layouts); }
     let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
     let value = unsafe { retained.keep(intern(&*api, b"value\0")) };
     let value2 = unsafe { retained.keep(intern(&*api, b"value:value:\0")) };

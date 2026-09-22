@@ -6,7 +6,7 @@ and attach through `birnam_vector_dependency_v4`. The immutable descriptor
 remains 104 bytes with 11 operations, version 4 at offset 0 and extent at 8.
 Admission rejects missing fields, wrong version/extent and retargeting;
 repeat attachment of the same pointer succeeds. The
-[independent C mirror](fixtures/vector-v4/vector_v4.h) fixes its layout.
+independent C mirror (`abi/fixtures/vector-v4/vector_v4.h` at `eb219997`) fixes its layout.
 
 Only publication changes signature: `publish(api, exports)` receives the
 supplied API's `const NamespaceExportV1 *`. It reads each export function/context

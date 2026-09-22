@@ -10,7 +10,7 @@ Attach the immutable, process-pinned descriptor through
 `birnam_environment_dependency_v1`. Its arm64 layout is 24 bytes: version 1 at 0,
 byte size at 8 and one install function at 16. Admission rejects null, wrong
 version/extent, missing install and retargeting; repeat attachment of the same
-pointer succeeds. The [independent C mirror](fixtures/environment-v1/environment_v1.h)
+pointer succeeds. The independent C mirror (`abi/fixtures/environment-v1/environment_v1.h` at `eb219997`)
 checks layout without Rust headers.
 
 Install receives const registration/execution IdApi pointers, the selected System

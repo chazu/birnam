@@ -43,7 +43,7 @@ occur. Bare Id initialization still works without it, and collection without a
 native stack anchor retains its existing no-op behavior. An actual collection
 without a mounted tracer aborts with an invariant error; there is no fallback
 worklist inside Id. The current independent IdApi client uses
-[`trace-support.h`](../scripts/fixtures/trace-support.h) to mount explicitly.
+`trace-support.h` (`scripts/fixtures/trace-support.h` at `eb219997`) to mount explicitly.
 
 ## Source and traversal semantics
 

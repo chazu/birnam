@@ -15,7 +15,7 @@ thread. Collection no longer needs an Integer dependency.
 
 The immutable arm64 descriptor is 56 bytes: version 2 at offset 0, size at 8,
 and five function pointers from offset 16. The independent C mirror is
-[map_v2.h](fixtures/map-v2/map_v2.h). Admission rejects null, wrong version/size,
+map_v2.h (`abi/fixtures/map-v2/map_v2.h` at `eb219997`). Admission rejects null, wrong version/size,
 missing operations and retargeting; the same descriptor address is idempotent.
 
 | Operation | Contract |

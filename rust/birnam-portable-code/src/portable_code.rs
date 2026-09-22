@@ -1,11 +1,6 @@
-use crate::abi::{Method, Oop, SLOT_RAW};
+use crate::abi::{Method, Oop, SLOT_RAW, SLOT_OOP};
 use crate::heap::Permanence;
 use crate::runtime::{Runtime, with_active_if_present};
-use birnam_abi::{
-    PORTABLE_CODE_API_V1_VERSION, PORTABLE_CODE_API_V2_VERSION, PORTABLE_CODE_API_V3_VERSION,
-    PORTABLE_PROGRAM_VIEW_API_V1_VERSION, PortableCodeApiV1, PortableCodeApiV2, PortableCodeApiV3,
-    PortableProgramViewApiV1, SLOT_OOP,
-};
 use core::mem::size_of;
 use core::ptr;
 use sha2::{Digest, Sha256};
@@ -16,14 +11,6 @@ const NODE_MAGIC: u64 = 0x4249_524e_434f_4445;
 const STATEMENT_MAGIC: u64 = 0x4249_524e_5354_4d54;
 const PROGRAM_MAGIC: u64 = 0x4249_524e_5052_4f47;
 const BINDING_MAGIC: u64 = 0x4249_524e_4249_4e44;
-const NATIVE_API_NAME: &[u8] = b"_BirnamPortableCodeApiV1";
-const NATIVE_API_VTABLE_NAME: &[u8] = b"_BirnamPortableCodeApiV1Vt";
-const NATIVE_API_V2_NAME: &[u8] = b"_BirnamPortableCodeApiV2";
-const NATIVE_API_V2_VTABLE_NAME: &[u8] = b"_BirnamPortableCodeApiV2Vt";
-const NATIVE_API_V3_NAME: &[u8] = b"_BirnamPortableCodeApiV3";
-const NATIVE_API_V3_VTABLE_NAME: &[u8] = b"_BirnamPortableCodeApiV3Vt";
-const PROGRAM_VIEW_API_NAME: &[u8] = b"_BirnamPortableProgramViewApiV1";
-const PROGRAM_VIEW_API_VTABLE_NAME: &[u8] = b"_BirnamPortableProgramViewApiV1Vt";
 const BLOCK_CARRIER_NAME: &[u8] = b"_BirnamPortableBlockCarrier";
 const BLOCK_CARRIER_VTABLE_NAME: &[u8] = b"_BirnamPortableBlockCarrierVt";
 
@@ -2396,7 +2383,7 @@ fn private_payload_object(
     (vtable, object)
 }
 
-fn install_native_api(runtime: &Runtime) {
+fn install_block_carrier(runtime: &Runtime) {
     let globals = runtime.globals();
     let (carrier_vtable, carrier_prototype) = private_payload_object(
         runtime,
@@ -2422,78 +2409,6 @@ fn install_native_api(runtime: &Runtime) {
             .write(runtime.canonical().nil);
     };
 
-    let (api_v3_vtable, api_v3_object) = private_payload_object(
-        runtime,
-        NATIVE_API_V3_NAME,
-        NATIVE_API_V3_VTABLE_NAME,
-        globals.object_vt,
-        size_of::<PortableCodeApiV3>(),
-    );
-    runtime.set_layout(api_v3_vtable, core::ptr::null(), 0, SLOT_RAW);
-    unsafe {
-        api_v3_object
-            .cast::<PortableCodeApiV3>()
-            .write(PortableCodeApiV3 {
-                abi_version: PORTABLE_CODE_API_V3_VERSION,
-                struct_size: size_of::<PortableCodeApiV3>() as u64,
-                admit_program_with_provenance: native_admit_program_with_provenance,
-            })
-    };
-
-    let (api_v2_vtable, api_v2_object) = private_payload_object(
-        runtime,
-        NATIVE_API_V2_NAME,
-        NATIVE_API_V2_VTABLE_NAME,
-        globals.object_vt,
-        size_of::<PortableCodeApiV2>(),
-    );
-    runtime.set_layout(api_v2_vtable, core::ptr::null(), 0, SLOT_RAW);
-    unsafe {
-        api_v2_object
-            .cast::<PortableCodeApiV2>()
-            .write(PortableCodeApiV2 {
-                abi_version: PORTABLE_CODE_API_V2_VERSION,
-                struct_size: size_of::<PortableCodeApiV2>() as u64,
-                new_materialized_block: native_new_materialized_block,
-            })
-    };
-
-    let (api_vtable, api_object) = private_payload_object(
-        runtime,
-        NATIVE_API_NAME,
-        NATIVE_API_VTABLE_NAME,
-        globals.object_vt,
-        size_of::<PortableCodeApiV1>(),
-    );
-    runtime.set_layout(api_vtable, core::ptr::null(), 0, SLOT_RAW);
-    unsafe {
-        api_object
-            .cast::<PortableCodeApiV1>()
-            .write(PortableCodeApiV1 {
-                abi_version: PORTABLE_CODE_API_V1_VERSION,
-                struct_size: size_of::<PortableCodeApiV1>() as u64,
-                admit_program: native_admit_program,
-                new_block: native_new_block,
-            })
-    };
-
-    let (view_vtable, view_object) = private_payload_object(
-        runtime,
-        PROGRAM_VIEW_API_NAME,
-        PROGRAM_VIEW_API_VTABLE_NAME,
-        globals.object_vt,
-        size_of::<PortableProgramViewApiV1>(),
-    );
-    runtime.set_layout(view_vtable, core::ptr::null(), 0, SLOT_RAW);
-    unsafe {
-        view_object
-            .cast::<PortableProgramViewApiV1>()
-            .write(PortableProgramViewApiV1 {
-                abi_version: PORTABLE_PROGRAM_VIEW_API_V1_VERSION,
-                struct_size: size_of::<PortableProgramViewApiV1>() as u64,
-                copy_program: native_copy_program,
-            })
-    };
 }
 
 impl Runtime {
@@ -2712,7 +2627,7 @@ impl Runtime {
                 crate::boundary::fatal_invariant("static CodeObjectVt export contains NUL")
             });
 
-        install_native_api(self);
+        install_block_carrier(self);
     }
 }
 

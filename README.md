@@ -8,6 +8,12 @@ images.
 It is an active pre-alpha system. The architecture and its bootstrap are the
 product; compatibility and language surface can and will still change.
 
+**Current development status:** [Design 84](docs/design/84-message-only-native-modules.md)
+is deleting the old native API architecture before rebuilding its callers. This
+checkout intentionally does not build the complete language yet. Deoptimization,
+compiled-image recovery and concurrency implementations are retained above Id.
+The usage documentation below describes the language being preserved.
+
 ## Contents
 
 - [Support](#support)

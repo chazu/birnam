@@ -3,8 +3,7 @@
 The versioned File IO function table, dependency attachment registry and installer
 wrapper have been deleted from production under
 [Design 84](../docs/design/84-message-only-native-modules.md). Do not implement or
-consume this former ABI. Historical C mirrors remain only for unmigrated legacy
-fixtures; they are not supported production interfaces.
+consume this former ABI. Its historical C mirrors and legacy provider fixtures have also been deleted.
 
 The common native initializer installs the module's behavior and returns Unit.
 Repeated successful initialization also returns Unit. There is no separate

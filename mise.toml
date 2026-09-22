@@ -40,34 +40,6 @@ run = "cargo +nightly miri test --workspace --locked --offline"
 description = "Run the test-only Design 74F same-frame recovery experiment"
 run = "python3 scripts/same-frame-deopt.py"
 
-[tasks.collection-value]
-description = "Check loaded collection value comparison and hashing in debug"
-run = "scripts/collection-value-test.sh"
-
-[tasks.integer-error-value]
-description = "Focused debug Integer error policy and numeric admission checks"
-run = "scripts/integer-error-value-test.sh"
-
-[tasks.float-error-value]
-description = "Focused debug Float error policy migration checks"
-run = "scripts/float-error-value-test.sh"
-
-[tasks.word-error-value]
-description = "Focused debug Word overflow policy migration checks"
-run = "scripts/word-error-value-test.sh"
-
-[tasks.error-value]
-description = "Focused debug lazy Error value policy checks"
-run = "scripts/error-value-test.sh"
-
-[tasks.namespace-names]
-description = "Focused debug reverse-name capability and consumer admission checks"
-run = "scripts/namespace-names-test.sh"
-
-[tasks.namespace]
-description = "Focused debug raw namespace state and bootstrap checks"
-run = "scripts/namespace-test.sh"
-
 [tasks.root-registry]
 description = "Check native root registration, snapshots and admission (debug)"
 run = "scripts/root-registry-test.sh"
@@ -75,37 +47,9 @@ run = "scripts/root-registry-test.sh"
 [tasks.gc-settings]
 description = "Check native GC settings, allocation policy and admission (debug)"
 run = "scripts/gc-settings-test.sh"
-[tasks.payload-layout]
-description = "Check native Payload layout, allocation policy and admission (debug)"
-run = "scripts/payload-layout-test.sh"
-
-[tasks.native-mark]
-description = "Check native mark scopes, reentry and callback lifetime (debug)"
-run = "scripts/native-mark-test.sh"
-
 [tasks.native-stack]
 description = "Check native stack anchor, word scanning and collection (debug)"
 run = "scripts/native-stack-test.sh"
-
-[tasks.allocation-budget]
-description = "Check allocation-budget ownership, actual Heap charges and host admission"
-run = "scripts/allocation-budget-test.sh"
-
-[tasks.collection-phase]
-description = "Check Runtime collection phases, callback admission and host preparation (debug)"
-run = "scripts/collection-phase-test.sh"
-
-[tasks.storage-observation-scope]
-description = "Check Runtime observation scope ownership, guard ordering and host admission (debug)"
-run = "scripts/storage-observation-scope-test.sh"
-
-[tasks.dispatch-cache]
-description = "Check inherited-lookup cache ownership, live dispatch and host admission (debug)"
-run = "scripts/dispatch-cache-test.sh"
-
-[tasks.guard-verdict]
-description = "Check guard-verdict ownership, lookup and Machine-slot invariants, and host admission (debug)"
-run = "scripts/guard-verdict-test.sh"
 
 [tasks.mutation-epoch]
 description = "Check Vtable epoch ownership, exact mutation counts, live dispatch and host admission (debug)"
@@ -115,10 +59,6 @@ run = "scripts/mutation-epoch-test.sh"
 description = "Check derived Vtable key-index ownership, threshold transitions, live lookup and host admission (debug)"
 run = "scripts/key-index-test.sh"
 
-[tasks.allocation-identity]
-description = "Check Heap allocation-identity ownership, exhaustion, storage reports and host admission (debug)"
-run = "scripts/allocation-identity-test.sh"
-
 [tasks.deferred-identity]
 description = "Check deferred identity ownership, mixed journals, exhaustion, recovery and host admission (debug)"
 run = "scripts/deferred-identity-test.sh"
@@ -127,113 +67,13 @@ run = "scripts/deferred-identity-test.sh"
 description = "Check lazy deferred-clone index ownership, ordered recovery, capacity and host admission (debug)"
 run = "scripts/deferred-index-test.sh"
 
-[tasks.finalizers]
-description = "Check native finalizer registration and loaded collection (debug)"
-run = "scripts/finalizers-test.sh"
-
-[tasks.trace-hooks]
-description = "Check native trace-hook registration, selection and saved consumers (debug)"
-run = "scripts/trace-hooks-test.sh"
-
-[tasks.method-observation]
-description = "Check native pre-overwrite observation and Store registration (debug)"
-run = "scripts/method-observation-test.sh"
+[tasks.native-modules]
+description = "Check production native modules, construction prefixes and live message dispatch"
+run = 'python3 scripts/id-native-loading-smoke.py "${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"'
 
 [tasks.reflection-boundaries]
 description = "Check production namespace admission, native enumeration, typed errors and GC"
 run = "bash scripts/runtime-services-test.sh '' reflection"
-
-[tasks.selector-enumeration]
-description = "Check Object Model selector enumeration and live consumers (debug)"
-run = "scripts/selector-enumeration-test.sh"
-
-[tasks.vtable-enumeration]
-description = "Focused debug live vtable enumeration and native consumer checks"
-run = "scripts/vtable-enumeration-test.sh"
-
-[tasks.source-loader]
-description = "Focused debug source loading, staging and evaluation checks"
-run = "scripts/source-loader-test.sh"
-
-[tasks.native-loader]
-description = "Focused debug direct native-module loading checks"
-run = "scripts/native-loader-test.sh"
-
-[tasks.block-loop]
-description = "Focused debug native Block loop and dispatch checks"
-run = "scripts/block-loop-test.sh"
-
-[tasks.file-io]
-description = "Focused debug System binary file IO checks"
-run = "scripts/file-io-test.sh"
-
-[tasks.environment]
-description = "Focused debug System environment lookup checks"
-run = "scripts/environment-test.sh"
-
-[tasks.system-input]
-description = "Focused debug System readLine and buffering checks"
-run = "scripts/system-input-test.sh"
-
-[tasks.system-output]
-description = "Focused debug System stdout and installation checks"
-run = "scripts/system-output-test.sh"
-
-[tasks.text-view]
-description = "Focused debug borrowed text view checks"
-run = "scripts/text-view-test.sh"
-
-[tasks.system-gc]
-description = "Focused debug System GC control checks"
-run = "scripts/system-gc-test.sh"
-
-[tasks.printing]
-description = "Focused debug Object/Symbol printing checks"
-run = "scripts/printing-test.sh"
-
-[tasks.string-collection]
-description = "Focused debug String split adapter checks"
-run = "scripts/string-collection-test.sh"
-
-[tasks.map]
-description = "Focused debug native Map storage and HAMT checks"
-run = "scripts/map-test.sh"
-
-[tasks.vector]
-description = "Check loaded Vector storage and persistent trie boundaries in debug"
-run = "scripts/vector-test.sh"
-
-[tasks.range]
-description = "Check loaded Range representation and methods in debug"
-run = "scripts/range-test.sh"
-
-[tasks.string-builder]
-description = "Check the loaded StringBuilder representation and methods in debug"
-run = "scripts/string-builder-test.sh"
-
-[tasks.string]
-description = "Check the loaded String methods in debug"
-run = "scripts/string-test.sh"
-
-[tasks.nil]
-description = "Check the loaded nil methods in debug"
-run = "scripts/nil-test.sh"
-
-[tasks.boolean]
-description = "Check the loaded Boolean methods in debug"
-run = "scripts/boolean-test.sh"
-
-[tasks.word]
-description = "Check the loaded Word representation and methods in debug"
-run = "scripts/word-test.sh"
-
-[tasks.float]
-description = "Check the loaded Float representation and methods in debug"
-run = "scripts/float-test.sh"
-
-[tasks.collection]
-description = "Check the loaded production collection coordinator in debug"
-run = "scripts/collection-test.sh"
 
 [tasks.generated-deopt-experiment]
 description = "Run Design 74G generated same-frame recovery and native unload checks"
@@ -341,18 +181,6 @@ run = "./scripts/bench.sh --release --floor=rust"
 [tasks.bench-compare]
 description = "Diff two benchmark results; exits 1 on regression past threshold"
 run = "./scripts/bench-compare.sh {{arg(name='old')}} {{arg(name='new')}}"
-
-[tasks.storage-observation]
-description = "Check the production storage boundary with focused debug fixtures"
-run = "scripts/storage-observation-test.sh"
-
-[tasks.storage-tracing]
-description = "Check the loaded tracer over production storage with focused debug fixtures"
-run = "scripts/storage-tracing-test.sh"
-
-[tasks.live-tracing]
-description = "Check production GC through the loaded tracer with focused debug fixtures"
-run = "scripts/live-tracing-test.sh"
 
 [tasks.compiled-image-startup]
 description = "Check compiled image/baked startup without source compilation and explicit recovery"

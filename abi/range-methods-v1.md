@@ -13,7 +13,7 @@ embedders must perform the same attachment; a missing dependency is an error.
 
 The arm64 descriptor is 24 bytes: version 1 at offset 0, `size_t byte_size` at 8,
 and the installer function pointer at 16. The independent C definition is in
-[`fixtures/range-methods-v1`](fixtures/range-methods-v1/range_methods_v1.h).
+`fixtures/range-methods-v1` (`abi/fixtures/range-methods-v1/range_methods_v1.h` at `eb219997`).
 Null, wrong-version/size, missing-operation and different-descriptor reattachments
 are rejected; attaching the same descriptor is idempotent.
 

@@ -11,8 +11,7 @@ use code_bindings::{stage_code_binding, set_staged_code_binding_method, remove_s
 
 use birnam_abi::{
     IdApi, MarkFn, Method, Oop, PORTABLE_CODE_API_V1_VERSION, PORTABLE_CODE_API_V2_VERSION,
-    PORTABLE_PROGRAM_VIEW_API_V1_VERSION, PortableCodeApiV1, PortableCodeApiV2,
-    PortableProgramViewApiV1, SLOT_OOP, SLOT_RAW, borrowed_oop_args,
+    SLOT_OOP, SLOT_RAW, borrowed_oop_args,
     foreign_address::{self, KIND_BORROWED},
 };
 use birnam_artifact::{
@@ -1224,69 +1223,6 @@ pub unsafe extern "C" fn birnam_rust_codegen_vtable_cache_set(
 #[unsafe(export_name = "birnam_vtable_cache_set")]
 pub unsafe extern "C" fn birnam_vtable_cache_set(generation: u64, index: u64, value: Oop) -> Oop {
     unsafe { birnam_rust_codegen_vtable_cache_set(generation, index, value) }
-}
-
-unsafe fn portable_code_api(api: &IdApi) -> Option<&'static PortableCodeApiV1> {
-    let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableCodeApiV1".as_ptr()) };
-    let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableCodeApiV1Vt".as_ptr()) };
-    if object.is_null()
-        || object == api.nilObj
-        || vtable.is_null()
-        || vtable == api.nilObj
-        || unsafe { (api.vtableOf)(object) } != vtable
-        || unsafe { (api.objectPayloadSize)(object) } != size_of::<PortableCodeApiV1>()
-    {
-        return None;
-    }
-    let capability = unsafe { &*object.cast::<PortableCodeApiV1>() };
-    if capability.abi_version != PORTABLE_CODE_API_V1_VERSION
-        || capability.struct_size != size_of::<PortableCodeApiV1>() as u64
-    {
-        return None;
-    }
-    Some(capability)
-}
-
-unsafe fn portable_code_api_v2(api: &IdApi) -> Option<&'static PortableCodeApiV2> {
-    let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableCodeApiV2".as_ptr()) };
-    let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableCodeApiV2Vt".as_ptr()) };
-    if object.is_null()
-        || object == api.nilObj
-        || vtable.is_null()
-        || vtable == api.nilObj
-        || unsafe { (api.vtableOf)(object) } != vtable
-        || unsafe { (api.objectPayloadSize)(object) } != size_of::<PortableCodeApiV2>()
-    {
-        return None;
-    }
-    let capability = unsafe { &*object.cast::<PortableCodeApiV2>() };
-    if capability.abi_version != PORTABLE_CODE_API_V2_VERSION
-        || capability.struct_size != size_of::<PortableCodeApiV2>() as u64
-    {
-        return None;
-    }
-    Some(capability)
-}
-
-unsafe fn portable_program_view_api(api: &IdApi) -> Option<&'static PortableProgramViewApiV1> {
-    let object = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableProgramViewApiV1".as_ptr()) };
-    let vtable = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"_BirnamPortableProgramViewApiV1Vt".as_ptr()) };
-    if object.is_null()
-        || object == api.nilObj
-        || vtable.is_null()
-        || vtable == api.nilObj
-        || unsafe { (api.vtableOf)(object) } != vtable
-        || unsafe { (api.objectPayloadSize)(object) } != size_of::<PortableProgramViewApiV1>()
-    {
-        return None;
-    }
-    let capability = unsafe { &*object.cast::<PortableProgramViewApiV1>() };
-    if capability.abi_version != PORTABLE_PROGRAM_VIEW_API_V1_VERSION
-        || capability.struct_size != size_of::<PortableProgramViewApiV1>() as u64
-    {
-        return None;
-    }
-    Some(capability)
 }
 
 unsafe fn copy_code_object_program(api: &IdApi, code_object: Oop) -> Option<Vec<u8>> {

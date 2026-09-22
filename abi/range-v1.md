@@ -16,7 +16,7 @@ production fallback to the earlier method-only construction dependency.
 
 The arm64 descriptor is 64 bytes: version 1 at offset 0, `size_t byte_size` at 8,
 and six function pointers beginning at 16. The independent C definition is
-[`fixtures/range-v1/range_v1.h`](fixtures/range-v1/range_v1.h). Null, wrong-version,
+`fixtures/range-v1/range_v1.h` (`abi/fixtures/range-v1/range_v1.h` at `eb219997`). Null, wrong-version,
 wrong-size, missing-operation and different-descriptor attachments are rejected;
 reattaching the same descriptor succeeds.
 

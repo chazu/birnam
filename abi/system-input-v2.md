@@ -9,7 +9,7 @@ Attach the immutable, process-pinned descriptor through
 `birnam_system_input_dependency_v2`. Its arm64 layout is 24 bytes: version 2 at
 0, byte size at 8 and one install function at 16. Admission rejects null, wrong
 version/extent, missing install and retargeting; repeat attachment of the same
-pointer succeeds. The [independent C mirror](fixtures/system-input-v2/system_input_v2.h)
+pointer succeeds. The independent C mirror (`abi/fixtures/system-input-v2/system_input_v2.h` at `eb219997`)
 checks layout without Rust headers.
 
 Install receives two const IdApi pointers, an execution presence pointer, the selected System behavior and the
