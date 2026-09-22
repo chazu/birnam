@@ -161,3 +161,26 @@ pub(super) unsafe extern "C" fn activate(
         result
     })())
 }
+
+/// Keep the existing allocation admission point even when a private behavior
+/// already exists. Callers root their inputs before sending this message.
+pub(super) unsafe extern "C" fn prepare(
+    context: *mut c_void,
+    _: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let memory = memory(context)?;
+        if count != 0 || !matches!(memory.phase.get(), Phase::Inactive | Phase::Idle) {
+            return Err(invalid());
+        }
+        if memory.phase.get() == Phase::Idle
+            && !memory.constructing.get()
+            && memory.charged.get() >= memory.budget.get()
+        {
+            collection::conservative(memory)?;
+        }
+        Ok(Operand::unit())
+    })())
+}

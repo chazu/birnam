@@ -1,5 +1,10 @@
 # Payload Layout v1
 
+> **Retired by Design 90:** the helper crate, factory and carriers are deleted.
+> Ordinary object slot metadata now belongs privately to
+> [Object Model](../rust/birnam-object-model/README.md). The description below is
+> historical; native value owners do not publish their layouts through it.
+
 > **Construction update (Design 83):** The pre-Id preparation, aggregate
 > initialization and private provider exports described below are historical.
 > Production constructs this service above Id and passes completed dependencies

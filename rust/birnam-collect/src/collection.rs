@@ -156,6 +156,26 @@ unsafe extern "C" fn visit(
     }
     done(answer)
 }
+struct CoreEdges {
+    values: Vec<Oop>,
+    failed: bool,
+}
+unsafe extern "C" fn core_edge(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let edges = unsafe { &mut *context.cast::<CoreEdges>() };
+    if let Some([value]) = unsafe { borrowed_slice(args, count) } {
+        if let Some(value) = value.as_object() {
+            edges.values.push(value);
+            return Outcome::loaded(Operand::unit());
+        }
+    }
+    edges.failed = true;
+    invalid()
+}
 unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Outcome> {
     unsafe {
         let allocations = inventory(memory)?;
@@ -199,21 +219,36 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
             let Some(value) = next else {
                 break;
             };
+            let mut core = CoreEdges {
+                values: Vec::new(),
+                failed: false,
+            };
             let kind = memory
                 .send(
                     memory.id.receiver,
                     b"referencesOf:do:",
-                    &[Operand::object(value), visitor],
+                    &[
+                        Operand::object(value),
+                        Operand::entry(NativeEntry::new(
+                            core_edge,
+                            ptr::from_mut(&mut core).cast(),
+                        )),
+                    ],
                 )?
                 .as_word()
                 .filter(|k| *k <= 2)
                 .ok_or_else(invalid)?;
-            if kind == 0 {
-                let behavior = object(memory.send(
-                    memory.id.receiver,
-                    b"behaviorOf:",
-                    &[Operand::object(value)],
-                )?)?;
+            if core.failed || core.values.len() < if kind == 1 { 2 } else { 1 } {
+                return Err(invalid());
+            }
+            let behavior = core.values[0];
+            // Preserve behavior edge order: header, parent, upper owner, keys.
+            // Id alone interprets dictionary storage; upper owners only see Oops.
+            let prefix = if kind == 1 { 2 } else { core.values.len() };
+            for edge in &core.values[..prefix] {
+                emit(memory, *edge)?;
+            }
+            if kind != 2 {
                 if let Some(owner) = memory.trace_owner(behavior)? {
                     emit(memory, owner)?;
                     memory.send(
@@ -221,7 +256,7 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
                         b"referencesOf:do:",
                         &[Operand::object(value), visitor],
                     )?;
-                } else {
+                } else if kind == 0 {
                     let size = {
                         let state = memory.walk.borrow();
                         let walk = state.as_ref().unwrap();
@@ -231,6 +266,9 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
                         return Err(invalid());
                     }
                 }
+            }
+            for edge in &core.values[prefix..] {
+                emit(memory, *edge)?;
             }
             if let Some(error) = memory.walk.borrow().as_ref().unwrap().failure {
                 return Err(error);
@@ -258,6 +296,10 @@ unsafe fn sweep(memory: &Memory, dead: &[Allocation]) -> Result<usize, Outcome> 
             .iter()
             .flat_map(|a| a.object.addr().to_ne_bytes())
             .collect();
+        let owners = memory.retirement.borrow().clone();
+        for owner in owners {
+            memory.send(owner, b"retire:", &[Operand::bytes(&bytes)])?;
+        }
         memory.send(
             memory.id.receiver,
             b"retireIndexesFor:",

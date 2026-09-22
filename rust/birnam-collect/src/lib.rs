@@ -47,6 +47,7 @@ struct Memory {
     charged: Cell<usize>,
     constructing: Cell<bool>,
     walk: RefCell<Option<collection::Walk>>,
+    retirement: RefCell<Vec<Oop>>,
 }
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -127,6 +128,7 @@ unsafe extern "C" fn roots(
         roots.extend(memory.tracers.borrow().values().map(|v| v.object));
         roots.extend(memory.finalizers.borrow().values().map(|v| v.object));
         roots.extend(memory.temporary.borrow().iter().copied());
+        roots.extend(memory.retirement.borrow().iter().copied());
         for root in roots {
             (visitor.method.unwrap())(visitor.context, receiver, &Operand::object(root), 1)
                 .into_result()?;
@@ -257,6 +259,30 @@ unsafe extern "C" fn budget(
         Ok(Operand::unit())
     })())
 }
+// Metadata owners retire their weak records before Id detaches any allocation.
+unsafe extern "C" fn register_retirement(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let memory = memory(context)?;
+        if !matches!(memory.phase.get(), Phase::Inactive | Phase::Idle) {
+            return Err(invalid());
+        }
+        let Some([owner]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        let owner = object(*owner)?;
+        memory.identity(owner)?;
+        let mut owners = memory.retirement.borrow_mut();
+        if !owners.contains(&owner) {
+            owners.push(owner);
+        }
+        Ok(Operand::unit())
+    })())
+}
 const NAMES: &[&[u8]] = &[
     b"identityOf:",
     b"behaviorOf:",
@@ -269,6 +295,7 @@ const NAMES: &[&[u8]] = &[
     b"retireIndexesFor:",
     b"detachAllocationAt:",
     b"finalize:",
+    b"retire:",
     b"allocate:bytes:",
     b"newBehaviorWithParent:",
     b"internBytes:",
@@ -302,11 +329,14 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             charged: Cell::new(0),
             constructing: Cell::new(false),
             walk: RefCell::new(None),
+            retirement: RefCell::new(Vec::new()),
         }));
         for (name, method) in [
             (b"rootsDo:".as_slice(), roots as Method),
             (b"roots", root_registry),
             (b"activate", construction::activate),
+            (b"prepareAllocation", construction::prepare),
+            (b"registerRetirement:", register_retirement),
             (b"collect", collection::collect),
             (b"collectPrecisely", collection::collect_precisely),
             (b"trace:with:", trace_with),

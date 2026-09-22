@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Restore Object Model through Bootstrap and live Id/Roots/GC messages: ordinary
+  shallow cloning, private behaviors, instance-owned slot metadata and weak
+  ownership records. Trace behavior-owner links and retire metadata before reuse;
+  protect clone snapshots across allocating reentry. Delete Payload Layout,
+  enumeration/adoption adapters and the test-only trait bridge; use existing Id
+  reflection. Add production tests while retaining Execution's deferred recovery,
+  concurrency and code-lifetime work for its later integration.
+
 - Activate production memory management through Bootstrap, Id and Roots messages.
   Consolidate collection, marking, finalizers and native roots in `birnam-collect`;
   remove five helper crates, the old live graph/table adapters and their build

@@ -234,13 +234,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-payload-layout"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-peg"
 version = "0.0.0"
 dependencies = [
@@ -307,7 +300,6 @@ dependencies = [
  "birnam-namespace",
  "birnam-native-compiler",
  "birnam-object-model",
- "birnam-payload-layout",
  "birnam-root-registry",
  "birnam-storage",
  "birnam-string",

@@ -706,11 +706,6 @@ impl Runtime {
         if !state.heap.uses_id_memory() { state.vtables.note_mutation(); }
     }
 
-    #[cfg(test)]
-    pub(crate) fn ensure_private_vtable(&self, object: Oop) -> Oop {
-        birnam_object_model::ensure_private_vtable(self, object)
-    }
-
     /// Design 74A §3: may generated code read or write `machine`'s current
     /// Frame slots directly instead of sending `oopAt:` / `oopAt:put:`?
     ///
@@ -4406,28 +4401,6 @@ impl Runtime {
         self.assert_owner();
         // SAFETY: owner-thread serialization and a copied count.
         unsafe { (*self.state.get()).vtables.count() }
-    }
-
-    pub(crate) fn vtable_enumeration(&self) -> *mut birnam_abi::vtable_enumeration::ApiV2 {
-        self.assert_owner();
-        unsafe { (*self.state.get()).vtable_enumeration.api() }
-    }
-
-    pub(crate) fn canonical_vtable_enumeration(&self) -> birnam_abi::vtable_enumeration::ApiV2 {
-        self.assert_owner();
-        unsafe { (*self.state.get()).vtable_enumeration.canonical() }
-    }
-
-    pub(crate) fn vtable_selector_view(&self, vtable: Oop) -> birnam_abi::vtable_enumeration::ViewV1 {
-        self.assert_owner();
-        // Borrow only until dictionary mutation; the consumer copies immediately.
-        unsafe { (*self.state.get()).vtables.selector_view(vtable) }
-    }
-
-    pub(crate) fn vtable_view(&self) -> birnam_abi::vtable_enumeration::ViewV1 {
-        self.assert_owner();
-        // Immediate borrowed representation only; no callbacks retain this view.
-        unsafe { (*self.state.get()).vtables.view() }
     }
 
     pub(crate) fn vtable_at(&self, index: usize) -> Oop {
@@ -11362,30 +11335,6 @@ mod tests {
             0,
             "every guarded slot probe agreed"
         );
-    }
-}
-
-// Only the test harness statically links the upper algorithm. Production Id
-// has no dependency on birnam-object-model and exposes only the seed operations.
-#[cfg(test)]
-impl birnam_object_model::BehaviorAccess for Runtime {
-    fn prepare(&self, object: Oop) -> Oop {
-        self.prepare_behavior_mutation(object)
-    }
-    fn metavtable(&self) -> Oop {
-        self.globals().vtable_vt
-    }
-    fn owner(&self, behavior: Oop) -> Oop {
-        self.vtable_owner(behavior)
-    }
-    fn delegate(&self, parent: Oop) -> Oop {
-        self.create_vtable(parent)
-    }
-    fn set_owner(&self, behavior: Oop, object: Oop) {
-        self.set_vtable_owner(behavior, object);
-    }
-    fn attach(&self, object: Oop, behavior: Oop) {
-        self.reassociate_behavior(object, behavior);
     }
 }
 

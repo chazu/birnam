@@ -18,8 +18,10 @@ singletons still limit this prefix to one domain per process.
 | GC `activate` | none | Unit. Validate current roots, Id edges and reference coverage, account for the existing heap, then enable collection. Failure leaves collection disabled and permits construction/registration followed by retry. Repeating successful activation is harmless. |
 | GC `collect` | none | Word reclaimed count. Capture the current native caller's registers and stack, trace declared roots, then retire and reclaim unreachable allocations. |
 | GC `collectPrecisely` | none | Same collection, with **only declared roots**. Native callers must explicitly retain every live Oop. This is not the old language-level precise-payload switch and is not the ordinary allocation path. |
-| GC `trace:with:` | behavior Object, owner Object or Unit | Unit. Attach/replace an inherited reference enumerator; Unit removes the exact attachment. The owner receives `referencesOf:do:` with the ordinary object and a synchronous NativeEntry visitor. |
+| GC `trace:with:` | behavior Object, owner Object or Unit | Unit. Attach/replace an inherited reference enumerator; Unit removes the exact attachment. The owner receives `referencesOf:do:` with the ordinary object or behavior and a synchronous NativeEntry visitor. |
 | GC `finalize:with:` | object Object, owner Object or Unit | Unit. Attach/replace/remove a finalizer. The owner receives `finalize:` with the detached object while its payload is still readable. |
+| GC `prepareAllocation` | none | Unit. Enforce the construction phase and budget before an upper mutation, even if it ultimately reuses an object. Caller retains inputs. |
+| GC `registerRetirement:` | owner Object | Unit. Register an instance-owned metadata owner implementing `retire:`; duplicates are ignored. |
 | GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header and padded payload. |
 | GC `rootsDo:` | NativeEntry visitor | Unit. Enumerate GC's own objects, selectors, callback owners and temporary construction roots. Registered with Roots during construction. |
 | GC `roots` | none | The Roots Object used by this instance. |
@@ -33,13 +35,15 @@ that fails, or ignores a visitor failure, aborts the marking pass without sweepi
 No foreign registry borrow spans a send or visitor invocation.
 
 Id enumerates its own headers, behaviors, dictionary keys and Symbols. GC never
-reads those layouts. Every ordinary nonempty native payload needs an enumeration
+reads those layouts. For behavior objects, GC admits header and parent, then sends
+the upper enumerator (when installed), then admits dictionary keys. Object Model
+uses this to enumerate behavior-owner links. Every ordinary nonempty native payload needs an enumeration
 owner before activation or before being reached by collection. That owner knows
 its own payload and native state, including which words are references. A zero-byte
 ordinary object needs an owner only if it has additional references. The existing
 Roots/Namespace/Bootstrap/Boolean/Nil prefix declares its private references through
-Roots. Payload-layout metadata for upper language slots remains with that work;
-it is not a GC service or a shared map of all native representations.
+Roots. Object Model owns ordinary slot metadata; it is not a GC service or a shared map
+of all native representations.
 
 ## Construction and collection phases
 
@@ -74,8 +78,11 @@ from the dead snapshot. New attachment/removal does not hold a map borrow across
 any dependency call.
 
 After successful marking, dead allocations are snapshotted in allocation identity
-order. Id's Symbol, behavior and weak-key indexes and GC's dead trace attachments
-retire before any storage can be reused. For each dead object, GC detaches the allocation, selects its **current**
+order. GC first sends each registered metadata owner `retire:` with the dead-address
+Bytes, then retires Id's Symbol, behavior and weak-key indexes and GC's dead trace
+attachments before any storage can be reused. Registration is permitted only while
+idle/inactive; GC roots the registered owner objects and holds no registry borrow
+across their retirement messages. For each dead object, GC detaches the allocation, selects its **current**
 finalizer, sends `finalize:`, then invokes the
 one-use release entry transferred by Id. An earlier finalizer may inspect a later
 still-attached dead object or replace its finalizer. Finalizers cannot resurrect

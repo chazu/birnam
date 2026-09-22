@@ -57,8 +57,8 @@ An owner can contain ordinary private Rust modules and helper functions.
 implementations to their functional owners when repairing those paths, without
 creating a new universal Runtime service object containing every operation.
 
-The remaining helper crates (`payload-layout`, `trace-hooks`, `finalizers`,
-`native-stack`, `native-mark`, `dispatch-cache`, `method-observation`) are not seven
+The initial helper inventory (`payload-layout`, `trace-hooks`, `finalizers`,
+`native-stack`, `native-mark`, `dispatch-cache`, `method-observation`) did not imply seven
 new service designs. Keep their useful algorithms with the actual owner unless
 an independently useful function justifies a separate module. Representation
 layouts stay private to their representation owners. Generic language-slot
@@ -204,8 +204,9 @@ checks and allocation accounting without capturing those Id implementations.
 Deleted the obsolete Collect state/coordinator/construction tables, live Trace
 graph adapter, Lifetime, Native Mark, Native Stack, Trace Hooks and Finalizers
 helper crates, their export/install entries and Runtime adoption wrappers.
-Payload-layout's remaining generic language-slot implementation belongs with object
-behavior; it is not loaded or consumed by GC. Diagnostic storage tracing remains
+At that checkpoint, Payload-layout's remaining generic language-slot implementation
+belonged with object behavior; it was not loaded or consumed by GC. Its migration
+is completed in the next checkpoint below. Diagnostic storage tracing remains
 separate. Neither is a prerequisite for collection over the converted prefix.
 
 Targeted production tests exercise activation failure/retry on one heap, declared
@@ -220,6 +221,43 @@ algorithms still require their message integration and suspended-task/code-lifet
 tests when Execution is restored. No thread-hosted domain backend or generalized
 retirement framework is part of this change. Full Runtime/CLI startup is still
 unbuildable during the broader transition.
+
+## Object-behavior checkpoint (2026-09-22)
+
+Bootstrap now loads Object Model after GC, with Namespace as its opaque input.
+It publishes `ObjectModel`, installs ordinary `clone`/`new` and the existing
+private-behavior/owner messages, and registers its roots, references and retirement
+through messages. See the [local protocol](../../rust/birnam-object-model/README.md).
+
+This completes the basic object-behavior portion of item 1 over the production
+prefix. Ordinary payload storage, shallow cloning, exact slot metadata and private
+behavior associations have an instance owner. Native values retain responsibility
+for their own payloads and resource-aware cloning. Object Model does not copy
+foreign nonempty payloads or Id's behavior representation.
+
+GC admits behavior references in header/parent/owner/key order and sends metadata
+retirement before Id retires indexes or reclaims storage. Association maps are
+weak: a live behavior traces its owner, but the map does not root every association.
+Cloning protects copied references across allocating reentry, including source
+mutation. Construction admission applies even when a private behavior is reused.
+
+Deleted Payload Layout and its exports/build entries, the redundant behavior
+and selector enumeration adapter, Runtime adoption wrappers, and the test-only
+Object Model trait bridge. Runtime's installer no longer overwrites completed
+Id/GC/Object Model methods. Existing Id reflection messages supply the facts;
+no replacement module table or generic construction framework was added.
+
+Targeted production tests cover cloning, independent private method mutation,
+inherited lookup, exact slot descriptions, reachability, callback replacement,
+reentrant clone allocation, metadata retirement before finalization, finalizer
+non-copying and collection of unreachable object/private-behavior cycles. Payload
+layout copy/boundary semantics are also retained in local unit tests.
+
+The next functional branch is values, starting with basic String construction and
+its actual dependents/extensions. Execution-specific deferred materialization,
+recovery, specialization, concurrency and active-code retirement remain preserved
+for Execution's conversion. Full Runtime/CLI and image integration remain pending;
+there is no second native integration path to keep working in parallel.
 
 ## Keep the refactor bounded
 

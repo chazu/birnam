@@ -705,6 +705,7 @@ Siphon -> Id -> Bootstrap
                   -> Boolean(Namespace)
                   -> Nil(Namespace)
                   -> GC(Roots), then activate
+                  -> ObjectModel(Namespace)
 ```
 
 Every completed module returns an opaque Object or Unit. Namespace publishes
@@ -714,7 +715,8 @@ Siphon and the shared ABI contain no upper-module catalog. Run
 `mise run native-messages` to build and exercise this production prefix, including
 live method replacement, nested loading, collection and finalization.
 [GC’s local protocol](rust/birnam-collect/README.md) documents reference owners,
-rooting and native construction.
+rooting and native construction. [Object Model](rust/birnam-object-model/README.md)
+adds ordinary cloning, private behaviors and slot storage with GC-safe ownership.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
 loading. Collection now works over this prefix through Id and Roots messages.
@@ -744,6 +746,8 @@ application and build driver.
   dispatch and module loading; depends only on the ABI crate.
 - `rust/birnam-collect/` — instance-owned collection, tracing, finalization and
   native root capture above Id and Roots. No foreign payload decoding.
+- `rust/birnam-object-model/` — ordinary object storage and cloning, private
+  behaviors and exact slot metadata; reflection uses existing Id messages.
 - Other `rust/birnam-*/` crates — native values, compiler/runtime,
   storage, images, workers and language services. Their algorithms are retained;
   integration still needs migration under [Design 90](docs/design/90-functional-modules.md).

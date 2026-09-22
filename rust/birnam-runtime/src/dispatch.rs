@@ -271,81 +271,18 @@ pub(crate) struct Bootstrap {
 
 
 
-/// Install upper mutation, lifetime and dispatch behavior on an existing Runtime.
+/// Install Runtime error dispatch and storage diagnostics on completed objects.
 /// Object construction and canonical values belong to their owning modules.
 pub(crate) fn install_runtime_methods(runtime: &Runtime, protocol: crate::abi::id_protocol::Protocol, selectors: &BootstrapSelectors) {
     let DispatchGlobals { vtable_vt, object_vt, .. } = runtime.globals();
     let has_object_dnu = unsafe { runtime.lookup_native_method_active(object_vt, selectors.does_not_understand).is_some() };
-    // Id's typed mutation operations serve construction. Runtime installs its
-    // completed mutation/lifetime policy after it has a stable owner address.
-    runtime.enter(|| {
-        for (vtable, selector, method) in [
-            (
-                vtable_vt,
-                selectors.allocate,
-                vtable_allocate as crate::abi::Method,
-            ),
-            (
-                vtable_vt,
-                selectors.delegated,
-                vtable_delegated as crate::abi::Method,
-            ),
-            (
-                object_vt,
-                selectors.does_not_understand,
-                object_does_not_understand as crate::abi::Method,
-            ),
-            (
-                object_vt,
-                selectors.clone,
-                object_clone as crate::abi::Method,
-            ),
-            (object_vt, selectors.new, object_clone as crate::abi::Method),
-        ] {
-            if has_object_dnu && selector == selectors.does_not_understand { continue; }
-            let entry = runtime.encode_legacy_method(method, selector == selectors.lookup);
-            let arguments = [crate::abi::id_protocol::Operand::object(selector),
-                crate::abi::id_protocol::Operand::entry(entry)];
-            let installed = runtime.enter(|| unsafe {
-                protocol.message.unwrap()(protocol.context, vtable, selectors.add_method,
-                    arguments.as_ptr(), arguments.len())
-            });
-            boundary::require_invariant(
-                installed.status == crate::abi::id_protocol::LOADED
-                    && installed.value.as_entry() == Some(entry),
-                "metacircular addMethod changed native entry",
-            );
-        }
-    });
-
-    for (name, method) in [
-        (
-            b"prepareBehaviorMutationOf:".as_slice(),
-            prepare_behavior_mutation as crate::abi::Method,
-        ),
-        (
-            b"reassociateBehaviorOf:with:".as_slice(),
-            reassociate_behavior as crate::abi::Method,
-        ),
-        (
-            b"ownerOf:".as_slice(),
-            vtable_owner_of as crate::abi::Method,
-        ),
-        (
-            b"ownerOf:put:".as_slice(),
-            vtable_owner_put as crate::abi::Method,
-        ),
-        (
-            b"parentOf:".as_slice(),
-            vtable_parent_of as crate::abi::Method,
-        ),
-        (
-            b"parentOf:put:".as_slice(),
-            vtable_parent_put as crate::abi::Method,
-        ),
-    ] {
-        let selector = runtime.intern(name).expect("static seed selector");
-        runtime.add_method(vtable_vt, selector, method);
+    if !has_object_dnu {
+        let entry = runtime.encode_legacy_method(object_does_not_understand as crate::abi::Method, false);
+        let installed = runtime.enter(|| unsafe { protocol.send(object_vt, selectors.add_method, &[
+            crate::abi::id_protocol::Operand::object(selectors.does_not_understand),
+            crate::abi::id_protocol::Operand::entry(entry),
+        ]) });
+        boundary::require_invariant(installed.is_ok(), "install runtime error dispatch");
     }
 
     let storage_selector = runtime.intern(b"withStorageView:").expect("static storage selector");

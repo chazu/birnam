@@ -27,7 +27,6 @@ members = [
     "rust/birnam-object-model",
     "rust/birnam-method-observation",
     "rust/birnam-root-registry",
-    "rust/birnam-payload-layout",
     "rust/birnam-dispatch-cache",
     "rust/birnam-image",
     "rust/birnam-host",

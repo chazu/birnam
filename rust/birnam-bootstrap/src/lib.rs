@@ -225,6 +225,14 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             ],
         )?;
         id.send_named(memory, b"activate", &[])?;
+        id.send_named(
+            receiver,
+            b"loadNative:",
+            &[
+                Operand::bytes(&module_path(directory, "object_model")),
+                Operand::object(namespace),
+            ],
+        )?;
         INSTANCE.store(state, Ordering::Release);
         Ok(Operand::object(namespace))
     }

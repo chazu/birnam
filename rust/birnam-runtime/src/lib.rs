@@ -16,10 +16,8 @@ mod id_registries;
 mod id_objects;
 mod legacy_method;
 mod env;
-mod object_model;
 mod execution;
 mod gc;
-mod payload_layout;
 mod heap;
 #[cfg(any(test, feature = "ffi-test-hooks"))]
 mod owned;
