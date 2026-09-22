@@ -1,10 +1,13 @@
 # ABI evidence
 
 [Design 84](../docs/design/84-message-only-native-modules.md) supersedes the
-module-specific table architecture documented here. Remaining tables are
-migration debt. Vector now returns its opaque prototype; Range, Map, String
-Collection and the control/System installers return Unit. Their twelve Rust
-ABI tables and the captured Vector concatenation entry have been deleted.
+module-specific table architecture documented here. All module-specific Rust ABI
+interfaces, including Runtime `IdApi`, have been deleted. Only the generic
+[Id protocol](fixtures/id-protocol-v1/README.md), borrowed-buffer helpers and
+stateless native loader remain in `birnam-abi`. Production callers are being
+converted; the workspace is intentionally not buildable at this deletion
+checkpoint. The construction descriptions and table manifests below document the
+**previous implementation**, not interfaces to restore.
 
 Production now enters through [the typed Id protocol](fixtures/id-protocol-v1/README.md),
 then constructs Bootstrap, roots, Lifetime, [Nil/Boolean base values](fixtures/base-values-v1/README.md),
@@ -40,8 +43,9 @@ callers. The installed native gate rejects any library that reintroduces
 `module_init`, standalone Runtime constructors, dependency setters, preparers or
 factory/provider exports.
 Codegen receives its completed compiler descriptor explicitly and has no provider
-discovery fallback. Old direct test clients still require migration; they are
-not another supported production loader.
+discovery fallback. The aggregate IdApi clients and legacy provider-fixture loader have been deleted.
+The installed native suite is the validation path; remaining module-specific
+tables are production migration debt, not a second supported loader.
 [IdApi v20 manifest](idapi-v20.json) and the
 [C fixture](fixtures/idapi-v20/README.md) describe the current boundary.
 

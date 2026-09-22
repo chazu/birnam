@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Delete the remaining 54 module-specific ABI source files and the Runtime
+  `IdApi`, leaving only the generic Id calling/loading contract and buffer helpers.
+  This user-directed deletion checkpoint intentionally precedes caller migration;
+  the ABI crate passes its tests, but the full workspace is not yet buildable.
+
 - Delete the retired standalone Id seed workspace, its runner and mise task.
   Record the production coverage and outstanding lifetime obligations; historical
   experiments no longer provide a parallel implementation or acceptance path.

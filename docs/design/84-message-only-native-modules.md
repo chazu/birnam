@@ -79,8 +79,11 @@ borrow lifetime alongside its implementation; do not create a central API catalo
 
 ## Deletion and replacement order
 
-Work in three substantial packages. Commit buildable production checkpoints; do
-not turn this list into another endless series of one-field extraction designs.
+Work in three substantial packages. The user subsequently required deleting all
+superfluous ABI code first, before repairing its callers. That deletion checkpoint
+is deliberately not workspace-buildable. Do not restore or relocate the retired
+interfaces to make callers compile; update them to messages. Do not turn this
+work into another endless series of one-field extraction designs.
 
 ### 1. Remove dead interfaces; convert the live collection boundary
 
@@ -212,3 +215,21 @@ Seed-specific factory layouts, multiple seed-universe destruction and its native
 library unload sequence are not production contracts and are deliberately retired.
 Its negative controls validated the discarded implementation, not production.
 No test result from that workspace counts toward Design 84 acceptance.
+
+### ABI deletion first — user-directed checkpoint
+
+All 54 remaining module-specific ABI source files are deleted, together with the
+upper Runtime `IdApi`, its diagnostic descriptor and old entrypoint signatures.
+The crate now has three source files / 429 lines: opaque Oops and generic borrowed
+buffers, the typed Id message/module protocol, and the stateless OS loader shared
+by Siphon and Id. It has no dependencies or module catalog. This is deletion, not
+relocation; Git contains the former interfaces if needed to understand callers.
+
+The two existing ABI unit tests pass with the minimal contract. **The workspace
+is intentionally not buildable at this checkpoint**: production callers still
+refer to deleted interfaces. Repair begins at Id and proceeds upward through the
+production dependency graph. Preserve real implementations inside their owners;
+remove cross-module descriptors, foreign layouts and cached implementation bundles
+instead of recreating them elsewhere. Full native, image and language validation
+can resume when those callers are converted. Prior installed-prefix results do
+not validate this changed workspace.
