@@ -118,6 +118,33 @@ validate this deliberately broken intermediate state.
 
 ## Remaining work
 
+The remaining work is primarily integration replacement and consolidation, not
+another round of extracting modules. The useful implementations largely exist;
+their old connections have been deleted. Reconnect them correctly while removing
+duplication. There are five concrete obligations:
+
+- **Give each function one owner.** Consolidate lifetime/collection helpers and
+  remove redundant Runtime wrappers. Keep representation handling inside the
+  corresponding value or collection owner. Moving a helper into its owner should
+  usually be an ordinary code move, not a new protocol or architectural project.
+- **Replace actual cross-module operations.** Cover construction, value conversion,
+  reference enumeration, method installation, execution and persistence. Update
+  both sides together and delete displaced tables, pointer casts and attachment
+  machinery. An initializer accepting opaque objects is insufficient if later
+  operations still bypass messages.
+- **Restore execution and compiler integration.** This is the largest coupled
+  area. Generated calls, Blocks, suspended frames, scheduling, optimizations,
+  recovery and executable-code lifetime must agree on the same object model.
+  Preserve their algorithms; replace dependency access and construction paths.
+- **Restore the remaining functional branches.** Collections, I/O,
+  Store/Relational, foreign calls, images and workers follow their actual
+  dependencies. Service adapters should often shrink when descriptor plumbing
+  disappears. They do not each need a new design.
+- **Finish real startup and remove the abandoned path.** Bootstrap must construct
+  the complete language, and ordinary Host/CLI startup must use it. Build/install
+  references and semantic tests must follow that path. The passing prefix is only
+  the beginning of this obligation.
+
 The order below follows the dependency structure; independent branches do not
 need to wait for unrelated functions. Extend the real Bootstrap sequence as each
 function becomes available. Commit coherent progress without turning each commit
@@ -154,7 +181,17 @@ into another architectural extraction.
 Each item includes its production callers and tests. Merely compiling its owner,
 adding a native module entry, or demonstrating a separate seed is not completion.
 
+The first substantial implementation target is **working collection over the
+existing Id/Roots prefix**, with reference enumeration, finalization and retirement
+functioning through messages. It must exercise the production owners and provide
+the foundation for restoring values safely. The deliverable is working behavior
+and deleted scaffolding, not seven replacement helper services.
+
 ## Keep the refactor bounded
+
+For every change, ask: **does it remove an obsolete connection, establish a
+necessary functional boundary, or preserve required behavior?** If it does none
+of those, it is outside this refactor.
 
 - Reuse an existing message when its meaning fits. Add only operations needed by
   concrete consumers; document receiver, arguments, result and borrowing rules
@@ -175,10 +212,19 @@ adding a native module entry, or demonstrating a separate seed is not completion
   replacement and end-to-end source/image/worker checks as those paths return.
   Release validation and forced-source worker startup timing are not required.
 
-Three concrete contracts need particular attention during implementation:
-reference enumeration and collection admission; the boundary between execution
-and compiled-method installation; and restoration of owner representations from
-images. Resolve them against their actual consumers. This document does not invent
+Three areas require substantive interface decisions rather than mostly
+implementation work:
+
+- **GC:** how owners expose references and cleanup, and which operations are
+  permitted during collection. Support opaque representations without unsafe
+  reentry or a catalog of module layouts.
+- **Execution and compiled code:** how methods are installed, invoked, retained
+  while active and retired safely, including deoptimization.
+- **Images:** how each owner restores its objects and compiled artifacts without
+  exposing foreign layouts or recompiling everything unconditionally.
+
+Resolve these against existing consumers using the smallest sufficient messages.
+Do not predesign a universal framework for them. This document does not invent
 selectors or prescribe extra services before those requirements are established.
 
 ## Stopping condition
