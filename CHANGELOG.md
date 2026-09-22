@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Convert Boolean and Nil to Id messages and Namespace objects. Remove their
+  shared base-values descriptor and Boolean's separate Block initialization pass;
+  test truth tables, nil predicates, short circuiting, live Block method replacement
+  and repeat loading against production dylibs.
+
 - Restore Roots and Namespace as opaque objects loaded through production Id.
   Replace their descriptor APIs with messages, retain ordered bindings and roots,
   and test live dependency replacement and callbacks during root enumeration.

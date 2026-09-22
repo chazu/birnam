@@ -224,5 +224,189 @@ fn roots_namespace_use_live_messages_and_preserve_reentrant_snapshots() {
             b"addMethod",
             &[Operand::object(selector), Operand::entry(original)],
         );
+        boolean_nil(&id, &directory, namespace);
+    }
+}
+
+struct Branch {
+    answer: Oop,
+    calls: Cell<usize>,
+}
+unsafe extern "C" fn branch_value(
+    context: *mut c_void,
+    _: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    assert_eq!(count, 0);
+    let branch = unsafe { &*context.cast::<Branch>() };
+    branch.calls.set(branch.calls.get() + 1);
+    Outcome::loaded(Operand::object(branch.answer))
+}
+unsafe fn boolean_nil(id: &Protocol, directory: &std::path::Path, namespace: Oop) {
+    unsafe {
+        let truth = object(load(
+            id,
+            directory,
+            "boolean",
+            &[Operand::object(namespace)],
+        ));
+        let get = |name: &[u8]| {
+            object(send(
+                id,
+                namespace,
+                b"at:",
+                &[Operand::object(id.intern_name(name).unwrap())],
+            ))
+        };
+        let falsity = get(b"false");
+        let nil = get(b"nil");
+        assert_eq!(get(b"Boolean"), truth);
+        assert_eq!(get(b"true"), truth);
+        assert_eq!(get(b"False"), falsity);
+        assert_ne!(truth, falsity);
+        assert_ne!(truth, nil);
+        assert_eq!(
+            load(id, directory, "nil", &[Operand::object(namespace)]).kind(),
+            native::UNIT
+        );
+        for (value, opposite) in [(truth, falsity), (falsity, truth)] {
+            assert_eq!(object(send(id, value, b"not", &[])), opposite);
+            for other in [truth, falsity, nil] {
+                assert_eq!(
+                    object(send(id, value, b"==", &[Operand::object(other)])),
+                    if value == other { truth } else { falsity }
+                );
+                assert_eq!(
+                    object(send(id, value, b"&", &[Operand::object(other)])),
+                    if value == truth { other } else { falsity }
+                );
+                assert_eq!(
+                    object(send(id, value, b"|", &[Operand::object(other)])),
+                    if value == truth { truth } else { other }
+                );
+            }
+        }
+        let prototype = object(send(id, id.receiver, b"objectPrototype", &[]));
+        for value in [truth, falsity, nil, prototype] {
+            assert_eq!(
+                object(send(id, value, b"isNil", &[])),
+                if value == nil { truth } else { falsity }
+            );
+            assert_eq!(
+                object(send(id, value, b"notNil", &[])),
+                if value == nil { falsity } else { truth }
+            );
+        }
+        let parent = object(send(
+            id,
+            id.receiver,
+            b"behaviorOf:",
+            &[Operand::object(prototype)],
+        ));
+        let behavior = object(send(id, parent, b"delegated", &[]));
+        let block = object(send(id, behavior, b"allocate", &[Operand::word(0)]));
+        let branch = Box::leak(Box::new(Branch {
+            answer: nil,
+            calls: Cell::new(0),
+        }));
+        let selector = id.intern_name(b"value").unwrap();
+        send(
+            id,
+            behavior,
+            b"addMethod",
+            &[
+                Operand::object(selector),
+                Operand::entry(NativeEntry::new(
+                    branch_value,
+                    (branch as *mut Branch).cast(),
+                )),
+            ],
+        );
+        let yes = Operand::object(block);
+        // The unchosen argument deliberately has no value method.
+        let unused = Operand::object(prototype);
+        for (receiver, name, args, answer, called) in [
+            (
+                truth,
+                b"ifTrue:ifFalse:".as_slice(),
+                vec![yes, unused],
+                nil,
+                true,
+            ),
+            (falsity, b"ifTrue:ifFalse:", vec![unused, yes], nil, true),
+            (truth, b"ifTrue:", vec![yes], nil, true),
+            (falsity, b"ifTrue:", vec![unused], nil, false),
+            (truth, b"ifFalse:", vec![unused], nil, false),
+            (falsity, b"ifFalse:", vec![yes], nil, true),
+            (truth, b"and:", vec![yes], nil, true),
+            (falsity, b"and:", vec![unused], falsity, false),
+            (truth, b"or:", vec![unused], truth, false),
+            (falsity, b"or:", vec![yes], nil, true),
+        ] {
+            let before = branch.calls.get();
+            assert_eq!(object(send(id, receiver, name, &args)), answer);
+            assert_eq!(branch.calls.get() - before, usize::from(called));
+        }
+        let replacement = Box::leak(Box::new(Branch {
+            answer: truth,
+            calls: Cell::new(0),
+        }));
+        send(
+            id,
+            behavior,
+            b"addMethod",
+            &[
+                Operand::object(selector),
+                Operand::entry(NativeEntry::new(
+                    branch_value,
+                    (replacement as *mut Branch).cast(),
+                )),
+            ],
+        );
+        assert_eq!(object(send(id, falsity, b"or:", &[yes])), truth);
+        assert_eq!(replacement.calls.get(), 1);
+        assert!(id.send_named(truth, b"ifTrue:", &[]).is_err());
+        assert!(id.send_named(truth, b"&", &[Operand::word(0)]).is_err());
+        // Loading again must not reinstall methods over application changes.
+        let boolean_behavior = object(send(
+            id,
+            id.receiver,
+            b"behaviorOf:",
+            &[Operand::object(truth)],
+        ));
+        let selector = id.intern_name(b"not").unwrap();
+        let original = send(
+            id,
+            boolean_behavior,
+            b"lookup",
+            &[Operand::object(selector)],
+        )
+        .as_entry()
+        .unwrap();
+        let counter = Box::leak(Box::new(Counter {
+            original,
+            calls: Cell::new(0),
+        }));
+        send(
+            id,
+            boolean_behavior,
+            b"addMethod",
+            &[
+                Operand::object(selector),
+                Operand::entry(NativeEntry::new(counted, (counter as *mut Counter).cast())),
+            ],
+        );
+        assert_eq!(
+            object(load(
+                id,
+                directory,
+                "boolean",
+                &[Operand::object(namespace)]
+            )),
+            truth
+        );
+        assert_eq!(object(send(id, truth, b"not", &[])), falsity);
+        assert_eq!(counter.calls.get(), 1);
     }
 }

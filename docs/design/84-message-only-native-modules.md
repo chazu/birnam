@@ -415,3 +415,20 @@ ABI, Roots and Namespace unit tests pass (7 tests; one timing probe ignored),
 and the production integration test passes. This establishes the first repaired
 upper prefix. Collection is not active here; GC phase safety and the complete
 language remain pending the higher-module conversion.
+
+### Message integration: Boolean and Nil
+
+Boolean takes Namespace, resolves Roots by message, creates and retains the
+canonical nil/true/false identities, publishes them, and returns true. Nil takes
+that completed Namespace and installs Object/nil predicates, returning Unit.
+All identities remain private references, not a shared base-values struct.
+Boolean control is installed immediately: it sends `value` to the selected
+argument at call time, so it needs no Block table, forward declaration or later
+control initializer. Both printing extensions take a completed String Object.
+The printing installation remains pending until String is converted.
+
+The production message check now covers Boolean truth tables, default identity,
+nil predicates, all five conditional/short-circuit selectors, unchosen arguments
+without a `value` method, replacement of the chosen block's method, malformed
+operands and repeat loading without overwriting a replaced Boolean method.
+Boolean and Nil build independently with only birnam-abi.

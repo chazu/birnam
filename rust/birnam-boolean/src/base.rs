@@ -1,136 +1,175 @@
-//! Base identities and Boolean/identity operations, without String or Block.
-use birnam_abi::{Oop, base_values::ValuesV1, root_registry, lifetime,
-    id_protocol::{self as native, Operand, Outcome, NativeEntry, Protocol}};
-use core::{ffi::c_void, ptr};
+//! Initialization takes Namespace and returns true (the Boolean prototype).
+//! Publishes Boolean, False, true, false and nil. No dependency on Block:
+//! conditional methods send `value` only to the chosen argument.
+//! `installPrinting:` later takes a completed String prototype. Printing always
+//! sends its current `fromBytes:` method; no foreign storage or entry is cached.
+use birnam_abi::{
+    Oop, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{cell::Cell, ffi::c_void, ptr};
 use std::sync::atomic::{AtomicPtr, Ordering};
-struct State { values: ValuesV1, id: Protocol }
-static BASE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
-fn invalid() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-fn object(value: Oop) -> Outcome { Outcome::loaded(Operand::object(value)) }
-unsafe fn values(context: *mut c_void) -> ValuesV1 { unsafe { *context.cast::<ValuesV1>() } }
-unsafe extern "C" fn identical(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
-    let Some([argument]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
-    let Some(other) = argument.as_object() else { return invalid(); };
-    let values = unsafe { values(context) };
-    object(if receiver == other { values.true_object } else { values.false_object })
+struct State {
+    id: Protocol,
+    namespace: Oop,
+    roots: Oop,
+    nil: Oop,
+    truth: Oop,
+    falsity: Oop,
+    printing: Cell<bool>,
 }
-unsafe extern "C" fn not(context: *mut c_void, receiver: Oop, _: *const Operand, count: usize) -> Outcome {
-    if count != 0 { return invalid(); }
-    let values = unsafe { values(context) };
-    object(if receiver == values.true_object { values.false_object } else if receiver == values.false_object { values.true_object } else { values.nil })
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-unsafe fn boolean(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize, and: bool) -> Outcome {
-    let Some([argument]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
-    let Some(argument) = argument.as_object() else { return invalid(); };
-    let values = unsafe { values(context) };
-    object(if receiver == values.true_object { if and { argument } else { receiver } }
-        else if receiver == values.false_object { if and { receiver } else { argument } }
-        else { values.nil })
+fn object(value: Operand) -> Result<Oop, Outcome> {
+    value
+        .as_object()
+        .filter(|p| !p.is_null())
+        .ok_or_else(invalid)
 }
-unsafe extern "C" fn and(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { boolean(context, receiver, args, count, true) } }
-unsafe extern "C" fn or(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome { unsafe { boolean(context, receiver, args, count, false) } }
-fn send(id: Protocol, receiver: Oop, selector: Oop, args: &[Operand]) -> Result<Operand, Outcome> {
-    let answer = unsafe { id.message.unwrap()(id.context, receiver, selector, args.as_ptr(), args.len()) };
-    if answer.status == native::LOADED { Ok(answer.value) } else { Err(answer) }
+fn result(value: Result<Operand, Outcome>) -> Outcome {
+    match value {
+        Ok(v) => Outcome::loaded(v),
+        Err(e) => e,
+    }
 }
-fn intern(id: Protocol, name: &[u8]) -> Result<Oop, Outcome> {
-    send(id, id.receiver, id.intern, &[Operand::bytes(name)])?.as_object().ok_or_else(invalid)
+unsafe fn state<'a>(context: *mut c_void) -> &'a State {
+    unsafe { &*context.cast::<State>() }
 }
-fn construct(id: Protocol, roots: root_registry::OwnedV1, records: lifetime::OwnedV2) -> Result<*const ValuesV1, Outcome> {
-    let prototype = send(id, id.receiver, intern(id, b"objectPrototype")?, &[])?;
-    let behavior = send(id, id.receiver, intern(id, b"behaviorOf:")?, &[prototype])?.as_object().ok_or_else(invalid)?;
-    let delegated = intern(id, b"delegated")?;
-    let allocate = intern(id, b"allocate")?;
-    let retain = |value: Operand| -> Result<Oop, Outcome> {
-        let value = value.as_object().filter(|value| !value.is_null()).ok_or_else(invalid)?;
-        // Establish ownership before publishing this reference in module state.
-        assert_ne!(unsafe { roots.retain.unwrap()(roots.context, value) }, 0);
-        Ok(value)
+unsafe extern "C" fn identical(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
     };
-    let nil_behavior = retain(send(id, behavior, delegated, &[])?)?;
-    let boolean_behavior = retain(send(id, behavior, delegated, &[])?)?;
-    for vtable in [nil_behavior, boolean_behavior] {
-        unsafe { birnam_abi::payload_layout::set(records.layouts, vtable, ptr::null(), 0, birnam_abi::SLOT_RAW) };
-    }
-    let nil = retain(send(id, nil_behavior, allocate, &[Operand::word(0)])?)?;
-    let true_object = retain(send(id, boolean_behavior, allocate, &[Operand::word(0)])?)?;
-    let false_object = retain(send(id, boolean_behavior, allocate, &[Operand::word(0)])?)?;
-    let state = Box::into_raw(Box::new(State { values: ValuesV1 { version: 1, byte_size: size_of::<ValuesV1>(),
-        nil_behavior, boolean_behavior, nil, true_object, false_object }, id }));
-    let values = unsafe { &raw mut (*state).values };
-    let add = intern(id, b"addMethod")?;
-    for (vtable, name, method) in [
-        (behavior, b"==".as_slice(), identical as native::Method),
-        (boolean_behavior, b"not".as_slice(), not as native::Method),
-        (boolean_behavior, b"&".as_slice(), and as native::Method),
-        (boolean_behavior, b"|".as_slice(), or as native::Method),
-    ] {
-        send(id, vtable, add, &[Operand::object(intern(id, name)?), Operand::entry(NativeEntry::new(method, values.cast()))])?;
-    }
-    send(id, boolean_behavior, add, &[Operand::object(intern(id, b"installPrinting:")?), Operand::entry(NativeEntry::new(install_printing, state.cast()))])?;
-    BASE.store(state, Ordering::Release);
-    Ok(values)
+    let Ok(other) = object(*argument) else {
+        return invalid();
+    };
+    let state = unsafe { state(context) };
+    Outcome::loaded(Operand::object(if receiver == other {
+        state.truth
+    } else {
+        state.falsity
+    }))
 }
-unsafe extern "C" fn initialize(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    if id.is_null() { return invalid(); }
-    if let Some([request, api]) = unsafe { birnam_abi::borrowed_slice(args, count) } {
-        if request.as_bytes().and_then(|b| unsafe { birnam_abi::borrowed_bytes(b.pointer, b.length) }) == Some(b"control".as_slice()) {
-            return unsafe { super::initialize_control(id, *api) };
+unsafe extern "C" fn not(
+    context: *mut c_void,
+    receiver: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    if count != 0 {
+        return invalid();
+    }
+    let state = unsafe { state(context) };
+    Outcome::loaded(Operand::object(if receiver == state.truth {
+        state.falsity
+    } else if receiver == state.falsity {
+        state.truth
+    } else {
+        state.nil
+    }))
+}
+unsafe fn boolean(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+    and: bool,
+) -> Outcome {
+    let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Ok(argument) = object(*argument) else {
+        return invalid();
+    };
+    let state = unsafe { state(context) };
+    Outcome::loaded(Operand::object(if receiver == state.truth {
+        if and { argument } else { receiver }
+    } else if receiver == state.falsity {
+        if and { receiver } else { argument }
+    } else {
+        state.nil
+    }))
+}
+unsafe extern "C" fn and(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    unsafe { boolean(context, receiver, args, count, true) }
+}
+unsafe extern "C" fn or(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    unsafe { boolean(context, receiver, args, count, false) }
+}
+unsafe fn branch(
+    context: *mut c_void,
+    receiver: Oop,
+    args: *const Operand,
+    count: usize,
+    expected: usize,
+    choose_true: bool,
+    short_circuit: bool,
+) -> Outcome {
+    let Some(arguments) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    if count != expected || arguments.iter().any(|v| object(*v).is_err()) {
+        return invalid();
+    }
+    let state = unsafe { state(context) };
+    let truth = if receiver == state.truth {
+        true
+    } else if receiver == state.falsity {
+        false
+    } else {
+        return Outcome::loaded(Operand::object(state.nil));
+    };
+    if expected == 1 && truth != choose_true {
+        return Outcome::loaded(Operand::object(if short_circuit {
+            receiver
+        } else {
+            state.nil
+        }));
+    }
+    let block = arguments[if expected == 2 && !truth { 1 } else { 0 }]
+        .as_object()
+        .unwrap();
+    result(unsafe { state.id.send_named(block, b"value", &[]) })
+}
+macro_rules! conditional {
+    ($name:ident, $count:expr, $truth:expr, $short:expr) => {
+        unsafe extern "C" fn $name(
+            context: *mut c_void,
+            receiver: Oop,
+            args: *const Operand,
+            count: usize,
+        ) -> Outcome {
+            unsafe { branch(context, receiver, args, count, $count, $truth, $short) }
         }
-    }
-    let Some([roots, records]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
-    let Some((roots, records)) = roots.as_word().zip(records.as_word()) else { return invalid(); };
-    let roots = roots as *const root_registry::OwnedV1;
-    let records = records as *const lifetime::OwnedV2;
-    if !unsafe { root_registry::valid_owned(roots) && lifetime::valid(records) } { return invalid(); }
-    let id = unsafe { *id };
-    let existing = BASE.load(Ordering::Acquire);
-    if !existing.is_null() {
-        if unsafe { (*existing).id.context } != id.context { return invalid(); }
-        return Outcome::loaded(Operand::word(unsafe { &raw const (*existing).values } as usize));
-    }
-    match construct(id, unsafe { *roots }, unsafe { *records }) {
-        Ok(values) => Outcome::loaded(Operand::word(values as usize)), Err(error) => error,
-    }
+    };
 }
-pub(super) fn matches(api: &birnam_abi::IdApi) -> bool {
-    let base = BASE.load(Ordering::Acquire);
-    if base.is_null() { return false; }
-    let values = unsafe { (*base).values };
-    (values.nil, values.true_object, values.false_object) == (api.nilObj, api.trueObj, api.falseObj)
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize) };
-
+conditional!(if_true_false, 2, true, false);
+conditional!(if_true, 1, true, false);
+conditional!(if_false, 1, false, false);
+conditional!(and_block, 1, true, true);
+conditional!(or_block, 1, false, true);
 struct Printing {
     id: Protocol,
     string: Oop,
-    from_bytes: Oop,
-    values: ValuesV1,
-}
-static PRINTING: AtomicPtr<Printing> = AtomicPtr::new(ptr::null_mut());
-pub(super) fn printing_ready() -> bool {
-    !PRINTING.load(Ordering::Acquire).is_null()
-}
-unsafe extern "C" fn printing_roots(mark: birnam_abi::MarkFn) {
-    let printing = PRINTING.load(Ordering::Acquire);
-    if printing.is_null() {
-        return;
-    }
-    let printing = unsafe { &*printing };
-    let objects = [
-        printing.id.receiver,
-        printing.id.intern,
-        printing.id.load,
-        printing.string,
-        printing.from_bytes,
-        printing.values.nil,
-        printing.values.true_object,
-        printing.values.false_object,
-    ];
-    for object in objects {
-        unsafe { mark(object) };
-    }
+    nil: Oop,
+    truth: Oop,
+    falsity: Oop,
 }
 unsafe extern "C" fn print(
     context: *mut c_void,
@@ -142,23 +181,18 @@ unsafe extern "C" fn print(
         return invalid();
     }
     let printing = unsafe { &*context.cast::<Printing>() };
-    let text = if receiver == printing.values.true_object {
+    let bytes = if receiver == printing.truth {
         b"true".as_slice()
-    } else if receiver == printing.values.false_object {
+    } else if receiver == printing.falsity {
         b"false".as_slice()
     } else {
-        return Outcome::loaded(Operand::object(printing.values.nil));
+        return Outcome::loaded(Operand::object(printing.nil));
     };
-    let bytes = Operand::bytes(text);
-    unsafe {
-        printing.id.message.unwrap()(
-            printing.id.context,
-            printing.string,
-            printing.from_bytes,
-            &bytes,
-            1,
-        )
-    }
+    result(unsafe {
+        printing
+            .id
+            .send_named(printing.string, b"fromBytes:", &[Operand::bytes(bytes)])
+    })
 }
 unsafe extern "C" fn install_printing(
     context: *mut c_void,
@@ -166,59 +200,150 @@ unsafe extern "C" fn install_printing(
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    let state = unsafe { &*context.cast::<State>() };
-    let values = state.values;
-    if receiver != values.true_object || printing_ready() {
+    let state = unsafe { state(context) };
+    if receiver != state.truth || state.printing.get() {
         return invalid();
     }
-    let Some([roots, string]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
+    let Some([string]) = (unsafe { borrowed_slice(args, count) }) else {
         return invalid();
     };
-    let (Some(roots), Some(string)) = (roots.as_word(), string.as_word()) else {
+    let Ok(string) = object(*string) else {
         return invalid();
     };
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    let string = string as *const birnam_abi::string::StringApiV1;
-    if !unsafe {
-        birnam_abi::root_registry::valid_owned(roots) && birnam_abi::string::valid(string)
-    } {
-        return invalid();
-    }
-    let id = state.id;
-    let result = (|| {
-        let from_bytes = intern(id, b"fromBytes:")?;
-        let selector = intern(id, b"printString")?;
-        let printing = Box::into_raw(Box::new(Printing {
-            id,
-            values,
-            string: unsafe { (*string).prototype },
-            from_bytes,
-        }));
-        PRINTING.store(printing, Ordering::Release);
-        unsafe { birnam_abi::root_registry::register((*roots).api, printing_roots) };
-        if send(
-            id,
-            values.boolean_behavior,
-            intern(id, b"lookup")?,
-            &[Operand::object(selector)],
-        )?
-        .kind()
+    result((|| unsafe {
+        let behavior = object(state.id.send_named(
+            state.id.receiver,
+            b"behaviorOf:",
+            &[Operand::object(receiver)],
+        )?)?;
+        let selector = state.id.intern_name(b"printString")?;
+        if state
+            .id
+            .send_named(behavior, b"lookup", &[Operand::object(selector)])?
+            .kind()
             == native::UNIT
         {
-            send(
-                id,
-                values.boolean_behavior,
-                intern(id, b"addMethod")?,
+            state
+                .id
+                .send_named(state.roots, b"retain:", &[Operand::object(string)])?;
+            let printing = Box::into_raw(Box::new(Printing {
+                id: state.id,
+                string,
+                nil: state.nil,
+                truth: state.truth,
+                falsity: state.falsity,
+            }));
+            state.id.send_named(
+                behavior,
+                b"addMethod",
                 &[
                     Operand::object(selector),
                     Operand::entry(NativeEntry::new(print, printing.cast())),
                 ],
             )?;
         }
+        state.printing.set(true);
         Ok(Operand::unit())
-    })();
-    match result {
-        Ok(value) => Outcome::loaded(value),
-        Err(error) => error,
+    })())
+}
+unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let roots = object(id.send_named(
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"Roots")?)],
+        )?)?;
+        let prototype = id.send_named(id.receiver, b"objectPrototype", &[])?;
+        let parent = object(id.send_named(id.receiver, b"behaviorOf:", &[prototype])?)?;
+        let retain = |value: Operand| -> Result<Oop, Outcome> {
+            let value = object(value)?;
+            id.send_named(roots, b"retain:", &[Operand::object(value)])?;
+            Ok(value)
+        };
+        let nil_behavior = retain(id.send_named(parent, b"delegated", &[])?)?;
+        let behavior = retain(id.send_named(parent, b"delegated", &[])?)?;
+        let nil = retain(id.send_named(nil_behavior, b"allocate", &[Operand::word(0)])?)?;
+        let truth = retain(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
+        let falsity = retain(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
+        let state = Box::into_raw(Box::new(State {
+            id,
+            namespace,
+            roots,
+            nil,
+            truth,
+            falsity,
+            printing: Cell::new(false),
+        }));
+        for (target, name, method) in [
+            (parent, b"==".as_slice(), identical as Method),
+            (behavior, b"not", not),
+            (behavior, b"&", and),
+            (behavior, b"|", or),
+            (behavior, b"ifTrue:ifFalse:", if_true_false),
+            (behavior, b"ifTrue:", if_true),
+            (behavior, b"ifFalse:", if_false),
+            (behavior, b"and:", and_block),
+            (behavior, b"or:", or_block),
+            (behavior, b"installPrinting:", install_printing),
+        ] {
+            id.send_named(
+                target,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::entry(NativeEntry::new(method, state.cast())),
+                ],
+            )?;
+        }
+        for (name, value) in [
+            (b"Boolean".as_slice(), truth),
+            (b"False", falsity),
+            (b"true", truth),
+            (b"false", falsity),
+            (b"nil", nil),
+        ] {
+            id.send_named(
+                namespace,
+                b"at:put:",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::object(value),
+                ],
+            )?;
+        }
+        INSTANCE.store(state, Ordering::Release);
+        Ok(Operand::object(truth))
     }
 }
+unsafe extern "C" fn initialize(
+    id: *const Protocol,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    if !unsafe { native::valid_protocol(id) } {
+        return invalid();
+    }
+    let Some([namespace]) = (unsafe { borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Ok(namespace) = object(*namespace) else {
+        return invalid();
+    };
+    let id = unsafe { *id };
+    let previous = INSTANCE.load(Ordering::Acquire);
+    if !previous.is_null() {
+        let previous = unsafe { &*previous };
+        return if previous.id.same_contract(&id) && previous.namespace == namespace {
+            Outcome::loaded(Operand::object(previous.truth))
+        } else {
+            invalid()
+        };
+    }
+    result(unsafe { construct(id, namespace) })
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
