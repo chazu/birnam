@@ -220,7 +220,7 @@ No test result from that workspace counts toward Design 84 acceptance.
 
 All 54 remaining module-specific ABI source files are deleted, together with the
 upper Runtime `IdApi`, its diagnostic descriptor and old entrypoint signatures.
-The crate now has three source files / 429 lines: opaque Oops and generic borrowed
+The crate now has three source files / 428 lines: opaque Oops and generic borrowed
 buffers, the typed Id message/module protocol, and the stateless OS loader shared
 by Siphon and Id. It has no dependencies or module catalog. This is deletion, not
 relocation; Git contains the former interfaces if needed to understand callers.
@@ -233,3 +233,11 @@ remove cross-module descriptors, foreign layouts and cached implementation bundl
 instead of recreating them elsewhere. Full native, image and language validation
 can resume when those callers are converted. Prior installed-prefix results do
 not validate this changed workspace.
+
+Id is the first repaired caller: its allocation geometry and registry indexes are
+private implementation details, its enumeration methods expose the existing
+borrowed result through Id messages, and its unused test-only primitive bundle
+is removed. It uses no retired ABI interface. All five Id unit tests pass,
+including metacircular dispatch and the independent C typed-operand round trip.
+The remaining upper callers are still unconverted; these tests do not establish
+that the complete language builds or runs.

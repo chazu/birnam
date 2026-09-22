@@ -5,7 +5,9 @@ use std::alloc::{Layout, alloc_zeroed, dealloc, handle_alloc_error};
 
 use crate::{abi::Oop, boundary, raw::AddressMap};
 
-pub(crate) use birnam_abi::object_layout::{BLOCK_ALIGNMENT, VTABLE_HEADER_SIZE};
+// Allocation geometry is private to Id; other modules query Id by message.
+const BLOCK_ALIGNMENT: usize = 16;
+const VTABLE_HEADER_SIZE: usize = size_of::<Oop>();
 
 /// Owns exactly one allocation, including when detached from the registry.
 /// Dropping it releases storage and never invokes a language callback.
@@ -54,7 +56,15 @@ impl ObjectMemory {
     }
 
     pub(crate) fn allocation_total_size(payload_size: usize) -> Option<usize> {
-        birnam_abi::object_layout::allocation_total_size(payload_size)
+        let alignment = align_of::<Oop>();
+        VTABLE_HEADER_SIZE.checked_add(payload_size)?
+            .checked_add(alignment - 1)
+            .map(|size| size & !(alignment - 1))
+    }
+
+    pub(crate) fn valid_payload_size(payload_size: usize) -> bool {
+        Self::allocation_total_size(payload_size)
+            .is_some_and(|total| Layout::from_size_align(total, BLOCK_ALIGNMENT).is_ok())
     }
 
     pub(crate) fn allocate(&mut self, payload_size: usize) -> Oop {

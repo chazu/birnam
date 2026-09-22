@@ -235,11 +235,8 @@ impl Vtables {
     pub(crate) fn count(&self) -> usize {
         self.ordered.len()
     }
-    pub(crate) fn view(&self) -> birnam_abi::vtable_enumeration::ViewV1 {
-        birnam_abi::vtable_enumeration::ViewV1 {
-            entries: self.ordered.as_ptr(),
-            count: self.ordered.len(),
-        }
+    pub(crate) fn view(&self) -> &[Oop] {
+        &self.ordered
     }
     pub(crate) fn at(&self, index: usize) -> Oop {
         self.ordered
@@ -273,9 +270,8 @@ impl Vtables {
             .copied()
             .unwrap_or(core::ptr::null_mut())
     }
-    pub(crate) fn selector_view(&self, vtable: Oop) -> birnam_abi::vtable_enumeration::ViewV1 {
-        let keys = &self.record(vtable).keys;
-        birnam_abi::vtable_enumeration::ViewV1 { entries: keys.as_ptr(), count: keys.len() }
+    pub(crate) fn selector_view(&self, vtable: Oop) -> &[Oop] {
+        &self.record(vtable).keys
     }
     pub(crate) fn direct_lookup(&self, vtable: Oop, selector: Oop) -> Option<NativeEntry> {
         let record = self.record(vtable);

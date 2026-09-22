@@ -10,8 +10,6 @@ use crate::id::vtable::Vtables;
 pub(crate) struct InitialObjects {
     pub(crate) protocol: Box<crate::id::native_id::State>,
     #[cfg(test)]
-    pub(crate) primitives: birnam_abi::id_primitives::PrimitivesV1,
-    #[cfg(test)]
     pub(crate) vtable_vt: Oop,
     #[cfg(test)]
     pub(crate) object_vt: Oop,
@@ -58,11 +56,7 @@ impl InitialObjects {
             ]).status, LOADED);
         }
         let protocol = unsafe { crate::id::native_id::State::new(memory, dictionaries, symbols, vtable_vt, symbol_vt, object_prototype, lookup, does_not_understand) };
-        #[cfg(test)]
-        let primitives = unsafe { birnam_abi::id_primitives::select(protocol.protocol) }.unwrap_or_else(|_| panic!("initial Id entries"));
         Self { protocol,
-            #[cfg(test)]
-            primitives,
             #[cfg(test)]
             vtable_vt,
             #[cfg(test)]

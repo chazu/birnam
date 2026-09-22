@@ -153,10 +153,10 @@ unsafe extern "C" fn is_behavior(
         (&*(*context.cast::<State>()).dictionaries).is_registered(value)
     })))
 }
-fn view(view: birnam_abi::vtable_enumeration::ViewV1) -> Outcome {
+fn view(view: &[Oop]) -> Outcome {
     done(Operand::bytes(
         unsafe {
-            crate::abi::borrowed_slice(view.entries.cast::<u8>(), view.count * size_of::<Oop>())
+            crate::abi::borrowed_slice(view.as_ptr().cast::<u8>(), size_of_val(view))
         }
         .unwrap(),
     ))

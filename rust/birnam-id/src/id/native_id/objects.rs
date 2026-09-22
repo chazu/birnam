@@ -80,7 +80,7 @@ pub(crate) unsafe extern "C" fn allocate(
     let Some([size]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
         return invalid();
     };
-    let Some(size) = size.as_word().filter(|size| birnam_abi::object_layout::valid_payload_size(*size)) else {
+    let Some(size) = size.as_word().filter(|size| super::ObjectMemory::valid_payload_size(*size)) else {
         return invalid();
     };
     let state = unsafe { &*context.cast::<State>() };
