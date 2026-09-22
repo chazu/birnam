@@ -37,6 +37,7 @@ members = [
     "rust/birnam-image",
     "rust/birnam-host",
     "rust/birnam-cli",
+    "rust/birnam-build",
     "rust/birnam-siphon",
     "rust/birnam-isolate",
     "rust/birnam-lang",

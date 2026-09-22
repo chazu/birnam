@@ -359,10 +359,12 @@ After the deletion pass, separate the executable shell from native construction:
 - `birnam-siphon` depends only on `birnam-abi`. Its 77-line implementation sends
   one ad-hoc load request for Id, validates the returned protocol, and returns it.
   It knows no upper modules, CLI, compiler, collection policy or host state.
-- `birnam-cli` owns both executables (`birnam`, `birnam-build`), option parsing,
-  command dispatch and CLI-specific policy selection. Existing executable names
-  and command behavior stay the same. Birnam-authored CLI behavior stays in
+- `birnam-cli` owns the `birnam` executable, option parsing, command dispatch
+  and CLI-specific policy selection. Birnam-authored CLI behavior stays in
   `modules/cli.birnam`.
+- `birnam-build` is separate repository build/install tooling. It invokes Cargo
+  and the staged Birnam executable, but has no Rust dependency on the CLI, host,
+  Siphon or runtime. Its executable name and install command remain unchanged.
 - `birnam-host` supplies runtime and project operations. It calls Siphon as a
   dependency and no longer contains or re-exports argument parsing. `RunOptions`
   and `ReplMode` remain host operation data, supplied by the CLI parser.
@@ -375,7 +377,7 @@ and bootstrap boundaries, not additional language-module APIs or service tables.
 that, after Siphon returns, the real Id performs symbol interning and native
 loading. It also checks invalid/missing paths. No upper module or installed prefix
 is needed. Siphon's implementation moved unchanged; only its Cargo ownership and
-call sites changed. Existing parser and installer tests move with their code;
+call sites changed. Existing parser and installer tests remain with their respective crates;
 CLI/host execution remains blocked by the deliberate upper-ABI deletion.
 
 Validation for this separation: both production Siphon tests and all eight
@@ -383,3 +385,12 @@ validation-tool tests pass; Cargo dependency/target checks and edited-source
 syntax checks pass. Building CLI tests stops in `birnam-artifact` on its existing
 references to removed `IdApi` and Namespace tables, before reaching CLI code.
 No CLI execution or release-validation claim is made at this checkpoint.
+
+The build/install tool was subsequently separated from `birnam-cli`: its unchanged
+implementation is now `rust/birnam-build/src/main.rs`, with only `hex`,
+`serde_json` and `sha2` dependencies. This lets the tool build and its installation
+safety tests run independently of the broken upper-language integration. Full
+installation still requires the workspace and staged Birnam executable to work.
+
+All four build-tool tests pass after this move, covering development-cache options,
+staging cleanup, mixed-prefix rejection and protection of unowned files.

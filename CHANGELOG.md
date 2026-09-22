@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Move the repository build/install utility into its own `birnam-build` crate,
+  independent of the CLI and host. Keep the executable and install command names;
+  move its hashing/JSON dependencies out of `birnam-cli` and update installer paths.
+
 - Isolate Siphon in `birnam-siphon`, depending only on the common Id ABI. Move
   argument parsing and both executable entrypoints into `birnam-cli`; retain
   runtime/project operations in `birnam-host`. Update build/install references

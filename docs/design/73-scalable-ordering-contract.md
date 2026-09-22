@@ -142,7 +142,7 @@ would grow the native stack with prefix length and is unacceptable.
 
 There is a bootstrap constraint: [the host](../../rust/birnam-host/src/lib.rs)
 registers synchronous self-hosted units before `stacklessControl`, and
-[the installer](../../rust/birnam-cli/src/bin/birnam-build.rs) selects only that
+[the installer](../../rust/birnam-build/src/main.rs) selects only that
 unit for initial-generation resumable compilation. Merely adding recursion to
 stdlib would therefore be wrong.
 

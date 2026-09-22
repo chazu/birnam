@@ -23,4 +23,4 @@ fi
 
 env CARGO_TARGET_DIR="$driver_target" cargo run \
   --manifest-path "$repo/Cargo.toml" \
-  --offline --locked -p birnam-cli --bin birnam-build -- "$@"
+  --offline --locked -p birnam-build --bin birnam-build -- "$@"

@@ -67,7 +67,7 @@ flowchart TD
 
 ## 2. Build-time sequence
 
-The authority is [`birnam-build.rs`](../../rust/birnam-cli/src/bin/birnam-build.rs),
+The authority is [`birnam-build.rs`](../../rust/birnam-build/src/main.rs),
 entered through [`scripts/rust-install.sh`](../../scripts/rust-install.sh).
 
 1. The shell wrapper runs Cargo to build/run the Rust `birnam-build` driver.
@@ -343,7 +343,7 @@ cold-bootstrap, release or performance acceptance is claimed by this refresh.
 
 Primary source entry points:
 
-- [Installer](../../rust/birnam-cli/src/bin/birnam-build.rs):
+- [Installer](../../rust/birnam-build/src/main.rs):
   `CANONICAL_DYNAMIC_LIBRARIES`, `STAGE1_MODULES`, `install_rust_prefix`.
 - [Executable](../../rust/birnam-cli/src/bin/birnam.rs):
   `compile_module_command`, image/baked command branches.

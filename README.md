@@ -726,8 +726,10 @@ application and build driver.
 
 - `rust/birnam-siphon/` — the small ad-hoc Id loader. It depends only on
   `birnam-abi`, loads the real Id, and returns its message protocol.
-- `rust/birnam-cli/` — the `birnam` and `birnam-build` executables, argument
-  parsing, command dispatch, diagnostics and installation commands.
+- `rust/birnam-cli/` — the `birnam` executable, argument parsing, command
+  dispatch and diagnostics.
+- `rust/birnam-build/` — repository build/install tooling: builds Birnam, stages
+  its artifacts and publishes an installation. Independent of the CLI and host.
 - `rust/birnam-host/` — runtime startup, resource discovery, project operations
   and execution bridges used by the CLI. No argument parser or Siphon implementation.
 - `rust/birnam-abi/` — opaque objects, the common Id protocol, borrowed buffers

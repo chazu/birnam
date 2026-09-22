@@ -51,13 +51,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-build"
+version = "0.0.0"
+dependencies = [
+ "hex",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "birnam-cli"
 version = "0.0.0"
 dependencies = [
  "birnam-host",
- "hex",
- "serde_json",
- "sha2",
 ]
 
 [[package]]

@@ -17,8 +17,9 @@ old headers to run them.
 
 `mise run siphon` builds only production Id and tests the Siphon handoff, real
 Id interning/loading, and invalid paths. It is available during caller migration.
-The CLI executables and parser tests now belong to `birnam-cli`; host-operation
-tests remain in `birnam-host`.
+The CLI executable and parser tests belong to `birnam-cli`; host-operation
+tests remain in `birnam-host`. Build/install-tool tests run independently with
+`cargo test --offline --locked -p birnam-build`.
 
 Use `mise run verify` for everyday correctness and `mise run verify-plan` to see
 its steps before execution. This is the current workflow; Design 74's temporary
