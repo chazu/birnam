@@ -19,8 +19,6 @@ AUTHORITIES = (
     "rust/birnam-artifact/src/frame_descriptor.rs", "rust/birnam-runtime/src/registration.rs",
     "rust/birnam-codegen/src/resumable_c.rs", "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs",
 )
-CURRENT_IDAPI = ("rust/birnam-abi/src/lib.rs", "abi/idapi-v20.json",
-                 "abi/fixtures/idapi-v20/idapi_v20.h")
 
 
 def sha(path):
@@ -462,13 +460,6 @@ def main():
             receipt["authorities"][name] = sha(ROOT / name)
         run(["python3", "scripts/compatibility-authority-test.py"], "image-compatibility-authority")
         receipt["image_authority_migration"] = "Design 81K owner/parent, 81L Integer, 81R Float, 81T Word, 81X String and 81AX Namespace names dependency call substitutions; encoding unchanged"
-        # 81J through 81BO deliberately reduce IdApi. Verify the current independent v20
-        # manifest instead of claiming that this table matches the 74T baseline.
-        run(["cargo", "test", "-p", "birnam-abi", "--locked", "--offline"], "current-idapi-v20")
-        receipt["current_id_api"] = {
-            "schema_version": 20, "change": "Design 81BO explicit Native Stack",
-            "files_sha256": {name: sha(ROOT / name) for name in CURRENT_IDAPI},
-        }
         for profile in ("debug", "release"):
             run(["cargo", "test", "--locked", "--offline",
                  "-p", "birnam-native-compiler", "--features", "allocation-metrics"]

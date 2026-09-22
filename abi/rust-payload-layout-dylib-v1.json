@@ -3,7 +3,6 @@
   "scope": "Owned exact-vtable payload descriptions shared by GC, Image and recovery",
   "install_name": "@rpath/libbirnam_payload_layout.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
     "birnam_symbol_borrow_v1"
   ]
 }

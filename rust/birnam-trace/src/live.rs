@@ -139,11 +139,5 @@ pub unsafe extern "C" fn birnam_trace_live_v1(source: *const SourceV1) -> Status
     OK
 }
 
-pub static API: ApiV1 = ApiV1 {
-    version: VERSION,
-    byte_size: size_of::<ApiV1>(),
-    trace: Some(birnam_trace_live_v1),
-};
-
 #[cfg(test)]
 mod tests;

@@ -1,5 +1,5 @@
 //! Lazy native row ownership. Id retains identity lookup and index repair.
-use birnam_abi::deferred_index::{FactoryV1, RowV1};
+use birnam_abi::deferred_index::{RowV1};
 use core::ffi::{c_int, c_void};
 type Rows = Vec<RowV1>;
 
@@ -68,23 +68,6 @@ unsafe extern "C" fn clear(context: *mut c_void) {
     if !context.is_null() {
         unsafe { (&mut *context.cast::<Rows>()).clear() };
     }
-}
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1,
-    byte_size: size_of::<FactoryV1>(),
-    destroy: Some(destroy),
-    len: Some(len),
-    capacity: Some(capacity),
-    push: Some(push),
-    read: Some(read),
-    write: Some(write),
-    swap_remove: Some(swap_remove),
-    clear: Some(clear),
-};
-/// # Safety
-/// Pin this descriptor and its code for every owner's lifetime.
-pub unsafe fn deferred_index_factory() -> *const FactoryV1 {
-    &FACTORY
 }
 
 #[cfg(test)]

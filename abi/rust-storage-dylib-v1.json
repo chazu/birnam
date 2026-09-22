@@ -3,7 +3,6 @@
   "scope": "Production storage-description validation, observation scopes and per-Heap physical/deferred identity and deferred-index storage; depends only on birnam-abi",
   "install_name": "@rpath/libbirnam_storage.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
     "birnam_storage_describe_v1"
   ]
 }

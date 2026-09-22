@@ -1,13 +1,9 @@
 //! Validation of owner-supplied storage descriptions above Id.
 //! Native observation scopes are independent of description-provider scopes.
 //! No heap, registry, mark algorithm or GC policy.
-mod native;
 mod observation;
 mod deferred_identity;
 mod deferred_index;
-pub use deferred_identity::deferred_identity_factory;
-pub use deferred_index::deferred_index_factory;
-pub use observation::storage_observation_factory;
 use birnam_abi::storage::*;
 use birnam_abi::{Oop, borrowed_slice};
 use core::cell::Cell;

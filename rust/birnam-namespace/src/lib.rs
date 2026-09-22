@@ -38,34 +38,9 @@ unsafe extern "C" fn name_at(context: *const c_void, index: usize) -> Oop {
 unsafe extern "C" fn bindings(context: *const c_void) -> ViewV1 {
     unsafe { &*context.cast::<Environment>() }.bindings()
 }
-static API: ApiV8 = ApiV8 {
-    version: 8,
-    byte_size: size_of::<ApiV8>(),
-    create: Some(create),
-    destroy: Some(destroy),
-    bind: Some(bind),
-    find: Some(find),
-    reverse: Some(reverse),
-    count: Some(count),
-    name_at: Some(name_at),
-    bindings: Some(bindings),
-    create_names: Some(names::create),
-    destroy_names: Some(names::destroy),
-    create_enumeration: Some(enumeration::create),
-    destroy_enumeration: Some(enumeration::destroy),
-    lookup: Some(lookup::lookup),
-    create_presence: Some(presence::create),
-    destroy_presence: Some(presence::destroy),
-    publish: Some(publication::publish),
-    create_import: Some(import::create),
-    destroy_import: Some(import::destroy),
-    create_export: Some(export::create),
-    destroy_export: Some(export::destroy),
-};
+
 /// Preparation has no side effects and needs no Id or namespace instance.
-pub fn namespace_provider() -> *const ApiV8 {
-    &API
-}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1

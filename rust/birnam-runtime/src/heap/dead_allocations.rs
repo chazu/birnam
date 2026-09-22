@@ -3,7 +3,6 @@
 use super::*;
 pub(super) mod frame_indices;
 pub(super) mod numeric;
-pub(super) mod deferred_index;
 
 /// A process-local, single-use identity for an already charged allocation.
 /// Never an Oop; collection or materialization makes the capability stale.

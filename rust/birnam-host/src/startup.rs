@@ -9,9 +9,6 @@ pub use resources::{Overrides, Resources, resolve_from_exe_dir, resolve};
 mod interaction;
 pub use interaction::{CliError, ReplError, ReplSession, ReplStep, SocketReplError, WorkerError, WorkerStartupError};
 
-
-
-
 /// Return the frozen `<arch>-<os>` build target identity used by the project
 /// adapter and artifact policy.
 pub fn host_target_identity() -> String {
@@ -878,24 +875,8 @@ impl fmt::Debug for FloorError {
 /// for the lifetime of this value and deliberately never closed: the floor
 /// owns process-wide heap/GC state and may retain function pointers in modules.
 pub struct LoadedFloor {
-    values: birnam_abi::runtime_values::ApisV1,
-    bootstrap: Option<crate::native_bootstrap::Owner>,
-    id_protocol: birnam_abi::id_protocol::Protocol,
-    root_registry: NonNull<birnam_abi::root_registry::ApiV1>,
-    gc_settings: NonNull<birnam_abi::gc_settings::ApiV1>,
-    payload_layout: NonNull<birnam_abi::payload_layout::ApiV1>,
-    trace_hooks: NonNull<birnam_abi::trace_hooks::ApiV1>,
-    finalizers: NonNull<birnam_abi::finalizers::ApiV1>,
-    native_stack: NonNull<birnam_abi::native_stack::ApiV1>,
-    method_observation: NonNull<birnam_abi::method_observation::ApiV1>,
-    vtable_enumeration: NonNull<birnam_abi::vtable_enumeration::ApiV2>,
-    namespace_presence: NonNull<birnam_abi::namespace_presence::ApiV1>,
-    namespace_import: NonNull<birnam_abi::namespace_import::ApiV1>,
-    namespace_export: NonNull<birnam_abi::namespace_export::ApiV1>,
     handle: NonNull<std::ffi::c_void>,
-    api: NonNull<IdApi>,
-    // Keep this type !Send/!Sync until host threading and the floor owner-thread
-    // protocol are explicitly ported. The marker has no runtime state.
+    id_protocol: birnam_abi::id_protocol::Protocol,
     _owner_thread: PhantomData<std::rc::Rc<()>>,
 }
 
@@ -1033,8 +1014,6 @@ pub enum IsolateHookError {
     MissingSymbol(&'static str),
 }
 
-
-
 #[derive(Clone, PartialEq, Eq)]
 pub enum RuntimeModuleError {
     EmbeddedNul,
@@ -1057,7 +1036,6 @@ impl fmt::Debug for RuntimeModuleError {
         }
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PhaseHookError {
@@ -1093,10 +1071,6 @@ impl PhaseHooks {
         self.handle
     }
 }
-
-
-
-
 
 type IsolateDriverFn =
     unsafe extern "C" fn(*mut IdApi, *const birnam_abi::namespace_import::ApiV1, c_int, birnam_abi::Oop, birnam_abi::Oop) -> c_int;
@@ -1260,51 +1234,6 @@ impl HostRuntime {
         }
         Ok(())
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 }
 
@@ -1860,135 +1789,10 @@ pub unsafe fn bootstrap_self_hosted(
 /// The common loader retains entered primitive native images for process life.
 pub struct LoadedStack {
     pub floor: LoadedFloor,
-    text_view: *const birnam_abi::text_view::ApiV1,
-    error_value: *const birnam_abi::error_value::ApiV3,
-    collection_value: *const birnam_abi::collection_value::ApiV1,
 }
 
 impl LoadedStack {
-    pub fn id_protocol(&self) -> &birnam_abi::id_protocol::Protocol { self.floor.id_protocol() }
-    pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.floor.presence() }
-    pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.floor.imports() }
-    pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.floor.exports() }
-    pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.floor.vtables() }
-    pub fn observation(&self) -> *const birnam_abi::method_observation::ApiV1 { self.floor.observation() }
-    pub fn root_registry(&self) -> *const birnam_abi::root_registry::ApiV1 { self.floor.root_registry() }
-    /// # Safety
-    /// Native operands and pointer/code lifetimes follow the common protocol.
-    pub unsafe fn load_native(&self, path: &[u8], args: &[birnam_abi::id_protocol::Operand]) -> birnam_abi::id_protocol::Outcome {
-        unsafe { load_native_with_bootstrap(self.floor.bootstrap.as_ref(), self.floor.id_protocol, path, args) }
-    }
-    /// # Safety
-    /// The matching result remains live and its native protocol descriptor readable.
-    pub unsafe fn release_initialization_result(&self, result: birnam_abi::id_protocol::Operand) -> usize {
-        self.floor.bootstrap.as_ref().map_or(0, |bootstrap| unsafe { bootstrap.release(result) })
-    }
-
-    pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.floor.gc_settings() }
-    pub fn payload_layout(&self) -> *const birnam_abi::payload_layout::ApiV1 { self.floor.payload_layout() }
-    pub fn trace_hooks(&self) -> *const birnam_abi::trace_hooks::ApiV1 { self.floor.trace_hooks() }
-    pub fn finalizers(&self) -> *const birnam_abi::finalizers::ApiV1 { self.floor.finalizers() }
-    pub fn native_stack(&self) -> *const birnam_abi::native_stack::ApiV1 { self.floor.native_stack() }
-
-    pub fn new(floor: LoadedFloor) -> Self {
-        // Bootstrap supplied these completed values to Runtime already. The
-        // host's legacy consumers select the same descriptors, without another
-        // preparation or module-initialization pass.
-        let values = floor.values;
-        unsafe {
-            assert_eq!(birnam_abi::integer::attach(values.integer), 1);
-            assert_eq!(birnam_abi::float::attach(values.float), 1);
-            assert_eq!(birnam_abi::word::attach(values.word), 1);
-            assert_eq!(birnam_abi::string::attach(values.string), 1);
-        }
-        Self {
-            floor,
-            text_view: std::ptr::null(),
-            error_value: std::ptr::null(),
-            collection_value: std::ptr::null(),
-        }
-    }
-
-    pub fn api(&self) -> &IdApi {
-        self.floor.api()
-    }
-
-    fn construct(&self, stage: &[u8]) -> Result<birnam_abi::id_protocol::Operand, ModuleError> {
-        let invalid = || ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 };
-        self.floor.bootstrap.as_ref().ok_or_else(invalid)?.construct(stage).into_result()
-            .map_err(|failure| ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: failure.status, detail: failure.detail })
-    }
-    fn construction_word(&self, stage: &[u8]) -> Result<usize, ModuleError> {
-        self.construct(stage)?.as_word().filter(|value| *value != 0).ok_or_else(|| ModuleError::NativeConstruction { stage: String::from_utf8_lossy(stage).into_owned(), status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 })
-    }
-    pub fn initialize_collections(&mut self) -> Result<(), ModuleError> {
-        self.initialize_control()?;
-        self.construct(b"collections")?;
-        self.collection_value = self.construction_word(b"valuePolicy")? as _;
-        unsafe {
-            assert_eq!(birnam_abi::collection_value::attach(self.collection_value), 1);
-        }
-        Ok(())
-    }
-    pub fn initialize_store(&mut self) -> Result<(), ModuleError> {
-        self.initialize_collections()?;
-        self.construct(b"store")?;
-        Ok(())
-    }
-
-    pub fn initialize_parsers(&mut self) -> Result<(), ModuleError> {
-        self.initialize_store()?;
-        self.construct(b"parsers")?;
-        Ok(())
-    }
-
-    /// Construct System IO without parser/compiler/application libraries.
-    pub fn initialize_system_io(&mut self) -> Result<(), ModuleError> {
-        self.initialize_control()?;
-        self.construct(b"systemIo")?;
-        self.text_view = self.construction_word(b"textView")? as _;
-        assert_eq!(unsafe { birnam_abi::text_view::attach(self.text_view) }, 1);
-        self.construct(b"nativeLoader")?;
-        Ok(())
-    }
-    pub fn initialize_system(&mut self) -> Result<(), ModuleError> {
-        self.initialize_compiler()?;
-        self.initialize_system_io()?;
-        self.construct(b"sourceLoader")?;
-        Ok(())
-    }
-
-    pub fn initialize_compiler(&mut self) -> Result<(), ModuleError> {
-        self.initialize_parsers()?;
-        self.construct(b"codegen")?;
-        Ok(())
-    }
-
-    /// Install the completed native control group before collections/compiler.
-    pub fn initialize_control(&mut self) -> Result<(), ModuleError> {
-        self.construct(b"control")?;
-        let errors = self.construction_word(b"errorValue")? as *const birnam_abi::error_value::ApiV3;
-        unsafe {
-            assert_eq!(birnam_abi::error_value::attach(errors), 1);
-        }
-        self.error_value = errors;
-        Ok(())
-    }
-
-    /// Complete application families before mounting Image.
-    pub fn initialize_application_base(&mut self) -> Result<(), ModuleError> {
-        self.initialize_system()?;
-        self.construct(b"applicationBase")?;
-        Ok(())
-    }
-
-    /// The loaded Bootstrap owns the entire native construction sequence.
-    pub fn load_script_modules(&mut self, _resources: &Resources) -> Result<(), ModuleError> {
-        self.initialize_application_base()?;
-        self.construct(b"image")?;
-        Ok(())
-    }
-
+    pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.floor.id_protocol }
 }
 
 fn resolve_isolate_hooks(
@@ -2155,28 +1959,7 @@ pub unsafe fn start_from_environment() -> Result<HostRuntime, RuntimeStartError>
 const RTLD_LAZY: i32 = 1;
 
 impl LoadedFloor {
-    pub fn id_protocol(&self) -> &birnam_abi::id_protocol::Protocol { &self.id_protocol }
-    pub fn presence(&self) -> *const birnam_abi::namespace_presence::ApiV1 { self.namespace_presence.as_ptr() }
-    pub fn imports(&self) -> *const birnam_abi::namespace_import::ApiV1 { self.namespace_import.as_ptr() }
-    pub fn exports(&self) -> *const birnam_abi::namespace_export::ApiV1 { self.namespace_export.as_ptr() }
-    pub fn vtables(&self) -> *const birnam_abi::vtable_enumeration::ApiV2 { self.vtable_enumeration.as_ptr() }
-    pub fn observation(&self) -> *const birnam_abi::method_observation::ApiV1 { self.method_observation.as_ptr() }
-    pub fn root_registry(&self) -> *const birnam_abi::root_registry::ApiV1 { self.root_registry.as_ptr() }
-    pub fn gc_settings(&self) -> *const birnam_abi::gc_settings::ApiV1 { self.gc_settings.as_ptr() }
-    pub fn payload_layout(&self) -> *const birnam_abi::payload_layout::ApiV1 { self.payload_layout.as_ptr() }
-    pub fn trace_hooks(&self) -> *const birnam_abi::trace_hooks::ApiV1 { self.trace_hooks.as_ptr() }
-    pub fn finalizers(&self) -> *const birnam_abi::finalizers::ApiV1 { self.finalizers.as_ptr() }
-    pub fn native_stack(&self) -> *const birnam_abi::native_stack::ApiV1 { self.native_stack.as_ptr() }
-
-    pub fn api(&self) -> &IdApi {
-        // SAFETY: Runtime construction returned a process-owned, non-null table and the
-        // successful loader retains its dylib handle for this value's lifetime.
-        unsafe { self.api.as_ref() }
-    }
-
-    pub fn handle(&self) -> NonNull<std::ffi::c_void> {
-        self.handle
-    }
+    pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.id_protocol }
 }
 
 /// Initialize Id and Bootstrap through native messages, before Lifetime exists.
@@ -2199,7 +1982,6 @@ pub fn begin_id(
             });
         }
     }
-    let source_path = path.to_path_buf();
     let path = CString::new(path_bytes(path)).map_err(|_| FloorError::EmbeddedNul)?;
     // SAFETY: the path is NUL-terminated and remains live for the call.
     let handle = unsafe { system_dlopen(path.as_ptr(), RTLD_NOW | RTLD_LOCAL) };
@@ -2230,211 +2012,22 @@ pub fn begin_id(
         }
     }
     // Actual Id construction runs through Siphon before any upper services.
-    // The loaded Bootstrap module constructs the dependencies through Runtime.
     let id_protocol = crate::siphon::load(path.as_bytes()).map_err(|(status, detail)| {
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
-    let file = source_path.with_file_name("libbirnam_bootstrap.dylib");
-    let bootstrap = Some(crate::native_bootstrap::Owner::load(id_protocol, &path_bytes(&file), &path_bytes(&source_path))
-        .map_err(|(status, detail)| FloorError::IdProtocol { status, detail })?);
-    Ok(InitialFloor { source_path, handle, id_protocol, bootstrap, _owner_thread: PhantomData })
+    Ok(InitialFloor { handle, id_protocol, _owner_thread: PhantomData })
 }
 
-/// Complete Id and early root ownership. No upper Runtime has been constructed.
+/// Loaded Id, before upper-language construction.
 /// An abandoned/failed construction retains entered native owners until exit.
 pub struct InitialFloor {
-    source_path: PathBuf,
     handle: NonNull<std::ffi::c_void>,
     id_protocol: birnam_abi::id_protocol::Protocol,
-    bootstrap: Option<crate::native_bootstrap::Owner>,
     _owner_thread: PhantomData<std::rc::Rc<()>>,
 }
 impl InitialFloor {
     pub fn id_protocol(&self) -> birnam_abi::id_protocol::Protocol { self.id_protocol }
-    pub fn bootstrap(&self) -> Option<*const birnam_abi::bootstrap::OwnedV2> {
-        self.bootstrap.as_ref().map(crate::native_bootstrap::Owner::descriptor)
-    }
-    /// Load through the same retained Bootstrap used by production construction.
-    /// # Safety
-    /// Native operand and borrowed pointer/code lifetime contracts apply.
-    pub unsafe fn load_native(&self, path: &[u8], args: &[birnam_abi::id_protocol::Operand]) -> birnam_abi::id_protocol::Outcome {
-        unsafe { load_native_with_bootstrap(self.bootstrap.as_ref(), self.id_protocol, path, args) }
-    }
-    fn construct(&self, stage: &[u8]) -> Result<birnam_abi::id_protocol::Operand, FloorError> {
-        self.bootstrap.as_ref().expect("loaded Bootstrap").construct(stage).into_result()
-            .map_err(|failure| FloorError::IdProtocol { status: failure.status, detail: failure.detail })
-    }
-    fn constructed_word(&self, stage: &[u8]) -> Result<usize, FloorError> {
-        self.construct(stage)?.as_word().filter(|value| *value != 0)
-            .ok_or(FloorError::IdProtocol { status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 })
-    }
-    /// Read the completed root owner without constructing an absent prefix.
-    pub fn roots(&self) -> Option<*const birnam_abi::root_registry::OwnedV1> {
-        self.construct(b"existingRoots").ok()?.as_word().map(|value| value as _)
-    }
-    pub fn initialize_roots(&mut self) -> Result<Option<*const birnam_abi::root_registry::OwnedV1>, FloorError> {
-        Ok(Some(self.constructed_word(b"roots")? as _))
-    }
-    pub fn initialize_lifetime(&mut self) -> Result<Option<*const birnam_abi::lifetime::OwnedV2>, FloorError> {
-        Ok(Some(self.constructed_word(b"lifetime")? as _))
-    }
-    pub fn initialize_base_values(&mut self) -> Result<Option<*const birnam_abi::base_values::ValuesV1>, FloorError> {
-        Ok(Some(self.constructed_word(b"values")? as _))
-    }
-    pub fn initialize_namespace(&mut self) -> Result<Option<*const birnam_abi::namespace_owner::OwnedV1>, FloorError> {
-        Ok(Some(self.constructed_word(b"namespace")? as _))
-    }
-    pub fn initialize_object_model(&mut self) -> Result<Option<*const birnam_abi::object_model::OwnedV1>, FloorError> {
-        Ok(Some(self.constructed_word(b"objectModel")? as _))
-    }
-    pub fn initialize_string(&mut self) -> Result<Option<*mut birnam_abi::string::StringApiV1>, FloorError> {
-        Ok(Some(self.constructed_word(b"string")? as _))
-    }
-    pub fn initialize_integer(&mut self) -> Result<Option<*mut birnam_abi::integer::IntegerApiV1>, FloorError> {
-        Ok(Some(self.constructed_word(b"integer")? as _))
-    }
-    pub fn initialize_float(&mut self) -> Result<Option<*mut birnam_abi::float::FloatApiV1>, FloorError> {
-        Ok(Some(self.constructed_word(b"float")? as _))
-    }
-    pub fn initialize_word(&mut self) -> Result<Option<*mut birnam_abi::word::WordApiV1>, FloorError> {
-        Ok(Some(self.constructed_word(b"word")? as _))
-    }
-    pub fn initialize_trace(&mut self) -> Result<Option<*const birnam_abi::trace_graph::GraphV2>, FloorError> {
-        Ok(Some(self.constructed_word(b"trace")? as _))
-    }
-    pub fn initialize_collection(&mut self) -> Result<Option<*const birnam_abi::collection_state::OwnedV2>, FloorError> {
-        Ok(Some(self.constructed_word(b"collection")? as _))
-    }
-    pub fn initialize_error(&mut self) -> Result<Option<birnam_abi::Oop>, FloorError> {
-        self.construct(b"error")?.as_object().filter(|value| !value.is_null()).map(Some)
-            .ok_or(FloorError::IdProtocol { status: birnam_abi::id_protocol::INVALID_REQUEST, detail: 0 })
-    }
-    pub fn initialize_text(&mut self) -> Result<(), FloorError> { self.construct(b"text").map(|_| ()) }
-    pub fn activate_collection(&mut self) -> Result<(), FloorError> { self.construct(b"activate").map(|_| ()) }
-    pub fn initialize_runtime_support(&self) -> Result<birnam_abi::runtime_support::FactoriesV1, FloorError> {
-        let pointer = self.constructed_word(b"runtimeSupport")? as *const birnam_abi::runtime_support::FactoriesV1;
-        Ok(unsafe { *pointer })
-    }
-    pub fn initialize_runtime_values(&mut self) -> Result<birnam_abi::runtime_values::ApisV1, FloorError> {
-        let pointer = self.constructed_word(b"runtimeValues")? as *const birnam_abi::runtime_values::ApisV1;
-        Ok(unsafe { *pointer })
-    }
-    pub fn finish(mut self) -> Result<LoadedFloor, FloorError> {
-        let initialized = self.constructed_word(b"runtime")? as *mut IdApi;
-        let values = self.initialize_runtime_values()?;
-        // Obtain completed services through Bootstrap and Id before moving the owner.
-        let presence = self.constructed_word(b"namespacePresence")? as *mut birnam_abi::namespace_presence::ApiV1;
-        if !unsafe { birnam_abi::namespace_presence::valid(presence) } {
-            return Err(FloorError::Namespace { path: self.source_path.with_file_name("libbirnam_namespace.dylib"), reason: "invalid namespacePresence capability" });
-        }
-        let import = self.constructed_word(b"namespaceImport")? as *mut birnam_abi::namespace_import::ApiV1;
-        if !unsafe { birnam_abi::namespace_import::valid(import) } {
-            return Err(FloorError::Namespace { path: self.source_path.with_file_name("libbirnam_namespace.dylib"), reason: "invalid namespaceImport capability" });
-        }
-        let export = self.constructed_word(b"namespaceExport")? as *mut birnam_abi::namespace_export::ApiV1;
-        if !unsafe { birnam_abi::namespace_export::valid(export) } {
-            return Err(FloorError::Namespace { path: self.source_path.with_file_name("libbirnam_namespace.dylib"), reason: "invalid namespaceExport capability" });
-        }
-        let vtables = self.constructed_word(b"vtables")? as *mut birnam_abi::vtable_enumeration::ApiV2;
-        if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } {
-            return Err(FloorError::VtableEnumeration { path: self.source_path.with_file_name("libbirnam_object_model.dylib"), reason: "invalid vtables capability" });
-        }
-        let observation = self.constructed_word(b"methodObservation")? as *mut birnam_abi::method_observation::ApiV1;
-        if !unsafe { birnam_abi::method_observation::valid(observation) } {
-            return Err(FloorError::MethodObservation { path: self.source_path.with_file_name("libbirnam_method_observation.dylib"), reason: "invalid methodObservation capability" });
-        }
-        let root_registry = self.constructed_word(b"rootRegistry")? as *mut birnam_abi::root_registry::ApiV1;
-        if !unsafe { birnam_abi::root_registry::valid(root_registry) } {
-            return Err(FloorError::RootRegistry { path: self.source_path.with_file_name("libbirnam_root_registry.dylib"), reason: "invalid rootRegistry capability" });
-        }
-        let gc_settings = self.constructed_word(b"gcSettings")? as *mut birnam_abi::gc_settings::ApiV1;
-        if !unsafe { birnam_abi::gc_settings::valid(gc_settings) } {
-            return Err(FloorError::GcSettings { path: self.source_path.with_file_name("libbirnam_gc_settings.dylib"), reason: "invalid gcSettings capability" });
-        }
-        let payload_layout = self.constructed_word(b"payloadLayout")? as *mut birnam_abi::payload_layout::ApiV1;
-        if !unsafe { birnam_abi::payload_layout::valid(payload_layout) } {
-            return Err(FloorError::PayloadLayout { path: self.source_path.with_file_name("libbirnam_payload_layout.dylib"), reason: "invalid payloadLayout capability" });
-        }
-        let trace_hooks = self.constructed_word(b"traceHooks")? as *mut birnam_abi::trace_hooks::ApiV1;
-        if !unsafe { birnam_abi::trace_hooks::valid(trace_hooks) } {
-            return Err(FloorError::TraceHooks { path: self.source_path.with_file_name("libbirnam_trace_hooks.dylib"), reason: "invalid traceHooks capability" });
-        }
-        let finalizers = self.constructed_word(b"finalizers")? as *mut birnam_abi::finalizers::ApiV1;
-        if !unsafe { birnam_abi::finalizers::valid(finalizers) } {
-            return Err(FloorError::Finalizers { path: self.source_path.with_file_name("libbirnam_finalizers.dylib"), reason: "invalid finalizers capability" });
-        }
-        let native_stack = self.constructed_word(b"nativeStack")? as *mut birnam_abi::native_stack::ApiV1;
-        if !unsafe { birnam_abi::native_stack::valid(native_stack) } {
-            return Err(FloorError::NativeStack { path: self.source_path.with_file_name("libbirnam_native_stack.dylib"), reason: "invalid nativeStack capability" });
-        }
-        let Self { source_path, handle, id_protocol, bootstrap, .. } = self;
-        // Id pins every entered native image, including the supporting factories.
-        let _id_image = handle;
-        let runtime_path = source_path.with_file_name("libbirnam_runtime.dylib");
-        let api = NonNull::new(initialized).ok_or(FloorError::NullApi)?;
-        // Retain a handle for the remaining execution/image entry points only.
-        let runtime_name = CString::new(path_bytes(&runtime_path)).map_err(|_| FloorError::EmbeddedNul)?;
-        let handle = NonNull::new(unsafe { system_dlopen(runtime_name.as_ptr(), RTLD_NOW | RTLD_LOCAL) })
-            .ok_or(FloorError::OpenFailed)?;
-        Ok(LoadedFloor {
-            values,
-            bootstrap,
-            id_protocol,
-            root_registry: NonNull::new(root_registry).unwrap(),
-            gc_settings: NonNull::new(gc_settings).unwrap(),
-            payload_layout: NonNull::new(payload_layout).unwrap(),
-            trace_hooks: NonNull::new(trace_hooks).unwrap(),
-            finalizers: NonNull::new(finalizers).unwrap(),
-            native_stack: NonNull::new(native_stack).unwrap(),
-            method_observation: NonNull::new(observation).unwrap(),
-            vtable_enumeration: NonNull::new(vtables).unwrap(),
-            namespace_export: NonNull::new(export).unwrap(),
-            namespace_import: NonNull::new(import).unwrap(),
-            namespace_presence: NonNull::new(presence).unwrap(),
-            handle,
-            api,
-            _owner_thread: PhantomData,
-        })
-    }
-
-}
-
-/// Initialize Id, Bootstrap and the root owner; later construction stays explicit.
-pub fn begin_floor(path: &Path, expected_identity: Option<&str>, expected_digest: Option<&str>) -> Result<InitialFloor, FloorError> {
-    let mut initial = begin_id(path, expected_identity, expected_digest)?;
-    initial.initialize_roots()?;
-    Ok(initial)
-}
-
-unsafe fn load_native_with_bootstrap(bootstrap: Option<&crate::native_bootstrap::Owner>, id: birnam_abi::id_protocol::Protocol, path: &[u8], args: &[birnam_abi::id_protocol::Operand]) -> birnam_abi::id_protocol::Outcome {
-    if let Some(bootstrap) = bootstrap { return unsafe { bootstrap.initialize(path, args) }; }
-    let mut request = vec![birnam_abi::id_protocol::Operand::bytes(path)];
-    request.extend_from_slice(args);
-    unsafe { id.message.unwrap()(id.context, id.receiver, id.load, request.as_ptr(), request.len()) }
-}
-
-pub fn load_floor(path: &Path, expected_identity: Option<&str>, expected_digest: Option<&str>) -> Result<LoadedFloor, FloorError> {
-    begin_floor(path, expected_identity, expected_digest)?.finish()
-}
-
-// Only host loader operations run here; no Id callbacks exist yet. On success
-// the descriptor has escaped into the floor and both libraries stay pinned.
-
-
-
-
-
-
-
-
-
-
-/// Load the selected Rust floor using optional identity and digest checks.
-pub fn load_selected_floor(path: &Path) -> Result<LoadedFloor, FloorError> {
-    let identity = env::var("BIRNAM_ID_FLOOR_IDENTITY").ok();
-    let digest = env::var("BIRNAM_ID_FLOOR_SHA256").ok();
-    load_floor(path, identity.as_deref(), digest.as_deref())
 }
 
 const RTLD_NOW: i32 = 2;
@@ -2464,17 +2057,10 @@ pub(super) fn path_bytes(path: &Path) -> Vec<u8> {
     }
 }
 
-
-
-
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
-
 
     fn artifact_field(value: &[u8], output: &mut Vec<u8>) {
         output.extend_from_slice(&(value.len() as u32).to_le_bytes());
@@ -2632,11 +2218,6 @@ mod tests {
             .expect("shared parity row writes");
     }
 
-
-
-
-
-
     #[test]
     fn sha256_matches_the_floor_digest_format() {
         assert_eq!(
@@ -2644,10 +2225,6 @@ mod tests {
             *b"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
     }
-
-
-
-
 
     #[test]
     fn compiled_artifact_validation_checks_descriptor_identity_and_metadata() {
@@ -2680,11 +2257,6 @@ mod tests {
         ));
     }
 
-
-
-
-
-
     #[test]
     fn missing_floor_is_rejected_before_dlopen() {
         assert!(matches!(
@@ -2692,7 +2264,6 @@ mod tests {
             Err(FloorError::Read { .. })
         ));
     }
-
 
     #[test]
     fn embedded_self_hosted_sources_preserve_declared_dependencies() {
@@ -2762,18 +2333,6 @@ mod tests {
         );
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
     #[test]
     fn self_hosted_candidate_stays_in_the_resolved_library_directory() {
         let resources = resolve_from_exe_dir(Path::new("/opt/birnam/bin"), Overrides::default())
@@ -2820,18 +2379,6 @@ mod tests {
         );
         assert!(StartupPolicy::from_flags_with_precision(false, false, true).precise_gc);
     }
-
-
-
-
-
-
-
-
-
-
-
-
 
     #[test]
     fn bake_trailer_round_trips_exact_image_bytes() {

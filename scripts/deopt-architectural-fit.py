@@ -17,8 +17,7 @@ from compatibility_authority import baseline_path, unchanged_authority
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "24e200a3"
 AUTHORITIES = (
-    "rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json",
-    "abi/fixtures/idapi-v1/idapi_v1.h", "rust/birnam-image/src/lib.rs",
+    "rust/birnam-image/src/lib.rs",
     "rust/birnam-image/src/v8.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
     "rust/birnam-runtime/src/registration.rs", "rust/birnam-codegen/src/resumable_c.rs",
 )

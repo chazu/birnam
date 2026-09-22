@@ -1,15 +1,13 @@
 //! The existing ordered native root-provider registry, independently owned.
-use birnam_abi::root_registry::{ApiV1, CAPACITY, FactoryV1, FloorV1, SnapshotV1, OwnedV1, RootsV1};
+use birnam_abi::root_registry::{ApiV1, CAPACITY, FloorV1, SnapshotV1, RootsV1};
 use birnam_abi::RootProvider;
 use core::ffi::{c_int, c_void};
 use core::ptr;
 
 #[repr(C)]
 struct Registry {
-    api: ApiV1,
     floor: FloorV1,
     providers: Vec<RootProvider>,
-    owned: OwnedV1,
     retained: Vec<birnam_abi::Oop>,
     root_tokens: Vec<usize>,
     next_root: usize,
@@ -36,30 +34,6 @@ unsafe extern "C" fn snapshot(api: *const ApiV1) -> SnapshotV1 {
     for (slot, provider) in result.entries.iter_mut().zip(providers) { *slot = Some(*provider); }
     result
 }
-unsafe extern "C" fn create(floor: *const FloorV1) -> *mut ApiV1 {
-    if floor.is_null() { return ptr::null_mut(); }
-    let floor = unsafe { *floor };
-    if floor.version != 1 || floor.byte_size != size_of::<FloorV1>() || floor.admit.is_none() || floor.overflow.is_none() {
-        return ptr::null_mut();
-    }
-    let mut owned = Box::new(Registry {
-        api: ApiV1 { version: 1, byte_size: size_of::<ApiV1>(), context: ptr::null_mut(), register: Some(register) },
-        floor, providers: Vec::new(), retained: Vec::new(), root_tokens: Vec::new(), next_root: 0, owner: std::thread::current().id(),
-        owned: OwnedV1 { version: 1, byte_size: size_of::<OwnedV1>(), api: ptr::null_mut(), factory: &FACTORY,
-            context: ptr::null_mut(), retain: Some(retain), release: Some(release), roots: Some(roots), set_admission: Some(set_admission) },
-    });
-    owned.api.context = ptr::from_mut(owned.as_mut()).cast();
-    owned.owned.context = owned.api.context;
-    owned.owned.api = ptr::from_mut(&mut owned.api);
-    Box::into_raw(owned).cast()
-}
-unsafe extern "C" fn destroy(api: *mut ApiV1) {
-    unsafe { drop(Box::from_raw(api.cast::<Registry>())) };
-}
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1, byte_size: size_of::<FactoryV1>(), create: Some(create), destroy: Some(destroy),
-    append: Some(append), snapshot: Some(snapshot),
-};
 
 unsafe extern "C" fn admit_native(context: *mut c_void) {
     assert_eq!(unsafe { (*context.cast::<Registry>()).owner }, std::thread::current().id(), "root registry used from another thread");
@@ -103,28 +77,6 @@ unsafe extern "C" fn set_admission(context: *mut c_void, floor: *const FloorV1) 
     unsafe { (*context.cast::<Registry>()).floor = floor };
     1
 }
-
-unsafe extern "C" fn initialize_native(id: *const birnam_abi::id_protocol::Protocol, args: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
-    use birnam_abi::id_protocol::{self as native, Operand, Outcome};
-    if id.is_null() { return Outcome::failed(native::INVALID_REQUEST, 0); }
-    let Some(args) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return Outcome::failed(native::INVALID_REQUEST, 0); };
-    let Some(initial): Option<Vec<_>> = args.iter().map(|arg| arg.as_object()).collect() else { return Outcome::failed(native::INVALID_REQUEST, 0); };
-    let floor = FloorV1 { version: 1, byte_size: size_of::<FloorV1>(), context: ptr::null_mut(), admit: Some(admit_native), overflow: Some(overflow_native) };
-    let api = unsafe { create(&floor) };
-    let registry = api.cast::<Registry>();
-    // Complete the native owner's self-reference before publishing it. No
-    // operation needs a later Runtime, collector or prepared callback.
-    unsafe { (*registry).floor.context = registry.cast() };
-    for object in initial { unsafe { retain(registry.cast(), object) }; }
-    Outcome::loaded(Operand::word(unsafe { &raw const (*registry).owned } as usize))
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {
-    version: birnam_abi::id_protocol::VERSION, byte_size: size_of::<birnam_abi::id_protocol::Module>() as u32, initialize: Some(initialize_native),
-};
-/// # Safety
-/// Owner-thread operations require the declared descriptor and code lifetimes.
-pub unsafe fn root_registry_factory() -> *const FactoryV1 { &FACTORY }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }

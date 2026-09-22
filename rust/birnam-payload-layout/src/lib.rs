@@ -1,14 +1,8 @@
 //! Owned exact-vtable payload descriptions shared by GC, Image and recovery.
-use birnam_abi::payload_layout::{ApiV1, FactoryV1, FloorV1, OwnedV1, ViewV1};
+use birnam_abi::payload_layout::{OwnedV1, ViewV1};
 use birnam_abi::{Oop, SLOT_OOP, SLOT_UNKNOWN};
 use core::ffi::{c_int, c_void};
 use core::ptr;
-
-#[repr(C)]
-struct Capability {
-    api: ApiV1,
-    floor: FloorV1,
-}
 
 unsafe extern "C" fn copy(kinds: *const u8, count: usize, rest: u8) -> OwnedV1 {
     if count != 0 && kinds.is_null() {
@@ -43,58 +37,9 @@ unsafe extern "C" fn all_oop(view: ViewV1, words: usize) -> c_int {
     }
     c_int::from(words <= view.count || view.rest == SLOT_OOP)
 }
-unsafe extern "C" fn public_set(context: *mut c_void, vtable: Oop, kinds: *const u8, count: usize, rest: u8) {
-    let floor = unsafe { (*context.cast::<Capability>()).floor };
-    // Admission can reenter. No state borrow or input copy spans that callback.
-    unsafe { floor.admit.unwrap()(floor.context) };
-    let owned = unsafe { copy(kinds, count, rest) };
-    unsafe { floor.replace.unwrap()(floor.context, vtable, owned) };
-}
-unsafe extern "C" fn public_slot_kind(context: *mut c_void, vtable: Oop, word: usize) -> u8 {
-    let floor = unsafe { (*context.cast::<Capability>()).floor };
-    unsafe { floor.admit.unwrap()(floor.context) };
-    let view = unsafe { floor.view.unwrap()(floor.context, vtable) };
-    unsafe { slot_kind(view, word) }
-}
-unsafe extern "C" fn create(floor: *const FloorV1) -> *mut ApiV1 {
-    if floor.is_null() { return ptr::null_mut(); }
-    let floor = unsafe { *floor };
-    if floor.version != 1 || floor.byte_size != size_of::<FloorV1>()
-        || floor.admit.is_none() || floor.replace.is_none() || floor.view.is_none()
-    { return ptr::null_mut(); }
-    let mut owned = Box::new(Capability {
-        api: ApiV1 { version: 1, byte_size: size_of::<ApiV1>(), context: ptr::null_mut(),
-            set: Some(public_set), slot_kind: Some(public_slot_kind) },
-        floor,
-    });
-    owned.api.context = ptr::from_mut(owned.as_mut()).cast();
-    Box::into_raw(owned).cast()
-}
-unsafe extern "C" fn destroy(api: *mut ApiV1) {
-    unsafe { drop(Box::from_raw(api.cast::<Capability>())) };
-}
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1, byte_size: size_of::<FactoryV1>(), create: Some(create), destroy: Some(destroy),
-    copy: Some(copy), release: Some(release), slot_kind: Some(slot_kind),
-    has_layout: Some(has_layout), all_oop: Some(all_oop),
-};
-/// # Safety
-/// The immutable descriptor/code outlive every carrier and retaining consumer.
-pub unsafe fn payload_layout_factory() -> *const FactoryV1 { &FACTORY }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> c_int { 1 }
 
 #[cfg(test)]
 mod tests;
-
-/// Publish the complete primitive description algorithms through Id loading.
-unsafe extern "C" fn initialize_native(_: *const birnam_abi::id_protocol::Protocol, _: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
-    use birnam_abi::id_protocol::{self as native, Operand, Outcome};
-    if count != 0 { return Outcome::failed(native::INVALID_REQUEST, 0); }
-    Outcome::loaded(Operand::word(&FACTORY as *const FactoryV1 as usize))
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {
-    version: 1, byte_size: size_of::<birnam_abi::id_protocol::Module>() as u32, initialize: Some(initialize_native),
-};

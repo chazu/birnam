@@ -1,8 +1,5 @@
 //! Bounded inherited dictionary answers, without roots or executable leases.
-mod native;
 mod guard_verdict;
-pub use guard_verdict::guard_verdict_factory;
-use birnam_abi::dispatch_cache::FactoryV2;
 use birnam_abi::id_protocol::NativeEntry;
 use core::{cell::Cell, ffi::c_void, ptr};
 
@@ -36,13 +33,6 @@ unsafe extern "C" fn clear(context: *mut c_void) {
     let cache = unsafe { &*context.cast::<Cache>() };
     for entry in &cache.0 { entry.set(EMPTY); }
 }
-static FACTORY: FactoryV2 = FactoryV2 {
-    version: 2, byte_size: size_of::<FactoryV2>(), create: Some(create), destroy: Some(destroy),
-    lookup: Some(lookup), insert: Some(insert), clear: Some(clear),
-};
-/// # Safety
-/// The host pins this immutable descriptor and implementation for every owner.
-pub unsafe fn dispatch_cache_factory() -> *const FactoryV2 { &FACTORY }
 
 #[cfg(test)]
 mod tests;

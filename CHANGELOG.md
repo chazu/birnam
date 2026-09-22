@@ -8,6 +8,13 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Delete the remaining host descriptor catalogs, aggregate Runtime/Heap factory
+  construction, compiler service resolver, factory publishers and Runtime wrappers.
+  Remove 111 retired C headers, twenty IdApi manifests, the construction catalog,
+  foreign heap-layout probe and obsolete install/validation checks. Preserve the
+  owning implementations of GC, optimization/recovery, concurrency and native
+  lifetime; upper callers remain deliberately broken pending Id-message integration.
+
 - Preserve deoptimization, the native optimization tier, recovery, concurrency,
   workers and their semantic tests above Id while deleting more native plumbing:
   Bootstrap's construction catalog, Runtime's aggregate initializer and local

@@ -1,6 +1,5 @@
 //! Per-Runtime phase ownership, separate from the driver's thread-local ACTIVE.
 use birnam_abi::collect::{FINALIZING, IDLE, MARKING};
-use birnam_abi::collection_phase::FactoryV1;
 use core::{
     cell::Cell,
     ffi::{c_int, c_void},
@@ -21,19 +20,6 @@ unsafe extern "C" fn set(context: *mut c_void, phase: u32) -> c_int {
     }
     unsafe { (&*context.cast::<Cell<u32>>()).set(phase) };
     1
-}
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1,
-    byte_size: size_of::<FactoryV1>(),
-    create: Some(create),
-    destroy: Some(destroy),
-    read: Some(read),
-    set: Some(set),
-};
-/// # Safety
-/// The host pins this immutable descriptor and code for all created contexts.
-pub unsafe fn collection_phase_factory() -> *const FactoryV1 {
-    &FACTORY
 }
 
 #[cfg(test)]

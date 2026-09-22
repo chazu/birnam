@@ -16,7 +16,6 @@
     "birnam_id_observe_storage_v1",
     "birnam_id_release_stackless_generation_lease_v1",
     "birnam_id_retire_stackless_code_generation_v1",
-    "birnam_id_rust_abi_descriptor_v1",
     "birnam_id_rust_crate_identity",
     "birnam_id_stackless_block_vtable_image_reference_v1",
     "birnam_id_stackless_block_vtable_matches_v1",

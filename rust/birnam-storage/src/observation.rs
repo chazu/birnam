@@ -1,5 +1,5 @@
 //! Per-Runtime observation scopes; no Id or description-provider callbacks.
-use birnam_abi::storage_observation::{FactoryV1, StateV1};
+use birnam_abi::storage_observation::{StateV1};
 use core::{
     cell::Cell,
     ffi::{c_int, c_void},
@@ -39,21 +39,6 @@ unsafe extern "C" fn advance_epoch(context: *mut c_void, out: *mut u64) -> c_int
     owner.set(state);
     unsafe { out.write(epoch) };
     1
-}
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1,
-    byte_size: size_of::<FactoryV1>(),
-    create: Some(create),
-    destroy: Some(destroy),
-    read: Some(read),
-    set_active: Some(set_active),
-    set_permit: Some(set_permit),
-    advance_epoch: Some(advance_epoch),
-};
-/// # Safety
-/// The host pins this immutable descriptor and code for all created contexts.
-pub unsafe fn storage_observation_factory() -> *const FactoryV1 {
-    &FACTORY
 }
 
 #[cfg(test)]

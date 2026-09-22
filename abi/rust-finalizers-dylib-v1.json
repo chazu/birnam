@@ -3,7 +3,6 @@
   "scope": "Native finalizer eligibility and inline callback attachments",
   "install_name": "@rpath/libbirnam_finalizers.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
     "birnam_symbol_borrow_v1"
   ]
 }

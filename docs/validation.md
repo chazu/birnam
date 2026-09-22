@@ -8,6 +8,13 @@ are retained, but their Runtime/native harnesses need migration. Existing instal
 prefixes do not validate the current source. Release validation is not required
 for this deletion work.
 
+The retired IdApi manifests, module-table headers, factory publishers and
+construction-graph validator are gone. ABI inventories no longer demand those
+exports or fingerprints. The two retained C headers describe Id messages and the
+recovery registration envelope. Older native fixtures retain their behavioral
+assertions but require message-based setup before execution; do not restore the
+old headers to run them.
+
 Use `mise run verify` for everyday correctness and `mise run verify-plan` to see
 its steps before execution. This is the current workflow; Design 74's temporary
 controllers and chronological measurement notes are historical evidence.

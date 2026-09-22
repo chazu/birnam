@@ -449,100 +449,6 @@ impl Runtime {
         ManagedTurnGuard { runtime: self }
     }
 
-    #[cfg(test)]
-    pub(crate) fn new(
-        heap: Heap,
-        vtables: Behaviors,
-        symbols: Symbols,
-        id_protocol: Option<crate::abi::id_protocol::Protocol>,
-        globals: DispatchGlobals,
-    ) -> Self {
-        Self::new_with_owners(heap, vtables, symbols, id_protocol, globals, None, None, None, None, None, crate::support::diagnostic())
-    }
-    pub(crate) fn new_with_owners(
-        heap: Heap,
-        vtables: Behaviors,
-        symbols: Symbols,
-        id_protocol: Option<crate::abi::id_protocol::Protocol>,
-        globals: DispatchGlobals,
-        roots: Option<crate::root_registry::Service>,
-        namespace: Option<Environment>,
-        model: Option<crate::object_model::Shared>,
-        trace_graph: Option<birnam_abi::trace_graph::GraphV2>,
-        collection_owner: Option<crate::collection_state::Shared>,
-        support: birnam_abi::runtime_support::FactoriesV1,
-    ) -> Self {
-        let id_storage = if collection_owner.is_none() { id_protocol.as_ref().map(|id| id_storage::Storage::new(*id)) } else { None };
-        Self {
-            id_storage,
-            trace_graph,
-            owner: current_thread_token(),
-            observation: storage::ObservationState::new(support.storage),
-            collection_phase: collection_owner.clone().map(crate::collection_phase::Service::from_collection).unwrap_or_else(crate::collection_phase::Service::new),
-            collection_owner: collection_owner.clone(),
-            entry_scopes: UnsafeCell::new(Vec::new()),
-            native_retirements: core::cell::RefCell::new(Vec::new()),
-            draining_retirements: Cell::new(false),
-            slot_guard_cache: crate::guard_verdict::Service::with_factory(support.verdict),
-            lookup_guard_cache: crate::guard_verdict::Service::with_factory(support.verdict),
-            dispatch_cache: dispatch_cache::Cache::with_factory(support.cache),
-            compiler: compiler::initial(),
-            methods: Default::default(),
-            integer: Cell::new(None),
-            float: Cell::new(None),
-            word: Cell::new(None),
-            string: Cell::new(None),
-            #[cfg(not(test))]
-            trace: Cell::new(trace_graph.map(|graph| graph.trace)),
-            #[cfg(test)]
-            trace: Cell::new(Some(birnam_trace::live::birnam_trace_live_v1)),
-            #[cfg(not(test))]
-            collect: Cell::new(collection_owner.as_ref().map(|owner| owner.0.collect)),
-            #[cfg(test)]
-            collect: Cell::new(Some(birnam_collect::birnam_collect_v1)),
-            #[cfg(test)]
-            test_integer: UnsafeCell::new(None),
-            #[cfg(test)]
-            test_float: UnsafeCell::new(None),
-            #[cfg(test)]
-            test_word: UnsafeCell::new(None),
-            #[cfg(test)]
-            test_string: UnsafeCell::new(None),
-            recovery_requests: core::cell::RefCell::new(Vec::new()),
-            #[cfg(test)]
-            deopt_trial: core::cell::RefCell::new(None),
-            #[cfg(all(test, target_os = "macos"))]
-            generated_deopt_trial: core::cell::RefCell::new(None),
-            #[cfg(all(test, target_os = "macos"))]
-            read_reuse_gc_epoch: Cell::new(0),
-            #[cfg(test)]
-            test_id_owner: None,
-            state: UnsafeCell::new(RuntimeState {
-                method_observation: crate::method_observation::Service::with_factory(support.observation),
-                root_registry: roots.unwrap_or_else(crate::root_registry::Service::new),
-                vtable_enumeration: model.map(crate::vtable_enumeration::Service::from_model).unwrap_or_else(crate::vtable_enumeration::Service::new),
-                symbols,
-                id_protocol,
-                vtables,
-                heap,
-                globals,
-                canonical: None,
-                internal_dictionaries: None,
-                // Native construction follows the borrowed Symbol contract.
-                // Only a subsequently admitted legacy module can request the
-                // compatibility policy that retains the complete interner.
-                symbol_compaction_enabled: collection_owner.is_some(),
-                symbol_compatibility_limits: None,
-                metadata: collection_owner.map(MetadataShell::from_collection).unwrap_or_else(MetadataShell::new),
-                environment: namespace.unwrap_or_else(Environment::new),
-                execution: ExecutionState::new(current_thread_token()),
-                admission: if cfg!(any(test, feature = "ffi-test-hooks")) {
-                    Some(CompilerAdmission::new())
-                } else { None },
-            }),
-        }
-    }
-
     fn assert_owner(&self) {
         self.require_storage_access();
     }
@@ -4775,7 +4681,6 @@ impl Runtime {
             | if state.vtables.is_registered(object) { birnam_abi::lifetime::BEHAVIOR } else { 0 }
             | if permanence == crate::heap::Permanence::Permanent { birnam_abi::lifetime::PERMANENT } else { 0 }
     }
-
 
     // The public capability has already admitted access; these floor operations
     // neither call out nor repeat admission. No view survives replacement.

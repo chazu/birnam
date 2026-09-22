@@ -19,17 +19,8 @@ mod env;
 mod object_model;
 mod execution;
 mod gc;
-mod gc_settings;
-mod native_stack;
-mod allocation_budget;
-mod collection_phase;
 mod collection_state;
-mod guard_verdict;
-mod deferred_identity;
-mod storage_observation;
 mod payload_layout;
-mod trace_hooks;
-mod finalizers;
 mod heap;
 #[cfg(any(test, feature = "ffi-test-hooks"))]
 mod owned;
@@ -42,8 +33,6 @@ mod registration;
 mod runtime;
 mod values;
 mod behaviors;
-mod vtable_enumeration;
-mod method_observation;
 mod root_registry;
 mod lifetime;
 
@@ -74,16 +63,6 @@ pub extern "C" fn birnam_id_floor_identity() -> *const c_char {
     );
     RUST_FLOOR_IDENTITY.as_ptr().cast()
 }
-
-/// Returns the pointer-free build/test descriptor for the frozen v1 ABI.
-///
-/// The descriptor is diagnostic evidence only and is not part of `IdApi`.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_id_rust_abi_descriptor_v1() -> *const core::ffi::c_void {
-    core::ptr::addr_of!(abi::ABI_DESCRIPTOR_V1).cast()
-}
-
-/// Initialize the Rust floor exactly once in this process.
 
 /// Private host/floor admission seam for Design 60J Symbol compaction.
 ///
@@ -245,24 +224,6 @@ pub extern "C" fn birnam_id_test_non_owner_abort() {
     })
     .join()
     .expect("non-owner Rust floor call must terminate the process");
-}
-
-/// Test-only bridge through which an external C-layout fixture inspects one
-/// isolated Rust heap block.
-///
-/// # Safety
-///
-/// The callback must obey `heap::run_layout_probe`'s pointer lifetime and
-/// bounds contract.
-#[cfg(feature = "ffi-test-hooks")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_id_test_heap_layout(
-    requested_size: usize,
-    vtable: abi::Oop,
-    probe: heap::LayoutProbe,
-) -> core::ffi::c_int {
-    // SAFETY: the exported function forwards the documented caller contract.
-    unsafe { heap::run_layout_probe(requested_size, vtable, probe) }
 }
 
 /// Test-only optimized membership benchmark entrypoint.

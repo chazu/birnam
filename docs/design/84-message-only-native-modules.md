@@ -299,3 +299,54 @@ tests pass. Cargo metadata/lock resolution, edited Rust parsing, Python/TOML syn
 and diff whitespace checks pass. Runtime concurrency and full native/image tests
 cannot run until upper construction is rebuilt; preservation is not execution
 validation. The host's Bootstrap descriptor wrapper is also deleted.
+
+
+### Final catalog and factory deletion checkpoint
+
+The follow-up deletion pass removes the five remaining scaffolding categories:
+
+- Host `LoadedFloor`, `InitialFloor` and `LoadedStack` no longer hold or expose
+  upper-module descriptor catalogs. Id loading still uses Siphon. The host no
+  longer creates the retired Bootstrap descriptor wrapper or runs its staged
+  factory construction path. Later startup callers await migration.
+- Runtime's `build_bootstrap_with` and `new_with_owners`, alternate Heap constructors,
+  and local Nil/Boolean construction are gone. Heap adoption/accounting and upper
+  method installation remain as operations on already constructed state. Execution,
+  scheduling, compiler admission, lease and retirement implementations remain;
+  the replacement construction path must initialize that state in its owning layer.
+- Factory-only Runtime wrappers and their publishers in the owning crates are
+  deleted. Actual root registration/retention, payload release, finalizer eligibility,
+  inherited trace-hook lookup, native register capture/scanning, collection phases,
+  observation, deferred-allocation indexing, lookup caches and guard-state algorithms
+  are retained. No new service bundle or alternative API table replaces the old ones.
+- Compiler retains its native-tier and numeric registries and initialization logic.
+  Its service descriptor, string-to-function resolver and test-only implicit
+  initialization path are deleted. Recovery registration and generation leases remain.
+- Twenty IdApi manifests, 111 module-specific C headers, the construction manifest
+  and its install-time graph validator, the ABI diagnostic export/fingerprint receipt
+  fields, and the foreign heap-layout probe are deleted. The generic Id header,
+  registration-envelope header, artifact/image formats and independent format
+  fixtures remain. Recovery runners no longer enforce retired IdApi definitions;
+  their behavioral assertions are preserved.
+
+This completes the identified deletion pass, not caller migration. Mixed owner
+implementations still reference removed carriers or admission callbacks, and
+native fixtures still contain old includes. Replace those integrations with Id
+messages while preserving their semantics; do not recreate the deleted headers,
+factory constructors, foreign-layout assumptions or cached module APIs. The next
+work is production object integration, not another round of extraction scaffolding.
+
+Validation: all seven ABI/Id tests and ten focused Codegen recovery tests pass.
+Of 196 files inventoried around execution, recovery, native optimization, compiler,
+Isolate, Image, Birnam modules and native capture, 191 are byte-identical. Five
+changed files remove the deferred-index wrapper/declaration, compiler resolver,
+dispatch-cache wrapper and storage-observation factory selection. Unique observation
+identity allocation remains in the private state constructor. Their owner
+algorithms and semantic tests remain. This is source-preservation evidence, not a
+Runtime concurrency test result. Full-language and native harness validation remain
+unavailable until callers are migrated. No release validation is required here.
+
+Cargo metadata/lock resolution, edited-source syntax and whitespace checks pass.
+All eight validation-tool tests pass, as do both independent stackless/recovery
+and Portable Code binary-fixture verifiers. The verifiers retain their malformed
+input and truncation assertions.

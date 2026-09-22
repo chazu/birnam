@@ -1,12 +1,10 @@
 //! The existing single native pre-overwrite observer, independently owned.
-mod native;
-use birnam_abi::method_observation::{ApiV1, FactoryV1, FloorV1, HookV1};
+use birnam_abi::method_observation::{ApiV1, FloorV1, HookV1};
 use core::ffi::{c_int, c_void};
 use core::ptr;
 
 #[repr(C)]
 struct Observation {
-    api: ApiV1,
     floor: FloorV1,
     hook: Option<HookV1>,
 }
@@ -26,28 +24,6 @@ unsafe extern "C" fn notify(api: *mut ApiV1, direct: c_int, vtable: birnam_abi::
         }
     }
 }
-unsafe extern "C" fn create(floor: *const FloorV1) -> *mut ApiV1 {
-    if floor.is_null() { return ptr::null_mut(); }
-    let floor = unsafe { *floor };
-    if floor.version != 1 || floor.byte_size != size_of::<FloorV1>() || floor.admit.is_none() {
-        return ptr::null_mut();
-    }
-    let mut owned = Box::new(Observation {
-        api: ApiV1 { version: 1, byte_size: size_of::<ApiV1>(), context: ptr::null_mut(), replace: Some(replace) },
-        floor, hook: None,
-    });
-    owned.api.context = ptr::from_mut(owned.as_mut()).cast();
-    Box::into_raw(owned).cast()
-}
-unsafe extern "C" fn destroy(api: *mut ApiV1) {
-    unsafe { drop(Box::from_raw(api.cast::<Observation>())) };
-}
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1, byte_size: size_of::<FactoryV1>(), create: Some(create), destroy: Some(destroy), notify: Some(notify),
-};
-/// # Safety
-/// Factory operations require owner-thread access and their declared lifetimes.
-pub unsafe fn method_observation_factory() -> *const FactoryV1 { &FACTORY }
 
 #[cfg(test)]
 mod tests {

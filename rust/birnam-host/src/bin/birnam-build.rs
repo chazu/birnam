@@ -580,63 +580,6 @@ fn native_library_source(canonical: &str) -> &'static str {
     }
 }
 
-/// Check the documented entry graph before building or publishing a prefix.
-/// Runtime construction still belongs exclusively to the loaded Bootstrap.
-fn validate_construction_graph(value: &serde_json::Value) -> Result<(), String> {
-    use std::collections::{BTreeMap, BTreeSet};
-    if value["schema_version"].as_u64() != Some(1) { return Err("unsupported construction manifest".into()); }
-    let entries = value["entries"].as_array().ok_or("missing construction entries")?;
-    let mut graph = BTreeMap::new();
-    let mut libraries = BTreeSet::new();
-    for entry in entries {
-        let name = entry["name"].as_str().filter(|v| !v.is_empty()).ok_or("unnamed construction entry")?;
-        for field in ["library", "entry", "receiver", "operations"] {
-            if entry[field].as_str().is_none_or(str::is_empty) { return Err(format!("{name}: missing {field}")); }
-        }
-        libraries.insert(entry["library"].as_str().unwrap());
-        let predecessors = entry["predecessors"].as_array().ok_or_else(|| format!("{name}: missing predecessors"))?
-            .iter().map(|v| v.as_str().ok_or_else(|| format!("{name}: invalid predecessor"))).collect::<Result<Vec<_>, _>>()?;
-        if graph.insert(name, predecessors).is_some() { return Err(format!("duplicate construction entry {name}")); }
-    }
-    if libraries != CANONICAL_DYNAMIC_LIBRARIES.iter().copied().collect() {
-        return Err("construction manifest does not cover exactly the installed native libraries".into());
-    }
-    let former = value["former_script_modules"].as_array().ok_or("missing legacy startup mapping")?;
-    for library in former {
-        if !library.as_str().is_some_and(|library| libraries.contains(library)) {
-            return Err(format!("unmapped former startup module {library}"));
-        }
-    }
-    fn visit<'a>(name: &'a str, graph: &BTreeMap<&'a str, Vec<&'a str>>, active: &mut BTreeSet<&'a str>, done: &mut BTreeSet<&'a str>) -> Result<(), String> {
-        if done.contains(name) { return Ok(()); }
-        let predecessors = graph.get(name).ok_or_else(|| format!("missing construction predecessor {name}"))?;
-        if !active.insert(name) { return Err(format!("construction dependency cycle at {name}")); }
-        for predecessor in predecessors { visit(predecessor, graph, active, done)?; }
-        active.remove(name);
-        done.insert(name);
-        Ok(())
-    }
-    let (mut active, mut done) = (BTreeSet::new(), BTreeSet::new());
-    for name in graph.keys() { visit(name, &graph, &mut active, &mut done)?; }
-    Ok(())
-}
-
-fn validate_construction_manifest(root: &Path) -> Result<(), String> {
-    use std::collections::BTreeSet;
-    let path = root.join("abi/production-construction-v1.json");
-    let value: serde_json::Value = serde_json::from_slice(&fs::read(&path).map_err(|error| format!("read {}: {error}", path.display()))?)
-        .map_err(|error| format!("parse construction manifest: {error}"))?;
-    validate_construction_graph(&value)?;
-    let source_path = value["source"].as_str().ok_or("missing construction source")?;
-    let source = fs::read_to_string(root.join(source_path)).map_err(|error| format!("read construction source: {error}"))?;
-    let loaded: BTreeSet<_> = source.split('"').filter(|part| part.starts_with("libbirnam_") && part.ends_with(".dylib")).collect();
-    let expected: BTreeSet<_> = CANONICAL_DYNAMIC_LIBRARIES.iter().copied()
-        .filter(|library| !matches!(*library, "libbirnam_id.dylib" | "libbirnam_bootstrap.dylib")).collect();
-    if loaded != expected { return Err("Bootstrap source and native construction library inventory differ".into()); }
-    println!("native construction: {} entries, {} libraries; predecessor graph and source inventory checked", value["entries"].as_array().unwrap().len(), CANONICAL_DYNAMIC_LIBRARIES.len());
-    Ok(())
-}
-
 fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     let root = fs::canonicalize(&options.root).map_err(|error| {
         format!(
@@ -647,7 +590,6 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     if !root.join("Cargo.toml").is_file() {
         return Err(format!("source root has no Cargo.toml: {}", root.display()));
     }
-    validate_construction_manifest(&root)?;
     let prefix_name = options
         .prefix
         .file_name()
@@ -861,16 +803,12 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             "git_commit": git_commit,
             "git_clean": git_clean,
         },
-        "native_construction_manifest": sha256_file(&root.join("abi/production-construction-v1.json"))?,
         "admission_contract": {
             "target": "aarch64-macos",
             "image_version": 8,
             "candidate_envelope_abi": 4,
             "candidate_manifest_version": 4,
             "artifact_generation_abi": "birnam-artifact-generation-v1",
-            "id_api_descriptor_version": birnam_abi::ABI_DESCRIPTOR_V1.descriptor_version,
-            "id_api_schema_version": birnam_abi::ABI_DESCRIPTOR_V1.schema_version,
-            "id_api_fingerprint": hex::encode(birnam_abi::ABI_DESCRIPTOR_V1.fingerprint),
             "runtime_abi_hash": "f57d502f7c1c0437",
             "portable_code_api_versions": [1, 2, 3],
             "portable_program_view_api_version": 1,
@@ -1082,19 +1020,6 @@ mod tests {
         );
         fs::remove_dir_all(prefix).expect("remove scratch prefix");
     }
-    #[test]
-    fn production_construction_graph_rejects_missing_predecessors_and_cycles() {
-        let original: serde_json::Value = serde_json::from_str(include_str!("../../../../abi/production-construction-v1.json")).unwrap();
-        validate_construction_graph(&original).unwrap();
-        let mut missing = original.clone();
-        missing["entries"][0]["predecessors"] = serde_json::json!(["missing-module"]);
-        assert!(validate_construction_graph(&missing).unwrap_err().contains("missing construction predecessor"));
-        let mut cycle = original.clone();
-        cycle["entries"][0]["predecessors"] = serde_json::json!(["bootstrap"]);
-        assert!(validate_construction_graph(&cycle).unwrap_err().contains("dependency cycle"));
-        let mut unmapped = original;
-        unmapped["former_script_modules"].as_array_mut().unwrap().push(serde_json::json!("libbirnam_unmapped.dylib"));
-        assert!(validate_construction_graph(&unmapped).unwrap_err().contains("unmapped former startup module"));
-    }
+
 
 }

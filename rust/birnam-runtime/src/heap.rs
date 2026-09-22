@@ -18,10 +18,6 @@ use crate::boundary;
 mod records;
 mod memory;
 
-#[cfg(feature = "ffi-test-hooks")]
-pub(crate) type LayoutProbe =
-    unsafe extern "C" fn(*mut u8, Oop, usize, usize, Oop) -> core::ffi::c_int;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Permanence {
     Collectable,
@@ -104,54 +100,14 @@ pub(crate) use dead_allocations::MAX_DEAD_ALLOCATIONS;
 pub(crate) use dead_allocations::{DeadAllocation, DeferredAllocation, MAX_DEAD_PAYLOAD_BYTES};
 
 impl Heap {
-    #[cfg(any(test, feature = "ffi-test-hooks"))]
-    pub(crate) fn new() -> Self {
-        Self::adopt(crate::owned::Owned::new(ObjectMemory::new()))
-    }
-
-    /// Adopt the existing Id allocations without copying payloads or resetting
-    /// identities. The caller retains early roots until the collector is ready.
-    /// Construction does not collect or run finalizers.
-    #[cfg(any(test, feature = "ffi-test-hooks"))]
-    pub(crate) fn adopt(memory: crate::owned::Owned<ObjectMemory>) -> Self {
-        Self::adopt_with_finalizers(memory, None)
-    }
-    #[cfg(any(test, feature = "ffi-test-hooks"))]
-    pub(crate) fn adopt_with_finalizers(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>) -> Self {
-        Self::adopt_with_collection(memory, finalizers, None)
-    }
-    #[cfg(any(test, feature = "ffi-test-hooks"))]
-    pub(crate) fn adopt_with_collection(memory: crate::owned::Owned<ObjectMemory>, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
-        Self::with_memory(memory::Memory::Local(memory), finalizers, owner, crate::support::diagnostic())
-    }
-    #[cfg(test)]
-    pub(crate) fn from_id(id: crate::abi::id_protocol::Protocol, behavior: Oop, primitives: birnam_abi::id_primitives::PrimitivesV1, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>) -> Self {
-        Self::from_id_with_support(id, behavior, primitives, finalizers, owner, crate::support::diagnostic())
-    }
-    pub(crate) fn from_id_with_support(id: crate::abi::id_protocol::Protocol, behavior: Oop, primitives: birnam_abi::id_primitives::PrimitivesV1, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>, support: birnam_abi::runtime_support::FactoriesV1) -> Self {
-        Self::with_memory(memory::Memory::Id(memory::Client::new(id, behavior, primitives)), finalizers, owner, support)
-    }
-    fn with_memory(memory: memory::Memory, finalizers: Option<crate::finalizers::Service>, owner: Option<crate::collection_state::Shared>, support: birnam_abi::runtime_support::FactoriesV1) -> Self {
-        let mut blocks = records::Records::new(owner.clone());
-        let mut budget = owner.map(crate::allocation_budget::Service::from_collection).unwrap_or_else(crate::allocation_budget::Service::new);
-        // Native records already describe the early heap. Add only allocations
-        // made since their construction, preserving all existing flags/accounting.
-        for (address, allocation) in memory.iter() {
-            if !blocks.contains_key(&address) {
-                blocks.insert(allocation.payload().as_ptr().cast(), BlockLifetime { metadata: 0 });
-                boundary::require_invariant(budget.charge(allocation.total_size), "GC allocation byte counter overflow");
+    /// Account for Id allocations created before the collector was installed.
+    /// Construction must supply the heap's owned state before calling this.
+    pub(crate) fn adopt_existing_allocations(&mut self) {
+        for (address, allocation) in self.memory.iter() {
+            if !self.blocks.contains_key(&address) {
+                self.blocks.insert(allocation.payload().as_ptr().cast(), BlockLifetime { metadata: 0 });
+                boundary::require_invariant(self.budget.charge(allocation.total_size), "GC allocation byte counter overflow");
             }
-        }
-        Self {
-            blocks,
-            memory,
-            budget,
-            dead_allocations: Vec::new(),
-            numeric_allocations: Vec::new(),
-            counted_frame_indices: None,
-            deferred_allocations: dead_allocations::deferred_index::Index::with_factory(support.index),
-            next_deferred_id: crate::deferred_identity::Service::with_factory(support.identity),
-            finalizers: finalizers.unwrap_or_else(crate::finalizers::Service::new),
         }
     }
 
@@ -461,48 +417,6 @@ impl Heap {
         detached.reclaim();
         true
     }
-}
-
-/// Allocate one isolated block while a foreign C-layout probe inspects it.
-///
-/// # Safety
-///
-/// `probe` must access only the supplied header/payload allocation, within the
-/// reported extent, and must not retain either pointer after it returns.
-#[cfg(feature = "ffi-test-hooks")]
-pub(crate) unsafe fn run_layout_probe(
-    requested_size: usize,
-    vtable: Oop,
-    probe: LayoutProbe,
-) -> core::ffi::c_int {
-    let mut heap = Heap::new();
-    let object = heap.allocate(requested_size, Permanence::Collectable);
-    if !heap.set_vtable(object, vtable) {
-        return 0;
-    }
-    let Some(base_address) = heap.base_address(object) else {
-        return 0;
-    };
-    let Some(reported_size) = heap.payload_size(object) else {
-        return 0;
-    };
-
-    // No Heap reference or collection guard survives this call: all arguments
-    // are copied scalars/raw pointers, so the foreign callback cannot alias an
-    // outstanding Rust borrow of runtime state.
-    let accepted = unsafe {
-        probe(
-            base_address as *mut u8,
-            object,
-            requested_size,
-            reported_size,
-            vtable,
-        )
-    };
-    if accepted != 1 || heap.vtable_of(object) != Some(vtable) {
-        return 0;
-    }
-    1
 }
 
 #[cfg(test)]

@@ -9,13 +9,10 @@ pub(super) struct ObservationState {
     scope: crate::storage_observation::Service,
 }
 impl ObservationState {
-    pub(super) fn new(factory: birnam_abi::storage_observation::FactoryV1) -> Self {
+    pub(super) fn new(scope: crate::storage_observation::Service) -> Self {
         let identity = NEXT_RUNTIME.fetch_add(1, Ordering::Relaxed);
         boundary::require_invariant(identity != u64::MAX, "storage runtime identity exhausted");
-        Self {
-            identity,
-            scope: crate::storage_observation::Service::with_factory(factory),
-        }
+        Self { identity, scope }
     }
 }
 enum Flag { Active, Permit }

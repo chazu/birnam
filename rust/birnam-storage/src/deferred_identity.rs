@@ -1,5 +1,4 @@
 //! Integer ownership only: Id decides journal admission, issuance and recovery.
-use birnam_abi::deferred_identity::FactoryV1;
 use core::{cell::Cell, ffi::c_void};
 
 unsafe extern "C" fn create() -> *mut c_void {
@@ -13,19 +12,6 @@ unsafe extern "C" fn read(context: *const c_void) -> u64 {
 }
 unsafe extern "C" fn write(context: *mut c_void, value: u64) {
     unsafe { (&*context.cast::<Cell<u64>>()).set(value) };
-}
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1,
-    byte_size: size_of::<FactoryV1>(),
-    create: Some(create),
-    destroy: Some(destroy),
-    read: Some(read),
-    write: Some(write),
-};
-/// # Safety
-/// The host pins this descriptor and its code for the lifetime of every owner.
-pub unsafe fn deferred_identity_factory() -> *const FactoryV1 {
-    &FACTORY
 }
 
 #[cfg(test)]

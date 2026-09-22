@@ -34,7 +34,7 @@ def sources():
     return dict(families.sources(), **{p: sha(ROOT / p) for p in (
         'scripts/optimization-applications.py', 'scripts/native-tier-focus.py',
         'bench/native-tier-focus.birnam', 'bench/runtime-native-tier.birnam',
-        'scripts/fixtures/internal-guarded-sends.c', 'abi/fixtures/idapi-v1/idapi_v1.h')})
+        'scripts/fixtures/internal-guarded-sends.c')})
 
 
 def closure(prefix):

@@ -2,7 +2,6 @@
 mod phase;
 mod state;
 mod collector;
-pub use phase::collection_phase_factory;
 
 use birnam_abi::collect::{
     DeadV1, DetachedV1, FINALIZING, IDLE, MARKING, SourceV1, VERSION,
@@ -121,8 +120,6 @@ pub unsafe extern "C" fn birnam_collect_v1(source: *const SourceV1, count: *mut 
     }
     OK
 }
-
-
 
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {

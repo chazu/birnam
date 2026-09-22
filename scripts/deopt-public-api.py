@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Design 74I: test guard substitutes through the unchanged IdApi contract."""
+"""Guard-boundary assertions retained for migration from the deleted IdApi harness."""
 from measurement_archive import read_bytes
 
 import argparse
@@ -19,7 +19,6 @@ BASELINE = "5e242e70"
 CLIENT = "scripts/fixtures/deopt-public-api.c"
 HEADER = "abi/fixtures/idapi-v1/idapi_v1.h"
 AUTHORITIES = [
-    "rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json", HEADER,
     "rust/birnam-image/src/lib.rs", "rust/birnam-image/src/v8.rs",
     "rust/birnam-runtime/src/registration.rs",
     "rust/birnam-artifact/src/frame_descriptor.rs",
@@ -54,8 +53,6 @@ def main():
         if not unchanged_authority(name, current, baseline):
             raise RuntimeError(f"compatibility authority changed: {name}")
         authorities[name] = digest(ROOT / name)
-    if run(["git", "diff", BASELINE, "--name-only", "--", "abi/fixtures"]).strip():
-        raise RuntimeError("ABI fixtures changed")
     sources = {"Cargo.toml", "Cargo.lock", CLIENT, "scripts/deopt-public-api.py"}
     # Runtime internals can now depend on the native compiler and canonical
     # emitter. Record the complete Rust source closure for current reruns.

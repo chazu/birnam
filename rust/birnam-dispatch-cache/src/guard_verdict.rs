@@ -1,5 +1,5 @@
 //! Independent guard facts; epoch validity and eligibility remain with callers.
-use birnam_abi::guard_verdict::{FactoryV1, StateV1};
+use birnam_abi::guard_verdict::{StateV1};
 use core::{cell::Cell, ffi::{c_int, c_void}};
 
 unsafe extern "C" fn create() -> *mut c_void {
@@ -14,12 +14,6 @@ unsafe extern "C" fn read(context: *const c_void, out: *mut StateV1) {
 unsafe extern "C" fn write(context: *mut c_void, epoch: u64, verified: c_int) {
     unsafe { (&*context.cast::<Cell<StateV1>>()).set(StateV1 { epoch, verified: u32::from(verified != 0) }) };
 }
-static FACTORY: FactoryV1 = FactoryV1 {
-    version: 1, byte_size: size_of::<FactoryV1>(), create: Some(create), destroy: Some(destroy), read: Some(read), write: Some(write),
-};
-/// # Safety
-/// The host pins this descriptor and its code for the lifetime of every owner.
-pub unsafe fn guard_verdict_factory() -> *const FactoryV1 { &FACTORY }
 
 #[cfg(test)]
 mod tests {

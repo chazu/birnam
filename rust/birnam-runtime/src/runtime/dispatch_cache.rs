@@ -6,38 +6,6 @@
 use super::{CollectionPhase, NativeEntry, Oop, Runtime};
 #[cfg(test)]
 use core::cell::Cell;
-use core::{ffi::c_void, ptr::NonNull};
-use birnam_abi::dispatch_cache::FactoryV2;
-
-pub(super) struct Cache {
-    context: NonNull<c_void>,
-    factory: FactoryV2,
-}
-
-impl Cache {
-    pub(super) fn with_factory(factory: FactoryV2) -> Self {
-        let context = NonNull::new(unsafe { factory.create.unwrap()() })
-            .expect("dispatch cache creation failed");
-        Self { context, factory }
-    }
-    pub(super) fn clear(&self) {
-        unsafe { self.factory.clear.unwrap()(self.context.as_ptr()) };
-    }
-    fn lookup(&self, epoch: u64, shape: usize, selector: usize) -> Option<NativeEntry> {
-        let method = unsafe { self.factory.lookup.unwrap()(self.context.as_ptr(), epoch, shape, selector) };
-        // Copy the entire selected entry, including its native context.
-        method.method.map(|_| method)
-    }
-    fn insert(&self, epoch: u64, shape: usize, selector: usize, method: NativeEntry) {
-        unsafe { self.factory.insert.unwrap()(self.context.as_ptr(), epoch, shape, selector, method) };
-    }
-}
-impl Drop for Cache {
-    fn drop(&mut self) {
-        unsafe { self.factory.destroy.unwrap()(self.context.as_ptr()) };
-    }
-}
-
 #[cfg(test)]
 thread_local! {
     pub(super) static ENABLED: Cell<bool> = const { Cell::new(true) };

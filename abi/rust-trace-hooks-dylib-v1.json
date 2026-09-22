@@ -3,7 +3,6 @@
   "scope": "Native trace-hook attachments and bounded inherited selection",
   "install_name": "@rpath/libbirnam_trace_hooks.dylib",
   "exported_symbols": [
-    "birnam_native_module_v1",
     "birnam_symbol_borrow_v1"
   ]
 }

@@ -269,81 +269,13 @@ pub(crate) struct Bootstrap {
     pub(crate) selectors: BootstrapSelectors,
 }
 
-fn static_selector(symbols: &mut Symbols, heap: &mut Heap, symbol_vtable: Oop, name: &[u8]) -> Oop {
-    heap.intern_symbol(symbols, symbol_vtable, name)
-        .unwrap_or_else(|_| boundary::fatal_invariant("static selector contains NUL"))
-}
 
-pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, roots: Option<crate::root_registry::Service>, lifetime: Option<crate::lifetime::Shared>, values: Option<birnam_abi::base_values::ValuesV1>, namespace: Option<crate::env::Environment>, model: Option<crate::object_model::Shared>, graph: Option<birnam_abi::trace_graph::GraphV2>, collection: Option<crate::collection_state::Shared>, primitives: Option<birnam_abi::id_primitives::PrimitivesV1>, support: birnam_abi::runtime_support::FactoriesV1) -> Bootstrap {
-    let primitives = primitives.unwrap_or_else(|| unsafe { birnam_abi::id_primitives::select(protocol) }.unwrap_or_else(|_| panic!("select Id primitives before Runtime")));
-    let mut initial_roots = roots.as_ref().and_then(|roots| roots.native_owner())
-        .map(|owner| crate::root_registry::Retained::new(owner, &[]));
-    let crate::id_objects::Objects { vtable_vt, object_vt, symbol_vt, lookup,
-        does_not_understand, object_prototype, symbol_prototype } =
-        crate::id_objects::Objects::read(protocol, |object| {
-            if let Some(roots) = &mut initial_roots { roots.retain(object); }
-        });
-    // Only native identities and entries cross this boundary. Id keeps its owner.
-    let client = crate::id_registries::Client::new(protocol, primitives);
-    let dictionaries = crate::id_registries::Dictionaries::Id(client.clone());
-    let mut symbols = crate::id_registries::Symbols::Id(client);
-    let mut heap = Heap::from_id_with_support(protocol, object_vt, primitives, lifetime.clone().map(crate::finalizers::Service::from_lifetime), collection.clone(), support);
-    heap.retain_initial_objects(&[vtable_vt, object_vt, symbol_vt, object_prototype]);
-    let mut vtables = Behaviors::adopt_with(dictionaries, lifetime, model.clone());
-    vtables.set_legacy_lookup(lookup);
-    let has_object_dnu = vtables.native_direct_lookup(object_vt, does_not_understand).is_some();
 
-    let symbol_list = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
-    let environment = vtables.create(&mut heap, core::ptr::null_mut(), vtable_vt);
-    let (nil_vt, bool_vt, nil, true_object, false_object) = if let Some(values) = values {
-        // Preserve the existing canonical-value permanence policy, without
-        // making unrelated early module allocations permanent.
-        heap.retain_initial_objects(&[values.nil_behavior, values.boolean_behavior, values.nil, values.true_object, values.false_object]);
-        (values.nil_behavior, values.boolean_behavior, values.nil, values.true_object, values.false_object)
-    } else {
-        // Legacy IdApi construction and local unit harnesses until migration.
-        let nil_vt = vtables.create(&mut heap, object_vt, vtable_vt);
-        let bool_vt = vtables.create(&mut heap, object_vt, vtable_vt);
-        let nil = allocate_empty(&mut heap, nil_vt, Permanence::Permanent);
-        let true_object = allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
-        let false_object = allocate_empty(&mut heap, bool_vt, Permanence::Permanent);
-        (nil_vt, bool_vt, nil, true_object, false_object)
-    };
-
-    let selectors = BootstrapSelectors {
-        lookup,
-        add_method: static_selector(&mut symbols, &mut heap, symbol_vt, b"addMethod"),
-        remove_method: static_selector(&mut symbols, &mut heap, symbol_vt, b"removeMethod:"),
-        allocate: static_selector(&mut symbols, &mut heap, symbol_vt, b"allocate"),
-        delegated: static_selector(&mut symbols, &mut heap, symbol_vt, b"delegated"),
-        does_not_understand,
-        clone: static_selector(&mut symbols, &mut heap, symbol_vt, b"clone"),
-        new: static_selector(&mut symbols, &mut heap, symbol_vt, b"new"),
-        identical: static_selector(&mut symbols, &mut heap, symbol_vt, b"=="),
-    };
-
-    let model_exists = model.is_some();
-    let runtime = Runtime::new_with_owners(
-        heap,
-        vtables,
-        symbols,
-        Some(protocol),
-        DispatchGlobals {
-            vtable_vt,
-            object_vt,
-            symbol_vt,
-            lookup: selectors.lookup,
-            does_not_understand: selectors.does_not_understand,
-        },
-        roots,
-        namespace,
-        model,
-        graph,
-        collection,
-        support,
-    );
-    runtime.install_internal_dictionaries(symbol_list, environment);
-
+/// Install upper mutation, lifetime and dispatch behavior on an existing Runtime.
+/// Object construction and canonical values belong to their owning modules.
+pub(crate) fn install_runtime_methods(runtime: &Runtime, protocol: crate::abi::id_protocol::Protocol, selectors: &BootstrapSelectors) {
+    let DispatchGlobals { vtable_vt, object_vt, .. } = runtime.globals();
+    let has_object_dnu = unsafe { runtime.lookup_native_method_active(object_vt, selectors.does_not_understand).is_some() };
     // Id's typed mutation operations serve construction. Runtime installs its
     // completed mutation/lifetime policy after it has a stable owner address.
     runtime.enter(|| {
@@ -369,13 +301,7 @@ pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, 
                 object_clone as crate::abi::Method,
             ),
             (object_vt, selectors.new, object_clone as crate::abi::Method),
-            (
-                object_vt,
-                selectors.identical,
-                object_identical as crate::abi::Method,
-            ),
         ] {
-            if values.is_some() && selector == selectors.identical { continue; }
             if has_object_dnu && selector == selectors.does_not_understand { continue; }
             let entry = runtime.encode_legacy_method(method, selector == selectors.lookup);
             let arguments = [crate::abi::id_protocol::Operand::object(selector),
@@ -391,15 +317,6 @@ pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, 
             );
         }
     });
-
-    for (vtable, owner) in [
-        (object_vt, object_prototype),
-        (symbol_vt, symbol_prototype),
-        (nil_vt, nil),
-        (bool_vt, true_object),
-    ] {
-        if !model_exists { runtime.set_vtable_owner(vtable, owner); }
-    }
 
     for (name, method) in [
         (
@@ -434,28 +351,6 @@ pub(crate) fn build_bootstrap_with(protocol: crate::abi::id_protocol::Protocol, 
     let storage_selector = runtime.intern(b"withStorageView:").expect("static storage selector");
     runtime.add_method(vtable_vt, storage_selector, crate::runtime::storage::with_storage_view);
 
-    runtime.install_canonical(CanonicalObjects {
-        symbol_list,
-        environment,
-        nil_vt,
-        bool_vt,
-        nil,
-        true_object,
-        false_object,
-        object_prototype,
-        symbol_prototype,
-    });
-
-    let bootstrap = Bootstrap { runtime, selectors };
-    #[cfg(test)]
-    bootstrap.runtime.mount_test_string(crate::public_api::test_value_api(&bootstrap));
-    #[cfg(test)]
-    bootstrap.runtime.mount_test_float(crate::public_api::test_value_api(&bootstrap));
-    #[cfg(test)]
-    bootstrap.runtime.mount_test_integer(crate::public_api::test_value_api(&bootstrap));
-    #[cfg(test)]
-    bootstrap.runtime.mount_test_word(crate::public_api::test_value_api(&bootstrap));
-    bootstrap
 }
 
 #[cfg(test)]

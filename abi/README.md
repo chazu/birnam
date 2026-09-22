@@ -1,293 +1,32 @@
-# ABI evidence
+# Native boundary and format evidence
 
-[Design 84](../docs/design/84-message-only-native-modules.md) supersedes the
-module-specific table architecture documented here. All module-specific Rust ABI
-interfaces, including Runtime `IdApi`, have been deleted. Only the generic
-[Id protocol](fixtures/id-protocol-v1/README.md), borrowed-buffer helpers and
-stateless native loader remain in `birnam-abi`. Production callers are being
-converted; the workspace is intentionally not buildable at this deletion
-checkpoint. The construction descriptions and table manifests below document the
-**previous implementation**, not interfaces to restore.
+[Design 84](../docs/design/84-message-only-native-modules.md) is the current
+architecture: opaque objects and Id messages are the common module boundary.
+`birnam-abi` contains only that protocol, borrowed-buffer helpers and the
+stateless OS loader used by Siphon and Id.
 
-Production now enters through [the typed Id protocol](fixtures/id-protocol-v1/README.md),
-then constructs Bootstrap, roots, Lifetime, [Nil/Boolean base values](fixtures/base-values-v1/README.md),
-the [native Namespace owner](fixtures/namespace-owner-v1/README.md), and
-[Object Model ownership/enumeration](fixtures/object-model-owner-v1/README.md),
-followed by [String storage](fixtures/string-v1/README.md) and
-[Error construction](error-value-v3.md#production-error-construction), then the
-[Integer base](integer-v1.md#production-construction) before Float or Runtime.
-[Float construction](float-v1.md#production-construction) then installs Float's
-operations and Integer's mixed-number extension before Word/Block/Runtime.
-[Word construction](word-v1.md#production-construction) follows with working
-conversion, overflow errors, printing and equality before Block/Runtime.
-String's native text/numeric extension and Nil/Boolean printing complete this
-value layer before Runtime. [Collector activation](collector-v3.md) validates that
-heap and installs collecting constructors before Runtime/Execution construction.
-The aggregate `module_init` entry and dependency-setter exports have been
-removed from all production modules. Earlier descriptions of factory preparation
-before `id_init` record a retired construction path; current startup loads the
-real Id first. See
-[Design 83](../docs/design/83-production-id-construction-and-lifetimes.md#implementation-status)
-for current construction and the remaining migration work.
+The old module tables, twenty IdApi schema manifests, their C headers and the
+central production-construction catalog are deleted. Do not restore their
+layouts, factory catalogs or fingerprint checks to repair callers. The complete
+language is intentionally unbuildable during this deletion-first transition.
 
-The upper Runtime compatibility table is **IdApi v20**, with 18 fields / 144 bytes. Design
-[81BO](../docs/design/81bo-production-native-stack-anchor.md) moves native
-stack-anchor ownership into [Native Stack](native-stack-v1.md), exposing its
-setter directly to the host. Design [81BN](../docs/design/81bn-production-finalizers.md)
-moves native finalizer registration and inline callback construction into
-[Finalizers](finalizers-v1.md).
-Production native modules use Id's common descriptor and explicit constructor
-operands; the host and System no longer call the aggregate `module_init` ABI.
-[System native loading](native-loading.md) exposes that same protocol to language
-callers. The installed native gate rejects any library that reintroduces
-`module_init`, standalone Runtime constructors, dependency setters, preparers or
-factory/provider exports.
-Codegen receives its completed compiler descriptor explicitly and has no provider
-discovery fallback. The aggregate IdApi clients and legacy provider-fixture loader have been deleted.
-The installed native suite is the validation path; remaining module-specific
-tables are production migration debt, not a second supported loader.
-[IdApi v20 manifest](idapi-v20.json) and the
-[C fixture](fixtures/idapi-v20/README.md) describe the current boundary.
+Retained evidence:
 
-`idapi-v20.json` describes the current arm64 macOS IdApi.
-Design 81BK removes `gcSetAuto` and `gcSetPrecise` into [GC Settings](gc-settings-v1.md).
-Design 81BI removes `setMethodOverwriteHook` into [Method Observation](method-observation-v1.md).
-Design 81BH removes `vtableSelectorAt` into the same explicit enumeration service.
-Design 81BG removes `vtableCount` and `vtableAt` into [Object Model enumeration](vtable-enumeration-v2.md).
-Design 81BF removes `exportObj` into the explicit [Namespace export capability](namespace-export-v1.md).
-Design 81BE removes `import` into the explicit [Namespace import capability](namespace-import-v1.md),
-following 81BB's [presence capability](namespace-presence-v1.md).
-The earlier aggregate initialization signature survives only in unmigrated fixture sources.
-Native modules use the common Id loading protocol and declare their completed
-inputs in the [production construction manifest](production-construction-v1.json).
-Bootstrap constructs the dependencies, then passes each module its required
-operands. There is no aggregate `module_init` argument list in production.
+- [Id protocol](fixtures/id-protocol-v1/README.md), its C header and independent
+  C-entry round trip exercise the common native message boundary.
+- [Stackless/recovery formats](fixtures/stackless-s2/README.md) retain registration,
+  frame, generation and image fixtures, including the registration-envelope C
+  header and layout check. These describe recovery formats, not a module API catalog.
+- [Portable Code formats](fixtures/portable-code-v1/README.md) retain independent
+  binary readers and fixtures for programs, bindings and images.
+- `rust-*-dylib-v1.json` inventories describe exported symbols. Publishers deleted
+  in Design 84 are removed from those inventories. Retained owner implementations
+  still require message entrypoints before they can be loaded in production.
 
-The host obtains completed Runtime services through Bootstrap, which selects
-those services through Id's native loading protocol. The old namespace,
-enumeration, observation, roots, settings, layouts, hooks, finalizers and native
-stack provider exports are removed. See [Runtime service selection](runtime-construction-v15.md#completed-service-selection)
-for the request names. Selection returns the existing descriptor with its live
-operations and context; it neither creates another owner nor changes admission
-or lifetime rules. A retained descriptor and its code/context must remain valid
-for every use. Historical Design 81 ABI pages retain their original construction
-accounts; Design 83 and the construction manifest supersede those accounts.
-
-Design 81AX moves `exportedNameOf` to the explicit [Namespace names capability](namespace-names-v1.md).
-Design 81X removes three String fields into an explicit [String dependency](string-v1.md).
-Design 81T removes the four Word fields into an explicit [Word dependency](word-v1.md).
-Design 81R removes the four Float fields into an explicit [Float dependency](float-v1.md).
-Design 81J removes `ensurePrivateVtable`; 81K removes owner/parent getters and
-setters. 81L removes the four Integer fields into an explicit
-[Integer dependency](integer-v1.md). Object-model consumers use ordinary Vtable
-messages. Existing v1-v19 native consumers
-must be rebuilt.
-Backward compatibility is not a requirement for this refactor.
-
-The Rust mirror has compile-time offsets and exports a diagnostic descriptor.
-The descriptor's format version remains 1, while its IdApi schema version is 20.
-Its fingerprint matches the independent v20 manifest. The v20 fingerprint algorithm
-is SHA-256 over compact, key-sorted UTF-8 JSON, excluding the `fingerprint` member.
-The workspace tests verify that fingerprint and every compiled field offset.
-
-`fixtures/idapi-v20/idapi_v20.h` is the independent C header for that table.
-The routine `id-native-loading-smoke.py` gate uses real production construction
-and independent C modules to exercise Id, values, owners and upper adoption.
-Older clients using the v20 table still need their loading code migrated if they
-call the removed `id_init`, `module_init` or dependency-setter entry points;
-table layout alone does not make those clients current.
-
-`idapi-v1.json` and `fixtures/idapi-v1` preserve the historical 54-field ABI and
-its frozen binary evidence. They are not changed to match v20. Their old opt-in
-compatibility script applies only to a v1 floor; running that client against v20
-is unsupported. The archived v4 image remains historical evidence as before.
-
-The Cargo workspace and `scripts/rust-install.sh` remain the build authority.
-ABI manifests and fixtures are build/test evidence, not runtime dependencies.
-The installed native inventory now includes the separate Integer and object-model dylibs.
-
-`idapi-v2.json` and `fixtures/idapi-v2` preserve the 81J checkpoint.
-The current optional Block-construction declaration is [v5](native-block-construction-v5.md).
-
-`idapi-v3.json` and `fixtures/idapi-v3` preserve the 81K checkpoint.
-The current native numeric declaration is [v5](native-numeric-semantics-v5.md),
-with live construction and Namespace admission. Legacy Methods retain
-[v4](native-numeric-semantics-v4.md).
-
-[Storage observation v1](storage-v1.md) adds a protected host entry and a separate
-stateless description validator. It leaves IdApi v4 and its fingerprint unchanged.
-The independent C fixture lives in `fixtures/storage-v1`; run the focused debug
-check with `scripts/storage-observation-test.sh`.
-
-[Storage tracing v1](trace-v1.md) adds the stateless loaded graph tracer over
-described observations. Its report is strict by default and never authorizes
-reclamation. Run `scripts/storage-tracing-test.sh` for the independent C oracle
-against actual production dylibs.
-
-[Live GC traversal v1](trace-live-v1.md) moves the production collector's worklist
-to that same loaded module. The host and custom native embedders mount its explicit
-capability before collection. Run `scripts/live-tracing-test.sh` for focused
-native GC and current IdApi checks.
-
-[Collection coordination v1](collect-v1.md) moves collection phase order,
-conditional settlement and the finalizer/reclamation loop into a loaded module.
-Its per-invocation source preserves storage and metadata ownership; IdApi stays v4.
-
-The [Float method module](../docs/design/81q-production-float-methods.md) uses
-existing Method/module-init contracts and the explicit Integer dependency.
-Its [export inventory](rust-float-dylib-v1.json) adds no IdApi or image fields.
-
-`idapi-v4.json` and `fixtures/idapi-v4` preserve the 81L checkpoint.
-[Float representation](../docs/design/81r-production-float-storage.md) now moves
-the canonical objects and primitive operations into the Float module as well.
-
-The [Word method module](../docs/design/81s-production-word-methods.md) uses
-existing Method/module-init contracts and the explicit Integer dependency.
-Its [export inventory](rust-word-dylib-v1.json) adds no IdApi or image fields.
-
-`idapi-v5.json` and `fixtures/idapi-v5` preserve the 81R checkpoint.
-[Word representation](../docs/design/81t-production-word-storage.md) now belongs
-to the loaded Word module as well.
-
-The [Boolean method module](../docs/design/81u-production-boolean-methods.md)
-uses existing Method/module-init interfaces and object-model messages.
-Its [export inventory](rust-boolean-dylib-v1.json) adds no IdApi or image fields;
-canonical singleton representation remains in Id at this checkpoint.
-
-The [nil method module](../docs/design/81v-production-nil-methods.md) similarly
-moves existing Object/nil methods from Collection, using current interfaces.
-Its [export inventory](rust-nil-dylib-v1.json) adds no IdApi or image fields.
-
-The [String method module](../docs/design/81w-production-string-methods.md) uses
-current Method/IdApi interfaces and Integer/Float dependencies. Its
-[export inventory](rust-string-dylib-v1.json) adds no IdApi or image fields.
-[String representation and byte ownership](string-v1.md) now live in that module;
-native Array splitting stays in Collection.
-
-`idapi-v6.json` and `fixtures/idapi-v6` preserve the 81T checkpoint.
-
-The [StringBuilder module](../docs/design/81y-production-string-builder.md) owns
-its three-word native buffer and seven existing selectors, with explicit Integer
-and String dependencies. Its [export inventory](rust-string-builder-dylib-v1.json)
-adds no IdApi or image fields. Run `mise run string-builder` for the focused debug
-C oracle; `scripts/string-builder-image-smoke.sh PREFIX` checks installed startup
-and compiled images. Captured live buffers retain their existing nonportable RAW
-image handling; compiled entries can construct builders and capture their Strings.
-
-The [Range module](../docs/design/81ac-production-range-vector-methods.md) owns
-its representation, construction and all eight Range methods plus Integer `to:`.
-Its [current construction dependency](range-v4.md) preserves installation order
-and a direct native Vector comma callback. Vector storage is mounted separately
-through [Vector v4](vector-v4.md). The [export inventory](rust-range-dylib-v1.json)
-adds no IdApi or image fields. Earlier Range interfaces remain historical evidence.
-
-[Collection value policy](collection-value-v1.md) supplies Vector comparison and
-Map key hashing through one immutable native dependency. It owns no objects and
-uses the caller's selected IdApi and live Integer/Float/String callbacks. Its
-[export inventory](rust-collection-value-dylib-v1.json) adds no IdApi fields.
-
-[Vector v4](vector-v4.md) also owns all native Vector methods and sorting roots.
-Map iteration uses its native bodies, and Range retains its native comma Method.
-The [Vector export inventory](rust-vector-dylib-v1.json) records its explicit
-Integer, String and collection-value dependencies.
-
-[Map v4](map-v4.md) owns canonical objects, HAMT storage, methods, traversal
-and printing. Collection installs it through the ordered construction boundary. The [Map export inventory](rust-map-dylib-v1.json) adds no IdApi fields.
-
-[String collection v1](string-collection-v1.md) installs String split: through a
-late adapter that depends on String and Vector. Its [export inventory](rust-string-collection-dylib-v1.json)
-adds no IdApi fields, objects or roots; Collection preserves ordered installation.
-
-[Printing v1](printing-v1.md) owns the three Object/Symbol printing defaults.
-Printing installs them during its own initialization, before collections or
-compiler modules, retaining its original execution table. The [export inventory](rust-printing-dylib-v1.json)
-adds no IdApi fields, objects or roots.
-
-[System GC v2](system-gc-v2.md) owns System's four collector control methods.
-Prelude supplies its selected behavior, selectors and original execution table at
-the final four installation slots. The [export inventory](rust-system-gc-dylib-v1.json)
-adds no IdApi fields, collector state, objects or roots.
-
-[Text views v1](text-view-v1.md) supplies shared exact-String and printable byte
-borrowing to Prelude consumers. The [export inventory](rust-text-view-dylib-v1.json)
-adds no IdApi fields, objects, roots or owned buffers.
-
-[System output v1](system-output-v1.md) owns print:/println: and stdout writing.
-Prelude supplies selected behavior/selectors and its original execution table at
-the first two registration slots. The [export inventory](rust-system-output-dylib-v1.json)
-adds no IdApi fields, objects, roots or owned byte buffers.
-
-[Error value v3](error-value-v3.md) supplies lazy Error factory dispatch and exact
-recognition to Integer, Float, Word, Environment, System Input, File IO, Block Loop,
-Native Loader and Source Loader. Each call receives explicit presence and
-[import capabilities](namespace-import-v1.md). The
-[export inventory](rust-error-value-dylib-v1.json) adds no IdApi fields, objects,
-roots or retained runtime selection.
-
-[System input v3](system-input-v3.md) owns readLine and stdin buffering. Prelude
-supplies its original execution table at the existing registration slot. The
-[export inventory](rust-system-input-dylib-v1.json) adds no IdApi fields, objects,
-roots or representation changes.
-
-[Environment v3](environment-v3.md) owns System getEnv: and live environment
-lookup. Prelude supplies its first execution table at the original registration
-slot. The [export inventory](rust-environment-dylib-v1.json) adds no IdApi fields,
-objects, roots or representation changes.
-
-[File IO v3](file-io-v3.md) owns System file reads and writes through a 24-byte
-installer at their original Prelude binding positions. The
-[export inventory](rust-file-io-dylib-v1.json) adds no IdApi fields, object
-representation or image encoding.
-
-[Block Loop v3](block-loop-v3.md) owns the native whileTrue:/whileFalse: methods
-through a 24-byte installer. Runtime constructs Block identity/layout before
-collections or compilers; Block Loop installs its native methods at its own
-initialization. Authored stackless control still replaces them later. The
-[export inventory](rust-block-loop-dylib-v1.json) adds no IdApi fields or image
-encoding.
-
-[Native loading through System](native-loading.md) invokes Id with explicit Object
-arguments and exposes owned language results. The [export inventory](rust-native-loader-dylib-v1.json)
-contains only its common module descriptor. Native Loader v12 is retired.
-
-[Source Loader v3](source-loader-v3.md) owns System load: through a 24-byte
-installer. Integer, String, Text View and Error Value attachments move with their
-last Prelude consumers. The [export inventory](rust-source-loader-dylib-v1.json)
-adds no IdApi fields, objects or image encoding.
-
-[Namespace v8](namespace-v8.md) supplies a 176-byte immutable storage/service factory,
-used by the native Namespace owner constructed after Id, roots, Lifetime and
-base values. Namespace owns and roots its ordered bindings; upper Runtime adopts
-the completed storage. The [export inventory](rust-namespace-dylib-v1.json) adds
-no IdApi fields or image encoding. Id initializes without Namespace.
-
-`idapi-v7.json` and `fixtures/idapi-v7` preserve the 81X checkpoint. Current
-Namespace [storage v8](namespace-v8.md) creates the per-runtime names service;
-its four consumers attach the [names capability](namespace-names-v1.md) explicitly.
-
-[Namespace enumeration v1](namespace-enumeration-v1.md) replaces the private Id
-count/name-at functions with Namespace-owned descriptors published by the selected
-floor. Reflect retains live discovery and its original operation order.
-Image encoding remains unchanged.
-
-`idapi-v8.json` and `fixtures/idapi-v8` preserve the 81AX-81BA checkpoint.
-Namespace [factory v8](namespace-v8.md) owns canonical interned lookup, publication and the
-live presence/import/export services. The restricted interner remains in Id; missing
-names are still interned before the selected raw find. All three operations use explicit capabilities. `idapi-v9.json` and `fixtures/idapi-v9` preserve 81BB-81BD; v10 preserves 81BE.
-
-[Isolate OOP bridges v2](isolate-oop-v2.md) receive the incoming API and import
-capability explicitly; wire encoding and worker lifecycle are unchanged.
-
-`idapi-v19.json` and `fixtures/idapi-v19` preserve the 81BN checkpoint.
-[Native Stack v1](native-stack-v1.md) owns the native root anchor and removes
-`gcSetStackBottom` from IdApi v20 without moving register capture or scanning.
-
-Native Mark v1 (81BP) owns native mark scopes and emission policy while Id keeps
-per-floor/thread selection and Rust unwinding. See [the contract](native-mark-v1.md)
-and [implementation manifest](rust-native-mark-dylib-v1.json). IdApi v20,
-Native Loader v12, twelve-argument initialization and image v8 remain unchanged.
-
-Native Stack factory v2 (81BQ) adds incremental native word scanning to the
-existing module while preserving the v1 setter capability. See
-[the v2 contract](native-stack-v2.md). Register capture and interval validation
-remain in Id; IdApi v20 and native initialization are unchanged.
+The other module-specific documents and fixture READMEs in this directory are
+historical descriptions of the removed architecture, not current implementation
+requirements. References to removed headers and manifests can be read from
+[the last checkpoint before this cleanup](https://github.com/chazu/birnam/tree/4f76ba42/abi)
+or with `git show 4f76ba42:abi/PATH`. Their layouts must not become a parallel
+protocol again. Deoptimization/concurrency semantic fixtures remain in the tree;
+fixtures that used the deleted headers need new message-based harnesses.

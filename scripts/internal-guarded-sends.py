@@ -21,8 +21,7 @@ SIZES = (16384, 65536)
 MODES = ("canonical", "fallback")
 PAIRS = 7
 AUTHORITIES = [
-    "rust/birnam-abi/src/lib.rs", "abi/idapi-v1.json",
-    "abi/fixtures/idapi-v1/idapi_v1.h", "rust/birnam-image/src/lib.rs",
+    "rust/birnam-image/src/lib.rs",
     "rust/birnam-image/src/v8.rs", "rust/birnam-artifact/src/frame_descriptor.rs",
     "rust/birnam-runtime/src/registration.rs", "rust/birnam-codegen/src/resumable_c.rs",
 ]

@@ -1,12 +1,11 @@
 //! Count and checked selection over a transient Id-owned registry view.
-use birnam_abi::vtable_enumeration::{ApiV2, FactoryV2, FloorV2};
+use birnam_abi::vtable_enumeration::{ApiV2, FloorV2};
 use birnam_abi::Oop;
 use core::ffi::c_void;
 use core::ptr;
 
 #[repr(C)]
 struct Enumeration {
-    api: ApiV2,
     floor: FloorV2,
 }
 unsafe extern "C" fn count(context: *mut c_void) -> usize {
@@ -26,31 +25,6 @@ unsafe extern "C" fn selector_at(context: *mut c_void, vtable: Oop, index: usize
     let view = unsafe { floor.selectors.unwrap()(floor.context, vtable) };
     if index >= view.count { return ptr::null_mut(); }
     unsafe { *view.entries.add(index) }
-}
-unsafe extern "C" fn create(floor: *const FloorV2) -> *mut ApiV2 {
-    if floor.is_null() { return ptr::null_mut(); }
-    let floor = unsafe { *floor };
-    if floor.version != 2 || floor.byte_size != size_of::<FloorV2>() || floor.view.is_none() || floor.selectors.is_none() {
-        return ptr::null_mut();
-    }
-    let mut service = Box::new(Enumeration {
-        api: ApiV2 { version: 2, byte_size: size_of::<ApiV2>(), context: ptr::null_mut(),
-                     count: Some(count), at: Some(at), selector_at: Some(selector_at) },
-        floor,
-    });
-    service.api.context = ptr::from_mut(service.as_mut()).cast();
-    Box::into_raw(service).cast()
-}
-unsafe extern "C" fn destroy(api: *mut ApiV2) {
-    unsafe { drop(Box::from_raw(api.cast::<Enumeration>())) };
-}
-static FACTORY: FactoryV2 = FactoryV2 {
-    version: 2, byte_size: size_of::<FactoryV2>(), create: Some(create), destroy: Some(destroy),
-};
-/// # Safety
-/// Factory operations require their declared owner-thread and borrow contracts.
-pub unsafe fn vtable_enumeration_factory() -> *const FactoryV2 {
-    &FACTORY
 }
 
 #[cfg(test)]

@@ -62,7 +62,6 @@ assert len(receipt["source_manifest_sha256"]) == 64
 assert len(receipt["staged_manifest_sha256"]) == 64
 assert receipt["admission_contract"]["image_version"] == 8
 assert receipt["admission_contract"]["candidate_manifest_version"] == 4
-assert len(receipt["admission_contract"]["id_api_fingerprint"]) == 64
 assert receipt["publication"]["method"] == "atomic-sibling-rename"
 assert receipt["publication"]["durability"] == "fsync-staged-files-and-directories-before-and-after-rename"
 assert len(receipt["dynamic_libraries"]) == 27
