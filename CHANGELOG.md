@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Restore Roots and Namespace as opaque objects loaded through production Id.
+  Replace their descriptor APIs with messages, retain ordered bindings and roots,
+  and test live dependency replacement and callbacks during root enumeration.
+  Upper-module conversion remains in progress.
+
 - Move the repository build/install utility into its own `birnam-build` crate,
   independent of the CLI and host. Keep the executable and install command names;
   move its hashing/JSON dependencies out of `birnam-cli` and update installer paths.

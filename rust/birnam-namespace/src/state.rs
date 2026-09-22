@@ -2,7 +2,11 @@
 
 use super::index::AddressMap;
 use birnam_abi::Oop;
-use birnam_abi::namespace::BindingV1 as Export;
+#[derive(Clone, Copy)]
+pub(crate) struct Export {
+    pub(crate) name: Oop,
+    pub(crate) value: Oop,
+}
 
 pub(crate) struct Environment {
     ordered: Vec<Export>,
@@ -48,7 +52,6 @@ impl Environment {
     /// Snapshot both halves of the process export authority. Names remain live
     /// because import and reverse lookup depend on their Symbol identity;
     /// values remain live because the namespace publishes them.
-    #[cfg(test)]
     pub(crate) fn roots(&self) -> Vec<Oop> {
         self.ordered
             .iter()
@@ -56,11 +59,8 @@ impl Environment {
             .collect()
     }
 
-    pub(crate) fn bindings(&self) -> birnam_abi::namespace::ViewV1 {
-        birnam_abi::namespace::ViewV1 {
-            bindings: self.ordered.as_ptr(),
-            count: self.ordered.len(),
-        }
+    pub(crate) fn bindings(&self) -> &[Export] {
+        &self.ordered
     }
 
     pub(crate) fn count(&self) -> usize {

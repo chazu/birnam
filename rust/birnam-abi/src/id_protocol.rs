@@ -163,7 +163,7 @@ impl core::fmt::Debug for Operand {
     }
 }
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Outcome {
     pub status: u32,
     pub reserved: u32,
@@ -214,11 +214,59 @@ pub struct Module {
     pub initialize: Option<Initialize>,
 }
 impl Protocol {
+    /// Send through this Id. No selected method is cached between calls.
+    /// # Safety
+    /// The protocol, objects, arguments and their owners must remain live on
+    /// the Id owner thread. Borrowed results retain their method's contract.
+    pub unsafe fn send(
+        &self,
+        receiver: Oop,
+        selector: Oop,
+        arguments: &[Operand],
+    ) -> Result<Operand, Outcome> {
+        let message = self
+            .message
+            .ok_or_else(|| Outcome::failed(INVALID_REQUEST, 0))?;
+        unsafe {
+            message(
+                self.context,
+                receiver,
+                selector,
+                arguments.as_ptr(),
+                arguments.len(),
+            )
+        }
+        .into_result()
+    }
+    /// Intern a selector using the current Id method.
+    /// # Safety
+    /// The same owner-thread and lifetime rules as `send` apply.
+    pub unsafe fn intern_name(&self, name: &[u8]) -> Result<Oop, Outcome> {
+        unsafe { self.send(self.receiver, self.intern, &[Operand::bytes(name)]) }?
+            .as_object()
+            .filter(|object| !object.is_null())
+            .ok_or_else(|| Outcome::failed(INVALID_REQUEST, 0))
+    }
+    /// Intern a name, then perform a fresh message send.
+    /// # Safety
+    /// Arguments must stay live across interning and the subsequent send.
+    pub unsafe fn send_named(
+        &self,
+        receiver: Oop,
+        name: &[u8],
+        arguments: &[Operand],
+    ) -> Result<Operand, Outcome> {
+        let selector = unsafe { self.intern_name(name) }?;
+        unsafe { self.send(receiver, selector, arguments) }
+    }
     pub fn same_contract(&self, other: &Self) -> bool {
-        self.version == other.version && self.byte_size == other.byte_size
+        self.version == other.version
+            && self.byte_size == other.byte_size
             && self.message.map(|f| f as usize) == other.message.map(|f| f as usize)
-            && self.context == other.context && self.receiver == other.receiver
-            && self.intern == other.intern && self.load == other.load
+            && self.context == other.context
+            && self.receiver == other.receiver
+            && self.intern == other.intern
+            && self.load == other.load
     }
 }
 /// Validate a completed carrier without calling any of its operations.
@@ -235,8 +283,10 @@ pub unsafe fn valid_protocol(pointer: *const Protocol) -> bool {
             return false;
         }
         let protocol = *pointer;
-        protocol.message.is_some() && !protocol.receiver.is_null()
-            && !protocol.intern.is_null() && !protocol.load.is_null()
+        protocol.message.is_some()
+            && !protocol.receiver.is_null()
+            && !protocol.intern.is_null()
+            && !protocol.load.is_null()
     }
 }
 
@@ -264,19 +314,35 @@ mod tests {
     #[test]
     fn carrier_validation_is_inert_and_checks_the_header_before_fields() {
         #[repr(C)]
-        struct Header { version: u32, byte_size: u32 }
+        struct Header {
+            version: u32,
+            byte_size: u32,
+        }
         #[repr(align(8))]
         struct Aligned(Header);
-        let short = Aligned(Header { version: VERSION, byte_size: 8 });
+        let short = Aligned(Header {
+            version: VERSION,
+            byte_size: 8,
+        });
         assert!(!unsafe { valid_protocol((&raw const short).cast()) });
         assert!(!unsafe { valid_protocol(core::ptr::null()) });
-        unsafe extern "C" fn message(_: *mut c_void, _: Oop, _: Oop, _: *const Operand, _: usize) -> Outcome {
+        unsafe extern "C" fn message(
+            _: *mut c_void,
+            _: Oop,
+            _: Oop,
+            _: *const Operand,
+            _: usize,
+        ) -> Outcome {
             panic!("validation must not invoke the carrier")
         }
         let mut protocol = Protocol {
-            version: VERSION, byte_size: size_of::<Protocol>() as u32, message: Some(message),
-            context: core::ptr::null_mut(), receiver: core::ptr::without_provenance_mut(1),
-            intern: core::ptr::without_provenance_mut(2), load: core::ptr::without_provenance_mut(3),
+            version: VERSION,
+            byte_size: size_of::<Protocol>() as u32,
+            message: Some(message),
+            context: core::ptr::null_mut(),
+            receiver: core::ptr::without_provenance_mut(1),
+            intern: core::ptr::without_provenance_mut(2),
+            load: core::ptr::without_provenance_mut(3),
         };
         assert!(unsafe { valid_protocol(&protocol) });
         protocol.message = None;

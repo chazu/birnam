@@ -394,3 +394,24 @@ installation still requires the workspace and staged Birnam executable to work.
 
 All four build-tool tests pass after this move, covering development-cache options,
 staging cleanup, mixed-prefix rejection and protection of unowned files.
+
+### Message integration: Roots and Namespace
+
+Siphon loads Id unchanged. Id now loads Roots with no arguments, returning an
+Object, then Namespace with that Roots Object, returning an Object. Namespace
+publishes `Roots` and `Namespace`. Their implementations document the native
+messages locally; neither library exports a table or foreign payload layout.
+Namespace retains ordered bindings and reverse lookup. Roots retains ordered
+providers, duplicate registration, exact retention tokens and its existing limit.
+Enumeration snapshots private storage before invoking visitors or sending provider
+messages. The former namespace lookup-admission export is now an ordinary
+`isCanonicalLookup:` message about a selected entry.
+
+The ABI gains stateless conveniences for sending and interning through the same
+Id carrier, with no module-specific selectors or cached implementations.
+`scripts/native-message-test.sh` builds actual production dylibs and tests loading,
+publication, replacement and root-enumeration reentry through Siphon and Id.
+ABI, Roots and Namespace unit tests pass (7 tests; one timing probe ignored),
+and the production integration test passes. This establishes the first repaired
+upper prefix. Collection is not active here; GC phase safety and the complete
+language remain pending the higher-module conversion.

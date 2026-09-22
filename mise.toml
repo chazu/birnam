@@ -71,6 +71,10 @@ run = "scripts/deferred-index-test.sh"
 description = "Check the production Siphon-to-Id handoff without upper modules"
 run = "scripts/siphon-test.sh"
 
+[tasks.native-messages]
+description = "Build and check production modules using only Id messages"
+run = "scripts/native-message-test.sh"
+
 [tasks.native-modules]
 description = "Check production native modules, construction prefixes and live message dispatch"
 run = 'python3 scripts/id-native-loading-smoke.py "${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"'
