@@ -19,6 +19,10 @@ lifetime integration. Those remaining responsibilities have not been rewritten
 in Birnam. Debug startup and compiled-image validation are recorded in the
 closeout; release validation was explicitly waived.
 
+[View the startup diagram (PNG)](../diagrams/birnam-startup.png) ·
+[Scalable SVG](../diagrams/birnam-startup.svg) ·
+[Editable Graphviz source](../diagrams/birnam-startup.dot)
+
 ## 1. Stage means build stage, not runtime layer
 
 Today stage 0 is the externally built Rust host and native library stack,
