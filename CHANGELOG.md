@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Record Design 90: organize the remaining Id-message refactor by functional
+  ownership and irreducible dependencies, consolidate implementation-only helpers,
+  and define the remaining work and stopping conditions without new API scaffolding.
+
 - Restore Bootstrap as an Id-loaded object that constructs Roots, Namespace,
   Boolean and Nil in order. Preserve input/result retention and nested loading
   through Roots messages; remove the old early/managed root-table transfer.

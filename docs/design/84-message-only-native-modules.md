@@ -1,5 +1,10 @@
 # 84 — Delete the parallel native object system
 
+> **Continuation:** [Design 90](90-functional-modules.md) now governs functional
+> ownership and the organization of the remaining work. The prohibition on
+> parallel native APIs and the preserved semantic obligations below still apply;
+> this document retains the deletion and migration history.
+
 > **Status:** Accepted implementation direction, 2026-09-21. Replaces the
 > cross-module table architecture retained by Designs 81–83. Implementation is
 > incomplete until the completion criteria below hold in production.

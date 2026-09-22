@@ -693,7 +693,8 @@ methodology and the measured constants.
 ## Architecture
 
 The native integration is being rebuilt under
-[Design 84](docs/design/84-message-only-native-modules.md). Siphon loads only Id
+[Design 90](docs/design/90-functional-modules.md): functional owners, minimal
+dependencies and Id messages between modules. Siphon loads only Id
 and returns its actual message protocol. A subsequent Id loading message loads
 Bootstrap, which builds the currently converted production prefix:
 
@@ -739,7 +740,7 @@ application and build driver.
   dispatch and module loading; depends only on the ABI crate.
 - Other `rust/birnam-*/` crates — native values, compiler/runtime, collector,
   storage, images, workers and language services. Their algorithms are retained;
-  integration still needs migration under [Design 84](docs/design/84-message-only-native-modules.md).
+  integration still needs migration under [Design 90](docs/design/90-functional-modules.md).
 - `src/id/*.birnam` — core modules written in Birnam: module management,
   standard-library extensions, compiled-unit lifecycle, configuration/project
   policy, isolate support and stackless control. The directory name does not
@@ -761,12 +762,16 @@ application and build driver.
   current profiles and the proposed optimization sequence.
 - [The image](docs/design/40-the-image.md) defines persistence and mapped-code
   behavior.
+- [Functional modules, minimal dependencies](docs/design/90-functional-modules.md)
+  governs the remaining refactor: ownership by function, irreducible dependencies,
+  consolidation of helpers, bounded implementation work and completion criteria.
 - [Message-only native modules](docs/design/84-message-only-native-modules.md)
-  defines the current deletion and replacement plan for the parallel native APIs.
+  records removal of the parallel native APIs and the initial migration checkpoints;
+  Design 90 now governs organization of the remaining work.
 - [Minimal production Id](docs/design/82-minimal-production-id.md) records why
   the Rust extractions failed to decouple Id, the required Siphon/Id boundary,
-  and the production migration and acceptance criteria. This is the current
-  runtime refactoring direction.
+  and the production migration and acceptance criteria. Design 90 carries these
+  constraints into the remaining functional reorganization.
 - [Production construction and lifetimes](docs/design/83-production-id-construction-and-lifetimes.md)
   records the earlier construction design and lifetime obligations. Design 84
   supersedes its descriptor/factory integration. The current
