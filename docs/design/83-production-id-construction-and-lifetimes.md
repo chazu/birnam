@@ -344,25 +344,32 @@ Symbol bytes contain no Id object references. A visitor to roots/allocations
 receives Id as its receiver; a reference visitor receives the queried object.
 
 Each operation copies its facts before invoking the visitor. No Id registry
-borrow crosses the callback. A nested query or allocation is permitted; an
-allocation made by a visitor is absent from the already captured allocation
-snapshot. The caller keeps snapshot objects live and coordinates collection or
-reclamation. This is borrowed enumeration, not a new owning snapshot service.
+borrow crosses the callback. Outside collection, a nested query or allocation
+is permitted; an allocation made by a visitor is absent from the already captured
+allocation snapshot. During collection, the upper collector's phase restrictions
+apply, including the prohibition on allocation. The caller keeps snapshot objects
+live and coordinates collection or reclamation. This is borrowed enumeration, not a new owning snapshot service.
 Allocation/root enumeration makes no ordering promise. A failed visitor stops
 visitation immediately and returns its complete native outcome unchanged;
 successful visitor values are ignored. Wrong operand kinds/counts or a visitor
 without a method produce InvalidRequest.
 
-GC acquires these five native callables through Id's `lookup` messages during
-its construction, before application execution. It retains those exact entries
-and their owners, then invokes them during collection without another lookup.
-Running arbitrary application lookup merely to inspect an allocation would
-introduce allocation and mutation into marking. This is ordinary retention of
-selected callables: the methods remain replaceable, and a later message or new
-consumer observes the replacement. It does not seal selectors or change fresh
-lookup for application sends. Initial Id code stays pinned, and the collector
-retains Id's state; another implementation must provide equally live owners.
-No future GC callback or upper root record is stored in Id.
+GC sends these operations through the real Id message protocol. It may retain
+receiver and selector identities, but must not capture their implementations at
+construction and bypass lookup on subsequent calls. The next send observes the
+current method. The former cached-callable exception was an error, removed under
+[Design 90](90-functional-modules.md); GC has no exemption from message dispatch.
+
+Fresh lookup and synchronous callbacks remain subject to the established upper
+collection-phase rules: no allocation during collection, no recursive collection,
+and no registry borrow across a callback. Trace or lookup failure during tracing
+must propagate before sweep; partial marks never authorize reclamation. Preserve
+the supported hook and finalizer effects rather than replacing those rules with
+frozen service entries. Keeping an implementation alive for an already selected
+active call is distinct from caching it for later sends. Initial Id code stays
+pinned, and its state remains live. No future GC callback or upper root record is
+stored in Id. The one-use detached-allocation release entry below owns a specific
+resource; it is not a cached dependency implementation.
 
 Retirement is a trusted native storage operation. The caller first establishes
 that allocations are unreachable and retires upper metadata and binding owners.

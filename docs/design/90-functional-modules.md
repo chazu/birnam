@@ -212,12 +212,28 @@ of those, it is outside this refactor.
   replacement and end-to-end source/image/worker checks as those paths return.
   Release validation and forced-source worker startup timing are not required.
 
-Three areas require substantive interface decisions rather than mostly
-implementation work:
+The remaining interface work must implement established semantics, not reopen
+them. In particular, **GC preserves the established collection contract while
+replacing its integration**. Designs [82](82-minimal-production-id.md) and
+[83](83-production-id-construction-and-lifetimes.md#5-collector-activation-is-an-explicit-transition)
+already require one allocation universe, complete roots before activation,
+non-collecting failure of activation, and retirement before address reuse.
+[81O](81o-production-live-gc-traversal.md) and
+[81P](81p-production-collection-coordinator.md) specify observable tracing and
+finalization behavior: live hook selection, no allocation during collection,
+suppressed nested collection, no internal borrows across callbacks, and no sweep
+after a failed trace. Their frozen native service tables do not survive.
 
-- **GC:** how owners expose references and cleanup, and which operations are
-  permitted during collection. Support opaque representations without unsafe
-  reentry or a catalog of module layouts.
+GC's remaining implementation choices are the smallest sufficient owner messages
+for references/cleanup/retirement, placement of existing phase checks around fresh
+dispatch, and removal or privatization of redundant records. Design 83's former
+permission to capture Id methods at construction and bypass later lookup is
+removed. Neither safe collection nor code lifetime justifies that exception.
+Do not choose a new collector, change finalization policy, or introduce a service
+framework as part of repairing these calls.
+
+Two other interfaces need the same discipline:
+
 - **Execution and compiled code:** how methods are installed, invoked, retained
   while active and retired safely, including deoptimization.
 - **Images:** how each owner restores its objects and compiled artifacts without
@@ -226,6 +242,49 @@ implementation work:
 Resolve these against existing consumers using the smallest sufficient messages.
 Do not predesign a universal framework for them. This document does not invent
 selectors or prescribe extra services before those requirements are established.
+
+## GC and concurrency
+
+The accepted [domain model](80-concurrency-domains-and-structured-tasks.md)
+does not require a shared-heap concurrent collector. Each domain owns its heap
+and has one execution owner; local tasks interleave, while parallel domains have
+separate heaps and communicate explicitly. Preserve these existing obligations:
+
+- **Root all live task state, not just the running stack.** Ready/waiting tasks,
+  paused Machines, Continuations, pending outcomes, cancellation and cleanup
+  retain their object references and entered-code pins until the existing
+  lifecycle releases them. Suspension is not a reason to drop those roots.
+- **Collection is a runtime critical operation.** Do not switch to a peer task,
+  park a tracing callback or deliver asynchronous task control through its active
+  collection frames. Supported synchronous hook/finalizer effects still occur
+  under the collection-phase rules. Task cleanup may suspend under its ordinary
+  lifecycle; GC finalization may not. Do not use finalization to drive asynchronous
+  structured cleanup. Bounded Machine drives and timeslicing do not waive native
+  barriers or critical-operation restrictions.
+- **Transport does not introduce foreign-heap roots.** The process-worker
+  transport holds owned bytes; object encoding/decoding runs on the owner.
+  Release transport locks before message sends, and root source objects and
+  partially decoded results across allocating calls. Pending language requests
+  and replies remain rooted through their owning tasks/handles.
+- **Object collection does not release active executable code.** Preserve code
+  ownership across waits, cancellation cleanup, nested native calls and recovery.
+  Reclamation still follows the established execution checkpoint rules.
+
+Source inspection on 2026-09-22 confirms that the retained Machine implementation
+traces frame/control state, bounded stops retain frames, and asynchronous process
+transport stores bytes rather than background Oops. This is a compatibility
+assessment, not a passing concurrency/GC test result: upper integration is still
+broken. Restore the existing suspended-task, cleanup, pending-request and code-pin
+tests through production messages as those paths return.
+
+Thread-hosted domains remain separate future work. Current Id, Roots, Namespace,
+Bootstrap and value-module singletons do not support multiple independent domains
+in one process. Birnam-owned state, callback routing and any shared code-mapping
+leases must become domain-correct before enabling that backend, as Designs
+[60D](60d-stackless-concurrency-fit.md) and
+[80X](80x-asynchronous-process-domains.md#next-boundary-thread-hosting) already
+require. This does not justify a global GC lock, concurrent tracing, task migration
+between heaps or expansion of the present refactor into a thread-hosting project.
 
 ## Stopping condition
 

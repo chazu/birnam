@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove Design 83's cached GC dispatch exception. Clarify Design 90's existing
+  collection obligations and their compatibility with owned concurrency domains,
+  including suspended roots, code lifetime and the separate thread-hosting gap.
+
 - Record Design 90: organize the remaining Id-message refactor by functional
   ownership and irreducible dependencies, consolidate implementation-only helpers,
   and define the remaining work and stopping conditions without new API scaffolding.
