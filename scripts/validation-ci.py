@@ -19,7 +19,7 @@ LIBRARIES = ('libbirnam_id.dylib', 'libbirnam_codegen_runtime.dylib', 'libbirnam
 
 
 def select(paths):
-    bootstrap=re.compile(r'^(\.github/|mise\.toml$|scripts/rust-(install|driver-cold)|rust/birnam-host/|.*/build\.rs$)')
+    bootstrap=re.compile(r'^(\.github/|mise\.toml$|scripts/rust-(install|driver-cold)|rust/birnam-(host|cli|siphon)/|.*/build\.rs$)')
     protected=re.compile(r'^(rust/|src/id/|modules/|vendor/|abi/|Cargo\.|scripts/(fixtures/|closure|unboxed|loop|recovery|validation|validate))')
     if any(bootstrap.search(path) for path in paths): return 'release'
     return 'exhaustive' if any(protected.search(path) for path in paths) else 'routine'

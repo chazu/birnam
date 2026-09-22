@@ -8,15 +8,8 @@ publish = false
 [lib]
 crate-type = ["rlib"]
 
-[[bin]]
-name = "birnam"
-path = "src/bin/birnam.rs"
-
-[[bin]]
-name = "birnam-build"
-path = "src/bin/birnam-build.rs"
-
 [dependencies]
+birnam-siphon = { path = "../birnam-siphon" }
 birnam-abi = { path = "../birnam-abi" }
 birnam-artifact = { path = "../birnam-artifact" }
 hex.workspace = true

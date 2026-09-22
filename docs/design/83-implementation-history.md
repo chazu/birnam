@@ -49,7 +49,7 @@ resumable materializations across separate real REPL turns, proving eviction
 survival and actual subsequent native-unit release. Debug installation and the
 workspace diagnostic build pass; release validation remains waived.
 
-The host's [`Siphon`](../../rust/birnam-host/src/siphon.rs) supplies the small ad
+The host's [`Siphon`](../../rust/birnam-siphon/src/lib.rs) supplies the small ad
 hoc loading protocol and invokes `birnam_native_module_v1`. The real Id descriptor
 constructs `InitialObjects` using only Id allocation, dictionaries and Symbols;
 its own bind/invoke path then installs native loading, construction and storage

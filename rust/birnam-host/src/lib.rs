@@ -1,11 +1,8 @@
 //! Rust host coordination and stable public entry points.
-//! Command parsing, project data, filesystem work, live project policy and
+//! Project data, filesystem work, live project policy and
 //! startup mechanics have private owners. HostRuntime and its address-fenced
 //! bridge lifetime remain coordinated here.
 mod startup;
-pub mod siphon;
-#[cfg(test)]
-use startup::selector_has_arity_one;
 pub use startup::{
     ArtifactActivationError,
     ArtifactEntry,
@@ -95,6 +92,8 @@ use project_files::{acquire_project_git_dependency, create_check_temp_directory,
 
 mod project_data;
 pub use project_data::{
+    ReplMode,
+    RunOptions,
     ProjectArtifactCompileError,
     ProjectArtifactPlan,
     ProjectArtifactPlanEntry,
@@ -164,45 +163,6 @@ pub use project_data::{
     validate_project_observations,
 };
 use project_data::{PROJECT_APPLICATION_FILENAME, PROJECT_CONFIGURATION_FILENAME, PROJECT_MODULE_ROOT_FILENAME, PROJECT_REPL_GLOBAL, PROJECT_SOCKET_BIND_GLOBAL, PROJECT_SOCKET_PORT_GLOBAL, previous_artifact, project_application_source, project_configuration_source, project_module_root_source, safe_artifact_relative_path, valid_git_remote};
-
-mod command;
-pub use command::{
-    EarlyAction,
-    CommandKind,
-    CommandError,
-    OutputFormat,
-    CheckOptions,
-    FetchOptions,
-    BuildOptions,
-    InstallOptions,
-    TestOptions,
-    ProjectTestWorkerOptions,
-    ProjectTestWorkerParseError,
-    ReplMode,
-    RunOptions,
-    RunParseError,
-    BakeOptions,
-    RebuildOptions,
-    CompileModuleOptions,
-    ToolingParseError,
-    WorkerOptions,
-    WorkerParseError,
-    ParseOutcome,
-    ProjectParseError,
-    parse_check_args,
-    parse_fetch_args,
-    parse_build_args,
-    parse_install_args,
-    parse_test_args,
-    parse_project_test_worker_args,
-    parse_run_args,
-    parse_bake_args,
-    parse_rebuild_args,
-    parse_compile_module_args,
-    parse_worker_args,
-    classify_command,
-    classify_early_args,
-};
 
 use birnam_artifact::digest::sha256_hex;
 use std::collections::HashSet;

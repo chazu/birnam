@@ -67,6 +67,10 @@ run = "scripts/deferred-identity-test.sh"
 description = "Check lazy deferred-clone index ownership, ordered recovery, capacity and host admission (debug)"
 run = "scripts/deferred-index-test.sh"
 
+[tasks.siphon]
+description = "Check the production Siphon-to-Id handoff without upper modules"
+run = "scripts/siphon-test.sh"
+
 [tasks.native-modules]
 description = "Check production native modules, construction prefixes and live message dispatch"
 run = 'python3 scripts/id-native-loading-smoke.py "${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"'

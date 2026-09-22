@@ -36,6 +36,8 @@ members = [
     "rust/birnam-dispatch-cache",
     "rust/birnam-image",
     "rust/birnam-host",
+    "rust/birnam-cli",
+    "rust/birnam-siphon",
     "rust/birnam-isolate",
     "rust/birnam-lang",
     "rust/birnam-native-compiler",

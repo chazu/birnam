@@ -72,19 +72,14 @@ impl HostRuntime {
     /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
     /// module. Rust supplies opaque argv and the installed resource roots;
     /// subcommand parsing, diagnostics, and module policy remain language
-    /// owned. Project-aware LSP setup installs the scoped Rust `Project`
-    /// bridge before dispatch and remains on the same host observation path.
+    /// owned. The CLI caller prepares project-aware LSP policy and the scoped
+    /// Rust `Project` bridge before invoking this operation.
     ///
     /// # Safety
     ///
     /// The caller must have called [`HostRuntime::prepare_execution`] with a
     /// live stack anchor and remain on the floor owner thread for all sends.
     pub unsafe fn run_cli(&self, args: &[OsString]) -> Result<(), CliError> {
-        let is_lsp = args.iter().any(|argument| argument == "--lsp");
-        if is_lsp {
-            unsafe { self.load_project_policy() }.map_err(CliError::Policy)?;
-            unsafe { self.install_project_bridge() }.map_err(CliError::Bridge)?;
-        }
         unsafe { self.load_runtime_module("cli") }.map_err(CliError::Module)?;
         let api = self.stack.api();
         let Some(cli) = (unsafe { global_named(api, self.stack.imports(), "Cli") }) else {

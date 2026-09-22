@@ -48,7 +48,7 @@ fn main() {
         1,
         "only the actual Id is available"
     );
-    let id = birnam_host::siphon::load(id_path.as_os_str().as_bytes()).unwrap();
+    let id = birnam_siphon::load(id_path.as_os_str().as_bytes()).unwrap();
     let primitives = unsafe { birnam_abi::id_primitives::select(id) }.unwrap_or_else(|_| panic!("initial primitives"));
     let early = intern(&id, b"earlyNativeEcho:");
     assert_eq!(

@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Isolate Siphon in `birnam-siphon`, depending only on the common Id ABI. Move
+  argument parsing and both executable entrypoints into `birnam-cli`; retain
+  runtime/project operations in `birnam-host`. Update build/install references
+  and stale repository documentation. Add a production Id handoff check runnable
+  during the upper-module migration.
+
 - Delete the remaining host descriptor catalogs, aggregate Runtime/Heap factory
   construction, compiler service resolver, factory publishers and Runtime wrappers.
   Remove 111 retired C headers, twenty IdApi manifests, the construction catalog,

@@ -2012,7 +2012,7 @@ pub fn begin_id(
         }
     }
     // Actual Id construction runs through Siphon before any upper services.
-    let id_protocol = crate::siphon::load(path.as_bytes()).map_err(|(status, detail)| {
+    let id_protocol = birnam_siphon::load(path.as_bytes()).map_err(|(status, detail)| {
         unsafe { system_dlclose(handle.as_ptr()) };
         FloorError::IdProtocol { status, detail }
     })?;
@@ -2746,6 +2746,10 @@ mod tests {
 mod worker_arity_contract_tests {
     #[test]
     fn underscore_worker_predicate_is_not_corrected_by_byte_rule_sharing() {
+        assert!(super::selector_has_arity_one("handle:"));
+        assert!(super::selector_has_arity_one("+"));
+        assert!(!super::selector_has_arity_one("handle"));
+        assert!(!super::selector_has_arity_one("a:b:"));
         assert!(super::selector_has_arity_one("_private"));
         assert!(!super::selector_has_arity_one(""));
         assert!(!super::selector_has_arity_one("value"));

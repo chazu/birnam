@@ -65,7 +65,7 @@ assert not normal_dependencies("birnam-abi")
 assert "birnam-id" not in normal_dependencies("birnam-runtime")
 print("Cargo boundary: Id depends only on ABI; Runtime has no Rust dependency on Id")
 target = Path(metadata["target_directory"]) / "debug"
-run("mise", "exec", "--", "cargo", "build", "--locked", "--offline", "-p", "birnam-host", "-p", "birnam-abi")
+run("mise", "exec", "--", "cargo", "build", "--locked", "--offline", "-p", "birnam-host", "-p", "birnam-siphon", "-p", "birnam-abi")
 with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     scratch = Path(directory)
     isolated = scratch / "isolated"
@@ -120,6 +120,7 @@ with tempfile.TemporaryDirectory(prefix="birnam-id-native-") as directory:
     driver = scratch / "driver"
     run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",
         "scripts/fixtures/id-native-host.rs", "--extern", f"birnam_host={target}/libbirnam_host.rlib",
+        "--extern", f"birnam_siphon={target}/libbirnam_siphon.rlib",
         "--extern", f"birnam_abi={target}/libbirnam_abi.rlib", "-L", f"dependency={target}/deps", "-o", str(driver))
     graph_driver = scratch / "graph-driver"
     run("mise", "exec", "--", "rustc", "--edition=2024", "-Cpanic=abort",

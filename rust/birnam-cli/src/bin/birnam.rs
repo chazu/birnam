@@ -4,15 +4,19 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+#[path = "../command.rs"]
+mod command;
+use command::{
+    CommandKind, OutputFormat, ParseOutcome, classify_command,
+    parse_bake_args, parse_build_args, parse_check_args, parse_compile_module_args,
+    parse_fetch_args, parse_install_args, parse_project_test_worker_args,
+    parse_rebuild_args, parse_run_args, parse_test_args, parse_worker_args,
+};
 use birnam_host::{
-    ArtifactPreflightError, CommandKind, OutputFormat, ParseOutcome, ProjectBuildError,
-    ProjectBuildRequest, ProjectRunError, StartupPolicy, WorkerStartupError, bake_executable,
-    classify_command, compile_module, eval_script, host_target_identity, load_image,
-    load_image_bytes, parse_bake_args, parse_build_args, parse_check_args,
-    parse_compile_module_args, parse_fetch_args, parse_install_args,
-    parse_project_test_worker_args, parse_rebuild_args, parse_run_args, parse_test_args,
-    parse_worker_args, preflight_artifact, read_baked_image, resolve, start,
-    start_from_environment,
+    ArtifactPreflightError, ProjectBuildError, ProjectBuildRequest, ProjectRunError,
+    StartupPolicy, WorkerStartupError, bake_executable, compile_module, eval_script,
+    host_target_identity, load_image, load_image_bytes, preflight_artifact,
+    read_baked_image, resolve, start, start_from_environment,
 };
 
 #[cfg(unix)]
@@ -485,6 +489,15 @@ fn worker_command(args: &[OsString]) -> Result<(), String> {
     Err(format!("worker: {error:?}"))
 }
 
+/// Select CLI policy here; the host only executes the authored CLI module.
+unsafe fn run_authored_cli(runtime: &birnam_host::HostRuntime, args: &[OsString]) -> Result<(), birnam_host::CliError> {
+    if args.iter().any(|argument| argument == "--lsp") {
+        unsafe { runtime.load_project_policy() }.map_err(birnam_host::CliError::Policy)?;
+        unsafe { runtime.install_project_bridge() }.map_err(birnam_host::CliError::Bridge)?;
+    }
+    unsafe { runtime.run_cli(args) }
+}
+
 fn run(args: Vec<OsString>) -> Result<(), String> {
     let command = classify_command(&args).map_err(|error| format!("command: {error:?}"))?;
     if args.is_empty() && command == CommandKind::Repl {
@@ -621,7 +634,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            unsafe { runtime.run_cli(&args) }.map_err(|error| format!("cli: {error:?}"))
+            unsafe { run_authored_cli(&runtime, &args) }.map_err(|error| format!("cli: {error:?}"))
         }
         CommandKind::Check => check_command(&args),
         CommandKind::Fetch => fetch_command(&args),
@@ -637,7 +650,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                 .map_err(|error| format!("startup: {error:?}"))?;
             let mut anchor = 0usize;
             unsafe { runtime.prepare_execution(&mut anchor) };
-            unsafe { runtime.run_cli(&args) }.map_err(|error| format!("lsp: {error:?}"))
+            unsafe { run_authored_cli(&runtime, &args) }.map_err(|error| format!("lsp: {error:?}"))
         }
     }
 }

@@ -350,3 +350,36 @@ Cargo metadata/lock resolution, edited-source syntax and whitespace checks pass.
 All eight validation-tool tests pass, as do both independent stackless/recovery
 and Portable Code binary-fixture verifiers. The verifiers retain their malformed
 input and truncation assertions.
+
+
+### Siphon and CLI boundary
+
+After the deletion pass, separate the executable shell from native construction:
+
+- `birnam-siphon` depends only on `birnam-abi`. Its 77-line implementation sends
+  one ad-hoc load request for Id, validates the returned protocol, and returns it.
+  It knows no upper modules, CLI, compiler, collection policy or host state.
+- `birnam-cli` owns both executables (`birnam`, `birnam-build`), option parsing,
+  command dispatch and CLI-specific policy selection. Existing executable names
+  and command behavior stay the same. Birnam-authored CLI behavior stays in
+  `modules/cli.birnam`.
+- `birnam-host` supplies runtime and project operations. It calls Siphon as a
+  dependency and no longer contains or re-exports argument parsing. `RunOptions`
+  and `ReplMode` remain host operation data, supplied by the CLI parser.
+
+The dependency direction is CLI → host → Siphon → ABI; Id also depends only on
+ABI. No native language module depends on the CLI. These are ordinary executable
+and bootstrap boundaries, not additional language-module APIs or service tables.
+
+`mise run siphon` builds the actual production Id dylib in debug mode and checks
+that, after Siphon returns, the real Id performs symbol interning and native
+loading. It also checks invalid/missing paths. No upper module or installed prefix
+is needed. Siphon's implementation moved unchanged; only its Cargo ownership and
+call sites changed. Existing parser and installer tests move with their code;
+CLI/host execution remains blocked by the deliberate upper-ABI deletion.
+
+Validation for this separation: both production Siphon tests and all eight
+validation-tool tests pass; Cargo dependency/target checks and edited-source
+syntax checks pass. Building CLI tests stops in `birnam-artifact` on its existing
+references to removed `IdApi` and Namespace tables, before reaching CLI code.
+No CLI execution or release-validation claim is made at this checkpoint.

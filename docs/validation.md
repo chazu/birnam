@@ -15,6 +15,11 @@ recovery registration envelope. Older native fixtures retain their behavioral
 assertions but require message-based setup before execution; do not restore the
 old headers to run them.
 
+`mise run siphon` builds only production Id and tests the Siphon handoff, real
+Id interning/loading, and invalid paths. It is available during caller migration.
+The CLI executables and parser tests now belong to `birnam-cli`; host-operation
+tests remain in `birnam-host`.
+
 Use `mise run verify` for everyday correctness and `mise run verify-plan` to see
 its steps before execution. This is the current workflow; Design 74's temporary
 controllers and chronological measurement notes are historical evidence.

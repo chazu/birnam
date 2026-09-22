@@ -724,58 +724,31 @@ application and build driver.
 
 ## Repository Guide
 
-- `.beads/` — active issue tracker; run `br ready` in this checkout. See
-  [work tracker conventions](docs/misc/TASKS.md).
-- `rust/birnam-id/` — Minimal native Id: objects, Symbols, dictionaries, message dispatch and module loading; depends only on the ABI crate.
-- `rust/birnam-runtime/` — Upper Machine/runtime and compiler integration behind IdApi v20 (18 fields / 144 bytes), loaded through Id after its predecessors.
-- `rust/birnam-bootstrap/` — sequential native loading through Id and ownership of initialization results; see [the native contract](abi/fixtures/bootstrap-v2/README.md).
-- `rust/birnam-root-registry/` — native root ownership, initialized through Id before Runtime.
-- `rust/birnam-collect/` — [collection records and controls](abi/collection-state-v2.md), initialized before Runtime and shared with its collector, plus the collection coordinator.
-- [Collector v3](abi/collector-v3.md): heap activation and collecting constructors before Runtime.
-- [Native Stack factory v4](abi/native-stack-v4.md): native register capture and root scanning before Runtime.
-- `rust/birnam-trace/` — [live graph traversal](abi/trace-graph-v2.md), constructed before Runtime from Id storage facts and completed lifetime owners.
-- `rust/birnam-lifetime/` — payload descriptions, trace hooks, finalizer records and references held in native state, initialized through Id and adopted by Runtime; see [the native contract](abi/fixtures/lifetime-v2/README.md).
-- `rust/birnam-namespace/` — early publication/import, reverse aliases and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/namespace-owner-v1/README.md).
-- `rust/birnam-object-model/` — early private-behavior ownership/construction and native enumeration, adopted by Runtime; see [the native owner](abi/fixtures/object-model-owner-v1/README.md). The production namespace and enumeration checks run with `mise run reflection-boundaries`; see [Enumeration v2](abi/vtable-enumeration-v2.md).
-- `rust/birnam-error-value/` — shared lazy Error factory dispatch and exact recognition for native System, Block and numeric methods.
-- `rust/birnam-source-loader/` — System source reading, staging, evaluation and diagnostics.
-- `rust/birnam-native-loader/` — System direct native-module loading, installed by Prelude.
-- `rust/birnam-block-loop/` — native Block while methods, installed on Runtime’s Block before collections and compilers; authored stackless control follows later.
-- `rust/birnam-file-io/` — System binary file reads and writes, installed by Prelude.
-- `rust/birnam-environment/` — System environment lookup, installed by Prelude with shared text/error policy.
-- `rust/birnam-system-input/` — System stdin method, installed by Prelude using String and Error Value.
-- `rust/birnam-system-output/` — System stdout methods, installed by Prelude using shared text views.
-- `rust/birnam-text-view/` — shared borrowed String/printable byte views for Prelude consumers.
-- `rust/birnam-system-gc/` — System collector queries and policy controls, installed by Prelude.
-- `rust/birnam-printing/` — Object/Symbol printing defaults and live `asString` dispatch.
-- `rust/birnam-collection-value/` — shared native value comparison and key hashing for Vector and Map.
-- `rust/birnam-vector/` — independently loaded Vector storage, trie helpers, canonical objects, methods and sorting roots.
-- `rust/birnam-map/` — independently loaded Map storage, canonical objects, methods, traversal and printing.
-- `rust/birnam-range/` — independently loaded Range representation, construction and all Range methods; uses native Vector storage.
-- `rust/birnam-string-builder/` — independently loaded StringBuilder buffer ownership and methods.
-- `rust/birnam-string/` — [String byte storage](abi/fixtures/string-v1/README.md) before Error/numbers, followed by native text and numeric methods before Runtime.
-- `rust/birnam-error/` — [Error construction and propagation](abi/error-value-v3.md#production-error-construction), initialized before numbers and Runtime.
-- `rust/birnam-string-collection/` — late String split adapter using native Vector construction.
-- `rust/birnam-nil/` — early Object/Nil predicates and native String printing before Runtime.
-- `rust/birnam-boolean/` — early Nil/Boolean identities, basic operations and printing, followed by Block control with Execution; see [base values](abi/fixtures/base-values-v1/README.md).
-- `rust/birnam-word/` — Word construction, printing and checked Integer conversion through Id before Runtime;
-  [native dependency contract](abi/word-v1.md).
-- `rust/birnam-float/` — Float construction and operations before Runtime, followed by Integer's mixed-number extension;
-  [native dependency contract](abi/float-v1.md).
-- `rust/birnam-integer/` — Integer construction and arithmetic through Id before Float/Runtime, followed by mixed-number and Block extensions;
-  [native dependency contract](abi/integer-v1.md) and
-  [compiler admission](abi/native-numeric-semantics-v5.md). The
-  [native admission test](scripts/native-integer-admission-smoke.sh) checks effects
-  under method replacement against an installed prefix.
-- `src/id/*.birnam` — bootstrapped standard library, TOML, and configuration
-  (`Config` for project manifests, `AppConfig` for application startup).
-- `modules/` — authored library, CLI, LSP, documentation, and test sources;
-  production modules compile into self-describing dylibs before distribution.
-- `wrapped/` — first-party native libraries used by optional applications,
-  including the Alien-backed Termbox2 adapter used by Logue.
-- `examples/` — runnable programs, including images and AOT artifacts.
-- `docs/design/` — current design decisions and implementation status.
-- `docs/archive/` — superseded kernel plans and historical material.
+- `rust/birnam-siphon/` — the small ad-hoc Id loader. It depends only on
+  `birnam-abi`, loads the real Id, and returns its message protocol.
+- `rust/birnam-cli/` — the `birnam` and `birnam-build` executables, argument
+  parsing, command dispatch, diagnostics and installation commands.
+- `rust/birnam-host/` — runtime startup, resource discovery, project operations
+  and execution bridges used by the CLI. No argument parser or Siphon implementation.
+- `rust/birnam-abi/` — opaque objects, the common Id protocol, borrowed buffers
+  and the stateless OS loader shared by Siphon and Id.
+- `rust/birnam-id/` — native Id allocation, Symbols, dictionaries, message
+  dispatch and module loading; depends only on the ABI crate.
+- Other `rust/birnam-*/` crates — native values, compiler/runtime, collector,
+  storage, images, workers and language services. Their algorithms are retained;
+  integration still needs migration under [Design 84](docs/design/84-message-only-native-modules.md).
+- `src/id/*.birnam` — core modules written in Birnam: module management,
+  standard-library extensions, compiled-unit lifecycle, configuration/project
+  policy, isolate support and stackless control. The directory name does not
+  identify the native Id implementation. Sources are embedded for bootstrap and
+  listed for compilation by the installer.
+- `modules/` — additional Birnam libraries, CLI/LSP tools, documentation and tests.
+- `abi/` — [common native boundary and format evidence](abi/README.md);
+  module-specific ABI documents are historical.
+- `wrapped/` — native libraries used by optional applications.
+- `examples/` — programs, including images and AOT artifacts.
+- `docs/design/` — designs and implementation status; `docs/archive/` holds
+  superseded material.
 
 ## Design Notes
 
@@ -792,13 +765,10 @@ application and build driver.
   and the production migration and acceptance criteria. This is the current
   runtime refactoring direction.
 - [Production construction and lifetimes](docs/design/83-production-id-construction-and-lifetimes.md)
-  addresses the adversarial review: simpler dispatch ownership, native loading
-  results, base/extension load order and safe collector activation. The production
-  [Siphon](rust/birnam-host/src/siphon.rs) now loads Id through the
-  [typed native protocol](abi/fixtures/id-protocol-v1/README.md); upper construction
-  uses completed value inputs through [Runtime construction](abi/runtime-construction-v15.md);
-  [compiler admission](abi/runtime-compiler-v1.md) loads as an explicit later
-  extension. Owned Method consumers and the construction manifest remain in progress.
+  records the earlier construction design and lifetime obligations. Design 84
+  supersedes its descriptor/factory integration. The current
+  [Siphon](rust/birnam-siphon/src/lib.rs) uses only the
+  [Id protocol](abi/fixtures/id-protocol-v1/README.md).
 - [Production extraction status](docs/design/81-production-extraction-status.md)
   summarizes the completed Rust modularization through 81CA, current ownership,
   validation, and the remaining Birnam implementation work. This phase is closed;

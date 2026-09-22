@@ -51,6 +51,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-cli"
+version = "0.0.0"
+dependencies = [
+ "birnam-host",
+ "hex",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "birnam-codegen"
 version = "0.0.0"
 dependencies = [
@@ -131,6 +141,7 @@ version = "0.0.0"
 dependencies = [
  "birnam-abi",
  "birnam-artifact",
+ "birnam-siphon",
  "hex",
  "serde",
  "serde_json",
@@ -329,6 +340,13 @@ dependencies = [
  "birnam-trace-hooks",
  "birnam-word",
  "sha2",
+]
+
+[[package]]
+name = "birnam-siphon"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
 ]
 
 [[package]]

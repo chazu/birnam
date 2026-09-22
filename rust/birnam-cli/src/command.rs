@@ -92,23 +92,7 @@ pub enum ProjectTestWorkerParseError {
     InvalidProfile(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReplMode {
-    None,
-    Tty,
-    Socket,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunOptions {
-    pub directory: PathBuf,
-    pub build: bool,
-    pub profile: String,
-    pub repl: Option<ReplMode>,
-    pub socket_bind: Option<String>,
-    pub socket_port: Option<u16>,
-    pub arguments: Vec<std::ffi::OsString>,
-}
+use birnam_host::{ReplMode, RunOptions};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunParseError {
@@ -707,7 +691,6 @@ pub fn classify_early_args<T: AsRef<std::ffi::OsStr>>(args: &[T]) -> EarlyAction
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::selector_has_arity_one;
     use std::path::Path;
 
     #[test]
@@ -996,10 +979,6 @@ mod tests {
 
     #[test]
     fn worker_parser_preserves_channel_and_named_dispatch_operands() {
-        assert!(selector_has_arity_one("handle:"));
-        assert!(selector_has_arity_one("+"));
-        assert!(!selector_has_arity_one("handle"));
-        assert!(!selector_has_arity_one("a:b:"));
         assert_eq!(
             parse_worker_args(&["saved.image", "Receiver", "handle:", "--channel-fd", "17",])
                 .expect("worker operands parse"),
