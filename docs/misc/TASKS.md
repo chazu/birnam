@@ -32,11 +32,12 @@ tests; its original documentation checkpoint predates the production migration.
 refactor. The Id/Roots prefix, memory management, object behavior, values and
 collections now use opaque objects and Id messages. The converted-prefix cleanup
 removes unused implementations and old test plumbing; `mise run native-messages`
-checks its production loading and lifetimes. Execution integration has begun with
-owned Methods and binding retention in Bootstrap. Next are the retained
-Machine/frame/Block, suspension, continuation and recovery mechanics, including
-their code leases and deletion of displaced Runtime plumbing. Compiler integration
-follows, then services, images, workers and complete Host/CLI startup.
+checks its production loading and lifetimes. Execution now provides owned Methods, Blocks, Machines, bounded drives,
+suspension/continuations and native boundaries in Bootstrap, with frame code-owner
+retention and generation leases. Next are the remaining mixed Runtime consumer
+cleanup and execution-time optimization/recovery reconnection, followed by the
+compiler producers and generated-code acceptance in batch 2. Services, images,
+workers and complete Host/CLI startup follow.
 Deoptimization and concurrency algorithms remain preserved for that migration.
 Design 84 records the deletion-first correction; Design 83's safety and active-code
 lifetime obligations survive its superseded descriptor integration.

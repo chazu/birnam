@@ -39,7 +39,7 @@ impl ExecutionState {
         let descriptor = &entry.descriptor;
         let plan = descriptor.tail_entry_plan.get_or_init(|| {
             let binding = descriptor.v2_entry_binding?;
-            birnam_codegen::tail_entry::Plan::derive(
+            crate::entry_plan::Plan::derive(
                 descriptor.slot_count(),
                 binding.receiver_slot,
                 binding.argument_start,
@@ -168,20 +168,32 @@ impl ExecutionState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    unsafe extern "C" fn step(_: Oop, _: *const Oop, _: usize) -> Oop {
+    const STEP: Method = Method::new(step_entry, core::ptr::null_mut());
+    unsafe extern "C" fn step_entry(
+        _: *mut core::ffi::c_void,
+        _: Oop,
+        _: *const birnam_abi::id_protocol::Operand,
+        _: usize,
+    ) -> birnam_abi::id_protocol::Outcome {
         std::hint::black_box(741701usize);
-        core::ptr::null_mut()
+        birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
     }
-    unsafe extern "C" fn thunk(_: Oop, _: *const Oop, _: usize) -> Oop {
+    const THUNK: Method = Method::new(thunk_entry, core::ptr::null_mut());
+    unsafe extern "C" fn thunk_entry(
+        _: *mut core::ffi::c_void,
+        _: Oop,
+        _: *const birnam_abi::id_protocol::Operand,
+        _: usize,
+    ) -> birnam_abi::id_protocol::Outcome {
         std::hint::black_box(741702usize);
-        core::ptr::null_mut()
+        birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
     }
     fn oop(value: usize) -> Oop {
         core::ptr::with_exposed_provenance_mut(value)
     }
     fn acquire(state: &mut ExecutionState) -> ResumableEntryCapability {
         let Some(StacklessTarget::Registered { entry }) = state
-            .classify_resumable(MethodAddress::from_method(thunk))
+            .classify_resumable(MethodAddress::from_method(THUNK))
             .unwrap()
         else {
             panic!("registered target")
@@ -207,15 +219,15 @@ mod tests {
             entry_argument_count: 3,
             implementation_slot: Some(12),
             entry_capture_slots: vec![7, 0],
-            step_method: step,
+            step_method: STEP,
             ..probe_spec(14, 1)
         })
         .unwrap();
-        let carrier = SemanticRegistrationV1::new(thunk, descriptor.clone(), 3, 9, 1)
+        let carrier = SemanticRegistrationV1::new(THUNK, descriptor.clone(), 3, 9, 1)
             .with_implementation_anchor(oop(88));
         state.register_resumable(owner, carrier).unwrap();
         state
-            .note_direct_binding_added(MethodAddress::from_method(thunk))
+            .note_direct_binding_added(MethodAddress::from_method(THUNK))
             .unwrap();
         let baseline = state.create_machine(owner).unwrap();
         let candidate = state.create_machine(owner).unwrap();
@@ -225,8 +237,10 @@ mod tests {
             arena.slots[frame.index].return_destination =
                 Some(ReturnDestination { result_slot: 6 });
         }
-        let mut heap = Heap::new();
-        let receiver = heap.allocate(16, crate::heap::Permanence::Collectable);
+        let mut heap = Heap::default();
+        let mut receiver_words = [0usize; 2];
+        let receiver = receiver_words.as_mut_ptr().cast();
+        heap.insert(receiver, oop(1), 2);
         for iteration in 0..16 {
             let captures = [oop(100 + iteration), oop(200 + iteration)];
             for (index, capture) in captures.iter().enumerate() {
@@ -312,7 +326,9 @@ mod tests {
                 }
             }
         }
-        let malformed = heap.allocate(8, crate::heap::Permanence::Collectable);
+        let mut malformed_words = [0usize; 1];
+        let malformed = malformed_words.as_mut_ptr().cast();
+        heap.insert(malformed, oop(1), 1);
         for exhausted in [false, true] {
             if exhausted {
                 let arena = state.machine_mut(owner, candidate).unwrap().arena_mut();

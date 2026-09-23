@@ -8,6 +8,16 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Continue Design 90 batch 1 with production Machines, frames, Blocks, bounded
+  drives, waiting/capture/restore and protected native control adapters. Move the
+  retained engine out of Runtime; admit canonical descriptor bytes through an
+  owned Method constructor using exact NativeEntry function/context pairs. Trace
+  frame and continuation code owners through the existing GC, retain generation
+  leases through replacement, and release them at the existing checkpoints.
+  Add independent C executable fixtures and production lifetime/barrier checks;
+  retain 18 engine tests. Mixed Runtime consumer cleanup and generated recovery
+  integration remain open; source task policy still awaits Store.
+
 - Begin Design 90 batch 1 with Execution-owned Methods in production Bootstrap.
   Trace callable owners from actual Id bindings; preserve exact invocation,
   language lookup adaptation, active-call roots and argument lifetime through GC.

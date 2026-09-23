@@ -715,3 +715,28 @@ The result should have fewer integration concepts and no duplicate runtime path.
 Line counts and crate counts can reveal accidental growth, but are not a reason
 to delete useful algorithms or compress clear code. Once these conditions hold,
 stop: further self-hosting or feature development is separate work.
+
+## Native Machine/control checkpoint (2026-09-23)
+
+The next batch 1 slice is implemented in the production Execution owner. The
+retained frame/continuation registry, scheduling, boundary, tail-entry and recovery
+algorithms now live there; the old all-Oop wrappers in those engine files are
+removed. Native Method registration consumes NativeEntry plus copied canonical
+FrameDescriptor-v2 and one-row ArtifactSelection bytes and an opaque owner. The
+[local protocol](../../rust/birnam-execution/README.md) records all operands,
+retention and remaining consumers.
+
+Bootstrap publishes completed Machine, Block, FrameView, Continuation and action
+objects. Real Id-loaded C fixtures exercise calls/returns/tail calls, captured
+Blocks, interleaved bounded drives, wait/resume, one-shot continuation restoration,
+protected boundary exit, native barriers and collection-critical rejection.
+Paused replacement and detached-continuation tests retain only the Machine or
+Continuation, collect, resume the original implementation, then observe owner
+reclamation. The retained 18 engine tests and converted-prefix suite pass.
+
+This extends, rather than closes, batch 1. Mixed Runtime drive/Method/task-control
+wrappers and compiler-dependent execution-time selection/recovery still need their
+remaining callers migrated and obsolete connections removed. No production
+compiler-generated recovery or compiled mapping reclamation is claimed. Those
+fixtures belong to batch 2; Store-backed source task policy and image/worker/CLI
+integration remain at their previously documented gates.

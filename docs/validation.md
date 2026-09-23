@@ -28,12 +28,15 @@ return unretained temporary keys and accumulators; tests check both survival dur
 use and reclamation after success/failure. Root registration is checked beyond
 32 enumerators, including ordering, duplicates and tracing their children.
 
-The initial Execution callable tests also run there: owned Method invocation,
+Execution callable tests also run there: owned Method invocation,
 binding-only ownership, replacement during an active native call, nested lookup
 with distinct contexts, argument GC lifetime and language result conversion. A C
-native callable is built separately and loaded through Bootstrap. These are not
-Machine/frame, suspension or compiled-code reclamation checks; those remain
-required before their Design 90 batches can be marked complete.
+native callable is built separately and loaded through Bootstrap. A second C fixture runs canonical descriptor steps on production Machines and
+Blocks: calls/tail calls, budgets, waiting, continuations, native boundaries,
+collection-phase rejection and paused code-owner retention/reclamation. Run
+`cargo test --offline -p birnam-execution --lib` through mise for the 18
+engine tests. These native checks do not prove compiler-generated recovery or
+compiled mapping reclamation; mixed Runtime cleanup also remains open.
 
 The obsolete `native-modules` task and installed adoption driver are removed.
 Cached floor-function discovery tests are also retired; they asserted the old

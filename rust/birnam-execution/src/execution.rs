@@ -1,25 +1,24 @@
-//! Private stackless-execution substrate owned by one [`Runtime`](crate::runtime::Runtime).
+//! Retained Machine/frame engine, now owned by the production Execution instance.
 //!
 //! This module deliberately contains no dispatch or code-loader policy. It
-//! owns the S1 Machine capability registry, validated frame descriptors, and
-//! retained frame arenas. Later S1 slices connect this substrate to canonical
-//! Birnam Machine and StepAction objects without creating a second runtime.
-#![allow(dead_code)] // S1 test artifacts exercise carriers not emitted until S2/S3.
+//! owns Machine capabilities, validated frame descriptors, and retained frame
+//! arenas. `machine` connects these algorithms to Id-owned objects and messages.
+#![allow(dead_code)] // Preserve private recovery/optimizer consumers for batch 2.
 
-use birnam_artifact::frame_descriptor as canonical_descriptor;
-use birnam_artifact::materialization_selection::Row as PortableRow;
-use birnam_artifact::stackless_selection::SelectionSpec;
+use birnam_artifact_codec::frame_descriptor as canonical_descriptor;
+use birnam_artifact_codec::materialization_selection::Row as PortableRow;
+use birnam_artifact_codec::stackless_selection::SelectionSpec;
 use core::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::abi::{MarkFn, Method, Oop};
-use crate::heap::Heap;
-use crate::raw::{AddressMap, MethodAddress};
+use crate::entry::EntryKey as MethodAddress;
+use crate::objects::Objects as Heap;
+use birnam_abi::{Oop, id_protocol::NativeEntry as Method};
+use std::collections::HashMap;
 
 #[path = "execution/boundary.rs"]
 pub(crate) mod boundary;
-mod scheduling;
 #[cfg(test)]
 #[path = "execution/inline_recovery_experiment.rs"]
 mod inline_recovery_experiment;
@@ -27,16 +26,15 @@ mod inline_recovery_experiment;
 pub(crate) mod loop_iteration;
 #[path = "execution/recovery.rs"]
 mod recovery;
+mod scheduling;
 #[path = "execution/tail_entry.rs"]
 pub(crate) mod tail_entry;
-#[cfg(test)]
-pub(crate) use recovery::InlineRecovery;
-pub(crate) use recovery::RecoveryAuthority;
+
 #[cfg(test)]
 #[path = "execution/probe_descriptor.rs"]
 mod probe_descriptor;
 #[cfg(test)]
-pub(crate) use probe_descriptor::{probe_call, probe_continue, probe_control, probe_spec};
+pub(crate) use probe_descriptor::{probe_continue, probe_spec};
 
 pub(crate) const FRAME_LAYOUT_VERSION_V2: usize = 2;
 pub(crate) const REGISTRATION_SCHEMA_VERSION_V1: usize = 1;
@@ -222,6 +220,7 @@ struct FrameEdge {
 }
 
 pub(crate) struct FrameDescriptor {
+    pub(crate) executable_owner: core::cell::Cell<Oop>,
     identity: DescriptorIdentity,
     layout_version: usize,
     program_counter_count: usize,
@@ -234,7 +233,7 @@ pub(crate) struct FrameDescriptor {
     max_edge_copy_count: usize,
     v2_entry_binding: Option<V2EntryBinding>,
     entry_capture_slots: Box<[usize]>,
-    tail_entry_plan: std::sync::OnceLock<Option<Box<birnam_codegen::tail_entry::Plan>>>,
+    tail_entry_plan: std::sync::OnceLock<Option<Box<crate::entry_plan::Plan>>>,
     step_method: Method,
 }
 
@@ -605,6 +604,7 @@ impl FrameDescriptor {
             entry_capture_slots: spec.entry_capture_slots.into_boxed_slice(),
             tail_entry_plan: std::sync::OnceLock::new(),
             step_method: spec.step_method,
+            executable_owner: core::cell::Cell::new(core::ptr::null_mut()),
         }))
     }
 
@@ -886,6 +886,9 @@ struct DetachedFrame {
 
 impl DetachedFrame {
     fn trace_roots(&self, mut mark: impl FnMut(Oop)) {
+        if !self.descriptor.executable_owner.get().is_null() {
+            mark(self.descriptor.executable_owner.get());
+        }
         for (index, word) in self.words.iter().enumerate() {
             if self
                 .descriptor
@@ -1444,7 +1447,7 @@ impl FrameArena {
         Ok(())
     }
 
-    #[cfg(any(test, feature = "ffi-test-hooks"))]
+    #[cfg(test)]
     pub(crate) fn root_state_program_counter(
         &self,
         handle: FrameHandle,
@@ -1521,6 +1524,9 @@ impl FrameArena {
                 .descriptor
                 .as_deref()
                 .expect("a live arena slot always has a descriptor");
+            if !descriptor.executable_owner.get().is_null() {
+                mark(descriptor.executable_owner.get());
+            }
             for (index, word) in slot.words.iter().enumerate() {
                 if descriptor.traces_slot(slot.root_state_program_counter, index) {
                     mark(core::ptr::with_exposed_provenance_mut(*word));
@@ -1969,8 +1975,8 @@ pub(crate) enum StacklessTarget {
         initial_oops: Vec<(usize, Oop)>,
         entry: Option<ResumableEntryCapability>,
     },
-    Synchronous(crate::abi::id_protocol::NativeEntry),
-    NativeFailure(crate::abi::id_protocol::Outcome),
+    Synchronous(birnam_abi::id_protocol::NativeEntry),
+    NativeFailure(birnam_abi::id_protocol::Outcome),
     Unbound,
 }
 
@@ -2064,9 +2070,10 @@ impl MachineState {
         self.lifecycle == MachineLifecycle::Running
             && self.drive_depth == 1
             && self.drive_boundaries.last().is_some_and(|b| b.current == 0)
-            && self.delimiter_stack.iter().all(|index| {
-                self.delimiters[*index].kind != DelimiterKind::EntryBarrier
-            })
+            && self
+                .delimiter_stack
+                .iter()
+                .all(|index| self.delimiters[*index].kind != DelimiterKind::EntryBarrier)
     }
 
     pub(crate) fn drive_epoch(&self) -> u64 {
@@ -2549,7 +2556,7 @@ pub(crate) struct ExecutionState {
     free_continuation_slots: Vec<usize>,
     resumable_entries: Vec<ResumableEntrySlot>,
     free_resumable_entry_slots: Vec<usize>,
-    resumable_by_thunk: AddressMap<ResumableEntryCapability>,
+    resumable_by_thunk: HashMap<(usize, usize), ResumableEntryCapability>,
     generation_leases: Vec<GenerationLeaseSlot>,
     free_generation_lease_slots: Vec<usize>,
     managed_turn_depth: usize,
@@ -2559,6 +2566,50 @@ pub(crate) struct ExecutionState {
 }
 
 impl ExecutionState {
+    /// A language Method owns the executable independent of dictionary count.
+    /// Bindings retain that Method through GC; frames and continuations trace it.
+    pub(crate) fn publish_owned(
+        &mut self,
+        capability: ResumableEntryCapability,
+    ) -> Result<GenerationLeaseCapability, RegistrationError> {
+        let slot = self
+            .resumable_entries
+            .get_mut(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        let entry = slot
+            .entry
+            .as_mut()
+            .ok_or(RegistrationError::StaleCapability)?;
+        if entry.lifecycle != ResumableEntryLifecycle::Unpublished {
+            return Err(RegistrationError::EntryRetired);
+        }
+        entry.lifecycle = ResumableEntryLifecycle::Live;
+        let thunk = entry.thunk;
+        self.acquire_explicit_generation_lease(thunk)
+    }
+    pub(crate) fn retire_owned(
+        &mut self,
+        capability: ResumableEntryCapability,
+        lease: GenerationLeaseCapability,
+    ) -> Result<(), RegistrationError> {
+        self.release_explicit_generation_lease(lease)?;
+        let slot = self
+            .resumable_entries
+            .get_mut(capability.index)
+            .ok_or(RegistrationError::StaleCapability)?;
+        if slot.generation != capability.generation {
+            return Err(RegistrationError::StaleCapability);
+        }
+        slot.entry
+            .as_mut()
+            .ok_or(RegistrationError::StaleCapability)?
+            .lifecycle = ResumableEntryLifecycle::Retiring;
+        self.finish_entry_retirement(capability);
+        Ok(())
+    }
     pub(crate) fn new(owner: u64) -> Self {
         Self {
             owner,
@@ -2569,7 +2620,7 @@ impl ExecutionState {
             free_continuation_slots: Vec::new(),
             resumable_entries: Vec::new(),
             free_resumable_entry_slots: Vec::new(),
-            resumable_by_thunk: AddressMap::default(),
+            resumable_by_thunk: HashMap::new(),
             generation_leases: Vec::new(),
             free_generation_lease_slots: Vec::new(),
             managed_turn_depth: 0,
@@ -2645,7 +2696,7 @@ impl ExecutionState {
         if thunk == MethodAddress::from_method(carrier.descriptor.step_method()) {
             return Err(RegistrationError::StepMethodInstalledAsThunk);
         }
-        let thunk_key = thunk.as_oop().addr();
+        let thunk_key = thunk.key();
         if self.resumable_by_thunk.contains_key(&thunk_key) {
             return Err(RegistrationError::DuplicateThunk);
         }
@@ -2722,7 +2773,7 @@ impl ExecutionState {
             .entry
             .take()
             .expect("validated unpublished entry remains installed");
-        self.resumable_by_thunk.remove(&entry.thunk.as_oop().addr());
+        self.resumable_by_thunk.remove(&entry.thunk.key());
         slot.generation = next_generation;
         self.free_resumable_entry_slots.push(capability.index);
         Ok(())
@@ -2778,7 +2829,7 @@ impl ExecutionState {
                 .entry
                 .take()
                 .expect("validated generation entry remains installed");
-            self.resumable_by_thunk.remove(&entry.thunk.as_oop().addr());
+            self.resumable_by_thunk.remove(&entry.thunk.key());
             slot.generation += 1;
             self.free_resumable_entry_slots.push(index);
         }
@@ -2788,19 +2839,14 @@ impl ExecutionState {
     /// Non-effectful guard query. Presence includes unpublished and retiring
     /// entries: their normal classification may fail or require a lease.
     pub(crate) fn has_resumable_thunk(&self, method: MethodAddress) -> bool {
-        self.resumable_by_thunk
-            .contains_key(&method.as_oop().addr())
+        self.resumable_by_thunk.contains_key(&method.key())
     }
 
     pub(crate) fn classify_resumable(
         &mut self,
         method: MethodAddress,
     ) -> Result<Option<StacklessTarget>, RegistrationError> {
-        let Some(capability) = self
-            .resumable_by_thunk
-            .get(&method.as_oop().addr())
-            .copied()
-        else {
+        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
             return Ok(None);
         };
         let slot = self
@@ -2995,11 +3041,7 @@ impl ExecutionState {
         &mut self,
         method: MethodAddress,
     ) -> Result<Option<GenerationLeaseCapability>, RegistrationError> {
-        let Some(entry_capability) = self
-            .resumable_by_thunk
-            .get(&method.as_oop().addr())
-            .copied()
-        else {
+        let Some(entry_capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
             return Ok(None);
         };
         let generation = {
@@ -3015,7 +3057,9 @@ impl ExecutionState {
                 .as_ref()
                 .ok_or(RegistrationError::StaleCapability)?;
             if entry.lifecycle != ResumableEntryLifecycle::Live
-                && !(entry.lifecycle == ResumableEntryLifecycle::Retiring && self.managed_turn_depth != 0) {
+                && !(entry.lifecycle == ResumableEntryLifecycle::Retiring
+                    && self.managed_turn_depth != 0)
+            {
                 return Err(RegistrationError::EntryRetired);
             }
             if entry.explicit_generation_leases == usize::MAX {
@@ -3205,11 +3249,7 @@ impl ExecutionState {
         &mut self,
         method: MethodAddress,
     ) -> Result<(), RegistrationError> {
-        let Some(capability) = self
-            .resumable_by_thunk
-            .get(&method.as_oop().addr())
-            .copied()
-        else {
+        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
             return Ok(());
         };
         let slot = self
@@ -3256,11 +3296,7 @@ impl ExecutionState {
         method: MethodAddress,
         collected_block: bool,
     ) -> Result<(), RegistrationError> {
-        let Some(capability) = self
-            .resumable_by_thunk
-            .get(&method.as_oop().addr())
-            .copied()
-        else {
+        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
             return Ok(());
         };
         let slot = self
@@ -3304,11 +3340,7 @@ impl ExecutionState {
         &mut self,
         method: MethodAddress,
     ) -> Result<(), RegistrationError> {
-        let Some(capability) = self
-            .resumable_by_thunk
-            .get(&method.as_oop().addr())
-            .copied()
-        else {
+        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
             return Ok(());
         };
         let slot = self
@@ -3374,11 +3406,7 @@ impl ExecutionState {
         &mut self,
         method: MethodAddress,
     ) -> Result<(), RegistrationError> {
-        let Some(capability) = self
-            .resumable_by_thunk
-            .get(&method.as_oop().addr())
-            .copied()
-        else {
+        let Some(capability) = self.resumable_by_thunk.get(&method.key()).copied() else {
             return Ok(());
         };
         let slot = self
@@ -4009,7 +4037,13 @@ impl ExecutionState {
                 .is_some_and(|generation| heap.write_payload_word(object, 2, generation))
     }
 
-    pub(crate) fn trace_object_roots(&self, heap: &Heap, object: Oop, vtable: Oop, mark: impl FnMut(Oop)) {
+    pub(crate) fn trace_object_roots(
+        &self,
+        heap: &Heap,
+        object: Oop,
+        vtable: Oop,
+        mark: impl FnMut(Oop),
+    ) {
         let _ = vtable;
         let Ok(capability) = self.capability_for_object(heap, object) else {
             return;
@@ -4050,36 +4084,6 @@ impl ExecutionState {
         {
             let _ = self.destroy_machine(self.owner, capability);
         }
-    }
-
-    /// A destroyed Machine's exact floor finalizer cannot call code or change
-    /// registry state. Unknown finalizers always retain ordinary physical sweep.
-    pub(crate) fn inert_machine_finalizer(
-        &self,
-        heap: &Heap,
-        object: Oop,
-        finalizer: crate::abi::Finalizer,
-    ) -> bool {
-        if finalizer as usize != machine_finalizer as *const () as usize
-            || heap.payload_size(object) != Some(3 * size_of::<usize>())
-        {
-            return false;
-        }
-        if heap.read_payload_word(object, 0) != Some(MACHINE_CAPABILITY_KIND_V1) {
-            return true;
-        }
-        let Some(index) = heap.read_payload_word(object, 1) else {
-            return false;
-        };
-        let Some(generation) = heap
-            .read_payload_word(object, 2)
-            .and_then(|word| u64::try_from(word).ok())
-        else {
-            return false;
-        };
-        !self
-            .machine(self.owner, MachineCapability { index, generation })
-            .is_ok_and(|machine| machine.machine == object)
     }
 
     pub(crate) fn read_current_oop(
@@ -4826,7 +4830,7 @@ impl ExecutionState {
 
     /// Test-floor snapshot of the original eight action buffers. Only Machine
     /// identity is normalized, after validating the published owner fields.
-    #[cfg(feature = "ffi-test-hooks")]
+    #[cfg(test)]
     pub(crate) fn snapshot_action_words(
         &self,
         heap: &Heap,
@@ -5056,565 +5060,34 @@ fn initialize_action(
     Ok(())
 }
 
-pub(crate) fn nonnegative_index(runtime: &crate::runtime::Runtime, operand: Oop) -> Option<usize> {
-    if !runtime.is_integer(operand) {
-        return None;
-    }
-    usize::try_from(runtime.integer_value(operand)).ok()
-}
-
-pub(crate) unsafe extern "C" fn machine_new(_: Oop, _: *const Oop, count: usize) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 {
-            return runtime.canonical().nil;
-        }
-        runtime
-            .create_stackless_machine()
-            .unwrap_or_else(|_| runtime.canonical().nil)
-    })
-}
-
-fn machine_control(receiver: Oop, args: *const Oop, count: usize, capture: bool) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 2 || args.is_null() {
-            return runtime.canonical().nil;
-        }
-        // The Method ABI supplies the checked two-argument buffer.
-        let (Some(result), Some(next)) = (
-            nonnegative_index(runtime, unsafe { args.read() }),
-            nonnegative_index(runtime, unsafe { args.add(1).read() }),
-        ) else {
-            return runtime.canonical().nil;
-        };
-        let action = if capture {
-            runtime.stackless_capture_current(receiver, result, next)
-        } else {
-            runtime.stackless_suspend_current(receiver, result, next)
-        };
-        action.unwrap_or_else(|_| runtime.canonical().nil)
-    })
-}
-
-pub(crate) unsafe extern "C" fn machine_suspend(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_control(receiver, args, count, false)
-}
-
-pub(crate) unsafe extern "C" fn machine_capture(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_control(receiver, args, count, true)
-}
-
-pub(crate) unsafe extern "C" fn machine_clone_disabled(_: Oop, _: *const Oop, _: usize) -> Oop {
-    crate::runtime::with_active(|runtime| runtime.canonical().nil)
-}
-
-pub(crate) unsafe extern "C" fn machine_oop_at(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 1 || args.is_null() {
-            return runtime.canonical().nil;
-        }
-        // SAFETY: the Method ABI promises one live argument for count == 1.
-        let operand = unsafe { args.read() };
-        let Some(index) = nonnegative_index(runtime, operand) else {
-            return runtime.canonical().nil;
-        };
-        runtime
-            .stackless_oop_at(receiver, index)
-            .unwrap_or_else(|_| runtime.canonical().nil)
-    })
-}
-
-pub(crate) unsafe extern "C" fn machine_oop_at_put(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 2 || args.is_null() {
-            return runtime.canonical().nil;
-        }
-        // SAFETY: the Method ABI promises two live arguments for count == 2.
-        let index_operand = unsafe { args.read() };
-        // SAFETY: the second argument is within the same live buffer.
-        let value = unsafe { args.add(1).read() };
-        let Some(index) = nonnegative_index(runtime, index_operand) else {
-            return runtime.canonical().nil;
-        };
-        runtime
-            .stackless_oop_at_put(receiver, index, value)
-            .unwrap_or_else(|_| runtime.canonical().nil)
-    })
-}
-
-pub(crate) unsafe extern "C" fn machine_continue_at(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 1 || args.is_null() {
-            return runtime.canonical().nil;
-        }
-        // SAFETY: the Method ABI promises one live argument for count == 1.
-        let operand = unsafe { args.read() };
-        let Some(program_counter) = nonnegative_index(runtime, operand) else {
-            return runtime.canonical().nil;
-        };
-        runtime
-            .stackless_continue_at(receiver, program_counter)
-            .unwrap_or_else(|_| runtime.canonical().nil)
-    })
-}
-
-fn machine_call_site_method(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-    kind: CallSiteKind,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 1 || args.is_null() {
-            return runtime.canonical().nil;
-        }
-        // SAFETY: the Method ABI promises one live argument for count == 1.
-        let operand = unsafe { args.read() };
-        let Some(call_site_index) = nonnegative_index(runtime, operand) else {
-            return runtime.canonical().nil;
-        };
-        runtime
-            .stackless_call_site(receiver, call_site_index, kind)
-            .unwrap_or_else(|_| runtime.canonical().nil)
-    })
-}
-
-pub(crate) unsafe extern "C" fn machine_call_site(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_call_site_method(receiver, args, count, CallSiteKind::Call)
-}
-
-pub(crate) unsafe extern "C" fn machine_tail_call_site(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_call_site_method(receiver, args, count, CallSiteKind::TailCall)
-}
-
-pub(crate) unsafe extern "C" fn machine_return_at(
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 1 || args.is_null() {
-            return runtime.canonical().nil;
-        }
-        // SAFETY: the Method ABI promises one live argument for count == 1.
-        let operand = unsafe { args.read() };
-        let Some(value_slot) = nonnegative_index(runtime, operand) else {
-            return runtime.canonical().nil;
-        };
-        runtime
-            .stackless_return_at(receiver, value_slot)
-            .unwrap_or_else(|_| runtime.canonical().nil)
-    })
-}
-
-pub(crate) unsafe extern "C" fn machine_current_frame_view(
-    receiver: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 {
-            return runtime.canonical().nil;
-        }
-        runtime
-            .stackless_current_frame_view(receiver)
-            .unwrap_or_else(|error| runtime.stackless_frame_view_error(error))
-    })
-}
-
-fn frame_view_identity_method(view: Oop, count: usize, field: usize) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 {
-            return runtime.canonical().nil;
-        }
-        runtime
-            .stackless_frame_view_identity_word(view, field)
-            .unwrap_or_else(|error| runtime.stackless_frame_view_error(error))
-    })
-}
-
-fn frame_view_index_method(view: Oop, count: usize, field: usize) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 {
-            return runtime.canonical().nil;
-        }
-        runtime
-            .stackless_frame_view_index_word(view, field)
-            .unwrap_or_else(|error| runtime.stackless_frame_view_error(error))
-    })
-}
-
-pub(crate) unsafe extern "C" fn frame_view_implementation_identity(
-    view: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    frame_view_identity_method(view, count, 0)
-}
-
-pub(crate) unsafe extern "C" fn frame_view_generation_identity(
-    view: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    frame_view_identity_method(view, count, 1)
-}
-
-pub(crate) unsafe extern "C" fn frame_view_method_identity(
-    view: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    frame_view_identity_method(view, count, 2)
-}
-
-pub(crate) unsafe extern "C" fn frame_view_source_map_identity(
-    view: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    frame_view_identity_method(view, count, 3)
-}
-
-pub(crate) unsafe extern "C" fn frame_view_source_map_location(
-    view: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    frame_view_index_method(view, count, 0)
-}
-
-pub(crate) unsafe extern "C" fn frame_view_program_counter(
-    view: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    frame_view_index_method(view, count, 1)
-}
-
-pub(crate) unsafe extern "C" fn frame_view_slot_count(
-    view: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    frame_view_index_method(view, count, 2)
-}
-
-pub(crate) unsafe extern "C" fn frame_view_slot_kind_at(
-    view: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 1 || args.is_null() {
-            return runtime.canonical().nil;
-        }
-        // SAFETY: the Method ABI promises one live argument for count == 1.
-        let operand = unsafe { args.read() };
-        let Some(index) = nonnegative_index(runtime, operand) else {
-            return runtime.stackless_frame_view_error(FrameViewError::InvalidFrameSlot);
-        };
-        runtime
-            .stackless_frame_view_slot_kind(view, index)
-            .unwrap_or_else(|error| runtime.stackless_frame_view_error(error))
-    })
-}
-
-pub(crate) unsafe extern "C" fn frame_view_oop_at(
-    view: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 1 || args.is_null() {
-            return runtime.canonical().nil;
-        }
-        // SAFETY: the Method ABI promises one live argument for count == 1.
-        let operand = unsafe { args.read() };
-        let Some(index) = nonnegative_index(runtime, operand) else {
-            return runtime.stackless_frame_view_error(FrameViewError::InvalidFrameSlot);
-        };
-        runtime
-            .stackless_frame_view_oop(view, index)
-            .unwrap_or_else(|error| runtime.stackless_frame_view_error(error))
-    })
-}
-
-pub(crate) unsafe extern "C" fn machine_trace_hook(object: Oop, mark: MarkFn) {
-    crate::runtime::with_active(|runtime| runtime.trace_stackless_machine(object, mark));
-}
-
-pub(crate) unsafe extern "C" fn continuation_trace_hook(object: Oop, mark: MarkFn) {
-    crate::runtime::with_active(|runtime| runtime.trace_stackless_continuation(object, mark));
-}
-
-pub(crate) unsafe extern "C" fn execution_root_provider(mark: MarkFn) {
-    crate::runtime::with_active(|runtime| runtime.trace_stackless_scoped_roots(mark));
-}
-
-pub(crate) unsafe extern "C" fn machine_finalizer(object: Oop) {
-    crate::runtime::with_active(|runtime| {
-        // SAFETY: the heap invokes this finalizer while the detached Machine
-        // payload is still live and reclaims it only after this call returns.
-        unsafe { runtime.finalize_stackless_machine(object) }
-    });
-}
-
-pub(crate) unsafe extern "C" fn continuation_finalizer(object: Oop) {
-    crate::runtime::with_active(|runtime| {
-        // SAFETY: the heap invokes this finalizer while the detached
-        // Continuation payload remains live.
-        unsafe { runtime.finalize_stackless_continuation(object) }
-    });
-}
-
-pub(crate) unsafe extern "C" fn action_kind(action: Oop, _: *const Oop, count: usize) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 {
-            return runtime.canonical().nil;
-        }
-        runtime
-            .stackless_action_kind(action)
-            .unwrap_or_else(|| runtime.canonical().nil)
-    })
-}
-
-fn action_word_method(action: Oop, count: usize, index: usize) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 {
-            return runtime.canonical().nil;
-        }
-        runtime.stackless_action_integer_word(action, index)
-    })
-}
-
-fn machine_diagnostic_method(machine: Oop, count: usize, index: usize) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 {
-            return runtime.canonical().nil;
-        }
-        runtime.stackless_machine_diagnostic_word(machine, index)
-    })
-}
-
-pub(crate) unsafe extern "C" fn machine_live_frame_count(
-    machine: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_diagnostic_method(machine, count, 0)
-}
-
-pub(crate) unsafe extern "C" fn machine_high_water_live_frame_count(
-    machine: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_diagnostic_method(machine, count, 1)
-}
-
-pub(crate) unsafe extern "C" fn machine_reserved_arena_bytes(
-    machine: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_diagnostic_method(machine, count, 2)
-}
-
-pub(crate) unsafe extern "C" fn machine_current_synchronous_boundary_depth(
-    machine: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_diagnostic_method(machine, count, 3)
-}
-
-pub(crate) unsafe extern "C" fn machine_high_water_synchronous_boundary_depth(
-    machine: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    machine_diagnostic_method(machine, count, 4)
-}
-
-pub(crate) unsafe extern "C" fn action_schema_version(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 0)
-}
-
-pub(crate) unsafe extern "C" fn action_machine_index(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 1)
-}
-
-pub(crate) unsafe extern "C" fn action_machine_generation(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 2)
-}
-
-pub(crate) unsafe extern "C" fn action_drive_epoch(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 3)
-}
-
-pub(crate) unsafe extern "C" fn return_action_value_slot(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 4)
-}
-
-pub(crate) unsafe extern "C" fn action_receiver_slot(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 4)
-}
-
-pub(crate) unsafe extern "C" fn action_selector_slot(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 5)
-}
-
-pub(crate) unsafe extern "C" fn action_argument_start(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 6)
-}
-
-pub(crate) unsafe extern "C" fn action_argument_count(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 7)
-}
-
-pub(crate) unsafe extern "C" fn call_action_result_slot(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    action_word_method(action, count, 8)
-}
-
-pub(crate) unsafe extern "C" fn action_word_four(action: Oop, _: *const Oop, count: usize) -> Oop {
-    action_word_method(action, count, 4)
-}
-
-pub(crate) unsafe extern "C" fn action_word_five(action: Oop, _: *const Oop, count: usize) -> Oop {
-    action_word_method(action, count, 5)
-}
-
-pub(crate) unsafe extern "C" fn action_word_six(action: Oop, _: *const Oop, count: usize) -> Oop {
-    action_word_method(action, count, 6)
-}
-
-pub(crate) unsafe extern "C" fn abort_action_has_delimiter(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 {
-            return runtime.canonical().nil;
-        }
-        match runtime.stackless_action_word(action, 4) {
-            Some(usize::MAX) => runtime.canonical().false_object,
-            Some(_) => runtime.canonical().true_object,
-            None => runtime.canonical().nil,
-        }
-    })
-}
-
-pub(crate) unsafe extern "C" fn abort_action_delimiter_index(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 || runtime.stackless_action_word(action, 4) == Some(usize::MAX) {
-            return runtime.canonical().nil;
-        }
-        runtime.stackless_action_integer_word(action, 4)
-    })
-}
-
-pub(crate) unsafe extern "C" fn abort_action_delimiter_generation(
-    action: Oop,
-    _: *const Oop,
-    count: usize,
-) -> Oop {
-    crate::runtime::with_active(|runtime| {
-        if count != 0 || runtime.stackless_action_word(action, 4) == Some(usize::MAX) {
-            return runtime.canonical().nil;
-        }
-        runtime.stackless_action_integer_word(action, 5)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use birnam_artifact::stackless_selection::{
+    use birnam_artifact_codec::stackless_selection::{
         Disposition, ImplementationKind as CanonicalImplementationKind, RootKind,
     };
     use core::ffi::c_void;
 
-    unsafe extern "C" fn inert_step(_: Oop, _: *const Oop, _: usize) -> Oop {
-        core::ptr::null_mut()
+    const INERT_STEP: Method = Method::new(inert_step_entry, core::ptr::null_mut());
+    unsafe extern "C" fn inert_step_entry(
+        _: *mut core::ffi::c_void,
+        _: Oop,
+        _: *const birnam_abi::id_protocol::Operand,
+        _: usize,
+    ) -> birnam_abi::id_protocol::Outcome {
+        birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
     }
 
-    unsafe extern "C" fn inert_thunk(_: Oop, _: *const Oop, _: usize) -> Oop {
+    const INERT_THUNK: Method = Method::new(inert_thunk_entry, core::ptr::null_mut());
+    unsafe extern "C" fn inert_thunk_entry(
+        _: *mut core::ffi::c_void,
+        _: Oop,
+        _: *const birnam_abi::id_protocol::Operand,
+        _: usize,
+    ) -> birnam_abi::id_protocol::Outcome {
         // Registration requires distinct entry and step addresses, also in release.
         std::hint::black_box(60_001usize);
-        core::ptr::null_mut()
+        birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
     }
 
     fn oop(value: usize) -> Oop {
@@ -5635,7 +5108,7 @@ mod tests {
             } else {
                 vec![]
             },
-            step_method: inert_step,
+            step_method: INERT_STEP,
             ..probe_spec(slots, pc_count)
         })
         .expect("valid V2 probe descriptor")
@@ -5664,7 +5137,7 @@ mod tests {
             root_bitmap_words: roots,
             call_sites,
             edges,
-            step_method: inert_step,
+            step_method: INERT_STEP,
         })
         .expect("valid v2 test descriptor")
     }
@@ -5745,7 +5218,7 @@ mod tests {
                     disposition: Disposition::ResumableRequired,
                 },
                 91,
-                inert_step,
+                INERT_STEP,
             )
             .unwrap_or_else(|error| panic!("{name}: {error:?}"));
             assert_eq!(descriptor.identity().generation, 91);
@@ -5777,11 +5250,11 @@ mod tests {
             "    pub(crate) fn begin_managed_turn(",
             "    pub(crate) fn end_managed_turn(",
         );
-        let runtime_source = include_str!("runtime.rs");
+        let runtime_source = include_str!("machine.rs");
         let resolution = function_body(
             runtime_source,
-            "    pub(crate) fn resolve_stackless_target(",
-            "    fn materialize_registered_target(",
+            "unsafe fn lookup_target(",
+            "unsafe fn loop_drive(",
         );
 
         for (name, body) in [
@@ -5808,7 +5281,7 @@ mod tests {
                 generation: 2,
                 source_map: 3,
             },
-            step_method: inert_step,
+            step_method: INERT_STEP,
             ..probe_spec(4, 2)
         };
 
@@ -6133,6 +5606,56 @@ mod tests {
     }
 
     #[test]
+    fn owned_publication_keeps_exact_contexts_without_synthetic_bindings() {
+        let mut engine = ExecutionState::new(1);
+        let mut registrations = Vec::new();
+        for context in [1usize, 2] {
+            let thunk = Method::new(
+                INERT_THUNK.method.unwrap(),
+                core::ptr::with_exposed_provenance_mut(context),
+            );
+            let cap = engine
+                .register_resumable(
+                    1,
+                    SemanticRegistrationV1::new(thunk, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1),
+                )
+                .unwrap();
+            let lease = engine.publish_owned(cap).unwrap();
+            registrations.push((thunk, cap, lease));
+        }
+        assert_eq!(
+            engine.registration_diagnostics().direct_binding_references,
+            0
+        );
+        assert_eq!(
+            engine.registration_diagnostics().explicit_generation_leases,
+            2
+        );
+        for (thunk, cap, _) in &registrations {
+            let Some(StacklessTarget::Registered { entry }) = engine
+                .classify_resumable(MethodAddress::from_method(*thunk))
+                .unwrap()
+            else {
+                panic!("owned registration must acquire");
+            };
+            assert_eq!(entry, *cap);
+            engine.release_acquired_entry(entry).unwrap();
+        }
+        engine.begin_managed_turn().unwrap();
+        for (_, cap, lease) in registrations {
+            engine.retire_owned(cap, lease).unwrap();
+        }
+        assert!(!engine.unregister_code_generation(7).unwrap());
+        engine.end_managed_turn().unwrap();
+        assert!(engine.unregister_code_generation(7).unwrap());
+        assert_eq!(engine.registration_diagnostics().registered_entries, 0);
+        assert_eq!(
+            engine.registration_diagnostics().explicit_generation_leases,
+            0
+        );
+    }
+
+    #[test]
     fn acquired_descriptor_matches_materialization_and_requires_a_live_acquisition() {
         let owner = 74;
         let mut execution = ExecutionState::new(owner);
@@ -6140,14 +5663,14 @@ mod tests {
         let capability = execution
             .register_resumable(
                 owner,
-                SemanticRegistrationV1::new(inert_thunk, descriptor.clone(), 1, 0, 1),
+                SemanticRegistrationV1::new(INERT_THUNK, descriptor.clone(), 1, 0, 1),
             )
             .unwrap();
         assert!(matches!(
             execution.acquired_entry_descriptor(capability),
             Err(RegistrationError::StaleCapability)
         ));
-        let method = MethodAddress::from_method(inert_thunk);
+        let method = MethodAddress::from_method(INERT_THUNK);
         execution.note_direct_binding_added(method).unwrap();
         let Some(StacklessTarget::Registered { entry }) =
             execution.classify_resumable(method).unwrap()
@@ -6197,10 +5720,10 @@ mod tests {
             let capability = execution
                 .register_resumable(
                     owner,
-                    SemanticRegistrationV1::new(inert_thunk, descriptor, 0, 0, 1),
+                    SemanticRegistrationV1::new(INERT_THUNK, descriptor, 0, 0, 1),
                 )
                 .unwrap();
-            let method = MethodAddress::from_method(inert_thunk);
+            let method = MethodAddress::from_method(INERT_THUNK);
             execution.note_direct_binding_added(method).unwrap();
             let mut lease = None;
             match holder {
@@ -6278,10 +5801,10 @@ mod tests {
         execution
             .register_resumable(
                 owner,
-                SemanticRegistrationV1::new(inert_thunk, descriptor, 0, 0, 1),
+                SemanticRegistrationV1::new(INERT_THUNK, descriptor, 0, 0, 1),
             )
             .unwrap();
-        let method = MethodAddress::from_method(inert_thunk);
+        let method = MethodAddress::from_method(INERT_THUNK);
         execution.note_direct_binding_added(method).unwrap();
         execution
             .note_collected_block_binding_removed(method)
@@ -6295,11 +5818,11 @@ mod tests {
         let owner = 73;
         let mut execution = ExecutionState::new(owner);
         let carrier =
-            SemanticRegistrationV1::new(inert_thunk, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1);
+            SemanticRegistrationV1::new(INERT_THUNK, descriptor(vec![SlotKind::Oop], 1), 0, 0, 1);
         execution
             .register_resumable(owner, carrier)
             .expect("registration");
-        let method = MethodAddress::from_method(inert_thunk);
+        let method = MethodAddress::from_method(INERT_THUNK);
         execution
             .note_direct_binding_added(method)
             .expect("initial publication");

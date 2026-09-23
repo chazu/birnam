@@ -10,3 +10,6 @@ birnam-abi = { path = "../birnam-abi" }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+birnam-artifact-codec = { path = "../birnam-artifact-codec" }

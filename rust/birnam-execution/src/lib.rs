@@ -1,5 +1,11 @@
 //! Execution-owned callable objects. See the local protocol and migration ledger.
+mod control;
+mod entry;
+mod entry_plan;
+mod execution;
 mod image;
+mod machine;
+mod objects;
 use birnam_abi::{
     Oop, borrowed_bytes, borrowed_slice,
     id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
@@ -12,6 +18,7 @@ use core::{
 use std::{collections::HashMap, rc::Rc};
 
 struct Callable {
+    resumable: Option<machine::Registered>,
     execution: *const Execution,
     object: Oop,
     entry: NativeEntry,
@@ -19,12 +26,14 @@ struct Callable {
     image: Option<Rc<image::Image>>,
 }
 struct Execution {
+    machines: RefCell<machine::State>,
     id: Protocol,
     receiver: Oop,
     roots: Oop,
     gc: Oop,
     model: Oop,
     integer: Oop,
+    word: Oop,
     error: Oop,
     nil: Oop,
     method_behavior: Oop,
@@ -148,6 +157,7 @@ impl Execution {
             object(unsafe { self.send(self.method_behavior, b"allocate", &[Operand::word(0)]) }?)?;
         roots.keep(value);
         let record = Box::new(Callable {
+            resumable: None,
             execution: self,
             object: value,
             entry,
@@ -162,12 +172,23 @@ impl Execution {
     unsafe fn capture(&self, entry: NativeEntry) -> Result<Operand, Outcome> {
         if let Some(method) = self.selected(entry) {
             let _roots = self.scope(&[method]);
-            let (entry, owner, image) = {
+            let (entry, owner, image, resumable) = {
                 let values = self.methods.borrow();
                 let value = values.get(&method.addr()).ok_or_else(invalid)?;
-                (value.entry, value.owner, value.image.clone())
+                (
+                    value.entry,
+                    value.owner,
+                    value.image.clone(),
+                    value.resumable.clone(),
+                )
             };
-            return unsafe { self.make(entry, owner, image) };
+            let value = unsafe { self.make(entry, owner, image) }?;
+            self.methods
+                .borrow_mut()
+                .get_mut(&object(value)?.addr())
+                .unwrap()
+                .resumable = resumable;
+            return Ok(value);
         }
         let image = image::Image::retain(entry.method.ok_or_else(invalid)? as *const c_void)
             .ok_or_else(invalid)?;
@@ -199,6 +220,16 @@ impl Execution {
             if let Some(value) = argument.as_object() {
                 roots.keep(value);
             }
+        }
+        let registered = self
+            .methods
+            .borrow()
+            .get(&method.addr())
+            .ok_or_else(invalid)?
+            .resumable
+            .clone();
+        if let Some(registered) = registered {
+            return unsafe { machine::invoke_registered(self, &registered, receiver, args) };
         }
         let entry = self
             .methods
@@ -376,12 +407,14 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             s.gc,
             s.model,
             s.integer,
+            s.word,
             s.error,
             s.nil,
             s.method_behavior,
             s.prototype,
         ];
         values.extend(s.names.values().copied());
+        values.extend(s.machines.borrow().roots());
         values.extend(s.scoped.borrow().iter().copied());
         for value in values {
             visit(v, value)?;
@@ -416,9 +449,20 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
         let target = object(*target)?;
         let v = visitor(*v)?;
         // Copy the owned edge before visiting: a callback may reenter this owner.
-        let owner = s.methods.borrow().get(&target.addr()).map(|m| m.owner);
-        if let Some(owner) = owner {
+        let owner = s
+            .methods
+            .borrow()
+            .get(&target.addr())
+            .map(|m| (m.owner, m.resumable.as_ref().map(|r| r.origin)));
+        if let Some((owner, origin)) = owner {
             visit(v, owner)?;
+            if let Some(origin) = origin {
+                visit(v, origin)?;
+            }
+        } else if let Some(edges) = { s.machines.borrow().references(target) } {
+            for edge in edges {
+                visit(v, edge)?;
+            }
         } else if target != s.prototype {
             s.send(
                 s.model,
@@ -457,10 +501,20 @@ unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize)
         if !bytes.len().is_multiple_of(size_of::<usize>()) {
             return Err(invalid());
         }
+        let dead: Vec<usize> = bytes
+            .chunks_exact(size_of::<usize>())
+            .map(|b| usize::from_ne_bytes(b.try_into().unwrap()))
+            .collect();
+        s.machines.borrow_mut().retire_objects(&dead);
         for address in bytes.chunks_exact(size_of::<usize>()) {
             let address = usize::from_ne_bytes(address.try_into().unwrap());
             let record = s.methods.borrow_mut().remove(&address);
             if let Some(record) = record {
+                if let Some(ref registered) = record.resumable {
+                    if registered.origin == record.object {
+                        s.machines.borrow_mut().retire_method(registered)?;
+                    }
+                }
                 s.entries
                     .borrow_mut()
                     .remove(&ptr::from_ref(&*record).addr());
@@ -485,6 +539,7 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
         // can itself collect; keep the drain fence up through that reentry.
         let admission = s.send(s.gc, b"prepareAllocation", &[]);
         if admission.is_ok() {
+            s.machines.borrow_mut().checkpoint()?;
             let retired = core::mem::take(&mut *s.retired_images.borrow_mut());
             drop(retired);
         }
@@ -538,7 +593,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             Ok(value)
         };
         let mut names = HashMap::new();
-        for &name in NAMES {
+        for &name in NAMES.iter().chain(machine::NAMES) {
             names.insert(name, keep(id.intern_name(name)?)?);
         }
         let object_behavior = object(id.send_named(
@@ -567,12 +622,14 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             &[Operand::word(0)],
         )?)?)?;
         let s = Box::into_raw(Box::new(Execution {
+            machines: RefCell::new(machine::State::new()),
             id,
             receiver,
             roots: roots_object,
             gc,
             model: named(b"ObjectModel")?,
             integer: named(b"Integer")?,
+            word: named(b"Word")?,
             error: named(b"Error")?,
             nil: named(b"nil")?,
             method_behavior,
@@ -617,6 +674,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
                 &[Operand::object(target), Operand::object(receiver)],
             )?;
         }
+        machine::install(&*s, namespace)?;
         for (name, value) in [
             (b"Execution".as_slice(), receiver),
             (b"Method", prototype),

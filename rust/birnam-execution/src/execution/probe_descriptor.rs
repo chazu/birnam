@@ -3,8 +3,14 @@
 //! code. Conservative all-Oop root maps are convenient for hand-written steps.
 use super::*;
 
-unsafe extern "C" fn unused_step(_: Oop, _: *const Oop, _: usize) -> Oop {
-    core::ptr::null_mut()
+const UNUSED_STEP: Method = Method::new(unused_step_entry, core::ptr::null_mut());
+unsafe extern "C" fn unused_step_entry(
+    _: *mut core::ffi::c_void,
+    _: Oop,
+    _: *const birnam_abi::id_protocol::Operand,
+    _: usize,
+) -> birnam_abi::id_protocol::Outcome {
+    birnam_abi::id_protocol::Outcome::loaded(birnam_abi::id_protocol::Operand::unit())
 }
 
 pub(crate) fn probe_spec(slot_count: usize, pc_count: usize) -> FrameDescriptorV2Spec {
@@ -29,7 +35,7 @@ pub(crate) fn probe_spec(slot_count: usize, pc_count: usize) -> FrameDescriptorV
         root_bitmap_words: roots.repeat(pc_count),
         call_sites: vec![],
         edges: vec![],
-        step_method: unused_step,
+        step_method: UNUSED_STEP,
     }
 }
 

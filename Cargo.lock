@@ -118,6 +118,7 @@ name = "birnam-execution"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+ "birnam-artifact-codec",
 ]
 
 [[package]]
@@ -309,6 +310,7 @@ name = "birnam-siphon"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
+ "birnam-artifact-codec",
 ]
 
 [[package]]

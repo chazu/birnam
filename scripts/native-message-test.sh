@@ -11,6 +11,9 @@ export BIRNAM_TEST_MODULE_DIRECTORY="$CARGO_TARGET_DIR/debug"
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
   abi/fixtures/id-protocol-v1/execution_method.c \
   -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_method_fixture.dylib"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
+  abi/fixtures/id-protocol-v1/execution_machine.c \
+  -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_machine_fixture.dylib"
 # Audit the actual converted dylibs; no installed legacy construction graph.
 python3 - "$BIRNAM_TEST_MODULE_DIRECTORY" <<'PY_AUDIT'
 import json
@@ -30,7 +33,7 @@ metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--offline",
 packages = {p["name"]: p for p in metadata["packages"]}
 for module in modules + ["siphon", "abi"]:
     dependencies = {d["name"] for d in packages["birnam-" + module]["dependencies"] if d["kind"] is None}
-    assert dependencies == (set() if module == "abi" else {"birnam-abi"}), (module, dependencies)
+    assert dependencies == (set() if module == "abi" else {"birnam-abi", "birnam-artifact-codec"} if module == "execution" else {"birnam-abi"}), (module, dependencies)
 print("native boundary audit: exports and dependencies passed")
 PY_AUDIT
-CARGO_PROFILE_DEV_PANIC=unwind cargo test --offline --locked -p birnam-siphon --test modules --test memory --test memory_activation --test object_model --test text_error --test numbers --test numbers_loading --test collections --test roots --test execution_methods -- --include-ignored
+CARGO_PROFILE_DEV_PANIC=unwind cargo test --offline --locked -p birnam-siphon --test modules --test memory --test memory_activation --test object_model --test text_error --test numbers --test numbers_loading --test collections --test roots --test execution_methods --test execution_machines -- --include-ignored
