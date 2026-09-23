@@ -8,6 +8,16 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect Design 90 native pending-call recovery through production Execution.
+  Add owned inline candidates with baseline fallback and scoped flat/graph recovery;
+  preserve atomic frame admission, aliases, distinct number identities and Float
+  bits through live owner messages. Revalidate layout/reference ownership and root
+  intermediates across callbacks. Prove guarded fallback and owner reclamation after
+  recovered completion, abandonment and failed admission. Share the retained pure
+  graph validator with Codegen; 21 engine/planner/graph tests and the production
+  prefix pass. Remaining numeric/region/closure migration and displaced Runtime
+  cleanup still keep batch 1 open; generated recovery remains batch 2.
+
 - Continue Design 90 batch 1 with production Machines, frames, Blocks, bounded
   drives, waiting/capture/restore and protected native control adapters. Move the
   retained engine out of Runtime; admit canonical descriptor bytes through an

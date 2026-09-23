@@ -740,3 +740,31 @@ remaining callers migrated and obsolete connections removed. No production
 compiler-generated recovery or compiled mapping reclamation is claimed. Those
 fixtures belong to batch 2; Store-backed source task policy and image/worker/CLI
 integration remain at their previously documented gates.
+
+
+### Native recovery checkpoint
+
+Production Execution now connects the retained pending-call admission and pin
+transfer algorithms to `Machine recoverAt:with:` and `recoverAt:withGraph:`.
+`Method withInline:at:owner:` captures an executable native candidate, its opaque
+owner and the baseline Method registration. Eligible calls either commit an
+inline result, decline to baseline, or consume exactly one scoped recovery request.
+The concrete contract and recipe encoding are in
+[`birnam-execution/README.md`](../../rust/birnam-execution/README.md#inline-candidate-and-recovery-contract).
+
+Graph validation moved from Codegen into Execution as a private shared algorithm.
+Construction uses live Integer, Float and ObjectModel messages, scoped roots and
+current GC reference ownership. No foreign payload or compiler registry is needed.
+Production tests use the separately loaded C fixture and cover recipe/factory GC,
+reentrant consumption, control/custom-lookup fallback, layout/trace-owner changes,
+identity/bit preservation, and baseline-owner retention followed by reclamation
+on completion, abandonment and failed admission. All 21 Execution unit tests and
+all 11 production prefix integration binaries plus export/dependency audit pass.
+
+Batch 1 remains open for execution-time numeric/region/closure selection, guards
+and evaluation in `runtime/native_tier.rs` and `runtime/numeric.rs`, and deletion
+of mixed Runtime Method/driver/task-control/recovery wrappers as their remaining
+consumers migrate. This checkpoint does not substitute a generic candidate API
+for those algorithms. Batch 2 still supplies compiler producers, generated recovery
+and real compiled-mapping reclamation. Store-backed task policy and image/worker/
+CLI restoration remain deferred under the original scope.

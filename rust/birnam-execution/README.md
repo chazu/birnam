@@ -2,7 +2,7 @@
 
 Design 90 batch 1 now runs native Methods, Blocks and Machines over the production
 prefix, including frames, bounded drives, suspension, continuations and native
-control boundaries. There is no compiler dependency or alternate heap. The pure
+control boundaries, inline fallback and atomic flat/graph recovery. There is no compiler dependency or alternate heap. The pure
 artifact codec is a private implementation dependency. This is a native execution
 checkpoint; the remaining migration work below still keeps batch 1 open.
 
@@ -14,7 +14,7 @@ The retained implementation establishes these boundaries:
 |---|---|
 | Runtime `runtime/method.rs` | Exact `NativeEntry` capture; `invokeOn:` and `invokeOn:arguments:`; `methodFor:` and `addMethod:as:`. The old function-address owner registry and Lifetime `set_edge` are replaced by tracing actual Id dictionary bindings to owned Methods. |
 | Runtime `legacy_method.rs` | Language lookup returns Method/nil, while Id consumes NativeEntry/Unit. Keep that adaptation with Execution and retain both function and context; discard the all-Oop calling-convention bridge. |
-| Runtime `execution.rs`, `execution/`, `runtime/scheduling.rs` | Preserve frame arenas, generation leases, acquired-entry and frame pins, bounded drives, native barriers, suspension and continuations. The engine and its unit tests now live in this crate. `machine.rs` connects the retained transitions to Id; `control.rs` reconnects the native Block adapters. Compiler-dependent selection remains with the pending compiler migration. |
+| Runtime `execution.rs`, `execution/`, `runtime/scheduling.rs` | Preserve frame arenas, generation leases, acquired-entry and frame pins, bounded drives, native barriers, suspension and continuations. The engine and its unit tests now live in this crate. `machine.rs` connects the retained transitions to Id; `control.rs` reconnects the native Block adapters. The remaining execution-time numeric/region/closure selection is still batch 1 work; compiler construction is batch 2. |
 | Runtime `runtime.rs` drive/recovery and retirement | Selected entries remain pinned across nested calls, waiting frames and recovery. End a managed turn before draining releases, keep the outward result rooted, and never perform asynchronous cleanup from a finalizer. Preserve these mechanics when moving the drive. |
 | Runtime `registration.rs` | Validate descriptor bytes, arity, digest, manifest agreement and prepare/abort claims. Keep the codecs and admission algorithm private. Do not send the old Rust/C registration structure through Bytes. The native descriptor constructor below feeds the retained canonical validator and frame registry directly. Portable-profile admission and generated recovery publication still need their real batch 2 producers. |
 | TCC `rt_owned_method`, `rt_register_method_owner`, `release_payload`, `release_retired_unit` | TCC owns mappings. Replace registration-then-install with construction of an owned Method followed by `addMethod:as:`. Replace cached retirement exports with owner messages after the existing Execution checkpoint admits release. This is batch 2 integration, not permission to drop the retained code now. |
@@ -68,6 +68,8 @@ exact entry. Ordinary future sends perform current lookup.
 | Receiver / selector | Operands | Result and ownership |
 |---|---|---|
 | Method `fromStep:descriptor:selection:owner:` | NativeEntry step, canonical FrameDescriptor-v2 Bytes, ArtifactSelection Bytes containing exactly one matching row, code/context owner Object | Owned resumable Method. Both byte spans are bounded and copied during the call; no Rust carrier crosses the boundary. The owner identity names the generation. |
+| Method instance `withInline:at:owner:` | NativeEntry candidate, Integer baseline return slot, candidate owner Object | New captured Method with the same baseline registration and an optional inline candidate. See recovery contract below. |
+| Machine `recoverAt:with:` / `recoverAt:withGraph:` | Integer baseline PC, recipe sequence Object | Machine Object after one atomic pending-call recovery; typed failure for missing/stale authority or invalid recipe. |
 | Block `fromMethod:captures:` | Method Object, capture sequence Object | Block with `value` / `value:…` matching descriptor arity. Reads captures through current `size`/`at:`; validates descriptor capture count. Clone copies this owned representation shallowly. |
 | Machine `new` | none | New Machine and its own scratch actions, allocated through Id. |
 | Machine `runBlock:` / `runBlock:budget:` | Block or any receiver implementing `value`; optional Integer transition budget | Ordinary current `value` dispatch through the retained run adapter. Result, suspended Machine, captured Continuation, or runnable Machine at a committed budget stop. |
@@ -118,13 +120,15 @@ files are deleted. The pure tail layout plan now belongs here; Codegen temporari
 shares that private source without becoming an Execution dependency.
 
 Batch 1 remains open for the mixed Runtime consumer cleanup and execution-time
-optimization/recovery reconnection described in Design 90. The old
+numeric/region/closure optimization reconnection described in Design 90. Native
+flat/graph recovery now runs through the real Machine and retained admission
+engine. The old
 `runtime/method.rs`, drive/task-control wrappers and compiler-dependent native-tier
 consumers still reference the retired aggregate Runtime and are not loaded by the
 production prefix. Their remaining callers must move before removing them; this
-checkpoint does not claim that deletion obligation is closed. Preserved private
-recovery code and its previous compiler probes are not proof of production
-generated recovery. Batch 2 must supply generated-code registration, portable
+checkpoint does not claim that deletion obligation is closed. Native fixture
+recovery and previous compiler probes are not proof of production generated
+recovery. Batch 2 must supply generated-code registration, portable
 admission, guarded recovery and real compiled-mapping reclamation.
 
 The Store-backed Birnam TaskControl/TaskExecutor policy, image/worker integration
@@ -133,8 +137,8 @@ substitute a new scheduler for that source policy.
 
 ## Validation
 
-`mise exec -- cargo test --offline -p birnam-execution --lib` runs the 18
-engine/planner tests: canonical admission, frame validation, parallel-copy/root
+`mise exec -- cargo test --offline -p birnam-execution --lib` runs the 21
+engine/planner/graph tests: canonical admission, frame validation, parallel-copy/root
 transitions, capability reuse, scheduling barriers and generation leases.
 
 `mise run native-messages` audits actual dylib exports/dependencies and runs
@@ -150,3 +154,60 @@ temporary Method/Block/owner roots and retain only the paused Machine or detache
 Continuation; their declared owner is reclaimed after the last frame edge ends.
 Fixture contexts intentionally live for the test process; reclaimable compiled
 mappings are a separate batch 2 check.
+
+## Inline candidate and recovery contract
+
+The retained inline-call consumer needs an executable candidate, its baseline
+Method and opaque code owner. `Method withInline:at:owner:` answers a new
+owned Method preserving that baseline registration: NativeEntry candidate,
+Integer baseline return-slot, Object candidate owner. Captures snapshot this
+choice. The candidate runs only for an eligible non-tail, unprotected registered
+Call, with Machine as receiver and the original receiver followed by arguments
+as Object operands. Object answers commit an inline result; Unit declines to the
+baseline. A candidate can instead consume its scoped request through the existing
+Machine `recoverAt:with:` or `recoverAt:withGraph:` and then answer Unit. Rejection
+or error releases the acquisition; a consumed request transfers it to the frame.
+No recovery authority or Rust structure is passed through native operands.
+
+Recipe sequences retain their existing size/at: encoding; graph construction
+uses Integer, Float and ObjectModel messages. Admission is rechecked after
+callbacks and before publication. The graph validator is a private pure
+algorithm here, shared with Codegen until its producer moves. Native fixtures supply
+executable candidates now; compiler construction and emitted candidates remain
+batch 2 producers. This connection is not acceptance for the other existing
+numeric/region/closure optimization algorithms.
+
+A flat recipe contains exactly one Object per baseline descriptor slot. A graph
+recipe is `[inputs, nodes, slots]`, all sequences read through current `size` and
+`at:`. Nodes retain the existing encoding: `[0, Integer]`, `[1, Float]`, or
+`[2, Integer input-index-of-behavior, field-references]`. A nonnegative Integer
+reference selects an input; `-n-1` selects node `n`. Nodes only reference earlier
+nodes. Limits remain 128 inputs, 64 nodes, 128 output slots and 512 total fields.
+Repeated references preserve identity; distinct number nodes remain distinct and
+Float nodes preserve exact bits. Malformed graphs publish no partial frame.
+
+Graph aggregates require an all-Oop ObjectModel layout and ObjectModel as the
+current inherited GC reference owner, including for empty aggregates. Integer,
+Float and ObjectModel perform construction through live messages. Scoped roots
+retain every intermediate across allocation and callbacks; guard revalidation
+precedes each allocation and follows callbacks and field writes. A recursively
+consumed request cannot publish again. The code owner for a recovered baseline
+stays pinned until its frame ends or is abandoned; the finished candidate has no
+remaining acquisition. Errors release unconsumed acquisitions.
+
+Execution checks its own Machine slot/control entries through current Id lookup,
+with `behaviorEpoch` fencing mutation during the check. Id `usesDefaultLookup:`
+takes the Machine Object and answers Word zero/one by comparing Id's own lookup
+function and context. GC `referenceOwnerOf:` takes a behavior Object and answers
+the current inherited owner Object or Unit. These are owner-local observations,
+not cached dependency entries. Changing Machine lookup or an observed control
+method declines the candidate and runs the ordinary baseline. The candidate's
+native author remains responsible for semantic guards on its body and preserving
+baseline-observable operations; this constructor does not certify optimization.
+
+The production C candidate exercises direct result, decline and both recovery
+forms. Tests cover precise GC in recipe/factory callbacks, layout and trace-owner
+replacement, custom lookup, duplicate consumption, invalid recipes, exact numeric
+identity/bits, and code-owner reclamation after completion, abandonment or failure.
+These tests do not exercise the remaining native-tier numeric/region/closure
+algorithms or their compiler producers.

@@ -903,6 +903,7 @@ remaining Runtime consumers; they use the existing typed operand carrier.
 | `symbolAt:` | Word ordered index | Symbol or Unit |
 | `symbolNameBytes` | None | Word bytes owned by names, including NUL terminators; compatibility limits |
 | `behaviorEpoch` | None | Saturating Word dictionary mutation epoch; existing dispatch/optimizer guards |
+| `usesDefaultLookup:` | Object receiver | Word zero/one; compares the receiver behavior's current lookup entry with Id's own canonical function/context. Execution uses it for inline admission. |
 | `isBehavior:` | Object candidate | Word zero/one exact membership |
 | `behaviorView` | None | Borrowed Bytes encoding the ordered Object array |
 | `selectorsIn:` | Object behavior | Borrowed Bytes encoding its ordered key array |

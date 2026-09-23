@@ -33,9 +33,12 @@ binding-only ownership, replacement during an active native call, nested lookup
 with distinct contexts, argument GC lifetime and language result conversion. A C
 native callable is built separately and loaded through Bootstrap. A second C fixture runs canonical descriptor steps on production Machines and
 Blocks: calls/tail calls, budgets, waiting, continuations, native boundaries,
-collection-phase rejection and paused code-owner retention/reclamation. Run
-`cargo test --offline -p birnam-execution --lib` through mise for the 18
-engine tests. These native checks do not prove compiler-generated recovery or
+collection-phase rejection and paused code-owner retention/reclamation. Native
+inline candidates also exercise flat/graph recovery, GC during recipe reads and
+materialization, changed control/lookup/layout/trace-owner guards, single recovery
+publication, and release after recovered-frame completion or abandonment. Run
+`cargo test --offline -p birnam-execution --lib` through mise for the 21
+engine/planner/graph tests. These native checks do not prove compiler-generated recovery or
 compiled mapping reclamation; mixed Runtime cleanup also remains open.
 
 The obsolete `native-modules` task and installed adoption driver are removed.

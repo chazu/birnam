@@ -1,4 +1,6 @@
 //! Production counterpart of retained scheduling/lifetime mechanics probes.
+#[path = "execution_machines/recovery.rs"]
+mod recovery;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -229,6 +231,7 @@ fn production_machine_calls_blocks_budgets_waits_and_lifetimes() {
     unsafe {
         let mut h = H::new();
         let nil = h.named(b"nil");
+        recovery::check(&mut h);
         let owner = allocate(h.id, behavior(h.id), 0);
         h.keep(owner);
         let simple = h.method("minimal-return", 1, owner);

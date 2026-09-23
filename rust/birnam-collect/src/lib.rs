@@ -340,6 +340,7 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             (b"collect", collection::collect),
             (b"collectPrecisely", collection::collect_precisely),
             (b"trace:with:", trace_with),
+            (b"referenceOwnerOf:", reference_owner),
             (b"finalize:with:", finalize_with),
             (b"budget:", budget),
         ] {
@@ -399,4 +400,27 @@ pub static birnam_native_module_v1: native::Module = native::Module {
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
+}
+
+unsafe extern "C" fn reference_owner(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let m = memory(context)?;
+        let Some([behavior]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        let behavior = object(*behavior)?;
+        if m.send(m.id.receiver, b"isBehavior:", &[Operand::object(behavior)])?
+            .as_word()
+            != Some(1)
+        {
+            return Err(invalid());
+        }
+        Ok(m.trace_owner(behavior)?
+            .map_or_else(Operand::unit, Operand::object))
+    })())
 }

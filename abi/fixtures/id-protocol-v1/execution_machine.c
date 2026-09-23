@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { BirnamProtocol id; BirnamObject ns; uintptr_t mode; uintptr_t tokens[128]; size_t retained; } Probe;
+typedef struct { BirnamProtocol id; BirnamObject ns; BirnamObject owner; uintptr_t mode; uintptr_t tokens[128]; size_t retained; } Probe;
 static BirnamOutcome send(Probe *p, BirnamObject r, const char *name, const BirnamOperand *a, size_t n) {
     BirnamOperand text={.kind=BIRNAM_BYTES,.data.bytes={(const uint8_t *)name,strlen(name)}};
     BirnamOutcome selector=p->id.message(p->id.context,p->id.receiver,p->id.intern,&text,1);
@@ -61,7 +61,33 @@ static BirnamOutcome step(void *context,BirnamObject machine,const BirnamOperand
     while(local.retained){BirnamOperand token={.kind=BIRNAM_WORD,.data.word=local.tokens[--local.retained]};send(&local,named(&local,"Roots"),"release:",&token,1);}
     return result;
 }
+static BirnamOutcome inline_entry(void *context,BirnamObject machine,const BirnamOperand *args,size_t count){
+    (void)args;(void)count;
+    Probe local=*(Probe *)context;local.retained=0;Probe *p=&local;
+    BirnamOutcome result={.status=BIRNAM_LOADED,.value={.kind=BIRNAM_UNIT}};
+    if(p->mode!=1){
+        BirnamOperand index=integer(p,0);
+        result=send(p,p->owner,"at:",&index,1);
+        if(result.status==BIRNAM_LOADED && p->mode>=2){
+            p->tokens[p->retained++]=send(p,named(p,"Roots"),"retain:",&result.value,1).value.data.word;
+            BirnamOperand a[]={integer(p,0),result.value};
+            result=send(p,machine,p->mode==3?"recoverAt:withGraph:":"recoverAt:with:",a,2);
+            if(result.status==BIRNAM_LOADED)result.value=(BirnamOperand){.kind=BIRNAM_UNIT};
+        }
+    }
+    while(local.retained){BirnamOperand token={.kind=BIRNAM_WORD,.data.word=local.tokens[--local.retained]};send(&local,named(&local,"Roots"),"release:",&token,1);}
+    return result;
+}
 static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count){
+    if(id && id->version==1 && count==5 && args && args[0].kind==BIRNAM_OBJECT && args[1].kind==BIRNAM_OBJECT && args[2].kind==BIRNAM_OBJECT && args[3].kind==BIRNAM_WORD && args[4].kind==BIRNAM_WORD){
+        Probe *p=calloc(1,sizeof(*p));if(!p)return (BirnamOutcome){.status=BIRNAM_INVALID_REQUEST};
+        p->id=*id;p->ns=args[0].data.object;p->owner=args[2].data.object;p->mode=args[3].data.word;
+        BirnamOperand a[]={ {.kind=BIRNAM_NATIVE_ENTRY,.data.entry={inline_entry,p}},integer(p,args[4].data.word),args[2] };
+        BirnamOutcome result=send(p,args[1].data.object,"withInline:at:owner:",a,3);
+        while(p->retained){BirnamOperand token={.kind=BIRNAM_WORD,.data.word=p->tokens[--p->retained]};send(p,named(p,"Roots"),"release:",&token,1);}
+        if(result.status!=BIRNAM_LOADED)free(p);
+        return result;
+    }
     if(!id || id->version!=1 || count!=5 || !args || args[0].kind!=BIRNAM_OBJECT || args[1].kind!=BIRNAM_BYTES || args[2].kind!=BIRNAM_BYTES || args[3].kind!=BIRNAM_OBJECT || args[4].kind!=BIRNAM_WORD)
         return (BirnamOutcome){.status=BIRNAM_INVALID_REQUEST};
     Probe *p=malloc(sizeof(*p));if(!p)return (BirnamOutcome){.status=BIRNAM_INVALID_REQUEST};

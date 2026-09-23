@@ -106,7 +106,7 @@ impl State {
         Ok(())
     }
 }
-fn engine_failure<E: Into<ExecutionError>>(error: E) -> Outcome {
+pub(super) fn engine_failure<E: Into<ExecutionError>>(error: E) -> Outcome {
     Outcome::failed(
         native::INVALID_REQUEST,
         100 + error.into().failure_kind() as usize,
@@ -126,7 +126,7 @@ pub(super) unsafe fn index(s: &Execution, value: Operand) -> Result<usize, Outco
         .ok_or_else(invalid)? as i64;
     usize::try_from(n).map_err(|_| invalid())
 }
-unsafe fn integer(s: &Execution, value: usize) -> Result<Operand, Outcome> {
+pub(super) unsafe fn integer(s: &Execution, value: usize) -> Result<Operand, Outcome> {
     unsafe { s.send(s.integer, b"fromWord:", &[Operand::word(value)]) }
 }
 unsafe fn allocate(s: &Execution, behavior: Oop, words: usize) -> Result<Oop, Outcome> {
@@ -667,11 +667,32 @@ pub(super) unsafe fn loop_drive(
                             s.methods
                                 .borrow()
                                 .get(&method.addr())
-                                .and_then(|m| m.resumable.clone())
+                                .and_then(|m| m.resumable.clone().map(|r| (r, m.inline)))
                         });
-                    if let Some(registered) = registered {
+                    if let Some((registered, inline)) = registered {
                         let (entry, value) =
                             acquire(s, &registered, operands.receiver, &operands.arguments)?;
+                        if !tail && !matches!(decoded, DecodedAction::BoundaryCall { .. }) {
+                            if let Some(inline) = inline {
+                                // The candidate may collect or mutate its receiver before
+                                // declining. Keep the already materialized baseline inputs.
+                                for &(_, value) in &value.initial_oops {
+                                    turn_roots.keep(value);
+                                }
+                                if crate::recovery::try_inline(
+                                    s,
+                                    machine,
+                                    cap,
+                                    entry,
+                                    result_slot,
+                                    inline,
+                                    operands.receiver,
+                                    &operands.arguments,
+                                )? {
+                                    continue;
+                                }
+                            }
+                        }
                         if tail {
                             let mut state = s.machines.borrow_mut();
                             let State {
@@ -916,9 +937,11 @@ pub(super) unsafe fn invoke_registered(
     unsafe { start(s, machine, r, receiver, &args, inherited.is_some(), None) }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Op {
     FromStep,
+    WithInline,
+    Recover(bool),
     Block,
     CloneBlock,
     Prepare,
@@ -982,6 +1005,7 @@ unsafe extern "C" fn operation(
         s.send(s.gc, b"prepareAllocation", &[])?;
         match op.kind {
             Op::FromStep => return from_step(s, args),
+            Op::WithInline => return crate::recovery::with_inline(s, receiver, args),
             Op::Block => return new_block(s, args),
             Op::New if args.is_empty() => return new_machine(s).map(Operand::object),
             Op::Prepare if args.is_empty() => return Ok(Operand::object(receiver)),
@@ -1079,6 +1103,9 @@ unsafe extern "C" fn operation(
             _ => (),
         }
         let cap = cap(s, receiver)?;
+        if let Op::Recover(graph) = op.kind {
+            return crate::recovery::recover(s, receiver, args, graph);
+        }
         match op.kind {
             Op::Run(bounded) if args.len() == 1 + usize::from(bounded) => {
                 let block = object(args[0])?;
@@ -1371,6 +1398,16 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"failed",
     b"fromMethod:captures:",
     b"fromStep:descriptor:selection:owner:",
+    b"withInline:at:owner:",
+    b"recoverAt:with:",
+    b"recoverAt:withGraph:",
+    b"allOopLayoutOf:words:",
+    b"referenceOwnerOf:",
+    b"slotAt:in:put:",
+    b"allocate:bytes:",
+    b"bitsOf:",
+    b"usesDefaultLookup:",
+    b"behaviorEpoch",
     b"generationIdentity",
     b"methodIdentity",
     b"sourceMapLocation",
@@ -1727,6 +1764,19 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             b"fromStep:descriptor:selection:owner:",
             Op::FromStep,
         )?;
+        install_op(
+            s,
+            s.method_behavior,
+            b"withInline:at:owner:",
+            Op::WithInline,
+        )?;
+        install_op(s, machine_vtable, b"recoverAt:with:", Op::Recover(false))?;
+        install_op(
+            s,
+            machine_vtable,
+            b"recoverAt:withGraph:",
+            Op::Recover(true),
+        )?;
         install_op(s, machine_vtable, b"new", Op::New)?;
         install_op(s, machine_vtable, b"clone", Op::Disabled)?;
         install_op(s, machine_vtable, b"runBlock:", Op::Run(false))?;
@@ -2064,5 +2114,47 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             ],
         )?;
         Ok(())
+    }
+}
+
+/// Only compare entries installed by this Execution owner; Id judges its own
+/// default lookup. Epoch comparison fences mutations during guard observation.
+pub(super) unsafe fn inline_controls_current(s: &Execution, machine: Oop) -> Result<bool, Outcome> {
+    unsafe {
+        let epoch = s
+            .send(s.id.receiver, b"behaviorEpoch", &[])?
+            .as_word()
+            .ok_or_else(invalid)?;
+        if epoch == usize::MAX
+            || s.send(
+                s.id.receiver,
+                b"usesDefaultLookup:",
+                &[Operand::object(machine)],
+            )?
+            .as_word()
+                != Some(1)
+        {
+            return Ok(false);
+        }
+        for (name, kind) in [
+            (b"oopAt:".as_slice(), Op::Read),
+            (b"oopAt:put:", Op::Write),
+            (b"returnAt:", Op::Return),
+            (b"currentFrameView", Op::View),
+        ] {
+            let expected = {
+                let state = s.machines.borrow();
+                let context = state
+                    .contexts
+                    .iter()
+                    .find(|op| op.kind == kind)
+                    .ok_or_else(invalid)?;
+                NativeEntry::new(operation, ptr::from_ref(&**context).cast_mut().cast())
+            };
+            if lookup_target(s, machine, s.names[name])? != Some(expected) {
+                return Ok(false);
+            }
+        }
+        Ok(s.send(s.id.receiver, b"behaviorEpoch", &[])?.as_word() == Some(epoch))
     }
 }

@@ -5,7 +5,10 @@ use core::ffi::c_void;
 pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
     for (name, method) in [
         (b"symbolNamed:".as_slice(), symbol_named as native::Method),
-        (b"internBytes:".as_slice(), super::intern_bytes as native::Method),
+        (
+            b"internBytes:".as_slice(),
+            super::intern_bytes as native::Method,
+        ),
         (b"symbolCount".as_slice(), symbol_count as native::Method),
         (b"symbolAt:".as_slice(), symbol_at as native::Method),
         (
@@ -33,6 +36,10 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
             new_behavior as native::Method,
         ),
         (b"bind:to:".as_slice(), bind as native::Method),
+        (
+            b"usesDefaultLookup:".as_slice(),
+            uses_default_lookup as native::Method,
+        ),
     ] {
         let selector =
             unsafe { (&mut *state.symbols).intern(&mut *state.memory, state.symbol_vtable, name) }
@@ -156,10 +163,8 @@ unsafe extern "C" fn is_behavior(
 }
 fn view(view: &[Oop]) -> Outcome {
     done(Operand::bytes(
-        unsafe {
-            crate::abi::borrowed_slice(view.as_ptr().cast::<u8>(), size_of_val(view))
-        }
-        .unwrap(),
+        unsafe { crate::abi::borrowed_slice(view.as_ptr().cast::<u8>(), size_of_val(view)) }
+            .unwrap(),
     ))
 }
 unsafe extern "C" fn behaviors(
@@ -366,4 +371,29 @@ unsafe extern "C" fn bindings(
         }
     }
     done(Operand::unit())
+}
+
+// Concrete execution guard: Id compares its own lookup entry and context.
+unsafe extern "C" fn uses_default_lookup(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    arguments!(args, count, [receiver]);
+    objects!(receiver);
+    let state = unsafe { &*context.cast::<State>() };
+    let behavior =
+        unsafe { crate::id::object_memory::ObjectMemory::vtable_of_valid_object(receiver) };
+    let lookup = unsafe { id_dispatch::bind(state.dispatch_context(), behavior, state.lookup) };
+    match lookup {
+        Ok(entry) => done(Operand::word(usize::from(
+            entry
+                == Some(NativeEntry::new(
+                    id_dispatch::vtable_lookup_method,
+                    state.dictionaries.cast(),
+                )),
+        ))),
+        Err(error) => error,
+    }
 }

@@ -25,7 +25,7 @@ mod inline_recovery_experiment;
 #[path = "execution/loop_iteration.rs"]
 pub(crate) mod loop_iteration;
 #[path = "execution/recovery.rs"]
-mod recovery;
+pub(crate) mod recovery;
 mod scheduling;
 #[path = "execution/tail_entry.rs"]
 pub(crate) mod tail_entry;

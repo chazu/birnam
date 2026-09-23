@@ -6,6 +6,8 @@ mod execution;
 mod image;
 mod machine;
 mod objects;
+mod recovery;
+mod recovery_graph;
 use birnam_abi::{
     Oop, borrowed_bytes, borrowed_slice,
     id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
@@ -19,6 +21,7 @@ use std::{collections::HashMap, rc::Rc};
 
 struct Callable {
     resumable: Option<machine::Registered>,
+    inline: Option<recovery::Inline>,
     execution: *const Execution,
     object: Oop,
     entry: NativeEntry,
@@ -27,6 +30,7 @@ struct Callable {
 }
 struct Execution {
     machines: RefCell<machine::State>,
+    requests: RefCell<Vec<recovery::Request>>,
     id: Protocol,
     receiver: Oop,
     roots: Oop,
@@ -34,6 +38,7 @@ struct Execution {
     model: Oop,
     integer: Oop,
     word: Oop,
+    float: Oop,
     error: Oop,
     nil: Oop,
     method_behavior: Oop,
@@ -158,6 +163,7 @@ impl Execution {
         roots.keep(value);
         let record = Box::new(Callable {
             resumable: None,
+            inline: None,
             execution: self,
             object: value,
             entry,
@@ -172,7 +178,7 @@ impl Execution {
     unsafe fn capture(&self, entry: NativeEntry) -> Result<Operand, Outcome> {
         if let Some(method) = self.selected(entry) {
             let _roots = self.scope(&[method]);
-            let (entry, owner, image, resumable) = {
+            let (entry, owner, image, resumable, inline) = {
                 let values = self.methods.borrow();
                 let value = values.get(&method.addr()).ok_or_else(invalid)?;
                 (
@@ -180,14 +186,14 @@ impl Execution {
                     value.owner,
                     value.image.clone(),
                     value.resumable.clone(),
+                    value.inline,
                 )
             };
             let value = unsafe { self.make(entry, owner, image) }?;
-            self.methods
-                .borrow_mut()
-                .get_mut(&object(value)?.addr())
-                .unwrap()
-                .resumable = resumable;
+            let mut methods = self.methods.borrow_mut();
+            let captured = methods.get_mut(&object(value)?.addr()).unwrap();
+            captured.resumable = resumable;
+            captured.inline = inline;
             return Ok(value);
         }
         let image = image::Image::retain(entry.method.ok_or_else(invalid)? as *const c_void)
@@ -408,6 +414,7 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             s.model,
             s.integer,
             s.word,
+            s.float,
             s.error,
             s.nil,
             s.method_behavior,
@@ -449,12 +456,17 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
         let target = object(*target)?;
         let v = visitor(*v)?;
         // Copy the owned edge before visiting: a callback may reenter this owner.
-        let owner = s
-            .methods
-            .borrow()
-            .get(&target.addr())
-            .map(|m| (m.owner, m.resumable.as_ref().map(|r| r.origin)));
-        if let Some((owner, origin)) = owner {
+        let owner = s.methods.borrow().get(&target.addr()).map(|m| {
+            (
+                m.owner,
+                m.resumable.as_ref().map(|r| r.origin),
+                m.inline.map(|i| i.owner),
+            )
+        });
+        if let Some((owner, origin, inline_owner)) = owner {
+            if let Some(owner) = inline_owner {
+                visit(v, owner)?;
+            }
             visit(v, owner)?;
             if let Some(origin) = origin {
                 visit(v, origin)?;
@@ -623,6 +635,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         )?)?)?;
         let s = Box::into_raw(Box::new(Execution {
             machines: RefCell::new(machine::State::new()),
+            requests: RefCell::new(Vec::new()),
             id,
             receiver,
             roots: roots_object,
@@ -630,6 +643,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             model: named(b"ObjectModel")?,
             integer: named(b"Integer")?,
             word: named(b"Word")?,
+            float: named(b"Float")?,
             error: named(b"Error")?,
             nil: named(b"nil")?,
             method_behavior,
