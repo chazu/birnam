@@ -28,6 +28,13 @@ return unretained temporary keys and accumulators; tests check both survival dur
 use and reclamation after success/failure. Root registration is checked beyond
 32 enumerators, including ordering, duplicates and tracing their children.
 
+The initial Execution callable tests also run there: owned Method invocation,
+binding-only ownership, replacement during an active native call, nested lookup
+with distinct contexts, argument GC lifetime and language result conversion. A C
+native callable is built separately and loaded through Bootstrap. These are not
+Machine/frame, suspension or compiled-code reclamation checks; those remain
+required before their Design 90 batches can be marked complete.
+
 The obsolete `native-modules` task and installed adoption driver are removed.
 Cached floor-function discovery tests are also retired; they asserted the old
 parallel API's caching policy. The independent C Id protocol round trip remains

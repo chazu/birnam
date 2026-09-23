@@ -1,5 +1,12 @@
 # Checked language send v1
 
+**Migration status:** the Runtime API below is historical and currently unbuilt.
+Design 90's initial production Method integration is documented in
+[Execution's local protocol](../rust/birnam-execution/README.md). The old IdApi,
+Lifetime edges and cached owner-registration exports described below are not
+current production interfaces. Machine, generated-call and generation-lease
+integration still needs migration; the historical semantics remain its baseline.
+
 The upper Runtime exports `birnam_runtime_send_v1`:
 
 ```c

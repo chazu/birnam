@@ -10,7 +10,8 @@ product; compatibility and language surface can and will still change.
 
 **Current development status:** [Design 90](docs/design/90-functional-modules.md)
 has restored the production Id, memory-management, value and collection prefix
-through messages. The complete language still awaits upper integration. Deoptimization,
+through messages. Execution's owned Methods now run over that prefix; its
+Machine/frame branch and the complete language still await upper integration. Deoptimization,
 compiled-image recovery and concurrency implementations are retained above Id.
 The usage documentation below describes the language being preserved.
 
@@ -718,6 +719,7 @@ Siphon -> Id -> Bootstrap
                   -> Map(Namespace)
                   -> Range(Namespace), including Integer to:
                   -> String split: with Vector
+                  -> Execution(Namespace), owned Methods so far
 ```
 
 Every completed module returns an opaque Object or Unit. Namespace publishes
@@ -739,6 +741,9 @@ restore arithmetic, conversions and numeric text through messages.
 remaining values and persistent collections. Equality/hashing lives with value
 owners; String owns splitting. Collection is a shared parent, with no installer
 crate. These collection callbacks need only callable objects, not an Execution table.
+[Execution](rust/birnam-execution/README.md) now supplies owned Methods, exact
+invocation, lookup adaptation and callable retention through live bindings.
+Machine/frame, suspension and recovery integration remains in progress.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
 loading. Collection now works over this prefix through Id and Roots messages.

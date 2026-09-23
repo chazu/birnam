@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id.dylib",
     "libbirnam_runtime.dylib",
+    "libbirnam_execution.dylib",
     "libbirnam_bootstrap.dylib",
     "libbirnam_namespace.dylib",
     "libbirnam_storage.dylib",
@@ -526,6 +527,7 @@ fn native_library_source(canonical: &str) -> &'static str {
         "libbirnam_integer.dylib" => "libbirnam_integer.dylib",
         "libbirnam_float.dylib" => "libbirnam_float.dylib",
         "libbirnam_word.dylib" => "libbirnam_word.dylib",
+        "libbirnam_execution.dylib" => "libbirnam_execution.dylib",
         "libbirnam_object_model.dylib" => "libbirnam_object_model.dylib",
         "libbirnam_method_observation.dylib" => "libbirnam_method_observation.dylib",
         "libbirnam_root_registry.dylib" => "libbirnam_root_registry.dylib",

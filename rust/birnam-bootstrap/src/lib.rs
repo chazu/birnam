@@ -292,6 +292,14 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             b"installCollections:",
             &[named(b"Vector")?],
         )?;
+        id.send_named(
+            receiver,
+            b"loadNative:",
+            &[
+                Operand::bytes(&module_path(directory, "execution")),
+                Operand::object(namespace),
+            ],
+        )?;
         INSTANCE.store(state, Ordering::Release);
         Ok(Operand::object(namespace))
     }

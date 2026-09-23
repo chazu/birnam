@@ -6,15 +6,18 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.cargo-target/native-message-t
 mkdir -p "$CARGO_TARGET_DIR"
 CARGO_TARGET_DIR=$(cd "$CARGO_TARGET_DIR" && pwd)
 export CARGO_TARGET_DIR
-cargo build --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-boolean -p birnam-nil -p birnam-bootstrap -p birnam-collect -p birnam-object-model -p birnam-string -p birnam-error -p birnam-integer -p birnam-float -p birnam-word -p birnam-vector -p birnam-map -p birnam-range
+cargo build --offline --locked -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-boolean -p birnam-nil -p birnam-bootstrap -p birnam-collect -p birnam-object-model -p birnam-string -p birnam-error -p birnam-integer -p birnam-float -p birnam-word -p birnam-vector -p birnam-map -p birnam-range -p birnam-execution
 export BIRNAM_TEST_MODULE_DIRECTORY="$CARGO_TARGET_DIR/debug"
+cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
+  abi/fixtures/id-protocol-v1/execution_method.c \
+  -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_method_fixture.dylib"
 # Audit the actual converted dylibs; no installed legacy construction graph.
 python3 - "$BIRNAM_TEST_MODULE_DIRECTORY" <<'PY_AUDIT'
 import json
 from pathlib import Path
 import subprocess
 import sys
-modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range".split()
+modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution".split()
 directory = Path(sys.argv[1])
 for module in modules:
     library = directory / ("libbirnam_" + module.replace("-", "_") + ".dylib")
@@ -30,4 +33,4 @@ for module in modules + ["siphon", "abi"]:
     assert dependencies == (set() if module == "abi" else {"birnam-abi"}), (module, dependencies)
 print("native boundary audit: exports and dependencies passed")
 PY_AUDIT
-CARGO_PROFILE_DEV_PANIC=unwind cargo test --offline --locked -p birnam-siphon --test modules --test memory --test memory_activation --test object_model --test text_error --test numbers --test numbers_loading --test collections --test roots -- --include-ignored
+CARGO_PROFILE_DEV_PANIC=unwind cargo test --offline --locked -p birnam-siphon --test modules --test memory --test memory_activation --test object_model --test text_error --test numbers --test numbers_loading --test collections --test roots --test execution_methods -- --include-ignored

@@ -574,6 +574,35 @@ ownership, lookup adaptation, binding-only lifetime coverage and the hidden Stor
 dependency of source task policy. This approves the bounded plan, not an unbuilt
 implementation or a finalized registration protocol.
 
+## Initial Execution callable checkpoint (2026-09-23)
+
+Batch 1 has begun. Bootstrap now loads the Execution owner after collections,
+publishing Method/MethodVt and completed owned-callable operations. Its
+[local protocol and producer/consumer trace](../../rust/birnam-execution/README.md)
+record the current contract and the remaining frame/registration seam.
+
+Live Id dictionary enumeration supplies binding-to-Method-to-owner reachability;
+Execution keeps no second binding table. Native replacement/removal therefore
+changes that edge directly. Active invocation and argument reads use scoped roots
+registered with Roots. Method/nil language lookup is adapted to Id's existing
+NativeEntry/Unit convention, preserving exact functions and contexts. Resident
+image pins wait for an idle Execution checkpoint after metadata retirement.
+
+Production checks cover binding-only retention, native replacement while entered,
+exact captured invocation, nested lookup with collection, argument lifetime and
+failure cleanup, language result conversion, and last-reference owner reclamation.
+An independent C callable fixture is loaded through Bootstrap. The converted-prefix
+suite and export/dependency audit include this owner.
+
+This is **not completion of batch 1**. Machine/frame/Block, bounded drives,
+suspension, continuations, recovery and generation-lease integration remain, as
+does deletion of their displaced Runtime integration. Their existing algorithms
+and tests, including the old Method lease code, remain available for that work;
+the old Runtime is not loaded by this prefix. No suspended-code or compiler
+acceptance is claimed. The next task is to move those retained mechanics into
+the Execution instance and settle descriptor registration with their actual
+consumers, then restore the production scheduling and code-pin tests.
+
 ## Keep the refactor bounded
 
 For every change, ask: **does it remove an obsolete connection, establish a

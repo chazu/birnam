@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Begin Design 90 batch 1 with Execution-owned Methods in production Bootstrap.
+  Trace callable owners from actual Id bindings; preserve exact invocation,
+  language lookup adaptation, active-call roots and argument lifetime through GC.
+  Add a loaded C callable fixture and production lifetime/result tests. Document
+  the execution/compiler producers and consumers. Machine/frame, suspension,
+  generation-lease integration and deletion of their old Runtime plumbing remain
+  unfinished; this is an initial callable checkpoint, not completion of batch 1.
+
 - Clean the converted prefix: delete the unused Rust-only Vector implementation,
   unused Id hooks and obsolete IdApi discovery/adoption test plumbing. Remove
   Roots' 32-enumerator ceiling while preserving ordered, duplicate registration.

@@ -114,6 +114,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "birnam-execution"
+version = "0.0.0"
+dependencies = [
+ "birnam-abi",
+]
+
+[[package]]
 name = "birnam-file-io"
 version = "0.0.0"
 dependencies = [
