@@ -72,3 +72,20 @@ Indexing remains byte-oriented. Numeric parsing trims space/tab/CR/LF, preservin
 its historical distinction from `trimmed`'s six whitespace characters. Splitting
 still awaits collection objects. Run `mise run native-messages` for production
 coverage, including replaced constructors and collection during conversions.
+
+## Collection extension
+
+After Vector exists, Bootstrap sends String `installCollections:` with the Vector
+prototype Object. It installs `split:` only if no existing method supplies it.
+This is completed String functionality; the old String Collection crate is deleted.
+
+`split:` takes a separator Object and returns a Vector. An exact-family String
+separator matches binary bytes, left to right without overlap, retaining empty
+and trailing segments. An empty separator produces one newly copied String. A
+non-String separator returns a one-element Vector containing the receiver itself.
+String constructs each segment through its live `fromBytes:` method and builds
+the result through Vector `new` and `add:` messages, rooting each intermediate.
+
+String also owns its `collectionEquals:` and `collectionHash` implementations;
+see [Map's key protocol](../birnam-map/README.md#keys). They preserve exact-family
+byte comparison and hashing independently of public `=`.

@@ -37,6 +37,8 @@ unsafe extern "C" fn load_hook(c: *mut c_void, r: Oop, a: *const Operand, n: usi
                 &s.integer,
             ),
             (b"libbirnam_string.dylib", b"size", &s.text),
+            (b"libbirnam_integer.dylib", b"to:", &s.integer),
+            (b"libbirnam_string.dylib", b"split:", &s.text),
         ] {
             if path.ends_with(library) {
                 let behavior =
@@ -119,6 +121,10 @@ fn complete_extensions_preserve_replacements_during_collecting_bootstrap() {
             object(send(id, left, b"+", &[Operand::object(right)])),
             left
         );
+        assert_eq!(
+            object(send(id, left, b"to:", &[Operand::object(left)])),
+            left
+        );
         let difference = object(send(id, left, b"-", &[Operand::object(right)]));
         let c = retain(id, roots, difference);
         assert_eq!(
@@ -128,6 +134,10 @@ fn complete_extensions_preserve_replacements_during_collecting_bootstrap() {
         let text = object(send(id, string, b"fromBytes:", &[Operand::bytes(b"123")]));
         let d = retain(id, roots, text);
         assert_eq!(object(send(id, text, b"size", &[])), text);
+        assert_eq!(
+            object(send(id, text, b"split:", &[Operand::object(text)])),
+            text
+        );
         let parsed = object(send(id, text, b"asInteger", &[]));
         let e = retain(id, roots, parsed);
         assert_eq!(send(id, parsed, b"word", &[]).as_word(), Some(123));

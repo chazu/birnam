@@ -433,6 +433,24 @@ impl Number {
 }
 unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
     unsafe {
+        if op == 31 {
+            let [other] = args else { return Err(invalid()) };
+            let other = object(*other)?;
+            let equal =
+                r == other || matches!((n.read(r)?, n.read(other)?), (Some(a), Some(b)) if a == b);
+            return Ok(n.boolean(equal));
+        }
+
+        if op == 30 {
+            if !args.is_empty() {
+                return Err(invalid());
+            }
+            let bits = n
+                .read(r)?
+                .map(|value| value as u64)
+                .unwrap_or(r.addr() as u64);
+            return Ok(Operand::word(mix(bits)));
+        }
         if op == 10 {
             let [v] = args else {
                 return Err(invalid());
@@ -542,6 +560,8 @@ entry!(word, 12);
 entry!(print, 13);
 entry!(to_do, 14);
 const METHODS: &[(&[u8], Method)] = &[
+    (b"collectionEquals:", collection_equal),
+    (b"collectionHash", collection_hash),
     (b"+", add),
     (b"-", sub),
     (b"*", mul),
@@ -562,3 +582,12 @@ const METHODS: &[(&[u8], Method)] = &[
 
 #[path = "mixed.rs"]
 mod mixed;
+fn mix(mut value: u64) -> usize {
+    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    (value ^ (value >> 31)) as u32 as usize
+}
+entry!(collection_hash, 30);
+
+entry!(collection_equal, 31);

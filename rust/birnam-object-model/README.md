@@ -110,3 +110,10 @@ execution-specific deferred materialization, recovery, guarded specialization an
 code lifetime remain for Execution's migration. Their algorithms and semantic
 tests are retained. Full Runtime/CLI, value families and image integration are
 still pending; this module does not recreate their old descriptor adapters.
+
+Collection keys use ordinary owner methods. Object's `collectionEquals:` takes
+an Object and returns canonical Boolean identity equality; `collectionHash`
+returns the established mixed-address hash as a native Word. Symbol overrides
+hashing using Id's `symbolBytesOf:` and the former name-byte FNV-1a rule. Upper
+value owners supply their own overrides without extending Object Model's value
+catalog. See [Map's consumer contract](../birnam-map/README.md#keys).

@@ -93,13 +93,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "birnam-collection"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
 name = "birnam-dispatch-cache"
 version = "0.0.0"
 dependencies = [
@@ -301,7 +294,6 @@ dependencies = [
  "birnam-root-registry",
  "birnam-storage",
  "birnam-trace",
- "birnam-word",
  "sha2",
 ]
 
@@ -335,13 +327,6 @@ dependencies = [
 
 [[package]]
 name = "birnam-string"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
-name = "birnam-string-collection"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",

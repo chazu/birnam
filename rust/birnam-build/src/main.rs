@@ -47,8 +47,6 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_vector.dylib",
     "libbirnam_range.dylib",
     "libbirnam_map.dylib",
-    "libbirnam_string_collection.dylib",
-    "libbirnam_id_collection.dylib",
     "libbirnam_error.dylib",
     "libbirnam_portable_code.dylib",
     "libbirnam_id_isolate.dylib",
@@ -554,8 +552,6 @@ fn native_library_source(canonical: &str) -> &'static str {
         "libbirnam_range.dylib" => "libbirnam_range.dylib",
         "libbirnam_vector.dylib" => "libbirnam_vector.dylib",
         "libbirnam_map.dylib" => "libbirnam_map.dylib",
-        "libbirnam_string_collection.dylib" => "libbirnam_string_collection.dylib",
-        "libbirnam_id_collection.dylib" => "libbirnam_collection.dylib",
         "libbirnam_error.dylib" => "libbirnam_error.dylib",
         "libbirnam_portable_code.dylib" => "libbirnam_portable_code.dylib",
         "libbirnam_id_isolate.dylib" => "libbirnam_isolate.dylib",
@@ -1006,6 +1002,4 @@ mod tests {
         );
         fs::remove_dir_all(prefix).expect("remove scratch prefix");
     }
-
-
 }

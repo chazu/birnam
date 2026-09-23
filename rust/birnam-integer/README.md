@@ -45,3 +45,8 @@ payload tracing. Descriptor-based construction and numeric declarations v4/v5
 are retired. Execution's admission, deferred materialization and recovery work
 remains preserved but unintegrated; no optimization declaration is asserted for
 this new message path until its effects are proved by the Execution conversion.
+
+Collections use owner messages `collectionEquals:` (Object → Boolean) and
+`collectionHash` (no arguments → native Word, low 32 bits). Integer preserves
+exact-family signed equality and the existing 64-bit value mix independently of
+public `=`. Private behaviors use identity; see [Map's key contract](../birnam-map/README.md#keys).

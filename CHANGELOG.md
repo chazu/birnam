@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Complete the Word/collection branch through production Bootstrap and Id messages:
+  persistent Vector trie, Map HAMT, inclusive Range and String splitting. Preserve
+  key equality/hash algorithms with methods on value owners, live callbacks and
+  scoped GC roots; make Map insertion state local across reentry. Delete Collection
+  and String Collection installer crates, Word storage/adoption tables and their
+  build entries. Add production persistence, collisions, replacement, binary-text,
+  endpoint and GC tests. Execution/compiler and full CLI integration remain pending.
+
 - Restore Integer and Float through Bootstrap and Id messages, including checked
   arithmetic, mixed operations, numeric conversions, printing and inclusive
   callable iteration. Restore String indexing/parsing and Builder size/addByte:.

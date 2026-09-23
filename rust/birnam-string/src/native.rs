@@ -404,7 +404,10 @@ entry!(new_builder, 10);
 entry!(add, 11);
 entry!(as_string, 12);
 const NAMES: &[&[u8]] = &[
+    b"collectionEquals:",
+    b"collectionHash",
     b"installNumbers:",
+    b"installCollections:",
     b"retain:",
     b"release:",
     b"allocate",
@@ -491,6 +494,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
                 b"installNumbers:".as_slice(),
                 numeric::install as Method,
             ),
+            (behavior, b"installCollections:", split::install as Method),
             (behavior, b"fromBytes:", from_bytes as Method),
             (behavior, b"bytes", bytes),
             (behavior, b"length", length),
@@ -499,6 +503,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"printString", print),
             (behavior, b",", comma),
             (behavior, b"=", equals),
+            (behavior, b"collectionEquals:", collection_equal),
+            (behavior, b"collectionHash", collection_hash),
             (behavior, b"trimmed", trimmed),
             (behavior, b"replace:with:", replace),
             (behavior, b"asSymbol", as_symbol),
@@ -627,3 +633,67 @@ pub static birnam_native_module_v1: native::Module = native::Module {
 
 #[path = "numeric.rs"]
 mod numeric;
+
+unsafe extern "C" fn collection_equal(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let t = state(c)?;
+        let Some([other]) = borrowed_slice(a, count) else {
+            return Err(invalid());
+        };
+        let other = object(*other)?;
+        t.rooted(&[r, other], || {
+            let mut equal = r == other;
+            if !equal
+                && t.send(t.id.receiver, b"behaviorOf:", &[Operand::object(r)])?
+                    .as_object()
+                    == Some(t.behavior)
+                && t.send(t.id.receiver, b"behaviorOf:", &[Operand::object(other)])?
+                    .as_object()
+                    == Some(t.behavior)
+            {
+                equal = t.copy(r, false)? == t.copy(other, false)?;
+            }
+            Ok(Operand::object(if equal { t.truth } else { t.falsity }))
+        })
+    })())
+}
+unsafe extern "C" fn collection_hash(
+    c: *mut c_void,
+    r: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let t = state(c)?;
+        if count != 0 {
+            return Err(invalid());
+        }
+        t.rooted(&[r], || {
+            if t.send(t.id.receiver, b"behaviorOf:", &[Operand::object(r)])?
+                .as_object()
+                != Some(t.behavior)
+            {
+                return Ok(Operand::word(mix(r.addr() as u64)));
+            }
+            let mut hash = 2_166_136_261u32;
+            for byte in t.copy(r, false)? {
+                hash = (hash ^ u32::from(byte)).wrapping_mul(16_777_619);
+            }
+            Ok(Operand::word(hash as usize))
+        })
+    })())
+}
+fn mix(mut value: u64) -> usize {
+    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    (value ^ (value >> 31)) as u32 as usize
+}
+
+#[path = "split.rs"]
+mod split;

@@ -328,11 +328,51 @@ propagation, callback iteration and raw tracing. A second Bootstrap test trigger
 collection throughout upper construction and verifies that mixed/text extensions
 preserve methods replaced before installation. Existing prefix tests still pass.
 
-Next finish the remaining value/collection branch: Word, Vector, Map, Range and
-shared collection semantics, with String splitting in its text owner. Group by
-actual dependencies rather than migrating old installer crates one by one.
-Execution/compiler, image, worker and full Runtime/CLI integration remain pending;
-the working production prefix is not the complete language.
+## Collection checkpoint (2026-09-22)
+
+The remaining value/collection branch is now in production Bootstrap: Word,
+Vector, Map and Range take Namespace and return completed objects. Range installs
+Integer `to:` after both exist; String receives the completed Vector through
+`installCollections:` and owns `split:`. Both extensions preserve existing
+replacements. See the owning protocols for [Word](../../rust/birnam-word/README.md),
+[Vector](../../rust/birnam-vector/README.md), [Map](../../rust/birnam-map/README.md),
+[Range](../../rust/birnam-range/README.md), and [String](../../rust/birnam-string/README.md).
+
+The Collection crate contained no shared algorithms: Bootstrap now constructs
+and publishes its existing parent behavior directly. Deleted that installer and
+the String Collection crate, their build/install entries, Word's storage table and
+Runtime adoption/test-mounting wrapper. No shared value catalog or replacement
+function table was introduced. Existing Vector trie and Map HAMT algorithms,
+including full-hash collisions, remain with their owners. The pure Rust Vector
+kernel used by Rust consumers is retained.
+
+Map and Vector consume `collectionEquals:`; Map also consumes `collectionHash`.
+Object Model provides the identity default and Symbol name hashing. Integer,
+Float and String implement their former exact-family value rules themselves.
+Hash algorithms, signed-zero normalization, same-object NaN recognition and Word's
+identity-key rule are preserved independently of public `=`. These are live
+messages with a documented key-stability contract, not a catalog of value types.
+
+Object Model owns allocation/slot tracing; each collection interprets only its own
+payloads. Scoped Roots messages cover construction paths, callback arguments,
+fold accumulators, copied sort keys and traversal snapshots. Native reads validate
+storage extents. Map's added-key flag is local to an insertion; no global flag,
+thread-local sorting roots or cached dependency calls remain. Word/Range raw bits
+never become reference edges, including after behavior privatization.
+
+Targeted tests load the real production dylibs through Siphon/Id/Bootstrap. They
+exercise persistent versions through both Vector growth boundaries, HAMT collisions,
+value/identity key distinctions, reentrant equality, live callback/factory replacement,
+Range endpoint/overflow behavior, binary splitting, tracing/retirement and malformed
+reference slots. Bootstrap also runs with collection at each upper allocation and
+preserves preinstalled numeric, text, Range and split replacements.
+
+This closes the value/collection batch. Next restore the Execution owner as a
+coherent production branch: calls/Blocks, frames, scheduling, suspension,
+continuations and recovery, preserving concurrency and deoptimization work. Then
+repair compiler/generated-code integration against those real execution messages.
+The full Runtime/CLI, images and workers still await integration; the working
+prefix is not the complete language.
 
 ## Keep the refactor bounded
 

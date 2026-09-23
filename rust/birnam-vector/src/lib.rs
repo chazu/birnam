@@ -1,749 +1,813 @@
-//! Vector representation, canonical identities, methods and scoped sorting roots.
-#![allow(clippy::missing_safety_doc)]
+//! Vector representation and operations. Dependencies are opaque Id receivers.
+use birnam_abi::{
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+    ptr,
+};
+use std::collections::HashMap;
+struct State {
+    id: Protocol,
+    roots: Oop,
+    model: Oop,
+    behavior: Oop,
+    node: Oop,
+    prototype: Cell<Oop>,
+    values: HashMap<&'static [u8], Oop>,
+    names: HashMap<&'static [u8], Oop>,
+    thread: std::thread::ThreadId,
+}
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
+}
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
+}
+fn done(v: Result<Operand, Outcome>) -> Outcome {
+    v.map_or_else(|e| e, Outcome::loaded)
+}
+unsafe fn state<'a>(c: *mut c_void) -> Result<&'a State, Outcome> {
+    let s = unsafe { &*c.cast::<State>() };
+    if s.thread != std::thread::current().id() {
+        return Err(invalid());
+    }
+    Ok(s)
+}
+// Each synchronous operation owns its roots. No borrow spans a message send.
+struct Scope<'a> {
+    s: &'a State,
+    tokens: RefCell<Vec<usize>>,
+}
+impl<'a> Scope<'a> {
+    unsafe fn run<T>(
+        s: &'a State,
+        values: &[Oop],
+        f: impl FnOnce(&Self) -> Result<T, Outcome>,
+    ) -> Result<T, Outcome> {
+        let scope = Self {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        let result = (|| unsafe {
+            for &v in values {
+                scope.keep(v)?;
+            }
+            f(&scope)
+        })();
+        unsafe {
+            scope.clear()?;
+        }
+        result
+    }
+    unsafe fn keep(&self, value: Oop) -> Result<Oop, Outcome> {
+        if !value.is_null() {
+            let token = unsafe {
+                self.s
+                    .send(self.s.roots, b"retain:", &[Operand::object(value)])
+            }?
+            .as_word()
+            .filter(|n| *n != 0)
+            .ok_or_else(invalid)?;
+            self.tokens.borrow_mut().push(token);
+        }
+        Ok(value)
+    }
+    unsafe fn clear(&self) -> Result<(), Outcome> {
+        let tokens = std::mem::take(&mut *self.tokens.borrow_mut());
+        let mut error = None;
+        for token in tokens {
+            match unsafe {
+                self.s
+                    .send(self.s.roots, b"release:", &[Operand::word(token)])
+            } {
+                Ok(v) if v.as_word() == Some(1) => {}
+                Ok(_) => error = Some(invalid()),
+                Err(e) => error = Some(e),
+            }
+        }
+        error.map_or(Ok(()), Err)
+    }
+    // Retain the next persistent result before discarding construction temporaries.
+    unsafe fn reset(&self, value: Oop) -> Result<Oop, Outcome> {
+        unsafe {
+            let old = std::mem::take(&mut *self.tokens.borrow_mut());
+            let result = self.keep(value);
+            let new = std::mem::replace(&mut *self.tokens.borrow_mut(), old);
+            let cleanup = self.clear();
+            *self.tokens.borrow_mut() = new;
+            cleanup?;
+            result
+        }
+    }
+}
+impl State {
+    unsafe fn send(
+        &self,
+        r: Oop,
+        name: &'static [u8],
+        args: &[Operand],
+    ) -> Result<Operand, Outcome> {
+        unsafe { self.id.send(r, self.names[name], args) }
+    }
+    fn value(&self, name: &'static [u8]) -> Oop {
+        self.values[name]
+    }
+    fn nil(&self) -> Operand {
+        Operand::object(self.value(b"nil"))
+    }
+    unsafe fn allocate(
+        &self,
+        scope: &Scope<'_>,
+        behavior: Oop,
+        bytes: usize,
+    ) -> Result<Oop, Outcome> {
+        unsafe {
+            let value = scope.keep(object(self.send(
+                self.model,
+                b"allocate:bytes:",
+                &[Operand::object(behavior), Operand::word(bytes)],
+            )?)?)?;
+            if self
+                .send(
+                    self.id.receiver,
+                    b"allocationSizeOf:",
+                    &[Operand::object(value)],
+                )?
+                .as_word()
+                != Some(bytes)
+                || self
+                    .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                    .as_object()
+                    != Some(behavior)
+            {
+                return Err(invalid());
+            }
+            Ok(value)
+        }
+    }
+    unsafe fn integer(&self, value: i64) -> Result<Operand, Outcome> {
+        unsafe {
+            self.send(
+                self.value(b"Integer"),
+                b"fromWord:",
+                &[Operand::word(value as usize)],
+            )
+        }
+    }
+    unsafe fn index(&self, value: Oop) -> Result<Option<i64>, Outcome> {
+        let v = unsafe {
+            self.send(
+                self.value(b"Integer"),
+                b"wordOf:",
+                &[Operand::object(value)],
+            )
+        }?;
+        if v.kind() == native::UNIT {
+            Ok(None)
+        } else {
+            Ok(Some(v.as_word().ok_or_else(invalid)? as i64))
+        }
+    }
+    unsafe fn same(&self, a: Oop, b: Oop) -> Result<bool, Outcome> {
+        unsafe {
+            Ok(a == b
+                || self
+                    .send(a, b"collectionEquals:", &[Operand::object(b)])?
+                    .as_object()
+                    == Some(self.value(b"true")))
+        }
+    }
+    unsafe fn printable(&self, value: Oop) -> Result<Vec<u8>, Outcome> {
+        unsafe {
+            let printed = object(self.send(value, b"printString", &[])?)?;
+            Scope::run(self, &[printed], |_| {
+                let raw = self
+                    .send(printed, b"bytes", &[])?
+                    .as_bytes()
+                    .ok_or_else(invalid)?;
+                Ok(borrowed_bytes(raw.pointer, raw.length)
+                    .ok_or_else(invalid)?
+                    .to_vec())
+            })
+        }
+    }
+}
+unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, count: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([visitor]) = borrowed_slice(a, count) else {
+            return Err(invalid());
+        };
+        let visitor = visitor
+            .as_entry()
+            .filter(|v| v.method.is_some())
+            .ok_or_else(invalid)?;
+        let mut values = vec![s.roots, s.model, s.behavior, s.node, s.prototype.get()];
+        values.extend(s.values.values().copied());
+        values.extend(s.names.values().copied());
+        for value in values.into_iter().filter(|v| !v.is_null()) {
+            visitor.method.unwrap()(
+                visitor.context,
+                s.prototype.get(),
+                &Operand::object(value),
+                1,
+            )
+            .into_result()?;
+        }
+        Ok(Operand::unit())
+    })())
+}
+macro_rules! entry {
+    ($name:ident,$op:expr) => {
+        unsafe extern "C" fn $name(
+            c: *mut c_void,
+            r: Oop,
+            a: *const Operand,
+            count: usize,
+        ) -> Outcome {
+            done((|| unsafe {
+                let s = state(c)?;
+                let args = borrowed_slice(a, count).ok_or_else(invalid)?;
+                let mut values = vec![r];
+                for arg in args {
+                    values.push(object(*arg)?);
+                }
+                Scope::run(s, &values, |scope| execute(s, scope, r, &values[1..], $op))
+            })())
+        }
+    };
+}
+const NAMES: &[&[u8]] = &[
+    b"retain:",
+    b"release:",
+    b"allocate:bytes:",
+    b"allocationSizeOf:",
+    b"behaviorOf:",
+    b"fromWord:",
+    b"printString",
+    b"bytes",
+    b"fromBytes:",
+    b"rootsDo:",
+    b"register:",
+    b"ownerOf:put:",
+    b"addMethod",
+    b"at:put:",
+    b"wordOf:",
+    b"collectionEquals:",
+    b"value:",
+    b"value:value:",
+    b"<",
+    b"Vector",
+    b"VectorVt",
+    b"VectorNode",
+];
+
+unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let named = |name: &[u8]| {
+            object(id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+        };
+        let roots = named(b"Roots")?;
+        let model = named(b"ObjectModel")?;
+        let retain = id.intern_name(b"retain:")?;
+        let release = id.intern_name(b"release:")?;
+        let mut tokens = Vec::new();
+        let mut keep = |v: Oop| -> Result<Oop, Outcome> {
+            tokens.push(
+                id.send(roots, retain, &[Operand::object(v)])?
+                    .as_word()
+                    .filter(|v| *v != 0)
+                    .ok_or_else(invalid)?,
+            );
+            Ok(v)
+        };
+        let mut names = HashMap::new();
+        for name in NAMES
+            .iter()
+            .copied()
+            .chain(METHODS.iter().map(|(name, _)| *name))
+        {
+            names.insert(name, keep(id.intern_name(name)?)?);
+        }
+        let mut values = HashMap::new();
+        for name in DEPENDENCIES {
+            values.insert(*name, named(name)?);
+        }
+        let behavior = keep(object(id.send_named(
+            named(b"CollectionVt")?,
+            b"delegated",
+            &[],
+        )?)?)?;
+        let node = keep(object(id.send_named(
+            named(b"ObjectVt")?,
+            b"delegated",
+            &[],
+        )?)?)?;
+        let p = Box::into_raw(Box::new(State {
+            id,
+            roots,
+            model,
+            behavior,
+            node,
+            prototype: Cell::new(ptr::null_mut()),
+            values,
+            names,
+            thread: std::thread::current().id(),
+        }));
+        let s = &*p;
+        for (name, method) in METHODS
+            .iter()
+            .copied()
+            .chain([(b"rootsDo:".as_slice(), self::roots as Method)])
+        {
+            s.send(
+                behavior,
+                b"addMethod",
+                &[
+                    Operand::object(s.names[name]),
+                    Operand::entry(NativeEntry::new(method, p.cast())),
+                ],
+            )?;
+        }
+        id.send_named(
+            model,
+            b"setLayoutOf:to:rest:",
+            &[
+                Operand::object(behavior),
+                Operand::bytes(&[0, 0, 1, 1, 0]),
+                Operand::word(0),
+            ],
+        )?;
+        id.send_named(
+            model,
+            b"setLayoutOf:to:rest:",
+            &[Operand::object(node), Operand::bytes(&[]), Operand::word(1)],
+        )?;
+        Scope::run(s, &[], |scope| {
+            let prototype = empty(s, scope)?;
+            s.prototype.set(prototype);
+            s.send(roots, b"register:", &[Operand::object(prototype)])?;
+            s.send(
+                id.receiver,
+                b"ownerOf:put:",
+                &[Operand::object(behavior), Operand::object(prototype)],
+            )?;
+            for (name, value) in [(b"Vector".as_slice(), prototype), (b"VectorVt", behavior)] {
+                s.send(
+                    namespace,
+                    b"at:put:",
+                    &[Operand::object(s.names[name]), Operand::object(value)],
+                )?;
+            }
+            s.send(
+                namespace,
+                b"at:put:",
+                &[
+                    Operand::object(s.names[b"VectorNode".as_slice()]),
+                    Operand::object(node),
+                ],
+            )?;
+            Ok(())
+        })?;
+        for token in tokens {
+            id.send(roots, release, &[Operand::word(token)])?;
+        }
+        Ok(Operand::object(s.prototype.get()))
+    }
+}
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, count: usize) -> Outcome {
+    done((|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([namespace]) = borrowed_slice(a, count) else {
+            return Err(invalid());
+        };
+        let namespace = object(*namespace)?;
+        let id = *id;
+        let current = id.send_named(
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"Vector")?)],
+        )?;
+        if current.kind() == native::OBJECT {
+            return Ok(current);
+        }
+        construct(id, namespace)
+    })())
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
+    1
+}
+
 mod kernel;
-use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
-use core::ffi::c_char;
-use core::ptr;
 pub use kernel::PersistentVector;
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Once, OnceLock};
+const DEPENDENCIES: &[&[u8]] = &[b"Integer", b"String", b"nil", b"true", b"false"];
 const BITS: usize = 5;
 const WIDTH: usize = 1 << BITS;
 const MASK: usize = WIDTH - 1;
-const VECTOR_NAME: &[u8] = b"Vector\0";
-const VECTOR_VT_NAME: &[u8] = b"VectorVt\0";
-const VECTOR_NODE_NAME: &[u8] = b"VectorNode\0";
+#[derive(Clone, Copy)]
 #[repr(C)]
-struct VecPayload {
+struct Vector {
     count: usize,
     shift: usize,
     root: Oop,
     tail: Oop,
     tail_len: usize,
 }
-
-static VECTOR_LAYOUT: [u8; 5] = [
-    birnam_abi::SLOT_RAW,
-    birnam_abi::SLOT_RAW,
-    birnam_abi::SLOT_OOP,
-    birnam_abi::SLOT_OOP,
-    birnam_abi::SLOT_RAW,
-];
-
-const _: () = {
-    assert!(size_of::<VecPayload>() == 40);
-    assert!(align_of::<VecPayload>() == 8);
-    assert!(core::mem::offset_of!(VecPayload, root) == 16);
-    assert!(core::mem::offset_of!(VecPayload, tail) == 24);
-    assert!(core::mem::offset_of!(VecPayload, tail_len) == 32);
-};
-struct Family {
-    api: usize,
-    node_vt: usize,
-    vector_vt: usize,
-}
-static FAMILY: OnceLock<Family> = OnceLock::new();
-static ROOTS_REGISTERED: Once = Once::new();
-static IDENTITY_ROOTS: [AtomicUsize; 3] = [const { AtomicUsize::new(0) }; 3];
-static READY: AtomicBool = AtomicBool::new(false);
-fn abort(message: &str) -> ! {
-    eprintln!("birnam Vector: {message}");
-    std::process::abort();
-}
-fn family() -> &'static Family {
-    FAMILY
-        .get()
-        .unwrap_or_else(|| abort("Vector family was not prepared"))
-}
-unsafe extern "C" fn mark_roots(mark: MarkFn) {
-    for root in &IDENTITY_ROOTS {
-        let object = root.load(Ordering::Acquire) as Oop;
-        if !object.is_null() {
-            unsafe { mark(object) };
-        }
-    }
-    if let Some(runtime) = RUNTIME.get() {
-        for value in [runtime.value1, runtime.value2, runtime.print_string] {
-            unsafe { mark(value as Oop) };
-        }
-    }
-    SORT_ROOTS.with(|roots| {
-        let roots = roots.borrow();
-        for &root in roots.iter() {
-            // SAFETY: the collector supplies a synchronous mark callback and
-            // this thread-local stack contains Oops copied from active sends.
-            unsafe { mark(root) };
-        }
-    });
-}
-unsafe extern "C" fn prepare(api_pointer: *mut IdApi, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop) {
-    if !READY.load(Ordering::Acquire) || api_pointer.is_null() {
-        abort("invalid Vector preparation");
-    }
-    let api = unsafe { &*api_pointer };
-    ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });
-    FAMILY.get_or_init(|| {
-        let node = unsafe { (api.proto)(api.object_vt) };
-        IDENTITY_ROOTS[0].store(node as usize, Ordering::Release);
-        let vector = unsafe { (api.proto)(parent) };
-        IDENTITY_ROOTS[1].store(vector as usize, Ordering::Release);
-        Family {
-            api: api_pointer as usize,
-            node_vt: node as usize,
-            vector_vt: vector as usize,
-        }
-    });
-}
-unsafe extern "C" fn finish_prototype(api_pointer: *mut IdApi) {
-    if IDENTITY_ROOTS[2].load(Ordering::Acquire) == 0 {
-        let prototype = unsafe { empty_vector(&*api_pointer, family()) };
-        IDENTITY_ROOTS[2].store(prototype as usize, Ordering::Release);
-    }
-}
-unsafe extern "C" fn set_layout(_api_pointer: *mut IdApi, layouts: *const birnam_abi::payload_layout::ApiV1) {
+unsafe fn payload(s: &State, value: Oop) -> Result<Vector, Outcome> {
     unsafe {
-        birnam_abi::payload_layout::set(layouts,
-            family().node_vt as Oop,
-            ptr::null(),
-            0,
-            birnam_abi::SLOT_OOP,
-        );
-        birnam_abi::payload_layout::set(layouts,
-            family().vector_vt as Oop,
-            VECTOR_LAYOUT.as_ptr(),
-            VECTOR_LAYOUT.len(),
-            birnam_abi::SLOT_RAW,
-        );
+        if s.send(
+            s.id.receiver,
+            b"allocationSizeOf:",
+            &[Operand::object(value)],
+        )?
+        .as_word()
+            != Some(size_of::<Vector>())
+        {
+            return Err(invalid());
+        }
+        let v = value.cast::<Vector>().read();
+        if v.shift < BITS
+            || v.shift >= usize::BITS as usize
+            || v.shift % BITS != 0
+            || v.tail_len > WIDTH
+            || v.tail_len > v.count
+            || (v.count != 0 && v.tail_len == 0)
+        {
+            return Err(invalid());
+        }
+        Ok(v)
     }
 }
-unsafe extern "C" fn set_owner(api_pointer: *mut IdApi) {
-    unsafe {
-        birnam_abi::set_vtable_owner(
-            &*api_pointer,
-            family().vector_vt as Oop,
-            IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop,
+unsafe fn node(value: Oop) -> *mut [Oop; WIDTH] {
+    value.cast()
+}
+unsafe fn check_node(s: &State, value: Oop) -> Result<(), Outcome> {
+    if unsafe {
+        s.send(
+            s.id.receiver,
+            b"allocationSizeOf:",
+            &[Operand::object(value)],
         )
-    };
+    }?
+    .as_word()
+        != Some(size_of::<[Oop; WIDTH]>())
+    {
+        return Err(invalid());
+    }
+    Ok(())
 }
-unsafe extern "C" fn publish(_api_pointer: *mut IdApi, exports: *const birnam_abi::namespace_export::ApiV1) {
+unsafe fn new_node(s: &State, scope: &Scope<'_>) -> Result<Oop, Outcome> {
+    unsafe { s.allocate(scope, s.node, size_of::<[Oop; WIDTH]>()) }
+}
+unsafe fn copy_node(s: &State, scope: &Scope<'_>, source: Oop) -> Result<Oop, Outcome> {
     unsafe {
-        birnam_abi::namespace_export::export(exports, VECTOR_VT_NAME.as_ptr().cast(), family().vector_vt as Oop);
-        birnam_abi::namespace_export::export(exports,
-            VECTOR_NAME.as_ptr().cast(),
-            IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop,
-        );
-        birnam_abi::namespace_export::export(exports, VECTOR_NODE_NAME.as_ptr().cast(), family().node_vt as Oop);
+        check_node(s, source)?;
+        let value = new_node(s, scope)?;
+        *node(value) = *node(source);
+        Ok(value)
     }
 }
-unsafe fn vec_payload(object: Oop) -> *mut VecPayload {
-    if object.is_null() {
-        abort("Vector method received a null receiver");
+unsafe fn new_path(s: &State, scope: &Scope<'_>, level: usize, tail: Oop) -> Result<Oop, Outcome> {
+    unsafe {
+        if level == 0 {
+            return Ok(tail);
+        }
+        let value = new_node(s, scope)?;
+        (*node(value))[0] = new_path(s, scope, level - BITS, tail)?;
+        Ok(value)
     }
-    // SAFETY: Vector instances are allocated with the exact VecPayload layout.
-    object.cast::<VecPayload>()
 }
-
-unsafe fn node_slots(object: Oop) -> *mut [Oop; WIDTH] {
-    if object.is_null() {
-        abort("Vector node was null");
-    }
-    // SAFETY: VectorNode payloads are allocated as WIDTH consecutive OOP slots.
-    object.cast::<[Oop; WIDTH]>()
-}
-
-unsafe fn new_node(api: &IdApi, node_vt: Oop) -> Oop {
-    // SAFETY: the vtable has an all-OOP layout and the requested payload is
-    // exactly one vector trie node.
-    let node = unsafe { (api.alloc)(node_vt, size_of::<[Oop; WIDTH]>()) };
-    if node.is_null() {
-        abort("VectorNode allocation failed");
-    }
-    node
-}
-
-unsafe fn copy_node(api: &IdApi, node_vt: Oop, source: Oop) -> Oop {
-    let destination = unsafe { new_node(api, node_vt) };
-    // SAFETY: both payloads have the exact WIDTH-slot node extent.
-    unsafe { (*node_slots(destination)).copy_from_slice(&*node_slots(source)) };
-    destination
-}
-
-unsafe fn oop_new_path(api: &IdApi, node_vt: Oop, level: usize, node: Oop) -> Oop {
-    if level == 0 {
-        return node;
-    }
-    let result = unsafe { new_node(api, node_vt) };
-    unsafe { (*node_slots(result))[0] = oop_new_path(api, node_vt, level - BITS, node) };
-    result
-}
-
-unsafe fn oop_push_tail(
-    api: &IdApi,
-    node_vt: Oop,
-    old_count: usize,
+unsafe fn push_tail(
+    s: &State,
+    scope: &Scope<'_>,
+    count: usize,
     level: usize,
     parent: Oop,
     tail: Oop,
-) -> Oop {
-    let subindex = ((old_count - 1) >> level) & MASK;
-    let result = unsafe { copy_node(api, node_vt, parent) };
-    let child = if level == BITS {
-        tail
-    } else {
-        let existing = unsafe { (*node_slots(parent))[subindex] };
-        if existing.is_null() {
-            unsafe { oop_new_path(api, node_vt, level - BITS, tail) }
+) -> Result<Oop, Outcome> {
+    unsafe {
+        let index = ((count - 1) >> level) & MASK;
+        let result = copy_node(s, scope, parent)?;
+        let existing = (*node(parent))[index];
+        let child = if level == BITS {
+            tail
+        } else if existing.is_null() {
+            new_path(s, scope, level - BITS, tail)?
         } else {
-            unsafe { oop_push_tail(api, node_vt, old_count, level - BITS, existing, tail) }
-        }
-    };
-    unsafe { (*node_slots(result))[subindex] = child };
-    result
-}
-
-unsafe fn empty_vector(api: &IdApi, runtime: &Family) -> Oop {
-    let root = unsafe { new_node(api, runtime.node_vt as Oop) };
-    let tail = unsafe { new_node(api, runtime.node_vt as Oop) };
-    // SAFETY: the vtable's layout matches VecPayload exactly.
-    let vector = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
-    if vector.is_null() {
-        abort("Vector allocation failed");
-    }
-    unsafe {
-        *vec_payload(vector) = VecPayload {
-            count: 0,
-            shift: BITS,
-            root,
-            tail,
-            tail_len: 0,
+            push_tail(s, scope, count, level - BITS, existing, tail)?
         };
+        (*node(result))[index] = child;
+        Ok(result)
     }
-    vector
 }
-
-unsafe fn oop_array_for(vector: *const VecPayload, index: usize) -> Oop {
-    if index >= unsafe { (*vector).count } {
-        return ptr::null_mut();
+unsafe fn make(s: &State, scope: &Scope<'_>, v: Vector) -> Result<Oop, Outcome> {
+    unsafe {
+        let result = s.allocate(scope, s.behavior, size_of::<Vector>())?;
+        result.cast::<Vector>().write(v);
+        Ok(result)
     }
-    if index >= unsafe { (*vector).count - (*vector).tail_len } {
-        return unsafe { (*vector).tail };
-    }
-    let mut node = unsafe { (*vector).root };
-    let mut level = unsafe { (*vector).shift };
-    while level > 0 {
-        let child = unsafe { (*node_slots(node))[(index >> level) & MASK] };
-        if child.is_null() {
-            return ptr::null_mut();
-        }
-        node = child;
-        level -= BITS;
-    }
-    node
 }
-
-unsafe fn vector_at(vector: *const VecPayload, index: usize) -> Oop {
-    let leaf = unsafe { oop_array_for(vector, index) };
-    if leaf.is_null() {
-        return ptr::null_mut();
-    }
-    unsafe { (*node_slots(leaf))[index & MASK] }
-}
-
-unsafe fn vector_push(api: &IdApi, runtime: &Family, vector: Oop, value: Oop) -> Oop {
-    let source = unsafe { vec_payload(vector) };
-    let source_count = unsafe { (*source).count };
-    let source_shift = unsafe { (*source).shift };
-    let source_root = unsafe { (*source).root };
-    let source_tail = unsafe { (*source).tail };
-    let source_tail_len = unsafe { (*source).tail_len };
-    let mut tail = unsafe { copy_node(api, runtime.node_vt as Oop, source_tail) };
-    if source_tail_len < WIDTH {
-        unsafe { (*node_slots(tail))[source_tail_len] = value };
-        let result = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
-        if result.is_null() {
-            abort("Vector allocation failed");
-        }
-        unsafe {
-            *vec_payload(result) = VecPayload {
-                count: source_count + 1,
-                shift: source_shift,
-                root: source_root,
+unsafe fn empty(s: &State, scope: &Scope<'_>) -> Result<Oop, Outcome> {
+    unsafe {
+        let root = new_node(s, scope)?;
+        let tail = new_node(s, scope)?;
+        make(
+            s,
+            scope,
+            Vector {
+                count: 0,
+                shift: BITS,
+                root,
                 tail,
-                tail_len: source_tail_len + 1,
-            };
-        }
-        return result;
+                tail_len: 0,
+            },
+        )
     }
-
-    let tail_node = source_tail;
-    let root;
-    let mut shift = source_shift;
-    if (source_count >> BITS) > (1usize << source_shift) {
-        root = unsafe { new_node(api, runtime.node_vt as Oop) };
-        unsafe {
-            (*node_slots(root))[0] = source_root;
-            (*node_slots(root))[1] =
-                oop_new_path(api, runtime.node_vt as Oop, source_shift, tail_node);
-        }
-        shift += BITS;
-    } else {
-        root = unsafe {
-            oop_push_tail(
-                api,
-                runtime.node_vt as Oop,
-                source_count,
-                source_shift,
-                source_root,
-                tail_node,
-            )
-        };
-    }
-
-    tail = unsafe { new_node(api, runtime.node_vt as Oop) };
-    unsafe { (*node_slots(tail))[0] = value };
-    let result = unsafe { (api.alloc)(runtime.vector_vt as Oop, size_of::<VecPayload>()) };
-    if result.is_null() {
-        abort("Vector allocation failed");
-    }
+}
+unsafe fn at(s: &State, v: Vector, index: usize) -> Result<Oop, Outcome> {
     unsafe {
-        *vec_payload(result) = VecPayload {
-            count: source_count + 1,
-            shift,
-            root,
-            tail,
-            tail_len: 1,
-        };
-    }
-    result
-}
-
-unsafe extern "C" fn empty() -> Oop {
-    let state = family();
-    unsafe { empty_vector(&*(state.api as *const IdApi), state) }
-}
-unsafe extern "C" fn push(vector: Oop, value: Oop) -> Oop {
-    let state = family();
-    unsafe { vector_push(&*(state.api as *const IdApi), state, vector, value) }
-}
-unsafe extern "C" fn count(vector: Oop) -> usize {
-    unsafe { (*vec_payload(vector)).count }
-}
-unsafe extern "C" fn at(vector: Oop, index: usize) -> Oop {
-    unsafe { vector_at(vec_payload(vector), index) }
-}
-unsafe extern "C" fn behavior() -> Oop {
-    family().vector_vt as Oop
-}
-struct Runtime {
-    api: usize,
-    value1: usize,
-    value2: usize,
-    print_string: usize,
-}
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-fn runtime() -> &'static Runtime {
-    RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("Vector methods were not installed"))
-}
-unsafe fn api_ref() -> &'static IdApi {
-    // The first Collection-selected table remains live for the process lifetime.
-    unsafe { &*(runtime().api as *const IdApi) }
-}
-unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
-    unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
-}
-unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
-    unsafe { borrowed_oop_args(args, count)?.first().copied() }
-}
-thread_local! {
-    static SORT_ROOTS: RefCell<Vec<Oop>> = const { RefCell::new(Vec::new()) };
-}
-
-struct SortRootScope {
-    base: usize,
-}
-
-impl SortRootScope {
-    fn new(initial: &[Oop]) -> Self {
-        let base = SORT_ROOTS.with(|roots| {
-            let mut roots = roots.borrow_mut();
-            let base = roots.len();
-            roots.extend_from_slice(initial);
-            base
-        });
-        Self { base }
-    }
-
-    fn push(&self, value: Oop) {
-        SORT_ROOTS.with(|roots| roots.borrow_mut().push(value));
-    }
-}
-
-impl Drop for SortRootScope {
-    fn drop(&mut self) {
-        SORT_ROOTS.with(|roots| roots.borrow_mut().truncate(self.base));
-    }
-}
-
-unsafe extern "C" fn vector_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::integer::make)(self::count(self_object) as i64) }
-}
-
-unsafe extern "C" fn vector_at_method(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(index) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(index) } == 0 {
-        return api.nilObj;
-    }
-    let index = unsafe { (birnam_abi::integer::value)(index) };
-    if index < 0 {
-        return api.nilObj;
-    }
-    let value = unsafe { self::at(self_object, index as usize) };
-    if value.is_null() { api.nilObj } else { value }
-}
-
-unsafe extern "C" fn vector_add(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    unsafe { self::push(self_object, value) }
-}
-
-unsafe extern "C" fn vector_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(block) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let selector = runtime().value1 as Oop;
-    let total = unsafe { self::count(self_object) };
-    for index in 0..total {
-        let value = unsafe { self::at(self_object, index) };
-        let arguments = [value];
-        // SAFETY: the argument carrier is stack-local and the send is
-        // synchronous; no Rust borrow is held across re-entry.
-        unsafe { (api.send)(block, selector, arguments.as_ptr(), arguments.len()) };
-    }
-    self_object
-}
-
-unsafe extern "C" fn vector_inject(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 2 {
-        return api.nilObj;
-    }
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    let block = arguments[1];
-    let selector = runtime().value2 as Oop;
-    let total = unsafe { self::count(self_object) };
-    let mut accumulator = arguments[0];
-    for index in 0..total {
-        let value = unsafe { self::at(self_object, index) };
-        let call_arguments = [accumulator, value];
-        accumulator = unsafe { (api.send)(block, selector, call_arguments.as_ptr(), 2) };
-        if accumulator.is_null() {
-            return api.nilObj;
+        if index >= v.count {
+            return Ok(ptr::null_mut());
         }
-    }
-    accumulator
-}
-
-unsafe extern "C" fn vector_index_of(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(needle) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let total = unsafe { self::count(self_object) };
-    for index in 0..total {
-        let value = unsafe { self::at(self_object, index) };
-        if unsafe { birnam_abi::collection_value::same_value(api, value, needle) } {
-            return unsafe { (birnam_abi::integer::make)(index as i64) };
-        }
-    }
-    api.nilObj
-}
-
-unsafe extern "C" fn vector_copy_from_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 2 {
-        return api.nilObj;
-    }
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(arguments[0]) } == 0
-        || unsafe { (birnam_abi::integer::is_integer)(arguments[1]) } == 0
-    {
-        return api.nilObj;
-    }
-    let from = unsafe { (birnam_abi::integer::value)(arguments[0]) };
-    let to = unsafe { (birnam_abi::integer::value)(arguments[1]) };
-    let total = unsafe { self::count(self_object) };
-    if from < 0 || to < from || to as usize > total {
-        return api.nilObj;
-    }
-    let mut result = unsafe { self::empty() };
-    for index in from as usize..to as usize {
-        let value = unsafe { self::at(self_object, index) };
-        result = unsafe { self::push(result, value) };
-    }
-    result
-}
-
-unsafe extern "C" fn vector_reversed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let total = unsafe { self::count(self_object) };
-    let mut result = unsafe { self::empty() };
-    for index in (0..total).rev() {
-        let value = unsafe { self::at(self_object, index) };
-        result = unsafe { self::push(result, value) };
-    }
-    result
-}
-
-unsafe extern "C" fn vector_sort_by(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(block) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let total = unsafe { self::count(self_object) };
-    if total < 2 {
-        return self_object;
-    }
-    let roots = SortRootScope::new(&[self_object, block]);
-
-    // Copy the elements and compute each key before sorting. Rust-owned Vec
-    // buffers are invisible to the floor collector, so the scoped provider
-    // keeps every copied element and callback result live across later sends.
-    let mut elements = Vec::with_capacity(total);
-    let mut keys = Vec::with_capacity(total);
-    let value_selector = runtime().value1 as Oop;
-    for index in 0..total {
-        let value = unsafe { self::at(self_object, index) };
-        let call_arguments = [value];
-        let key = unsafe { (api.send)(block, value_selector, call_arguments.as_ptr(), 1) };
-        if key.is_null() {
-            return api.nilObj;
-        }
-        elements.push(value);
-        keys.push(key);
-        roots.push(value);
-        roots.push(key);
-    }
-
-    // Stable insertion sort, matching the reference key comparator and
-    // preserving input order for equal keys.
-    let less_selector = unsafe { intern(api, b"<\0") };
-    let mut order: Vec<usize> = (0..total).collect();
-    for index in 1..total {
-        let candidate = order[index];
-        let mut position = index;
-        while position > 0 {
-            let previous = order[position - 1];
-            let comparator_arguments = [keys[previous]];
-            let less = unsafe {
-                (api.send)(
-                    keys[candidate],
-                    less_selector,
-                    comparator_arguments.as_ptr(),
-                    1,
-                )
-            };
-            if less != api.trueObj {
-                break;
+        let leaf = if index >= v.count - v.tail_len {
+            v.tail
+        } else {
+            let mut current = v.root;
+            let mut level = v.shift;
+            while level > 0 {
+                check_node(s, current)?;
+                current = (*node(current))[(index >> level) & MASK];
+                level -= BITS;
             }
-            order[position] = previous;
-            position -= 1;
-        }
-        order[position] = candidate;
+            current
+        };
+        check_node(s, leaf)?;
+        Ok((*node(leaf))[index & MASK])
     }
-
-    let mut result = unsafe { self::empty() };
-    for index in order {
-        result = unsafe { self::push(result, elements[index]) };
-    }
-    result
 }
-
-unsafe extern "C" fn vector_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let selector = runtime().print_string as Oop;
-    let total = unsafe { self::count(self_object) };
-    let mut output = Vec::from(&b"#["[..]);
-    for index in 0..total {
-        if index != 0 {
-            output.push(b' ');
-        }
-        let value = unsafe { self::at(self_object, index) };
-        let printed = unsafe { (api.send)(value, selector, ptr::null(), 0) };
-        if printed.is_null() {
-            return api.nilObj;
-        }
-        let mut length = 0;
-        let bytes = unsafe { (birnam_abi::string::bytes)(printed, &mut length) };
-        if bytes.is_null() {
-            return api.nilObj;
-        }
-        // SAFETY: stringBytes returns a stable borrowed extent for this send.
-        output.extend_from_slice(unsafe { core::slice::from_raw_parts(bytes, length) });
-    }
-    output.push(b']');
-    // SAFETY: the floor copies this transient byte buffer into a String.
-    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
-}
-
-unsafe extern "C" fn vector_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(other) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (api.vtableOf)(other) } != unsafe { self::behavior() } {
-        return api.nilObj;
-    }
-    let mut result = self_object;
-    let total = unsafe { self::count(other) };
-    for index in 0..total {
-        let value = unsafe { self::at(other, index) };
-        result = unsafe { self::push(result, value) };
-    }
-    result
-}
-
-unsafe extern "C" fn vector_new(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    unsafe { self::empty() }
-}
-
-unsafe extern "C" fn install(
-    api_pointer: *mut IdApi,
-    value1: Oop,
-    value2: Oop,
-    print_string: Oop,
-) {
-    RUNTIME.get_or_init(|| Runtime {
-        api: family().api,
-        value1: value1 as usize,
-        value2: value2 as usize,
-        print_string: print_string as usize,
-    });
-    let api = unsafe { &*api_pointer };
+unsafe fn push(s: &State, scope: &Scope<'_>, source: Vector, value: Oop) -> Result<Oop, Outcome> {
     unsafe {
-        (api.method)(self::behavior(), intern(api, b"size\0"), vector_size);
-        (api.method)(self::behavior(), intern(api, b"at:\0"), vector_at_method);
-        (api.method)(self::behavior(), intern(api, b"add:\0"), vector_add);
-        (api.method)(self::behavior(), intern(api, b"do:\0"), vector_do);
-        (api.method)(
-            self::behavior(),
-            intern(api, b"inject:into:\0"),
-            vector_inject,
-        );
-        (api.method)(
-            self::behavior(),
-            intern(api, b"printString\0"),
-            vector_print_string,
-        );
-        (api.method)(self::behavior(), intern(api, b",\0"), vector_comma);
-        (api.method)(
-            self::behavior(),
-            intern(api, b"indexOf:\0"),
-            vector_index_of,
-        );
-        (api.method)(
-            self::behavior(),
-            intern(api, b"copyFrom:to:\0"),
-            vector_copy_from_to,
-        );
-        (api.method)(
-            self::behavior(),
-            intern(api, b"reversed\0"),
-            vector_reversed,
-        );
-        (api.method)(self::behavior(), intern(api, b"sortBy:\0"), vector_sort_by);
-        (api.method)(self::behavior(), intern(api, b"new\0"), vector_new);
-        (api.method)(self::behavior(), intern(api, b"clone\0"), vector_new);
+        scope.keep(source.root)?;
+        scope.keep(source.tail)?;
+        scope.keep(value)?;
+        let count = source.count.checked_add(1).ok_or_else(invalid)?;
+        if source.tail_len < WIDTH {
+            let tail = copy_node(s, scope, source.tail)?;
+            (*node(tail))[source.tail_len] = value;
+            return make(
+                s,
+                scope,
+                Vector {
+                    count,
+                    tail,
+                    tail_len: source.tail_len + 1,
+                    ..source
+                },
+            );
+        }
+        let mut shift = source.shift;
+        let root = if (source.count >> BITS) > (1usize << source.shift) {
+            let root = new_node(s, scope)?;
+            (*node(root))[0] = source.root;
+            (*node(root))[1] = new_path(s, scope, source.shift, source.tail)?;
+            shift += BITS;
+            root
+        } else {
+            push_tail(
+                s,
+                scope,
+                source.count,
+                source.shift,
+                source.root,
+                source.tail,
+            )?
+        };
+        let tail = new_node(s, scope)?;
+        (*node(tail))[0] = value;
+        make(
+            s,
+            scope,
+            Vector {
+                count,
+                shift,
+                root,
+                tail,
+                tail_len: 1,
+            },
+        )
     }
 }
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
-    1
-}
-
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    let Some([api, presence, imports, exports, roots, layouts, integer, string, policy, parent]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(layouts)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), layouts.as_word()) else { return invalid_native(); };
-    let api = api as *mut IdApi;
-    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
-    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
-    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
-        || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports)
-            && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots)
-            && birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
-    let (Some(integer), Some(string), Some(policy)) = (integer.as_word(), string.as_word(), policy.as_word()) else { return invalid_native(); };
-    let Some(parent) = parent.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
-    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 || unsafe { birnam_abi::collection_value::attach(policy as _) } != 1 { return invalid_native(); }
-    if FAMILY.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop)), _ => return invalid_native(),
-    }
-    READY.store(true, Ordering::Release);
+unsafe fn build(s: &State, values: impl IntoIterator<Item = Oop>) -> Result<Oop, Outcome> {
     unsafe {
-        prepare(api, (*roots).api, parent);
-        finish_prototype(api);
-        set_layout(api, layouts);
-        set_owner(api);
+        Scope::run(s, &[], |work| {
+            let mut result = empty(s, work)?;
+            for value in values {
+                result = push(s, work, payload(s, result)?, value)?;
+                work.reset(result)?;
+            }
+            Ok(result)
+        })
     }
-    let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
-    let value1 = unsafe { retained.keep(intern(&*api, b"value:\0")) };
-    let value2 = unsafe { retained.keep(intern(&*api, b"value:value:\0")) };
-    let print_string = unsafe { retained.keep(intern(&*api, b"printString\0")) };
-    unsafe { install(api, value1, value2, print_string); publish(api, exports); }
-    NATIVE_PHASE.store(2, std::sync::atomic::Ordering::Release);
-    Outcome::loaded(Operand::object(IDENTITY_ROOTS[2].load(Ordering::Acquire) as Oop))
 }
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
+unsafe fn execute(
+    s: &State,
+    scope: &Scope<'_>,
+    r: Oop,
+    args: &[Oop],
+    op: usize,
+) -> Result<Operand, Outcome> {
+    unsafe {
+        let arity = match op {
+            1 | 2 | 3 | 5 | 8 | 10 => 1,
+            4 | 6 => 2,
+            _ => 0,
+        };
+        if args.len() != arity {
+            return Ok(s.nil());
+        }
+        if op == 11 {
+            return Ok(Operand::object(empty(s, scope)?));
+        }
+        let v = payload(s, r)?;
+        scope.keep(v.root)?;
+        scope.keep(v.tail)?;
+        match op {
+            0 => s.integer(v.count as i64),
+            1 => {
+                let Some(index) = s.index(args[0])? else {
+                    return Ok(s.nil());
+                };
+                let value = if index < 0 {
+                    ptr::null_mut()
+                } else {
+                    at(s, v, index as usize)?
+                };
+                Ok(if value.is_null() {
+                    s.nil()
+                } else {
+                    Operand::object(value)
+                })
+            }
+            2 => Ok(Operand::object(push(s, scope, v, args[0])?)),
+            3 => {
+                for i in 0..v.count {
+                    s.send(args[0], b"value:", &[Operand::object(at(s, v, i)?)])?;
+                }
+                Ok(Operand::object(r))
+            }
+            4 => Scope::run(s, &[args[0]], |work| {
+                let mut acc = args[0];
+                for i in 0..v.count {
+                    let next = s.send(
+                        args[1],
+                        b"value:value:",
+                        &[Operand::object(acc), Operand::object(at(s, v, i)?)],
+                    )?;
+                    let Some(next) = next.as_object().filter(|v| !v.is_null()) else {
+                        return Ok(s.nil());
+                    };
+                    acc = work.reset(next)?;
+                }
+                Ok(Operand::object(acc))
+            }),
+            5 => {
+                for i in 0..v.count {
+                    if s.same(at(s, v, i)?, args[0])? {
+                        return s.integer(i as i64);
+                    }
+                }
+                Ok(s.nil())
+            }
+            6 => {
+                let (Some(from), Some(to)) = (s.index(args[0])?, s.index(args[1])?) else {
+                    return Ok(s.nil());
+                };
+                if from < 0 || to < from || to as usize > v.count {
+                    return Ok(s.nil());
+                }
+                Ok(Operand::object(build(
+                    s,
+                    (from as usize..to as usize)
+                        .map(|i| scope.keep(at(s, v, i)?))
+                        .collect::<Result<Vec<_>, _>>()?,
+                )?))
+            }
+            7 => Ok(Operand::object(build(
+                s,
+                (0..v.count)
+                    .rev()
+                    .map(|i| scope.keep(at(s, v, i)?))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )?)),
+            8 => {
+                if v.count < 2 {
+                    return Ok(Operand::object(r));
+                }
+                let mut elements = Vec::with_capacity(v.count);
+                let mut keys = Vec::with_capacity(v.count);
+                for i in 0..v.count {
+                    let value = scope.keep(at(s, v, i)?)?;
+                    let result = s.send(args[0], b"value:", &[Operand::object(value)])?;
+                    let Some(key) = result.as_object().filter(|v| !v.is_null()) else {
+                        return Ok(s.nil());
+                    };
+                    elements.push(value);
+                    keys.push(scope.keep(key)?);
+                }
+                // Stable insertion sort; evaluate each key exactly once.
+                let mut order: Vec<usize> = (0..v.count).collect();
+                for i in 1..v.count {
+                    let candidate = order[i];
+                    let mut position = i;
+                    while position > 0 {
+                        if s.send(
+                            keys[candidate],
+                            b"<",
+                            &[Operand::object(keys[order[position - 1]])],
+                        )?
+                        .as_object()
+                            != Some(s.value(b"true"))
+                        {
+                            break;
+                        }
+                        order[position] = order[position - 1];
+                        position -= 1;
+                    }
+                    order[position] = candidate;
+                }
+                Ok(Operand::object(build(
+                    s,
+                    order.into_iter().map(|i| elements[i]),
+                )?))
+            }
+            9 => {
+                let mut bytes = b"#[".to_vec();
+                for i in 0..v.count {
+                    if i > 0 {
+                        bytes.push(b' ');
+                    }
+                    bytes.extend_from_slice(&s.printable(at(s, v, i)?)?);
+                }
+                bytes.push(b']');
+                s.send(s.value(b"String"), b"fromBytes:", &[Operand::bytes(&bytes)])
+            }
+            10 => {
+                if s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(args[0])])?
+                    .as_object()
+                    != Some(s.behavior)
+                {
+                    return Ok(s.nil());
+                }
+                let other = payload(s, args[0])?;
+                Scope::run(s, &[r], |work| {
+                    let mut result = r;
+                    for i in 0..other.count {
+                        result = push(s, work, payload(s, result)?, at(s, other, i)?)?;
+                        work.reset(result)?;
+                    }
+                    Ok(Operand::object(result))
+                })
+            }
+            _ => Err(invalid()),
+        }
+    }
+}
+entry!(size, 0);
+entry!(at_method, 1);
+entry!(add, 2);
+entry!(do_each, 3);
+entry!(inject, 4);
+entry!(index_of, 5);
+entry!(copy, 6);
+entry!(reversed, 7);
+entry!(sort_by, 8);
+entry!(print, 9);
+entry!(comma, 10);
+entry!(new, 11);
+const METHODS: &[(&[u8], Method)] = &[
+    (b"size", size),
+    (b"at:", at_method),
+    (b"add:", add),
+    (b"do:", do_each),
+    (b"inject:into:", inject),
+    (b"indexOf:", index_of),
+    (b"copyFrom:to:", copy),
+    (b"reversed", reversed),
+    (b"sortBy:", sort_by),
+    (b"printString", print),
+    (b",", comma),
+    (b"new", new),
+    (b"clone", new),
+];

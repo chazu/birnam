@@ -16,7 +16,6 @@ sha2.workspace = true
 birnam-dispatch-cache = { path = "../birnam-dispatch-cache" }
 birnam-storage = { path = "../birnam-storage" }
 birnam-namespace = { path = "../birnam-namespace" }
-birnam-word = { path = "../birnam-word" }
 birnam-collect = { path = "../birnam-collect" }
 birnam-trace = { path = "../birnam-trace" }
 birnam-object-model = { path = "../birnam-object-model" }

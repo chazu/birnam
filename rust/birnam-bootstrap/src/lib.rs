@@ -263,6 +263,35 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
         let float = named(b"Float")?;
         id.send_named(object(integer)?, b"installFloat:", &[float])?;
         id.send_named(object(string)?, b"installNumbers:", &[integer, float])?;
+        // Collection is only a shared parent identity; no installer library is needed.
+        let collection = object(id.send_named(parent, b"delegated", &[])?)?;
+        let collection_root = retain(id, roots, collection)?;
+        for name in [b"Collection".as_slice(), b"CollectionVt"] {
+            id.send_named(
+                namespace,
+                b"at:put:",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::object(collection),
+                ],
+            )?;
+        }
+        release(id, roots, collection_root)?;
+        for name in ["word", "vector", "map", "range"] {
+            id.send_named(
+                receiver,
+                b"loadNative:",
+                &[
+                    Operand::bytes(&module_path(directory, name)),
+                    Operand::object(namespace),
+                ],
+            )?;
+        }
+        id.send_named(
+            object(string)?,
+            b"installCollections:",
+            &[named(b"Vector")?],
+        )?;
         INSTANCE.store(state, Ordering::Release);
         Ok(Operand::object(namespace))
     }

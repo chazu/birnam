@@ -1,3 +1,6 @@
+> Historical table contract, retired by Design 90. Current Map behavior is documented in
+> [the owning module](../rust/birnam-map/README.md). Do not restore this descriptor.
+
 # Collection value policy v1
 
 Design [81AD](../docs/design/81ad-production-collection-value.md) moves the private

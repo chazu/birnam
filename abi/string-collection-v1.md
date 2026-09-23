@@ -1,3 +1,6 @@
+> Historical table contract, retired by Design 90. Current String behavior is documented in
+> [the owning module](../rust/birnam-string/README.md). Do not restore this descriptor.
+
 # String Collection: retired native table
 
 The versioned String Collection function table, dependency attachment registry and installer

@@ -712,6 +712,12 @@ Siphon -> Id -> Bootstrap
                   -> Float(Namespace)
                   -> Boolean/Nil printing with String
                   -> Integer mixed arithmetic and String numeric extensions
+                  -> Collection parent behavior
+                  -> Word(Namespace)
+                  -> Vector(Namespace)
+                  -> Map(Namespace)
+                  -> Range(Namespace), including Integer to:
+                  -> String split: with Vector
 ```
 
 Every completed module returns an opaque Object or Unit. Namespace publishes
@@ -727,6 +733,11 @@ adds ordinary cloning, private behaviors and slot storage with GC-safe ownership
 [Error](rust/birnam-error/README.md) uses ordinary reference slots.
 [Integer](rust/birnam-integer/README.md) and [Float](rust/birnam-float/README.md)
 restore arithmetic, conversions and numeric text through messages.
+[Word](rust/birnam-word/README.md), [Vector](rust/birnam-vector/README.md),
+[Map](rust/birnam-map/README.md) and [Range](rust/birnam-range/README.md) restore
+remaining values and persistent collections. Equality/hashing lives with value
+owners; String owns splitting. Collection is a shared parent, with no installer
+crate. These collection callbacks need only callable objects, not an Execution table.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
 loading. Collection now works over this prefix through Id and Roots messages.

@@ -18,6 +18,8 @@ struct Model {
     roots: Oop,
     gc: Oop,
     receiver: Oop,
+    truth: Oop,
+    falsity: Oop,
     thread: std::thread::ThreadId,
     names: HashMap<&'static [u8], Oop>,
     owners: RefCell<HashMap<usize, Record<Oop>>>,
@@ -177,7 +179,7 @@ unsafe extern "C" fn enumerate_roots(
             .as_entry()
             .filter(|e| e.method.is_some())
             .ok_or_else(invalid)?;
-        let mut roots = vec![m.receiver, m.roots, m.gc];
+        let mut roots = vec![m.receiver, m.roots, m.gc, m.truth, m.falsity];
         roots.extend(m.names.values().copied());
         // Ownership/instance/layout keys are weak. Owners are reached only from
         // their live behaviors, never from the module's own root inventory.
@@ -589,6 +591,9 @@ unsafe extern "C" fn slot_put(
     })())
 }
 const NAMES: &[&[u8]] = &[
+    b"collectionEquals:",
+    b"collectionHash",
+    b"symbolBytesOf:",
     b"identityOf:",
     b"behaviorOf:",
     b"isBehavior:",
@@ -660,6 +665,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             roots,
             gc,
             receiver,
+            truth: named(b"true")?,
+            falsity: named(b"false")?,
             thread: std::thread::current().id(),
             names,
             owners: RefCell::new(HashMap::new()),
@@ -681,6 +688,13 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (id.receiver, b"ownerOf:put:", assign_owner),
             (id.receiver, b"prepareBehaviorMutationOf:", prepare),
             (id.receiver, b"ensurePrivateVtableFor:", ensure),
+            (object_behavior, b"collectionEquals:", collection_equal),
+            (object_behavior, b"collectionHash", collection_hash),
+            (
+                (*pointer).behavior(keep(id.intern_name(b"Symbol")?)?)?,
+                b"collectionHash",
+                symbol_hash,
+            ),
             (object_behavior, b"clone", clone_object),
             (object_behavior, b"new", clone_object),
         ] {
@@ -762,3 +776,71 @@ pub static birnam_native_module_v1: native::Module = native::Module {
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };
+
+unsafe extern "C" fn collection_equal(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let Some([other]) = borrowed_slice(a, count) else {
+            return Err(invalid());
+        };
+        Ok(Operand::object(if r == object(*other)? {
+            m.truth
+        } else {
+            m.falsity
+        }))
+    })())
+}
+unsafe extern "C" fn collection_hash(
+    c: *mut c_void,
+    r: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        model(c)?;
+        if count != 0 {
+            return Err(invalid());
+        }
+        Ok(Operand::word(mix(r.addr() as u64)))
+    })())
+}
+unsafe extern "C" fn symbol_hash(
+    c: *mut c_void,
+    r: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        if count != 0 {
+            return Err(invalid());
+        }
+        m.rooted(&[r], || {
+            let raw = m
+                .send(m.id.receiver, b"symbolBytesOf:", &[Operand::object(r)])?
+                .as_bytes()
+                .ok_or_else(invalid)?;
+            let mut hash = 2_166_136_261u32;
+            // Preserve the former Symbol name's C-string hash extent.
+            for byte in borrowed_bytes(raw.pointer, raw.length)
+                .ok_or_else(invalid)?
+                .iter()
+                .take_while(|b| **b != 0)
+            {
+                hash = (hash ^ u32::from(*byte)).wrapping_mul(16_777_619);
+            }
+            Ok(Operand::word(hash as usize))
+        })
+    })())
+}
+fn mix(mut value: u64) -> usize {
+    value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    (value ^ (value >> 31)) as u32 as usize
+}

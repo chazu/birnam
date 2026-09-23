@@ -1,414 +1,610 @@
-//! Range representation, construction and all existing Range methods.
-#![allow(clippy::missing_safety_doc)]
-use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
-use core::ffi::c_char;
-use core::ptr;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Once, OnceLock};
-
-// Owned RAW representation; Image continues to use its generic RAW codec.
-#[repr(C)]
-struct RangePayload {
-    start: i64,
-    end: i64,
-}
-const _: () = {
-    assert!(size_of::<RangePayload>() == 16);
-    assert!(align_of::<RangePayload>() == 8);
-    assert!(core::mem::offset_of!(RangePayload, end) == 8);
+//! Range representation and operations. Dependencies are opaque Id receivers.
+use birnam_abi::{
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
-struct Runtime {
-    api: usize,
-    range_vt: usize,
-    value1: usize,
-    value2: usize,
-    print_string: usize,
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+    ptr,
+};
+use std::collections::HashMap;
+struct State {
+    id: Protocol,
+    roots: Oop,
+    model: Oop,
+    behavior: Oop,
+    prototype: Cell<Oop>,
+    values: HashMap<&'static [u8], Oop>,
+    names: HashMap<&'static [u8], Oop>,
+    thread: std::thread::ThreadId,
 }
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static ROOTS_REGISTERED: Once = Once::new();
-// Vector owns and roots this prototype for the module lifetime.
-static VECTOR: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-unsafe fn send(receiver: Oop, selector: &core::ffi::CStr, args: &[Oop]) -> Oop {
-    let api = unsafe { api_ref() };
-    unsafe { (api.send)(receiver, (api.intern)(selector.as_ptr()), args.as_ptr(), args.len()) }
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-static READY: AtomicBool = AtomicBool::new(false);
-fn abort(message: &str) -> ! {
-    eprintln!("birnam Range: {message}");
-    std::process::abort();
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
 }
-fn runtime() -> &'static Runtime {
-    RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("Range protocol was not installed"))
+fn done(v: Result<Operand, Outcome>) -> Outcome {
+    v.map_or_else(|e| e, Outcome::loaded)
 }
-unsafe fn api_ref() -> &'static IdApi {
-    unsafe { &*(runtime().api as *const IdApi) }
+unsafe fn state<'a>(c: *mut c_void) -> Result<&'a State, Outcome> {
+    let s = unsafe { &*c.cast::<State>() };
+    if s.thread != std::thread::current().id() {
+        return Err(invalid());
+    }
+    Ok(s)
 }
-unsafe fn intern(api: &IdApi, selector: &[u8]) -> Oop {
-    unsafe { (api.intern)(selector.as_ptr().cast::<c_char>()) }
+// Each synchronous operation owns its roots. No borrow spans a message send.
+struct Scope<'a> {
+    s: &'a State,
+    tokens: RefCell<Vec<usize>>,
 }
-unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
-    unsafe { borrowed_oop_args(args, count)?.first().copied() }
-}
-const RANGE_NAME: &[u8] = b"Range\0";
-const RANGE_VT_NAME: &[u8] = b"RangeVt\0";
-static RANGE_LAYOUT: [u8; 2] = [birnam_abi::SLOT_RAW; 2];
-struct Family {
-    api: usize,
-    range_vt: usize,
-}
-static FAMILY: OnceLock<Family> = OnceLock::new();
-static IDENTITY_ROOTS: [AtomicUsize; 2] = [const { AtomicUsize::new(0) }; 2];
-fn family() -> &'static Family {
-    FAMILY
-        .get()
-        .unwrap_or_else(|| abort("Range family was not prepared"))
-}
-unsafe extern "C" fn mark_roots(mark: MarkFn) {
-    for root in &IDENTITY_ROOTS {
-        let object = root.load(Ordering::Acquire) as Oop;
-        if !object.is_null() {
-            unsafe { mark(object) };
+impl<'a> Scope<'a> {
+    unsafe fn run<T>(
+        s: &'a State,
+        values: &[Oop],
+        f: impl FnOnce(&Self) -> Result<T, Outcome>,
+    ) -> Result<T, Outcome> {
+        let scope = Self {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        let result = (|| unsafe {
+            for &v in values {
+                scope.keep(v)?;
+            }
+            f(&scope)
+        })();
+        unsafe {
+            scope.clear()?;
+        }
+        result
+    }
+    unsafe fn keep(&self, value: Oop) -> Result<Oop, Outcome> {
+        if !value.is_null() {
+            let token = unsafe {
+                self.s
+                    .send(self.s.roots, b"retain:", &[Operand::object(value)])
+            }?
+            .as_word()
+            .filter(|n| *n != 0)
+            .ok_or_else(invalid)?;
+            self.tokens.borrow_mut().push(token);
+        }
+        Ok(value)
+    }
+    unsafe fn clear(&self) -> Result<(), Outcome> {
+        let tokens = std::mem::take(&mut *self.tokens.borrow_mut());
+        let mut error = None;
+        for token in tokens {
+            match unsafe {
+                self.s
+                    .send(self.s.roots, b"release:", &[Operand::word(token)])
+            } {
+                Ok(v) if v.as_word() == Some(1) => {}
+                Ok(_) => error = Some(invalid()),
+                Err(e) => error = Some(e),
+            }
+        }
+        error.map_or(Ok(()), Err)
+    }
+    // Retain the next persistent result before discarding construction temporaries.
+    unsafe fn reset(&self, value: Oop) -> Result<Oop, Outcome> {
+        unsafe {
+            let old = std::mem::take(&mut *self.tokens.borrow_mut());
+            let result = self.keep(value);
+            let new = std::mem::replace(&mut *self.tokens.borrow_mut(), old);
+            let cleanup = self.clear();
+            *self.tokens.borrow_mut() = new;
+            cleanup?;
+            result
         }
     }
-    if let Some(runtime) = RUNTIME.get() {
-        for object in [runtime.value1, runtime.value2, runtime.print_string] {
-            unsafe { mark(object as Oop) };
+}
+impl State {
+    unsafe fn send(
+        &self,
+        r: Oop,
+        name: &'static [u8],
+        args: &[Operand],
+    ) -> Result<Operand, Outcome> {
+        unsafe { self.id.send(r, self.names[name], args) }
+    }
+    fn value(&self, name: &'static [u8]) -> Oop {
+        self.values[name]
+    }
+    fn nil(&self) -> Operand {
+        Operand::object(self.value(b"nil"))
+    }
+    fn boolean(&self, yes: bool) -> Operand {
+        Operand::object(self.value(if yes { b"true" } else { b"false" }))
+    }
+    unsafe fn allocate(
+        &self,
+        scope: &Scope<'_>,
+        behavior: Oop,
+        bytes: usize,
+    ) -> Result<Oop, Outcome> {
+        unsafe {
+            let value = scope.keep(object(self.send(
+                self.model,
+                b"allocate:bytes:",
+                &[Operand::object(behavior), Operand::word(bytes)],
+            )?)?)?;
+            if self
+                .send(
+                    self.id.receiver,
+                    b"allocationSizeOf:",
+                    &[Operand::object(value)],
+                )?
+                .as_word()
+                != Some(bytes)
+                || self
+                    .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                    .as_object()
+                    != Some(behavior)
+            {
+                return Err(invalid());
+            }
+            Ok(value)
+        }
+    }
+    unsafe fn integer(&self, value: i64) -> Result<Operand, Outcome> {
+        unsafe {
+            self.send(
+                self.value(b"Integer"),
+                b"fromWord:",
+                &[Operand::word(value as usize)],
+            )
+        }
+    }
+    unsafe fn index(&self, value: Oop) -> Result<Option<i64>, Outcome> {
+        let v = unsafe {
+            self.send(
+                self.value(b"Integer"),
+                b"wordOf:",
+                &[Operand::object(value)],
+            )
+        }?;
+        if v.kind() == native::UNIT {
+            Ok(None)
+        } else {
+            Ok(Some(v.as_word().ok_or_else(invalid)? as i64))
+        }
+    }
+    unsafe fn printable(&self, value: Oop) -> Result<Vec<u8>, Outcome> {
+        unsafe {
+            let printed = object(self.send(value, b"printString", &[])?)?;
+            Scope::run(self, &[printed], |_| {
+                let raw = self
+                    .send(printed, b"bytes", &[])?
+                    .as_bytes()
+                    .ok_or_else(invalid)?;
+                Ok(borrowed_bytes(raw.pointer, raw.length)
+                    .ok_or_else(invalid)?
+                    .to_vec())
+            })
         }
     }
 }
-unsafe extern "C" fn prepare(api_pointer: *mut IdApi, roots: *const birnam_abi::root_registry::ApiV1, parent: Oop) -> Oop {
-    if !READY.load(Ordering::Acquire) || api_pointer.is_null() {
-        abort("invalid Range preparation");
-    }
-    let api = unsafe { &*api_pointer };
-    ROOTS_REGISTERED.call_once(|| unsafe { birnam_abi::root_registry::register(roots, mark_roots) });
-    let family = FAMILY.get_or_init(|| {
-        let behavior = unsafe { (api.proto)(parent) };
-        IDENTITY_ROOTS[0].store(behavior as usize, Ordering::Release);
-        Family {
-            api: api_pointer as usize,
-            range_vt: behavior as usize,
+unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, count: usize) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([visitor]) = borrowed_slice(a, count) else {
+            return Err(invalid());
+        };
+        let visitor = visitor
+            .as_entry()
+            .filter(|v| v.method.is_some())
+            .ok_or_else(invalid)?;
+        let mut values = vec![s.roots, s.model, s.behavior, s.prototype.get()];
+        values.extend(s.values.values().copied());
+        values.extend(s.names.values().copied());
+        for value in values.into_iter().filter(|v| !v.is_null()) {
+            visitor.method.unwrap()(
+                visitor.context,
+                s.prototype.get(),
+                &Operand::object(value),
+                1,
+            )
+            .into_result()?;
         }
-    });
-    family.range_vt as Oop
+        Ok(Operand::unit())
+    })())
 }
-unsafe extern "C" fn finish_prototype(api_pointer: *mut IdApi) {
-    if IDENTITY_ROOTS[1].load(Ordering::Acquire) == 0 {
-        let prototype = unsafe { empty_range(&*api_pointer, family().range_vt as Oop, 0, 0) };
-        IDENTITY_ROOTS[1].store(prototype as usize, Ordering::Release);
-    }
+macro_rules! entry {
+    ($name:ident,$op:expr) => {
+        unsafe extern "C" fn $name(
+            c: *mut c_void,
+            r: Oop,
+            a: *const Operand,
+            count: usize,
+        ) -> Outcome {
+            done((|| unsafe {
+                let s = state(c)?;
+                let args = borrowed_slice(a, count).ok_or_else(invalid)?;
+                let mut values = vec![r];
+                for arg in args {
+                    values.push(object(*arg)?);
+                }
+                Scope::run(s, &values, |scope| execute(s, scope, r, &values[1..], $op))
+            })())
+        }
+    };
 }
-unsafe extern "C" fn set_layout(_api_pointer: *mut IdApi, layouts: *const birnam_abi::payload_layout::ApiV1) {
+const NAMES: &[&[u8]] = &[
+    b"retain:",
+    b"release:",
+    b"allocate:bytes:",
+    b"allocationSizeOf:",
+    b"behaviorOf:",
+    b"fromWord:",
+    b"printString",
+    b"bytes",
+    b"fromBytes:",
+    b"rootsDo:",
+    b"register:",
+    b"ownerOf:put:",
+    b"addMethod",
+    b"at:put:",
+    b"wordOf:",
+    b"value:",
+    b"value:value:",
+    b"new",
+    b"add:",
+    b",",
+    b"trace:with:",
+    b"referencesOf:do:",
+    b"to:",
+    b"lookup",
+    b"Range",
+    b"RangeVt",
+];
+
+unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
     unsafe {
-        birnam_abi::payload_layout::set(layouts,
-            family().range_vt as Oop,
-            RANGE_LAYOUT.as_ptr(),
-            RANGE_LAYOUT.len(),
-            birnam_abi::SLOT_RAW,
-        )
-    };
-}
-unsafe extern "C" fn publish(api_pointer: *mut IdApi, exports: *const birnam_abi::namespace_export::ApiV1) {
-    let api = unsafe { &*api_pointer };
-    let behavior = family().range_vt as Oop;
-    let prototype = IDENTITY_ROOTS[1].load(Ordering::Acquire) as Oop;
-    unsafe {
-        birnam_abi::set_vtable_owner(api, behavior, prototype);
-        birnam_abi::namespace_export::export(exports, RANGE_VT_NAME.as_ptr().cast(), behavior);
-        birnam_abi::namespace_export::export(exports, RANGE_NAME.as_ptr().cast(), prototype);
-    }
-}
-unsafe fn empty_range(api: &IdApi, behavior: Oop, start: i64, end: i64) -> Oop {
-    let range = unsafe { (api.alloc)(behavior, size_of::<RangePayload>()) };
-    if range.is_null() {
-        abort("Range allocation failed");
-    }
-    unsafe {
-        *range.cast::<RangePayload>() = RangePayload { start, end };
-    }
-    range
-}
-
-unsafe extern "C" fn integer_to(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 || unsafe { (birnam_abi::integer::is_integer)(self_object) } == 0 {
-        return api.nilObj;
-    }
-    let Some(end) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(end) } == 0 {
-        return api.nilObj;
-    }
-    unsafe {
-        empty_range(
-            api,
-            runtime().range_vt as Oop,
-            (birnam_abi::integer::value)(self_object),
-            (birnam_abi::integer::value)(end),
-        )
-    }
-}
-
-unsafe fn range_payload(object: Oop) -> *mut RangePayload {
-    if object.is_null() {
-        abort("Range method received a null receiver");
-    }
-    object.cast::<RangePayload>()
-}
-
-unsafe fn range_bounds(object: Oop) -> (i64, i64) {
-    let payload = unsafe { range_payload(object) };
-    unsafe { ((*payload).start, (*payload).end) }
-}
-
-unsafe extern "C" fn range_size(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let (start, end) = unsafe { range_bounds(self_object) };
-    if end < start {
-        return unsafe { (birnam_abi::integer::make)(0) };
-    }
-    let size = i128::from(end) - i128::from(start) + 1;
-    if size > i128::from(i64::MAX) {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::integer::make)(size as i64) }
-}
-
-unsafe extern "C" fn range_includes(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(value) } == 0 {
-        return api.falseObj;
-    }
-    let value = unsafe { (birnam_abi::integer::value)(value) };
-    let (start, end) = unsafe { range_bounds(self_object) };
-    if start <= end && value >= start && value <= end {
-        api.trueObj
-    } else {
-        api.falseObj
-    }
-}
-
-unsafe extern "C" fn range_at(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(index) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(index) } == 0 {
-        return api.nilObj;
-    }
-    let index = unsafe { (birnam_abi::integer::value)(index) };
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let value = i128::from(start) + i128::from(index);
-    if index < 0 || start > end || value > i128::from(end) || value > i128::from(i64::MAX) {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::integer::make)(value as i64) }
-}
-
-unsafe extern "C" fn range_do(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(block) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let selector = runtime().value1 as Oop;
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let mut value = i128::from(start);
-    let end = i128::from(end);
-    while value <= end {
-        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
-        let arguments = [item];
-        unsafe { (api.send)(block, selector, arguments.as_ptr(), 1) };
-        value += 1;
-    }
-    self_object
-}
-
-unsafe extern "C" fn range_inject(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 2 {
-        return api.nilObj;
-    }
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    let selector = runtime().value2 as Oop;
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let mut value = i128::from(start);
-    let end = i128::from(end);
-    let mut accumulator = arguments[0];
-    while value <= end {
-        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
-        let call_arguments = [accumulator, item];
-        accumulator = unsafe { (api.send)(arguments[1], selector, call_arguments.as_ptr(), 2) };
-        if accumulator.is_null() {
-            return api.nilObj;
+        let named = |name: &[u8]| {
+            object(id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+        };
+        let roots = named(b"Roots")?;
+        let model = named(b"ObjectModel")?;
+        let retain = id.intern_name(b"retain:")?;
+        let release = id.intern_name(b"release:")?;
+        let mut tokens = Vec::new();
+        let mut keep = |v: Oop| -> Result<Oop, Outcome> {
+            tokens.push(
+                id.send(roots, retain, &[Operand::object(v)])?
+                    .as_word()
+                    .filter(|v| *v != 0)
+                    .ok_or_else(invalid)?,
+            );
+            Ok(v)
+        };
+        let mut names = HashMap::new();
+        for name in NAMES
+            .iter()
+            .copied()
+            .chain(METHODS.iter().map(|(name, _)| *name))
+        {
+            names.insert(name, keep(id.intern_name(name)?)?);
         }
-        value += 1;
-    }
-    accumulator
-}
-
-unsafe extern "C" fn range_print_string(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let selector = runtime().print_string as Oop;
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let mut output = Vec::from(&b"#["[..]);
-    let mut value = i128::from(start);
-    let end = i128::from(end);
-    while value <= end {
-        if value != i128::from(start) {
-            output.push(b' ');
+        let mut values = HashMap::new();
+        for name in DEPENDENCIES {
+            values.insert(*name, named(name)?);
         }
-        let item = unsafe { (birnam_abi::integer::make)(value as i64) };
-        let printed = unsafe { (api.send)(item, selector, ptr::null(), 0) };
-        if printed.is_null() {
-            return api.nilObj;
+        let behavior = keep(object(id.send_named(
+            named(b"CollectionVt")?,
+            b"delegated",
+            &[],
+        )?)?)?;
+        let p = Box::into_raw(Box::new(State {
+            id,
+            roots,
+            model,
+            behavior,
+            prototype: Cell::new(ptr::null_mut()),
+            values,
+            names,
+            thread: std::thread::current().id(),
+        }));
+        let s = &*p;
+        for (name, method) in METHODS
+            .iter()
+            .copied()
+            .chain([(b"rootsDo:".as_slice(), self::roots as Method)])
+        {
+            s.send(
+                behavior,
+                b"addMethod",
+                &[
+                    Operand::object(s.names[name]),
+                    Operand::entry(NativeEntry::new(method, p.cast())),
+                ],
+            )?;
         }
-        let mut length = 0;
-        let bytes = unsafe { (birnam_abi::string::bytes)(printed, &mut length) };
-        if bytes.is_null() {
-            return api.nilObj;
+        id.send_named(
+            model,
+            b"setLayoutOf:to:rest:",
+            &[
+                Operand::object(behavior),
+                Operand::bytes(&[0, 0]),
+                Operand::word(0),
+            ],
+        )?;
+        Scope::run(s, &[], |scope| {
+            let prototype = empty(s, scope)?;
+            s.prototype.set(prototype);
+            s.send(roots, b"register:", &[Operand::object(prototype)])?;
+            s.send(
+                id.receiver,
+                b"ownerOf:put:",
+                &[Operand::object(behavior), Operand::object(prototype)],
+            )?;
+            for (name, value) in [(b"Range".as_slice(), prototype), (b"RangeVt", behavior)] {
+                s.send(
+                    namespace,
+                    b"at:put:",
+                    &[Operand::object(s.names[name]), Operand::object(value)],
+                )?;
+            }
+
+            s.send(
+                behavior,
+                b"addMethod",
+                &[
+                    Operand::object(s.names[b"referencesOf:do:".as_slice()]),
+                    Operand::entry(NativeEntry::new(references, p.cast())),
+                ],
+            )?;
+            s.send(
+                s.value(b"GC"),
+                b"trace:with:",
+                &[Operand::object(behavior), Operand::object(prototype)],
+            )?;
+            if s.send(
+                s.value(b"IntegerVt"),
+                b"lookup",
+                &[Operand::object(s.names[b"to:".as_slice()])],
+            )?
+            .kind()
+                == native::UNIT
+            {
+                s.send(
+                    s.value(b"IntegerVt"),
+                    b"addMethod",
+                    &[
+                        Operand::object(s.names[b"to:".as_slice()]),
+                        Operand::entry(NativeEntry::new(to, p.cast())),
+                    ],
+                )?;
+            }
+
+            Ok(())
+        })?;
+        for token in tokens {
+            id.send(roots, release, &[Operand::word(token)])?;
         }
-        output.extend_from_slice(unsafe { core::slice::from_raw_parts(bytes, length) });
-        value += 1;
-    }
-    output.push(b']');
-    unsafe { (birnam_abi::string::make)(output.as_ptr(), output.len()) }
-}
-
-unsafe extern "C" fn range_reversed(self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let mut result = unsafe { send(VECTOR.load(Ordering::Acquire) as Oop, c"new", &[]) };
-    let mut value = i128::from(end);
-    let start = i128::from(start);
-    while value >= start {
-        result = unsafe { send(result, c"add:", &[(birnam_abi::integer::make)(value as i64)]) };
-        value -= 1;
-    }
-    result
-}
-
-unsafe extern "C" fn range_comma(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(other) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (api.vtableOf)(other) } != unsafe { (api.vtableOf)(VECTOR.load(Ordering::Acquire) as Oop) } {
-        return api.nilObj;
-    }
-    let (start, end) = unsafe { range_bounds(self_object) };
-    let mut result = unsafe { send(VECTOR.load(Ordering::Acquire) as Oop, c"new", &[]) };
-    let mut value = i128::from(start);
-    let end = i128::from(end);
-    while value <= end {
-        result = unsafe { send(result, c"add:", &[(birnam_abi::integer::make)(value as i64)]) };
-        value += 1;
-    }
-    unsafe { send(result, c",", &[other]) }
-}
-
-unsafe fn install(api_pointer: *mut IdApi, value1: Oop, value2: Oop, print_string: Oop) {
-    if !READY.load(Ordering::Acquire)
-        || api_pointer.is_null()
-        || value1.is_null()
-        || value2.is_null()
-        || print_string.is_null()
-    {
-        abort("invalid Range construction dependency");
-    }
-    let api = unsafe { &*api_pointer };
-    RUNTIME.get_or_init(|| Runtime {
-        api: family().api,
-        range_vt: family().range_vt,
-        value1: value1 as usize,
-        value2: value2 as usize,
-        print_string: print_string as usize,
-    });
-    let behavior = family().range_vt as Oop;
-    unsafe {
-        (api.method)(behavior, intern(api, b"size\0"), range_size);
-        (api.method)(behavior, intern(api, b"includes:\0"), range_includes);
-        (api.method)(behavior, intern(api, b"do:\0"), range_do);
-        (api.method)(behavior, intern(api, b"inject:into:\0"), range_inject);
-        (api.method)(behavior, intern(api, b"at:\0"), range_at);
-        (api.method)(behavior, intern(api, b"reversed\0"), range_reversed);
-        (api.method)(behavior, intern(api, b"printString\0"), range_print_string);
-        (api.method)(behavior, intern(api, b",\0"), range_comma);
-        (api.method)(
-            birnam_abi::integer::behavior(),
-            intern(api, b"to:\0"),
-            integer_to,
-        );
+        Ok(Operand::object(s.prototype.get()))
     }
 }
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, count: usize) -> Outcome {
+    done((|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([namespace]) = borrowed_slice(a, count) else {
+            return Err(invalid());
+        };
+        let namespace = object(*namespace)?;
+        let id = *id;
+        let current = id.send_named(
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"Range")?)],
+        )?;
+        if current.kind() == native::OBJECT {
+            return Ok(current);
+        }
+        construct(id, namespace)
+    })())
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    let Some([api, presence, imports, exports, roots, layouts, integer, string, vector, parent]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(layouts)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), layouts.as_word()) else { return invalid_native(); };
-    let api = api as *mut IdApi;
-    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
-    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
-    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
-        || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports)
-            && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots)
-            && birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
-    let (Some(integer), Some(string), Some(vector)) = (integer.as_word(), string.as_word(), vector.as_object().filter(|p| !p.is_null())) else { return invalid_native(); };
-    let Some(parent) = parent.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
-    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
-    if FAMILY.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
-    if VECTOR.load(Ordering::Acquire) != 0 && VECTOR.load(Ordering::Acquire) != vector.addr() { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, std::sync::atomic::Ordering::AcqRel, std::sync::atomic::Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::unit()), _ => return invalid_native(),
-    }
-    VECTOR.store(vector.addr(), Ordering::Release);
-    READY.store(true, Ordering::Release);
-    unsafe { prepare(api, (*roots).api, parent); finish_prototype(api); set_layout(api, layouts); }
-    let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
-    let value1 = unsafe { retained.keep(intern(&*api, b"value:\0")) };
-    let value2 = unsafe { retained.keep(intern(&*api, b"value:value:\0")) };
-    let print_string = unsafe { retained.keep(intern(&*api, b"printString\0")) };
-    unsafe { install(api, value1, value2, print_string); publish(api, exports); }
-    NATIVE_PHASE.store(2, std::sync::atomic::Ordering::Release);
-    Outcome::loaded(Operand::unit())
+const DEPENDENCIES: &[&[u8]] = &[
+    b"Integer",
+    b"String",
+    b"nil",
+    b"true",
+    b"false",
+    b"Vector",
+    b"VectorVt",
+    b"IntegerVt",
+    b"GC",
+];
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct Range {
+    start: i64,
+    end: i64,
 }
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
+unsafe fn payload(s: &State, r: Oop) -> Result<Range, Outcome> {
+    unsafe {
+        if s.send(s.id.receiver, b"allocationSizeOf:", &[Operand::object(r)])?
+            .as_word()
+            != Some(size_of::<Range>())
+        {
+            return Err(invalid());
+        }
+        Ok(r.cast::<Range>().read())
+    }
+}
+unsafe fn make(s: &State, scope: &Scope<'_>, start: i64, end: i64) -> Result<Oop, Outcome> {
+    unsafe {
+        let value = s.allocate(scope, s.behavior, size_of::<Range>())?;
+        value.cast::<Range>().write(Range { start, end });
+        Ok(value)
+    }
+}
+unsafe fn empty(s: &State, scope: &Scope<'_>) -> Result<Oop, Outcome> {
+    unsafe { make(s, scope, 0, 0) }
+}
+unsafe extern "C" fn references(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        state(c)?;
+        let Some([value, visitor]) = borrowed_slice(a, count) else {
+            return Err(invalid());
+        };
+        object(*value)?;
+        visitor
+            .as_entry()
+            .filter(|v| v.method.is_some())
+            .ok_or_else(invalid)?;
+        Ok(Operand::unit())
+    })())
+}
+unsafe fn execute(
+    s: &State,
+    scope: &Scope<'_>,
+    r: Oop,
+    args: &[Oop],
+    op: usize,
+) -> Result<Operand, Outcome> {
+    unsafe {
+        let arity = match op {
+            0 | 2 | 3 | 4 | 8 => 1,
+            5 => 2,
+            _ => 0,
+        };
+        if args.len() != arity {
+            return Ok(s.nil());
+        }
+        if op == 0 {
+            let (Some(start), Some(end)) = (s.index(r)?, s.index(args[0])?) else {
+                return Ok(s.nil());
+            };
+            return Ok(Operand::object(make(s, scope, start, end)?));
+        }
+        let v = payload(s, r)?;
+        let (start, end) = (i128::from(v.start), i128::from(v.end));
+        match op {
+            1 => {
+                let count = if end < start { 0 } else { end - start + 1 };
+                if count > i128::from(i64::MAX) {
+                    Ok(s.nil())
+                } else {
+                    s.integer(count as i64)
+                }
+            }
+            2 => {
+                let val = s.index(args[0])?;
+                Ok(s.boolean(val.is_some_and(|v| v >= start as i64 && v <= end as i64)))
+            }
+            3 => {
+                let Some(index) = s.index(args[0])? else {
+                    return Ok(s.nil());
+                };
+                let val = start + i128::from(index);
+                if index < 0 || val > end {
+                    Ok(s.nil())
+                } else {
+                    s.integer(val as i64)
+                }
+            }
+            4 | 5 => Scope::run(s, if op == 5 { &args[..1] } else { &[] }, |work| {
+                let mut acc = if op == 5 { args[0] } else { r };
+                for value in start..=end {
+                    let value = work.keep(object(s.integer(value as i64)?)?)?;
+                    if op == 4 {
+                        s.send(args[0], b"value:", &[Operand::object(value)])?;
+                        work.clear()?;
+                    } else {
+                        let next = s.send(
+                            args[1],
+                            b"value:value:",
+                            &[Operand::object(acc), Operand::object(value)],
+                        )?;
+                        let Some(next) = next.as_object().filter(|v| !v.is_null()) else {
+                            return Ok(s.nil());
+                        };
+                        acc = work.reset(next)?;
+                    }
+                }
+                Ok(Operand::object(acc))
+            }),
+            6 => {
+                let mut bytes = b"#[".to_vec();
+                for value in start..=end {
+                    if value != start {
+                        bytes.push(b' ');
+                    }
+                    let value = object(s.integer(value as i64)?)?;
+                    bytes.extend_from_slice(&Scope::run(s, &[value], |_| s.printable(value))?);
+                }
+                bytes.push(b']');
+                s.send(s.value(b"String"), b"fromBytes:", &[Operand::bytes(&bytes)])
+            }
+            7 | 8 => {
+                if op == 8
+                    && s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(args[0])])?
+                        .as_object()
+                        != Some(s.value(b"VectorVt"))
+                {
+                    return Ok(s.nil());
+                }
+                Scope::run(s, &[], |work| {
+                    let mut result =
+                        work.keep(object(s.send(s.value(b"Vector"), b"new", &[])?)?)?;
+                    let mut value = if op == 7 { end } else { start };
+                    while value >= start && value <= end {
+                        let item = work.keep(object(s.integer(value as i64)?)?)?;
+                        result = work.reset(object(s.send(
+                            result,
+                            b"add:",
+                            &[Operand::object(item)],
+                        )?)?)?;
+                        value += if op == 7 { -1 } else { 1 };
+                    }
+                    if op == 8 {
+                        s.send(result, b",", &[Operand::object(args[0])])
+                    } else {
+                        Ok(Operand::object(result))
+                    }
+                })
+            }
+            _ => Err(invalid()),
+        }
+    }
+}
+entry!(to, 0);
+entry!(size, 1);
+entry!(includes, 2);
+entry!(at, 3);
+entry!(do_each, 4);
+entry!(inject, 5);
+entry!(print, 6);
+entry!(reversed, 7);
+entry!(comma, 8);
+const METHODS: &[(&[u8], Method)] = &[
+    (b"size", size),
+    (b"includes:", includes),
+    (b"at:", at),
+    (b"do:", do_each),
+    (b"inject:into:", inject),
+    (b"printString", print),
+    (b"reversed", reversed),
+    (b",", comma),
+];

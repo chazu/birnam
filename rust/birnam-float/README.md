@@ -34,3 +34,10 @@ Run `mise run native-messages` for production tests of finite and non-finite
 arithmetic, signed zero, bit preservation, conversion limits, mixed operations,
 method replacement and collection during dependency calls. Runtime/compiler and
 image integration remain separate work.
+
+Collections use owner messages `collectionEquals:` (Object → Boolean) and
+`collectionHash` (no arguments → native Word, low 32 bits). Float preserves
+exact-family equality and the existing bit mix, normalizing both signed zeros.
+Identity is tested first by collections, so the same NaN key is retrievable while
+distinct NaNs differ. Private behaviors use identity; public `=` remains separate.
+See [Map's key contract](../birnam-map/README.md#keys).
