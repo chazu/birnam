@@ -1,3 +1,5 @@
+//! Pending Execution integration: retain numeric admission and deferred batch
+//! algorithms below. Production Integer has no table/mounting interface now.
 //! Explicit Integer dependency of Machine and its representation consumers.
 //! Id's bootstrap, Values and Heap do not own this family.
 use super::*;
@@ -10,12 +12,6 @@ pub(super) struct Binding {
     storage: IntegerStorageV1,
     native: Option<birnam_abi::integer_native::ConstructionV1>,
     namespace_lookup: Option<NativeEntry>,
-}
-
-#[cfg(test)]
-pub(super) struct TestOwner {
-    _api: Box<birnam_abi::IdApi>,
-    pub(super) instance: Box<birnam_integer::storage::Instance>,
 }
 
 impl Runtime {
@@ -204,17 +200,4 @@ impl Runtime {
             .expect("bounded index payloads")
     }
 
-    #[cfg(test)]
-    pub(crate) fn mount_test_integer(&self, mut api: Box<birnam_abi::IdApi>) {
-        let instance = unsafe { birnam_integer::storage::Instance::empty(api.as_mut(), self.namespace_export(), self.payload_layout()) };
-        let pointer = core::ptr::from_ref(instance.as_ref());
-        unsafe {
-            *self.test_integer.get() = Some(TestOwner {
-                _api: api,
-                instance,
-            })
-        };
-        self.enter(|| unsafe { (*pointer).populate() });
-        assert!(unsafe { self.attach_integer((*pointer).operations()) });
-    }
 }

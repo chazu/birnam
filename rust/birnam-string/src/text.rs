@@ -1,5 +1,4 @@
-//! Private text algorithms. Numeric operations return when number objects do.
-#[allow(dead_code)]
+//! Private text algorithms shared by String methods and numeric extensions.
 pub(crate) fn bracket_depth(bytes: &[u8]) -> i64 {
     let mut depth = 0i64;
     let mut in_string = false;

@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Restore Integer and Float through Bootstrap and Id messages, including checked
+  arithmetic, mixed operations, numeric conversions, printing and inclusive
+  callable iteration. Restore String indexing/parsing and Builder size/addByte:.
+  Remove numeric storage tables, singleton contexts and test mounting bridges;
+  preserve Execution's admission, deferred-allocation and recovery algorithms
+  pending integration. Add production arithmetic, live-replacement and GC tests,
+  including collection during Bootstrap extension installation.
+
 - Restore String, String Builder and Error through production Bootstrap and live
   Id messages. String owns native buffers and resource-aware cloning/finalization;
   Error uses Object Model reference slots. Restore number-independent text,

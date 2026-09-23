@@ -70,7 +70,6 @@ mod compiler;
 mod method;
 mod numeric;
 mod integer;
-mod float;
 mod word;
 mod native_allocation;
 mod tracing;
@@ -270,14 +269,9 @@ pub(crate) struct Runtime {
     compiler: core::cell::OnceCell<compiler::Compiler>,
     methods: core::cell::RefCell<method::Methods>,
     integer: Cell<Option<integer::Binding>>,
-    float: Cell<Option<float::Binding>>,
     word: Cell<Option<word::Binding>>,
     trace: Cell<Option<birnam_abi::trace_live::TraceLiveV1>>,
     collect: Cell<Option<birnam_abi::collect::CollectV1>>,
-    #[cfg(test)]
-    test_integer: UnsafeCell<Option<integer::TestOwner>>,
-    #[cfg(test)]
-    test_float: UnsafeCell<Option<float::TestOwner>>,
     #[cfg(test)]
     test_word: UnsafeCell<Option<word::TestOwner>>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,

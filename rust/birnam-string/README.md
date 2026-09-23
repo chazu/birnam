@@ -50,9 +50,25 @@ consulting detached Id metadata or calling another dependency. Private behaviors
 inherit the reference owner. Changing/removing a finalizer carries responsibility
 for the replaced resource cleanup, as with other native finalizers.
 
-Number-independent operations are installed immediately. String `size`, `at:`,
-`byteAt:`, `copyFrom:to:`, `indexOf:`, `bracketDepth`, `asInteger`, `asNumber`, and
-Builder `size`/`addByte:` await Integer/Float conversion; they are not retyped to
-Words. The bracket-depth algorithm is retained privately for that integration.
-Splitting awaits collection objects. Neither dependency blocks basic text or
-Boolean/Nil printing. Run `mise run native-messages` for production coverage.
+Number-independent operations are installed immediately. After Integer and Float
+are complete, Bootstrap sends String `installNumbers:` with both prototype
+Objects. That complete extension installs absent methods while preserving prior
+replacements. It reads numbers through `wordOf:` and constructs through
+`fromWord:`/`fromBits:`, never a foreign layout. Repeat installation is rejected.
+
+| Receiver / selector | Arguments | Result |
+|---|---|---|
+| String instance `size` | none | Integer byte count. |
+| String instance `at:`, `byteAt:` | Integer index | One-byte String or Integer byte value; nil for invalid index/type. |
+| String instance `copyFrom:to:` | two Integer indices | String slice with exclusive upper bound; nil for invalid range/type. |
+| String instance `indexOf:` | String | Integer index, nil if absent; empty needle gives zero. |
+| String instance `bracketDepth` | none | Integer bracket balance, ignoring strings/escapes and line comments. |
+| String instance `asInteger` | none | Parsed signed i64, nil on overflow or invalid text. |
+| String instance `asNumber` | none | Integer when possible, otherwise Float; nil for invalid text. |
+| StringBuilder instance `size` | none | Integer byte count. |
+| StringBuilder instance `addByte:` | Object | Append low eight bits of an Integer; ignore another type; return receiver. |
+
+Indexing remains byte-oriented. Numeric parsing trims space/tab/CR/LF, preserving
+its historical distinction from `trimmed`'s six whitespace characters. Splitting
+still awaits collection objects. Run `mise run native-messages` for production
+coverage, including replaced constructors and collection during conversions.

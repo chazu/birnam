@@ -1,3 +1,7 @@
+> Historical descriptor-era record. This boundary is retired under Design 90.
+> See the [current Integer message protocol](../rust/birnam-integer/README.md).
+> Do not restore the tables or preparation path described below.
+
 # Native Integer dependency, v1
 
 `libbirnam_integer.dylib` owns Integer's canonical behavior and prototype, signed

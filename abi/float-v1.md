@@ -1,3 +1,7 @@
+> Historical descriptor-era record. This boundary is retired under Design 90.
+> See the [current Float message protocol](../rust/birnam-float/README.md).
+> Do not restore the tables or preparation path described below.
+
 # Native Float dependency v1
 
 `birnam-float` owns Float's canonical behavior, zero prototype and eight-byte

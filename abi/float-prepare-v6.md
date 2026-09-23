@@ -1,3 +1,7 @@
+> Historical descriptor-era record. This boundary is retired under Design 90.
+> See the [current Float message protocol](../rust/birnam-float/README.md).
+> Do not restore the tables or preparation path described below.
+
 # Float preparation v6
 
 `birnam_float_prepare_v6` preserves the existing v5 preparation order

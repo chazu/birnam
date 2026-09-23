@@ -93,32 +93,6 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
     #[cfg(test)]
     {
         let roots = unsafe {
-            (&*runtime.test_integer.get())
-                .as_ref()
-                .map(|owner| owner.instance.identities())
-        };
-        if let Some(roots) = roots {
-            for root in roots {
-                emit_candidate(sink, root.addr());
-            }
-        }
-    }
-    #[cfg(test)]
-    {
-        let roots = unsafe {
-            (&*runtime.test_float.get())
-                .as_ref()
-                .map(|owner| owner.instance.identities())
-        };
-        if let Some(roots) = roots {
-            for root in roots {
-                emit_candidate(sink, root.addr());
-            }
-        }
-    }
-    #[cfg(test)]
-    {
-        let roots = unsafe {
             (&*runtime.test_word.get())
                 .as_ref()
                 .map(|owner| owner.instance.identities())

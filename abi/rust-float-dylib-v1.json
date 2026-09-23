@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "Native Float construction, operations and Integer mixed extension before Runtime",
+  "scope": "Float arithmetic and conversions through Id and completed Integer/String/Error objects",
   "install_name": "@rpath/libbirnam_float.dylib",
   "exported_symbols": [
     "birnam_native_module_v1",

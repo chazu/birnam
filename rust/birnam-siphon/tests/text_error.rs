@@ -234,7 +234,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
             object(send(id, symbolic, b"asSymbol", &[])),
             id.intern_name(b"opaque").unwrap()
         );
-        // Numeric language selectors remain absent, not silently retyped as native Words.
+        // Numeric text is installed after both completed number families.
         for name in [b"size".as_slice(), b"at:", b"asInteger", b"asNumber"] {
             assert_eq!(
                 send(
@@ -244,7 +244,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
                     &[Operand::object(id.intern_name(name).unwrap())]
                 )
                 .kind(),
-                native::UNIT
+                native::NATIVE_ENTRY
             );
         }
         let builder = keep(object(send(id, sb, b"new", &[])));

@@ -28,6 +28,7 @@ struct Text {
     nil: Oop,
     names: HashMap<&'static [u8], Oop>,
     buffers: RefCell<HashMap<usize, Buffer>>,
+    numeric: Cell<bool>,
     thread: std::thread::ThreadId,
 }
 fn invalid() -> Outcome {
@@ -80,6 +81,14 @@ impl Text {
             }
         }
         result
+    }
+    fn length(&self, value: Oop, builder: bool) -> Result<usize, Outcome> {
+        self.buffers
+            .borrow()
+            .get(&value.addr())
+            .filter(|b| b.builder == builder)
+            .map(|b| b.bytes.len())
+            .ok_or_else(invalid)
     }
     fn copy(&self, value: Oop, builder: bool) -> Result<Vec<u8>, Outcome> {
         self.buffers
@@ -309,7 +318,7 @@ unsafe fn execute(
                     match operation {
                         3 => t.make(t.copy(receiver, false)?, false), // independent byte buffer
                         4 => {
-                            t.copy(receiver, false)?;
+                            t.length(receiver, false)?;
                             Ok(Operand::object(receiver))
                         }
                         5 => {
@@ -338,11 +347,11 @@ unsafe fn execute(
                             t.id.send(t.id.receiver, t.id.intern, &[Operand::bytes(&bytes[..end])])
                         }
                         10 => {
-                            t.copy(receiver, true)?;
+                            t.length(receiver, true)?;
                             t.make(Vec::new(), true)
                         } // existing builder new/clone empties
                         11 => {
-                            t.copy(receiver, true)?;
+                            t.length(receiver, true)?;
                             let bytes = t.printable(objects[1])?;
                             t.send(t.gc, b"prepareAllocation", &[])?;
                             let mut buffers = t.buffers.borrow_mut();
@@ -395,6 +404,7 @@ entry!(new_builder, 10);
 entry!(add, 11);
 entry!(as_string, 12);
 const NAMES: &[&[u8]] = &[
+    b"installNumbers:",
     b"retain:",
     b"release:",
     b"allocate",
@@ -471,11 +481,17 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             prototype: Cell::new(ptr::null_mut()),
             builder: Cell::new(ptr::null_mut()),
             buffers: RefCell::new(HashMap::new()),
+            numeric: Cell::new(false),
             thread: std::thread::current().id(),
         }));
         let t = &*pointer;
         for (target, name, method) in [
-            (behavior, b"fromBytes:".as_slice(), from_bytes as Method),
+            (
+                behavior,
+                b"installNumbers:".as_slice(),
+                numeric::install as Method,
+            ),
+            (behavior, b"fromBytes:", from_bytes as Method),
             (behavior, b"bytes", bytes),
             (behavior, b"length", length),
             (behavior, b"clone", clone_string),
@@ -608,3 +624,6 @@ pub static birnam_native_module_v1: native::Module = native::Module {
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };
+
+#[path = "numeric.rs"]
+mod numeric;

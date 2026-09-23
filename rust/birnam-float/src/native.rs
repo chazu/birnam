@@ -1,441 +1,562 @@
-//! Complete Float construction and operations using already constructed Integer.
-use super::storage::{Instance, STORAGE};
 use birnam_abi::{
-    Oop, base_values,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-    lifetime, namespace_owner, root_registry,
-    string::StringApiV1,
+    Oop, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
-use core::{ffi::c_void, ptr};
-use std::sync::atomic::{AtomicBool, Ordering};
-
-#[derive(Clone, Copy)]
-pub(crate) struct Access {
-    pub id: Protocol,
-    integer: *mut birnam_abi::integer::IntegerApiV1,
-    roots: root_registry::OwnedV1,
-    values: base_values::ValuesV1,
+use core::ffi::c_void;
+use std::collections::HashMap;
+struct Number {
+    id: Protocol,
+    roots: Oop,
+    gc: Oop,
+    model: Oop,
     namespace: Oop,
     string: Oop,
-    allocation_size: NativeEntry,
-    behavior_of: NativeEntry,
-    allocate: Oop,
-    binding: Oop,
-    error_name: Oop,
-    error_behavior_name: Oop,
-    error_make: Oop,
-    string_make: Oop,
+    behavior: Oop,
+    prototype: Oop,
+    truth: Oop,
+    falsity: Oop,
+    nil: Oop,
+    integer: Oop,
+    names: HashMap<&'static [u8], Oop>,
+    thread: std::thread::ThreadId,
 }
-impl Access {
-    pub(crate) fn references(self) -> [Oop; 16] {
-        [
-            unsafe { (*self.integer).behavior },
-            unsafe { (*self.integer).prototype },
-            self.id.receiver,
-            self.id.intern,
-            self.id.load,
-            self.namespace,
-            self.string,
-            self.values.nil,
-            self.values.true_object,
-            self.values.false_object,
-            self.allocate,
-            self.binding,
-            self.error_name,
-            self.error_behavior_name,
-            self.error_make,
-            self.string_make,
-        ]
-    }
-}
-static READY: AtomicBool = AtomicBool::new(false);
-
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
-fn send(id: Protocol, receiver: Oop, selector: Oop, args: &[Operand]) -> Result<Operand, Outcome> {
-    unsafe { id.message.unwrap()(id.context, receiver, selector, args.as_ptr(), args.len()) }
-        .into_result()
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|p| !p.is_null()).ok_or_else(invalid)
 }
-fn intern(id: Protocol, bytes: &[u8]) -> Result<Oop, Outcome> {
-    send(id, id.receiver, id.intern, &[Operand::bytes(bytes)])?
-        .as_object()
-        .ok_or_else(invalid)
+fn done(v: Result<Operand, Outcome>) -> Outcome {
+    v.map_or_else(|e| e, Outcome::loaded)
 }
-fn select(id: Protocol, name: &[u8]) -> Result<NativeEntry, Outcome> {
-    send(
-        id,
-        id.receiver,
-        intern(id, b"lookup")?,
-        &[Operand::object(intern(id, name)?)],
-    )?
-    .as_entry()
-    .ok_or_else(invalid)
-}
-fn fact(access: Access, entry: NativeEntry, object: Oop) -> Result<Operand, Outcome> {
-    let args = [Operand::object(object)];
-    unsafe { entry.method.unwrap()(entry.context, access.id.receiver, args.as_ptr(), args.len()) }
-        .into_result()
-}
-struct Root {
-    roots: root_registry::OwnedV1,
-    token: usize,
-}
-impl Root {
-    fn new(roots: root_registry::OwnedV1, object: Oop) -> Self {
-        let token = unsafe { roots.retain.unwrap()(roots.context, object) };
-        assert_ne!(token, 0);
-        Self { roots, token }
-    }
-}
-impl Drop for Root {
-    fn drop(&mut self) {
-        assert_eq!(
-            unsafe { self.roots.release.unwrap()(self.roots.context, self.token) },
-            1
-        );
-    }
-}
-fn answer(result: Result<Oop, Outcome>) -> Outcome {
-    match result {
-        Ok(object) => Outcome::loaded(Operand::object(object)),
-        Err(error) => error,
-    }
-}
-fn known(access: Access, object: Oop) -> bool {
-    fact(access, access.allocation_size, object)
-        .ok()
-        .and_then(|value| value.as_word())
-        .is_some()
-}
-pub(crate) fn exact(instance: &Instance, access: Access, object: Oop) -> bool {
-    fact(access, access.allocation_size, object)
-        .ok()
-        .and_then(|value| value.as_word())
-        .is_some_and(|size| size >= STORAGE.payload_size)
-        && fact(access, access.behavior_of, object)
-            .ok()
-            .and_then(|value| value.as_object())
-            == Some(instance.identities()[0])
-}
-pub(crate) unsafe fn make(instance: &Instance, access: Access, bits: u64) -> Result<Oop, Outcome> {
-    let behavior = instance.identities()[0];
-    let object = send(
-        access.id,
-        behavior,
-        access.allocate,
-        &[Operand::word(STORAGE.payload_size)],
-    )?
-    .as_object()
-    .filter(|object| !object.is_null())
-    .ok_or_else(invalid)?;
-    if !exact(instance, access, object) {
+unsafe fn state<'a>(context: *mut c_void) -> Result<&'a Number, Outcome> {
+    let n = unsafe { &*context.cast::<Number>() };
+    if n.thread != std::thread::current().id() {
         return Err(invalid());
     }
-    unsafe { (STORAGE.initialize_bits)(object.cast(), bits) };
-    Ok(object)
+    Ok(n)
 }
-unsafe fn float(instance: &Instance, access: Access, object: Oop) -> Option<f64> {
-    let ops = unsafe { *instance.operations() };
-    if unsafe { (ops.is_exact)(ops.context, object) } == 0 || !exact(instance, access, object) {
-        return None;
+impl Number {
+    unsafe fn send(
+        &self,
+        r: Oop,
+        name: &'static [u8],
+        args: &[Operand],
+    ) -> Result<Operand, Outcome> {
+        unsafe { self.id.send(r, self.names[name], args) }
     }
-    Some(unsafe { (ops.read)(ops.context, object) })
-}
-fn lookup_binding(access: Access, name: Oop) -> Result<Option<Oop>, Outcome> {
-    Ok(send(
-        access.id,
-        access.namespace,
-        access.binding,
-        &[Operand::object(name)],
-    )?
-    .as_object()
-    .filter(|object| !object.is_null()))
-}
-fn is_error(access: Access, object: Oop) -> Result<bool, Outcome> {
-    let Some(behavior) = lookup_binding(access, access.error_behavior_name)? else {
-        return Ok(false);
-    };
-    Ok(fact(access, access.behavior_of, object)?.as_object() == Some(behavior))
-}
-fn error(access: Access, kind: &[u8], message: &[u8]) -> Result<Oop, Outcome> {
-    let kind = intern(access.id, kind)?;
-    let _kind = Root::new(access.roots, kind);
-    let message = send(
-        access.id,
-        access.string,
-        access.string_make,
-        &[Operand::bytes(message)],
-    )?
-    .as_object()
-    .ok_or_else(invalid)?;
-    let _message = Root::new(access.roots, message);
-    let Some(factory) = lookup_binding(access, access.error_name)? else {
-        return Ok(access.values.nil);
-    };
-    let _factory = Root::new(access.roots, factory);
-    send(
-        access.id,
-        factory,
-        access.error_make,
-        &[Operand::object(kind), Operand::object(message)],
-    )?
-    .as_object()
-    .ok_or_else(invalid)
-}
-unsafe fn result(instance: &Instance, value: f64) -> Oop {
-    let ops = unsafe { *instance.operations() };
-    unsafe { (ops.make)(ops.context, value) }
-}
-unsafe fn number(instance: &Instance, access: Access, object: Oop) -> Option<f64> {
-    let ops = unsafe { *access.integer };
-    if unsafe { (ops.is_exact)(ops.context, object) } != 0
-        && fact(access, access.allocation_size, object)
-            .ok()?
-            .as_word()?
-            >= 8
-        && fact(access, access.behavior_of, object).ok()?.as_object()? == ops.behavior
-    {
-        return Some(unsafe { (ops.read)(ops.context, object) } as f64);
-    }
-    unsafe { float(instance, access, object) }
-}
-fn to_integer(access: Access, value: f64) -> Result<Oop, Outcome> {
-    let value = value.trunc();
-    if !value.is_finite() || value < i64::MIN as f64 || value >= 9_223_372_036_854_775_808.0 {
-        return error(access, b"overflow", b"float out of Integer range");
-    }
-    let ops = unsafe { *access.integer };
-    Ok(unsafe { (ops.make)(ops.context, value as i64) })
-}
-fn boolean(access: Access, value: bool) -> Oop {
-    if value {
-        access.values.true_object
-    } else {
-        access.values.false_object
-    }
-}
-unsafe fn binary(
-    instance: &Instance,
-    access: Access,
-    receiver: Oop,
-    right: Oop,
-    operation: u8,
-) -> Result<Oop, Outcome> {
-    if !known(access, receiver) || !known(access, right) {
-        return Err(invalid());
-    }
-    let _receiver = Root::new(access.roots, receiver);
-    let _right = Root::new(access.roots, right);
-    let Some(left) = (unsafe { float(instance, access, receiver) }) else {
-        return Ok(access.values.nil);
-    };
-    if operation != 5 && is_error(access, right)? {
-        return Ok(right);
-    }
-    let right = if operation == 5 {
-        unsafe { float(instance, access, right) }
-    } else {
-        unsafe { number(instance, access, right) }
-    };
-    let Some(right) = right else {
-        if operation == 5 {
-            return Ok(access.values.false_object);
+    unsafe fn rooted(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<Operand, Outcome>,
+    ) -> Result<Operand, Outcome> {
+        let mut tokens = Vec::new();
+        let result = (|| unsafe {
+            for value in values {
+                tokens.push(
+                    self.send(self.roots, b"retain:", &[Operand::object(*value)])?
+                        .as_word()
+                        .filter(|n| *n != 0)
+                        .ok_or_else(invalid)?,
+                );
+            }
+            f()
+        })();
+        for token in tokens {
+            if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
+                != Some(1)
+            {
+                return Err(invalid());
+            }
         }
-        return error(
-            access,
-            b"typeMismatch",
-            if operation > 5 {
-                b"comparison needs a number"
-            } else {
-                b"Float arithmetic needs a number"
-            },
-        );
-    };
-    if operation == 3 && right == 0.0 {
-        return error(access, b"zeroDivide", b"division by zero");
+        result
     }
-    Ok(match operation {
-        0 => unsafe { result(instance, left + right) },
-        1 => unsafe { result(instance, left - right) },
-        2 => unsafe { result(instance, left * right) },
-        3 => unsafe { result(instance, left / right) },
-        5 => boolean(access, left == right),
-        6 => boolean(access, left < right),
-        7 => boolean(access, left <= right),
-        8 => boolean(access, left > right),
-        9 => boolean(access, left >= right),
-        _ => unreachable!(),
-    })
+    unsafe fn read(&self, value: Oop) -> Result<Option<f64>, Outcome> {
+        unsafe {
+            if self
+                .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                .as_object()
+                != Some(self.behavior)
+                || self
+                    .send(
+                        self.id.receiver,
+                        b"allocationSizeOf:",
+                        &[Operand::object(value)],
+                    )?
+                    .as_word()
+                    != Some(8)
+            {
+                return Ok(None);
+            }
+            Ok(Some(f64::from_bits(value.cast::<u64>().read())))
+        }
+    }
+    unsafe fn make(&self, bits: usize) -> Result<Operand, Outcome> {
+        unsafe {
+            let value = object(self.send(
+                self.model,
+                b"allocate:bytes:",
+                &[Operand::object(self.behavior), Operand::word(8)],
+            )?)?;
+            self.rooted(&[value], || {
+                if self
+                    .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                    .as_object()
+                    != Some(self.behavior)
+                    || self
+                        .send(
+                            self.id.receiver,
+                            b"allocationSizeOf:",
+                            &[Operand::object(value)],
+                        )?
+                        .as_word()
+                        != Some(8)
+                {
+                    return Err(invalid());
+                }
+                value.cast::<usize>().write(bits);
+                Ok(Operand::object(value))
+            })
+        }
+    }
+    unsafe fn binding(&self, name: &'static [u8]) -> Result<Operand, Outcome> {
+        unsafe { self.send(self.namespace, b"at:", &[Operand::object(self.names[name])]) }
+    }
+    unsafe fn is_error(&self, value: Oop) -> Result<bool, Outcome> {
+        // Preserve the existing live Namespace ErrorVt rule, including rebinding.
+        unsafe {
+            Ok(self.binding(b"ErrorVt")?.as_object()
+                == self
+                    .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                    .as_object())
+        }
+    }
+    unsafe fn error(&self, kind: &'static [u8], message: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            let message =
+                object(self.send(self.string, b"fromBytes:", &[Operand::bytes(message)])?)?;
+            self.rooted(&[message], || {
+                let Some(factory) = self.binding(b"Error")?.as_object() else {
+                    return Ok(Operand::object(self.nil));
+                };
+                self.rooted(&[factory], || {
+                    self.send(
+                        factory,
+                        b"kind:message:",
+                        &[Operand::object(self.names[kind]), Operand::object(message)],
+                    )
+                })
+            })
+        }
+    }
+    fn boolean(&self, value: bool) -> Operand {
+        Operand::object(if value { self.truth } else { self.falsity })
+    }
 }
-macro_rules! binary_entry {
-    ($name:ident, $operation:expr) => {
+unsafe extern "C" fn roots(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let n = state(context)?;
+        let Some([visitor]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        let visitor = visitor
+            .as_entry()
+            .filter(|e| e.method.is_some())
+            .ok_or_else(invalid)?;
+        let mut values = vec![
+            n.roots,
+            n.gc,
+            n.model,
+            n.namespace,
+            n.string,
+            n.behavior,
+            n.prototype,
+            n.truth,
+            n.falsity,
+            n.nil,
+            n.integer,
+        ];
+        values.extend(n.names.values().copied());
+        for value in values {
+            visitor.method.unwrap()(visitor.context, n.prototype, &Operand::object(value), 1)
+                .into_result()?;
+        }
+        Ok(Operand::unit())
+    })())
+}
+unsafe extern "C" fn references(
+    context: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        state(context)?;
+        let Some([value, visitor]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        object(*value)?;
+        visitor
+            .as_entry()
+            .filter(|e| e.method.is_some())
+            .ok_or_else(invalid)?;
+        // This family's raw numeric bits never represent object edges, including
+        // instances with private behaviors. No foreign representation is read.
+        Ok(Operand::unit())
+    })())
+}
+macro_rules! entry {
+    ($name:ident,$op:expr) => {
         unsafe extern "C" fn $name(
             context: *mut c_void,
             receiver: Oop,
             args: *const Operand,
             count: usize,
         ) -> Outcome {
-            let Some([right]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
-                return invalid();
-            };
-            let Some(right) = right.as_object() else {
-                return invalid();
-            };
-            let instance = unsafe { &*context.cast::<Instance>() };
-            answer(unsafe {
-                binary(
-                    instance,
-                    instance.native_access().unwrap(),
-                    receiver,
-                    right,
-                    $operation,
-                )
-            })
+            done((|| unsafe {
+                let n = state(context)?;
+                let args = borrowed_slice(args, count).ok_or_else(invalid)?;
+                let mut values = vec![receiver];
+                values.extend(
+                    args.iter()
+                        .filter_map(|v| v.as_object())
+                        .filter(|v| !v.is_null()),
+                );
+                n.rooted(&values, || execute(n, receiver, args, $op))
+            })())
         }
     };
 }
-binary_entry!(add, 0);
-binary_entry!(subtract, 1);
-binary_entry!(multiply, 2);
-binary_entry!(divide, 3);
-binary_entry!(equals, 5);
-binary_entry!(less, 6);
-binary_entry!(less_equal, 7);
-binary_entry!(greater, 8);
-binary_entry!(greater_equal, 9);
-unsafe extern "C" fn from_bits(
-    context: *mut c_void,
-    _: Oop,
+
+const NAMES: &[&[u8]] = &[
+    b"retain:",
+    b"release:",
+    b"behaviorOf:",
+    b"allocationSizeOf:",
+    b"allocate:bytes:",
+    b"fromBytes:",
+    b"at:",
+    b"Error",
+    b"ErrorVt",
+    b"kind:message:",
+    b"overflow",
+    b"zeroDivide",
+    b"typeMismatch",
+    b"domain",
+    b"rootsDo:",
+    b"referencesOf:do:",
+    b"addMethod",
+    b"register:",
+    b"trace:with:",
+    b"ownerOf:put:",
+    b"at:put:",
+    b"Float",
+    b"FloatVt",
+    b"fromWord:",
+    b"wordOf:",
+];
+
+unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let named = |name: &[u8]| {
+            object(id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+        };
+        let roots = named(b"Roots")?;
+        let gc = named(b"GC")?;
+        let model = named(b"ObjectModel")?;
+        let string = named(b"String")?;
+        let truth = named(b"true")?;
+        let falsity = named(b"false")?;
+        let nil = named(b"nil")?;
+        let parent = named(b"ObjectVt")?;
+        let integer = named(b"Integer")?;
+        let retain = id.intern_name(b"retain:")?;
+        let release = id.intern_name(b"release:")?;
+        let mut tokens = Vec::new();
+        let mut keep = |v: Oop| -> Result<Oop, Outcome> {
+            tokens.push(
+                id.send(roots, retain, &[Operand::object(v)])?
+                    .as_word()
+                    .filter(|n| *n != 0)
+                    .ok_or_else(invalid)?,
+            );
+            Ok(v)
+        };
+        let mut names = HashMap::new();
+        for name in NAMES
+            .iter()
+            .copied()
+            .chain(METHODS.iter().map(|(name, _)| *name))
+        {
+            names.insert(name, keep(id.intern_name(name)?)?);
+        }
+        let behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+        id.send_named(
+            model,
+            b"setLayoutOf:to:rest:",
+            &[
+                Operand::object(behavior),
+                Operand::bytes(&[]),
+                Operand::word(0),
+            ],
+        )?;
+        let prototype = keep(object(id.send_named(
+            model,
+            b"allocate:bytes:",
+            &[Operand::object(behavior), Operand::word(8)],
+        )?)?)?;
+        // Zero-filled ordinary storage represents the numeric prototype (zero).
+        let pointer = Box::into_raw(Box::new(Number {
+            id,
+            roots,
+            gc,
+            model,
+            namespace,
+            string,
+            behavior,
+            prototype,
+            truth,
+            falsity,
+            nil,
+            names,
+            integer,
+            thread: std::thread::current().id(),
+        }));
+        let n = &*pointer;
+        for (name, method) in METHODS.iter().copied().chain([
+            (b"rootsDo:".as_slice(), self::roots as Method),
+            (b"referencesOf:do:", references),
+        ]) {
+            n.send(
+                behavior,
+                b"addMethod",
+                &[
+                    Operand::object(n.names[name]),
+                    Operand::entry(NativeEntry::new(method, pointer.cast())),
+                ],
+            )?;
+        }
+        n.send(roots, b"register:", &[Operand::object(prototype)])?;
+        n.send(
+            gc,
+            b"trace:with:",
+            &[Operand::object(behavior), Operand::object(prototype)],
+        )?;
+        n.send(
+            id.receiver,
+            b"ownerOf:put:",
+            &[Operand::object(behavior), Operand::object(prototype)],
+        )?;
+        for (name, value) in [(b"Float".as_slice(), prototype), (b"FloatVt", behavior)] {
+            n.send(
+                namespace,
+                b"at:put:",
+                &[Operand::object(n.names[name]), Operand::object(value)],
+            )?;
+        }
+        for token in tokens {
+            id.send(roots, release, &[Operand::word(token)])?;
+        }
+        Ok(Operand::object(prototype))
+    }
+}
+unsafe extern "C" fn initialize(
+    id: *const Protocol,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    let Some([value]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let Some(value) = value.as_word() else {
-        return invalid();
-    };
-    let instance = unsafe { &*context.cast::<Instance>() };
-    answer(unsafe { make(instance, instance.native_access().unwrap(), value as u64) })
-}
-unsafe extern "C" fn bits(
-    context: *mut c_void,
-    receiver: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    if count != 0 {
-        return invalid();
-    }
-    let instance = unsafe { &*context.cast::<Instance>() };
-    let access = instance.native_access().unwrap();
-    if !known(access, receiver) {
-        return invalid();
-    }
-    let _receiver = Root::new(access.roots, receiver);
-    match unsafe { float(instance, access, receiver) } {
-        Some(value) => Outcome::loaded(Operand::word(value.to_bits() as usize)),
-        None => invalid(),
-    }
-}
-unsafe extern "C" fn print(
-    context: *mut c_void,
-    receiver: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    if count != 0 {
-        return invalid();
-    }
-    let instance = unsafe { &*context.cast::<Instance>() };
-    let access = instance.native_access().unwrap();
-    if !known(access, receiver) {
-        return invalid();
-    }
-    let _receiver = Root::new(access.roots, receiver);
-    let Some(value) = (unsafe { float(instance, access, receiver) }) else {
-        return Outcome::loaded(Operand::object(access.values.nil));
-    };
-    let mut text = value.to_string();
-    if !text.contains(['.', 'e', 'E']) {
-        text.push_str(".0");
-    }
-    match send(
-        access.id,
-        access.string,
-        access.string_make,
-        &[Operand::bytes(text.as_bytes())],
-    ) {
-        Ok(value) => Outcome::loaded(value),
-        Err(error) => error,
-    }
-}
-unsafe fn unary(
-    instance: &Instance,
-    access: Access,
-    receiver: Oop,
-    operation: u8,
-) -> Result<Oop, Outcome> {
-    if !known(access, receiver) {
-        return Err(invalid());
-    }
-    let _receiver = Root::new(access.roots, receiver);
-    let Some(value) = (unsafe { float(instance, access, receiver) }) else {
-        return Ok(access.values.nil);
-    };
-    match operation {
-        0 => Ok(unsafe { result(instance, -value) }),
-        1 => to_integer(access, value),
-        2 => Ok(unsafe { result(instance, value.abs()) }),
-        3 => to_integer(access, value.floor()),
-        4 => to_integer(access, value.ceil()),
-        5 => to_integer(access, value.round()),
-        6 if value < 0.0 => error(access, b"domain", b"square root of a negative number"),
-        6 => Ok(unsafe { result(instance, value.sqrt()) }),
-        _ => unreachable!(),
-    }
-}
-macro_rules! unary_entry {
-    ($name:ident, $operation:expr) => {
-        unsafe extern "C" fn $name(
-            context: *mut c_void,
-            receiver: Oop,
-            _: *const Operand,
-            count: usize,
-        ) -> Outcome {
-            if count != 0 {
-                return invalid();
-            }
-            let instance = unsafe { &*context.cast::<Instance>() };
-            answer(unsafe {
-                unary(
-                    instance,
-                    instance.native_access().unwrap(),
-                    receiver,
-                    $operation,
-                )
-            })
+    done((|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
         }
-    };
+        let Some([namespace]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        let namespace = object(*namespace)?;
+        let id = *id;
+        let current = id.send_named(
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"Float")?)],
+        )?;
+        if current.kind() == native::OBJECT {
+            return Ok(current);
+        }
+        construct(id, namespace)
+    })())
 }
-unary_entry!(negated, 0);
-unary_entry!(as_integer, 1);
-unary_entry!(abs, 2);
-unary_entry!(floor, 3);
-unary_entry!(ceiling, 4);
-unary_entry!(rounded, 5);
-unary_entry!(sqrt, 6);
-const METHODS: &[(&[u8], native::Method)] = &[
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
+impl Number {
+    unsafe fn floating(&self, value: f64) -> Result<Operand, Outcome> {
+        unsafe {
+            self.send(
+                self.prototype,
+                b"fromBits:",
+                &[Operand::word(value.to_bits() as usize)],
+            )
+        }
+    }
+    unsafe fn integer(&self, value: f64) -> Result<Operand, Outcome> {
+        unsafe {
+            let value = value.trunc();
+            if !value.is_finite()
+                || value < (i64::MIN as f64)
+                || value >= 9_223_372_036_854_775_808.0
+            {
+                return self.error(b"overflow", b"float out of Integer range");
+            }
+            self.send(
+                self.integer,
+                b"fromWord:",
+                &[Operand::word(value as i64 as usize)],
+            )
+        }
+    }
+    unsafe fn number(&self, value: Oop) -> Result<Option<f64>, Outcome> {
+        unsafe {
+            let word = self.send(self.integer, b"wordOf:", &[Operand::object(value)])?;
+            if word.kind() != native::UNIT {
+                return Ok(Some(word.as_word().ok_or_else(invalid)? as i64 as f64));
+            }
+            self.read(value)
+        }
+    }
+}
+unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
+    unsafe {
+        if op == 10 {
+            let [v] = args else {
+                return Err(invalid());
+            };
+            return n.make(v.as_word().ok_or_else(invalid)?);
+        }
+        if op == 11 {
+            let [v] = args else {
+                return Err(invalid());
+            };
+            return Ok(n
+                .read(object(*v)?)?
+                .map(|v| Operand::word(v.to_bits() as usize))
+                .unwrap_or_else(Operand::unit));
+        }
+        let Some(value) = n.read(r)? else {
+            return if op == 12 {
+                Err(invalid())
+            } else {
+                Ok(Operand::object(n.nil))
+            };
+        };
+        if op <= 9 {
+            let [right] = args else {
+                return Err(invalid());
+            };
+            let right = object(*right)?;
+            if op != 5 && n.is_error(right)? {
+                return Ok(Operand::object(right));
+            }
+            let right = if op == 5 {
+                n.read(right)?
+            } else {
+                n.number(right)?
+            };
+            let Some(right) = right else {
+                return if op == 5 {
+                    Ok(n.boolean(false))
+                } else {
+                    n.error(
+                        b"typeMismatch",
+                        if op > 5 {
+                            b"comparison needs a number"
+                        } else {
+                            b"Float arithmetic needs a number"
+                        },
+                    )
+                };
+            };
+            if op == 3 && right == 0.0 {
+                return n.error(b"zeroDivide", b"division by zero");
+            }
+            return Ok(match op {
+                0 => return n.floating(value + right),
+                1 => return n.floating(value - right),
+                2 => return n.floating(value * right),
+                3 => return n.floating(value / right),
+                5 => n.boolean(value == right),
+                6 => n.boolean(value < right),
+                7 => n.boolean(value <= right),
+                8 => n.boolean(value > right),
+                9 => n.boolean(value >= right),
+                _ => return Err(invalid()),
+            });
+        }
+        if !args.is_empty() {
+            return Err(invalid());
+        }
+        match op {
+            12 => Ok(Operand::word(value.to_bits() as usize)),
+            13 => {
+                let mut text = value.to_string();
+                if !text.contains(['.', 'e', 'E']) {
+                    text.push_str(".0");
+                }
+                n.send(n.string, b"fromBytes:", &[Operand::bytes(text.as_bytes())])
+            }
+            14 => n.floating(-value),
+            15 => n.integer(value),
+            16 => n.floating(value.abs()),
+            17 => n.integer(value.floor()),
+            18 => n.integer(value.ceil()),
+            19 => n.integer(value.round()),
+            20 if value < 0.0 => n.error(b"domain", b"square root of a negative number"),
+            20 => n.floating(value.sqrt()),
+            _ => Err(invalid()),
+        }
+    }
+}
+entry!(add, 0);
+entry!(sub, 1);
+entry!(mul, 2);
+entry!(div, 3);
+entry!(equal, 5);
+entry!(lt, 6);
+entry!(le, 7);
+entry!(gt, 8);
+entry!(ge, 9);
+entry!(from_bits, 10);
+entry!(bits_of, 11);
+entry!(bits, 12);
+entry!(print, 13);
+entry!(negated, 14);
+entry!(as_integer, 15);
+entry!(abs, 16);
+entry!(floor, 17);
+entry!(ceiling, 18);
+entry!(rounded, 19);
+entry!(sqrt, 20);
+const METHODS: &[(&[u8], Method)] = &[
     (b"+", add),
-    (b"-", subtract),
-    (b"*", multiply),
-    (b"/", divide),
-    (b"=", equals),
-    (b"<", less),
-    (b"<=", less_equal),
-    (b">", greater),
-    (b">=", greater_equal),
+    (b"-", sub),
+    (b"*", mul),
+    (b"/", div),
+    (b"=", equal),
+    (b"<", lt),
+    (b"<=", le),
+    (b">", gt),
+    (b">=", ge),
+    (b"fromBits:", from_bits),
+    (b"bitsOf:", bits_of),
+    (b"bits", bits),
+    (b"printString", print),
     (b"negated", negated),
     (b"asInteger", as_integer),
     (b"abs", abs),
@@ -443,190 +564,4 @@ const METHODS: &[(&[u8], native::Method)] = &[
     (b"ceiling", ceiling),
     (b"rounded", rounded),
     (b"sqrt", sqrt),
-    (b"printString", print),
-    (b"fromBits:", from_bits),
-    (b"bits", bits),
 ];
-fn construct(
-    id: Protocol,
-    roots: root_registry::OwnedV1,
-    lifetime: lifetime::OwnedV2,
-    values: base_values::ValuesV1,
-    namespace: namespace_owner::OwnedV1,
-    string: StringApiV1,
-    error_factory: Oop,
-    integer: *mut birnam_abi::integer::IntegerApiV1,
-) -> Result<*mut birnam_abi::float::FloatApiV1, Outcome> {
-    let access = Access {
-        id,
-        integer,
-        roots,
-        values,
-        namespace: namespace.receiver,
-        string: string.prototype,
-        allocation_size: select(id, b"allocationSizeOf:")?,
-        behavior_of: select(id, b"behaviorOf:")?,
-        allocate: intern(id, b"allocate")?,
-        binding: intern(id, b"bindingAt:")?,
-        error_name: intern(id, b"Error")?,
-        error_behavior_name: intern(id, b"ErrorVt")?,
-        error_make: intern(id, b"kind:message:")?,
-        string_make: intern(id, b"fromBytes:")?,
-    };
-    if lookup_binding(access, access.error_name)? != Some(error_factory)
-        || lookup_binding(access, access.error_behavior_name)?.is_none()
-    {
-        return Err(invalid());
-    }
-    let error_behavior = fact(access, access.behavior_of, error_factory)?
-        .as_object()
-        .ok_or_else(invalid)?;
-    if send(
-        id,
-        error_behavior,
-        intern(id, b"lookup")?,
-        &[Operand::object(access.error_make)],
-    )?
-    .as_entry()
-    .is_none()
-    {
-        return Err(invalid());
-    }
-    let instance = Box::into_raw(Instance::native(access));
-    super::INSTANCE.store(instance, Ordering::Release);
-    unsafe { root_registry::register(roots.api, super::float_roots) };
-    let object = send(id, id.receiver, intern(id, b"objectPrototype")?, &[])?
-        .as_object()
-        .ok_or_else(invalid)?;
-    let parent = fact(access, access.behavior_of, object)?
-        .as_object()
-        .ok_or_else(invalid)?;
-    let behavior = send(id, parent, intern(id, b"delegated")?, &[])?
-        .as_object()
-        .ok_or_else(invalid)?;
-    unsafe {
-        (*instance).set_behavior(behavior);
-        birnam_abi::payload_layout::set(
-            lifetime.layouts,
-            behavior,
-            ptr::null(),
-            0,
-            birnam_abi::SLOT_RAW,
-        );
-    }
-    let prototype = unsafe { make(&*instance, access, 0) }?;
-    unsafe { (*instance).set_prototype(prototype) };
-    let add_method = intern(id, b"addMethod")?;
-    for (name, method) in METHODS {
-        send(
-            id,
-            behavior,
-            add_method,
-            &[
-                Operand::object(intern(id, name)?),
-                Operand::entry(NativeEntry::new(*method, instance.cast())),
-            ],
-        )?;
-    }
-    send(
-        id,
-        id.receiver,
-        intern(id, b"ownerOf:put:")?,
-        &[Operand::object(behavior), Operand::object(prototype)],
-    )?;
-    let publish = intern(id, b"bindingAt:put:")?;
-    for (name, value) in [
-        (b"Float".as_slice(), prototype),
-        (b"FloatVt".as_slice(), behavior),
-    ] {
-        send(
-            id,
-            namespace.receiver,
-            publish,
-            &[Operand::object(intern(id, name)?), Operand::object(value)],
-        )?;
-    }
-    let ops = unsafe { (*instance).operations() };
-    assert_eq!(unsafe { birnam_abi::float::attach(ops) }, 1);
-    // Float is complete before entering Integer's numeric extension.
-    send(
-        id,
-        unsafe { (*integer).prototype },
-        intern(id, b"installFloat:")?,
-        &[Operand::word(ops as usize)],
-    )?;
-    READY.store(true, Ordering::Release);
-    Ok(ops)
-}
-unsafe extern "C" fn initialize(
-    id: *const Protocol,
-    args: *const Operand,
-    count: usize,
-) -> Outcome {
-    if id.is_null() {
-        return invalid();
-    }
-    let Some([roots, lifetime, values, namespace, string, error, integer]) =
-        (unsafe { birnam_abi::borrowed_slice(args, count) })
-    else {
-        return invalid();
-    };
-    let (
-        Some(roots),
-        Some(lifetime),
-        Some(values),
-        Some(namespace),
-        Some(string),
-        Some(error),
-        Some(integer),
-    ) = (
-        roots.as_word(),
-        lifetime.as_word(),
-        values.as_word(),
-        namespace.as_word(),
-        string.as_word(),
-        error.as_object(),
-        integer.as_word(),
-    )
-    else {
-        return invalid();
-    };
-    let (roots, lifetime, values, namespace, string, integer) = (
-        roots as *const root_registry::OwnedV1,
-        lifetime as *const lifetime::OwnedV2,
-        values as *const base_values::ValuesV1,
-        namespace as *const namespace_owner::OwnedV1,
-        string as *const StringApiV1,
-        integer as *mut birnam_abi::integer::IntegerApiV1,
-    );
-    if !unsafe {
-        root_registry::valid_owned(roots)
-            && lifetime::valid(lifetime)
-            && base_values::valid(values)
-            && namespace_owner::valid(namespace)
-            && birnam_abi::string::valid(string)
-            && birnam_abi::integer::valid(integer)
-    } || !super::INSTANCE.load(Ordering::Acquire).is_null()
-    {
-        return invalid();
-    }
-    match construct(
-        unsafe { *id },
-        unsafe { *roots },
-        unsafe { *lifetime },
-        unsafe { *values },
-        unsafe { *namespace },
-        unsafe { *string },
-        error,
-        integer,
-    ) {
-        Ok(ops) => Outcome::loaded(Operand::word(ops as usize)),
-        Err(error) => error,
-    }
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module {
-    version: 1,
-    byte_size: size_of::<native::Module>() as u32,
-    initialize: Some(initialize),
-};

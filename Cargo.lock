@@ -294,8 +294,6 @@ dependencies = [
  "birnam-codegen",
  "birnam-collect",
  "birnam-dispatch-cache",
- "birnam-float",
- "birnam-integer",
  "birnam-method-observation",
  "birnam-namespace",
  "birnam-native-compiler",

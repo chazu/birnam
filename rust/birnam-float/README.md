@@ -1,0 +1,36 @@
+# Float
+
+`libbirnam_float` takes Namespace and returns Float, publishing Float and FloatVt.
+It requires completed Roots, GC, ObjectModel, ObjectVt, Integer, String, Error,
+true, false and nil. Bootstrap then sends Integer `installFloat:` and String
+`installNumbers:`. No dependency is forward-filled during Float construction.
+
+Float owns its f64 interpretation of eight raw payload bytes. Object Model
+allocates and shallow-clones the storage; an inherited GC reference owner treats
+numeric bits as raw, including after private behavior changes. Recognition keeps
+the existing exact Float behavior rule. Dependencies and selectors belong to the
+instance; no process singleton, shared table or cached foreign entry remains.
+
+| Receiver / selector | Arguments | Result |
+|---|---|---|
+| Float `fromBits:` | native Word | Float with those IEEE-754 bits. |
+| Float `bitsOf:` | Object | Native Word for an exact Float, Unit otherwise. |
+| Float instance `bits` | none | Native Word containing its bits. |
+| Float instance `+`, `-`, `*`, `/` | Integer or Float | Float result; either signed zero divisor produces #zeroDivide. |
+| Float instance `=` | Object | Exact Float equality; NaN is unequal, another family is false. |
+| Float instance `<`, `<=`, `>`, `>=` | Integer or Float | Boolean comparison. |
+| Float instance `negated`, `abs`, `sqrt` | none | Float; negative square root produces #domain. |
+| Float instance `asInteger`, `floor`, `ceiling`, `rounded` | none | Integer; non-finite or out-of-range conversion produces #overflow. Rounding uses ties away from zero. |
+| Float instance `printString` | none | Current String construction; preserves existing formatting, including `-0.0`, `NaN.0`, `inf.0`. |
+
+Integer operands are read through Integer `wordOf:`; conversions send its current
+`fromWord:`. Float results send current `fromBits:`. Factories, String and Error
+are live messages, with inputs and intermediate results rooted across callbacks.
+Arithmetic propagates incoming Errors using the current Namespace ErrorVt;
+equality keeps its existing false result. Namespace's current Error factory
+constructs diagnostics, preserving replacement behavior.
+
+Run `mise run native-messages` for production tests of finite and non-finite
+arithmetic, signed zero, bit preservation, conversion limits, mixed operations,
+method replacement and collection during dependency calls. Runtime/compiler and
+image integration remain separate work.

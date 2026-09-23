@@ -233,7 +233,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 Operand::object(namespace),
             ],
         )?;
-        for name in ["string", "error"] {
+        for name in ["string", "error", "integer", "float"] {
             id.send_named(
                 receiver,
                 b"loadNative:",
@@ -256,6 +256,13 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             )?)?;
             id.send_named(value, b"installPrinting:", &[string])?;
         }
+        let named = |name: &[u8]| {
+            id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])
+        };
+        let integer = named(b"Integer")?;
+        let float = named(b"Float")?;
+        id.send_named(object(integer)?, b"installFloat:", &[float])?;
+        id.send_named(object(string)?, b"installNumbers:", &[integer, float])?;
         INSTANCE.store(state, Ordering::Release);
         Ok(Operand::object(namespace))
     }

@@ -287,13 +287,52 @@ builders, allocating/collecting callbacks, live factory/finalizer replacement,
 Error propagation and reference reachability, automatic collection, and repeated
 buffer retirement. Existing memory and Object Model tests continue to pass.
 
-Next convert Integer and Float with the text operations that require their values:
-String `size`, `at:`, `byteAt:`, `copyFrom:to:`, `indexOf:`, `bracketDepth`,
-`asInteger`, `asNumber`, and Builder `size`/`addByte:`. They remain uninstalled;
-the existing native String `length` result is a Word, not a replacement for
-language `size`. String splitting still requires collections. Full Runtime/CLI,
-Execution, image and worker integration remain pending. There is no second native
-integration path to keep working in parallel.
+## Numeric values and text checkpoint (2026-09-22)
+
+Bootstrap now loads Integer then Float after Error. Both take Namespace and
+return completed prototype Objects. It then sends Integer `installFloat:` and
+String `installNumbers:` with the completed dependencies. Extensions preserve
+prior user replacements; no future object slot or API table is installed.
+See [Integer](../../rust/birnam-integer/README.md),
+[Float](../../rust/birnam-float/README.md), and
+[String](../../rust/birnam-string/README.md) for the concrete messages.
+
+Integer owns signed 64-bit interpretation; Float owns IEEE bit interpretation.
+Their raw storage uses Object Model allocation and shallow cloning, with inherited
+GC owners declaring no object references even through private behaviors. Numeric
+recognition preserves exact-family behavior. Cross-family reads/construction use
+`wordOf:`/`fromWord:` and `bitsOf:`/`fromBits:` messages. Receivers, arguments and
+intermediate results stay rooted across live callbacks. Mutable installation state
+and dependency identities remain with the owning instance.
+
+Preserved checked arithmetic, mixed-number results, same-family equality,
+comparison rounding, non-finite Float behavior, conversion limits, formatting,
+and live Error/ErrorVt behavior. Integer `to:do:` only needs a callable object
+responding to `value:`; no Block construction or Execution dependency is added.
+String size, indexing, slicing, search, bracket balance and numeric parsing are
+restored, as are Builder size and addByte:. Native Words still carry native bits;
+language results remain numeric Objects.
+
+Deleted Integer/Float storage descriptors, global mounting/extension contexts,
+legacy Integer control initialization, Float's Runtime adapter, and both test
+mounting bridges. The descriptor-specific numeric declarations v4/v5 and native
+construction export are retired: their old effect proofs do not cover these
+message implementations. Runtime's Integer admission checks and deferred batch
+algorithms remain for Execution migration, along with existing deoptimization,
+concurrency and code-lifetime work. No replacement optimizer framework or claim
+of current optimization admission is introduced.
+
+Production tests compare boundary arithmetic and conversions, non-finite values,
+mixed operands, text algorithms, live constructor/reader replacement, Error
+propagation, callback iteration and raw tracing. A second Bootstrap test triggers
+collection throughout upper construction and verifies that mixed/text extensions
+preserve methods replaced before installation. Existing prefix tests still pass.
+
+Next finish the remaining value/collection branch: Word, Vector, Map, Range and
+shared collection semantics, with String splitting in its text owner. Group by
+actual dependencies rather than migrating old installer crates one by one.
+Execution/compiler, image, worker and full Runtime/CLI integration remain pending;
+the working production prefix is not the complete language.
 
 ## Keep the refactor bounded
 

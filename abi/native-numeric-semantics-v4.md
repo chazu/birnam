@@ -1,3 +1,8 @@
+> Historical optimization-admission evidence. These descriptor-specific exports
+> are retired. Production Integer now uses Id messages; Execution must prove
+> their effects before enabling optimizations. The recovery/deferred-allocation
+> algorithms remain preserved for that integration.
+
 # Optional native numeric implementation declarations, v4
 
 This optional higher-module export supplies compiler facts about exact native

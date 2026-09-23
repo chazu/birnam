@@ -708,7 +708,10 @@ Siphon -> Id -> Bootstrap
                   -> ObjectModel(Namespace)
                   -> String(Namespace), including StringBuilder
                   -> Error(Namespace)
+                  -> Integer(Namespace)
+                  -> Float(Namespace)
                   -> Boolean/Nil printing with String
+                  -> Integer mixed arithmetic and String numeric extensions
 ```
 
 Every completed module returns an opaque Object or Unit. Namespace publishes
@@ -721,8 +724,9 @@ live method replacement, nested loading, collection and finalization.
 rooting and native construction. [Object Model](rust/birnam-object-model/README.md)
 adds ordinary cloning, private behaviors and slot storage with GC-safe ownership.
 [String](rust/birnam-string/README.md) owns text and builder buffers;
-[Error](rust/birnam-error/README.md) uses ordinary reference slots. Numeric text
-operations await Integer/Float; basic text and Boolean/Nil printing work now.
+[Error](rust/birnam-error/README.md) uses ordinary reference slots.
+[Integer](rust/birnam-integer/README.md) and [Float](rust/birnam-float/README.md)
+restore arithmetic, conversions and numeric text through messages.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
 loading. Collection now works over this prefix through Id and Roots messages.

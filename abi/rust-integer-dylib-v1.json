@@ -1,12 +1,9 @@
 {
   "schema_version": 1,
-  "scope": "Native Integer base construction before Float, followed by mixed-number and Block extensions",
+  "scope": "Integer arithmetic and callable iteration through Id messages; complete mixed extension after Float",
   "exported_symbols": [
-    "birnam_integer_construction_v1",
     "birnam_integer_rust_identity",
     "birnam_native_module_v1",
-    "birnam_native_numeric_semantics_v4",
-    "birnam_native_numeric_semantics_v5",
     "birnam_symbol_borrow_v1"
   ]
 }

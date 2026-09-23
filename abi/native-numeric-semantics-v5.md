@@ -1,3 +1,8 @@
+> Historical optimization-admission evidence. These descriptor-specific exports
+> are retired. Production Integer now uses Id messages; Execution must prove
+> their effects before enabling optimizations. The recovery/deferred-allocation
+> algorithms remain preserved for that integration.
+
 # Native numeric implementation declarations, v5
 
 Production Integer's optional `birnam_native_numeric_semantics_v5` query accepts
