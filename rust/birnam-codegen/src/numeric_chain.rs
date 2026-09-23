@@ -8,46 +8,9 @@ pub use template::{Input, Send, Template};
 mod recovery_maps;
 pub use recovery_maps::{RecoveryMaps, RecoveryStep};
 
-/// Codes returned by the optional native numeric semantics v1 declaration.
-/// This declares only successful canonical-integer behavior. Errors, mixed
-/// operands and allocation/observation admission remain runtime obligations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum Operator {
-    Add = 1,
-    Subtract = 2,
-    Multiply = 3,
-    Divide = 4,
-    Remainder = 5,
-}
-
-impl Operator {
-    pub fn from_declaration(code: u32) -> Option<Self> {
-        Some(match code {
-            1 => Self::Add,
-            2 => Self::Subtract,
-            3 => Self::Multiply,
-            4 => Self::Divide,
-            5 => Self::Remainder,
-            _ => return None,
-        })
-    }
-
-    /// The native Prelude uses i128 intermediates, including MIN % -1 == 0.
-    /// A refusal means execute the original operation; it is not an Id Error.
-    pub fn evaluate(self, left: i64, right: i64) -> Option<i64> {
-        let (left, right) = (left as i128, right as i128);
-        let value = match self {
-            Self::Add => left + right,
-            Self::Subtract => left - right,
-            Self::Multiply => left * right,
-            Self::Divide if right != 0 => left / right,
-            Self::Remainder if right != 0 => left % right,
-            _ => return None,
-        };
-        i64::try_from(value).ok()
-    }
-}
+#[path = "../../birnam-execution/src/numeric_operator.rs"]
+mod operator;
+pub use operator::Operator;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Value {

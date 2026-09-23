@@ -1,10 +1,16 @@
 //! A complete extension created only after Float exists; no future dependency slot.
 use super::*;
-struct Mixed {
+pub(super) struct Mixed {
     integer: *const Number,
     float: Oop,
 }
-unsafe fn run(m: &Mixed, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
+unsafe fn run(
+    m: &Mixed,
+    r: Oop,
+    args: &[Operand],
+    op: usize,
+    visitor: Option<NativeEntry>,
+) -> Result<Operand, Outcome> {
     unsafe {
         let n = state(m.integer.cast_mut().cast())?;
         if args.len() != if op == 10 { 0 } else { 1 } {
@@ -48,7 +54,7 @@ unsafe fn run(m: &Mixed, r: Oop, args: &[Operand], op: usize) -> Result<Operand,
             }
             let integer = n.read(right)?;
             if let (Some(a), Some(b)) = (left, integer) {
-                return n.calculate(a, b, op);
+                return n.calculate_with(a, b, op, visitor);
             }
             let b = match integer {
                 Some(v) => v as f64,
@@ -97,6 +103,7 @@ macro_rules! mixed {
                     r,
                     borrowed_slice(a, n).ok_or_else(invalid)?,
                     $op,
+                    None,
                 )
             })())
         }
@@ -163,8 +170,34 @@ pub(super) unsafe extern "C" fn install(
                     )?;
                 }
             }
+            n.mixed.set(m);
             n.extended.set(true);
             Ok(Operand::unit())
         })
     })())
+}
+
+pub(super) unsafe fn evaluate(
+    n: &Number,
+    selected: NativeEntry,
+    left: Operand,
+    right: Operand,
+    visitor: Operand,
+) -> Option<Result<Operand, Outcome>> {
+    unsafe {
+        let m = n.mixed.get();
+        if m.is_null() {
+            return None;
+        }
+        let op = [add as Method, sub, mul, div]
+            .iter()
+            .position(|method| selected == NativeEntry::new(*method, m.cast()))?;
+        Some((|| {
+            let visitor = visitor
+                .as_entry()
+                .filter(|v| v.method.is_some())
+                .ok_or_else(invalid)?;
+            run(&*m, object(left)?, &[right], op, Some(visitor))
+        })())
+    }
 }

@@ -2,9 +2,10 @@
 
 Design 90 batch 1 now runs native Methods, Blocks and Machines over the production
 prefix, including frames, bounded drives, suspension, continuations and native
-control boundaries, inline fallback and atomic flat/graph recovery. There is no compiler dependency or alternate heap. The pure
-artifact codec is a private implementation dependency. This is a native execution
-checkpoint; the remaining migration work below still keeps batch 1 open.
+control boundaries, inline fallback, atomic flat/graph recovery, hot PC candidate
+selection and scalar numeric evaluation. Batch 1 is complete with allocation-elision
+explicitly moved to batch 2. There is no compiler dependency or alternate heap.
+The pure artifact codec is a private implementation dependency.
 
 ## Traced producers and consumers
 
@@ -14,7 +15,7 @@ The retained implementation establishes these boundaries:
 |---|---|
 | Runtime `runtime/method.rs` | Exact `NativeEntry` capture; `invokeOn:` and `invokeOn:arguments:`; `methodFor:` and `addMethod:as:`. The old function-address owner registry and Lifetime `set_edge` are replaced by tracing actual Id dictionary bindings to owned Methods. |
 | Runtime `legacy_method.rs` | Language lookup returns Method/nil, while Id consumes NativeEntry/Unit. Keep that adaptation with Execution and retain both function and context; discard the all-Oop calling-convention bridge. |
-| Runtime `execution.rs`, `execution/`, `runtime/scheduling.rs` | Preserve frame arenas, generation leases, acquired-entry and frame pins, bounded drives, native barriers, suspension and continuations. The engine and its unit tests now live in this crate. `machine.rs` connects the retained transitions to Id; `control.rs` reconnects the native Block adapters. The remaining execution-time numeric/region/closure selection is still batch 1 work; compiler construction is batch 2. |
+| Runtime `execution.rs`, `execution/`, `runtime/scheduling.rs` | Preserve frame arenas, generation leases, acquired-entry and frame pins, bounded drives, native barriers, suspension and continuations. The engine and its unit tests now live in this crate. `machine.rs` connects the retained transitions to Id; `control.rs` reconnects the native Block adapters. Hot PC selection and scalar numeric evaluation now live here. Compiler construction and allocation-elision remain batch 2. |
 | Runtime `runtime.rs` drive/recovery and retirement | Selected entries remain pinned across nested calls, waiting frames and recovery. End a managed turn before draining releases, keep the outward result rooted, and never perform asynchronous cleanup from a finalizer. Preserve these mechanics when moving the drive. |
 | Runtime `registration.rs` | Validate descriptor bytes, arity, digest, manifest agreement and prepare/abort claims. Keep the codecs and admission algorithm private. Do not send the old Rust/C registration structure through Bytes. The native descriptor constructor below feeds the retained canonical validator and frame registry directly. Portable-profile admission and generated recovery publication still need their real batch 2 producers. |
 | TCC `rt_owned_method`, `rt_register_method_owner`, `release_payload`, `release_retired_unit` | TCC owns mappings. Replace registration-then-install with construction of an owned Method followed by `addMethod:as:`. Replace cached retirement exports with owner messages after the existing Execution checkpoint admits release. This is batch 2 integration, not permission to drop the retained code now. |
@@ -56,7 +57,11 @@ there is no parallel binding registry to synchronize. Dictionary inheritance
 retains parent behaviors through Id's existing edges.
 
 The Method registry itself is weak. `retire:` removes dead records before address
-reuse and queues resident-image pins for the next safe checkpoint. Active calls
+reuse and queues resident-image pins for the next safe checkpoint. A registered
+origin's native callable allocation stays reserved until its engine generation
+retires, preventing reuse of a function/context key still in the engine. Its dead
+language edges are not traced: this reservation does not retain owner Objects.
+Active calls
 and partially read argument sequences are rooted through Execution `rootsDo:`.
 Each synchronous callback borrows its NativeEntry visitor only until return;
 no internal mutable borrow crosses a send. Lookup adaptation holds its selected
@@ -69,6 +74,7 @@ exact entry. Ordinary future sends perform current lookup.
 |---|---|---|
 | Method `fromStep:descriptor:selection:owner:` | NativeEntry step, canonical FrameDescriptor-v2 Bytes, ArtifactSelection Bytes containing exactly one matching row, code/context owner Object | Owned resumable Method. Both byte spans are bounded and copied during the call; no Rust carrier crosses the boundary. The owner identity names the generation. |
 | Method instance `withInline:at:owner:` | NativeEntry candidate, Integer baseline return slot, candidate owner Object | New captured Method with the same baseline registration and an optional inline candidate. See recovery contract below. |
+| Method instance `optimizeWith:` | Sequence of plain native Methods, one per baseline PC; empty sequence removes the candidate | Same Method. Attach candidate metadata to the shared baseline registration; see hot selection below. |
 | Machine `recoverAt:with:` / `recoverAt:withGraph:` | Integer baseline PC, recipe sequence Object | Machine Object after one atomic pending-call recovery; typed failure for missing/stale authority or invalid recipe. |
 | Block `fromMethod:captures:` | Method Object, capture sequence Object | Block with `value` / `value:…` matching descriptor arity. Reads captures through current `size`/`at:`; validates descriptor capture count. Clone copies this owned representation shallowly. |
 | Machine `new` | none | New Machine and its own scratch actions, allocated through Id. |
@@ -119,17 +125,19 @@ algorithms have moved out of Runtime. The obsolete all-Oop wrappers in those
 files are deleted. The pure tail layout plan now belongs here; Codegen temporarily
 shares that private source without becoming an Execution dependency.
 
-Batch 1 remains open for the mixed Runtime consumer cleanup and execution-time
-numeric/region/closure optimization reconnection described in Design 90. Native
-flat/graph recovery now runs through the real Machine and retained admission
-engine. The old
-`runtime/method.rs`, drive/task-control wrappers and compiler-dependent native-tier
-consumers still reference the retired aggregate Runtime and are not loaded by the
-production prefix. Their remaining callers must move before removing them; this
-checkpoint does not claim that deletion obligation is closed. Native fixture
-recovery and previous compiler probes are not proof of production generated
-recovery. Batch 2 must supply generated-code registration, portable
-admission, guarded recovery and real compiled-mapping reclamation.
+The mixed Runtime Method values, driver, task-control and recovery wrappers have
+been removed. Runtime retains only the old compiler owner-registration bridge
+until its TCC producers move, alongside compiler construction and allocation-elision
+algorithms. Retained source/compiler acceptance cases are migration inputs, not
+passing production tests; see [Runtime's remaining scope](../birnam-runtime/README.md).
+
+By explicit scope decision, allocation-elision moves to batch 2: numeric chain/loop
+reuse, closure/region elision, unboxed/deferred numeric identities, discarded clones
+and virtual aggregates depend on retired allocation-budget/identity protocols and
+real compiler producers. The native candidate contract does not implement or prove
+those algorithms. Batch 2 must supply their owner protocols, generated-code
+registration, portable admission, guarded recovery and real compiled-mapping
+reclamation. Native fixture recovery does not prove production generated recovery.
 
 The Store-backed Birnam TaskControl/TaskExecutor policy, image/worker integration
 and full CLI startup remain deferred. The native control adapters here do not
@@ -209,5 +217,42 @@ The production C candidate exercises direct result, decline and both recovery
 forms. Tests cover precise GC in recipe/factory callbacks, layout and trace-owner
 replacement, custom lookup, duplicate consumption, invalid recipes, exact numeric
 identity/bits, and code-owner reclamation after completion, abandonment or failure.
-These tests do not exercise the remaining native-tier numeric/region/closure
-algorithms or their compiler producers.
+These tests do not exercise the deferred allocation-elision algorithms or their
+compiler producers.
+
+## Hot selection and scalar evaluation
+
+`Method optimizeWith:` reads the supplied sequence through live `size`/`at:`
+messages before publication. A nonempty sequence must have one plain
+`fromNative:owner:` Method per admitted baseline PC. Invalid input preserves the
+previous candidate and its hotness. An empty sequence removes it. Aliases share
+this optimization metadata through their original registration; their captured
+baseline implementation does not change. The candidate uses the baseline step's
+Machine receiver, PC operands and StepAction contract.
+
+After 64 eligible step visits, selection can enter the PC's candidate. Every
+selection checks current Machine lookup and Execution's own slot/control methods,
+fenced by Id's behavior epoch. Guard failure withdraws the candidate for future
+calls; restoring controls does not reactivate it without another installation.
+Callbacks can replace a candidate, so selection also rechecks candidate identity.
+The selected Method has an independent scoped root: withdrawal during an entered
+step cannot reclaim its code owner before return. Native candidate authors must
+preserve baseline semantics and guard their own body assumptions.
+
+Hot synchronous unary calls ask the live Integer owner to evaluate their exact
+selected function/context through `evaluate:receiver:argument:with:`. Integer
+recognizes only its own arithmetic implementations, validates operands and current
+ErrorVt, and borrows Execution's pure checked-i64 visitor. Unknown entries decline
+before operand reads and execute the originally selected entry. Integer owns
+mixed-number handling, ordinary errors and result construction through current
+factories. Execution caches only bounded scalar hotness, never dependency entries
+or foreign numeric layouts. The pure arithmetic operator is shared privately with
+Codegen; there is no Execution dependency on compiler construction.
+
+Production tests cross both hot gates, replace controls and arithmetic, withdraw
+an entered candidate during a collecting callback, and observe owner reclamation.
+They prove actual numeric visitor calls under precise GC, arithmetic failure and
+live ErrorVt propagation. Repeated registration/collection without intervening
+checkpoints covers the native context-address reuse regression. Fixture results
+are deliberately distinguishable to prove selection; they are not optimization
+equivalence or performance evidence.

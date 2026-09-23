@@ -1,4 +1,5 @@
-//! Private native candidates derived from existing portable staging inputs.
+//! Retained batch 2 construction and allocation-elision consumers.
+//! Production PC selection lives in birnam-execution/src/native_tier.rs.
 //!
 //! Ordinary artifacts register their unchanged baseline entry. Candidate
 //! code and all its callbacks are owned inside this runtime implementation.
@@ -106,108 +107,6 @@ struct Candidate {
     entries: Vec<Method>,
     regions: Vec<Option<regions::Compiled>>,
     _unit: Unit,
-}
-
-pub(super) struct Selected {
-    kind: SelectedKind,
-}
-enum SelectedKind {
-    Native(Method, Rc<Candidate>),
-    Region(Rc<Candidate>, usize, Method, usize),
-}
-impl Selected {
-    pub(super) unsafe fn try_unboxed_numeric(
-        &self,
-        runtime: &Runtime,
-        machine: Oop,
-        key: usize,
-        pc: usize,
-        args: *const Oop,
-        count: usize,
-    ) -> Option<Result<unboxed_numeric::Outcome, super::ExecutionError>> {
-        if pc != 0 || count != 1 {
-            return None;
-        }
-        let candidate = match &self.kind {
-            SelectedKind::Native(_, candidate) | SelectedKind::Region(candidate, ..) => candidate,
-        };
-        unsafe { unboxed_numeric::execute(runtime, machine, key, candidate, args) }
-    }
-
-    pub(super) unsafe fn try_virtual_aggregate(
-        &self,
-        runtime: &Runtime,
-        machine: Oop,
-        key: usize,
-        pc: usize,
-        args: *const Oop,
-        count: usize,
-    ) -> Option<Result<Oop, super::ExecutionError>> {
-        if pc != 0 || count != 1 {
-            return None;
-        }
-        let candidate = match &self.kind {
-            SelectedKind::Native(_, candidate) | SelectedKind::Region(candidate, ..) => candidate,
-        };
-        let compiled = candidate.virtual_aggregate.as_ref()?;
-        unsafe { virtual_aggregate::execute(runtime, machine, key, candidate, compiled, args) }
-    }
-    pub(super) unsafe fn try_discarded_clone(
-        &self,
-        runtime: &Runtime,
-        machine: Oop,
-        key: usize,
-        pc: usize,
-        args: *const Oop,
-        count: usize,
-    ) -> Option<Result<Oop, super::ExecutionError>> {
-        if pc != 0 || count != 1 {
-            return None;
-        }
-        let candidate = match &self.kind {
-            SelectedKind::Native(_, candidate) | SelectedKind::Region(candidate, ..) => candidate,
-        };
-        let plan = candidate.discarded_clone.as_ref()?;
-        unsafe { discarded_clone::execute(runtime, machine, key, candidate, plan, args) }
-    }
-    pub(super) unsafe fn try_numeric(
-        &self,
-        runtime: &Runtime,
-        machine: Oop,
-        key: usize,
-        pc: usize,
-        args: *const Oop,
-        count: usize,
-    ) -> Option<Result<Oop, super::ExecutionError>> {
-        if pc != 0 || count != 1 {
-            return None;
-        }
-        let candidate = match &self.kind {
-            SelectedKind::Native(_, candidate) | SelectedKind::Region(candidate, ..) => candidate,
-        };
-        if !candidate.numeric {
-            return None;
-        }
-        unsafe { fused_numeric::execute(runtime, machine, key, candidate, args) }
-    }
-
-    pub(super) unsafe fn invoke(
-        &self,
-        runtime: &Runtime,
-        machine: Oop,
-        args: *const Oop,
-        count: usize,
-    ) -> Oop {
-        match &self.kind {
-            SelectedKind::Native(method, _owner) => unsafe { method(machine, args, count) },
-            SelectedKind::Region(candidate, pc, baseline, key) => unsafe {
-                candidate.regions[*pc]
-                    .as_ref()
-                    .expect("selected region")
-                    .invoke(runtime, machine, *key, *baseline, args, count)
-            },
-        }
-    }
 }
 
 #[cfg(test)]
@@ -692,58 +591,6 @@ impl Prepared {
             _unit: unit,
         })
     }
-}
-
-pub(super) fn select(
-    runtime: &Runtime,
-    machine: Oop,
-    descriptor_key: usize,
-    pc: usize,
-) -> Option<Selected> {
-    if !runtime.compiler_available() { return None; }
-    let mut registry = runtime.compiler().native_tier.borrow_mut();
-    let record = registry.records.get_mut(&descriptor_key)?;
-    let descriptor = record.descriptor.upgrade()?;
-    if Arc::as_ptr(&descriptor) as usize != descriptor_key
-        || record.disabled
-        || record.leaf.is_some()
-    {
-        return None;
-    }
-    let epoch = unsafe { (*runtime.state.get()).vtables.mutation_epoch() };
-    // The slot guard revalidates canonical Machine/lookup bindings after
-    // dictionary mutation, and checks receiver/registration state every time.
-    // Ordinary targets remain late-bound sends, so unrelated epoch changes do
-    // not invalidate this descriptor's PC-specialized body.
-    if epoch == u64::MAX || !runtime.guarded_slot_access_eligible(machine) {
-        record.disabled |= record.candidate.is_some();
-        // A selected activation owns its own Rc, including during nested
-        // entry. Withdrawing admission never frees executing native code.
-        record.candidate.take();
-        return None;
-    }
-    record.visits = record.visits.saturating_add(1);
-    if record.visits < HOT_ENTRIES {
-        return None;
-    }
-    if record.candidate.is_none() {
-        let prepared = record.pending.take()?;
-        record.candidate = prepared.compile().map(Rc::new);
-    }
-    let candidate = record.candidate.as_ref()?.clone();
-    let regions_enabled = true;
-    #[cfg(test)]
-    let regions_enabled = regions_enabled && regions::ENABLED.get();
-    if regions_enabled && candidate.regions.get(pc).is_some_and(Option::is_some) {
-        return Some(Selected {
-            kind: SelectedKind::Region(candidate, pc, descriptor.step_method(), descriptor_key),
-        });
-    }
-    #[cfg(test)]
-    HITS.set(HITS.get() + 1);
-    Some(Selected {
-        kind: SelectedKind::Native(*candidate.entries.get(pc)?, candidate),
-    })
 }
 
 unsafe extern "C" fn shim_send(receiver: Oop, selector: Oop, args: *mut Oop, count: i64) -> Oop {

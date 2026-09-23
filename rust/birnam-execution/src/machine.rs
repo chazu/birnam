@@ -93,6 +93,9 @@ impl State {
         }
         Ok(())
     }
+    pub fn generation_pending(&self, generation: u64) -> bool {
+        self.pending.contains(&generation)
+    }
     pub fn checkpoint(&mut self) -> Result<(), Outcome> {
         for generation in self.pending.clone() {
             if self
@@ -174,11 +177,26 @@ unsafe fn refresh(s: &Execution, target: Oop) -> Result<(), Outcome> {
         .refresh_behavior(target, behavior);
     Ok(())
 }
-unsafe fn sequence(s: &Execution, source: Oop, roots: &Scope<'_>) -> Result<Vec<Oop>, Outcome> {
+pub(super) unsafe fn sequence(
+    s: &Execution,
+    source: Oop,
+    roots: &Scope<'_>,
+) -> Result<Vec<Oop>, Outcome> {
+    unsafe { sequence_bounded(s, source, roots, usize::MAX) }
+}
+pub(super) unsafe fn sequence_bounded(
+    s: &Execution,
+    source: Oop,
+    roots: &Scope<'_>,
+    limit: usize,
+) -> Result<Vec<Oop>, Outcome> {
     roots.keep(source);
     let size = unsafe { s.send(source, b"size", &[]) }?;
     roots.keep(object(size)?);
     let size = unsafe { index(s, size) }?;
+    if size > limit {
+        return Err(invalid());
+    }
     let mut values = Vec::new();
     for i in 0..size {
         let ix = unsafe { integer(s, i) }?;
@@ -567,7 +585,7 @@ pub(super) unsafe fn loop_drive(
                     *left -= 1;
                 }
             }
-            let (step, pc, argc) = {
+            let (step, pc, argc, origin) = {
                 let state = s.machines.borrow();
                 let m = checked(state.engine.machine(OWNER, cap))?;
                 let frame = m.arena().current_handle().ok_or_else(invalid)?;
@@ -576,6 +594,7 @@ pub(super) unsafe fn loop_drive(
                     d.step_method(),
                     checked(m.arena().program_counter(frame))?,
                     d.driver_argument_count(),
+                    d.executable_owner.get(),
                 )
             };
             let turn_roots = s.scope(&[]);
@@ -588,6 +607,8 @@ pub(super) unsafe fn loop_drive(
             };
             let action = {
                 let _active = active(s, cap);
+                let step = crate::native_tier::select(s, machine, origin, pc, &turn_roots)?
+                    .unwrap_or(step);
                 object(
                     step.method.ok_or_else(invalid)?(
                         step.context,
@@ -734,13 +755,9 @@ pub(super) unsafe fn loop_drive(
                             .map(|v| Operand::object(*v))
                             .collect();
                         let value = match selected {
-                            Ok(Some(entry)) => entry.method.unwrap()(
-                                entry.context,
-                                operands.receiver,
-                                args.as_ptr(),
-                                args.len(),
-                            )
-                            .into_result(),
+                            Ok(Some(entry)) => {
+                                crate::numeric::invoke(s, entry, operands.receiver, &args)
+                            }
                             Ok(None) => {
                                 let dnu = s.names[b"doesNotUnderstand:".as_slice()];
                                 if operands.selector == dnu {
@@ -941,6 +958,7 @@ pub(super) unsafe fn invoke_registered(
 enum Op {
     FromStep,
     WithInline,
+    Optimize,
     Recover(bool),
     Block,
     CloneBlock,
@@ -1006,6 +1024,7 @@ unsafe extern "C" fn operation(
         match op.kind {
             Op::FromStep => return from_step(s, args),
             Op::WithInline => return crate::recovery::with_inline(s, receiver, args),
+            Op::Optimize => return crate::native_tier::install(s, receiver, args),
             Op::Block => return new_block(s, args),
             Op::New if args.is_empty() => return new_machine(s).map(Operand::object),
             Op::Prepare if args.is_empty() => return Ok(Operand::object(receiver)),
@@ -1399,6 +1418,8 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"fromMethod:captures:",
     b"fromStep:descriptor:selection:owner:",
     b"withInline:at:owner:",
+    b"optimizeWith:",
+    b"evaluate:receiver:argument:with:",
     b"recoverAt:with:",
     b"recoverAt:withGraph:",
     b"allOopLayoutOf:words:",
@@ -1770,6 +1791,7 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             b"withInline:at:owner:",
             Op::WithInline,
         )?;
+        install_op(s, s.method_behavior, b"optimizeWith:", Op::Optimize)?;
         install_op(s, machine_vtable, b"recoverAt:with:", Op::Recover(false))?;
         install_op(
             s,
@@ -2120,6 +2142,12 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
 /// Only compare entries installed by this Execution owner; Id judges its own
 /// default lookup. Epoch comparison fences mutations during guard observation.
 pub(super) unsafe fn inline_controls_current(s: &Execution, machine: Oop) -> Result<bool, Outcome> {
+    unsafe { controls_current(s, machine, false) }
+}
+pub(super) unsafe fn tier_controls_current(s: &Execution, machine: Oop) -> Result<bool, Outcome> {
+    unsafe { controls_current(s, machine, true) }
+}
+unsafe fn controls_current(s: &Execution, machine: Oop, tier: bool) -> Result<bool, Outcome> {
     unsafe {
         let epoch = s
             .send(s.id.receiver, b"behaviorEpoch", &[])?
@@ -2136,12 +2164,20 @@ pub(super) unsafe fn inline_controls_current(s: &Execution, machine: Oop) -> Res
         {
             return Ok(false);
         }
-        for (name, kind) in [
+        let mut operations = vec![
             (b"oopAt:".as_slice(), Op::Read),
             (b"oopAt:put:", Op::Write),
             (b"returnAt:", Op::Return),
             (b"currentFrameView", Op::View),
-        ] {
+        ];
+        if tier {
+            operations.extend([
+                (b"callSite:".as_slice(), Op::Call(false)),
+                (b"tailCallSite:", Op::Call(true)),
+                (b"continueAt:", Op::Continue),
+            ]);
+        }
+        for (name, kind) in operations {
             let expected = {
                 let state = s.machines.borrow();
                 let context = state

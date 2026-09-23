@@ -8,6 +8,18 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Complete Design 90 batch 1 with native hot PC selection, live Machine guards,
+  candidate withdrawal and entered-owner retention. Reconnect scalar numeric
+  evaluation through Integer's exact-entry owner message, preserving mixed
+  operands, live ErrorVt, checked errors and current result factories. Remove
+  displaced Runtime Method/driver/task-control/recovery wrappers. Prevent native
+  context reuse until retired engine generations leave checkpoint, without rooting
+  dead owners. Validate 21 Execution tests, 9 Codegen numeric-chain tests and all
+  11 production prefix binaries with export/dependency audit. Allocation-elision
+  explicitly moves to batch 2 with compiler producers and its retired allocation-
+  budget/deferred-identity protocols; compiled mappings and generated recovery
+  remain unproven until that integration.
+
 - Reconnect Design 90 native pending-call recovery through production Execution.
   Add owned inline candidates with baseline fallback and scoped flat/graph recovery;
   preserve atomic frame admission, aliases, distinct number identities and Float

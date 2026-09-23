@@ -30,6 +30,12 @@ static BirnamOperand slot(Probe *p,BirnamObject m,uintptr_t i){
 static BirnamOutcome step_body(void *context,BirnamObject machine,const BirnamOperand *args,size_t count){
     Probe *p=context;
     uintptr_t pc=count?send(p,named(p,"Integer"),"wordOf:",args,1).value.data.word:0;
+    if(p->mode==8){
+        BirnamOperand a[]={integer(p,1),{.kind=BIRNAM_OBJECT,.data.object=p->owner}};
+        BirnamOutcome set=send(p,machine,"oopAt:put:",a,2);
+        if(set.status!=BIRNAM_LOADED)return set;
+        return send(p,machine,"returnAt:",a,1);
+    }
     if(p->mode==1 || p->mode==6){
         BirnamOperand i=integer(p,1);return send(p,machine,"returnAt:",&i,1);
     }
@@ -79,6 +85,14 @@ static BirnamOutcome inline_entry(void *context,BirnamObject machine,const Birna
     return result;
 }
 static BirnamOutcome initialize(const BirnamProtocol *id,const BirnamOperand *args,size_t count){
+    if(id && id->version==1 && args && count==3 && args[0].kind==BIRNAM_OBJECT && args[1].kind==BIRNAM_OBJECT && args[2].kind==BIRNAM_WORD){
+        Probe *p=calloc(1,sizeof(*p));if(!p)return (BirnamOutcome){.status=BIRNAM_INVALID_REQUEST};
+        p->id=*id;p->ns=args[0].data.object;p->owner=args[1].data.object;p->mode=args[2].data.word;
+        BirnamOperand a[]={ {.kind=BIRNAM_NATIVE_ENTRY,.data.entry={step,p}},args[1] };
+        BirnamOutcome result=send(p,named(p,"Method"),"fromNative:owner:",a,2);
+        if(result.status!=BIRNAM_LOADED)free(p);
+        return result;
+    }
     if(id && id->version==1 && count==5 && args && args[0].kind==BIRNAM_OBJECT && args[1].kind==BIRNAM_OBJECT && args[2].kind==BIRNAM_OBJECT && args[3].kind==BIRNAM_WORD && args[4].kind==BIRNAM_WORD){
         Probe *p=calloc(1,sizeof(*p));if(!p)return (BirnamOutcome){.status=BIRNAM_INVALID_REQUEST};
         p->id=*id;p->ns=args[0].data.object;p->owner=args[2].data.object;p->mode=args[3].data.word;

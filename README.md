@@ -10,8 +10,10 @@ product; compatibility and language surface can and will still change.
 
 **Current development status:** [Design 90](docs/design/90-functional-modules.md)
 has restored the production Id, memory-management, value and collection prefix
-through messages. Execution's Methods, Blocks and Machines now run over that prefix; compiler
-reconnection and the complete language still await upper integration. Deoptimization,
+through messages. [Execution batch 1](rust/birnam-execution/README.md) is complete:
+Methods, Blocks, Machines, native recovery and guarded hot selection run over that
+prefix. Compiler reconnection and allocation-elision belong to batch 2; the complete
+language still awaits upper integration. Deoptimization,
 compiled-image recovery and concurrency implementations are retained above Id.
 The usage documentation below describes the language being preserved.
 

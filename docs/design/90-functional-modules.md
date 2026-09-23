@@ -519,6 +519,11 @@ source task policy awaits Store as described below.
 
 ### Batch 2: Compilation uses that Execution
 
+Scope amendment (2026-09-23): allocation-elision optimizers move here by explicit
+user decision. Reconnect their allocation-budget and deferred-identity owner
+protocols with their compiler producers; batch 1 does not restore that retired
+machinery. The completion record below identifies the retained algorithms.
+
 Reconnect PEG, Lang, Codegen, TCC, the language-facing Artifact adapter and Portable
 Code along their real dependencies. Convert both sides of executable installation,
 generated invocation, recovery registration and retirement; remove their displaced
@@ -768,3 +773,46 @@ consumers migrate. This checkpoint does not substitute a generic candidate API
 for those algorithms. Batch 2 still supplies compiler producers, generated recovery
 and real compiled-mapping reclamation. Store-backed task policy and image/worker/
 CLI restoration remain deferred under the original scope.
+
+
+### Batch 1 completion: native selection, evaluation and cleanup (2026-09-23)
+
+Batch 1 is complete under the explicit scope adjustment moving allocation-elision
+to batch 2. This supersedes the open-batch statements at the earlier checkpoints.
+Production Execution now owns hot PC candidate selection, current Machine guards,
+entered-candidate retention and permanent withdrawal on guard failure.
+`Method optimizeWith:` accepts already constructed native Methods per baseline PC;
+its contract is documented in [Execution](../../rust/birnam-execution/README.md#hot-selection-and-scalar-evaluation).
+
+Scalar numeric observation and checked evaluation also run inside the real Machine
+call boundary. Integer validates the exact selected native entry and performs its
+own operand/error handling, including the mixed-number extension, through a live
+owner message. Execution supplies the pure arithmetic visitor; it does not decode
+numeric payloads or cache dependency services. Codegen shares that private operator.
+
+The displaced Runtime language Method, driver, task-control, scheduling and
+recovery wrappers are deleted. Only the compiler-facing Method ownership bridge
+remains until TCC's producers migrate. Source/compiler/Store acceptance cases are
+preserved as migration inputs; their old Runtime harness is not current proof.
+The production dependency audit confirms Execution has no Runtime/compiler edge.
+
+Precise-GC stress also exposed native callable-context reuse while the retired
+engine still indexed its function/context pair. Execution now reserves the dead
+native allocation until generation checkpoint, without tracing its dead language
+edges. Owner Objects are reclaimed after their final live edge, while subsequent
+registrations cannot collide with a retiring context.
+
+Acceptance: 21 Execution engine/planner/graph tests, 9 Codegen numeric-chain tests,
+and all 11 production prefix integration binaries plus dylib export/dependency
+audit. Added cases cross hot gates, exercise replacement/withdrawal and exact
+native admission, collect while a candidate is entered, validate live ErrorVt and
+numeric error behavior, and repeatedly reclaim/register without checkpoints.
+These are native execution proofs, not compiled mapping or speedup claims.
+
+Batch 2 retains compiler-generated PC/region construction, numeric chain/loop
+reuse, closure elision, unboxed/deferred numeric identity, discarded clones and
+virtual aggregates, with their allocation-budget/identity dependencies. It must
+reconnect real producers and owner protocols and prove generated recovery,
+portable admission and compiled-unit reclamation. The native candidate interface
+does not stand in for these algorithms. Store-backed task policy, Image, workers
+and full CLI startup remain at their previously stated integration gates.

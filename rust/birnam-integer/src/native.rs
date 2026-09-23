@@ -17,6 +17,7 @@ pub(crate) struct Number {
     falsity: Oop,
     nil: Oop,
     extended: Cell<bool>,
+    mixed: Cell<*mut mixed::Mixed>,
     names: HashMap<&'static [u8], Oop>,
     thread: std::thread::ThreadId,
 }
@@ -263,6 +264,7 @@ const NAMES: &[&[u8]] = &[
     b"bitsOf:",
     b"asFloat",
     b"value:",
+    b"evaluate:receiver:argument:with:",
 ];
 
 unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
@@ -329,12 +331,14 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             nil,
             names,
             extended: Cell::new(false),
+            mixed: Cell::new(core::ptr::null_mut()),
             thread: std::thread::current().id(),
         }));
         let n = &*pointer;
         for (name, method) in METHODS.iter().copied().chain([
             (b"rootsDo:".as_slice(), self::roots as Method),
             (b"referencesOf:do:", references),
+            (b"evaluate:receiver:argument:with:", evaluate_numeric),
         ]) {
             n.send(
                 behavior,
@@ -591,3 +595,90 @@ fn mix(mut value: u64) -> usize {
 entry!(collection_hash, 30);
 
 entry!(collection_equal, 31);
+
+// Execution supplies a synchronous pure numeric visitor, not an operation table.
+// Integer alone recognizes its exact executable/context and reads its payload.
+unsafe extern "C" fn evaluate_numeric(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let n = state(c)?;
+        let Some([selected, left, right, visitor]) = borrowed_slice(a, count) else {
+            return Err(invalid());
+        };
+        let selected = selected.as_entry().ok_or_else(invalid)?;
+        if let Some(result) = mixed::evaluate(n, selected, *left, *right, *visitor) {
+            return result;
+        }
+        let Some(op) = [add as Method, sub, mul, div, modulo]
+            .iter()
+            .position(|method| selected == NativeEntry::new(*method, c))
+        else {
+            return Ok(Operand::unit());
+        };
+        let left = object(*left)?;
+        let right = object(*right)?;
+        let visitor = visitor
+            .as_entry()
+            .filter(|v| v.method.is_some())
+            .ok_or_else(invalid)?;
+        n.rooted(&[left, right], || {
+            let Some(left) = n.read(left)? else {
+                return Ok(Operand::object(n.nil));
+            };
+            if n.is_error(right)? {
+                return Ok(Operand::object(right));
+            }
+            let Some(right) = n.read(right)? else {
+                return n.error(
+                    b"typeMismatch",
+                    if op == 4 {
+                        b"mod: needs an Integer"
+                    } else {
+                        b"Integer arithmetic needs a number"
+                    },
+                );
+            };
+            n.calculate_with(left, right, op, Some(visitor))
+        })
+    })())
+}
+
+impl Number {
+    unsafe fn calculate_with(
+        &self,
+        left: i64,
+        right: i64,
+        op: usize,
+        visitor: Option<NativeEntry>,
+    ) -> Result<Operand, Outcome> {
+        unsafe {
+            let Some(visitor) = visitor else {
+                return self.calculate(left, right, op);
+            };
+            let args = [
+                Operand::word(op + 1),
+                Operand::word(left as usize),
+                Operand::word(right as usize),
+            ];
+            let result = visitor.method.ok_or_else(invalid)?(
+                visitor.context,
+                self.prototype,
+                args.as_ptr(),
+                args.len(),
+            )
+            .into_result()?;
+            if result.kind() == native::UNIT {
+                return self.calculate(left, right, op);
+            }
+            self.send(
+                self.prototype,
+                b"fromWord:",
+                &[Operand::word(result.as_word().ok_or_else(invalid)?)],
+            )
+        }
+    }
+}

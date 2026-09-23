@@ -5,6 +5,9 @@ mod entry_plan;
 mod execution;
 mod image;
 mod machine;
+mod native_tier;
+mod numeric;
+mod numeric_operator;
 mod objects;
 mod recovery;
 mod recovery_graph;
@@ -22,6 +25,7 @@ use std::{collections::HashMap, rc::Rc};
 struct Callable {
     resumable: Option<machine::Registered>,
     inline: Option<recovery::Inline>,
+    candidate: Option<Rc<native_tier::Candidate>>,
     execution: *const Execution,
     object: Oop,
     entry: NativeEntry,
@@ -30,6 +34,7 @@ struct Callable {
 }
 struct Execution {
     machines: RefCell<machine::State>,
+    numeric: RefCell<numeric::Registry>,
     requests: RefCell<Vec<recovery::Request>>,
     id: Protocol,
     receiver: Oop,
@@ -51,6 +56,7 @@ struct Execution {
     depth: Cell<usize>,
     draining: Cell<bool>,
     retired_images: RefCell<Vec<Rc<image::Image>>>,
+    retired_calls: RefCell<Vec<Box<Callable>>>,
 }
 
 // These are the existing scoped execution roots: install them synchronously,
@@ -164,6 +170,7 @@ impl Execution {
         let record = Box::new(Callable {
             resumable: None,
             inline: None,
+            candidate: None,
             execution: self,
             object: value,
             entry,
@@ -456,6 +463,16 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
         let target = object(*target)?;
         let v = visitor(*v)?;
         // Copy the owned edge before visiting: a callback may reenter this owner.
+        let candidate = s
+            .methods
+            .borrow()
+            .get(&target.addr())
+            .and_then(|m| m.candidate.clone());
+        if let Some(candidate) = candidate {
+            for &method in candidate.references() {
+                visit(v, method)?;
+            }
+        }
         let owner = s.methods.borrow().get(&target.addr()).map(|m| {
             (
                 m.owner,
@@ -521,7 +538,11 @@ unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize)
         for address in bytes.chunks_exact(size_of::<usize>()) {
             let address = usize::from_ne_bytes(address.try_into().unwrap());
             let record = s.methods.borrow_mut().remove(&address);
-            if let Some(record) = record {
+            if let Some(mut record) = record {
+                let registered_origin = record
+                    .resumable
+                    .as_ref()
+                    .is_some_and(|r| r.origin == record.object);
                 if let Some(ref registered) = record.resumable {
                     if registered.origin == record.object {
                         s.machines.borrow_mut().retire_method(registered)?;
@@ -530,8 +551,14 @@ unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize)
                 s.entries
                     .borrow_mut()
                     .remove(&ptr::from_ref(&*record).addr());
-                if let Some(image) = record.image {
+                if let Some(image) = record.image.take() {
                     s.retired_images.borrow_mut().push(image);
+                }
+                // Its function/context key remains in the retiring engine until
+                // checkpoint. Keep the native allocation from being reused as a
+                // new callable context; these dead language edges are not roots.
+                if registered_origin {
+                    s.retired_calls.borrow_mut().push(record);
                 }
             }
         }
@@ -549,12 +576,23 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
         }
         // Admission rejects a checkpoint called from marking/finalization. It
         // can itself collect; keep the drain fence up through that reentry.
-        let admission = s.send(s.gc, b"prepareAllocation", &[]);
-        if admission.is_ok() {
+        let admission = (|| {
+            s.send(s.gc, b"prepareAllocation", &[])?;
             s.machines.borrow_mut().checkpoint()?;
+            s.retired_calls.borrow_mut().retain(|call| {
+                s.machines.borrow().generation_pending(
+                    call.resumable
+                        .as_ref()
+                        .unwrap()
+                        .descriptor
+                        .identity()
+                        .generation,
+                )
+            });
             let retired = core::mem::take(&mut *s.retired_images.borrow_mut());
             drop(retired);
-        }
+            Ok::<_, Outcome>(())
+        })();
         s.draining.set(false);
         admission?;
         Ok(Operand::unit())
@@ -635,6 +673,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         )?)?)?;
         let s = Box::into_raw(Box::new(Execution {
             machines: RefCell::new(machine::State::new()),
+            numeric: RefCell::new(numeric::Registry::default()),
             requests: RefCell::new(Vec::new()),
             id,
             receiver,
@@ -656,6 +695,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             depth: Cell::new(0),
             draining: Cell::new(false),
             retired_images: RefCell::new(Vec::new()),
+            retired_calls: RefCell::new(Vec::new()),
         }));
         for (target, name, method) in [
             (behavior, b"rootsDo:".as_slice(), roots as Method),

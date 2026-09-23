@@ -23,6 +23,7 @@ singleton, service table, foreign layout or cached dependency entry is used.
 | Integer instance `<`, `<=`, `>`, `>=` | Object | Comparison, preserving existing f64 comparison rounding. |
 | Integer instance `printString` | none | Decimal String through current `fromBytes:`. |
 | Integer instance `to:do:` | end Integer, callable Object | Inclusive iteration by live `value:` sends; receiver on completion, first Error on failure. MAX is visited without overflowing the loop counter. |
+| Integer `evaluate:receiver:argument:with:` | selected NativeEntry, receiver Object, argument Object, borrowed evaluator NativeEntry | Result Object for an owned arithmetic entry; Unit for an unknown entry. See below. |
 | Integer `installFloat:` | completed Float Object | Unit; install mixed arithmetic/comparisons and `asFloat`. |
 
 The mixed extension is a complete private context created after Float exists.
@@ -42,11 +43,27 @@ across sends; no borrowed native state spans a dependency call.
 Run `mise run native-messages`. Production checks cover arithmetic boundaries,
 rounding, mixed operands, replacement, collecting callbacks, iteration and raw
 payload tracing. Descriptor-based construction and numeric declarations v4/v5
-are retired. Execution's admission, deferred materialization and recovery work
-remains preserved but unintegrated; no optimization declaration is asserted for
-this new message path until its effects are proved by the Execution conversion.
+are retired. Execution now uses the owner-local evaluation message below;
+allocation-elision and its deferred materialization protocols remain batch 2.
 
 Collections use owner messages `collectionEquals:` (Object → Boolean) and
 `collectionHash` (no arguments → native Word, low 32 bits). Integer preserves
 exact-family signed equality and the existing 64-bit value mix independently of
 public `=`. Private behaviors use identity; see [Map's key contract](../birnam-map/README.md#keys).
+
+## Execution's scalar evaluator
+
+`evaluate:receiver:argument:with:` recognizes the exact function/context pair of
+this Integer instance's arithmetic entries, including its installed mixed-number
+extension. Unknown entries return Unit before inspecting operands. Recognized
+entries use the same validation, live ErrorVt propagation and mixed-number path as
+ordinary arithmetic. Only a pair of exact Integers invokes the borrowed evaluator.
+
+The evaluator receives three native Words: operation (1 add, 2 subtract, 3 multiply,
+4 divide, 5 remainder), left signed-i64 bits and right signed-i64 bits. A Word
+answer is boxed through the current `fromWord:`; Unit requests the ordinary
+checked arithmetic/error path. The callback is synchronous and may not be retained.
+Integer owns all operand decoding and language semantics; Execution supplies only
+the pure arithmetic visitor. No declaration table or foreign service cache is
+introduced. Production Machine tests prove evaluator invocation, precise callback
+GC, overflow/zero division, live ErrorVt and replacement fallback.

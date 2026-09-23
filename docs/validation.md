@@ -38,8 +38,18 @@ inline candidates also exercise flat/graph recovery, GC during recipe reads and
 materialization, changed control/lookup/layout/trace-owner guards, single recovery
 publication, and release after recovered-frame completion or abandonment. Run
 `cargo test --offline -p birnam-execution --lib` through mise for the 21
-engine/planner/graph tests. These native checks do not prove compiler-generated recovery or
-compiled mapping reclamation; mixed Runtime cleanup also remains open.
+engine/planner/graph tests. Hot native PC selection tests cover withdrawal,
+replacement and collection while entered. Numeric tests prove execution of the
+pure visitor, live ErrorVt, checked failures and fallback for replaced entries.
+Registration/GC churn without checkpoints covers retired context-address reuse.
+Run `mise exec -- cargo test --offline -p birnam-codegen numeric_chain` for the 9
+shared arithmetic/lowering tests.
+
+Batch 1's native Execution and displaced Runtime wrapper cleanup are complete.
+Allocation-elision is explicitly deferred to batch 2 with its owner protocols and
+compiler producers. These native checks do not prove compiler-generated recovery,
+optimizer equivalence/performance or compiled mapping reclamation. The retained
+upper Runtime source/compiler cases are migration inputs, not passing coverage.
 
 The obsolete `native-modules` task and installed adoption driver are removed.
 Cached floor-function discovery tests are also retired; they asserted the old
