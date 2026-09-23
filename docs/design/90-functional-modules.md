@@ -402,6 +402,178 @@ reclamation after success and native failure, and fold accumulator survival with
 reclamation of obsolete intermediates. These checks pass through the existing
 production implementations; no extra rooting layer was introduced to satisfy them.
 
+## Execution and compilation reconnection plan (2026-09-22)
+
+The converted prefix is ready for this work. The next two delivery targets are
+**working Execution over that prefix**, then **source compiled and executed through
+it**. These are integration batches, not new crate boundaries.
+
+### Keep the algorithms; replace their connections
+
+The current sources establish the work, not the old crate boundaries:
+
+| Existing code | Treatment in this work |
+|---|---|
+| `birnam-runtime/src/execution.rs`, `execution/`, and the execution portions of `runtime.rs` | Keep Machine/frame/continuation algorithms, bounded drives, native barriers and recovery. Put their state with the Execution instance. |
+| `runtime/method.rs`, execution code-generation leases and deferred retirement | Keep owned Method behavior and active-code lifetime together with their execution consumers. Replace the removed method-owner/lifetime APIs; do not extract replacement services for each registry. |
+| `runtime/scheduling.rs`, `runtime/task_control.rs`, and existing Birnam task/control policy | Preserve the division between native execution mechanics and language scheduling/cancellation policy. Do not rewrite that policy in Rust to make the first batch appear complete. |
+| `runtime/compiler.rs`, mixed optimization code in `runtime/native_tier.rs` and `runtime/numeric.rs`, Codegen and its language adapter | Compilation owns construction/lowering. Execution-time selection, guards, evaluation and recovery stay with their execution consumers. Split by function, not whole file; invoking an existing method must not require constructing a compiler or depending on Codegen. |
+| TCC and `birnam-native-compiler` | TCC owns native compilation and its code resources. Keep useful compiler helpers private; replace TCC's old cached registration/retirement calls and foreign value access. |
+| Runtime's old heap, globals, constructor bundles and dependency wrappers | Reuse the production Id, Roots, GC, ObjectModel and value owners. Delete displaced integration as its callers move; do not port an aggregate Runtime under a new name. |
+
+Pure artifact/descriptor codecs can remain private implementation libraries;
+preserving their supported formats does not require preserving old native
+registration carriers or exported service functions.
+
+### Close the actual execution/compiler seam
+
+Before replacing this seam, trace its existing producers and consumers together:
+`runtime/method.rs`, `registration.rs`, the drive/recovery code, TCC registration
+and teardown, and Codegen's generated calls. Record the resulting small contract
+beside the owning implementation, including each receiver, selector, operands,
+result, retained objects and borrowed data. This is the first implementation task
+within the batches, not a separate framework or open-ended design project.
+
+Use these constraints to settle it:
+
+- **Reuse language operations.** Owned Methods already have `invokeOn:` and
+  `invokeOn:arguments:` (receiver object and an argument sequence read through
+  `size`/`at:`). `methodFor:` takes a selector and answers an owned Method or nil;
+  `addMethod:as:` installs that Method on a behavior. Keep those semantics,
+  including exact-entry invocation after replacement. Ordinary future sends
+  still perform current lookup. Preserve Block `value...` and Machine/frame
+  operations instead of adding a second call API.
+- **Execution adapts language lookup.** Id expects `NativeEntry` or `Unit`;
+  language-defined lookup answers an owned Method or nil. Keep that conversion
+  with Execution, preserving the selected function and context across nested
+  lookup, replacement and collection. Id must not learn the Method representation.
+  Retain the relevant `legacy_method.rs` behavioral tests, not its general legacy
+  calling-convention bridge.
+- **Installation must establish retention.** A callable's native code and native
+  context must remain valid while installed, held by an owned Method, executing,
+  suspended or needed for recovery. Identify the actual binding-to-owner edge
+  and its replacement/removal path; an address-to-owner registry alone does not
+  establish reachability. Connect installation, replacement/removal and reference
+  tracing before migrating callers, using the existing memory protocols. Id
+  binding operations alone do not root native entry contexts. Do not add compiler
+  ownership or a compiler catalog to Id.
+  The native author remains responsible for its context and reference reporting;
+  Execution retains the declared owner without interpreting arbitrary contexts.
+- **Registration carries executable data, not dependencies.** Actual entrypoints
+  use the existing Id `NativeEntry` carrier; owner references are opaque objects.
+  Existing frame/recovery descriptions may cross as bounded data copied or
+  decoded by their consumer during the send. Never transport a Rust structure,
+  function table, service address or foreign payload pointer in Words/Bytes.
+  A private helper call within one owner needs no message protocol.
+- **Generated code has the same boundary.** Translate generated inter-owner calls
+  to Id sends and remove the matching runtime symbol/table imports. Preserve the
+  existing guarded optimization and recovery behavior, including invalidation
+  when relevant methods change. Calling an already selected executable entry is
+  legitimate execution; saving a dependency's service entry for later calls is
+  not. No second generated-code ABI catalog belongs in `birnam-abi`.
+- **Retirement follows existing execution checkpoints.** TCC keeps ownership of
+  its native mappings; Execution keeps its active/suspended/recovery retention.
+  Repair their registration and release through messages. Replacement must not
+  unmap active code, and finalization must not run asynchronous task cleanup.
+  Keep current lease/checkpoint algorithms where needed; do not introduce a new
+  lease service, generalized resource manager or parallel collector.
+
+### Batch 1: Execution in the production prefix
+
+Load completed Execution objects through the real Id/Bootstrap sequence, using
+the existing Namespace and memory protocols. Restore owned Methods, Blocks,
+Machines, frames, continuations, calls/returns, bounded drives, suspension and
+recovery mechanics as one functional branch. Keep mutable state with its owning
+instance. Register its references through the existing GC/Roots messages; include
+ready, waiting and suspended state, temporary call arguments/results, and code
+retention. No owner may hold an internal mutable borrow across a message send.
+
+Targeted production tests must demonstrate:
+
+- A real Machine invokes installed code and a Block, passes arguments/results,
+  and observes method replacement on a subsequent send. An owned Method still
+  invokes the implementation it captured. Language-defined lookup works through
+  nested sends and collection with the selected function and context intact.
+- An installed binding alone retains its callable: release temporary owner roots
+  and owned Method values, collect, then invoke it. Remove the last binding and
+  reference; collection and the existing safe checkpoint release Execution's
+  retention. Observe that release independently of an immortal fixture dylib;
+  real compiled-mapping reclamation is a batch 2 check.
+- Calls/returns, suspension/resumption, continuation restoration and bounded
+  execution preserve the existing frame/control behavior. Collection during
+  callbacks and while paused retains live state; completion/abandonment releases
+  it at the established lifecycle boundary.
+- Replacement while code is entered or suspended preserves its execution and
+  recovery state until release. Execution releases its retention after the last
+  required reference/pin is gone. Native barriers and collection critical-phase
+  restrictions survive reconnection.
+
+Use native executable fixtures through the production loader where source
+compilation is not yet available; these must exercise the real Execution objects,
+not a second seed/runtime. Restore existing mechanics tests rather than inventing
+another harness: `runtime/scheduling_tests.rs` covers bounded drives, two-Machine
+interleaving, precise roots and wait versus runnable resumption. This proves
+Execution integration, **not** the language task scheduler or compiler-generated
+deoptimization. Batch 2 supplies real compiler code-resource/recovery evidence;
+source task policy awaits Store as described below.
+
+### Batch 2: Compilation uses that Execution
+
+Reconnect PEG, Lang, Codegen, TCC, the language-facing Artifact adapter and Portable
+Code along their real dependencies. Convert both sides of executable installation,
+generated invocation, recovery registration and retirement; remove their displaced
+tables, cached service calls, foreign value decoding and native service exports.
+Extend Bootstrap with completed objects only. Keep ordinary algorithm helpers
+private and keep compiler construction out of Execution startup.
+
+The production integration must compile source, install its method, invoke it on
+the real Machine and exercise a compiled Block. Repeat binding-only and
+active/suspended lifetime checks with actual reclaimable compiled units. Exercise
+live replacement, guarded fallback/deoptimization, materialization and Execution's
+cancellation/cleanup mechanics with generated code. Existing
+`runtime/boundary_control_tests.rs` and `runtime/v2_control_tests.rs` cover
+compiler-generated boundary transfer, retained frames, fresh cleanup dispatch and
+cleanup suspension; bring those cases through the production owners. Adapt the
+relevant independent semantic cases from `method-values-smoke`, `method-unit-lifetime-smoke`,
+`stackless-control-smoke` and recovery probes; their old Host/CLI setup and image
+round trips are not prerequisites for testing this production path.
+
+The existing source TaskControl/TaskExecutor policy in
+`src/id/stackless-control.birnam` eagerly initializes `db` schema and stores fields
+through `db cellFor:attr:`. Its full interleaving/wait/cancellation/cleanup tests
+(including `task-control-smoke`) therefore await the Store branch, not just a
+compiler. Preserve that implementation and its tests. Do not substitute a new
+scheduler or fake Store to bring them forward, and do not claim complete language
+concurrency from Execution mechanics tests. Loading a source control unit with
+these dependencies must wait until those dependencies exist.
+
+### Scope and stopping point for these batches
+
+Each batch includes the production Bootstrap integration, targeted debug checks,
+deletion of its displaced plumbing, local protocol documentation and a commit.
+
+Do not pull Image restoration, process-worker integration, multi-threaded domain
+hosting, full Host/CLI restoration, new optimization strategies or new scheduling
+policies into these batches. Preserve their useful code and semantic tests for
+their existing later integration steps. Source supplied directly to the loaded
+compiler is sufficient here; restoring the CLI or all file-loading services is
+not a hidden dependency. A concrete newly discovered dependency must be justified
+by its consumer and resolved locally, not used to import the old Runtime bundle.
+No release validation, new benchmarks or generalized compatibility layer is needed.
+
+Stop this phase when real Execution and source compilation use the message-based
+production prefix, the execution/recovery behavior covered above works, and the
+replaced connections are gone. Record still-deferred source task-policy,
+image/worker/startup checks explicitly. Do not describe this checkpoint as
+completion of the full language refactor, and do not continue extracting helpers
+after it is achieved.
+
+Three independent adversarial reviews covered scope, the Id/executable-lifetime
+seam and acceptance. The revised plan passed re-review after correcting mixed-file
+ownership, lookup adaptation, binding-only lifetime coverage and the hidden Store
+dependency of source task policy. This approves the bounded plan, not an unbuilt
+implementation or a finalized registration protocol.
+
 ## Keep the refactor bounded
 
 For every change, ask: **does it remove an obsolete connection, establish a
