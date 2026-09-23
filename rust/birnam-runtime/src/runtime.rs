@@ -72,7 +72,6 @@ mod numeric;
 mod integer;
 mod float;
 mod word;
-mod string;
 mod native_allocation;
 mod tracing;
 mod collect;
@@ -273,7 +272,6 @@ pub(crate) struct Runtime {
     integer: Cell<Option<integer::Binding>>,
     float: Cell<Option<float::Binding>>,
     word: Cell<Option<word::Binding>>,
-    string: Cell<Option<string::Binding>>,
     trace: Cell<Option<birnam_abi::trace_live::TraceLiveV1>>,
     collect: Cell<Option<birnam_abi::collect::CollectV1>>,
     #[cfg(test)]
@@ -282,8 +280,6 @@ pub(crate) struct Runtime {
     test_float: UnsafeCell<Option<float::TestOwner>>,
     #[cfg(test)]
     test_word: UnsafeCell<Option<word::TestOwner>>,
-    #[cfg(test)]
-    test_string: UnsafeCell<Option<string::TestOwner>>,
     recovery_requests: core::cell::RefCell<Vec<recovery::Request>>,
     #[cfg(test)]
     deopt_trial: core::cell::RefCell<Option<deopt_experiment::Trial>>,

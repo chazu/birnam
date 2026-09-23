@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "scope": "Native String storage and text extensions before Runtime; legacy IdApi adapters",
+  "scope": "String and String Builder byte ownership, text construction and basic text through Id/Roots/GC messages",
   "install_name": "@rpath/libbirnam_string.dylib",
   "exported_symbols": [
     "birnam_native_module_v1",

@@ -253,11 +253,47 @@ reentrant clone allocation, metadata retirement before finalization, finalizer
 non-copying and collection of unreachable object/private-behavior cycles. Payload
 layout copy/boundary semantics are also retained in local unit tests.
 
-The next functional branch is values, starting with basic String construction and
-its actual dependents/extensions. Execution-specific deferred materialization,
-recovery, specialization, concurrency and active-code retirement remain preserved
-for Execution's conversion. Full Runtime/CLI and image integration remain pending;
-there is no second native integration path to keep working in parallel.
+## Text and Error checkpoint (2026-09-22)
+
+Bootstrap now loads String and Error after Object Model and connects Boolean/Nil
+printing to the completed String object. Initializers take Namespace and return
+opaque completed objects. The [String protocol](../../rust/birnam-string/README.md)
+and [Error protocol](../../rust/birnam-error/README.md) document their messages.
+
+String owns its byte buffers and String Builder's text construction. Buffer keys
+are weak; GC finalization releases each buffer through a fresh message. Raw
+payload words and private behavior changes cannot redirect native ownership.
+String clones copy into independent buffers; Builder retains its existing empty
+`new`/`clone` semantics. Borrowed bytes are copied before allocating or reentrant
+sends. Buffer borrows never span calls into dependencies. Roots, selectors and
+mutable storage belong to the initialized instance, with no new singleton.
+
+Error's two reference fields use ordinary Object Model allocation and slot messages,
+so its tracing and shallow cloning need no separate storage or GC adapter. Error
+keeps its constructors, predicates, field access and propagating DNU. Object DNU
+constructs its diagnostic through String and sends the current `kind:message:`
+method to Error. The completed factories remain ordinary replaceable objects.
+
+Removed String's shared-table construction/adoption path and Runtime String
+adapter, Error's cached entries and descriptor initialization, and the separate
+String Builder crate and install entries. Builder is still a language object;
+its native implementation lives with String. Deferred Execution, concurrency,
+deoptimization and code-lifetime algorithms and their semantic tests remain
+preserved for conversion; no compatibility tables were reintroduced for them.
+
+Targeted production tests exercise real Siphon/Id/Bootstrap loading, opaque binary
+text, text operations, private behaviors, independent clone buffers, mutable
+builders, allocating/collecting callbacks, live factory/finalizer replacement,
+Error propagation and reference reachability, automatic collection, and repeated
+buffer retirement. Existing memory and Object Model tests continue to pass.
+
+Next convert Integer and Float with the text operations that require their values:
+String `size`, `at:`, `byteAt:`, `copyFrom:to:`, `indexOf:`, `bracketDepth`,
+`asInteger`, `asNumber`, and Builder `size`/`addByte:`. They remain uninstalled;
+the existing native String `length` result is a Word, not a replacement for
+language `size`. String splitting still requires collections. Full Runtime/CLI,
+Execution, image and worker integration remain pending. There is no second native
+integration path to keep working in parallel.
 
 ## Keep the refactor bounded
 

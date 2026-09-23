@@ -302,7 +302,6 @@ dependencies = [
  "birnam-object-model",
  "birnam-root-registry",
  "birnam-storage",
- "birnam-string",
  "birnam-trace",
  "birnam-word",
  "sha2",
@@ -338,13 +337,6 @@ dependencies = [
 
 [[package]]
 name = "birnam-string"
-version = "0.0.0"
-dependencies = [
- "birnam-abi",
-]
-
-[[package]]
-name = "birnam-string-builder"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",

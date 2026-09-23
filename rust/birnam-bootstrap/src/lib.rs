@@ -233,6 +233,29 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 Operand::object(namespace),
             ],
         )?;
+        for name in ["string", "error"] {
+            id.send_named(
+                receiver,
+                b"loadNative:",
+                &[
+                    Operand::bytes(&module_path(directory, name)),
+                    Operand::object(namespace),
+                ],
+            )?;
+        }
+        let string = id.send_named(
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"String")?)],
+        )?;
+        for name in [b"true".as_slice(), b"nil"] {
+            let value = object(id.send_named(
+                namespace,
+                b"at:",
+                &[Operand::object(id.intern_name(name)?)],
+            )?)?;
+            id.send_named(value, b"installPrinting:", &[string])?;
+        }
         INSTANCE.store(state, Ordering::Release);
         Ok(Operand::object(namespace))
     }

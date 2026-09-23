@@ -129,19 +129,6 @@ unsafe extern "C" fn roots(context: *mut c_void, sink: *const SinkV1) -> i32 {
             }
         }
     }
-    #[cfg(test)]
-    {
-        let roots = unsafe {
-            (&*runtime.test_string.get())
-                .as_ref()
-                .map(|owner| owner.instance.identities())
-        };
-        if let Some(roots) = roots {
-            for root in roots {
-                emit_candidate(sink, root.addr());
-            }
-        }
-    }
     if let Some(graph) = graph {
         let status = unsafe { (graph.roots)(graph.context, sink) };
         if status != OK { return status; }

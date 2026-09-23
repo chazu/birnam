@@ -706,6 +706,9 @@ Siphon -> Id -> Bootstrap
                   -> Nil(Namespace)
                   -> GC(Roots), then activate
                   -> ObjectModel(Namespace)
+                  -> String(Namespace), including StringBuilder
+                  -> Error(Namespace)
+                  -> Boolean/Nil printing with String
 ```
 
 Every completed module returns an opaque Object or Unit. Namespace publishes
@@ -717,6 +720,9 @@ live method replacement, nested loading, collection and finalization.
 [GC’s local protocol](rust/birnam-collect/README.md) documents reference owners,
 rooting and native construction. [Object Model](rust/birnam-object-model/README.md)
 adds ordinary cloning, private behaviors and slot storage with GC-safe ownership.
+[String](rust/birnam-string/README.md) owns text and builder buffers;
+[Error](rust/birnam-error/README.md) uses ordinary reference slots. Numeric text
+operations await Integer/Float; basic text and Boolean/Nil printing work now.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
 loading. Collection now works over this prefix through Id and Roots messages.

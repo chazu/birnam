@@ -23,7 +23,7 @@ BIRNAM
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/probe.birnam" >"$scratch/startup.out" 2>"$scratch/startup.err"
 printf '131\n65\n0\nstring-builder-startup-ok\n' >"$scratch/startup-expected.out"
 cmp "$scratch/startup-expected.out" "$scratch/startup.out"
-grep -Fq '/libbirnam_string_builder.dylib' "$scratch/startup.err"
+grep -Fq '/libbirnam_string.dylib' "$scratch/startup.err"
 "$bin" --compile-module "$scratch/probe.birnam" "$scratch/probe.dylib"
 rm "$scratch/probe.birnam"
 "$bin" "$scratch/probe.dylib" >"$scratch/compiled.out" 2>"$scratch/compiled.err"
@@ -77,11 +77,11 @@ rm "$scratch/save.birnam"
 printf 'seed\ntrue\n135\nseedA\n0\nfalse\nok\n\nab3\nBIRNAM\nbirnam\n99\nstring-builder-image-ok\n' >"$scratch/expected.out"
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
 cmp "$scratch/expected.out" "$scratch/image.out"
-grep -Fq '/libbirnam_string_builder.dylib' "$scratch/image.err"
+grep -Fq '/libbirnam_string.dylib' "$scratch/image.err"
 "$bin" --bake "$scratch/app.image" "$scratch/app"
 BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
-grep -Fq '/libbirnam_string_builder.dylib' "$scratch/baked.err"
+grep -Fq '/libbirnam_string.dylib' "$scratch/baked.err"
 
 # Record the existing RAW capture limitation, without executing/restoring a
 # nonportable pointer or changing Image's serialization/rejection policy.

@@ -1,208 +1,580 @@
-//! Byte ownership and construction using only completed Id/Lifetime services.
 use birnam_abi::{
-    Oop,
-    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
-    lifetime, namespace_owner,
-    native_allocation::NativeAllocationPlanV1,
-    root_registry,
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
-use core::{ffi::c_void, ptr};
-use std::sync::atomic::Ordering;
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+    ptr,
+};
+use std::collections::HashMap;
 
-#[derive(Clone, Copy)]
-pub(crate) struct Access {
-    pub id: Protocol,
-    pub lifetime: lifetime::OwnedV2,
-    pub(crate) roots: root_registry::OwnedV1,
-    allocate: Oop,
-    pub(crate) allocation_size: NativeEntry,
-    pub(crate) behavior_of: NativeEntry,
+// Byte ownership never depends on mutable payload words or current behavior.
+// Payload mirrors are diagnostic only; all native access uses this owner's map.
+struct Buffer {
+    bytes: Vec<u8>,
+    builder: bool,
 }
-impl Access {
-    pub(crate) fn references(self) -> [Oop; 4] {
-        [
-            self.id.receiver,
-            self.id.intern,
-            self.id.load,
-            self.allocate,
-        ]
-    }
+struct Text {
+    id: Protocol,
+    roots: Oop,
+    gc: Oop,
+    behavior: Oop,
+    builder_behavior: Oop,
+    prototype: Cell<Oop>,
+    builder: Cell<Oop>,
+    truth: Oop,
+    falsity: Oop,
+    nil: Oop,
+    names: HashMap<&'static [u8], Oop>,
+    buffers: RefCell<HashMap<usize, Buffer>>,
+    thread: std::thread::ThreadId,
 }
-pub(crate) fn invalid() -> Outcome {
+fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
-pub(crate) fn send(
-    id: Protocol,
-    receiver: Oop,
-    selector: Oop,
-    args: &[Operand],
-) -> Result<Operand, Outcome> {
-    unsafe { id.message.unwrap()(id.context, receiver, selector, args.as_ptr(), args.len()) }
-        .into_result()
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|p| !p.is_null()).ok_or_else(invalid)
 }
-pub(crate) fn intern(id: Protocol, name: &[u8]) -> Result<Oop, Outcome> {
-    send(id, id.receiver, id.intern, &[Operand::bytes(name)])?
-        .as_object()
-        .ok_or_else(invalid)
+fn done(v: Result<Operand, Outcome>) -> Outcome {
+    v.map_or_else(|e| e, Outcome::loaded)
 }
-fn select(id: Protocol, name: &[u8]) -> Result<NativeEntry, Outcome> {
-    send(
-        id,
-        id.receiver,
-        intern(id, b"lookup")?,
-        &[Operand::object(intern(id, name)?)],
-    )?
-    .as_entry()
-    .ok_or_else(invalid)
-}
-pub(crate) fn fact(access: Access, entry: NativeEntry, object: Oop) -> Result<Operand, Outcome> {
-    let args = [Operand::object(object)];
-    unsafe { entry.method.unwrap()(entry.context, access.id.receiver, args.as_ptr(), args.len()) }
-        .into_result()
-}
-pub(crate) struct Root {
-    roots: root_registry::OwnedV1,
-    token: usize,
-}
-impl Root {
-    pub(crate) fn new(roots: root_registry::OwnedV1, object: Oop) -> Self {
-        let token = unsafe { roots.retain.unwrap()(roots.context, object) };
-        assert_ne!(token, 0);
-        Self { roots, token }
-    }
-}
-impl Drop for Root {
-    fn drop(&mut self) {
-        assert_eq!(
-            unsafe { self.roots.release.unwrap()(self.roots.context, self.token) },
-            1
-        );
-    }
-}
-
-pub(crate) unsafe fn allocate(
-    access: Access,
-    plan: &NativeAllocationPlanV1,
-    source: Oop,
-    instance: &super::storage::Instance,
-) -> Result<Oop, Outcome> {
-    let _source = (!source.is_null()).then(|| Root::new(access.roots, source));
-    // No String map borrow crosses the message, which can collect or send again.
-    let object = send(
-        access.id,
-        plan.behavior,
-        access.allocate,
-        &[Operand::word(plan.payload_size)],
-    )?
-    .as_object()
-    .filter(|object| !object.is_null())
-    .ok_or_else(invalid)?;
-    // Construction is replaceable, but a language replacement cannot make us
-    // write through an undersized or incompatible object. These selected Id
-    // facts inspect the actual allocation, without another application lookup.
-    if instance.owns(object)
-        || !fact(access, access.allocation_size, object)?
-            .as_word()
-            .is_some_and(|size| size >= plan.payload_size)
-        || fact(access, access.behavior_of, object)?.as_object() != Some(plan.behavior)
-        || unsafe { (access.lifetime.finalizer)(access.lifetime.context, object).callback }
-            .is_some()
-    {
+unsafe fn state<'a>(context: *mut c_void) -> Result<&'a Text, Outcome> {
+    let t = unsafe { &*context.cast::<Text>() };
+    if t.thread != std::thread::current().id() {
         return Err(invalid());
     }
-    let _object = Root::new(access.roots, object);
-    // These callbacks only copy bytes and write our own payload. Lifetime's
-    // canonical replacement records the attachment without application calls.
-    unsafe {
-        (plan.prepare)(plan.context);
-        (plan.initialize)(plan.context, object);
+    Ok(t)
+}
+impl Text {
+    unsafe fn send(
+        &self,
+        receiver: Oop,
+        name: &'static [u8],
+        args: &[Operand],
+    ) -> Result<Operand, Outcome> {
+        unsafe { self.id.send(receiver, self.names[name], args) }
     }
-    if let Some(callback) = plan.finalizer {
+    unsafe fn rooted(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<Operand, Outcome>,
+    ) -> Result<Operand, Outcome> {
+        let mut tokens = Vec::new();
+        let result = (|| unsafe {
+            for value in values {
+                tokens.push(
+                    self.send(self.roots, b"retain:", &[Operand::object(*value)])?
+                        .as_word()
+                        .filter(|n| *n != 0)
+                        .ok_or_else(invalid)?,
+                );
+            }
+            f()
+        })();
+        for token in tokens {
+            if unsafe { self.send(self.roots, b"release:", &[Operand::word(token)]) }?.as_word()
+                != Some(1)
+            {
+                return Err(invalid());
+            }
+        }
+        result
+    }
+    fn copy(&self, value: Oop, builder: bool) -> Result<Vec<u8>, Outcome> {
+        self.buffers
+            .borrow()
+            .get(&value.addr())
+            .filter(|b| b.builder == builder)
+            .map(|b| b.bytes.clone())
+            .ok_or_else(invalid)
+    }
+    unsafe fn make(&self, bytes: Vec<u8>, builder: bool) -> Result<Operand, Outcome> {
         unsafe {
-            (access.lifetime.replace_finalizer)(
-                access.lifetime.context,
-                object,
-                birnam_abi::finalizers::SlotV1 {
-                    callback: Some(callback),
-                },
-            )
-        };
+            let behavior = if builder {
+                self.builder_behavior
+            } else {
+                self.behavior
+            };
+            let extent = if builder { 3 } else { 2 } * size_of::<usize>();
+            let value = object(self.send(behavior, b"allocate", &[Operand::word(extent)])?)?;
+            self.rooted(&[value], || {
+                if self
+                    .send(
+                        self.id.receiver,
+                        b"allocationSizeOf:",
+                        &[Operand::object(value)],
+                    )?
+                    .as_word()
+                    != Some(extent)
+                    || self
+                        .send(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                        .as_object()
+                        != Some(behavior)
+                    || self.buffers.borrow().contains_key(&value.addr())
+                {
+                    return Err(invalid());
+                }
+                {
+                    let mut buffers = self.buffers.borrow_mut();
+                    let b = buffers
+                        .entry(value.addr())
+                        .or_insert(Buffer { bytes, builder });
+                    mirror(value, b);
+                }
+                self.send(
+                    self.gc,
+                    b"finalize:with:",
+                    &[
+                        Operand::object(value),
+                        Operand::object(self.prototype.get()),
+                    ],
+                )?;
+                Ok(Operand::object(value))
+            })
+        }
     }
-    Ok(object)
+    unsafe fn string(&self, bytes: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            self.send(
+                self.prototype.get(),
+                b"fromBytes:",
+                &[Operand::bytes(bytes)],
+            )
+        }
+    }
+    unsafe fn printable(&self, value: Oop) -> Result<Vec<u8>, Outcome> {
+        unsafe {
+            if let Ok(bytes) = self.copy(value, false) {
+                return Ok(bytes);
+            }
+            let printed = object(self.send(value, b"printString", &[])?)?;
+            let mut bytes = None;
+            self.rooted(&[printed], || {
+                // A replacement can return another text implementation. Ask it for
+                // bytes and copy the borrowed result before any further send.
+                let result = self.send(printed, b"bytes", &[])?;
+                let raw = result.as_bytes().ok_or_else(invalid)?;
+                bytes = Some(
+                    borrowed_bytes(raw.pointer, raw.length)
+                        .ok_or_else(invalid)?
+                        .to_vec(),
+                );
+                Ok(Operand::unit())
+            })?;
+            bytes.ok_or_else(invalid)
+        }
+    }
 }
-unsafe fn instance<'a>(context: *mut c_void) -> &'a super::storage::Instance {
-    unsafe { &*context.cast::<super::storage::Instance>() }
+unsafe fn mirror(value: Oop, b: &Buffer) {
+    unsafe {
+        let words = value.cast::<usize>();
+        words.write(b.bytes.as_ptr().addr());
+        words.add(1).write(b.bytes.len());
+        if b.builder {
+            words.add(2).write(b.bytes.capacity());
+        }
+    }
 }
-unsafe extern "C" fn from_bytes(
+unsafe extern "C" fn roots(
     context: *mut c_void,
     _: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    let Some([bytes]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else {
-        return invalid();
-    };
-    let Some(bytes) = bytes.as_bytes() else {
-        return invalid();
-    };
-    let Some(bytes) = (unsafe { birnam_abi::borrowed_bytes(bytes.pointer, bytes.length) }) else {
-        return invalid();
-    };
-    match unsafe { instance(context).construct_native(bytes, ptr::null_mut()) } {
-        Ok(object) => Outcome::loaded(Operand::object(object)),
-        Err(error) => error,
-    }
+    done((|| unsafe {
+        let t = state(context)?;
+        let Some([visitor]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        let visitor = visitor
+            .as_entry()
+            .filter(|e| e.method.is_some())
+            .ok_or_else(invalid)?;
+        let mut values = vec![
+            t.roots,
+            t.gc,
+            t.behavior,
+            t.builder_behavior,
+            t.prototype.get(),
+            t.builder.get(),
+            t.truth,
+            t.falsity,
+            t.nil,
+        ];
+        values.extend(t.names.values().copied());
+        for value in values.into_iter().filter(|v| !v.is_null()) {
+            visitor.method.unwrap()(
+                visitor.context,
+                t.prototype.get(),
+                &Operand::object(value),
+                1,
+            )
+            .into_result()?;
+        }
+        // Buffer keys are weak, and bytes contain no language references.
+        Ok(Operand::unit())
+    })())
 }
-unsafe fn borrowed(context: *mut c_void, receiver: Oop) -> Option<Operand> {
-    let ops = unsafe { *instance(context).operations() };
-    let mut length = 0;
-    let pointer = unsafe { ((*ops.storage).borrow)(ops.context, receiver, &mut length) };
-    if pointer.is_null() {
-        None
-    } else {
-        Some(Operand::bytes(unsafe {
-            core::slice::from_raw_parts(pointer, length)
-        }))
-    }
-}
-unsafe extern "C" fn bytes(
+unsafe extern "C" fn references(
     context: *mut c_void,
-    receiver: Oop,
-    _: *const Operand,
+    _: Oop,
+    args: *const Operand,
     count: usize,
 ) -> Outcome {
-    if count != 0 {
-        return invalid();
-    }
-    unsafe { borrowed(context, receiver) }
-        .map(Outcome::loaded)
-        .unwrap_or_else(invalid)
+    done((|| unsafe {
+        let t = state(context)?;
+        let Some([value, visitor]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        let value = object(*value)?;
+        visitor
+            .as_entry()
+            .filter(|e| e.method.is_some())
+            .ok_or_else(invalid)?;
+        if !t.buffers.borrow().contains_key(&value.addr()) {
+            return Err(invalid());
+        }
+        Ok(Operand::unit())
+    })())
 }
-unsafe extern "C" fn length(
+unsafe extern "C" fn finalize(
     context: *mut c_void,
-    receiver: Oop,
-    _: *const Operand,
+    _: Oop,
+    args: *const Operand,
     count: usize,
 ) -> Outcome {
-    if count != 0 {
-        return invalid();
-    }
-    unsafe { borrowed(context, receiver) }
-        .map(|bytes| Outcome::loaded(Operand::word(bytes.as_bytes().unwrap().length)))
-        .unwrap_or_else(invalid)
+    done((|| unsafe {
+        let t = state(context)?;
+        let Some([value]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        // GC has detached the object; no Id query or send is valid for it now.
+        let value = object(*value)?;
+        t.buffers
+            .borrow_mut()
+            .remove(&value.addr())
+            .ok_or_else(invalid)?;
+        Ok(Operand::unit())
+    })())
 }
-unsafe extern "C" fn clone(
-    context: *mut c_void,
+unsafe fn execute(
+    t: &Text,
     receiver: Oop,
-    _: *const Operand,
-    count: usize,
-) -> Outcome {
-    if count != 0 || unsafe { borrowed(context, receiver) }.is_none() {
-        return invalid();
+    args: &[Operand],
+    operation: usize,
+) -> Result<Operand, Outcome> {
+    unsafe {
+        match operation {
+            0 => {
+                // fromBytes: copies native input before retaining/allocating sends.
+                let [input] = args else {
+                    return Err(invalid());
+                };
+                let raw = input.as_bytes().ok_or_else(invalid)?;
+                let bytes = borrowed_bytes(raw.pointer, raw.length)
+                    .ok_or_else(invalid)?
+                    .to_vec();
+                t.rooted(&[receiver], || t.make(bytes, false))
+            }
+            1 | 2 => {
+                if !args.is_empty() {
+                    return Err(invalid());
+                }
+                let buffers = t.buffers.borrow();
+                let b = buffers
+                    .get(&receiver.addr())
+                    .filter(|b| !b.builder)
+                    .ok_or_else(invalid)?;
+                Ok(if operation == 1 {
+                    Operand::bytes(&b.bytes)
+                } else {
+                    Operand::word(b.bytes.len())
+                })
+            }
+            _ => {
+                let expected = match operation {
+                    5 | 6 | 11 => 1,
+                    8 => 2,
+                    _ => 0,
+                };
+                if args.len() != expected {
+                    return Err(invalid());
+                }
+                let mut objects = vec![receiver];
+                for arg in args {
+                    objects.push(object(*arg)?);
+                }
+                t.rooted(&objects, || {
+                    match operation {
+                        3 => t.make(t.copy(receiver, false)?, false), // independent byte buffer
+                        4 => {
+                            t.copy(receiver, false)?;
+                            Ok(Operand::object(receiver))
+                        }
+                        5 => {
+                            let mut bytes = t.copy(receiver, false)?;
+                            bytes.extend_from_slice(&t.printable(objects[1])?);
+                            t.string(&bytes)
+                        }
+                        6 => {
+                            let left = t.copy(receiver, false)?;
+                            let equal = t.copy(objects[1], false).is_ok_and(|right| left == right);
+                            Ok(Operand::object(if equal { t.truth } else { t.falsity }))
+                        }
+                        7 => t.string(crate::text::trimmed_bytes(&t.copy(receiver, false)?)),
+                        8 => {
+                            let bytes = t.copy(receiver, false)?;
+                            let (Ok(needle), Ok(replacement)) =
+                                (t.copy(objects[1], false), t.copy(objects[2], false))
+                            else {
+                                return Ok(Operand::object(t.nil));
+                            };
+                            t.string(&crate::text::replace(&bytes, &needle, &replacement))
+                        }
+                        9 => {
+                            let bytes = t.copy(receiver, false)?;
+                            let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
+                            t.id.send(t.id.receiver, t.id.intern, &[Operand::bytes(&bytes[..end])])
+                        }
+                        10 => {
+                            t.copy(receiver, true)?;
+                            t.make(Vec::new(), true)
+                        } // existing builder new/clone empties
+                        11 => {
+                            t.copy(receiver, true)?;
+                            let bytes = t.printable(objects[1])?;
+                            t.send(t.gc, b"prepareAllocation", &[])?;
+                            let mut buffers = t.buffers.borrow_mut();
+                            let b = buffers
+                                .get_mut(&receiver.addr())
+                                .filter(|b| b.builder)
+                                .ok_or_else(invalid)?;
+                            b.bytes.extend_from_slice(&bytes);
+                            mirror(receiver, b);
+                            Ok(Operand::object(receiver))
+                        }
+                        12 => t.string(&t.copy(receiver, true)?),
+                        _ => Err(invalid()),
+                    }
+                })
+            }
+        }
     }
-    match unsafe { instance(context).construct_native(&[], receiver) } {
-        Ok(object) => Outcome::loaded(Operand::object(object)),
-        Err(error) => error,
+}
+macro_rules! entry {
+    ($name:ident, $op:expr) => {
+        unsafe extern "C" fn $name(
+            context: *mut c_void,
+            receiver: Oop,
+            args: *const Operand,
+            count: usize,
+        ) -> Outcome {
+            done((|| unsafe {
+                execute(
+                    state(context)?,
+                    receiver,
+                    borrowed_slice(args, count).ok_or_else(invalid)?,
+                    $op,
+                )
+            })())
+        }
+    };
+}
+entry!(from_bytes, 0);
+entry!(bytes, 1);
+entry!(length, 2);
+entry!(clone_string, 3);
+entry!(print, 4);
+entry!(comma, 5);
+entry!(equals, 6);
+entry!(trimmed, 7);
+entry!(replace, 8);
+entry!(as_symbol, 9);
+entry!(new_builder, 10);
+entry!(add, 11);
+entry!(as_string, 12);
+const NAMES: &[&[u8]] = &[
+    b"retain:",
+    b"release:",
+    b"allocate",
+    b"delegated",
+    b"allocationSizeOf:",
+    b"behaviorOf:",
+    b"fromBytes:",
+    b"bytes",
+    b"length",
+    b"printString",
+    b"clone",
+    b"new",
+    b",",
+    b"=",
+    b"trimmed",
+    b"replace:with:",
+    b"asSymbol",
+    b"add:",
+    b"asString",
+    b"rootsDo:",
+    b"referencesOf:do:",
+    b"finalize:",
+    b"finalize:with:",
+    b"trace:with:",
+    b"prepareAllocation",
+    b"register:",
+    b"ownerOf:put:",
+    b"addMethod",
+    b"at:put:",
+    b"String",
+    b"StringVt",
+    b"StringBuilder",
+    b"StringBuilderVt",
+];
+unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let named = |name: &[u8]| {
+            object(id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+        };
+        let roots = named(b"Roots")?;
+        let gc = named(b"GC")?;
+        let truth = named(b"true")?;
+        let falsity = named(b"false")?;
+        let nil = named(b"nil")?;
+        let parent = named(b"ObjectVt")?;
+        let retain = id.intern_name(b"retain:")?;
+        let release = id.intern_name(b"release:")?;
+        let mut tokens = Vec::new();
+        let mut keep = |v: Oop| -> Result<Oop, Outcome> {
+            tokens.push(
+                id.send(roots, retain, &[Operand::object(v)])?
+                    .as_word()
+                    .filter(|n| *n != 0)
+                    .ok_or_else(invalid)?,
+            );
+            Ok(v)
+        };
+        let mut names = HashMap::new();
+        for name in NAMES {
+            names.insert(*name, keep(id.intern_name(name)?)?);
+        }
+        let behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+        let builder_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+        let pointer = Box::into_raw(Box::new(Text {
+            id,
+            roots,
+            gc,
+            behavior,
+            builder_behavior,
+            truth,
+            falsity,
+            nil,
+            names,
+            prototype: Cell::new(ptr::null_mut()),
+            builder: Cell::new(ptr::null_mut()),
+            buffers: RefCell::new(HashMap::new()),
+            thread: std::thread::current().id(),
+        }));
+        let t = &*pointer;
+        for (target, name, method) in [
+            (behavior, b"fromBytes:".as_slice(), from_bytes as Method),
+            (behavior, b"bytes", bytes),
+            (behavior, b"length", length),
+            (behavior, b"clone", clone_string),
+            (behavior, b"new", clone_string),
+            (behavior, b"printString", print),
+            (behavior, b",", comma),
+            (behavior, b"=", equals),
+            (behavior, b"trimmed", trimmed),
+            (behavior, b"replace:with:", replace),
+            (behavior, b"asSymbol", as_symbol),
+            (behavior, b"rootsDo:", self::roots),
+            (behavior, b"referencesOf:do:", references),
+            (behavior, b"finalize:", finalize),
+            (builder_behavior, b"new", new_builder),
+            (builder_behavior, b"clone", new_builder),
+            (builder_behavior, b"add:", add),
+            (builder_behavior, b"asString", as_string),
+            (builder_behavior, b"printString", as_string),
+        ] {
+            t.send(
+                target,
+                b"addMethod",
+                &[
+                    Operand::object(t.names[name]),
+                    Operand::entry(NativeEntry::new(method, pointer.cast())),
+                ],
+            )?;
+        }
+        // No allocating send between allocating this first payload and installing
+        // its owner. All selectors above were interned and rooted already.
+        let prototype = keep(object(t.send(
+            behavior,
+            b"allocate",
+            &[Operand::word(2 * size_of::<usize>())],
+        )?)?)?;
+        if t.send(
+            id.receiver,
+            b"allocationSizeOf:",
+            &[Operand::object(prototype)],
+        )?
+        .as_word()
+            != Some(2 * size_of::<usize>())
+            || t.send(id.receiver, b"behaviorOf:", &[Operand::object(prototype)])?
+                .as_object()
+                != Some(behavior)
+        {
+            return Err(invalid());
+        }
+        t.prototype.set(prototype);
+        let b = Buffer {
+            bytes: Vec::new(),
+            builder: false,
+        };
+        mirror(prototype, &b);
+        t.buffers.borrow_mut().insert(prototype.addr(), b);
+        t.send(
+            gc,
+            b"trace:with:",
+            &[Operand::object(behavior), Operand::object(prototype)],
+        )?;
+        t.send(
+            gc,
+            b"trace:with:",
+            &[
+                Operand::object(builder_behavior),
+                Operand::object(prototype),
+            ],
+        )?;
+        t.send(
+            gc,
+            b"finalize:with:",
+            &[Operand::object(prototype), Operand::object(prototype)],
+        )?;
+        t.send(roots, b"register:", &[Operand::object(prototype)])?;
+        let builder = object(t.make(Vec::new(), true)?)?;
+        t.builder.set(builder);
+        for (target, owner) in [(behavior, prototype), (builder_behavior, builder)] {
+            t.send(
+                id.receiver,
+                b"ownerOf:put:",
+                &[Operand::object(target), Operand::object(owner)],
+            )?;
+        }
+        for (name, value) in [
+            (b"String".as_slice(), prototype),
+            (b"StringVt", behavior),
+            (b"StringBuilder", builder),
+            (b"StringBuilderVt", builder_behavior),
+        ] {
+            t.send(
+                namespace,
+                b"at:put:",
+                &[Operand::object(t.names[name]), Operand::object(value)],
+            )?;
+        }
+        for token in tokens {
+            id.send(roots, release, &[Operand::word(token)])?;
+        }
+        Ok(Operand::object(prototype))
     }
 }
 unsafe extern "C" fn initialize(
@@ -210,144 +582,29 @@ unsafe extern "C" fn initialize(
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    if id.is_null() {
-        return invalid();
-    }
-    let Some([roots, lifetime, namespace]) = (unsafe { birnam_abi::borrowed_slice(args, count) })
-    else {
-        return invalid();
-    };
-    let (Some(roots), Some(lifetime), Some(namespace)) =
-        (roots.as_word(), lifetime.as_word(), namespace.as_word())
-    else {
-        return invalid();
-    };
-    let (roots, lifetime, namespace) = (
-        roots as *const root_registry::OwnedV1,
-        lifetime as *const lifetime::OwnedV2,
-        namespace as *const namespace_owner::OwnedV1,
-    );
-    if !unsafe {
-        root_registry::valid_owned(roots)
-            && lifetime::valid(lifetime)
-            && namespace_owner::valid(namespace)
-    } {
-        return invalid();
-    }
-    if super::PHASE
-        .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return invalid();
-    }
-    match construct(
-        unsafe { *id },
-        unsafe { *roots },
-        unsafe { *lifetime },
-        unsafe { *namespace },
-    ) {
-        Ok(ops) => Outcome::loaded(Operand::word(ops as usize)),
-        Err(error) => error,
-    }
-}
-fn construct(
-    id: Protocol,
-    roots: root_registry::OwnedV1,
-    lifetime: lifetime::OwnedV2,
-    namespace: namespace_owner::OwnedV1,
-) -> Result<*mut birnam_abi::string::StringApiV1, Outcome> {
-    let access = Access {
-        id,
-        roots,
-        lifetime,
-        allocate: intern(id, b"allocate")?,
-        allocation_size: select(id, b"allocationSizeOf:")?,
-        behavior_of: select(id, b"behaviorOf:")?,
-    };
-    let instance = Box::into_raw(super::storage::Instance::native(
-        access,
-        super::cleanup,
-        super::cleanup_owner,
-    ));
-    super::INSTANCE.store(instance, Ordering::Release);
-    unsafe { root_registry::register(roots.api, super::storage_roots) };
-    let object = send(id, id.receiver, intern(id, b"objectPrototype")?, &[])?
-        .as_object()
-        .ok_or_else(invalid)?;
-    let parent = send(
-        id,
-        id.receiver,
-        intern(id, b"behaviorOf:")?,
-        &[Operand::object(object)],
-    )?
-    .as_object()
-    .ok_or_else(invalid)?;
-    let behavior = send(id, parent, intern(id, b"delegated")?, &[])?
-        .as_object()
-        .ok_or_else(invalid)?;
-    unsafe {
-        (*instance).set_behavior(behavior);
-        birnam_abi::payload_layout::set(
-            lifetime.layouts,
-            behavior,
-            ptr::null(),
-            0,
-            birnam_abi::SLOT_RAW,
-        );
-    }
-    let prototype = unsafe { (*instance).construct_native(&[], ptr::null_mut()) }?;
-    unsafe { (*instance).set_prototype(prototype) };
-    let context = instance.cast();
-    let add = intern(id, b"addMethod")?;
-    for (name, method) in [
-        (b"fromBytes:".as_slice(), from_bytes as native::Method),
-        (b"bytes".as_slice(), bytes as native::Method),
-        (b"length".as_slice(), length as native::Method),
-        (
-            b"installText:".as_slice(),
-            super::text::install as native::Method,
-        ),
-        (b"clone".as_slice(), clone as native::Method),
-        (b"new".as_slice(), clone as native::Method),
-    ] {
-        send(
-            id,
-            behavior,
-            add,
-            &[
-                Operand::object(intern(id, name)?),
-                Operand::entry(NativeEntry::new(method, context)),
-            ],
+    done((|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([namespace]) = borrowed_slice(args, count) else {
+            return Err(invalid());
+        };
+        let namespace = object(*namespace)?;
+        let id = *id;
+        let current = id.send_named(
+            namespace,
+            b"at:",
+            &[Operand::object(id.intern_name(b"String")?)],
         )?;
-    }
-    send(
-        id,
-        id.receiver,
-        intern(id, b"ownerOf:put:")?,
-        &[Operand::object(behavior), Operand::object(prototype)],
-    )?;
-    let binding = intern(id, b"bindingAt:put:")?;
-    for (name, value) in [
-        (b"String".as_slice(), prototype),
-        (b"StringVt".as_slice(), behavior),
-    ] {
-        send(
-            id,
-            namespace.receiver,
-            binding,
-            &[Operand::object(intern(id, name)?), Operand::object(value)],
-        )?;
-    }
-    let ops = unsafe { (*instance).operations() };
-    if unsafe { birnam_abi::string::attach(ops) } != 1 {
-        return Err(invalid());
-    }
-    super::PHASE.store(2, Ordering::Release);
-    Ok(ops)
+        if current.kind() == native::OBJECT {
+            return Ok(current);
+        }
+        construct(id, namespace)
+    })())
 }
 #[unsafe(no_mangle)]
 pub static birnam_native_module_v1: native::Module = native::Module {
-    version: 1,
+    version: native::VERSION,
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };

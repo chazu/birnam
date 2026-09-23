@@ -8,7 +8,6 @@ members = [
     "rust/birnam-boolean",
     "rust/birnam-nil",
     "rust/birnam-string",
-    "rust/birnam-string-builder",
     "rust/birnam-string-collection",
     "rust/birnam-range",
     "rust/birnam-vector",

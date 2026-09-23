@@ -1,12 +1,11 @@
 {
   "schema_version": 1,
-  "scope": "Production Error construction, payload access and propagation through completed Id, Lifetime, values, Namespace and String",
+  "scope": "Error construction, ordinary reference slots and propagation through Id, Roots, Object Model and String messages",
   "exported_symbols": [
     "birnam_error_rust_identity",
     "birnam_native_module_v1",
     "birnam_symbol_borrow_v1"
   ],
   "library_name": "libbirnam_error.dylib",
-  "installed_library_name": "libbirnam_id_error.dylib",
   "install_name_policy": "cargo-output-path"
 }

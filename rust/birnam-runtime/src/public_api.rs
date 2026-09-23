@@ -162,24 +162,6 @@ pub(crate) fn test_dispatch_reentry(method: Method) -> usize {
         .addr()
 }
 
-/// This exact cleanup routes only to the process-published Runtime and removes
-/// its private byte owner without reading Id state or invoking another callback.
-/// The caller must additionally prove that this Runtime owns the object's bytes.
-#[cfg(test)]
-pub(crate) fn string_cleanup_matches_runtime(active: &Runtime, finalizer: crate::abi::Finalizer) -> bool {
-    active.string_cleanup_matches_runtime(finalizer)
-}
-#[cfg(test)]
-pub(crate) unsafe extern "C" fn string_finalizer(object: Oop) {
-    runtime().release_string(object);
-}
-#[cfg(test)]
-pub(crate) unsafe extern "C" fn test_string_cleanup_owner(finalizer: crate::abi::Finalizer) -> *mut c_void {
-    let pointer = PUBLIC_RUNTIME.load(Ordering::Acquire);
-    if finalizer as usize != string_finalizer as *const () as usize || pointer.is_null() { return core::ptr::null_mut(); }
-    unsafe { (*pointer).string_context() }
-}
-
 unsafe extern "C" fn api_symbol_name(symbol: Oop) -> *const c_char {
     if let Some(name) = with_active_if_present(|active| {
         // SAFETY: with_active_if_present proves a surrounding owner-checked

@@ -1,7 +1,7 @@
 # Native boundary and format evidence
 
-[Design 84](../docs/design/84-message-only-native-modules.md) is the current
-architecture: opaque objects and Id messages are the common module boundary.
+[Design 90](../docs/design/90-functional-modules.md) is the current
+refactoring design: opaque objects and Id messages are the common module boundary.
 `birnam-abi` contains only that protocol, borrowed-buffer helpers and the
 stateless OS loader used by Siphon and Id.
 

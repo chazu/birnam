@@ -1,3 +1,8 @@
+> Historical descriptor-era record. Production Error now uses ordinary Object
+> Model slots and Id messages; see the [current protocol](../rust/birnam-error/README.md).
+> Bootstrap loads `libbirnam_error.dylib`. The tables and adoption path described
+> below are retired and must not be restored.
+
 # Error construction and legacy value policy v3
 
 ## Production Error construction

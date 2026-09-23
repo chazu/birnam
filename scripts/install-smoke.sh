@@ -61,7 +61,7 @@ required_dylibs=(
   libbirnam_id.dylib libbirnam_namespace.dylib libbirnam_store.dylib libbirnam_id_artifact.dylib
   libbirnam_id_peg.dylib libbirnam_id_lang.dylib libbirnam_id_tcc.dylib
   libbirnam_id_codegen.dylib libbirnam_boolean.dylib libbirnam_printing.dylib libbirnam_system_gc.dylib libbirnam_system_output.dylib libbirnam_system_input.dylib libbirnam_environment.dylib libbirnam_file_io.dylib libbirnam_block_loop.dylib libbirnam_native_loader.dylib libbirnam_source_loader.dylib libbirnam_id_prelude.dylib
-  libbirnam_storage.dylib libbirnam_trace.dylib libbirnam_collect.dylib libbirnam_integer.dylib libbirnam_float.dylib libbirnam_word.dylib libbirnam_object_model.dylib libbirnam_nil.dylib libbirnam_string.dylib libbirnam_string_builder.dylib libbirnam_range.dylib libbirnam_vector.dylib libbirnam_map.dylib libbirnam_string_collection.dylib libbirnam_id_collection.dylib libbirnam_id_error.dylib
+  libbirnam_storage.dylib libbirnam_trace.dylib libbirnam_collect.dylib libbirnam_integer.dylib libbirnam_float.dylib libbirnam_word.dylib libbirnam_object_model.dylib libbirnam_nil.dylib libbirnam_string.dylib libbirnam_range.dylib libbirnam_vector.dylib libbirnam_map.dylib libbirnam_string_collection.dylib libbirnam_id_collection.dylib libbirnam_error.dylib
   libbirnam_portable_code.dylib
   libbirnam_id_isolate.dylib libbirnam_id_relational.dylib
   libbirnam_id_alien.dylib libbirnam_id_image.dylib

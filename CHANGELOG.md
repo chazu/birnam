@@ -8,6 +8,14 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Restore String, String Builder and Error through production Bootstrap and live
+  Id messages. String owns native buffers and resource-aware cloning/finalization;
+  Error uses Object Model reference slots. Restore number-independent text,
+  Boolean/Nil printing and Error propagation, including fresh factory dispatch.
+  Delete the separate String Builder crate, String tables and Runtime adoption
+  adapter. Numeric text operations await Integer/Float. Add production tests for
+  allocation reentry, borrowed-byte copying, live replacement and GC lifetime.
+
 - Restore Object Model through Bootstrap and live Id/Roots/GC messages: ordinary
   shallow cloning, private behaviors, instance-owned slot metadata and weak
   ownership records. Trace behavior-owner links and retire metadata before reuse;
