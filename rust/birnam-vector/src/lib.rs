@@ -410,8 +410,6 @@ pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
 
-mod kernel;
-pub use kernel::PersistentVector;
 const DEPENDENCIES: &[&[u8]] = &[b"Integer", b"String", b"nil", b"true", b"false"];
 const BITS: usize = 5;
 const WIDTH: usize = 1 << BITS;

@@ -1614,25 +1614,6 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod floor_lookup_fixture {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../birnam-abi/tests/support/floor_lookup.rs"));
-}
-
-#[test]
-#[ignore = "requires installed floor and fresh-process loader fixture"]
-fn floor_lookup_contract_registration() {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    floor_lookup_fixture::check(|api, name| floor_registration(api, name, &ADDRESS).map(|f| f as usize), true);
-}
-
-#[test]
-#[ignore = "requires installed floor and fresh-process loader fixture"]
-fn floor_lookup_contract_retirement() {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    floor_lookup_fixture::check(|api, name| floor_retirement(api, name, &ADDRESS).map(|f| f as usize), true);
-}
-
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
 
 fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }

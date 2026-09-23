@@ -11,7 +11,6 @@ use birnam_abi::{Oop, borrowed_slice};
 use core::{cell::RefCell, ffi::c_void, ptr};
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-const CAPACITY: usize = 32;
 #[derive(Default)]
 struct Roots {
     providers: Vec<Oop>,
@@ -39,7 +38,7 @@ impl Roots {
         true
     }
     fn register(&mut self, provider: Oop) -> bool {
-        if provider.is_null() || self.providers.len() == CAPACITY {
+        if provider.is_null() {
             return false;
         }
         self.providers.push(provider);
@@ -230,17 +229,17 @@ mod tests {
         assert_eq!(roots.retained, [(second, object)]);
     }
     #[test]
-    fn provider_order_duplicates_and_capacity_are_preserved() {
+    fn registration_grows_preserving_order_duplicates_and_null_rejection() {
         let mut roots = Roots::default();
-        for index in 0..CAPACITY {
+        for index in 0..128 {
             assert!(roots.register(ptr::without_provenance_mut(index % 2 + 1)));
         }
         let before = roots.providers.clone();
-        assert!(!roots.register(ptr::without_provenance_mut(3)));
+        assert!(!roots.register(ptr::null_mut()));
         assert_eq!(roots.providers, before);
         assert_eq!(
             roots.providers.iter().map(|p| p.addr()).collect::<Vec<_>>(),
-            (0..CAPACITY).map(|i| i % 2 + 1).collect::<Vec<_>>()
+            (0..128).map(|i| i % 2 + 1).collect::<Vec<_>>()
         );
     }
 }

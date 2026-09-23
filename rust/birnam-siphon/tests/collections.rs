@@ -103,19 +103,54 @@ struct Callback {
     calls: Cell<usize>,
     mode: Cell<usize>,
     behavior: Cell<Oop>,
+    fresh: RefCell<Vec<(Oop, usize)>>,
 }
 unsafe extern "C" fn callback(c: *mut c_void, _: Oop, a: *const Operand, count: usize) -> Outcome {
     unsafe {
         let c = &*c.cast::<Callback>();
         let h = &*c.h;
         collect(h.id, h.gc);
+        // These addresses are observations, not registered roots. During sorting,
+        // only Vector owns the keys returned by earlier calls.
+        if matches!(c.mode.get(), 1 | 5) {
+            for &(key, identity) in c.fresh.borrow().iter() {
+                assert!(present(h.id, key), "Vector lost a prior sort key");
+                assert_eq!(
+                    send(h.id, h.id.receiver, b"identityOf:", &[Operand::object(key)]).as_word(),
+                    Some(identity)
+                );
+            }
+        }
         let args = borrowed_slice(a, count).unwrap();
         c.calls.set(c.calls.get() + 1);
+        if c.mode.get() == 5 && c.calls.get() == 3 {
+            return Outcome::failed(native::INVALID_REQUEST, 57);
+        }
+        let fresh_integer = |value: i64| {
+            let integer = h.named(b"Integer");
+            // Deliberately bypass H::call/H::i: no harness retention after return.
+            let value = object(send(
+                h.id,
+                integer,
+                b"fromWord:",
+                &[Operand::word(value as usize)],
+            ));
+            let identity = send(
+                h.id,
+                h.id.receiver,
+                b"identityOf:",
+                &[Operand::object(value)],
+            )
+            .as_word()
+            .unwrap();
+            c.fresh.borrow_mut().push((value, identity));
+            value
+        };
         let value = match c.mode.get() {
             0 => object(args[0]),
-            1 => h.i(h.iv(object(args[0])) % 3),
-            2 => h.i(h.iv(object(args[0])) + h.iv(object(args[1]))),
-            3 => h.i(789),
+            1 | 5 => fresh_integer(h.iv(object(args[0])) % 3),
+            2 => fresh_integer(h.iv(object(args[0])) + h.iv(object(args[1]))),
+            3 => fresh_integer(789),
             4 => {
                 install(
                     h.id,
@@ -306,6 +341,7 @@ fn persistent_collections_use_live_owner_messages_and_survive_gc() {
             calls: Cell::new(0),
             mode: Cell::new(1),
             behavior: Cell::new(ptr::null_mut()),
+            fresh: RefCell::new(Vec::new()),
         });
         let cp = &*c as *const _ as *mut c_void;
         let (block, b) = h.callback(b"value:", callback, cp);
@@ -315,6 +351,31 @@ fn persistent_collections_use_live_owner_messages_and_survive_gc() {
         expected.sort_by_key(|n| n % 3);
         assert_eq!(h.seq(sorted), expected);
         assert_eq!(c.calls.get(), 10);
+        let reclaimed = |values: &[(Oop, usize)]| {
+            for &(value, identity) in values {
+                assert!(
+                    !present(id, value)
+                        || send(id, id.receiver, b"identityOf:", &[Operand::object(value)])
+                            .as_word()
+                            != Some(identity),
+                    "temporary root leaked after return"
+                );
+            }
+        };
+        collect(id, h.gc);
+        reclaimed(&c.fresh.borrow());
+        c.fresh.borrow_mut().clear();
+        // Native failure must also release keys accumulated before the failure.
+        c.mode.set(5);
+        c.calls.set(0);
+        let failure = id
+            .send_named(small, b"sortBy:", &[Operand::object(block)])
+            .unwrap_err();
+        assert_eq!(failure.status, native::INVALID_REQUEST);
+        collect(id, h.gc);
+        reclaimed(&c.fresh.borrow());
+        c.fresh.borrow_mut().clear();
+
         c.calls.set(0);
         c.mode.set(4);
         h.call(small, b"do:", &[Operand::object(block)]);
@@ -333,6 +394,14 @@ fn persistent_collections_use_live_owner_messages_and_survive_gc() {
             h.text(h.call(small, b"printString", &[])),
             b"#[5 6 7 8 9 10 11 12 13 14]"
         );
+        collect(id, h.gc);
+        {
+            let values = c.fresh.borrow();
+            assert_eq!(values.len(), 10);
+            reclaimed(&values[..values.len() - 1]);
+            assert!(present(id, values.last().unwrap().0));
+        }
+        c.fresh.borrow_mut().clear();
         // Map persistence and independent value-key probes, including signed zero.
         let map = h.call(h.named(b"Map"), b"new", &[]);
         let mut m = map;

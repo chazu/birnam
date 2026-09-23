@@ -109,14 +109,7 @@ impl ObjectMemory {
     pub(crate) fn detach(&mut self, address: usize) -> Option<Allocation> {
         self.allocations.remove(&address)
     }
-    #[cfg(test)]
-    pub(crate) fn last_identity(&self) -> u64 {
-        self.next_identity
-    }
-    #[cfg(test)]
-    pub(crate) fn set_last_identity(&mut self, identity: u64) {
-        self.next_identity = identity;
-    }
+
 }
 
 /// # Safety
@@ -127,30 +120,6 @@ pub(crate) unsafe fn vtable_slot_from_payload(payload: NonNull<u8>) -> *mut Oop 
 }
 
 impl ObjectMemory {
-    pub(crate) fn write_payload_word(&mut self, object: Oop, index: usize, value: usize) -> bool {
-        let Some(block) = self.get(object.addr()) else {
-            return false;
-        };
-        let payload_size = block.total_size - VTABLE_HEADER_SIZE;
-        let Some(offset) = index.checked_mul(size_of::<usize>()) else {
-            return false;
-        };
-        if offset >= payload_size {
-            return false;
-        }
-        // SAFETY: exact registry membership retains allocation provenance;
-        // offset was checked to name one complete aligned payload word.
-        unsafe {
-            block
-                .payload()
-                .as_ptr()
-                .add(offset)
-                .cast::<usize>()
-                .write(value)
-        };
-        true
-    }
-
     pub(crate) fn set_vtable(&mut self, object: Oop, vtable: Oop) -> bool {
         if self.get(object.addr()).is_none() {
             return false;

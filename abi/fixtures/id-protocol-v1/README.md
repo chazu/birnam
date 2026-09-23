@@ -1,102 +1,31 @@
 # Id native protocol v1
 
-`id_protocol.h` is the independent C declaration of the typed native boundary
-specified by [Design 83](../../../docs/design/83-production-id-construction-and-lifetimes.md#3-the-common-native-loading-protocol).
-It is frozen separately from the upper, legacy IdApi table. The
-[initial object operations](../../../docs/design/83-production-id-construction-and-lifetimes.md#initial-id-object-operations)
-create behaviors/objects and query Id-owned facts through messages without
-requiring language value modules. [Storage traversal](../../../docs/design/83-production-id-construction-and-lifetimes.md#id-storage-traversal)
-provides roots, allocation facts and Id references using native visitors, plus
-index retirement and detached allocation release for upper collectors.
+`id_protocol.h` is the independent C declaration of Birnam's native message
+boundary: opaque Objects, Words, Bytes, method entries, Protocols and outcomes.
+Upper module tables and the former IdApi are retired under
+[Design 90](../../../docs/design/90-functional-modules.md).
 
-`entry.c` checks the actual C field layout and call/return convention. The Id
-unit test loads this entry and installs/invokes it through production Id's own
-initial graph and dispatch, before Runtime exists. It checks all six operand
-kinds and scalar failure detail. It supplies no alternate Id implementation.
+`entry.c` checks the C field layout and call/return convention. Id's unit test loads
+it and installs/invokes it through production Id dispatch before Runtime exists.
+It checks all six operand kinds and scalar failure details, without supplying an
+alternate Id implementation.
 
-For the installed production handoff, run:
+Current production checks:
 
 ```sh
-python3 scripts/id-native-loading-smoke.py /path/to/debug-prefix
+mise run siphon
+mise run native-messages
 ```
 
-A separate prefix contains only Id, Bootstrap, Method Observation, Storage and
-Dispatch Cache. The [support factory fixture](../../runtime-support-v1.md) loads
-all six factories through Id and calls every operation with Runtime absent. The
-full construction test rejects malformed factory inputs before owner adoption.
+The first exercises the real Siphon-to-Id handoff, interning/loading and invalid
+paths. The second builds and audits the completed prefix's dylibs, then exercises
+Bootstrap, Namespace, Roots, GC, object behavior, values and collections through
+messages. It checks live replacement, nested loading, temporary lifetimes,
+activation, retirement and finalization. The full Host/Execution/compiler/image
+integration is still pending.
 
-That fixture uses the actual host Siphon and installed Id, with upper libraries
-absent at first. The independent C module checks explicit initializer operands,
-object/behavior construction, Symbol byte access, method/context publication
-and invocation, nested storage queries, allocation during snapshot visitation,
-visitor-failure propagation, exact address membership, allocation counts, index
-retirement and detached allocation release,
-admission rejection, and image pinning
-after initializer failure. Next it exposes Bootstrap alone. Independent C uses
-its loader recursively to construct an otherwise unrooted Object result, and
-exercises Protocol retention with the real Id. Bootstrap owns that result before
-the root-registry library is available. The fixture then constructs the actual
-root registry through Bootstrap and transfers the early root set. A second independent C module
-retains an object before Runtime exists, checks repeated retain/release and token
-nonreuse, and publishes methods that later query/release it. Only then does the
-fixture expose the remaining libraries. Normal host startup adopts the same Id
-graph, carrier and root registry; precise collection preserves the early object
-until release and reclaims it afterward. A further prefix exposes only the three
-primitive description libraries and Lifetime. Independent C registers payload
-layouts, native trace edges and finalizers before Runtime, including a finalizer
-on a behavior. Actual precise collection after adoption follows those edges;
-release permits reclamation, invokes the declared finalizers and removes the
-weak descriptions. Bootstrap's returned object also survives transfer, adoption
-and GC until explicit result release. The fixture repeats that loading/retention
-check after Runtime exists. It then invokes typed
-methods through ordinary sends and verifies native failures and unwrapped scalar
-results become language Errors. For construction after adoption, the fixture
-passes the already-created root registry and collector as explicit initializer
-operands, registers its temporary roots before allocating, and verifies an actual
-collection preserves the new object's identity and payload. The installed-image audit checks that Id exports only its native module entry
-and identity and has no upper dynamic-library dependencies. Runtime and compiler
-code live in the separate Runtime crate. An independent C fixture checks malformed
-Runtime constructors before adoption. The full staged Execution/compiler graph
-still remains to be completed.
-
-The later prefix now constructs the [native Trace graph](../../../abi/trace-graph-v2.md)
-with only eighteen predecessor libraries available. Independent C tests cover
-actual Id roots and edges, description coverage, conservative/precise payloads,
-inherited hooks and behavior-owner references before Runtime, then reuse that
-same graph after adoption and precise collection. Id's object-allocation contract
-provides native-word alignment and zero-initialized padding to a native-word
-boundary; `allocationSizeOf:` continues to return only the requested extent.
-
-Runtime retains completed [Id allocation primitives](../../primitive-allocation-v1.md)
-for its internal construction and deferred materialization; production Heap no
-longer owns or borrows Id allocation records.
-
-[Registry operations](../../../docs/design/83-implementation-history.md#removing-upper-access-to-id-registries)
-keep Symbol and dictionary ownership in Id. The independent C consumer checks
-non-interning name lookup and counts, ordered Symbol/behavior/key views,
-opaque shadowing, exact method/context results, mutation epochs and dictionary
-snapshot visitation with nested mutation and failure propagation, before and
-after Runtime. Raw registry mutations reject all-Object arguments before changing
-state; their Word addresses distinguish them from ordinary language sends. The
-carrier ABI remains version 1.
-
-
-Saved primitive entries retain their own Id dictionary context. The host fixture
-selects lookup/add/remove, calls them after `message` returns, installs and removes
-an alias of the independent C method, and reuses the original lookup after Runtime
-adoption. This exercises direct native invocation without an ambient Id scope;
-the native carrier remains version 1.
-
-
-[Runtime v13](../../runtime-construction-v13.md) receives the completed Id carrier
-explicitly. Id keeps its own state; Runtime no longer takes the private Rust
-initial-object graph. The production host's before/after tests still compare the
-same carrier and early identities across upper construction and collection.
-
-The installed value/control prefix additionally omits Artifact, PEG, Lang, TCC,
-Codegen, Prelude, Portable Code and Image. Its independent C client exercises
-native Blocks and captured roots, Boolean control, collection and StringBuilder
-printing, Vector/Map/String operations, loop errors, Globals and basic Machine
-behavior. Copies of the shipped Block Loop library exercise first initialization
-reentry during selector interning and method registration with different API
-tables; the original execution table must remain selected.
+The installed native-adoption driver and cached floor-function lookup fixture are
+deleted. Their former descriptions are available in this file at `8735496a`.
+Other retained native fixtures with old construction/header assumptions are
+migration evidence, not runnable acceptance tests. No factory table, saved service
+entry or forward-filled dependency bundle is part of this protocol.

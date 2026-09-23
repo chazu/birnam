@@ -8,9 +8,9 @@ images.
 It is an active pre-alpha system. The architecture and its bootstrap are the
 product; compatibility and language surface can and will still change.
 
-**Current development status:** [Design 84](docs/design/84-message-only-native-modules.md)
-is deleting the old native API architecture before rebuilding its callers. This
-checkout intentionally does not build the complete language yet. Deoptimization,
+**Current development status:** [Design 90](docs/design/90-functional-modules.md)
+has restored the production Id, memory-management, value and collection prefix
+through messages. The complete language still awaits upper integration. Deoptimization,
 compiled-image recovery and concurrency implementations are retained above Id.
 The usage documentation below describes the language being preserved.
 
@@ -726,6 +726,7 @@ arguments and results through Roots messages. It contains the load order;
 Siphon and the shared ABI contain no upper-module catalog. Run
 `mise run native-messages` to build and exercise this production prefix, including
 live method replacement, nested loading, collection and finalization.
+[Roots](rust/birnam-root-registry/README.md) documents retention and root enumeration.
 [GC’s local protocol](rust/birnam-collect/README.md) documents reference owners,
 rooting and native construction. [Object Model](rust/birnam-object-model/README.md)
 adds ordinary cloning, private behaviors and slot storage with GC-safe ownership.

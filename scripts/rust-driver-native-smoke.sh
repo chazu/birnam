@@ -14,7 +14,8 @@ if [[ $# == 0 ]]; then
 fi
 
 test -x "$prefix/bin/birnam"
-python3 scripts/id-native-loading-smoke.py "$prefix"
+# Upper Runtime/source/image behavior below still awaits Design 90 migration.
+# The converted prefix is checked directly by scripts/native-message-test.sh.
 
 run_root="$prefix_parent/run"
 mkdir -p "$run_root"

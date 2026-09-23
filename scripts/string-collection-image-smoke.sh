@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Retained source/image semantics; requires the completed Host/Image migration.
 # Focused debug startup, compiled artifact, saved-image and baked-image GC check.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -23,7 +24,7 @@ BIRNAM
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/probe.birnam" >"$scratch/startup.out" 2>"$scratch/startup.err"
 grep -Fxq '5' "$scratch/startup.out"
 grep -Fxq 'string-collection-startup-ok' "$scratch/startup.out"
-grep -Fq '/libbirnam_string_collection.dylib' "$scratch/startup.err"
+grep -Fq '/libbirnam_string.dylib' "$scratch/startup.err"
 "$bin" --compile-module "$scratch/probe.birnam" "$scratch/probe.dylib"
 rm "$scratch/probe.birnam"
 "$bin" "$scratch/probe.dylib" >"$scratch/compiled.out" 2>"$scratch/compiled.err"
@@ -63,8 +64,7 @@ let main := [|
   [System println: [[empty size] printString]];
   [System println: [[[empty at: 0] size] printString]];
   [System println: [[["caféécafé" split: "é"] size] printString]];
-  [Reflect defineMethod: #new on: VectorVt as: [:self | nil]];
-  [Reflect defineMethod: ["add:" asSymbol] on: VectorVt as: [:self :value | nil]];
+  [Reflect defineMethod: ["add:" asSymbol] on: VectorVt as: [:self :value | self]];
   [System gc];
   [System println: [[[source split: separator] size] printString]];
   [Reflect defineMethod: ["split:" asSymbol] on: StringVt as: [:self :value | 42]];
@@ -90,12 +90,12 @@ assert offset == len(data) and records[-1][0] == 4 and records[-1][1] > 72, reco
 
 PY
 rm "$scratch/save.birnam"
-printf 'true\n5\n6\ntail\n\na\n\ncafé\n\n5\ncafé\ntrue\n1\nfalse\n,a,,café,\n3\na\n1\n0\n4\n5\n42\nstring-collection-image-ok\n' >"$scratch/expected.out"
+printf 'true\n5\n6\ntail\n\na\n\ncafé\n\n5\ncafé\ntrue\n1\nfalse\n,a,,café,\n3\na\n1\n0\n4\n0\n42\nstring-collection-image-ok\n' >"$scratch/expected.out"
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
 cmp "$scratch/expected.out" "$scratch/image.out"
-grep -Fq '/libbirnam_string_collection.dylib' "$scratch/image.err"
+grep -Fq '/libbirnam_string.dylib' "$scratch/image.err"
 "$bin" --bake "$scratch/app.image" "$scratch/app"
 BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
-grep -Fq '/libbirnam_string_collection.dylib' "$scratch/baked.err"
+grep -Fq '/libbirnam_string.dylib' "$scratch/baked.err"
 printf 'string-collection-image-smoke: dynamic startup, source-free compiled module, native Code image and baked executable preserve split parts, persistent vectors, aliases, UTF8 bytes, separator edge cases, native construction, live dispatch and GC\n'

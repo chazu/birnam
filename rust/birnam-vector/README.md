@@ -30,6 +30,5 @@ checked before native reads. Dependencies and root providers belong to the
 initialized instance; no process or thread-local sort-root stack remains.
 
 `indexOf:` uses identity first, then live `collectionEquals:` on the element.
-See [Map's key protocol](../birnam-map/README.md#keys). The private `kernel.rs`
-remains the existing pure Rust persistent-vector implementation for Rust consumers;
-it is not a second native module API.
+See [Map's key protocol](../birnam-map/README.md#keys). The native trie is the sole
+Vector implementation; the unused Rust-only duplicate has been removed.

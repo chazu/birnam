@@ -28,17 +28,20 @@ or automatic per-field extraction sequence. The design records the failure,
 remaining integration contracts, migration packages and architectural acceptance
 tests; its original documentation checkpoint predates the production migration.
 
-[Design 84](../design/84-message-only-native-modules.md) is the current production
-simplification plan. Delete cross-module tables and their scaffolding; use opaque
-objects and Id messages. The first implementation removes twelve ABI tables and
-converts Vector consumers to messages. Remaining value, lifetime, collector and
-Runtime interfaces are still migration debt. Design 83's safety and active-code
-lifetime requirements remain, but its descriptor-based integration is superseded.
+[Design 90](../design/90-functional-modules.md) governs the current production
+refactor. The Id/Roots prefix, memory management, object behavior, values and
+collections now use opaque objects and Id messages. The converted-prefix cleanup
+removes unused implementations and old test plumbing; `mise run native-messages`
+checks its production loading and lifetimes. Execution/compiler integration is
+next, followed by services, images, workers and complete Host/CLI startup.
+Deoptimization and concurrency algorithms remain preserved for that migration.
+Design 84 records the deletion-first correction; Design 83's safety and active-code
+lifetime obligations survive its superseded descriptor integration.
 
 ## Self-hosting history — 2026-09-17 onward
 
 The entries below record earlier work and proposals. Their next-step language is
-historical; it does not override Design 84 or reopen the closed extraction phase.
+historical; it does not override Design 90 or reopen the closed extraction phase.
 
 [Design 81](../design/81-toward-a-birnam-implementation.md) records the proposed
 major workstreams toward a Birnam implementation. Its companion

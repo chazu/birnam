@@ -132,7 +132,7 @@ barriers that prevent suspension through their activations.
 [The public IdApi](../../rust/birnam-runtime/src/public_api.rs) admits one
 process-lifetime initialization. Native modules including
 [Store](../../rust/birnam-store/src/lib.rs),
-[collections](../../rust/birnam-collection/src/lib.rs), and
+[collections](../../rust/birnam-vector/src/lib.rs), and
 [portable code](../../rust/birnam-portable-code/src/runtime.rs) retain singleton
 runtime/API state. Moving internal Machine state to an OS thread pool would not
 make those modules safe for independent threaded Runtimes.

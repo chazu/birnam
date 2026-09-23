@@ -46,10 +46,6 @@ def plan(suite, prefix, output):
         result.append(step('method-unit-lifetime', ['bash', 'scripts/method-unit-lifetime-smoke.sh', prefix],
                            PRODUCTION + ('scripts/method-unit-lifetime-smoke.sh',),
                            depends=('install',), timeout=300))
-    result.append(step('floor-discovery', ['python3', 'scripts/floor-discovery-test.py',
-                       '--prefix', prefix, '--output', output/'floor-discovery.json'],
-                       PRODUCTION + ('scripts/floor-discovery-test.py', 'scripts/fixtures/floor-lookup.c'),
-                       depends=('install',), artifacts=(str(output/'floor-discovery.json'),), timeout=300))
     result.append(step('relational-output', ['python3', 'scripts/relational-output-test.py',
                        '--prefix', prefix, '--output', output/'relational-output.json'],
                        PRODUCTION + ('scripts/relational-output-test.py',),

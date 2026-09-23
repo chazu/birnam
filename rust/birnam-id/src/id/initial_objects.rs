@@ -14,8 +14,6 @@ pub(crate) struct InitialObjects {
     #[cfg(test)]
     pub(crate) object_vt: Oop,
     #[cfg(test)]
-    pub(crate) symbol_vt: Oop,
-    #[cfg(test)]
     pub(crate) lookup: Oop,
     #[cfg(test)]
     pub(crate) does_not_understand: Oop,
@@ -61,8 +59,6 @@ impl InitialObjects {
             vtable_vt,
             #[cfg(test)]
             object_vt,
-            #[cfg(test)]
-            symbol_vt,
             #[cfg(test)]
             lookup,
             #[cfg(test)]

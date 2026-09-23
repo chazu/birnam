@@ -98,10 +98,6 @@ impl State {
             does_not_understand: self.does_not_understand,
         }
     }
-    #[cfg(test)]
-    pub(crate) unsafe fn exhaust_epoch(context: *mut c_void) {
-        unsafe { (&mut *(*context.cast::<Self>()).dictionaries).exhaust_mutation_epoch_for_test() };
-    }
     pub(crate) fn roots(&self) -> [Oop; 7] {
         [
             self.protocol.receiver,
@@ -209,11 +205,3 @@ pub(crate) const DESCRIPTOR: native::Module = native::Module {
     byte_size: size_of::<native::Module>() as u32,
     initialize: Some(initialize),
 };
-/// Compatibility entry for id_init. The production constructor receives this
-/// carrier explicitly from its caller instead of consulting this process slot.
-#[cfg(any(test, feature = "ffi-test-hooks"))]
-pub(crate) fn protocol() -> Protocol {
-    let outcome = unsafe { initialize(core::ptr::null(), core::ptr::null(), 0) };
-    assert_eq!(outcome.status, native::LOADED, "Id construction failed");
-    unsafe { *PROTOCOL.load(Ordering::Acquire) }
-}

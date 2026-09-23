@@ -1,6 +1,6 @@
 # Validation
 
-During [Design 84](design/84-message-only-native-modules.md), full-language
+During [Design 90](design/90-functional-modules.md), full-language
 validation is unavailable: the old native API and construction interfaces have
 been deliberately deleted before caller migration. ABI/Id checks and independent
 compiler recovery tests can still run. Deoptimization and concurrency assertions
@@ -21,8 +21,22 @@ The CLI executable and parser tests belong to `birnam-cli`; host-operation
 tests remain in `birnam-host`. Build/install-tool tests run independently with
 `cargo test --offline --locked -p birnam-build`.
 
-Use `mise run verify` for everyday correctness and `mise run verify-plan` to see
-its steps before execution. This is the current workflow; Design 74's temporary
+For the converted production prefix, run `mise run native-messages`. It builds
+and audits actual dylib exports/dependencies, then exercises Bootstrap, roots, GC,
+object behavior, text, numbers and collections through Id. Collection callbacks
+return unretained temporary keys and accumulators; tests check both survival during
+use and reclamation after success/failure. Root registration is checked beyond
+32 enumerators, including ordering, duplicates and tracing their children.
+
+The obsolete `native-modules` task and installed adoption driver are removed.
+Cached floor-function discovery tests are also retired; they asserted the old
+parallel API's caching policy. The independent C Id protocol round trip remains
+in Id's unit tests. Source/image smoke tests and recovery/concurrency assertions
+remain for their later integration; do not count them as passing prefix coverage.
+
+`mise run verify-plan` describes the future full-language workflow below.
+`mise run verify` and the other full suites still require upper integration;
+they are not current acceptance commands for this checkout. Design 74's temporary
 controllers and chronological measurement notes are historical evidence.
 
 | Task | When to use it |

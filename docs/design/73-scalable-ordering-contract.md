@@ -28,7 +28,7 @@ IdApi/image format.
 
 ## 2. Current behavior and evidence
 
-The current native [Vector sortBy:](../../rust/birnam-collection/src/lib.rs)
+The current native [Vector sortBy:](../../rust/birnam-vector/src/lib.rs)
 copies elements, evaluates all keys in input order, then insertion-sorts an
 index vector. It sends `candidate < previous`; only canonical true moves the
 candidate. It constructs a new Vector for input sizes of at least two.

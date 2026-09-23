@@ -75,10 +75,6 @@ run = "scripts/siphon-test.sh"
 description = "Build and check production modules using only Id messages"
 run = "scripts/native-message-test.sh"
 
-[tasks.native-modules]
-description = "Check production native modules, construction prefixes and live message dispatch"
-run = 'python3 scripts/id-native-loading-smoke.py "${BIRNAM_PREFIX:-$HOME/.local/opt/birnam}"'
-
 [tasks.reflection-boundaries]
 description = "Check production namespace admission, native enumeration, typed errors and GC"
 run = "bash scripts/runtime-services-test.sh '' reflection"

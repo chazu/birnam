@@ -14710,17 +14710,6 @@ mod literal_body_contract_tests {
 }
 
 #[cfg(test)]
-mod floor_lookup_fixture {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/../birnam-abi/tests/support/floor_lookup.rs"));
-}
-
-#[test]
-#[ignore = "requires installed floor and fresh-process loader fixture"]
-fn floor_lookup_contract() {
-    floor_lookup_fixture::check(|api, name| unsafe { floor_symbol(api, name.to_bytes_with_nul()) }, false);
-}
-
-#[cfg(test)]
 mod state_contract;
 
 fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }

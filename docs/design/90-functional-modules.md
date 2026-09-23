@@ -343,8 +343,8 @@ and publishes its existing parent behavior directly. Deleted that installer and
 the String Collection crate, their build/install entries, Word's storage table and
 Runtime adoption/test-mounting wrapper. No shared value catalog or replacement
 function table was introduced. Existing Vector trie and Map HAMT algorithms,
-including full-hash collisions, remain with their owners. The pure Rust Vector
-kernel used by Rust consumers is retained.
+including full-hash collisions, remain with their owners. The unused Rust-only Vector kernel was subsequently removed in the cleanup below;
+the earlier claim that it had Rust consumers was incorrect.
 
 Map and Vector consume `collectionEquals:`; Map also consumes `collectionHash`.
 Object Model provides the identity default and Symbol name hashing. Integer,
@@ -373,6 +373,34 @@ continuations and recovery, preserving concurrency and deoptimization work. Then
 repair compiler/generated-code integration against those real execution messages.
 The full Runtime/CLI, images and workers still await integration; the working
 prefix is not the complete language.
+
+## Converted-prefix cleanup (2026-09-22)
+
+Removed the second Vector algorithm: its only consumers were its own tests.
+Production trie tests now supply the evidence for Vector behavior. Removed unused
+Id compatibility/test hooks, the ABI-hosted IdApi test helper and its cached-service
+lookup tests/driver. TCC/Codegen registration, retirement, recovery and concurrency
+implementations remain untouched for their upcoming message integration.
+
+Retired the installed native-adoption driver and `native-modules` task. The live
+`native-messages` task now audits converted dylib exports and dependency boundaries
+as well as running the production tests. Source/image behavioral probes remain;
+removed their requirements for deleted collection libraries and updated String's
+Vector replacement expectation to its live message behavior. Recovery's build list
+no longer names the deleted Collection crate. Historical native fixtures retain
+semantic cases needing new setup; none is evidence of current upper integration.
+
+Roots registration now grows with its existing vector. Removed the historical
+32-enumerator ceiling; preserved insertion order, duplicate registration, snapshot
+visitation and the `register:`/`rootsDo:` messages. A production test registers 64
+objects plus a duplicate and proves that their reported children survive until
+the enumerators stop reporting them. There is no new registry or provider API.
+
+Strengthened collection tests to return callback-created Integer objects without
+harness retention. They check sort-key survival across collecting callbacks, key
+reclamation after success and native failure, and fold accumulator survival with
+reclamation of obsolete intermediates. These checks pass through the existing
+production implementations; no extra rooting layer was introduced to satisfy them.
 
 ## Keep the refactor bounded
 

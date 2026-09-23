@@ -8,6 +8,13 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Clean the converted prefix: delete the unused Rust-only Vector implementation,
+  unused Id hooks and obsolete IdApi discovery/adoption test plumbing. Remove
+  Roots' 32-enumerator ceiling while preserving ordered, duplicate registration.
+  Strengthen production GC checks with unretained callback results and cleanup on
+  failure; audit actual converted dylib exports/dependencies. Update validation
+  documentation and retained image/recovery test wiring for the current owners.
+
 - Complete the Word/collection branch through production Bootstrap and Id messages:
   persistent Vector trie, Map HAMT, inclusive Range and String splitting. Preserve
   key equality/hash algorithms with methods on value owners, live callbacks and

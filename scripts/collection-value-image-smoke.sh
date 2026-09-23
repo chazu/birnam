@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Retained source/image semantics; requires the completed Host/Image migration.
 # Focused debug startup, compiled artifact, saved-image and baked-image GC check.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -22,7 +23,7 @@ BIRNAM
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/probe.birnam" >"$scratch/startup.out" 2>"$scratch/startup.err"
 grep -Fxq '3' "$scratch/startup.out"
 grep -Fxq 'collection-value-startup-ok' "$scratch/startup.out"
-grep -Fq '/libbirnam_collection_value.dylib' "$scratch/startup.err"
+grep -Fq '/libbirnam_map.dylib' "$scratch/startup.err"
 "$bin" --compile-module "$scratch/probe.birnam" "$scratch/probe.dylib"
 rm "$scratch/probe.birnam"
 "$bin" "$scratch/probe.dylib" >"$scratch/compiled.out" 2>"$scratch/compiled.err"
@@ -80,9 +81,9 @@ rm "$scratch/save.birnam"
 printf 'true\n5\ninteger\nfloat\nsymbol\nstring\nutf8\n0\n1\n2\n3\n5\ntrue\nstring\nchanged\n5\n99\ncollection-value-image-ok\n' >"$scratch/expected.out"
 DYLD_PRINT_LIBRARIES=1 "$bin" "$scratch/app.image" >"$scratch/image.out" 2>"$scratch/image.err"
 cmp "$scratch/expected.out" "$scratch/image.out"
-grep -Fq '/libbirnam_collection_value.dylib' "$scratch/image.err"
+grep -Fq '/libbirnam_map.dylib' "$scratch/image.err"
 "$bin" --bake "$scratch/app.image" "$scratch/app"
 BIRNAM_LIB_DIR="$prefix/lib" DYLD_PRINT_LIBRARIES=1 "$scratch/app" >"$scratch/baked.out" 2>"$scratch/baked.err"
 cmp "$scratch/expected.out" "$scratch/baked.out"
-grep -Fq '/libbirnam_collection_value.dylib' "$scratch/baked.err"
+grep -Fq '/libbirnam_map.dylib' "$scratch/baked.err"
 printf 'collection-value-image-smoke: dynamic startup, source-free compiled module, native Code image and baked executable preserve typed value keys, indexing, Map persistence, aliases, live dispatch and GC\n'
