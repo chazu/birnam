@@ -563,7 +563,7 @@ fn finish(s: &Execution, cap: MachineCapability, value: Oop) -> Result<Option<Oo
     }
     Ok(answer)
 }
-unsafe fn lookup_target(
+pub(super) unsafe fn lookup_target(
     s: &Execution,
     receiver: Oop,
     selector: Oop,
@@ -716,7 +716,10 @@ pub(super) unsafe fn loop_drive(
                         let (entry, value) =
                             acquire(s, &registered, operands.receiver, &operands.arguments)?;
                         if !tail && !matches!(decoded, DecodedAction::BoundaryCall { .. }) {
-                            if let Some(inline) = inline {
+                            if let Some(inline) = inline.filter(|i| {
+                                budget.is_none()
+                                    || !matches!(i.body, crate::recovery::Body::DiscardedClone(_))
+                            }) {
                                 // The candidate may collect or mutate its receiver before
                                 // declining. Keep the already materialized baseline inputs.
                                 for &(_, value) in &value.initial_oops {
@@ -980,6 +983,7 @@ pub(super) unsafe fn invoke_registered(
 enum Op {
     FromStep,
     WithInline,
+    WithDiscardedClone,
     Optimize,
     Recover(bool),
     Block,
@@ -1046,6 +1050,7 @@ unsafe extern "C" fn operation(
         match op.kind {
             Op::FromStep => return from_step(s, args),
             Op::WithInline => return crate::recovery::with_inline(s, receiver, args),
+            Op::WithDiscardedClone => return crate::discarded_clone::attach(s, receiver, args),
             Op::Optimize => return crate::native_tier::install(s, receiver, args),
             Op::Block => return new_block(s, args),
             Op::New if args.is_empty() => return new_machine(s).map(Operand::object),
@@ -1440,6 +1445,12 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"fromMethod:captures:",
     b"fromStep:descriptor:selection:owner:",
     b"fromStep:descriptor:selection:owner:implementation:",
+    b"withDiscardedClone:answer:selector:return:in:",
+    b"Integer",
+    b"at:",
+    b"canDiscardClone:of:",
+    b"canOmitIndexing",
+    b"usesDefaultAllocation",
     b"withInline:at:owner:",
     b"optimizeWith:",
     b"evaluate:receiver:argument:with:",
@@ -1813,6 +1824,12 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             s.method_behavior,
             b"withInline:at:owner:",
             Op::WithInline,
+        )?;
+        install_op(
+            s,
+            s.method_behavior,
+            b"withDiscardedClone:answer:selector:return:in:",
+            Op::WithDiscardedClone,
         )?;
         install_op(s, s.method_behavior, b"optimizeWith:", Op::Optimize)?;
         install_op(

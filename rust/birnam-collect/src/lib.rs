@@ -285,6 +285,12 @@ unsafe extern "C" fn register_retirement(
     })())
 }
 const NAMES: &[&[u8]] = &[
+    b"canOmitAllocationFor:",
+    b"usesDefaultAllocation",
+    b"usesDefaultLookup:",
+    b"behaviorEpoch",
+    b"bind:to:",
+    b"prepareAllocation",
     b"identityOf:",
     b"behaviorOf:",
     b"isBehavior:",
@@ -346,6 +352,7 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             (b"finalize:with:", finalize_with),
             (b"budget:", budget),
             (b"allocationBytes", accounting::read),
+            (b"canOmitAllocationFor:", construction::can_omit),
         ] {
             id.send_named(
                 behavior,

@@ -1110,3 +1110,21 @@ owner-established semantics of the actual clone/allocation path. It requires no
 virtual-object materializer, identity service, journal or region allocation budget.
 The existing clone's nested replaceable allocation path still needs concrete owner
 admission; no placeholder protocol or claim of implemented elision is introduced.
+
+
+### First discarded-clone consumer (2026-09-24)
+
+The [implementation and evidence](90-discarded-clone.md) complete the first real
+allocation-elision case identified above. Codegen recognizes a whole, uncaptured
+callee that sends a zero-argument message to an entry argument, discards its
+result, and returns an entry argument. Execution uses its existing inline-call
+boundary. ObjectModel recognizes its actual clone implementation and zero-slot
+source; ObjectModel, Integer, GC and Id establish their own current semantics
+through messages. A declined guard executes the baseline.
+
+Bounded calls retain normal steps and inspectable Frames. Nonempty payloads,
+lexical bindings, captures and escaping clones remain baseline-only. This slice
+needs no virtual objects or new deoptimization machinery. The production witness
+removes eight physical allocations per invocation, preserves replacement effects
+and source/answer identity, and releases the actual TCC mappings after final use.
+Broader producers and full workspace/CLI restoration remain outstanding.

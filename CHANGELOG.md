@@ -8,6 +8,16 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Implement the first source allocation-elision case: an eligible unbounded call
+  discards one zero-slot ordinary clone and returns an existing argument. Reuse
+  Execution's inline-call path, with live owner checks and ordinary fallback for
+  replaced methods, allocators, generated index operations and bounded execution.
+  No deferred identity or allocation-history replay is introduced. Production
+  witnesses cover real allocation savings, aliases, effectful fallback, paused
+  Frame inspection, collection and native-code reclamation. The local debug
+  comparison removes 8 of 37 allocations per invocation; see the
+  [bounded implementation and measurement](docs/design/90-discarded-clone.md).
+
 - Remove Codegen's eager per-PC candidate emission and speculative Method/Vector
   construction; generate one ordinary PC switch per resumable entry, retaining
   live owner sends. Keep explicit Execution candidates and their guard/lifetime

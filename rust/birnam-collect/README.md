@@ -21,6 +21,7 @@ singletons still limit this prefix to one domain per process.
 | GC `trace:with:` | behavior Object, owner Object or Unit | Unit. Attach/replace an inherited reference enumerator; Unit removes the exact attachment. The owner receives `referencesOf:do:` with the ordinary object or behavior and a synchronous NativeEntry visitor. |
 | GC `referenceOwnerOf:` | behavior Object | Current inherited reference owner Object, or Unit if absent. Validates behavior membership and registration identity. Execution graph recovery uses this to require ObjectModel-owned field storage. |
 | GC `finalize:with:` | object Object, owner Object or Unit | Unit. Attach/replace/remove a finalizer. The owner receives `finalize:` with the detached object while its payload is still readable. |
+| GC `canOmitAllocationFor:` | behavior Object | Word 1 only for this GC's current ordinary allocation path while idle, with Id default storage operations and unchanged lookup/epoch; Word 0 otherwise. No charge, reservation or collection. |
 | GC `prepareAllocation` | none | Unit. Enforce the construction phase and budget before an upper mutation, even if it ultimately reuses an object. Caller retains inputs. |
 | GC `registerRetirement:` | owner Object | Unit. Register an instance-owned metadata owner implementing `retire:`; duplicates are ignored. |
 | GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header and padded payload. |
@@ -138,3 +139,11 @@ retirement algorithms remain in Runtime awaiting their production message
 integration. They are not a dependency of this prefix and are not validated by
 these tests. Image and worker restoration remain upper-module work. No replacement
 execution/retirement framework is introduced here.
+
+
+The discarded-clone consumer uses `canOmitAllocationFor:` as a semantic query,
+not a budget preview. It checks this owner's actual `allocate` and
+`prepareAllocation` entries and asks Id `usesDefaultAllocation` for Id-owned
+facts. It does not promise a collection schedule or authorize a later use after
+callbacks/mutation. Execution fences the complete admission and commits directly;
+see [the consumer](../../docs/design/90-discarded-clone.md).

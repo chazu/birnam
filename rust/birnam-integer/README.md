@@ -24,6 +24,7 @@ singleton, service table, foreign layout or cached dependency entry is used.
 | Integer instance `printString` | none | Decimal String through current `fromBytes:`. |
 | Integer instance `to:do:` | end Integer, callable Object | Inclusive iteration by live `value:` sends; receiver on completion, first Error on failure. MAX is visited without overflowing the loop counter. |
 | Integer `evaluate:receiver:argument:with:` | selected NativeEntry, receiver Object, argument Object, borrowed evaluator NativeEntry | Result Object for an owned arithmetic entry; Unit for an unknown entry. See below. |
+| Integer `canOmitIndexing` | none | Native Word 1 when the current `fromWord:`/`wordOf:` entries and allocation path are ordinary; Word 0 otherwise. Used for omitted compiler-generated PC/index operations. |
 | Integer `installFloat:` | completed Float Object | Unit; install mixed arithmetic/comparisons and `asFloat`. |
 
 The mixed extension is a complete private context created after Float exists.
@@ -44,7 +45,8 @@ Run `mise run native-messages`. Production checks cover arithmetic boundaries,
 rounding, mixed operands, replacement, collecting callbacks, iteration and raw
 payload tracing. Descriptor-based construction and numeric declarations v4/v5
 are retired. Execution now uses the owner-local evaluation message below;
-allocation-elision and its deferred materialization protocols remain batch 2.
+the first discarded-clone consumer also uses `canOmitIndexing`. Broader
+allocation-elision remains pending; deferred materialization is not a prerequisite.
 
 Collections use owner messages `collectionEquals:` (Object → Boolean) and
 `collectionHash` (no arguments → native Word, low 32 bits). Integer preserves

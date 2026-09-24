@@ -174,3 +174,12 @@ The former factory-based storage-observation, storage-tracing and live-tracing
 runners have been removed. Their old task names are not current validation
 commands. Retained semantic tests must use the production Id and upper objects
 when native integration is restored.
+
+
+The first source discarded-clone consumer runs in the same compiler production
+test. It compares physical Id inventories against an unannotated baseline and
+checks replaced lookup/clone/allocator/index methods, guard-time mutation and GC,
+nonempty and escaping/bound fallback, paused Frame inspection and final code
+reclamation. It also prints an alternating local debug timing comparison;
+correctness does not depend on wall-clock timing. Exact source, commands and
+limits are in [the implementation receipt](design/90-discarded-clone.md).

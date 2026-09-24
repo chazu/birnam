@@ -277,5 +277,33 @@ retain the original registration, including its implementation. `retirementReady
 on Execution answers native Word 1 only outside entered drives/Methods and a drain;
 TCC asks after `checkpoint` before releasing detached native mappings. Actual
 compiled-unit retention and libtcc byte reclamation are covered by the compiler
-production test. Allocation-elision and its generated deoptimization strategies
-remain outside this restored source path.
+production test. The first discarded-clone consumer below uses this same lifetime
+contract; broader allocation-elision and generated deoptimization remain pending.
+
+
+## Discarded ordinary clone
+
+A resumable Method accepts
+`withDiscardedClone:answer:selector:return:in:` with native Word source-argument
+index, Word answer-argument index, Symbol selector, Word baseline return-slot
+index and Namespace Object. It returns a captured Method with private inline
+metadata, retaining the original Method, selector and Namespace. The compiler
+owns the body proof, as a native producer does for `withInline:`; Execution checks
+argument/capture/return-slot shape and actual runtime ownership.
+
+For an eligible unbounded inline call, Execution asks the current selected
+operation's ObjectModel owner `canDiscardClone:of:`. Id `usesDefaultAllocation`
+and Integer `canOmitIndexing` cover omitted construction and compiler-generated
+index operations. The current Namespace Integer binding must match the owner used
+by Execution. Checks use live messages and a mutation-epoch fence; control checks
+are repeated after callbacks. The existing answer argument is already rooted,
+so no further message occurs between the final verdict and the inline-return
+commit. Failure to admit executes the ordinary call. Existing native inline
+candidates retain their original contract.
+
+This first consumer handles only a whole uncaptured callee equivalent to
+`[:p :answer | [p clone]; answer]`, with a zero-slot ordinary source. The selector
+may be an alias of the actual clone entry. Bounded, tail and protected calls use
+the ordinary path, preserving supported stop/Frame inspection behavior. No
+allocation is charged for an omitted object and no identity is materialized later.
+See [the implementation receipt](../../docs/design/90-discarded-clone.md).

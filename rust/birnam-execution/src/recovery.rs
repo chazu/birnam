@@ -7,8 +7,13 @@ use crate::{
     recovery_graph::{self as graph, Graph, Node, Plan, Value},
 };
 #[derive(Clone, Copy)]
+pub(super) enum Body {
+    Native(NativeEntry),
+    DiscardedClone(crate::discarded_clone::Plan),
+}
+#[derive(Clone, Copy)]
 pub(super) struct Inline {
-    pub entry: NativeEntry,
+    pub body: Body,
     pub owner: Oop,
     pub return_slot: usize,
 }
@@ -90,7 +95,7 @@ pub(super) unsafe fn with_inline(
             return Err(invalid());
         };
         let inline = Inline {
-            entry: visitor(*entry)?,
+            body: Body::Native(visitor(*entry)?),
             owner: object(*owner)?,
             return_slot: machine::index(s, *slot)?,
         };
@@ -187,13 +192,15 @@ pub(super) unsafe fn try_inline(
         let mut operands = Vec::with_capacity(args.len() + 1);
         operands.push(Operand::object(receiver));
         operands.extend(args.iter().copied().map(Operand::object));
-        let answer = inline.entry.method.unwrap()(
-            inline.entry.context,
-            machine,
-            operands.as_ptr(),
-            operands.len(),
-        )
-        .into_result()?;
+        let answer = match inline.body {
+            Body::Native(entry) => {
+                entry.method.unwrap()(entry.context, machine, operands.as_ptr(), operands.len())
+                    .into_result()?
+            }
+            Body::DiscardedClone(plan) => {
+                crate::discarded_clone::try_result(s, machine, plan, args)?
+            }
+        };
         if s.requests.borrow().last().unwrap().consumed {
             // Recovery already published one baseline frame. A second result would
             // be a second publication, so only acknowledgement is accepted.
@@ -209,7 +216,12 @@ pub(super) unsafe fn try_inline(
             return Ok(false);
         }
         let value = object(answer)?;
-        roots.keep(value);
+        // The discarded-clone result is already a rooted argument. Do not send
+        // another retain after its final guard: that callback could invalidate
+        // the verdict. Arbitrary native results still need their own root.
+        if matches!(inline.body, Body::Native(_)) {
+            roots.keep(value);
+        }
         let mut state = s.machines.borrow_mut();
         let machine::State {
             engine, storage, ..

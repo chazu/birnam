@@ -179,3 +179,67 @@ pub(super) unsafe extern "C" fn prepare(
         Ok(Operand::unit())
     })())
 }
+
+/// True only for this owner's ordinary allocation path. No budget reservation,
+/// allocation charge, collection or finalization is performed by this guard.
+pub(super) unsafe extern "C" fn can_omit(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let m = memory(c)?;
+        let Some([behavior]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let behavior = object(*behavior)?;
+        if m.phase.get() != Phase::Idle {
+            return Ok(Operand::word(0));
+        }
+        let epoch = m
+            .send(m.id.receiver, b"behaviorEpoch", &[])?
+            .as_word()
+            .ok_or_else(invalid)?;
+        if epoch == usize::MAX
+            || m.send(m.id.receiver, b"usesDefaultAllocation", &[])?
+                .as_word()
+                != Some(1)
+        {
+            return Ok(Operand::word(0));
+        }
+        for (receiver, name, method) in [
+            (behavior, b"allocate".as_slice(), allocate as Method),
+            (
+                m.receiver,
+                b"prepareAllocation".as_slice(),
+                prepare as Method,
+            ),
+        ] {
+            if m.send(
+                m.id.receiver,
+                b"usesDefaultLookup:",
+                &[Operand::object(receiver)],
+            )?
+            .as_word()
+                != Some(1)
+                || m.send(
+                    m.id.receiver,
+                    b"bind:to:",
+                    &[
+                        Operand::object(m.selectors[name]),
+                        Operand::object(receiver),
+                    ],
+                )?
+                .as_entry()
+                    != Some(NativeEntry::new(method, c))
+            {
+                return Ok(Operand::word(0));
+            }
+        }
+        Ok(Operand::word(usize::from(
+            m.phase.get() == Phase::Idle
+                && m.send(m.id.receiver, b"behaviorEpoch", &[])?.as_word() == Some(epoch),
+        )))
+    })())
+}

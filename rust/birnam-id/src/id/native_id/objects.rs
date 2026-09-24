@@ -11,6 +11,10 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
         ),
         (b"allocationAt:".as_slice(), allocation_at as native::Method),
         (b"allocationCount".as_slice(), allocation_count as native::Method),
+        (
+            b"usesDefaultAllocation".as_slice(),
+            default_allocation as native::Method,
+        ),
         (b"delegated".as_slice(), delegated as native::Method),
         (
             b"objectPrototype".as_slice(),
@@ -280,4 +284,43 @@ unsafe extern "C" fn parent_put(context: *mut c_void, _: Oop, args: *const Opera
     if !dictionaries.is_registered(behavior) || (!parent.is_null() && !dictionaries.is_registered(parent)) { return invalid(); }
     dictionaries.set_parent(behavior, parent);
     Outcome::loaded(Operand::object(behavior))
+}
+
+// A semantic guard for omission of storage construction, not an allocation API.
+// Inspect only Id-owned dictionaries; never retain a caller's implementation.
+unsafe extern "C" fn default_allocation(
+    c: *mut c_void,
+    _: Oop,
+    _: *const Operand,
+    n: usize,
+) -> Outcome {
+    if n != 0 {
+        return invalid();
+    }
+    let s = unsafe { &*c.cast::<State>() };
+    let dictionaries = unsafe { &*s.dictionaries };
+    let standard_lookup = dictionaries.lookup(s.protocol.receiver, s.lookup)
+        == Some(NativeEntry::new(
+            id_dispatch::vtable_lookup_method,
+            s.dictionaries.cast(),
+        ));
+    let own = [
+        (
+            b"allocate:bytes:".as_slice(),
+            allocate_explicit as native::Method,
+        ),
+        (b"allocationSizeOf:", allocation_size),
+        (b"allocationChargeFor:", allocation_charge),
+        (b"behaviorOf:", behavior_of),
+        (b"identityOf:", identity),
+    ]
+    .into_iter()
+    .all(|(name, method)| {
+        unsafe { (&*s.symbols).existing(name) }.is_some_and(|selector| {
+            dictionaries.lookup(s.protocol.receiver, selector) == Some(NativeEntry::new(method, c))
+        })
+    });
+    Outcome::loaded(Operand::word(usize::from(
+        standard_lookup && own && super::registries::allocation_queries_current(s, c),
+    )))
 }

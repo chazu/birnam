@@ -397,3 +397,19 @@ unsafe extern "C" fn uses_default_lookup(
         Err(error) => error,
     }
 }
+
+pub(super) fn allocation_queries_current(s: &State, c: *mut c_void) -> bool {
+    let dictionaries = unsafe { &*s.dictionaries };
+    [
+        (b"isBehavior:".as_slice(), is_behavior as native::Method),
+        (b"behaviorEpoch", epoch),
+        (b"bind:to:", bind),
+        (b"usesDefaultLookup:", uses_default_lookup),
+    ]
+    .into_iter()
+    .all(|(name, method)| {
+        unsafe { (&*s.symbols).existing(name) }.is_some_and(|selector| {
+            dictionaries.lookup(s.protocol.receiver, selector) == Some(NativeEntry::new(method, c))
+        })
+    })
+}

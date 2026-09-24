@@ -23,6 +23,67 @@ struct Function {
     descriptor: Vec<u8>,
     selection: Vec<u8>,
     named: bool,
+    discarded: Option<DiscardedClone>,
+}
+struct DiscardedClone {
+    source: u32,
+    answer: u32,
+    selector: Vec<u8>,
+    return_slot: u32,
+}
+fn discarded_clone(
+    p: &ir::LogicalProgram<'_>,
+    layout: &ir::PhysicalLayout,
+) -> Option<DiscardedClone> {
+    if p.capture_count != 0 || p.blocks.len() != 2 || p.entry.0 != 0 {
+        return None;
+    }
+    let first = &p.blocks[0];
+    let last = &p.blocks[1];
+    if first.pc.0 != 0
+        || last.pc.0 != 1
+        || !last.operations.is_empty()
+        || first
+            .operations
+            .iter()
+            .any(|op| !matches!(op.kind, Op::EntryReceiver | Op::EntryArgument { .. }))
+    {
+        return None;
+    }
+    let Term::Call {
+        receiver,
+        selector,
+        arguments,
+        successor,
+        ..
+    } = &first.terminator
+    else {
+        return None;
+    };
+    if !arguments.is_empty() || successor.0 != 1 {
+        return None;
+    }
+    let Term::Return(answer) = last.terminator else {
+        return None;
+    };
+    let argument = |value| {
+        first.operations.iter().find_map(|op| {
+            if op.result != value {
+                return None;
+            }
+            if let Op::EntryArgument { index, .. } = op.kind {
+                Some(index)
+            } else {
+                None
+            }
+        })
+    };
+    Some(DiscardedClone {
+        source: argument(*receiver)?,
+        answer: argument(answer)?,
+        selector: selector.to_vec(),
+        return_slot: layout.value_slots[answer.0 as usize],
+    })
 }
 fn entry_prefix(name: &str) -> String {
     format!(
@@ -77,6 +138,7 @@ fn function(
         descriptor: vec![],
         selection: vec![],
         named,
+        discarded: None,
     });
     let layout = ir::color_slots(program).map_err(|_| Error::Layout)?;
     let revision = Sha256::digest(source).into();
@@ -211,6 +273,11 @@ fn function(
         descriptor,
         selection: selected,
         named,
+        discarded: if named {
+            None
+        } else {
+            discarded_clone(program, &layout)
+        },
     };
     Ok(index)
 }
@@ -238,6 +305,9 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
             ("fromStep:descriptor:selection:owner:", 4)
         };
         writeln!(out,"methods[{i}]=call(&c,named(&c,\"Method\"),\"{name}\",args,{count});A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}").unwrap();
+        if let Some(plan) = &f.discarded {
+            writeln!(out, "{{A a[5]={{word({}),word({}),obj(intern(&c,{})),word({}),obj(ns)}};methods[{i}]=call(&c,methods[{i}],\"withDiscardedClone:answer:selector:return:in:\",a,5);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}", plan.source, plan.answer, quoted(&plan.selector), plan.return_slot).unwrap();
+        }
     }
     out.push_str("return finish(&c,obj(methods[0]));}\nconst Module birnam_native_module_v1={1,sizeof(Module),initialize};\n");
     out.into_bytes()

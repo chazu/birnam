@@ -25,8 +25,9 @@ Lang `parse:`; CST projection uses `ruleName`, `start`, `end`, `childCount` and
 `childAt:`. The pure compiler retains its portable encoding, logical lowering,
 slot coloring and canonical descriptor construction. The production native backend
 emits the Id calling convention directly; it does not wrap exported legacy
-all-Oop runtime functions. Every call site still publishes the established
-Machine action and performs current lookup when driven.
+all-Oop runtime functions. Baseline call sites publish the established Machine action and perform current
+lookup when driven. The narrow discarded-clone consumer below can omit an admitted
+callee body through the existing inline-call path.
 
 Generated module initialization constructs one registered Method per implementation
 using canonical descriptor and selection Bytes. Blocks copy captures through
@@ -38,15 +39,15 @@ their current owners, with temporary generated values retained across callbacks.
 
 ## Generated execution
 
-Each implementation has one ordinary resumable entry with a PC switch. All owner
-operations remain live Id sends. Automatic per-PC candidates, their Method/Vector
+Each implementation has one ordinary resumable entry with a PC switch. Baseline
+owner operations remain live Id sends. Automatic per-PC candidates, their Method/Vector
 construction and their size-limit policy have been removed: they retained the same
 work and added construction and guard costs without an established benefit.
 There is no replacement background compiler or candidate service.
 
 Explicit candidates and guarded recovery remain available in Execution for actual
-optimizations. Region fusion, numeric reuse and allocation-elision need concrete
-producers and evidence under [Design 90's reassessment](../../docs/design/90-optimizer-reassessment.md).
+optimizations. Broader region fusion, numeric reuse and allocation-elision need
+concrete producers and evidence under [Design 90's reassessment](../../docs/design/90-optimizer-reassessment.md).
 
 The production tests cover literals, sends, threaded messages, conditional and
 nested capturing Blocks, named installation/replacement, failed compilation and
@@ -67,3 +68,20 @@ The full Artifact/PortableCode language adapters, durable publication, embedding
 Image, Store and CLI workflows are not accepted by these source compiler tests.
 Their retained migration inputs are not loaded by Bootstrap. Current commands and
 limits are in [validation](../../docs/validation.md).
+
+
+## First allocation-elision producer
+
+The native backend recognizes exactly two PCs: entry receiver/argument operations,
+a zero-argument send to an entry argument, then an existing-argument return. No
+captures, lexical bindings, extra operations or named adapter are admitted. It
+adds `Method withDiscardedClone:answer:selector:return:in:` metadata to the ordinary
+baseline, retaining the result in the same TCC Unit. No extra native entry or
+per-PC candidate is emitted. The runtime checks the actual selected clone and
+allocator owners; selector spelling is not a proof. An unrecognized or changed
+operation takes the baseline, and bounded execution always does so.
+
+[Production evidence](../../docs/design/90-discarded-clone.md) covers actual heap
+inventory, replacement effects, alias recognition, escaping/bound values, paused
+Frames, collection during guards and release of every compiled Unit. This is a
+single narrow consumer, not restoration of the retained legacy elision planners.

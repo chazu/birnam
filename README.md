@@ -14,7 +14,9 @@ through messages. [Execution batch 1](rust/birnam-execution/README.md) is comple
 Methods, Blocks, Machines, native recovery and guarded hot selection run over that
 prefix. [PEG/Lang, source Codegen and TCC](rust/birnam-codegen-runtime/README.md)
 now compile and execute source through that same path, with real compiled-code
-retention and reclamation. Allocation-elision remains separate. The full workspace,
+retention and reclamation. A narrow discarded-clone optimization now removes real
+allocations through current owner checks; broader allocation-elision remains pending.
+The full workspace,
 Artifact/PortableCode language adapters, Store, Image, workers and CLI still await
 upper integration.
 The usage documentation below describes the language being preserved.
@@ -751,8 +753,9 @@ invocation, lookup adaptation, frames, Blocks, bounded Machines and continuation
 [Codegen](rust/birnam-codegen-runtime/README.md) connects PEG/Lang source compilation
 and TCC-owned native code to that Execution. Generated entries use live messages;
 eager candidate construction and speculative APIs are reassessed in
-[the optimizer review](docs/design/90-optimizer-reassessment.md). Allocation-elision
-remains separate. Production checks cover native control, compiled recovery boundaries,
+[the optimizer review](docs/design/90-optimizer-reassessment.md). The first
+[discarded-clone consumer](docs/design/90-discarded-clone.md) is implemented.
+Production checks cover native control, compiled recovery boundaries,
 replacement and actual native-code reclamation.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native

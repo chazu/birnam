@@ -1,9 +1,11 @@
 //! Source compiler and real TCC mappings through production Bootstrap.
-mod support;
-#[path = "compiler/dispatch.rs"]
-mod dispatch;
 #[path = "compiler/accounting.rs"]
 mod accounting;
+#[path = "compiler/discarded_clone.rs"]
+mod discarded_clone;
+#[path = "compiler/dispatch.rs"]
+mod dispatch;
+mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
     id_protocol::{NativeEntry, Operand, Outcome, Protocol},
@@ -205,6 +207,7 @@ fn source_compiles_and_runs_on_production_execution() {
         collecting_factories(&mut h);
         compiled_recovery(&mut h);
         dispatch::check(&mut h);
+        discarded_clone::check(&mut h);
         accounting::check(&mut h);
         h.clear();
         h.collect();

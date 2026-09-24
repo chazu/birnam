@@ -117,3 +117,21 @@ returns the established mixed-address hash as a native Word. Symbol overrides
 hashing using Id's `symbolBytesOf:` and the former name-byte FNV-1a rule. Upper
 value owners supply their own overrides without extending Object Model's value
 catalog. See [Map's consumer contract](../birnam-map/README.md#keys).
+
+
+## Allocation omission queries
+
+`ObjectModel canDiscardClone:of:` takes the selected NativeEntry and source Object
+and returns native Word 1 only for this instance's original clone entry, an
+ordinary zero-slot source and the current default allocation path. It recognizes
+implementations, including aliases, rather than the selector `clone`. Nonempty
+or unsupported storage and changed entries decline with Word 0.
+
+`ObjectModel canOmitAllocationFor:` takes a behavior Object and returns native
+Word 1/0. It checks its own current `allocate:bytes:` wrapper and asks GC's same
+named query about the behavior's actual allocator. Integer uses this for the
+index boxes omitted with the callee. These queries inspect only owner-local
+state, retain inputs across sends and export no native service table. The caller
+must fence callback-time mutation before committing omission. They do not reserve
+memory or replay the omitted allocation's GC timing; see
+[the consumer contract](../../docs/design/90-discarded-clone.md).

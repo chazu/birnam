@@ -234,6 +234,11 @@ macro_rules! entry {
 }
 
 const NAMES: &[&[u8]] = &[
+    b"canOmitIndexing",
+    b"canOmitAllocationFor:",
+    b"usesDefaultLookup:",
+    b"behaviorEpoch",
+    b"bind:to:",
     b"retain:",
     b"release:",
     b"behaviorOf:",
@@ -577,6 +582,7 @@ const METHODS: &[(&[u8], Method)] = &[
     (b">", gt),
     (b">=", ge),
     (b"fromWord:", from_word),
+    (b"canOmitIndexing", can_omit_indexing),
     (b"wordOf:", word_of),
     (b"word", word),
     (b"printString", print),
@@ -681,4 +687,61 @@ impl Number {
             )
         }
     }
+}
+
+// Generated frame-slot indices and PC tokens use these two owner operations.
+// A replacement must run normally; it is not classified by selector spelling.
+unsafe extern "C" fn can_omit_indexing(
+    c: *mut c_void,
+    _: Oop,
+    _: *const Operand,
+    count: usize,
+) -> Outcome {
+    done((|| unsafe {
+        if count != 0 {
+            return Err(invalid());
+        }
+        let n = state(c)?;
+        let epoch = n
+            .send(n.id.receiver, b"behaviorEpoch", &[])?
+            .as_word()
+            .ok_or_else(invalid)?;
+        if epoch == usize::MAX
+            || n.send(
+                n.id.receiver,
+                b"usesDefaultLookup:",
+                &[Operand::object(n.prototype)],
+            )?
+            .as_word()
+                != Some(1)
+        {
+            return Ok(Operand::word(0));
+        }
+        for (name, method) in [
+            (b"fromWord:".as_slice(), from_word as Method),
+            (b"wordOf:".as_slice(), word_of as Method),
+        ] {
+            if n.send(
+                n.id.receiver,
+                b"bind:to:",
+                &[Operand::object(n.names[name]), Operand::object(n.prototype)],
+            )?
+            .as_entry()
+                != Some(NativeEntry::new(method, c))
+            {
+                return Ok(Operand::word(0));
+            }
+        }
+        let permitted = n
+            .send(
+                n.model,
+                b"canOmitAllocationFor:",
+                &[Operand::object(n.behavior)],
+            )?
+            .as_word()
+            == Some(1);
+        Ok(Operand::word(usize::from(
+            permitted && n.send(n.id.receiver, b"behaviorEpoch", &[])?.as_word() == Some(epoch),
+        )))
+    })())
 }

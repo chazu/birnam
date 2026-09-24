@@ -102,3 +102,14 @@ revised source path requires none. Removing that work is established by the code
 and production witness. No wall-clock speedup is inferred from correctness-test
 durations. The broader allocation-elision producers and full workspace/CLI remain
 unrestored.
+
+
+## Implemented follow-up (2026-09-24)
+
+The first discarded-clone case above is now implemented and measured; see
+[its exact scope, owner messages and evidence](90-discarded-clone.md).
+The absence of inspectable identity is established at an existing inline-call
+boundary, not by clearing a live Frame slot. Bounded execution declines.
+Owner-local semantic queries now cover the actual clone and allocation path;
+no retired allocation-budget or deferred-identity protocol was restored.
+The other decisions in this reassessment remain in force.

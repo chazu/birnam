@@ -1,5 +1,6 @@
 //! Execution-owned callable objects. See the local protocol and migration ledger.
 mod control;
+mod discarded_clone;
 mod entry;
 mod entry_plan;
 mod execution;
@@ -480,15 +481,19 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
                 m.owner,
                 m.implementation,
                 m.resumable.as_ref().map(|r| r.origin),
-                m.inline.map(|i| i.owner),
+                m.inline,
             )
         });
         if let Some((owner, implementation, origin, inline_owner)) = owner {
             if let Some(value) = implementation {
                 visit(v, value)?;
             }
-            if let Some(owner) = inline_owner {
-                visit(v, owner)?;
+            if let Some(inline) = inline_owner {
+                visit(v, inline.owner)?;
+                if let recovery::Body::DiscardedClone(plan) = inline.body {
+                    visit(v, plan.selector)?;
+                    visit(v, plan.namespace)?;
+                }
             }
             visit(v, owner)?;
             if let Some(origin) = origin {

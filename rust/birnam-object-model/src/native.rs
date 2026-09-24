@@ -591,6 +591,11 @@ unsafe extern "C" fn slot_put(
     })())
 }
 const NAMES: &[&[u8]] = &[
+    b"canDiscardClone:of:",
+    b"canOmitAllocationFor:",
+    b"usesDefaultLookup:",
+    b"behaviorEpoch",
+    b"bind:to:",
     b"collectionEquals:",
     b"collectionHash",
     b"symbolBytesOf:",
@@ -679,6 +684,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"referencesOf:do:", references),
             (behavior, b"retire:", retire),
             (behavior, b"allocate:bytes:", allocate),
+            (behavior, b"canDiscardClone:of:", can_discard_clone),
+            (behavior, b"canOmitAllocationFor:", can_omit_allocation),
             (behavior, b"setLayoutOf:to:rest:", set_layout),
             (behavior, b"slotAt:in:", slot_at),
             (behavior, b"slotAt:in:put:", slot_put),
@@ -843,4 +850,109 @@ fn mix(mut value: u64) -> usize {
     value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     (value ^ (value >> 31)) as u32 as usize
+}
+
+impl Model {
+    unsafe fn can_omit_allocation(
+        &self,
+        behavior: Oop,
+        context: *mut c_void,
+    ) -> Result<bool, Outcome> {
+        unsafe {
+            if self
+                .send(
+                    self.id.receiver,
+                    b"usesDefaultLookup:",
+                    &[Operand::object(self.receiver)],
+                )?
+                .as_word()
+                != Some(1)
+                || self
+                    .send(
+                        self.id.receiver,
+                        b"bind:to:",
+                        &[
+                            Operand::object(self.names[b"allocate:bytes:".as_slice()]),
+                            Operand::object(self.receiver),
+                        ],
+                    )?
+                    .as_entry()
+                    != Some(NativeEntry::new(allocate, context))
+            {
+                return Ok(false);
+            }
+            Ok(self
+                .send(
+                    self.gc,
+                    b"canOmitAllocationFor:",
+                    &[Operand::object(behavior)],
+                )?
+                .as_word()
+                == Some(1))
+        }
+    }
+}
+unsafe extern "C" fn can_omit_allocation(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let Some([behavior]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let behavior = object(*behavior)?;
+        m.rooted(&[behavior], || {
+            Ok(Operand::word(usize::from(
+                m.can_omit_allocation(behavior, c)?,
+            )))
+        })
+    })())
+}
+unsafe extern "C" fn can_discard_clone(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let Some([selected, receiver]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let selected = selected.as_entry().ok_or_else(invalid)?;
+        let receiver = object(*receiver)?;
+        if selected != NativeEntry::new(clone_object, c) {
+            return Ok(Operand::word(0));
+        }
+        m.rooted(&[receiver], || {
+            let epoch = m
+                .send(m.id.receiver, b"behaviorEpoch", &[])?
+                .as_word()
+                .ok_or_else(invalid)?;
+            if epoch == usize::MAX
+                || m.send(
+                    m.id.receiver,
+                    b"usesDefaultLookup:",
+                    &[Operand::object(receiver)],
+                )?
+                .as_word()
+                    != Some(1)
+            {
+                return Ok(Operand::word(0));
+            }
+            // Restrict this first consumer to ordinary zero-slot instances.
+            // Unsupported shapes decline; the actual clone owns their errors.
+            if m.extent(receiver).ok() != Some(0) {
+                return Ok(Operand::word(0));
+            }
+            let behavior = m.behavior(receiver)?;
+            let permitted = m.can_omit_allocation(behavior, c)?;
+            Ok(Operand::word(usize::from(
+                permitted && m.send(m.id.receiver, b"behaviorEpoch", &[])?.as_word() == Some(epoch),
+            )))
+        })
+    })())
 }
