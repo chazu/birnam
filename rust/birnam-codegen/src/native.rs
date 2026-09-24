@@ -24,6 +24,7 @@ struct Function {
     selection: Vec<u8>,
     named: bool,
     discarded: Option<DiscardedClone>,
+    predicate: Option<NumericPredicate>,
 }
 struct DiscardedClone {
     source: u32,
@@ -85,6 +86,90 @@ fn discarded_clone(
         return_slot: layout.value_slots[answer.0 as usize],
     })
 }
+struct NumericPredicate {
+    inputs: [u32; 3],
+    selectors: [Vec<u8>; 2],
+    return_slot: u32,
+}
+fn numeric_predicate(
+    p: &ir::LogicalProgram<'_>,
+    layout: &ir::PhysicalLayout,
+) -> Option<NumericPredicate> {
+    if p.capture_count != 0 || p.entry.0 != 0 || p.blocks.len() != 3 {
+        return None;
+    }
+    let [first, second, last] = p.blocks.as_slice() else {
+        return None;
+    };
+    if first.pc.0 != 0
+        || second.pc.0 != 1
+        || last.pc.0 != 2
+        || !second.operations.is_empty()
+        || first
+            .operations
+            .iter()
+            .any(|op| !matches!(op.kind, Op::EntryReceiver | Op::EntryArgument { .. }))
+    {
+        return None;
+    }
+    let Term::Call {
+        receiver: left,
+        selector: arithmetic,
+        arguments: right,
+        result: intermediate,
+        successor,
+        ..
+    } = &first.terminator
+    else {
+        return None;
+    };
+    if right.len() != 1 || successor.0 != 1 {
+        return None;
+    }
+    let Term::Call {
+        receiver,
+        selector: comparison,
+        arguments: limit,
+        result,
+        successor,
+        ..
+    } = &second.terminator
+    else {
+        return None;
+    };
+    if receiver != intermediate || limit.len() != 1 || successor.0 != 2 {
+        return None;
+    }
+    let Term::Return(answer) = last.terminator else {
+        return None;
+    };
+    match last.operations.as_slice() {
+        [] if answer == *result => (),
+        [op] if op.result == answer
+            && matches!(op.kind, Op::Bind {source, ..} if source == *result) =>
+        {
+            ()
+        }
+        _ => return None,
+    }
+    let argument = |value| {
+        first.operations.iter().find_map(|op| {
+            if op.result != value {
+                return None;
+            }
+            if let Op::EntryArgument { index, .. } = op.kind {
+                Some(index)
+            } else {
+                None
+            }
+        })
+    };
+    Some(NumericPredicate {
+        inputs: [argument(*left)?, argument(right[0])?, argument(limit[0])?],
+        selectors: [arithmetic.to_vec(), comparison.to_vec()],
+        return_slot: layout.value_slots[answer.0 as usize],
+    })
+}
 fn entry_prefix(name: &str) -> String {
     format!(
         "static R {name}(void*context,O machine,const A*args,size_t n){{(void)context;if(n!=1)return bad();Call c={{0}};keep(&c,machine);if(args[0].kind!=1)return finish(&c,(A){{0}});keep(&c,args[0].data.object);A pc=send(&c,named(&c,\"Integer\"),\"wordOf:\",args,1);if(pc.kind!=2)return finish(&c,(A){{0}});\n"
@@ -139,6 +224,7 @@ fn function(
         selection: vec![],
         named,
         discarded: None,
+        predicate: None,
     });
     let layout = ir::color_slots(program).map_err(|_| Error::Layout)?;
     let revision = Sha256::digest(source).into();
@@ -273,6 +359,11 @@ fn function(
         descriptor,
         selection: selected,
         named,
+        predicate: if named {
+            None
+        } else {
+            numeric_predicate(program, &layout)
+        },
         discarded: if named {
             None
         } else {
@@ -305,6 +396,9 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
             ("fromStep:descriptor:selection:owner:", 4)
         };
         writeln!(out,"methods[{i}]=call(&c,named(&c,\"Method\"),\"{name}\",args,{count});A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}").unwrap();
+        if let Some(plan) = &f.predicate {
+            writeln!(out, "{{A a[7]={{obj(intern(&c,{})),obj(intern(&c,{})),word({}),word({}),word({}),word({}),obj(ns)}};methods[{i}]=call(&c,methods[{i}],\"withNumericPredicate:then:left:right:limit:return:in:\",a,7);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}", quoted(&plan.selectors[0]), quoted(&plan.selectors[1]), plan.inputs[0], plan.inputs[1], plan.inputs[2], plan.return_slot).unwrap();
+        }
         if let Some(plan) = &f.discarded {
             writeln!(out, "{{A a[5]={{word({}),word({}),obj(intern(&c,{})),word({}),obj(ns)}};methods[{i}]=call(&c,methods[{i}],\"withDiscardedClone:answer:selector:return:in:\",a,5);A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}", plan.source, plan.answer, quoted(&plan.selector), plan.return_slot).unwrap();
         }
@@ -332,4 +426,70 @@ pub fn compile_named(arity: u32) -> Result<Vec<u8>, Error> {
     let mut functions = Vec::new();
     function(&logical, &selector, &mut functions, true)?;
     Ok(module(functions))
+}
+
+#[cfg(test)]
+mod predicate_tests {
+    use super::*;
+    use crate::{Block, Expr, Statement};
+    use std::borrow::Cow;
+    fn body() -> Vec<u8> {
+        let send = |receiver, selector: &'static [u8], argument| Expr::Send {
+            receiver: Box::new(receiver),
+            selector: Cow::Borrowed(selector),
+            args: vec![argument],
+            source: b"",
+        };
+        crate::portable::encode_block(
+            &Block {
+                params: vec![b"a", b"b", b"c"],
+                body: vec![
+                    Statement::Let {
+                        name: b"answer",
+                        value: send(
+                            send(Expr::Global(b"a"), b"sum:", Expr::Global(b"b")),
+                            b"below:",
+                            Expr::Global(b"c"),
+                        ),
+                    },
+                    Statement::Expr(Expr::Global(b"answer")),
+                ],
+            },
+            &[],
+        )
+        .unwrap()
+    }
+    #[test]
+    fn predicate_producer_preserves_arguments_and_actual_selector_names() {
+        let bytes = body();
+        let p = ir::lower_portable_block(&bytes).unwrap();
+        let layout = ir::color_slots(&p).unwrap();
+        let plan = numeric_predicate(&p, &layout).unwrap();
+        assert_eq!(plan.inputs, [0, 1, 2]);
+        assert_eq!(plan.selectors, [b"sum:".to_vec(), b"below:".to_vec()]);
+        assert!(plan.return_slot < layout.slot_count);
+    }
+    #[test]
+    fn predicate_producer_refuses_captures_extra_operations_and_wrong_dataflow() {
+        let bytes = body();
+        let p = ir::lower_portable_block(&bytes).unwrap();
+        let layout = ir::color_slots(&p).unwrap();
+        let mut invalid = p.clone();
+        invalid.capture_count = 1;
+        assert!(numeric_predicate(&invalid, &layout).is_none());
+        let mut invalid = p.clone();
+        invalid.blocks[1]
+            .operations
+            .push(p.blocks[0].operations[0].clone());
+        assert!(numeric_predicate(&invalid, &layout).is_none());
+        let mut invalid = p.clone();
+        let original_left = match p.blocks[0].terminator {
+            Term::Call { receiver, .. } => receiver,
+            _ => unreachable!(),
+        };
+        if let Term::Call { receiver, .. } = &mut invalid.blocks[1].terminator {
+            *receiver = original_left;
+        }
+        assert!(numeric_predicate(&invalid, &layout).is_none());
+    }
 }

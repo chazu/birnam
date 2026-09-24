@@ -5,6 +5,8 @@ mod accounting;
 mod discarded_clone;
 #[path = "compiler/dispatch.rs"]
 mod dispatch;
+#[path = "compiler/numeric_predicate.rs"]
+mod numeric_predicate;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -208,6 +210,7 @@ fn source_compiles_and_runs_on_production_execution() {
         compiled_recovery(&mut h);
         dispatch::check(&mut h);
         discarded_clone::check(&mut h);
+        numeric_predicate::check(&mut h);
         accounting::check(&mut h);
         h.clear();
         h.collect();

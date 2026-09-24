@@ -233,7 +233,12 @@ macro_rules! entry {
     };
 }
 
+#[path = "predicate.rs"]
+mod predicate;
+
 const NAMES: &[&[u8]] = &[
+    b"evaluatePredicate:then:left:right:limit:in:epoch:with:",
+    b"usesDefaultAllocation",
     b"canOmitIndexing",
     b"canOmitAllocationFor:",
     b"usesDefaultLookup:",
@@ -423,23 +428,36 @@ impl Number {
             if matches!(op, 3 | 4) && right == 0 {
                 return self.error(b"zeroDivide", b"division by zero");
             }
-            let (a, b) = (i128::from(left), i128::from(right));
-            Ok(match op {
-                0 => return self.integer(a + b),
-                1 => return self.integer(a - b),
-                2 => return self.integer(a * b),
-                3 => return self.integer(a / b),
-                4 => return self.integer(a % b),
-                5 => self.boolean(left == right),
-                6 => self.boolean((left as f64) < (right as f64)),
-                7 => self.boolean((left as f64) <= (right as f64)),
-                8 => self.boolean((left as f64) > (right as f64)),
-                9 => self.boolean((left as f64) >= (right as f64)),
-                _ => return Err(invalid()),
-            })
+            if op <= 4 {
+                return self.integer(arithmetic(left, right, op).ok_or_else(invalid)?);
+            }
+            Ok(self.boolean(comparison(left, right, op).ok_or_else(invalid)?))
         }
     }
 }
+// Shared owner-local semantics for ordinary evaluation and the predicate path.
+fn arithmetic(left: i64, right: i64, op: usize) -> Option<i128> {
+    let (a, b) = (i128::from(left), i128::from(right));
+    Some(match op {
+        0 => a + b,
+        1 => a - b,
+        2 => a * b,
+        3 if b != 0 => a / b,
+        4 if b != 0 => a % b,
+        _ => return None,
+    })
+}
+fn comparison(left: i64, right: i64, op: usize) -> Option<bool> {
+    Some(match op {
+        5 => left == right,
+        6 => (left as f64) < (right as f64),
+        7 => (left as f64) <= (right as f64),
+        8 => (left as f64) > (right as f64),
+        9 => (left as f64) >= (right as f64),
+        _ => return None,
+    })
+}
+
 unsafe fn execute(n: &Number, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
     unsafe {
         if op == 31 {
@@ -583,6 +601,10 @@ const METHODS: &[(&[u8], Method)] = &[
     (b">=", ge),
     (b"fromWord:", from_word),
     (b"canOmitIndexing", can_omit_indexing),
+    (
+        b"evaluatePredicate:then:left:right:limit:in:epoch:with:",
+        predicate::evaluate,
+    ),
     (b"wordOf:", word_of),
     (b"word", word),
     (b"printString", print),

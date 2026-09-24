@@ -15,7 +15,8 @@ Methods, Blocks, Machines, native recovery and guarded hot selection run over th
 prefix. [PEG/Lang, source Codegen and TCC](rust/birnam-codegen-runtime/README.md)
 now compile and execute source through that same path, with real compiled-code
 retention and reclamation. A narrow discarded-clone optimization now removes real
-allocations through current owner checks; broader allocation-elision remains pending.
+allocations through current owner checks. A [numeric predicate](docs/design/90-numeric-predicate.md)
+also removes its intermediate Integer; broader allocation-elision remains pending.
 The full workspace,
 Artifact/PortableCode language adapters, Store, Image, workers and CLI still await
 upper integration.
@@ -754,7 +755,8 @@ invocation, lookup adaptation, frames, Blocks, bounded Machines and continuation
 and TCC-owned native code to that Execution. Generated entries use live messages;
 eager candidate construction and speculative APIs are reassessed in
 [the optimizer review](docs/design/90-optimizer-reassessment.md). The first
-[discarded-clone consumer](docs/design/90-discarded-clone.md) is implemented.
+[discarded-clone consumer](docs/design/90-discarded-clone.md) and
+[numeric predicate](docs/design/90-numeric-predicate.md) are implemented.
 Production checks cover native control, compiled recovery boundaries,
 replacement and actual native-code reclamation.
 

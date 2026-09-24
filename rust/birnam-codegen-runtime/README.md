@@ -85,3 +85,20 @@ operation takes the baseline, and bounded execution always does so.
 inventory, replacement effects, alias recognition, escaping/bound values, paused
 Frames, collection during guards and release of every compiled Unit. This is a
 single narrow consumer, not restoration of the retained legacy elision planners.
+
+
+## Combined arithmetic predicate and unboxed intermediate
+
+The native backend recognizes a three-PC uncaptured callee: one binary send using
+entry arguments, another binary send consuming that result and an entry argument,
+then an explicit return (optionally through its final binding). It attaches
+`Method withNumericPredicate:then:left:right:limit:return:in:` metadata, retaining
+the ordinary baseline and same TCC Unit. Runtime Integer ownership determines
+whether the sends are arithmetic and comparison; aliases are eligible. Captures,
+extra operations, intermediate bindings and bare tail-call forms are not emitted
+as candidates. Bounded calls and unsupported operations remain baseline execution.
+
+The admitted predicate returns an existing Boolean while avoiding its intermediate
+Integer and callee index boxes. No new C kernel, deferred identities or loop cache
+is emitted. [The production receipt](../../docs/design/90-numeric-predicate.md)
+records current semantics, allocation savings and the local debug comparison.

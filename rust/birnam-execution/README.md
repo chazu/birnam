@@ -307,3 +307,21 @@ may be an alias of the actual clone entry. Bounded, tail and protected calls use
 the ordinary path, preserving supported stop/Frame inspection behavior. No
 allocation is charged for an omitted object and no identity is materialized later.
 See [the implementation receipt](../../docs/design/90-discarded-clone.md).
+
+
+## Numeric predicate
+
+`Method withNumericPredicate:then:left:right:limit:return:in:` takes two Symbol
+selectors, three native Word argument indexes, Word return-slot index and
+Namespace Object. The returned captured Method traces this metadata and its
+baseline owner. Codegen supplies the body proof for one arithmetic call, one
+comparison and a final return. Extra intermediate bindings and captures decline.
+
+On an eligible unbounded call, Execution sends Integer
+`evaluatePredicate:then:left:right:limit:in:epoch:with:` with the selectors,
+actual input Objects, compilation Namespace, checked epoch and synchronous native
+commit visitor. The visitor uses existing pending-call authority and inline-return
+publication, releases the acquisition and marks the request consumed. Integer
+invokes it before releasing roots. A refusal leaves the ordinary call pending;
+bounded, tail and protected calls use the baseline. No new virtual Frame or
+identity representation is introduced. See [scope and tests](../../docs/design/90-numeric-predicate.md).

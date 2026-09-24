@@ -1140,3 +1140,16 @@ and supported Frame observation require a concrete recovery/fallback design.
 Loop caching stays deferred without current profitability evidence. Optimizer-only
 tail-stamp bookkeeping has no current production consumer and is a cleanup
 candidate; ordinary Frame identity and lifetime mechanisms remain required.
+
+
+### First combined numeric/unboxed consumer
+
+The [numeric predicate](90-numeric-predicate.md) implements one arithmetic result
+used only by a comparison, with an explicit final return and no captures. Integer
+owns current operation recognition and raw computation; its borrowed visitor lets
+Execution publish the existing Boolean before root-release callbacks. Bounded
+calls and unsupported shapes run the ordinary baseline. The production witness
+removes the intermediate Integer and 18 generated PC/index boxes. This resolves
+the boundary for an existing Boolean result; general numeric-result allocation
+and recovery remain subsequent work. No old loop cache, alternate driver or
+allocation-history protocol is restored.

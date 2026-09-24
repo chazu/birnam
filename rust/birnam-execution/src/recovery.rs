@@ -10,6 +10,7 @@ use crate::{
 pub(super) enum Body {
     Native(NativeEntry),
     DiscardedClone(crate::discarded_clone::Plan),
+    NumericPredicate(crate::numeric_predicate::Plan),
 }
 #[derive(Clone, Copy)]
 pub(super) struct Inline {
@@ -200,10 +201,13 @@ pub(super) unsafe fn try_inline(
             Body::DiscardedClone(plan) => {
                 crate::discarded_clone::try_result(s, machine, plan, args)?
             }
+            Body::NumericPredicate(plan) => {
+                crate::numeric_predicate::try_result(s, machine, plan, args, inline.return_slot)?
+            }
         };
         if s.requests.borrow().last().unwrap().consumed {
-            // Recovery already published one baseline frame. A second result would
-            // be a second publication, so only acknowledgement is accepted.
+            // Recovery published a baseline Frame, or the predicate visitor committed
+            // its result. Only acknowledgement may follow either publication.
             return if answer.kind() == native::UNIT {
                 Ok(true)
             } else {
@@ -237,6 +241,34 @@ pub(super) unsafe fn try_inline(
         ))?;
         Ok(true) // guard releases the acquisition after committing the direct result
     }
+}
+
+pub(super) fn commit_predicate(
+    s: &Execution,
+    machine: Oop,
+    slot: usize,
+    value: Oop,
+) -> Result<(), Outcome> {
+    let cap = machine::cap(s, machine)?;
+    let a = authority(s, cap, 0)?;
+    {
+        let mut state = s.machines.borrow_mut();
+        let machine::State {
+            engine, storage, ..
+        } = &mut *state;
+        checked(engine.commit_inlined_return(
+            storage,
+            OWNER,
+            cap,
+            a.result_slot,
+            slot,
+            s.nil,
+            value,
+        ))?;
+        checked(engine.release_acquired_entry(a.entry))?;
+    }
+    s.requests.borrow_mut().last_mut().unwrap().consumed = true;
+    Ok(())
 }
 
 struct Reader<'a> {

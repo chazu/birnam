@@ -69,3 +69,23 @@ Integer owns all operand decoding and language semantics; Execution supplies onl
 the pure arithmetic visitor. No declaration table or foreign service cache is
 introduced. Production Machine tests prove evaluator invocation, precise callback
 GC, overflow/zero division, live ErrorVt and replacement fallback.
+
+
+## Arithmetic predicates
+
+`evaluatePredicate:then:left:right:limit:in:epoch:with:` takes two Symbol selectors,
+three operand Objects, compilation Namespace Object, expected native Word behavior
+epoch and borrowed NativeEntry visitor. For current owned arithmetic followed by
+comparison on exact Integer inputs, it calls the visitor once with an existing
+Boolean Object and returns its outcome. Refusal returns Unit without visiting.
+The visitor is synchronous and never retained; Execution's visitor commits a
+pending inline return and answers Unit.
+
+The owner checks current lookup/entries, default index and allocation semantics,
+live ErrorVt and the caller's epoch before its final input reads. Successful
+arithmetic/comparison and visiting introduce no intervening allocation or callback;
+root release follows the visit. Ordinary and optimized paths share the same
+owner-local arithmetic/comparison helpers. Overflow, zero division, mixed inputs
+and replacements decline for baseline behavior. This consumer removes one
+intermediate Integer; it does not construct an optimized numeric result or define
+new guarantees for arbitrary native visitors. [Details and evidence](../../docs/design/90-numeric-predicate.md).

@@ -8,6 +8,16 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Combine a short arithmetic chain with removal of its intermediate Integer when
+  the result is consumed only by an owned comparison. Preserve current Id lookup,
+  owner factories, error behavior and bounded Frame inspection. Integer delivers
+  an existing Boolean through a borrowed visitor; Execution commits before owner
+  cleanup callbacks. Reuse owner arithmetic and the existing inline boundary,
+  with no new kernel, loop cache, allocation budget or deferred identities.
+  The production witness removes 19 of 51 allocations per invocation; the local
+  debug comparison and exact limits are in the
+  [numeric-predicate receipt](docs/design/90-numeric-predicate.md).
+
 - Implement the first source allocation-elision case: an eligible unbounded call
   discards one zero-slot ordinary clone and returns an existing argument. Reuse
   Execution's inline-call path, with live owner checks and ordinary fallback for

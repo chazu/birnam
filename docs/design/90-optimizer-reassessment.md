@@ -125,3 +125,13 @@ production bookkeeping is a cleanup candidate. Examine the first chain together
 with unboxed intermediates, resolving real result-allocation/Frame observation
 before defining an owner message. No new runtime behavior or API is introduced by
 this review.
+
+
+## Numeric predicate implemented
+
+The [first combined numeric/unboxed slice](90-numeric-predicate.md) now removes
+an arithmetic intermediate and generated index boxes when an owned comparison
+returns an existing Boolean. Current owners admit the operations; Execution
+commits through a borrowed visitor before owner cleanup callbacks. Production
+allocation, replacement, Frame/GC and native-lifetime witnesses pass. Broader
+numeric-result recovery, loops and other families remain open.

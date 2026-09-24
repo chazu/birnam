@@ -135,3 +135,14 @@ mise exec -- cargo test --offline -p birnam-execution --lib loop_iteration
 The old native-kernel differential and integration fixtures were inspected but
 not run: they belong to the deferred Runtime harness. These focused checks do not
 prove production numeric fusion, unboxed recovery or loop profitability.
+
+
+## Implemented first slice
+
+The [numeric-predicate consumer](90-numeric-predicate.md) combines a checked
+arithmetic operation and comparison with an unboxed intermediate. Its existing
+Boolean result avoids the final allocation in the illustrative multiplication
+chain above. Execution commits through a synchronous Integer-owned visitor before
+cleanup callbacks, retaining the existing inline boundary. General numeric-result
+construction/recovery and loop caching remain pending; neither is implied complete
+by this bounded implementation.

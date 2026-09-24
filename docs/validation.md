@@ -183,3 +183,11 @@ nonempty and escaping/bound fallback, paused Frame inspection and final code
 reclamation. It also prints an alternating local debug timing comparison;
 correctness does not depend on wall-clock timing. Exact source, commands and
 limits are in [the implementation receipt](design/90-discarded-clone.md).
+
+
+The combined numeric-predicate source test checks real allocation reduction
+against an unannotated baseline; checked arithmetic, errors and comparison
+rounding; current operation/factory/allocator effects; mixed/error-family fallback;
+paused intermediate inspection; collection before and after the atomic result
+commit; and complete native-code reclamation. Its timing output is diagnostic,
+not an acceptance threshold. [Exact scope and commands](design/90-numeric-predicate.md).

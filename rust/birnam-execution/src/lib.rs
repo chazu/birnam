@@ -9,6 +9,7 @@ mod machine;
 mod native_tier;
 mod numeric;
 mod numeric_operator;
+mod numeric_predicate;
 mod objects;
 mod recovery;
 mod recovery_graph;
@@ -490,9 +491,17 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
             }
             if let Some(inline) = inline_owner {
                 visit(v, inline.owner)?;
-                if let recovery::Body::DiscardedClone(plan) = inline.body {
-                    visit(v, plan.selector)?;
-                    visit(v, plan.namespace)?;
+                match inline.body {
+                    recovery::Body::DiscardedClone(plan) => {
+                        visit(v, plan.selector)?;
+                        visit(v, plan.namespace)?;
+                    }
+                    recovery::Body::NumericPredicate(plan) => {
+                        visit(v, plan.first)?;
+                        visit(v, plan.then)?;
+                        visit(v, plan.namespace)?;
+                    }
+                    recovery::Body::Native(_) => (),
                 }
             }
             visit(v, owner)?;

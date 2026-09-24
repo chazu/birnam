@@ -718,7 +718,7 @@ pub(super) unsafe fn loop_drive(
                         if !tail && !matches!(decoded, DecodedAction::BoundaryCall { .. }) {
                             if let Some(inline) = inline.filter(|i| {
                                 budget.is_none()
-                                    || !matches!(i.body, crate::recovery::Body::DiscardedClone(_))
+                                    || matches!(i.body, crate::recovery::Body::Native(_))
                             }) {
                                 // The candidate may collect or mutate its receiver before
                                 // declining. Keep the already materialized baseline inputs.
@@ -984,6 +984,7 @@ enum Op {
     FromStep,
     WithInline,
     WithDiscardedClone,
+    WithNumericPredicate,
     Optimize,
     Recover(bool),
     Block,
@@ -1051,6 +1052,7 @@ unsafe extern "C" fn operation(
             Op::FromStep => return from_step(s, args),
             Op::WithInline => return crate::recovery::with_inline(s, receiver, args),
             Op::WithDiscardedClone => return crate::discarded_clone::attach(s, receiver, args),
+            Op::WithNumericPredicate => return crate::numeric_predicate::attach(s, receiver, args),
             Op::Optimize => return crate::native_tier::install(s, receiver, args),
             Op::Block => return new_block(s, args),
             Op::New if args.is_empty() => return new_machine(s).map(Operand::object),
@@ -1446,6 +1448,8 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"fromStep:descriptor:selection:owner:",
     b"fromStep:descriptor:selection:owner:implementation:",
     b"withDiscardedClone:answer:selector:return:in:",
+    b"withNumericPredicate:then:left:right:limit:return:in:",
+    b"evaluatePredicate:then:left:right:limit:in:epoch:with:",
     b"Integer",
     b"at:",
     b"canDiscardClone:of:",
@@ -1830,6 +1834,12 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             s.method_behavior,
             b"withDiscardedClone:answer:selector:return:in:",
             Op::WithDiscardedClone,
+        )?;
+        install_op(
+            s,
+            s.method_behavior,
+            b"withNumericPredicate:then:left:right:limit:return:in:",
+            Op::WithNumericPredicate,
         )?;
         install_op(s, s.method_behavior, b"optimizeWith:", Op::Optimize)?;
         install_op(

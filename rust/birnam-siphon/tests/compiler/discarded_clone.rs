@@ -2,7 +2,7 @@
 use super::*;
 use std::time::Instant;
 
-unsafe fn lookup(h: &H, r: Oop, name: &[u8]) -> NativeEntry {
+pub(super) unsafe fn lookup(h: &H, r: Oop, name: &[u8]) -> NativeEntry {
     unsafe {
         send(
             h.id,
@@ -17,10 +17,10 @@ unsafe fn lookup(h: &H, r: Oop, name: &[u8]) -> NativeEntry {
         .unwrap()
     }
 }
-unsafe fn restore(h: &H, vt: Oop, name: &[u8], entry: NativeEntry) {
+pub(super) unsafe fn restore(h: &H, vt: Oop, name: &[u8], entry: NativeEntry) {
     unsafe { install(h.id, vt, name, entry.method.unwrap(), entry.context) }
 }
-unsafe fn vt(h: &H, value: Oop) -> Oop {
+pub(super) unsafe fn vt(h: &H, value: Oop) -> Oop {
     unsafe {
         object(send(
             h.id,
@@ -53,7 +53,7 @@ unsafe extern "C" fn count(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
         Outcome::loaded(Operand::unit())
     }
 }
-unsafe fn instances(h: &H, behavior: Oop) -> usize {
+pub(super) unsafe fn instances(h: &H, behavior: Oop) -> usize {
     unsafe {
         let mut c = Count {
             id: h.id,
@@ -72,7 +72,7 @@ unsafe fn instances(h: &H, behavior: Oop) -> usize {
         c.count
     }
 }
-unsafe fn run(h: &H, block: Oop, bounded: bool) -> Oop {
+pub(super) unsafe fn run(h: &H, block: Oop, bounded: bool) -> Oop {
     unsafe {
         let machine = object(send(h.id, h.named(b"Machine"), b"new", &[]));
         let pin = retain(h.id, h.roots, machine);

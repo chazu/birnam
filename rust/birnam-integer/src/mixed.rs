@@ -177,6 +177,17 @@ pub(super) unsafe extern "C" fn install(
     })())
 }
 
+pub(super) fn operation(n: &Number, selected: NativeEntry) -> Option<usize> {
+    let m = n.mixed.get();
+    if m.is_null() {
+        return None;
+    }
+    [add as Method, sub, mul, div, lt, le, gt, ge]
+        .iter()
+        .position(|method| selected == NativeEntry::new(*method, m.cast()))
+        .map(|i| if i < 4 { i } else { i + 2 })
+}
+
 pub(super) unsafe fn evaluate(
     n: &Number,
     selected: NativeEntry,
@@ -189,9 +200,7 @@ pub(super) unsafe fn evaluate(
         if m.is_null() {
             return None;
         }
-        let op = [add as Method, sub, mul, div]
-            .iter()
-            .position(|method| selected == NativeEntry::new(*method, m.cast()))?;
+        let op = operation(n, selected).filter(|op| *op < 4)?;
         Some((|| {
             let visitor = visitor
                 .as_entry()
