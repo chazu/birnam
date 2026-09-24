@@ -240,6 +240,12 @@ The selected Method has an independent scoped root: withdrawal during an entered
 step cannot reclaim its code owner before return. Native candidate authors must
 preserve baseline semantics and guard their own body assumptions.
 
+Production Codegen now supplies PC candidates through these same messages. It
+shares each generated body with its baseline, preserves all owner sends, and keeps
+the candidates in the baseline's TCC Unit. See the
+[producer contract](../birnam-codegen-runtime/README.md#generated-pc-candidates).
+This does not restore allocation-elision or its accounting/identity protocols.
+
 Hot synchronous unary calls ask the live Integer owner to evaluate their exact
 selected function/context through `evaluate:receiver:argument:with:`. Integer
 recognizes only its own arithmetic implementations, validates operands and current

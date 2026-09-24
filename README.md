@@ -747,14 +747,17 @@ owners; String owns splitting. Collection is a shared parent, with no installer
 crate. These collection callbacks need only callable objects, not an Execution table.
 [Execution](rust/birnam-execution/README.md) now supplies owned Methods, exact
 invocation, lookup adaptation, frames, Blocks, bounded Machines and continuations.
-Native control and GC lifetime checks pass; mixed Runtime cleanup and generated
-recovery integration remain in progress.
+[Codegen](rust/birnam-codegen-runtime/README.md) connects PEG/Lang source compilation
+and TCC-owned native code to that Execution. Generated PC candidates use the same
+live messages and existing hot-selection guards; allocation-elision remains
+separate. Production checks cover native control, compiled recovery boundaries,
+replacement and actual native-code reclamation.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native
 loading. Collection now works over this prefix through Id and Roots messages.
-Execution, compilers, images and workers retain their implementations, but their
-old integration still refers to
-deleted APIs: **the complete workspace and installed CLI are not yet buildable**.
+Full Artifact/PortableCode adapters, images, workers and other upper integrations
+still refer to deleted APIs: **the complete workspace and installed CLI are not
+yet buildable**.
 The working prefix is not evidence that the entire language has been restored.
 
 The standard library and most application-facing modules are Birnam source.

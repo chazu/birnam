@@ -65,6 +65,16 @@ binding, collects and attempts checkpoint before returning. This proves real
 compiled recovery/mapping lifetime, not the separate allocation-elision emitters.
 The script builds TCC with `resource-metrics` for independent allocation evidence.
 
+The compiler test also wraps the actual generated candidate entries at their
+ordinary `fromNative:owner:` construction boundary to prove that hot selection
+enters Codegen output. It checks unchanged Integer construction counts, current
+numeric lookup and PC conversion, collecting conversions, permanent withdrawal
+after Machine method replacement, and collection during construction and entered
+withdrawal. Capturing Blocks, bounded-emission fallback and rejected candidate
+initialization exercise the same source path. All final Unit/relocated-byte counts
+return to zero. These are candidate-production and dispatch/lifetime checks;
+allocation savings, region fusion and optimizer performance remain unproven.
+
 Pure/debug checks: `mise exec -- cargo test --offline -p birnam-codegen
 -p birnam-execution -p birnam-peg -p birnam-native-compiler --lib` runs 97 compiler,
 21 engine, 3 matcher-oracle and 1 native-owner tests. Adding

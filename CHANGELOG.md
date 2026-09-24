@@ -8,6 +8,19 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Connect Codegen-produced native PC candidates to Execution through existing
+  `fromNative:owner:` and `optimizeWith:` messages. Baselines and specialized
+  entries share generated bodies and retain all live sends and allocations.
+  Bound optional emission, keep candidates with their actual TCC Unit, and test
+  hot selection, replacement/fallback, collecting callbacks, withdrawal and
+  failed-initialization reclamation. Allocation-budget/deferred-identity support
+  and allocation-elision remain subsequent batch 2 work.
+
+- Clarify Design 90's alien-code trust boundary: callers and wrappers own foreign
+  state and native contracts. Keep security precautions local and proportionate;
+  safety work must preserve late-bound Id messages and minimal module dependencies.
+  Apply this constraint explicitly to the remaining allocation-elision work.
+
 - Restore the first three Design 90 compiler areas in production Bootstrap:
   PEG/Lang, source Codegen/generated calls, and TCC installation/code lifetime.
   Retain matcher, grammar, lowering and descriptor algorithms; emit typed Id

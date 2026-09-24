@@ -101,6 +101,58 @@ they do not authorize capturing another owner's service implementations. Future
 sends observe replacement. An already selected active call retains the code it
 needs until return, including suspension and recovery.
 
+## Alien code, trust and proportionate protection
+
+Clarification (2026-09-24): simplicity, late-bound Id message passing and minimal
+dependencies govern defensive implementation too. Birnam does not promise to
+make arbitrary alien (wrapped C) code safe. Calling native code in the same
+process is a trust decision, not a security isolation boundary.
+
+Alien callers and wrapper authors own the foreign library's requirements:
+static/global state, initialization and teardown, thread safety, reentrancy,
+pointer validity, buffer sizes, callback lifetimes and foreign resource ownership.
+A wrapper must report and retain Birnam references that its native state keeps,
+and use the existing owner/thread and callback contracts when entering Birnam.
+Birnam does not discover hidden references, repair foreign state, or add global
+locks, per-library runtime machinery or module coupling to compensate for an
+alien library's behavior. Library-specific adaptation belongs in its wrapper.
+The wrapper's actual C ABI calls are private implementation details; other Birnam
+owners use its objects and messages.
+
+Birnam takes reasonable, local security precautions at the boundaries it owns:
+for example, validating lengths and executable metadata it consumes and honoring
+existing access restrictions. Each added protection must address a concrete
+problem with proportionate complexity. This is not a mandate to contain hostile
+native code, sandbox every foreign call, or create a new security framework.
+An inability to guarantee arbitrary C behavior does not justify ignoring a
+concrete vulnerability in Birnam's own boundary handling.
+
+Compiled Birnam remains subject to the ordinary language contract. The compiler
+and runtime must preserve dispatch, identity, roots, recovery and code lifetime;
+they need no separate defensive architecture merely because execution uses native
+instructions. Retain the declared owner of an entered call; do not inspect or
+take over arbitrary native context internals. These obligations preserve Birnam's
+own semantics and do not extend to repairing a native author’s contract violations.
+
+Neither safety nor security authorizes bypassing late binding. In particular:
+
+- Do not capture another owner's service methods, add parallel function tables,
+  decode its private payloads, or introduce dependency bundles to obtain a
+  supposedly safer path. Ordinary inter-owner operations remain current Id sends.
+- An explicitly captured Method, an already selected active call, and a guarded
+  optimization retain their established semantics. A guard must preserve current
+  lookup/replacement behavior and fall back when its assumptions fail; it is not
+  permission to freeze a dependency for future calls.
+- If an optimization cannot preserve its assumptions across a message or callback,
+  materialize, recover or decline it. Do not suppress replacement or strengthen
+  module coupling to make the optimization applicable.
+
+Review defensive additions against the concrete Birnam invariant they preserve
+and the owner that needs them. A hypothetical misbehaving C library is insufficient
+justification for complicating the shared implementation. This clarification
+governs the remaining batches and supersedes broader interpretations of earlier
+native-safety requirements.
+
 ## Starting point
 
 At commit `0f564c25`, the converted production prefix is Siphon → Id → Bootstrap,
@@ -524,6 +576,13 @@ user decision. Reconnect their allocation-budget and deferred-identity owner
 protocols with their compiler producers; batch 1 does not restore that retired
 machinery. The completion record below identifies the retained algorithms.
 
+Allocation-elision follows the [alien-code and trust boundary](#alien-code-trust-and-proportionate-protection)
+above. Reuse the existing accounting, identity and recovery algorithms through
+the smallest owner messages required by actual consumers. Do not recreate retired
+service tables or freeze dependencies to obtain a callback-free path. Prove each
+optimized region's assumptions against current dispatch; recover or execute the
+ordinary path when those assumptions do not hold.
+
 Reconnect PEG, Lang, Codegen, TCC, the language-facing Artifact adapter and Portable
 Code along their real dependencies. Convert both sides of executable installation,
 generated invocation, recovery registration and retirement; remove their displaced
@@ -623,9 +682,10 @@ of those, it is outside this refactor.
 - Preserve arithmetic, error, identity, malleability, memory-safety, concurrency,
   deoptimization and image behavior. Retain their independent semantic tests;
   retire tests whose sole purpose was validating deleted table layouts.
-- Do not expand safety into anticipating every erroneous native module. Native
-  code remains trusted. Maintain the invariants needed for serious language-level
-  software, especially rooting, mutation, recovery and code lifetime.
+- Apply the [alien-code and trust boundary](#alien-code-trust-and-proportionate-protection):
+  native callers/wrappers own foreign behavior. Preserve Birnam's rooting,
+  mutation, recovery and code lifetime without speculative defenses, captured
+  dependency services or additional coupling between owners.
 - Do not redesign unaffected algorithms, the language syntax or the image format
   simply because their integration is being repaired. Do not create parallel
   implementations, experiments or a sequence of helper-extraction designs.
@@ -882,3 +942,37 @@ and their acceptance cases remain in `birnam-codegen-runtime/src/deferred.rs`,
 separated by function from the replaced source facade/bootstrap. They are not
 compiled or counted as passing coverage. Store-backed task policy, Image, workers
 and full CLI keep their previous later integration gates.
+
+### Batch 2 compiler-generated PC candidates (2026-09-24)
+
+The first subsequent functional slice connects the retained per-PC specialization
+strategy to the production native backend and Execution's existing candidate
+protocol. Codegen emits a shared body per PC, the ordinary baseline dispatcher,
+and specialized entries for bounded multi-PC functions. The initializer creates
+all baselines before constructing candidate Methods with `fromNative:owner:` and
+attaching their Vector with `optimizeWith:`. These are current Id sends; no new
+owner protocol, service table, foreign payload access or compiler dependency in
+Execution is introduced.
+
+Baseline and candidate preserve the same message order, allocations and Machine
+actions. PC conversion still calls the live Integer owner; an unexpected converted
+PC takes the ordinary dispatcher without repeating that callback. Execution owns
+hot selection, current Machine guards and permanent withdrawal. Candidates retain
+their actual TCC Unit, and selected entries retain their Method independently of
+candidate replacement/removal. Optional emission is limited to 2–64 PCs and
+256 KiB of generated body text per function; other functions remain baseline.
+Candidates compile eagerly in the baseline Unit, so this slice adds construction
+cost and does not claim a measured speedup.
+
+Production acceptance observes the actual compiler-created entries crossing the
+hot gate, unchanged Integer construction counts, fresh numeric replacement and
+collecting PC conversion, guard fallback after Machine replacement, collecting
+candidate construction, withdrawal while entered, captured values, bounded
+baseline fallback and rejected candidate initialization. Unit counts and libtcc
+relocated bytes return to zero after the final references and checkpoint.
+
+This closes compiler-generated PC candidate construction/installation, not
+allocation-elision. Allocation accounting, deferred identities, fused regions,
+numeric chain/loop reuse, closure and aggregate elision, and their generated
+recovery remain subsequent work. Full Artifact/PortableCode language adapters and
+the previously deferred upper integrations retain their existing scope.

@@ -23,6 +23,17 @@ struct Function {
     descriptor: Vec<u8>,
     selection: Vec<u8>,
     named: bool,
+    candidates: Vec<u32>,
+}
+// Bound optional specialization work. Larger functions keep their ordinary
+// step dispatcher; a one-PC function has no dispatch to specialize.
+const MAX_CANDIDATE_PCS: usize = 64;
+const MAX_CANDIDATE_BODY_BYTES: usize = 256 << 10;
+
+fn entry_prefix(name: &str) -> String {
+    format!(
+        "static R {name}(void*context,O machine,const A*args,size_t n){{(void)context;if(n!=1)return bad();Call c={{0}};keep(&c,machine);if(args[0].kind!=1)return finish(&c,(A){{0}});keep(&c,args[0].data.object);A pc=send(&c,named(&c,\"Integer\"),\"wordOf:\",args,1);if(pc.kind!=2)return finish(&c,(A){{0}});\n"
+    )
 }
 fn quoted(b: &[u8]) -> String {
     let mut v = vec![b'"'];
@@ -72,6 +83,7 @@ fn function(
         descriptor: vec![],
         selection: vec![],
         named,
+        candidates: vec![],
     });
     let layout = ir::color_slots(program).map_err(|_| Error::Layout)?;
     let revision = Sha256::digest(source).into();
@@ -104,11 +116,16 @@ fn function(
     let selected = selection::encode_artifact_selection(&[revision], &[authority])
         .map_err(|_| Error::Selection)?;
     let slot = |v: ir::ValueId| layout.value_slots[v.0 as usize];
-    let mut out = format!(
-        "static R step_{index}(void*context,O machine,const A*args,size_t n){{(void)context;if(n!=1)return bad();Call c={{0}};keep(&c,machine);if(args[0].kind!=1)return finish(&c,(A){{0}});keep(&c,args[0].data.object);A pc=send(&c,named(&c,\"Integer\"),\"wordOf:\",args,1);if(pc.kind!=2)return finish(&c,(A){{0}});switch(pc.data.word){{\n"
-    );
+    let mut out = String::new();
     for block in &program.blocks {
-        writeln!(out, "case {}:{{", block.pc.0).unwrap();
+        // Transfer the call's roots to exactly one body, which finishes them.
+        // Baseline and candidate share the same body and ordinary sends.
+        writeln!(
+            out,
+            "static R body_{index}_{}(Call c,O machine){{",
+            block.pc.0
+        )
+        .unwrap();
         for operation in &block.operations {
             let expr = match &operation.kind {
                 Op::EntryReceiver
@@ -201,12 +218,42 @@ fn function(
         )
         .unwrap();
     }
+    let candidates: Vec<u32> = if (2..=MAX_CANDIDATE_PCS).contains(&program.blocks.len())
+        && out.len() <= MAX_CANDIDATE_BODY_BYTES
+    {
+        program.blocks.iter().map(|b| b.pc.0).collect()
+    } else {
+        vec![]
+    };
+    writeln!(
+        out,
+        "static R dispatch_{index}(Call c,O machine,size_t pc){{switch(pc){{"
+    )
+    .unwrap();
+    for block in &program.blocks {
+        writeln!(
+            out,
+            "case {}:return body_{index}_{}(c,machine);",
+            block.pc.0, block.pc.0
+        )
+        .unwrap();
+    }
     out.push_str("default:c.failure=bad();return finish(&c,(A){0});}}\n");
+    out.push_str(&entry_prefix(&format!("step_{index}")));
+    writeln!(out, "return dispatch_{index}(c,machine,pc.data.word);}}").unwrap();
+    for pc in &candidates {
+        out.push_str(&entry_prefix(&format!("candidate_{index}_{pc}")));
+        // Integer.wordOf: remains a live send. If its result differs from the
+        // committed PC chosen by Execution, honor that result as baseline does,
+        // without repeating the potentially effectful conversion.
+        writeln!(out, "if(pc.data.word=={pc})return body_{index}_{pc}(c,machine);return dispatch_{index}(c,machine,pc.data.word);}}").unwrap();
+    }
     functions[index] = Function {
         body: out,
         descriptor,
         selection: selected,
         named,
+        candidates,
     };
     Ok(index)
 }
@@ -234,6 +281,24 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
             ("fromStep:descriptor:selection:owner:", 4)
         };
         writeln!(out,"methods[{i}]=call(&c,named(&c,\"Method\"),\"{name}\",args,{count});A m=obj(methods[{i}]);call(&c,owner,\"retain:\",&m,1);}}").unwrap();
+    }
+    // Every baseline exists before candidate installation can invoke callbacks.
+    // Candidates are ordinary Methods owned by this Unit and traced by their
+    // baseline registration. No function-address registry or service import.
+    for (i, f) in functions
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| !f.candidates.is_empty())
+    {
+        writeln!(out, "{{O steps=call(&c,named(&c,\"Vector\"),\"new\",0,0);").unwrap();
+        for pc in &f.candidates {
+            writeln!(out, "{{A args[2]={{entry(candidate_{i}_{pc}),obj(owner)}};O method=call(&c,named(&c,\"Method\"),\"fromNative:owner:\",args,2);A m=obj(method);steps=call(&c,steps,\"add:\",&m,1);}}").unwrap();
+        }
+        writeln!(
+            out,
+            "A a=obj(steps);send(&c,methods[{i}],\"optimizeWith:\",&a,1);}}"
+        )
+        .unwrap();
     }
     out.push_str("return finish(&c,obj(methods[0]));}\nconst Module birnam_native_module_v1={1,sizeof(Module),initialize};\n");
     out.into_bytes()

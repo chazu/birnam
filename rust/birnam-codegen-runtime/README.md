@@ -36,6 +36,30 @@ Block and code Unit have distinct, explicit ownership. Top-level bindings publis
 through Namespace `at:put:`; nested bindings remain lexical. Values and errors use
 their current owners, with temporary generated values retained across callbacks.
 
+## Generated PC candidates
+
+For functions with 2–64 PCs and at most 256 KiB of emitted body text, Codegen also
+emits a native entry specialized for each PC. Larger functions and one-PC bodies
+keep the baseline dispatcher. Bodies are shared between the baseline and its
+candidates; specialization does not omit messages, allocations or Machine
+transitions. Each entry still reads its PC through current Integer `wordOf:`.
+If that conversion produces another PC, it dispatches that result just as the
+baseline does, without repeating the conversion.
+
+The Unit initializer creates all baseline Methods first, then constructs candidate
+Methods through current `Method fromNative:owner:` and attaches their Vector through
+`optimizeWith:`. These entries compile with the baseline in the same TCC Unit;
+there is no extra compiler in Execution or native service import. Execution owns
+the existing hot threshold, live guards and withdrawal. The baseline traces its
+candidate Methods, each of which retains the Unit. An entered candidate remains
+rooted independently of subsequent withdrawal.
+
+This establishes real compiler producers for the native selection path. It does
+not restore frame-region fusion, numeric chain/loop reuse or allocation-elision.
+Those still require their current-owner admission, accounting and recovery work.
+Candidate compilation and Method construction are eager and add cold-start cost;
+this functional acceptance makes no performance claim.
+
 The production tests cover literals, sends, threaded messages, conditional and
 nested capturing Blocks, named installation/replacement, failed compilation and
 initialization, collecting factories, captured Methods and suspended frames.
@@ -44,6 +68,12 @@ waiting frames release their mappings. A separately authored C candidate
 compiled by TCC recovers into a Codegen baseline, then removes its own binding and
 collects before returning. This proves the compiled recovery boundary and mapping
 lifetime; generated allocation-elision/deoptimization emitters remain separate.
+Generated candidates additionally run past the hot threshold, preserve ordinary
+Integer construction counts, observe replaced numeric methods and collecting
+conversions, and withdraw for changed Machine controls. Tests cover collection
+during candidate construction and after withdrawal while entered, captured values,
+bounded-emission fallback and failed candidate initialization. Actual Unit counts
+and relocated bytes return to zero after the final reference and checkpoint.
 
 The full Artifact/PortableCode language adapters, durable publication, embedding,
 Image, Store and CLI workflows are not accepted by these source compiler tests.
