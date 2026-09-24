@@ -1,1677 +1,437 @@
-//! Rust TCC dynamic rung.
-//!
-//! This crate owns the libtcc state machine and the generated-C callback
-//! boundary.  The object protocol is intentionally the same small surface as
-//! `birnam-tcc`; all calls into the host IdApi happen through short unsafe
-//! sections so no Rust borrow survives a foreign callback.
-
-#![allow(clippy::missing_safety_doc)]
-
+//! Native compilation owns mappings; Execution-owned Methods retain their Units.
 use birnam_abi::{
-    IdApi, Method, Oop, SLOT_OOP, SLOT_RAW, borrowed_oop_args,
-    foreign_address::{self, KIND_BORROWED},
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
-use birnam_native_compiler::{
-    TccState, tcc_add_file, tcc_add_library, tcc_add_library_path, tcc_add_symbol,
-    tcc_compile_string, tcc_delete, tcc_get_symbol, tcc_new, tcc_output_file, tcc_relocate,
-    tcc_set_error_func, tcc_set_output_type,
-};
-#[cfg(feature = "dev-guarded-slots")]
-use core::ffi::c_long;
-use core::ffi::{c_char, c_int, c_void};
-use core::mem::size_of;
-use core::ptr::{self, NonNull};
-use std::ffi::{CStr, CString};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock};
-
-#[cfg(feature = "resource-metrics")]
-mod resource_metrics;
-
-mod unit_cache;
-
-const RUST_TCC_IDENTITY: &[u8] = b"rust-tcc-n4.2-state\0";
-const TCC_NAME: &[u8] = b"Tcc\0";
-const TCC_VT_NAME: &[u8] = b"TccVt\0";
-const UNIT_VT_NAME: &[u8] = b"TccUnitVt\0";
-
-const TCC_OUTPUT_MEMORY: c_int = 1;
-const TCC_OUTPUT_EXE: c_int = 2;
-const TCC_OUTPUT_OBJ: c_int = 3;
-const TCC_OUTPUT_DLL: c_int = 4;
-static LIVE_UNIT_STATES: AtomicUsize = AtomicUsize::new(0);
-
-static VALIDATION_VEC_FACTORY: u8 = 0;
-
-unsafe extern "C" fn validation_foreign() -> i64 {
-    0
+use birnam_native_compiler::Unit;
+use core::{cell::RefCell, ffi::c_void};
+use std::{collections::HashMap, ffi::CString};
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-
-unsafe extern "C" fn validation_strlen(_value: *const c_char) -> i64 {
-    0
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
 }
-
-unsafe extern "C" fn validation_pointer(_value: *mut c_void) -> *mut c_void {
-    ptr::null_mut()
+fn done(v: Result<Operand, Outcome>) -> Outcome {
+    v.map_or_else(|e| e, Outcome::loaded)
 }
-
-unsafe extern "C" fn validation_small_int(_value: *mut c_void) -> i64 {
-    0
+struct Compiled {
+    native: Unit,
+    refs: Vec<Oop>,
+    result: Option<Oop>,
+    initializing: bool,
+    implementation: Option<Oop>,
 }
-
-unsafe extern "C" fn validation_float(_value: *mut c_void) -> f64 {
-    0.0
-}
-
-unsafe extern "C" fn validation_word(_value: *mut c_void) -> u64 {
-    0
-}
-
-unsafe extern "C" fn validation_cstr(_value: *mut c_void) -> *const c_char {
-    c"".as_ptr()
-}
-
-unsafe extern "C" fn validation_free_cstr(_value: *const c_char) {}
-
-unsafe extern "C" fn validation_make_string(_value: *const c_char, _length: i64) -> *mut c_void {
-    ptr::null_mut()
-}
-
-unsafe extern "C" fn validation_send(
-    _receiver: *mut c_void,
-    _selector: *mut c_void,
-    _args: *mut c_void,
-    _count: i64,
-) -> *mut c_void {
-    ptr::null_mut()
-}
-
-unsafe extern "C" fn validation_intern(_name: *const c_char) -> *mut c_void {
-    ptr::null_mut()
-}
-
-fn add_validation_symbol(state: *mut TccState, name: &[u8], value: *const c_void) -> bool {
-    let Ok(name) = CString::new(name) else {
-        return false;
-    };
-    // SAFETY: `name` owns a NUL-terminated symbol name and `value` is the
-    // address of a validation callback or static carrier retained for the
-    // whole TCC operation.
-    unsafe { tcc_add_symbol(state, name.as_ptr(), value) >= 0 }
-}
-
-/// Serializes validation compiles. libtcc carries process-global state across
-/// `tcc_new`/`tcc_relocate`/`tcc_delete`, so two of them running at once
-/// corrupts it and takes the process down with SIGSEGV — cargo runs a crate's
-/// tests in parallel threads, which made any suite holding two of these
-/// validation tests fail roughly one run in four. The lock lives here rather
-/// than in each caller so no test has to remember the constraint; validation
-/// compiles are rare enough that the contention is free.
-static VALIDATION_LOCK: Mutex<()> = Mutex::new(());
-
-/// Compile and relocate one generated unit for source-validation tests.
-///
-/// This uses the same embedded libtcc owner as the Rust TCC floor, but is not
-/// part of the object protocol and is never called by production Alien code.
-#[doc(hidden)]
-pub fn compile_source_for_validation(source: &[u8], foreign_name: &[u8]) -> bool {
-    // A poisoned lock only means another validation compile panicked; whatever
-    // libtcc state it held died with its TCCState, so resuming is safe.
-    let _guard = VALIDATION_LOCK
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let Ok(source) = CString::new(source) else {
-        return false;
-    };
-    let Some(state) = NonNull::new(unsafe { tcc_new() }) else {
-        return false;
-    };
-    let state = state.as_ptr();
-    let configured = unsafe {
-        tcc_set_error_func(state, ptr::null_mut(), Some(error_silent));
-        tcc_set_output_type(state, TCC_OUTPUT_MEMORY) >= 0
-            && tcc_compile_string(state, source.as_ptr()) >= 0
-    };
-    if !configured {
-        unsafe { tcc_delete(state) };
-        return false;
-    }
-
-    let mut symbols: Vec<(&[u8], *const c_void)> = vec![
-        (b"birnam_mkSmallInt", validation_pointer as *const c_void),
-        (
-            b"birnam_smallIntValue",
-            validation_small_int as *const c_void,
-        ),
-        (b"birnam_mkFloat", validation_pointer as *const c_void),
-        (b"birnam_floatValue", validation_float as *const c_void),
-        (b"birnam_mkWord", validation_pointer as *const c_void),
-        (b"birnam_wordValue", validation_word as *const c_void),
-        (
-            b"birnam_mkForeignAddress",
-            validation_pointer as *const c_void,
-        ),
-        (
-            b"birnam_foreignAddressValue",
-            validation_word as *const c_void,
-        ),
-        (
-            b"birnam_isForeignAddress",
-            validation_small_int as *const c_void,
-        ),
-        (b"birnam_uintValue", validation_word as *const c_void),
-        (b"birnam_cstr", validation_cstr as *const c_void),
-        (b"birnam_free_cstr", validation_free_cstr as *const c_void),
-        (b"birnam_mkString", validation_make_string as *const c_void),
-        (b"birnam_nil", validation_pointer as *const c_void),
-        (b"strlen", validation_strlen as *const c_void),
-        (b"birnam_send", validation_send as *const c_void),
-        (b"birnam_intern", validation_intern as *const c_void),
-        #[cfg(feature = "dev-guarded-slots")]
-        (
-            b"birnam_dev_frame_oop_at_v1",
-            validation_pointer as *const c_void,
-        ),
-        #[cfg(feature = "dev-guarded-slots")]
-        (
-            b"birnam_dev_frame_oop_at_put_v1",
-            validation_pointer as *const c_void,
-        ),
-        #[cfg(feature = "dev-guarded-slots")]
-        (
-            b"birnam_dev_frame_slot_get_v1",
-            validation_pointer as *const c_void,
-        ),
-        #[cfg(feature = "dev-guarded-slots")]
-        (
-            b"birnam_dev_frame_slot_put_v1",
-            validation_pointer as *const c_void,
-        ),
-    ];
-    symbols.push((
-        b"__vecFactory",
-        ptr::addr_of!(VALIDATION_VEC_FACTORY).cast(),
-    ));
-    symbols.push((foreign_name, validation_foreign as *const c_void));
-    let symbols_added = symbols
-        .into_iter()
-        .all(|(name, value)| add_validation_symbol(state, name, value));
-    let relocated = symbols_added
-        && unsafe { tcc_relocate(state) >= 0 }
-        && !unsafe { tcc_get_symbol(state, c"__shim".as_ptr()) }.is_null();
-    unsafe { tcc_delete(state) };
-    relocated
-}
-
-#[derive(Clone, Copy)]
-struct Runtime {
-    send: birnam_abi::language::Send,
-    method_owners: birnam_abi::method_owners::Api,
-    api: usize,
-    finalizers: usize,
-    layouts: usize,
-    hooks: usize,
-    roots: usize,
-    vtables: usize,
-    exports: usize,
-    presence: usize,
-    imports: usize,
-    tcc_vt: usize,
-    tcc: usize,
-    unit_vt: usize,
-}
-
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
-static NATIVE_COMPILER: AtomicUsize = AtomicUsize::new(0);
-
-unsafe extern "C" fn mark_runtime_roots(mark: birnam_abi::MarkFn) {
-    if let Some(runtime) = RUNTIME.get() {
-        for value in [runtime.tcc_vt, runtime.tcc, runtime.unit_vt] {
-            unsafe { mark(value as Oop) };
-        }
-    }
-}
-
-/// Resolve one private symbol from the exact selected floor image (the one
-/// that owns `api.dlsym`), keeping that floor `RTLD_LOCAL`. Answers 0 when the
-/// image or symbol cannot be found; the result is cached per call site.
-fn floor_symbol_address(
-    api: &IdApi,
-    symbol: &'static CStr,
-    address: &'static OnceLock<usize>,
-) -> usize {
-    let compiler = NATIVE_COMPILER.load(Ordering::Acquire) as *const birnam_abi::runtime_compiler::ApiV1;
-    if !compiler.is_null() && birnam_abi::runtime_compiler::SYMBOLS.contains(&symbol.to_bytes()) {
-        return *address.get_or_init(|| unsafe {
-            ((*compiler).resolve.unwrap())((*compiler).context, symbol.to_bytes().as_ptr(), symbol.to_bytes().len()).addr()
-        });
-    }
-    *address.get_or_init(|| {
-        // The selected floor owns this frozen function pointer. This cache
-        // retains the acquired reference even when the symbol is absent.
-        let handle = unsafe {
-            birnam_abi::private::native_library::open_containing(api, api.dlsym as *const () as *const c_void)
-        };
-        if handle.is_null() {
-            return 0;
-        }
-        unsafe { (api.dlsym)(handle, symbol.as_ptr()) as usize }
-    })
-}
-
-fn floor_registration(
-    api: &IdApi,
-    symbol: &'static CStr,
-    address: &'static OnceLock<usize>,
-) -> Option<unsafe extern "C" fn(*mut c_void) -> u32> {
-    let address = floor_symbol_address(api, symbol, address);
-    if address == 0 {
-        None
-    } else {
-        Some(unsafe {
-            core::mem::transmute::<usize, unsafe extern "C" fn(*mut c_void) -> u32>(address)
-        })
-    }
-}
-
-fn floor_retirement(
-    api: &IdApi,
-    symbol: &'static CStr,
-    address: &'static OnceLock<usize>,
-) -> Option<unsafe extern "C" fn(u64) -> u32> {
-    let address = floor_symbol_address(api, symbol, address);
-    if address == 0 {
-        None
-    } else {
-        Some(unsafe { core::mem::transmute::<usize, unsafe extern "C" fn(u64) -> u32>(address) })
-    }
-}
-
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum UnitPhase {
-    Created = 0,
-    Configured = 1,
-    Relocated = 2,
-    Installed = 3,
-    Disposable = 4,
-    Released = 5,
-}
-
-#[repr(C)]
-struct UnitPayload {
-    state: *mut TccState,
-    phase: UnitPhase,
-    code_generation_identity: u64,
-}
-
-fn abort(message: &str) -> ! {
-    eprintln!("birnam Rust TCC: {message}");
-    std::process::abort();
-}
-
-unsafe fn api_ref(runtime: &Runtime) -> &'static IdApi {
-    // SAFETY: native construction records the process-owned IdApi table and the host
-    // retains its floor dylib for the process lifetime.
-    unsafe { &*(runtime.api as *const IdApi) }
-}
-
-unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8]) -> Oop {
-    // SAFETY: all module names are static NUL-terminated strings.
-    unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn arg(args: *const Oop, count: usize, index: usize) -> Option<Oop> {
-    // SAFETY: the host owns the argument buffer for the duration of this
-    // method call; borrowed_oop_args validates the null/count exception.
-    unsafe { borrowed_oop_args(args, count)?.get(index).copied() }
-}
-
-unsafe fn string_arg(_api: &IdApi, object: Oop) -> Option<CString> {
-    let mut length = 0usize;
-    // SAFETY: the Oop is supplied by the host message ABI and the output slot
-    // is valid for the duration of this call.
-    let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
-    if length != 0 && bytes.is_null() {
-        return None;
-    }
-    // SAFETY: stringBytes promises a readable byte span for the reported size.
-    let slice = unsafe { core::slice::from_raw_parts(bytes, length) };
-    CString::new(slice).ok()
-}
-
-unsafe fn unit_payload(object: Oop) -> Option<*mut UnitPayload> {
-    if object.is_null() {
-        return None;
-    }
-    Some(object.cast::<UnitPayload>())
-}
-
-unsafe fn unit_snapshot(object: Oop) -> Option<(*mut TccState, UnitPhase)> {
-    let payload = unsafe { unit_payload(object)? };
-    // SAFETY: Unit objects are allocated with this exact raw payload layout.
-    Some(unsafe { ((*payload).state, (*payload).phase) })
-}
-
-unsafe fn release_payload(payload: *mut UnitPayload) {
-    if let Some(runtime) = RUNTIME.get() { unsafe { (runtime.method_owners.forget)(payload.cast()) }; }
-    unit_cache::forget(payload.cast());
-    // SAFETY: the finalizer owns the one-way transition and clears the pointer
-    // before calling foreign code, so a repeated finalizer cannot double free.
-    let state = unsafe { (*payload).state };
-    unsafe {
-        (*payload).state = ptr::null_mut();
-        (*payload).phase = UnitPhase::Released;
-    }
-    unsafe { release_native_state(state) };
-}
-
-unsafe fn release_native_state(state: *mut TccState) {
-    if !state.is_null() {
-        // SAFETY: state came from tcc_new and has not previously been deleted.
-        #[cfg(feature = "resource-metrics")]
-        unsafe {
-            resource_metrics::releasing(state)
-        };
-        unsafe { tcc_delete(state) };
-        LIVE_UNIT_STATES.fetch_sub(1, Ordering::AcqRel);
-    }
-}
-
-unsafe extern "C" fn error_silent(_opaque: *mut c_void, _message: *const c_char) {}
-
-unsafe fn new_unit(api: &IdApi, runtime: &Runtime) -> Oop {
-    // SAFETY: libtcc returns an owned state or null.
-    let state = unsafe { tcc_new() };
-    if state.is_null() {
-        return api.nilObj;
-    }
-    // SAFETY: state is live and the callback has no borrowed Rust state.
-    unsafe {
-        tcc_set_error_func(state, ptr::null_mut(), Some(error_silent));
-        if tcc_set_output_type(state, TCC_OUTPUT_MEMORY) < 0 {
-            tcc_delete(state);
-            return api.nilObj;
-        }
-    }
-    // SAFETY: the selected unit vtable is a live Birnam object and the raw
-    // payload is initialized before the object can be observed.
-    let object = unsafe { (api.alloc)(runtime.unit_vt as Oop, size_of::<UnitPayload>()) };
-    if object.is_null() {
-        // SAFETY: state is still owned by this constructor.
-        unsafe { tcc_delete(state) };
-        return api.nilObj;
-    }
-    let payload = object.cast::<UnitPayload>();
-    // SAFETY: alloc returned storage of the requested size and alignment.
-    unsafe {
-        ptr::write(
-            payload,
-            UnitPayload {
-                state,
-                phase: UnitPhase::Created,
-                code_generation_identity: 0,
-            },
-        );
-    }
-    LIVE_UNIT_STATES.fetch_add(1, Ordering::AcqRel);
-    object
-}
-
-unsafe extern "C" fn m_live_unit_count(_self_object: Oop, _args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let value = LIVE_UNIT_STATES.load(Ordering::Acquire);
-    unsafe { (birnam_abi::integer::make)(value as i64) }
-}
-
-unsafe fn fail_unit(api: &IdApi, object: Oop) -> Oop {
-    if let Some(payload) = unsafe { unit_payload(object) } {
-        unsafe { release_payload(payload) };
-    }
-    api.nilObj
-}
-
-unsafe fn configured_state(object: Oop) -> Option<*mut TccState> {
-    let (state, phase) = unsafe { unit_snapshot(object)? };
-    if state.is_null()
-        || matches!(
-            phase,
-            UnitPhase::Relocated
-                | UnitPhase::Installed
-                | UnitPhase::Disposable
-                | UnitPhase::Released
-        )
-    {
-        return None;
-    }
-    Some(state)
-}
-
-unsafe fn relocated_state(object: Oop) -> Option<*mut TccState> {
-    let (state, phase) = unsafe { unit_snapshot(object)? };
-    if state.is_null() || !matches!(phase, UnitPhase::Relocated | UnitPhase::Installed) {
-        return None;
-    }
-    Some(state)
-}
-
-unsafe extern "C" fn m_new(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let _ = self_object;
-    unsafe { new_unit(api, runtime) }
-}
-
-unsafe extern "C" fn m_compile(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let Some(source_object) = (unsafe { arg(args, count, 0) }) else {
-        return api.nilObj;
-    };
-    let unit = unsafe { new_unit(api, runtime) };
-    if unit == api.nilObj {
-        return unit;
-    }
-    if unsafe { m_compile_into(unit, source_object, api) } == api.nilObj {
-        return unsafe { fail_unit(api, unit) };
-    }
-    // SAFETY: the staged unit owns its state and relocation is the one-way
-    // transition exercised by the public method below.
-    unsafe { m_relocate(unit, ptr::null(), 0) }
-}
-
-unsafe fn m_compile_into(unit: Oop, source_object: Oop, api: &IdApi) -> Oop {
-    let Some(state) = (unsafe { configured_state(unit) }) else {
-        return api.nilObj;
-    };
-    let Some(source) = (unsafe { string_arg(api, source_object) }) else {
-        return api.nilObj;
-    };
-    // SAFETY: CString owns the NUL-terminated source for the duration of TCC.
-    if unsafe { tcc_compile_string(state, source.as_ptr()) } < 0 {
-        return api.nilObj;
-    }
-    if let Some(payload) = unsafe { unit_payload(unit) } {
-        // SAFETY: no foreign call is active while this phase byte is changed.
-        unsafe { (*payload).phase = UnitPhase::Configured };
-    }
-    unit
-}
-
-unsafe extern "C" fn m_compile_into_method(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let Some(source_object) = (unsafe { arg(args, count, 0) }) else {
-        return api.nilObj;
-    };
-    unsafe { m_compile_into(self_object, source_object, api) }
-}
-
-unsafe fn path_method(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-    api: &IdApi,
-    operation: unsafe extern "C" fn(*mut TccState, *const c_char) -> c_int,
-) -> Oop {
-    let Some(argument) = (unsafe { arg(args, count, 0) }) else {
-        return api.nilObj;
-    };
-    let Some(state) = (unsafe { configured_state(self_object) }) else {
-        return api.nilObj;
-    };
-    let Some(path) = (unsafe { string_arg(api, argument) }) else {
-        return api.nilObj;
-    };
-    // SAFETY: path owns the NUL-terminated value and state is in a mutable
-    // pre-relocation phase.
-    if unsafe { operation(state, path.as_ptr()) } < 0 {
-        api.nilObj
-    } else {
-        if let Some(payload) = unsafe { unit_payload(self_object) } {
-            // SAFETY: phase transition happens after the foreign call returns.
-            unsafe { (*payload).phase = UnitPhase::Configured };
-        }
-        self_object
-    }
-}
-
-unsafe extern "C" fn m_add_library(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    unsafe { path_method(self_object, args, count, api, tcc_add_library) }
-}
-
-unsafe extern "C" fn m_add_library_path(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    unsafe { path_method(self_object, args, count, api, tcc_add_library_path) }
-}
-
-unsafe extern "C" fn m_add_file(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    unsafe { path_method(self_object, args, count, api, tcc_add_file) }
-}
-
-unsafe extern "C" fn m_relocate(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let Some((state, phase)) = (unsafe { unit_snapshot(self_object) }) else {
-        return api.nilObj;
-    };
-    if state.is_null()
-        || matches!(
-            phase,
-            UnitPhase::Created | UnitPhase::Disposable | UnitPhase::Released
-        )
-    {
-        return api.nilObj;
-    }
-    if matches!(phase, UnitPhase::Relocated | UnitPhase::Installed) {
-        return self_object;
-    }
-    // SAFETY: this is the one-way libtcc relocation transition.
-    #[cfg(feature = "resource-metrics")]
-    let relocated = unsafe { resource_metrics::relocate(state) };
-    #[cfg(not(feature = "resource-metrics"))]
-    let relocated = unsafe { tcc_relocate(state) };
-    if relocated < 0 {
-        return api.nilObj;
-    }
-    // Generated methods can be published only after relocation. Complete their
-    // Unit reference now, so ordinary source Blocks use the same binding and
-    // reflection ownership as explicit portable materializations.
-    let owner = unsafe { tcc_get_symbol(state, c"__birnam_native_unit".as_ptr()) };
-    if !owner.is_null() {
-        unsafe { owner.cast::<Oop>().write(self_object) };
-    }
-    if let Some(payload) = unsafe { unit_payload(self_object) } {
-        // SAFETY: no foreign call is active while the phase byte changes.
-        unsafe { (*payload).phase = UnitPhase::Relocated };
-    }
-    self_object
-}
-
-unsafe extern "C" fn m_add_symbol(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let (Some(name_object), Some(address_object)) = (unsafe { arg(args, count, 0) }, unsafe {
-        arg(args, count, 1)
-    }) else {
-        return api.nilObj;
-    };
-    let Some(state) = (unsafe { configured_state(self_object) }) else {
-        return api.nilObj;
-    };
-    let Some(name) = (unsafe { string_arg(api, name_object) }) else {
-        return api.nilObj;
-    };
-    let Some((address, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), address_object) }) else {
-        return api.nilObj;
-    };
-    // SAFETY: name owns the C string and state is pre-relocation.
-    if unsafe { tcc_add_symbol(state, name.as_ptr(), address as *const c_void) } < 0 {
-        api.nilObj
-    } else {
-        if let Some(payload) = unsafe { unit_payload(self_object) } {
-            // SAFETY: phase transition happens after the foreign call returns.
-            unsafe { (*payload).phase = UnitPhase::Configured };
-        }
-        self_object
-    }
-}
-
-unsafe extern "C" fn m_install(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let (Some(name_object), Some(selector), Some(target)) = (
-        unsafe { arg(args, count, 0) },
-        unsafe { arg(args, count, 1) },
-        unsafe { arg(args, count, 2) },
-    ) else {
-        return api.nilObj;
-    };
-    let Some(state) = (unsafe { relocated_state(self_object) }) else {
-        return api.nilObj;
-    };
-    let Some(name) = (unsafe { string_arg(api, name_object) }) else {
-        return api.nilObj;
-    };
-    // SAFETY: name remains live through symbol lookup.
-    let symbol = unsafe { tcc_get_symbol(state, name.as_ptr()) };
-    if symbol.is_null() {
-        return api.nilObj;
-    }
-    // SAFETY: the generated function has the frozen Method ABI.
-    let method: Method = unsafe { core::mem::transmute(symbol) };
-    // SAFETY: these IdApi calls are the host's canonical vtable mutation path;
-    // no Rust reference is held across either callback.
-    let private_vtable = unsafe { birnam_abi::ensure_private_vtable(api, target) };
-    if unsafe { (runtime.method_owners.register)(symbol, self_object) } != 1 {
-        return api.nilObj;
-    }
-    unsafe { (api.method)(private_vtable, selector, method) };
-    if let Some(payload) = unsafe { unit_payload(self_object) } {
-        // SAFETY: the unit remains live and no foreign call is active.
-        unsafe { (*payload).phase = UnitPhase::Installed };
-    }
-    private_vtable
-}
-
-unsafe extern "C" fn unit_finalize(object: Oop) {
-    unsafe { (RUNTIME.get().expect("TCC initialized").method_owners.forget)(object) };
-    if let Some(payload) = unsafe { unit_payload(object) } {
-        unit_cache::forget(object);
-        let state = unsafe { (*payload).state };
-        let generation = unsafe { (*payload).code_generation_identity };
-        unsafe {
-            (*payload).state = ptr::null_mut();
-            (*payload).phase = UnitPhase::Released;
-            (*payload).code_generation_identity = 0;
-        }
-        if state.is_null() {
-            return;
-        }
-        // The collector frees `object` after this callback. The queue owns only
-        // detached native state, and never reads or resurrects that payload.
-        let record = Box::into_raw(Box::new(RetiredUnit { state, generation }));
-        static QUEUE: OnceLock<usize> = OnceLock::new();
-        let api = unsafe { api_ref(RUNTIME.get().expect("TCC initialized")) };
-        let address = floor_symbol_address(api, c"birnam_execution_queue_retirement_v1", &QUEUE);
-        if address == 0 { abort("Execution retirement queue unavailable"); }
-        let queue: birnam_abi::private::QueueNativeRetirementFn = unsafe { core::mem::transmute(address) };
-        unsafe { queue(record.cast(), release_retired_unit) };
-    }
-}
-
-struct RetiredUnit {
-    state: *mut TccState,
-    generation: u64,
-}
-
-unsafe extern "C" fn release_retired_unit(context: *mut c_void) -> u32 {
-    let record = unsafe { &*context.cast::<RetiredUnit>() };
-    if record.generation != 0 {
-        static ADDRESS: OnceLock<usize> = OnceLock::new();
-        let api = unsafe { api_ref(RUNTIME.get().expect("TCC initialized")) };
-        let Some(retire) = floor_retirement(api, c"birnam_id_retire_stackless_code_generation_v1", &ADDRESS)
-        else { abort("portable TCC generation retirement seam is unavailable"); };
-        if unsafe { retire(record.generation) } != 1 { return 0; }
-    }
-    let record = unsafe { Box::from_raw(context.cast::<RetiredUnit>()) };
-    unsafe { release_native_state(record.state) };
-    1
-}
-
-unsafe extern "C" fn m_own_code_generation(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let Some(identity) = (unsafe { arg(args, count, 0) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(identity) } == 0 {
-        return api.nilObj;
-    }
-    let identity = unsafe { (birnam_abi::integer::value)(identity) };
-    if identity <= 0 {
-        return api.nilObj;
-    }
-    let Some(payload) = (unsafe { unit_payload(self_object) }) else {
-        return api.nilObj;
-    };
-    let phase = unsafe { (*payload).phase };
-    if phase != UnitPhase::Relocated || unsafe { (*payload).code_generation_identity } != 0 {
-        return api.nilObj;
-    }
-    unsafe { (*payload).code_generation_identity = identity as u64 };
-    self_object
-}
-
-unsafe extern "C" fn m_disposable(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let Some((state, phase)) = (unsafe { unit_snapshot(self_object) }) else {
-        return api.nilObj;
-    };
-    if state.is_null()
-        || matches!(
-            phase,
-            UnitPhase::Disposable | UnitPhase::Released
-        )
-    {
-        return api.nilObj;
-    }
-    if let Some(payload) = unsafe { unit_payload(self_object) } {
-        // SAFETY: the finalizer is registered before this unit is returned to
-        // Birnam and it performs the one-way release transition.
-        unsafe {
-            (*payload).phase = UnitPhase::Disposable;
-            birnam_abi::finalizers::set(runtime.finalizers as *const birnam_abi::finalizers::ApiV1, self_object, unit_finalize);
-        }
-    }
-    self_object
-}
-
-unsafe extern "C" fn m_symbol(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let Some(name_object) = (unsafe { arg(args, count, 0) }) else {
-        return api.nilObj;
-    };
-    let Some(state) = (unsafe { relocated_state(self_object) }) else {
-        return api.nilObj;
-    };
-    let Some(name) = (unsafe { string_arg(api, name_object) }) else {
-        return api.nilObj;
-    };
-    // SAFETY: name owns the NUL-terminated lookup key.
-    let symbol = unsafe { tcc_get_symbol(state, name.as_ptr()) };
-    if symbol.is_null() {
-        api.nilObj
-    } else {
-        unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), symbol as usize, KIND_BORROWED) }
-            .unwrap_or(api.nilObj)
-    }
-}
-
-fn output_type(api: &IdApi, object: Oop) -> Option<c_int> {
-    // SAFETY: vtableOf and symbolName are read-only IdApi queries.
-    if unsafe { (api.vtableOf)(object) } != api.symbol_vt {
-        return None;
-    }
-    let name = unsafe { CStr::from_ptr((api.symbolName)(object)) };
-    match name.to_bytes() {
-        b"dll" => Some(TCC_OUTPUT_DLL),
-        b"obj" => Some(TCC_OUTPUT_OBJ),
-        b"exe" => Some(TCC_OUTPUT_EXE),
-        _ => None,
-    }
-}
-
-unsafe extern "C" fn m_compile_output(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let (Some(source_object), Some(path_object), Some(kind)) = (
-        unsafe { arg(args, count, 0) },
-        unsafe { arg(args, count, 1) },
-        unsafe { arg(args, count, 2) },
-    ) else {
-        return api.nilObj;
-    };
-    let Some(output) = output_type(api, kind) else {
-        return api.nilObj;
-    };
-    let Some(source) = (unsafe { string_arg(api, source_object) }) else {
-        return api.nilObj;
-    };
-    let Some(path) = (unsafe { string_arg(api, path_object) }) else {
-        return api.nilObj;
-    };
-    // SAFETY: the new state is owned until output succeeds or the error path
-    // deletes it immediately.
-    let state = unsafe { tcc_new() };
-    if state.is_null() {
-        return api.nilObj;
-    }
-    unsafe {
-        tcc_set_error_func(state, ptr::null_mut(), Some(error_silent));
-        if tcc_set_output_type(state, output) < 0
-            || tcc_compile_string(state, source.as_ptr()) < 0
-            || tcc_output_file(state, path.as_ptr()) < 0
-        {
-            tcc_delete(state);
-            return api.nilObj;
-        }
-        tcc_delete(state);
-    }
-    path_object
-}
-
-// -- generated-C runtime symbols -------------------------------------------
-
-#[unsafe(export_name = "birnam_send")]
-pub unsafe extern "C" fn rt_send(
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    gc: Oop,
+    model: Oop,
     receiver: Oop,
-    selector: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (runtime.send)(receiver, selector, args, count) }
+    unit_vt: Oop,
+    permanent: Vec<Oop>,
+    units: RefCell<HashMap<usize, Compiled>>,
+    retired: RefCell<Vec<Unit>>,
+    thread: std::thread::ThreadId,
 }
-
-/// Forward the private registration ABI into the exact selected floor while
-/// keeping that floor `RTLD_LOCAL`, like every other generated-C runtime shim.
-#[unsafe(export_name = "birnam_register_resumable_v1")]
-pub unsafe extern "C" fn rt_register_resumable_v1(envelope: *mut c_void) -> u32 {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let Some(register) = floor_registration(
-        unsafe { api_ref(runtime) },
-        c"birnam_register_resumable_v1",
-        &ADDRESS,
-    ) else {
-        return 1;
-    };
-    unsafe { register(envelope) }
+struct Scope<'a> {
+    s: &'a State,
+    tokens: RefCell<Vec<usize>>,
 }
-
-/// Design 74 E1 (development-only): forward the guarded direct slot read to
-/// the selected floor. Answers 0 (ineligible) when the floor export is absent,
-/// so a candidate unit always still has its ordinary send fallback.
-#[cfg(feature = "dev-guarded-slots")]
-#[unsafe(export_name = "birnam_dev_frame_oop_at_v1")]
-pub unsafe extern "C" fn rt_dev_frame_oop_at_v1(machine: Oop, operand: Oop, out: *mut Oop) -> u32 {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_dev_frame_oop_at_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        return 0;
-    }
-    let forward = unsafe {
-        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, Oop, *mut Oop) -> u32>(address)
-    };
-    unsafe { forward(machine, operand, out) }
-}
-
-/// Design 74 E1 (development-only): write form of `birnam_dev_frame_oop_at_v1`.
-#[cfg(feature = "dev-guarded-slots")]
-#[unsafe(export_name = "birnam_dev_frame_oop_at_put_v1")]
-pub unsafe extern "C" fn rt_dev_frame_oop_at_put_v1(
-    machine: Oop,
-    operand: Oop,
-    value: Oop,
-    out: *mut Oop,
-) -> u32 {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_dev_frame_oop_at_put_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        return 0;
-    }
-    let forward = unsafe {
-        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, Oop, Oop, *mut Oop) -> u32>(address)
-    };
-    unsafe { forward(machine, operand, value, out) }
-}
-
-/// Design 74D E4 (development-only): unboxed-index slot read; the floor
-/// performs the fallback send itself, so this always answers an Oop.
-#[cfg(feature = "dev-guarded-slots")]
-#[unsafe(export_name = "birnam_dev_frame_slot_get_v1")]
-pub unsafe extern "C" fn rt_dev_frame_slot_get_v1(machine: Oop, index: c_long) -> Oop {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_dev_frame_slot_get_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        abort("dev slot access floor symbol unavailable");
-    }
-    let forward =
-        unsafe { core::mem::transmute::<usize, unsafe extern "C" fn(Oop, c_long) -> Oop>(address) };
-    unsafe { forward(machine, index) }
-}
-
-/// Design 74D E4 (development-only): write form of `birnam_dev_frame_slot_get_v1`.
-#[cfg(feature = "dev-guarded-slots")]
-#[unsafe(export_name = "birnam_dev_frame_slot_put_v1")]
-pub unsafe extern "C" fn rt_dev_frame_slot_put_v1(machine: Oop, index: c_long, value: Oop) -> Oop {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_dev_frame_slot_put_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        abort("dev slot access floor symbol unavailable");
-    }
-    let forward = unsafe {
-        core::mem::transmute::<usize, unsafe extern "C" fn(Oop, c_long, Oop) -> Oop>(address)
-    };
-    unsafe { forward(machine, index, value) }
-}
-
-/// Append-only registration-v2 forwarding for portable Block capture layout.
-#[unsafe(export_name = "birnam_register_resumable_v2")]
-pub unsafe extern "C" fn rt_register_resumable_v2(envelope: *mut c_void) -> u32 {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let Some(register) = floor_registration(
-        unsafe { api_ref(runtime) },
-        c"birnam_register_resumable_v2",
-        &ADDRESS,
-    ) else {
-        return 1;
-    };
-    unsafe { register(envelope) }
-}
-
-/// Generated adapters retain the exact method selected by lookup. This bridge
-/// follows the registration owner while the runtime is being separated from Id.
-#[unsafe(export_name = "birnam_enter_resumable_v1")]
-pub unsafe extern "C" fn rt_enter_resumable_v1(
-    method: Method,
-    receiver: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    static ADDRESS: OnceLock<usize> = OnceLock::new();
-    let runtime = RUNTIME.get().unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let address = floor_symbol_address(
-        unsafe { api_ref(runtime) },
-        c"birnam_enter_resumable_v1",
-        &ADDRESS,
-    );
-    if address == 0 {
-        abort("exact resumable entry unavailable");
-    }
-    let enter: unsafe extern "C" fn(Method, Oop, *const Oop, usize) -> Oop =
-        unsafe { core::mem::transmute(address) };
-    unsafe { enter(method, receiver, args, count) }
-}
-
-#[unsafe(export_name = "birnam_intern")]
-pub unsafe extern "C" fn rt_intern(name: *const c_char) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).intern)(name) }
-}
-
-#[unsafe(export_name = "birnam_mkSmallInt")]
-pub unsafe extern "C" fn rt_mk_small_int(value: i64) -> Oop {
-    let _runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (birnam_abi::integer::make)(value) }
-}
-
-#[unsafe(export_name = "birnam_smallIntValue")]
-pub unsafe extern "C" fn rt_small_int_value(object: Oop) -> i64 {
-    let _runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (birnam_abi::integer::value)(object) }
-}
-
-#[unsafe(export_name = "birnam_mkFloat")]
-pub unsafe extern "C" fn rt_mk_float(value: f64) -> Oop {
-    let _runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (birnam_abi::float::make)(value) }
-}
-
-#[unsafe(export_name = "birnam_floatValue")]
-pub unsafe extern "C" fn rt_float_value(object: Oop) -> f64 {
-    let _runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (birnam_abi::float::value)(object) }
-}
-
-#[unsafe(export_name = "birnam_mkWord")]
-pub unsafe extern "C" fn rt_mk_word(value: u64) -> Oop {
-    let _runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (birnam_abi::word::make)(value) }
-}
-
-#[unsafe(export_name = "birnam_wordValue")]
-pub unsafe extern "C" fn rt_word_value(object: Oop) -> u64 {
-    let _runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (birnam_abi::word::value)(object) }
-}
-
-#[unsafe(export_name = "birnam_mkForeignAddress")]
-pub unsafe extern "C" fn rt_mk_foreign_address(value: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), value, KIND_BORROWED) }.unwrap_or(api.nilObj)
-}
-
-#[unsafe(export_name = "birnam_foreignAddressValue")]
-pub unsafe extern "C" fn rt_foreign_address_value(object: Oop) -> usize {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { foreign_address::value(api_ref(runtime), execution_imports(), execution_vtables(), object) }
-        .map(|(address, _kind)| address)
-        .unwrap_or(0)
-}
-
-#[unsafe(export_name = "birnam_isForeignAddress")]
-pub unsafe extern "C" fn rt_is_foreign_address(object: Oop) -> i64 {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    i64::from(unsafe { foreign_address::value(api_ref(runtime), execution_imports(), execution_vtables(), object) }.is_some())
-}
-
-#[unsafe(export_name = "birnam_uintValue")]
-pub unsafe extern "C" fn rt_uint_value(object: Oop) -> u64 {
-    let _runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    if unsafe { (birnam_abi::word::is_word)(object) } != 0 {
-        unsafe { (birnam_abi::word::value)(object) }
-    } else {
-        unsafe { (birnam_abi::integer::value)(object) as u64 }
+impl Scope<'_> {
+    unsafe fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
+        let t = unsafe {
+            self.s
+                .id
+                .send_named(self.s.roots, b"retain:", &[Operand::object(o)])
+        }?
+        .as_word()
+        .ok_or_else(invalid)?;
+        self.tokens.borrow_mut().push(t);
+        Ok(o)
     }
 }
-
-#[unsafe(export_name = "birnam_mkString")]
-pub unsafe extern "C" fn rt_mk_string(bytes: *const u8, length: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    if length != 0 && bytes.is_null() {
-        return api.nilObj;
-    }
-    unsafe { (birnam_abi::string::make)(bytes, length) }
-}
-
-#[unsafe(export_name = "birnam_nil")]
-pub unsafe extern "C" fn rt_nil() -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { api_ref(runtime) }.nilObj
-}
-
-#[unsafe(export_name = "birnam_true")]
-pub unsafe extern "C" fn rt_true() -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { api_ref(runtime) }.trueObj
-}
-
-#[unsafe(export_name = "birnam_false")]
-pub unsafe extern "C" fn rt_false() -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { api_ref(runtime) }.falseObj
-}
-
-#[unsafe(export_name = "birnam_objectVt")]
-pub unsafe extern "C" fn rt_object_vt() -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { api_ref(runtime) }.object_vt
-}
-
-#[unsafe(export_name = "birnam_blockVt")]
-pub unsafe extern "C" fn rt_block_vt() -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let block = unsafe { import(execution_imports(), b"BlockVt\0") };
-    if block.is_null() {
-        api.object_vt
-    } else {
-        block
-    }
-}
-
-#[unsafe(export_name = "birnam_proto")]
-pub unsafe extern "C" fn rt_proto(parent: Oop) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { (api_ref(runtime).proto)(parent) }
-}
-
-#[unsafe(export_name = "birnam_ensurePrivateVtable")]
-pub unsafe extern "C" fn rt_ensure_private_vtable(object: Oop) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { birnam_abi::ensure_private_vtable(api_ref(runtime), object) }
-}
-
-#[unsafe(export_name = "birnam_method")]
-pub unsafe extern "C" fn rt_method(vtable: Oop, selector: Oop, function: *mut c_void) {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    // SAFETY: generated code supplies the frozen Method ABI.
-    let method: Method = unsafe { core::mem::transmute(function) };
-    unsafe { (api_ref(runtime).method)(vtable, selector, method) };
-}
-
-/// Publish a generated function together with its already live TCC Unit.
-/// # Safety
-/// Generated code supplies a Method function and its actual owning Unit.
-#[unsafe(export_name = "birnam_owned_method")]
-pub unsafe extern "C" fn rt_owned_method(vtable: Oop, selector: Oop, function: *mut c_void, owner: Oop) {
-    unsafe { rt_register_method_owner(function, owner); rt_method(vtable, selector, function); }
-}
-
-/// # Safety
-/// The generated Method function belongs to this live Unit.
-#[unsafe(export_name = "birnam_register_method_owner")]
-pub unsafe extern "C" fn rt_register_method_owner(function: *mut c_void, owner: Oop) {
-    let runtime = RUNTIME.get().expect("TCC initialized");
-    if unsafe { (runtime.method_owners.register)(function, owner) } != 1 {
-        abort("generated method owner registration failed");
-    }
-}
-
-/// # Safety
-/// The caller supplies a live language object.
-#[unsafe(export_name = "birnam_block_captures_valid")]
-pub unsafe extern "C" fn rt_block_captures_valid(object: Oop, count: usize) -> c_int {
-    let runtime = RUNTIME.get().expect("TCC initialized");
-    let api = unsafe { api_ref(runtime) };
-    let Some(bytes) = count.checked_add(1).and_then(|words| words.checked_mul(size_of::<Oop>())) else { return 0; };
-    if unsafe { (api.objectPayloadSize)(object) } < bytes { return 0; }
-    let behavior = unsafe { (api.vtableOf)(object) };
-    // A payload of the right size may contain bytes or native pointers. Only
-    // traced object slots can supply a generated Block's captured values.
-    i32::from((1..=count).all(|word| unsafe {
-        birnam_abi::payload_layout::slot_kind(runtime.layouts as *const _, behavior, word) == SLOT_OOP
-    }))
-}
-
-#[unsafe(export_name = "birnam_alloc")]
-pub unsafe extern "C" fn rt_alloc(vtable: Oop, bytes: i64) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    if bytes < 0 {
-        return unsafe { api_ref(runtime) }.nilObj;
-    }
-    unsafe { (api_ref(runtime).alloc)(vtable, bytes as usize) }
-}
-
-#[unsafe(export_name = "birnam_cstr")]
-pub unsafe extern "C" fn rt_cstr(object: Oop) -> *mut c_char {
-    unsafe extern "C" {
-        fn malloc(size: usize) -> *mut c_void;
-    }
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let _api = unsafe { api_ref(runtime) };
-    let mut length = 0usize;
-    let bytes = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
-    if length != 0 && bytes.is_null() {
-        return ptr::null_mut();
-    }
-    // SAFETY: stringBytes provides the reported readable span.
-    let slice = unsafe { core::slice::from_raw_parts(bytes, length) };
-    let output = unsafe { malloc(length + 1) }.cast::<u8>();
-    if output.is_null() {
-        return ptr::null_mut();
-    }
-    // SAFETY: malloc returned at least length + 1 bytes.
-    unsafe {
-        ptr::copy_nonoverlapping(slice.as_ptr(), output, length);
-        *output.add(length) = 0;
-    }
-    output.cast::<c_char>()
-}
-
-#[unsafe(export_name = "birnam_free_cstr")]
-pub unsafe extern "C" fn rt_free_cstr(pointer: *mut c_char) {
-    unsafe extern "C" {
-        fn free(pointer: *mut c_void);
-    }
-    if !pointer.is_null() {
-        // SAFETY: pointer came from rt_cstr's malloc.
-        unsafe { free(pointer.cast()) };
-    }
-}
-
-#[unsafe(export_name = "birnam_layoutAllOops")]
-pub unsafe extern "C" fn rt_layout_all_oops(vtable: Oop) {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    unsafe { birnam_abi::payload_layout::set(runtime.layouts as *const birnam_abi::payload_layout::ApiV1, vtable, ptr::null(), 0, SLOT_OOP) };
-}
-
-struct RuntimeSymbol {
-    name: &'static [u8],
-    address: *const c_void,
-}
-
-// Raw function addresses are process-lifetime constants; the table is only
-// consumed by tcc_add_symbol before a unit is relocated.
-unsafe impl Sync for RuntimeSymbol {}
-
-static RUNTIME_SYMBOLS: &[RuntimeSymbol] = &[
-    #[cfg(feature = "dev-guarded-slots")]
-    RuntimeSymbol {
-        name: b"birnam_dev_frame_oop_at_v1\0",
-        address: rt_dev_frame_oop_at_v1 as *const c_void,
-    },
-    #[cfg(feature = "dev-guarded-slots")]
-    RuntimeSymbol {
-        name: b"birnam_dev_frame_oop_at_put_v1\0",
-        address: rt_dev_frame_oop_at_put_v1 as *const c_void,
-    },
-    #[cfg(feature = "dev-guarded-slots")]
-    RuntimeSymbol {
-        name: b"birnam_dev_frame_slot_get_v1\0",
-        address: rt_dev_frame_slot_get_v1 as *const c_void,
-    },
-    #[cfg(feature = "dev-guarded-slots")]
-    RuntimeSymbol {
-        name: b"birnam_dev_frame_slot_put_v1\0",
-        address: rt_dev_frame_slot_put_v1 as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_send\0",
-        address: rt_send as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_enter_resumable_v1\0",
-        address: rt_enter_resumable_v1 as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_intern\0",
-        address: rt_intern as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_mkSmallInt\0",
-        address: rt_mk_small_int as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_smallIntValue\0",
-        address: rt_small_int_value as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_mkFloat\0",
-        address: rt_mk_float as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_floatValue\0",
-        address: rt_float_value as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_mkWord\0",
-        address: rt_mk_word as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_wordValue\0",
-        address: rt_word_value as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_mkForeignAddress\0",
-        address: rt_mk_foreign_address as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_foreignAddressValue\0",
-        address: rt_foreign_address_value as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_isForeignAddress\0",
-        address: rt_is_foreign_address as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_uintValue\0",
-        address: rt_uint_value as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_mkString\0",
-        address: rt_mk_string as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_nil\0",
-        address: rt_nil as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_true\0",
-        address: rt_true as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_false\0",
-        address: rt_false as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_objectVt\0",
-        address: rt_object_vt as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_blockVt\0",
-        address: rt_block_vt as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_proto\0",
-        address: rt_proto as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_ensurePrivateVtable\0",
-        address: rt_ensure_private_vtable as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_method\0",
-        address: rt_method as *const c_void,
-    },
-    RuntimeSymbol { name: b"birnam_owned_method\0", address: rt_owned_method as *const c_void },
-    RuntimeSymbol { name: b"birnam_register_method_owner\0", address: rt_register_method_owner as *const c_void },
-    RuntimeSymbol { name: b"birnam_block_captures_valid\0", address: rt_block_captures_valid as *const c_void },
-    RuntimeSymbol {
-        name: b"birnam_alloc\0",
-        address: rt_alloc as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_cstr\0",
-        address: rt_cstr as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_free_cstr\0",
-        address: rt_free_cstr as *const c_void,
-    },
-    RuntimeSymbol {
-        name: b"birnam_layoutAllOops\0",
-        address: rt_layout_all_oops as *const c_void,
-    },
-];
-
-unsafe extern "C" fn m_bind_runtime(self_object: Oop, _args: *const Oop, _count: usize) -> Oop {
-    let runtime = RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("TCC runtime was not initialized"));
-    let api = unsafe { api_ref(runtime) };
-    let Some(state) = (unsafe { configured_state(self_object) }) else {
-        return api.nilObj;
-    };
-    for symbol in RUNTIME_SYMBOLS {
-        // SAFETY: names and addresses are process-lifetime constants.
-        if unsafe { tcc_add_symbol(state, symbol.name.as_ptr().cast(), symbol.address) } < 0 {
-            return api.nilObj;
-        }
-    }
-    if let Some(payload) = unsafe { unit_payload(self_object) } {
-        // SAFETY: phase transition happens after all foreign calls return.
-        unsafe { (*payload).phase = UnitPhase::Configured };
-    }
-    self_object
-}
-
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) {
-    if api_pointer.is_null() {
-        abort("native construction received a null IdApi");
-    }
-    let mut retained = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
-    let api = unsafe { &*api_pointer };
-    if unsafe { foreign_address::ensure_family_with_roots(api, layouts, presence, imports, exports, retained.as_mut()) }.is_none() {
-        abort("ForeignAddress exports were incomplete");
-    }
-    let mut retain = |object| { if let Some(roots) = &mut retained { unsafe { roots.keep(object) } } else { object } };
-    let runtime = *RUNTIME.get_or_init(|| {
-        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, TCC_NAME.as_ptr().cast()) != 0 };
-        let (tcc_vt, unit_vt, tcc) = if reloading {
-            (
-                unsafe { import(imports, TCC_VT_NAME) },
-                unsafe { import(imports, UNIT_VT_NAME) },
-                unsafe { import(imports, TCC_NAME) },
-            )
-        } else {
-            let tcc_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            let unit_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            let tcc = retain(unsafe { (api.alloc)(tcc_vt, 0) });
-            (tcc_vt, unit_vt, tcc)
-        };
-        if [tcc_vt, unit_vt, tcc].iter().any(|value| value.is_null()) {
-            abort("TCC exports were incomplete");
-        }
-        Runtime {
-            send: api.send,
-            method_owners: unsafe { birnam_abi::method_owners::select(api) }.unwrap_or_else(|| abort("TCC requires completed Method ownership")),
-            api: api_pointer as usize, finalizers: finalizers as usize,
-            layouts: layouts as usize,
-            hooks: hooks as usize,
-            roots: roots as usize,
-            vtables: vtables as usize,
-            exports: exports as usize,
-            presence: presence as usize,
-            imports: imports as usize,
-            tcc_vt: tcc_vt as usize,
-            unit_vt: unit_vt as usize,
-            tcc: tcc as usize,
-        }
-    });
-    let api = unsafe { api_ref(&runtime) };
-    let layouts = runtime.layouts as *const birnam_abi::payload_layout::ApiV1;
-    let exports = runtime.exports as *const birnam_abi::namespace_export::ApiV1;
-    let presence = runtime.presence as *const birnam_abi::namespace_presence::ApiV1;
-    ROOT_REGISTERED.get_or_init(|| unsafe {
-        birnam_abi::root_registry::register(runtime.roots as *const birnam_abi::root_registry::ApiV1, mark_runtime_roots);
-    });
-    let unit_vt = runtime.unit_vt as Oop;
-    // The payload remains raw; the trace hook follows only this Unit's native
-    // cache, without making that cache a process-wide GC root.
-    unsafe {
-        birnam_abi::payload_layout::set(layouts, unit_vt, ptr::null(), 0, SLOT_RAW);
-        birnam_abi::trace_hooks::set(runtime.hooks as *const birnam_abi::trace_hooks::ApiV1, unit_vt, unit_cache::trace);
-    }
-    let tcc_vt = runtime.tcc_vt as Oop;
-    let tcc_methods: &[(&[u8], Method)] = &[
-        (b"compile:\0", m_compile),
-        (b"compile:output:as:\0", m_compile_output),
-        (b"new\0", m_new),
-        (b"liveUnitCount\0", m_live_unit_count),
-        #[cfg(feature = "resource-metrics")]
-        (b"vtableCacheUnitCount\0", unit_cache::unit_count),
-        #[cfg(feature = "resource-metrics")]
-        (b"vtableCacheEntryCount\0", unit_cache::entry_count),
-        #[cfg(feature = "resource-metrics")]
-        (b"checkUnitCacheContract\0", unit_cache::check_contract),
-        #[cfg(feature = "resource-metrics")]
-        (
-            b"relocatedAllocationBytes\0",
-            resource_metrics::allocation_bytes,
-        ),
-        #[cfg(feature = "allocation-metrics")]
-        (
-            b"heapAllocationBytes\0",
-            resource_metrics::heap_allocation_bytes,
-        ),
-        #[cfg(feature = "allocation-metrics")]
-        (
-            b"heapAllocationCount\0",
-            resource_metrics::heap_allocation_count,
-        ),
-    ];
-    let unit_methods: &[(&[u8], Method)] = &[
-        (b"compile:\0", m_compile_into_method),
-        (b"addLibrary:\0", m_add_library),
-        (b"addLibraryPath:\0", m_add_library_path),
-        (b"addFile:\0", m_add_file),
-        (b"bindRuntime\0", m_bind_runtime),
-        (b"bindVtableCache\0", unit_cache::bind),
-        (b"addSymbol:value:\0", m_add_symbol),
-        (b"relocate\0", m_relocate),
-        (b"ownCodeGeneration:\0", m_own_code_generation),
-        (b"disposable\0", m_disposable),
-        (b"install:as:on:\0", m_install),
-        (b"symbol:\0", m_symbol),
-    ];
-    for (name, method) in tcc_methods {
-        // SAFETY: names are static NUL-terminated selectors and method pointers
-        // obey the frozen IdApi Method ABI.
-        let selector = unsafe { (api.intern)(name.as_ptr().cast()) };
-        unsafe { (api.method)(tcc_vt, selector, *method) };
-    }
-    for (name, method) in unit_methods {
-        // SAFETY: names are static NUL-terminated selectors and method pointers
-        // obey the frozen IdApi Method ABI.
-        let selector = unsafe { (api.intern)(name.as_ptr().cast()) };
-        unsafe { (api.method)(unit_vt, selector, *method) };
-    }
-    if unsafe { birnam_abi::namespace_presence::contains(presence, TCC_NAME.as_ptr().cast()) } == 0 {
-        unsafe {
-            let _ = birnam_abi::namespace_export::export(exports, TCC_VT_NAME.as_ptr().cast(), tcc_vt);
-            let _ = birnam_abi::namespace_export::export(exports, UNIT_VT_NAME.as_ptr().cast(), unit_vt);
-            let _ = birnam_abi::namespace_export::export(exports, TCC_NAME.as_ptr().cast(), runtime.tcc as Oop);
-        }
-    }
-}
-
-/// Identifies the N4.2 state-machine implementation.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_tcc_rust_identity() -> *const c_char {
-    RUST_TCC_IDENTITY.as_ptr().cast()
-}
-
-/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
-    1
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{RUST_TCC_IDENTITY, birnam_tcc_rust_identity};
-    use std::ffi::CStr;
-
-    #[test]
-    fn state_identity_is_terminated() {
-        // SAFETY: the export points to immutable crate storage for process life.
-        let identity = unsafe { CStr::from_ptr(birnam_tcc_rust_identity()) };
-        assert_eq!(identity.to_bytes_with_nul(), RUST_TCC_IDENTITY);
-    }
-}
-
-fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
-
-fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
-
-fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { RUNTIME.get().expect("module not initialized").exports as *const birnam_abi::namespace_export::ApiV1 }
-fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { RUNTIME.get().expect("module not initialized").layouts as *const birnam_abi::payload_layout::ApiV1 }
-
-fn execution_vtables() -> *const birnam_abi::vtable_enumeration::ApiV2 { RUNTIME.get().expect("module not initialized").vtables as *const _ }
-
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn publish_artifact_runtime(context: *mut c_void, _receiver: Oop, _args: *const Operand, count: usize) -> Outcome {
-    let Some(runtime) = RUNTIME.get() else { return invalid_native(); };
-    if count != 0 || context.addr() != runtime.api { return invalid_native(); }
-    static IMAGE: OnceLock<usize> = OnceLock::new();
-    let image = *IMAGE.get_or_init(|| unsafe {
-        birnam_abi::private::native_library::publish_artifact_abi(api_ref(runtime), rt_send as *const () as _).addr()
-    });
-    if image == 0 { return invalid_native(); }
-    Outcome::loaded(Operand::unit())
-}
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    use std::sync::atomic::Ordering;
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    if let Some([request]) = unsafe { birnam_abi::borrowed_slice(args, count) } {
-        if request.as_bytes().and_then(|b| unsafe { birnam_abi::borrowed_bytes(b.pointer, b.length) }) == Some(b"artifactRuntime".as_slice())
-            && NATIVE_PHASE.load(Ordering::Acquire) == 2 {
-            let runtime = RUNTIME.get().unwrap();
-            if unsafe { api_ref(runtime).vtable_vt == (*id).receiver } {
-                return Outcome::loaded(Operand::entry(native::NativeEntry { method: Some(publish_artifact_runtime), context: runtime.api as *mut c_void }));
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        for t in self.tokens.get_mut().drain(..) {
+            unsafe {
+                self.s
+                    .id
+                    .send_named(self.s.roots, b"release:", &[Operand::word(t)])
+                    .expect("release compiler root");
             }
         }
-        return invalid_native();
     }
-    let Some([api, presence, imports, exports, roots, layouts, vtables, hooks, finalizers, integer, float, word, string, compiler]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(layouts), Some(vtables), Some(hooks), Some(finalizers), Some(integer), Some(float), Some(word), Some(string), Some(compiler)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), layouts.as_word(), vtables.as_word(), hooks.as_word(), finalizers.as_word(), integer.as_word(), float.as_word(), word.as_word(), string.as_word(), compiler.as_word()) else { return invalid_native(); };
-    let api = api as *mut IdApi;
-    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
-    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
-    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
-    let vtables = vtables as *const birnam_abi::vtable_enumeration::ApiV2;
-    let hooks = hooks as *const birnam_abi::trace_hooks::ApiV1;
-    let finalizers = finalizers as *const birnam_abi::finalizers::ApiV1;
-    let compiler = compiler as *const birnam_abi::runtime_compiler::ApiV1;
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
-        || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports) && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots) && birnam_abi::payload_layout::valid(layouts) && birnam_abi::vtable_enumeration::valid(vtables) && birnam_abi::trace_hooks::valid(hooks) && birnam_abi::finalizers::valid(finalizers) && birnam_abi::runtime_compiler::valid(compiler) } { return invalid_native(); }
-    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::float::attach(float as _) } != 1 || unsafe { birnam_abi::word::attach(word as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
-    if RUNTIME.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(RUNTIME.get().unwrap().tcc as Oop)), _ => return invalid_native(),
+}
+impl State {
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Operand, Outcome> {
+        unsafe { self.id.send_named(r, n, a) }
     }
-    NATIVE_COMPILER.store(compiler.addr(), Ordering::Release);
-    unsafe { bring_up(api, presence, imports, exports, vtables, (*roots).api, layouts, hooks, finalizers, roots); }
-    NATIVE_PHASE.store(2, Ordering::Release);
-    Outcome::loaded(Operand::object(RUNTIME.get().unwrap().tcc as Oop))
+    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Outcome> {
+        unsafe { object(self.send(self.ns, b"at:", &[Operand::object(self.id.intern_name(n)?)])?) }
+    }
+    unsafe fn bytes(&self, o: Oop) -> Result<Vec<u8>, Outcome> {
+        unsafe {
+            let b = self
+                .send(o, b"bytes", &[])?
+                .as_bytes()
+                .ok_or_else(invalid)?;
+            Ok(borrowed_bytes(b.pointer, b.length)
+                .ok_or_else(invalid)?
+                .to_vec())
+        }
+    }
+    unsafe fn error(&self, scope: &Scope<'_>, text: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            let m = scope.keep(object(self.send(
+                self.named(b"String")?,
+                b"fromBytes:",
+                &[Operand::bytes(text)],
+            )?)?)?;
+            self.send(
+                self.named(b"Error")?,
+                b"kind:message:",
+                &[
+                    Operand::object(self.id.intern_name(b"compileError")?),
+                    Operand::object(m),
+                ],
+            )
+        }
+    }
+}
+unsafe extern "C" fn compile(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let Some([source]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let scope = Scope {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        let source = scope.keep(object(*source)?)?;
+        let source = CString::new(s.bytes(source)?).map_err(|_| invalid())?;
+        let Some(native) = Unit::compile(&source, &[]) else {
+            return s.error(&scope, b"native C compilation or relocation failed");
+        };
+        let unit = scope.keep(object(s.send(
+            s.model,
+            b"allocate:bytes:",
+            &[Operand::object(s.unit_vt), Operand::word(0)],
+        )?)?)?;
+        s.units.borrow_mut().insert(
+            unit as usize,
+            Compiled {
+                native,
+                refs: vec![s.ns],
+                result: None,
+                initializing: false,
+                implementation: None,
+            },
+        );
+        Ok(Operand::object(unit))
+    })())
+}
+unsafe extern "C" fn initialize_unit(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        if n > 1 {
+            return Err(invalid());
+        }
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let scope = Scope {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        scope.keep(r)?;
+        let args = borrowed_slice(a, n).ok_or_else(invalid)?;
+        for &v in args {
+            scope.keep(object(v)?)?;
+        }
+        let entry = {
+            let mut units = s.units.borrow_mut();
+            let unit = units.get_mut(&(r as usize)).ok_or_else(invalid)?;
+            if let Some(v) = unit.result {
+                if unit.implementation != args.first().copied().map(object).transpose()? {
+                    return Err(invalid());
+                }
+                return Ok(Operand::object(v));
+            }
+            if unit.initializing {
+                return Err(invalid());
+            }
+            let module = unit
+                .native
+                .symbol(c"birnam_native_module_v1")
+                .ok_or_else(invalid)?;
+            let module = &*module.as_ptr().cast::<native::Module>();
+            if module.version != native::VERSION
+                || module.byte_size as usize != size_of::<native::Module>()
+            {
+                return Err(invalid());
+            }
+            let init = module.initialize.ok_or_else(invalid)?;
+            unit.initializing = true;
+            init
+        };
+        let mut inputs = vec![Operand::object(s.ns), Operand::object(r)];
+        inputs.extend_from_slice(args);
+        let result = entry(&s.id, inputs.as_ptr(), inputs.len())
+            .into_result()
+            .and_then(object);
+        let mut units = s.units.borrow_mut();
+        let unit = units.get_mut(&(r as usize)).ok_or_else(invalid)?;
+        unit.initializing = false;
+        if let Ok(value) = result {
+            unit.result = Some(value);
+            unit.refs.push(value);
+            unit.implementation = args.first().copied().map(object).transpose()?;
+            if let Some(implementation) = unit.implementation {
+                unit.refs.push(implementation);
+            }
+        }
+        result.map(Operand::object)
+    })())
+}
+unsafe extern "C" fn keep(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let v = object(*v)?;
+        let scope = Scope {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        scope.keep(r)?;
+        scope.keep(v)?;
+        s.send(s.gc, b"prepareAllocation", &[])?;
+        s.units
+            .borrow_mut()
+            .get_mut(&(r as usize))
+            .ok_or_else(invalid)?
+            .refs
+            .push(v);
+        Ok(Operand::object(v))
+    })())
+}
+unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([o, v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let v = v.as_entry().ok_or_else(invalid)?;
+        let refs = s
+            .units
+            .borrow()
+            .get(&(object(*o)? as usize))
+            .map(|u| u.refs.clone())
+            .unwrap_or_default();
+        for o in refs {
+            v.method.ok_or_else(invalid)?(v.context, s.receiver, &Operand::object(o), 1)
+                .into_result()?;
+        }
+        Ok(Operand::unit())
+    })())
+}
+unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let v = v.as_entry().ok_or_else(invalid)?;
+        for &o in &s.permanent {
+            v.method.ok_or_else(invalid)?(v.context, s.receiver, &Operand::object(o), 1)
+                .into_result()?;
+        }
+        Ok(Operand::unit())
+    })())
+}
+unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let b = v.as_bytes().ok_or_else(invalid)?;
+        let bytes = borrowed_bytes(b.pointer, b.length).ok_or_else(invalid)?;
+        if bytes.len() % size_of::<usize>() != 0 {
+            return Err(invalid());
+        }
+        for b in bytes.chunks_exact(size_of::<usize>()) {
+            let removed = s
+                .units
+                .borrow_mut()
+                .remove(&usize::from_ne_bytes(b.try_into().unwrap()));
+            if let Some(unit) = removed {
+                s.retired.borrow_mut().push(unit.native);
+            }
+        }
+        Ok(Operand::unit())
+    })())
+}
+unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        if n != 0 {
+            return Err(invalid());
+        }
+        let s = &*c.cast::<State>();
+        s.send(s.gc, b"prepareAllocation", &[])?;
+        let execution = s.named(b"Execution")?;
+        s.send(execution, b"checkpoint", &[])?;
+        if s.send(execution, b"retirementReady", &[])?.as_word() != Some(1) {
+            return Ok(Operand::unit());
+        }
+        let retired = std::mem::take(&mut *s.retired.borrow_mut());
+        drop(retired);
+        Ok(Operand::unit())
+    })())
+}
+unsafe extern "C" fn live_units(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    if n != 0 {
+        return invalid();
+    }
+    let s = unsafe { &*c.cast::<State>() };
+    Outcome::loaded(Operand::word(
+        s.units.borrow().len() + s.retired.borrow().len(),
+    ))
+}
+#[cfg(feature = "resource-metrics")]
+unsafe extern "C" fn live_bytes(_: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    if n != 0 {
+        return invalid();
+    }
+    Outcome::loaded(Operand::word(Unit::resource_totals().1))
+}
+unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let named =
+            |n: &[u8]| object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(n)?)])?);
+        let existing = id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"TCC")?)])?;
+        if existing.kind() == native::OBJECT {
+            return Ok(existing);
+        }
+        let root = named(b"Roots")?;
+        let gc = named(b"GC")?;
+        let model = named(b"ObjectModel")?;
+        let mut tokens = Vec::new();
+        let mut pin = |v: Oop| -> Result<Oop, Outcome> {
+            tokens.push(
+                id.send_named(root, b"retain:", &[Operand::object(v)])?
+                    .as_word()
+                    .ok_or_else(invalid)?,
+            );
+            Ok(v)
+        };
+        let vt = pin(object(id.send_named(
+            named(b"ObjectVt")?,
+            b"delegated",
+            &[],
+        )?)?)?;
+        let unit_vt = pin(object(id.send_named(
+            named(b"ObjectVt")?,
+            b"delegated",
+            &[],
+        )?)?)?;
+        let receiver = pin(object(id.send_named(
+            model,
+            b"allocate:bytes:",
+            &[Operand::object(vt), Operand::word(0)],
+        )?)?)?;
+        let s = Box::into_raw(Box::new(State {
+            id,
+            ns,
+            roots: root,
+            gc,
+            model,
+            receiver,
+            unit_vt,
+            permanent: vec![ns, root, gc, model, receiver, vt, unit_vt],
+            units: RefCell::new(HashMap::new()),
+            retired: RefCell::new(Vec::new()),
+            thread: std::thread::current().id(),
+        }));
+        for (target, n, f) in [
+            (vt, b"compile:".as_slice(), compile as Method),
+            (vt, b"checkpoint", checkpoint),
+            (vt, b"liveNativeUnits", live_units),
+            (vt, b"rootsDo:", roots),
+            (vt, b"referencesOf:do:", references),
+            (vt, b"retire:", retire),
+            (unit_vt, b"initialize", initialize_unit),
+            (unit_vt, b"initializeWith:", initialize_unit),
+            (unit_vt, b"retain:", keep),
+        ] {
+            id.send_named(
+                target,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(n)?),
+                    Operand::entry(NativeEntry::new(f, s.cast())),
+                ],
+            )?;
+        }
+        #[cfg(feature = "resource-metrics")]
+        id.send_named(
+            vt,
+            b"addMethod",
+            &[
+                Operand::object(id.intern_name(b"liveNativeBytes")?),
+                Operand::entry(NativeEntry::new(live_bytes, s.cast())),
+            ],
+        )?;
+        id.send_named(root, b"register:", &[Operand::object(receiver)])?;
+        id.send_named(gc, b"registerRetirement:", &[Operand::object(receiver)])?;
+        id.send_named(
+            gc,
+            b"trace:with:",
+            &[Operand::object(unit_vt), Operand::object(receiver)],
+        )?;
+        for (n, v) in [
+            (b"TCC".as_slice(), receiver),
+            (b"TCCVt", vt),
+            (b"TCCUnitVt", unit_vt),
+        ] {
+            id.send_named(
+                ns,
+                b"at:put:",
+                &[Operand::object(id.intern_name(n)?), Operand::object(v)],
+            )?;
+        }
+        for t in tokens {
+            id.send_named(root, b"release:", &[Operand::word(t)])?;
+        }
+        Ok(Operand::object(receiver))
+    }
+}
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        construct(*id, object(*ns)?)
+    })())
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: 1,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};

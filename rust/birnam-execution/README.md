@@ -18,8 +18,8 @@ The retained implementation establishes these boundaries:
 | Runtime `execution.rs`, `execution/`, `runtime/scheduling.rs` | Preserve frame arenas, generation leases, acquired-entry and frame pins, bounded drives, native barriers, suspension and continuations. The engine and its unit tests now live in this crate. `machine.rs` connects the retained transitions to Id; `control.rs` reconnects the native Block adapters. Hot PC selection and scalar numeric evaluation now live here. Compiler construction and allocation-elision remain batch 2. |
 | Runtime `runtime.rs` drive/recovery and retirement | Selected entries remain pinned across nested calls, waiting frames and recovery. End a managed turn before draining releases, keep the outward result rooted, and never perform asynchronous cleanup from a finalizer. Preserve these mechanics when moving the drive. |
 | Runtime `registration.rs` | Validate descriptor bytes, arity, digest, manifest agreement and prepare/abort claims. Keep the codecs and admission algorithm private. Do not send the old Rust/C registration structure through Bytes. The native descriptor constructor below feeds the retained canonical validator and frame registry directly. Portable-profile admission and generated recovery publication still need their real batch 2 producers. |
-| TCC `rt_owned_method`, `rt_register_method_owner`, `release_payload`, `release_retired_unit` | TCC owns mappings. Replace registration-then-install with construction of an owned Method followed by `addMethod:as:`. Replace cached retirement exports with owner messages after the existing Execution checkpoint admits release. This is batch 2 integration, not permission to drop the retained code now. |
-| Codegen `lib.rs`, `portable_c.rs`, `resumable_registration_c.rs` | Generated method/Block installation and resumable registration currently emit the old TCC symbols. Convert both producers and consumers to NativeEntry and owner Objects in batch 2; retain guarded fallback, materialization and recovery. |
+| Former TCC installation/retirement exports | Removed from production. TCC owns actual mappings; generated initializers construct owned Methods and use `addMethod:as:`. TCC drains detached mappings after Execution's checkpoint and `retirementReady` admission. |
+| Codegen `native.rs` and retained legacy emitters | Production source compilation emits typed NativeEntry steps, Method registration and Block creation through current owner messages. Legacy portable/Image/optimizer emitters remain migration inputs for their later consumers. |
 
 ## Callable contract
 
@@ -73,6 +73,7 @@ exact entry. Ordinary future sends perform current lookup.
 | Receiver / selector | Operands | Result and ownership |
 |---|---|---|
 | Method `fromStep:descriptor:selection:owner:` | NativeEntry step, canonical FrameDescriptor-v2 Bytes, ArtifactSelection Bytes containing exactly one matching row, code/context owner Object | Owned resumable Method. Both byte spans are bounded and copied during the call; no Rust carrier crosses the boundary. The owner identity names the generation. |
+| Method `fromStep:descriptor:selection:owner:implementation:` | Same executable/descriptor/selection/code-owner operands, plus implementation Object | Owned named-adapter Method. The descriptor must declare an implementation slot; its separate implementation is traced and copied into that slot on entry. |
 | Method instance `withInline:at:owner:` | NativeEntry candidate, Integer baseline return slot, candidate owner Object | New captured Method with the same baseline registration and an optional inline candidate. See recovery contract below. |
 | Method instance `optimizeWith:` | Sequence of plain native Methods, one per baseline PC; empty sequence removes the candidate | Same Method. Attach candidate metadata to the shared baseline registration; see hot selection below. |
 | Machine `recoverAt:with:` / `recoverAt:withGraph:` | Integer baseline PC, recipe sequence Object | Machine Object after one atomic pending-call recovery; typed failure for missing/stale authority or invalid recipe. |
@@ -126,9 +127,9 @@ files are deleted. The pure tail layout plan now belongs here; Codegen temporari
 shares that private source without becoming an Execution dependency.
 
 The mixed Runtime Method values, driver, task-control and recovery wrappers have
-been removed. Runtime retains only the old compiler owner-registration bridge
-until its TCC producers move, alongside compiler construction and allocation-elision
-algorithms. Retained source/compiler acceptance cases are migration inputs, not
+been removed. TCC's owner-registration bridge and its Runtime exports are now also deleted.
+Production Codegen and TCC construct owned Methods directly. Runtime retains
+allocation-elision and later integration algorithms. Retained source/compiler acceptance cases are migration inputs, not
 passing production tests; see [Runtime's remaining scope](../birnam-runtime/README.md).
 
 By explicit scope decision, allocation-elision moves to batch 2: numeric chain/loop
@@ -256,3 +257,14 @@ live ErrorVt propagation. Repeated registration/collection without intervening
 checkpoints covers the native context-address reuse regression. Fixture results
 are deliberately distinguishable to prove selection; they are not optimization
 equivalence or performance evidence.
+
+## Compiled owners
+
+TCC now uses these same registration and retention paths. A named adapter's code
+Unit and implementation Block are separate traced references. Captured aliases
+retain the original registration, including its implementation. `retirementReady`
+on Execution answers native Word 1 only outside entered drives/Methods and a drain;
+TCC asks after `checkpoint` before releasing detached native mappings. Actual
+compiled-unit retention and libtcc byte reclamation are covered by the compiler
+production test. Allocation-elision and its generated deoptimization strategies
+remain outside this restored source path.

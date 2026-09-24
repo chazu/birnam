@@ -816,3 +816,69 @@ reconnect real producers and owner protocols and prove generated recovery,
 portable admission and compiled-unit reclamation. The native candidate interface
 does not stand in for these algorithms. Store-backed task policy, Image, workers
 and full CLI startup remain at their previously stated integration gates.
+
+
+### Batch 2 implementation order (2026-09-23)
+
+Implement the first three areas together: PEG/Lang initialization, Codegen and
+generated calls, and TCC installation/code lifetime. Allocation-elision remains a
+separate subsequent implementation; it is not required to close this work.
+
+The compiler consumes CST through its existing language messages and retains the
+pure lowering, slot coloring and descriptor codecs. Generated entries use the Id
+NativeEntry calling convention and live owner messages. TCC owns each compiled
+Unit and its native mappings. Installation constructs an Execution Method with
+that Unit as owner, then uses `addMethod:as:`; resumable entries supply canonical
+descriptor and selection bytes to `fromStep:descriptor:selection:owner:`.
+Binding, Method, frame and recovery reachability therefore retain the actual
+compiled Unit. Retirement detaches dead native resources and releases them only
+at an idle checkpoint. No legacy service-table compatibility layer is restored.
+
+Acceptance includes source parsing and lowering, compiled methods and capturing
+Blocks on real Machines, current dispatch after replacement, generated recovery,
+and independently observed compiled mapping retention/reclamation. Pure compiler
+or native fixture passes alone do not close these areas. Store task policy,
+Image, workers and full CLI restoration keep their existing later scope.
+
+
+### First three compiler areas delivered (2026-09-23)
+
+PEG/Lang initialization, Codegen/generated calls, and TCC installation/code lifetime
+now run in the production Bootstrap prefix. Allocation-elision remains a separate
+implementation, as requested. The source path does not restore the full workspace.
+
+The existing matcher and grammar policy are retained; three independent matcher
+comparisons still pass. Codegen projects CST through messages and reuses portable
+encoding, logical lowering, slot coloring and canonical descriptor validation.
+Its production native backend emits the existing typed Id ABI and Machine actions.
+There is no generated Runtime service catalog. Top-level bindings use Namespace;
+lexical captures use ordinary owned Blocks.
+
+TCC compiles a native Module initializer with Namespace and its Unit owner. That
+initializer creates Execution Methods using descriptor/selection Bytes and retains
+its native-context Objects through Unit messages. Named adapters use the additional
+implementation operand on Method construction: code Unit and implementation Block
+are traced separately. Captured Methods and suspended frames preserve their exact
+old implementation across replacement. The obsolete Runtime function-address
+owner bridge and native registration exports are deleted together with TCC's old
+cached registration/retirement wrappers.
+
+Acceptance passes 97 Codegen, 21 Execution, 3 matcher, 2 private native-compiler and
+4 build-tool tests, plus 12 production integration binaries and dylib audits.
+Real compiled Units survive binding-only, captured, entered, waiting and recovery
+references. Both native Unit count and libtcc's independent relocated-byte counter
+return to zero after the final reference and idle checkpoint. A separately authored
+C recovery candidate compiled by TCC recovers into a Codegen baseline and survives
+collection after removing its own binding while still executing. This is compiled
+recovery-boundary evidence, not completion of deferred optimizer emission.
+Generated protected-boundary exits deliver into the caller once; destroying a
+waiting Machine releases its compiled mappings. Syntax, native compilation and
+initializer admission failures also leave no retained mappings after collection.
+
+The first three areas' source-to-Machine path is complete. The broader batch still
+contains allocation-elision and the full Artifact/PortableCode language adapters.
+Deferred Image/Store publication, semantic inventories, portable materialization
+and their acceptance cases remain in `birnam-codegen-runtime/src/deferred.rs`,
+separated by function from the replaced source facade/bootstrap. They are not
+compiled or counted as passing coverage. Store-backed task policy, Image, workers
+and full CLI keep their previous later integration gates.

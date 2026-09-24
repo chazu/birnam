@@ -101,19 +101,6 @@ pub unsafe extern "C" fn birnam_runtime_send_v1(receiver: Oop, selector: Oop, ar
     runtime.enter_application(|| unsafe { runtime.send_abi(receiver, selector, args, count) })
 }
 
-/// # Safety
-/// The native function belongs to the live owner and uses the Method ABI.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_runtime_register_method_owner_v1(function: *const c_void, owner: Oop) -> i32 {
-    i32::from(runtime().register_method_owner(function, owner))
-}
-/// # Safety
-/// The owner is being finalized or released with no surviving callable users.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_runtime_forget_method_owner_v1(owner: Oop) {
-    runtime().forget_method_owner(owner);
-}
-
 /// Test-only access to the exact public send wrapper while a foreign Method is
 /// executing inside an active runtime.
 ///

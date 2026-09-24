@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "scope": "tcc through production Id messages",
+  "install_name": "@rpath/libbirnam_tcc.dylib",
+  "exported_symbols": [
+    "birnam_native_module_v1"
+  ]
+}

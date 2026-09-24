@@ -250,9 +250,13 @@ unsafe fn new_machine(s: &Execution) -> Result<Oop, Outcome> {
 // Registration consumes existing canonical descriptor and selection bytes. Both
 // are copied before sending to any dependency; no Rust carrier crosses a message.
 unsafe fn from_step(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome> {
-    let [step, descriptor, selection, owner] = args else {
+    let [step, descriptor, selection, owner, ..] = args else {
         return Err(invalid());
     };
+    if args.len() != 4 && args.len() != 5 {
+        return Err(invalid());
+    }
+    let implementation = args.get(4).copied().map(object).transpose()?;
     let step = visitor(*step)?;
     let owner = object(*owner)?;
     let copy = |value: Operand, limit: usize| -> Result<Vec<u8>, Outcome> {
@@ -273,6 +277,9 @@ unsafe fn from_step(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome>
         birnam_artifact_codec::stackless_selection::MAX_CANONICAL_VALUE_BYTES,
     )?;
     let _roots = s.scope(&[owner]);
+    if let Some(v) = implementation {
+        _roots.keep(v);
+    }
     let selected =
         birnam_artifact_codec::stackless_selection::inspect_artifact_selection(&selection)
             .map_err(|_| invalid())?;
@@ -299,27 +306,42 @@ unsafe fn from_step(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome>
         .ok_or_else(invalid)? as u64;
     let descriptor = FrameDescriptor::admit_v2(&descriptor, authority, generation, step)
         .map_err(|_| invalid())?;
+    if implementation.is_some()
+        && descriptor
+            .v2_entry_binding()
+            .and_then(|b| b.implementation_slot)
+            .is_none()
+    {
+        return Err(invalid());
+    }
     let block = row.implementation_kind
         == birnam_artifact_codec::stackless_selection::ImplementationKind::BlockBody;
-    unsafe { register_descriptor_with_captures(s, descriptor, owner, block) }.map(Operand::object)
+    unsafe { register_descriptor_with_captures(s, descriptor, owner, block, implementation) }
+        .map(Operand::object)
 }
 pub(super) unsafe fn register_descriptor(
     s: &Execution,
     descriptor: Arc<FrameDescriptor>,
     owner: Oop,
 ) -> Result<Oop, Outcome> {
-    unsafe { register_descriptor_with_captures(s, descriptor, owner, false) }
+    unsafe { register_descriptor_with_captures(s, descriptor, owner, false, None) }
 }
 unsafe fn register_descriptor_with_captures(
     s: &Execution,
     descriptor: Arc<FrameDescriptor>,
     owner: Oop,
     block: bool,
+    implementation: Option<Oop>,
 ) -> Result<Oop, Outcome> {
     unsafe {
         let roots = s.scope(&[owner]);
         let value = object(s.make(descriptor.step_method(), owner, None)?)?;
         roots.keep(value);
+        s.methods
+            .borrow_mut()
+            .get_mut(&value.addr())
+            .unwrap()
+            .implementation = implementation;
         let key = EntryKey::from_method(s.entry(value, false)?);
         let binding = descriptor.v2_entry_binding().ok_or_else(invalid)?;
         descriptor.executable_owner.set(value);
@@ -331,7 +353,7 @@ unsafe fn register_descriptor_with_captures(
             binding.argument_start,
         );
         if binding.implementation_slot.is_some() {
-            carrier = carrier.with_implementation_anchor(owner);
+            carrier = carrier.with_implementation_anchor(implementation.unwrap_or(owner));
         } else if block {
             carrier.receiver_capture_offset_words = 1;
         }
@@ -1417,6 +1439,7 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"failed",
     b"fromMethod:captures:",
     b"fromStep:descriptor:selection:owner:",
+    b"fromStep:descriptor:selection:owner:implementation:",
     b"withInline:at:owner:",
     b"optimizeWith:",
     b"evaluate:receiver:argument:with:",
@@ -1792,6 +1815,12 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             Op::WithInline,
         )?;
         install_op(s, s.method_behavior, b"optimizeWith:", Op::Optimize)?;
+        install_op(
+            s,
+            s.method_behavior,
+            b"fromStep:descriptor:selection:owner:implementation:",
+            Op::FromStep,
+        )?;
         install_op(s, machine_vtable, b"recoverAt:with:", Op::Recover(false))?;
         install_op(
             s,

@@ -67,7 +67,6 @@ mod guarded_dispatch;
 mod guarded_lookup;
 mod native_tier;
 mod compiler;
-mod method;
 mod numeric;
 mod integer;
 mod native_allocation;
@@ -265,7 +264,6 @@ pub(crate) struct Runtime {
     lookup_guard_cache: crate::guard_verdict::Service,
     dispatch_cache: dispatch_cache::Cache,
     compiler: core::cell::OnceCell<compiler::Compiler>,
-    methods: core::cell::RefCell<method::Methods>,
     integer: Cell<Option<integer::Binding>>,
     trace: Cell<Option<birnam_abi::trace_live::TraceLiveV1>>,
     collect: Cell<Option<birnam_abi::collect::CollectV1>>,
@@ -529,7 +527,6 @@ impl Runtime {
         unsafe { notify(observation, i32::from(direct), vtable, selector) };
         let result = unsafe { (&mut *self.state.get()).vtables.add_native_method(vtable, selector, entry) };
         let previous = match result { crate::id_registries::AddMethod::Added => None, crate::id_registries::AddMethod::Overwrote(previous) => Some(previous) };
-        self.update_method_owner_edge(vtable, selector, previous, Some(entry));
         if previous != Some(entry) {
             let state = unsafe { &mut *self.state.get() };
             let staged = state.admission.as_ref().is_some_and(|a| a.staged_resumable_publications.is_some());
@@ -567,7 +564,6 @@ impl Runtime {
         };
         unsafe { notify(observation, i32::from(direct), vtable, selector) };
         let removed = unsafe { (&mut *self.state.get()).vtables.remove_native_method(vtable, selector) };
-        self.update_method_owner_edge(vtable, selector, removed, None);
         if let Some(entry) = removed {
             let state = unsafe { &mut *self.state.get() };
             let staged = state.admission.as_ref().is_some_and(|a| a.staged_resumable_publications.is_some());
@@ -1928,7 +1924,6 @@ impl Runtime {
             return;
         }
         let _drain = RetirementDrainGuard(&self.draining_retirements);
-        self.release_method_turn_owners();
         self.drain_pending_stackless_retirements();
         // One batch, with no borrow across callbacks. Newly queued work waits
         // for the next checkpoint rather than creating an unbounded drain.

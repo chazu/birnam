@@ -12,9 +12,11 @@ product; compatibility and language surface can and will still change.
 has restored the production Id, memory-management, value and collection prefix
 through messages. [Execution batch 1](rust/birnam-execution/README.md) is complete:
 Methods, Blocks, Machines, native recovery and guarded hot selection run over that
-prefix. Compiler reconnection and allocation-elision belong to batch 2; the complete
-language still awaits upper integration. Deoptimization,
-compiled-image recovery and concurrency implementations are retained above Id.
+prefix. [PEG/Lang, source Codegen and TCC](rust/birnam-codegen-runtime/README.md)
+now compile and execute source through that same path, with real compiled-code
+retention and reclamation. Allocation-elision remains separate. The full workspace,
+Artifact/PortableCode language adapters, Store, Image, workers and CLI still await
+upper integration.
 The usage documentation below describes the language being preserved.
 
 ## Contents

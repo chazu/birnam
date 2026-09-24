@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 mod c_string;
+pub mod native;
 pub mod literal;
 pub mod closure_elision;
 pub mod closure_elision_c;

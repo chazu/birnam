@@ -30,6 +30,7 @@ struct Callable {
     object: Oop,
     entry: NativeEntry,
     owner: Oop,
+    implementation: Option<Oop>,
     image: Option<Rc<image::Image>>,
 }
 struct Execution {
@@ -171,6 +172,7 @@ impl Execution {
             resumable: None,
             inline: None,
             candidate: None,
+            implementation: None,
             execution: self,
             object: value,
             entry,
@@ -476,11 +478,15 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
         let owner = s.methods.borrow().get(&target.addr()).map(|m| {
             (
                 m.owner,
+                m.implementation,
                 m.resumable.as_ref().map(|r| r.origin),
                 m.inline.map(|i| i.owner),
             )
         });
-        if let Some((owner, origin, inline_owner)) = owner {
+        if let Some((owner, implementation, origin, inline_owner)) = owner {
+            if let Some(value) = implementation {
+                visit(v, value)?;
+            }
             if let Some(owner) = inline_owner {
                 visit(v, owner)?;
             }
@@ -565,6 +571,24 @@ unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize)
         Ok(Operand::unit())
     })())
 }
+// Owner-local observation: TCC may drain detached native mappings only after
+// the engine checkpoint and outside every entered Method/driver extent.
+unsafe extern "C" fn retirement_ready(
+    c: *mut c_void,
+    _: Oop,
+    _: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        if n != 0 {
+            return Err(invalid());
+        }
+        Ok(Operand::word(usize::from(
+            s.depth.get() == 0 && !s.draining.get(),
+        )))
+    })())
+}
 unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
         let s = state(c)?;
@@ -610,6 +634,7 @@ const NAMES: &[&[u8]] = &[
     b"methodFor:",
     b"addMethod:as:",
     b"checkpoint",
+    b"retirementReady",
     b"allocate",
     b"size",
     b"at:",
@@ -702,6 +727,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"referencesOf:do:", references),
             (behavior, b"retire:", retire),
             (behavior, b"checkpoint", checkpoint),
+            (behavior, b"retirementReady", retirement_ready),
             (method_behavior, b"fromNative:owner:", from_native),
             (method_behavior, b"clone", identity),
             (method_behavior, b"invokeOn:", invoke),

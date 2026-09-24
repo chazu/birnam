@@ -1,4 +1,5 @@
 fn main() {
-    #[cfg(target_os = "macos")]
-    println!("cargo:rustc-link-arg=-Wl,-install_name,@rpath/libbirnam_id_codegen_rust.dylib");
+    println!(
+        "cargo:rustc-cdylib-link-arg=-Wl,-install_name,@rpath/libbirnam_codegen_runtime.dylib"
+    );
 }

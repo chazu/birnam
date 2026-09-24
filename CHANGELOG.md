@@ -8,6 +8,18 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Restore the first three Design 90 compiler areas in production Bootstrap:
+  PEG/Lang, source Codegen/generated calls, and TCC installation/code lifetime.
+  Retain matcher, grammar, lowering and descriptor algorithms; emit typed Id
+  entries and live Machine/owner messages. Trace code Units and implementation
+  Blocks separately, preserve captured and suspended implementations on replacement,
+  and release mappings only after idle Execution retirement. Delete the old TCC
+  owner bridge and cached retirement plumbing. Validate real compiled recovery,
+  collecting callbacks and independent libtcc byte reclamation; 12 production
+  binaries and compiler/engine/parser/build tests pass. Allocation-elision stays
+  separate. Full Artifact/PortableCode adapters, Image/Store publication and
+  CLI/workspace restoration remain outside the accepted source path.
+
 - Complete Design 90 batch 1 with native hot PC selection, live Machine guards,
   candidate withdrawal and entered-owner retention. Reconnect scalar numeric
   evaluation through Integer's exact-entry owner message, preserving mixed

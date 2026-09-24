@@ -1,4 +1,7 @@
 use super::*;
+unsafe fn state_ref<'a>(p: Oop) -> &'a PatternState {
+    unsafe { &*p.cast::<PatternState>() }
+}
 
 struct LegacyMatcher {
     source: Vec<u8>,
@@ -254,7 +257,10 @@ fn compare(source: &[u8], root: Oop, rules: &[(Oop, Oop)]) -> Matcher {
         undefined_rule: ptr::null_mut(),
         left_recursive_rule: ptr::null_mut(),
     };
-    let a = match_pattern(&mut actual, root, 0).map(|r| (r.end, r.children));
+    let a = match_pattern(&mut actual, root, 0, &|p| {
+        Some(unsafe { state_ref(p) }.clone())
+    })
+    .map(|r| (r.end, r.children));
     let b = legacy_match(&mut expected, root, 0).map(|r| (r.end, r.children));
     assert_eq!(a, b);
     assert_eq!(actual.furthest, expected.furthest);
@@ -375,9 +381,21 @@ fn snapshots_copy_only_visited_pattern_data_once_per_parse() {
     // on the long-lived Grammar or Pattern object.
     arena[0].literal[0] = b'b';
     let mut next = matcher(b"b", &rules);
-    assert_eq!(match_pattern(&mut next, literal, 0).unwrap().end, 1);
+    assert_eq!(
+        match_pattern(&mut next, literal, 0, &|p| Some(
+            unsafe { state_ref(p) }.clone()
+        ))
+        .unwrap()
+        .end,
+        1
+    );
     let mut next = matcher(b"a", &rules);
-    assert!(match_pattern(&mut next, literal, 0).is_none());
+    assert!(
+        match_pattern(&mut next, literal, 0, &|p| Some(
+            unsafe { state_ref(p) }.clone()
+        ))
+        .is_none()
+    );
 }
 
 #[test]

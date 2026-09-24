@@ -2,9 +2,11 @@
 
 During [Design 90](design/90-functional-modules.md), full-language
 validation is unavailable: the old native API and construction interfaces have
-been deliberately deleted before caller migration. ABI/Id checks and independent
-compiler recovery tests can still run. Deoptimization and concurrency assertions
-are retained, but their Runtime/native harnesses need migration. Existing installed
+been deliberately deleted before caller migration. The production prefix now also
+compiles and executes source through PEG/Lang, Codegen and TCC. Full-workspace and
+full-language acceptance remain unavailable; this source path does not restore
+every upper module. Deoptimization and concurrency assertions are retained, but
+their Runtime/native harnesses need migration. Existing installed
 prefixes do not validate the current source. Release validation is not required
 for this deletion work.
 
@@ -22,7 +24,8 @@ tests remain in `birnam-host`. Build/install-tool tests run independently with
 `cargo test --offline --locked -p birnam-build`.
 
 For the converted production prefix, run `mise run native-messages`. It builds
-and audits actual dylib exports/dependencies, then exercises Bootstrap, roots, GC,
+and audits actual dylib exports/dependencies and declared install names, then
+exercises Bootstrap, roots, GC,
 object behavior, text, numbers and collections through Id. Collection callbacks
 return unretained temporary keys and accumulators; tests check both survival during
 use and reclamation after success/failure. Root registration is checked beyond
@@ -47,9 +50,28 @@ shared arithmetic/lowering tests.
 
 Batch 1's native Execution and displaced Runtime wrapper cleanup are complete.
 Allocation-elision is explicitly deferred to batch 2 with its owner protocols and
-compiler producers. These native checks do not prove compiler-generated recovery,
-optimizer equivalence/performance or compiled mapping reclamation. The retained
-upper Runtime source/compiler cases are migration inputs, not passing coverage.
+compiler producers. Optimizer equivalence/performance and the full retained upper Runtime harness
+remain unproven; its unconverted cases are migration inputs.
+
+The `compiler` binary extends the same suite to 12 integration binaries. It tests
+source literals, threaded sends, conditional and capturing Blocks, named methods,
+replacement with exact captured invocation, syntax/compilation/initialization
+failures and precise GC inside factories. Generated protected-boundary exits
+deliver once into their callers; destroying a waiting Machine releases its code.
+Actual TCC Units survive binding-only and waiting-frame retention, then
+both live Unit count and libtcc relocated bytes return to zero. A C recovery
+candidate compiled by TCC recovers into a generated baseline, removes its own
+binding, collects and attempts checkpoint before returning. This proves real
+compiled recovery/mapping lifetime, not the separate allocation-elision emitters.
+The script builds TCC with `resource-metrics` for independent allocation evidence.
+
+Pure/debug checks: `mise exec -- cargo test --offline -p birnam-codegen
+-p birnam-execution -p birnam-peg -p birnam-native-compiler --lib` runs 97 compiler,
+21 engine, 3 matcher-oracle and 1 native-owner tests. Adding
+`--features birnam-native-compiler/resource-metrics` runs a second native-owner
+test that checks relocated allocation bytes. Build-tool tests also pass
+with the canonical module filenames. Artifact/PortableCode language admission,
+Image, Store, workers and full CLI acceptance remain separate.
 
 The obsolete `native-modules` task and installed adoption driver are removed.
 Cached floor-function discovery tests are also retired; they asserted the old

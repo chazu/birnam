@@ -1,819 +1,232 @@
-//! Rust language-parser rung.
-//!
-//! The grammar remains a policy object built through the PEG message API. This
-//! crate owns the grammar construction and Lang facade, while the matcher and
-//! transient CST remain in the dynamically replaceable PEG rung.
-
-use birnam_abi::{IdApi, MarkFn, Oop, borrowed_oop_args};
-use core::ffi::c_char;
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-const RUST_LANG_IDENTITY: &[u8] = b"rust-lang-n5.2-threaded-messages\0";
-const PEG_NAME: &[u8] = b"Peg\0";
-const LANG_NAME: &[u8] = b"Lang\0";
-const LANG_VT_NAME: &[u8] = b"LangVt\0";
-const GRAMMAR_NAME: &[u8] = b"BirnamGrammar\0";
-
-#[derive(Clone, Copy)]
-struct Runtime {
-    api: usize,
-    roots: usize,
-    exports: usize,
-    presence: usize,
-    peg: usize,
-    lang_vt: usize,
-    lang: usize,
+//! Language grammar construction retains its existing PEG message policy.
+use birnam_abi::{
+    Oop, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{
+    cell::{Cell, RefCell},
+    ffi::c_void,
+};
+mod grammar;
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
-static GRAMMAR: AtomicUsize = AtomicUsize::new(0);
-
-unsafe extern "C" fn mark_runtime_roots(mark: MarkFn) {
-    if let Some(runtime) = RUNTIME.get() {
-        for value in [runtime.peg, runtime.lang_vt, runtime.lang] {
-            unsafe { mark(value as Oop) };
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
+}
+fn done(v: Result<Operand, Outcome>) -> Outcome {
+    v.map_or_else(|e| e, Outcome::loaded)
+}
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    grammar: Cell<Oop>,
+    thread: std::thread::ThreadId,
+}
+struct Build<'a> {
+    s: &'a State,
+    tokens: RefCell<Vec<usize>>,
+}
+impl Build<'_> {
+    unsafe fn keep(&self, v: Oop) -> Result<Oop, Outcome> {
+        let t = unsafe {
+            self.s
+                .id
+                .send_named(self.s.roots, b"retain:", &[Operand::object(v)])
+        }?
+        .as_word()
+        .ok_or_else(invalid)?;
+        self.tokens.borrow_mut().push(t);
+        Ok(v)
+    }
+}
+impl Drop for Build<'_> {
+    fn drop(&mut self) {
+        for t in self.tokens.get_mut().drain(..) {
+            unsafe {
+                self.s
+                    .id
+                    .send_named(self.s.roots, b"release:", &[Operand::word(t)])
+                    .expect("release Lang construction roots");
+            }
         }
     }
-    let grammar = GRAMMAR.load(Ordering::Acquire);
-    if grammar != 0 {
-        unsafe { mark(grammar as Oop) };
-    }
 }
-
-fn abort(message: &str) -> ! {
-    eprintln!("birnam Rust Lang: {message}");
-    std::process::abort();
+unsafe fn named(s: &State, n: &[u8]) -> Result<Oop, Outcome> {
+    unsafe { object(s.id.send_named(s.ns, b"at:", &[Operand::object(s.id.intern_name(n)?)])?) }
 }
-
-fn runtime() -> &'static Runtime {
-    RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("module is not initialized"))
+fn name(n: &[u8]) -> &[u8] {
+    n.strip_suffix(&[0]).unwrap_or(n)
 }
-
-unsafe fn runtime_api(runtime: &Runtime) -> &'static IdApi {
-    // SAFETY: native construction records the process-owned table for the process life.
-    unsafe { &*(runtime.api as *const IdApi) }
+unsafe fn intern(b: &Build<'_>, n: &[u8]) -> Result<Oop, Outcome> {
+    unsafe { b.s.id.intern_name(name(n)) }
 }
-
-fn as_oop(value: usize) -> Oop {
-    value as Oop
-}
-
-unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
-    debug_assert_eq!(name.last(), Some(&0));
-    // SAFETY: all names are static NUL-terminated selector strings.
-    unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn send(api: &IdApi, receiver: Oop, selector: &[u8], args: &[Oop]) -> Oop {
-    let selector = unsafe { intern(api, selector) };
-    // SAFETY: the argument slice is live for the synchronous send.
-    unsafe { (api.send)(receiver, selector, args.as_ptr(), args.len()) }
-}
-
-unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
-    unsafe { send(api, receiver, selector, &[]) }
-}
-
-unsafe fn send1(api: &IdApi, receiver: Oop, selector: &[u8], arg: Oop) -> Oop {
-    unsafe { send(api, receiver, selector, &[arg]) }
-}
-
-unsafe fn send2(api: &IdApi, receiver: Oop, selector: &[u8], first: Oop, second: Oop) -> Oop {
-    unsafe { send(api, receiver, selector, &[first, second]) }
-}
-
-unsafe fn literal(api: &IdApi, peg: Oop, bytes: &[u8]) -> Oop {
-    let string = unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) };
-    unsafe { send1(api, peg, b"literal:\0", string) }
-}
-
-unsafe fn rule_ref(api: &IdApi, peg: Oop, name: &[u8]) -> Oop {
-    let symbol = unsafe { intern(api, name) };
-    unsafe { send1(api, peg, b"ruleRef:\0", symbol) }
-}
-
-unsafe fn any(api: &IdApi, peg: Oop) -> Oop {
-    unsafe { send0(api, peg, b"any\0") }
-}
-
-unsafe fn eof(api: &IdApi, peg: Oop) -> Oop {
-    unsafe { send0(api, peg, b"eof\0") }
-}
-
-unsafe fn star(api: &IdApi, pattern: Oop) -> Oop {
-    unsafe { send0(api, pattern, b"star\0") }
-}
-
-unsafe fn plus(api: &IdApi, pattern: Oop) -> Oop {
-    unsafe { send0(api, pattern, b"plus\0") }
-}
-
-unsafe fn optional(api: &IdApi, pattern: Oop) -> Oop {
-    unsafe { send0(api, pattern, b"opt\0") }
-}
-
-unsafe fn negate(api: &IdApi, pattern: Oop) -> Oop {
-    unsafe { send0(api, pattern, b"negate\0") }
-}
-
-unsafe fn seq(api: &IdApi, peg: Oop, children: &[Oop]) -> Oop {
-    let result = unsafe { send0(api, peg, b"seq\0") };
-    for child in children {
-        let _ = unsafe { send1(api, result, b"add:\0", *child) };
-    }
-    result
-}
-
-unsafe fn choice(api: &IdApi, peg: Oop, children: &[Oop]) -> Oop {
-    let result = unsafe { send0(api, peg, b"choice\0") };
-    for child in children {
-        let _ = unsafe { send1(api, result, b"add:\0", *child) };
-    }
-    result
-}
-
-unsafe fn charset(api: &IdApi, peg: Oop, ranges: &[(u8, u8)]) -> Oop {
-    let result = unsafe { send0(api, peg, b"charset\0") };
-    for (lo, hi) in ranges {
-        let _ = unsafe {
-            send2(
-                api,
-                result,
-                b"from:to:\0",
-                (birnam_abi::integer::make)(i64::from(*lo)),
-                (birnam_abi::integer::make)(i64::from(*hi)),
-            )
-        };
-    }
-    result
-}
-
-unsafe fn define_rule(api: &IdApi, grammar: Oop, name: &[u8], pattern: Oop) {
-    let symbol = unsafe { intern(api, name) };
-    let _ = unsafe { send2(api, grammar, b"rule:is:\0", symbol, pattern) };
-}
-
-unsafe fn build_grammar(api: &IdApi, peg: Oop) -> Oop {
-    let grammar = unsafe { send0(api, peg, b"grammar\0") };
-
-    let newline = unsafe { charset(api, peg, &[(b'\n', b'\n')]) };
-    let comment = unsafe {
-        seq(
-            api,
-            peg,
-            &[
-                literal(api, peg, b"//"),
-                star(api, seq(api, peg, &[negate(api, newline), any(api, peg)])),
-            ],
-        )
-    };
-    let space_char = unsafe {
-        charset(
-            api,
-            peg,
-            &[(b' ', b' '), (b'\t', b'\t'), (b'\n', b'\n'), (b'\r', b'\r')],
-        )
-    };
-    let whitespace = unsafe { star(api, choice(api, peg, &[space_char, comment])) };
-    let spacing1 = unsafe { plus(api, choice(api, peg, &[space_char, comment])) };
-    let alpha = unsafe { charset(api, peg, &[(b'a', b'z'), (b'A', b'Z'), (b'_', b'_')]) };
-    let alnum = unsafe {
-        charset(
-            api,
-            peg,
-            &[(b'a', b'z'), (b'A', b'Z'), (b'0', b'9'), (b'_', b'_')],
-        )
-    };
-    let digit = unsafe { charset(api, peg, &[(b'0', b'9')]) };
-
+unsafe fn send(b: &Build<'_>, r: Oop, n: &[u8], a: &[Oop]) -> Result<Oop, Outcome> {
     unsafe {
-        define_rule(
-            api,
-            grammar,
-            b"ident\0",
-            seq(api, peg, &[alpha, star(api, alnum)]),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"number\0",
-            seq(
-                api,
-                peg,
-                &[optional(api, literal(api, peg, b"-")), plus(api, digit)],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"float\0",
-            seq(
-                api,
-                peg,
-                &[
-                    optional(api, literal(api, peg, b"-")),
-                    plus(api, digit),
-                    literal(api, peg, b"."),
-                    plus(api, digit),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"string\0",
-            seq(
-                api,
-                peg,
-                &[
-                    literal(api, peg, b"\""),
-                    star(
-                        api,
-                        choice(
-                            api,
-                            peg,
-                            &[
-                                seq(api, peg, &[literal(api, peg, b"\\"), any(api, peg)]),
-                                seq(
-                                    api,
-                                    peg,
-                                    &[negate(api, literal(api, peg, b"\"")), any(api, peg)],
-                                ),
-                            ],
-                        ),
-                    ),
-                    literal(api, peg, b"\""),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"binop\0",
-            charset(
-                api,
-                peg,
-                &[
-                    (b'=', b'='),
-                    (b'<', b'<'),
-                    (b'>', b'>'),
-                    (b'&', b'&'),
-                    (b'|', b'|'),
-                    (b',', b','),
-                    (b'+', b'+'),
-                    (b'-', b'-'),
-                    (b'*', b'*'),
-                    (b'/', b'/'),
-                    (b'~', b'~'),
-                    (b'%', b'%'),
-                    (b'@', b'@'),
-                    (b'!', b'!'),
-                    (b'^', b'^'),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"symbol\0",
-            seq(
-                api,
-                peg,
-                &[
-                    literal(api, peg, b"#"),
-                    choice(
-                        api,
-                        peg,
-                        &[
-                            plus(
-                                api,
-                                seq(
-                                    api,
-                                    peg,
-                                    &[rule_ref(api, peg, b"ident\0"), literal(api, peg, b":")],
-                                ),
-                            ),
-                            rule_ref(api, peg, b"ident\0"),
-                            plus(api, rule_ref(api, peg, b"binop\0")),
-                        ],
-                    ),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"primary\0",
-            choice(
-                api,
-                peg,
-                &[
-                    rule_ref(api, peg, b"float\0"),
-                    rule_ref(api, peg, b"number\0"),
-                    rule_ref(api, peg, b"string\0"),
-                    rule_ref(api, peg, b"symbol\0"),
-                    rule_ref(api, peg, b"ident\0"),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"keyword\0",
-            seq(
-                api,
-                peg,
-                &[rule_ref(api, peg, b"ident\0"), literal(api, peg, b":")],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"keywordMsg\0",
-            plus(
-                api,
-                seq(
-                    api,
-                    peg,
-                    &[
-                        rule_ref(api, peg, b"keyword\0"),
-                        whitespace,
-                        rule_ref(api, peg, b"expr\0"),
-                        whitespace,
-                    ],
-                ),
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"binops\0",
-            plus(api, rule_ref(api, peg, b"binop\0")),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"binaryMsg\0",
-            seq(
-                api,
-                peg,
-                &[
-                    negate(
-                        api,
-                        choice(
-                            api,
-                            peg,
-                            &[
-                                seq(api, peg, &[literal(api, peg, b"=>"), spacing1]),
-                                seq(
-                                    api,
-                                    peg,
-                                    &[
-                                        literal(api, peg, b"=>"),
-                                        negate(api, rule_ref(api, peg, b"binop\0")),
-                                    ],
-                                ),
-                            ],
-                        ),
-                    ),
-                    rule_ref(api, peg, b"binops\0"),
-                    whitespace,
-                    rule_ref(api, peg, b"expr\0"),
-                ],
-            ),
-        );
-        define_rule(api, grammar, b"unaryMsg\0", rule_ref(api, peg, b"ident\0"));
-        define_rule(
-            api,
-            grammar,
-            b"threadDispatch\0",
-            choice(
-                api,
-                peg,
-                &[
-                    rule_ref(api, peg, b"keywordMsg\0"),
-                    rule_ref(api, peg, b"binaryMsg\0"),
-                    rule_ref(api, peg, b"unaryMsg\0"),
-                ],
-            ),
-        );
-        let thread_leg = seq(
-            api,
-            peg,
-            &[
-                literal(api, peg, b"=>"),
-                spacing1,
-                rule_ref(api, peg, b"threadDispatch\0"),
-            ],
-        );
-        define_rule(
-            api,
-            grammar,
-            b"threadedMsg\0",
-            seq(
-                api,
-                peg,
-                &[
-                    thread_leg,
-                    star(api, seq(api, peg, &[whitespace, thread_leg])),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"message\0",
-            choice(
-                api,
-                peg,
-                &[
-                    rule_ref(api, peg, b"threadedMsg\0"),
-                    rule_ref(api, peg, b"keywordMsg\0"),
-                    plus(
-                        api,
-                        seq(api, peg, &[rule_ref(api, peg, b"binaryMsg\0"), whitespace]),
-                    ),
-                    plus(
-                        api,
-                        seq(api, peg, &[rule_ref(api, peg, b"unaryMsg\0"), whitespace]),
-                    ),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"send\0",
-            seq(
-                api,
-                peg,
-                &[
-                    literal(api, peg, b"["),
-                    whitespace,
-                    rule_ref(api, peg, b"expr\0"),
-                    whitespace,
-                    rule_ref(api, peg, b"message\0"),
-                    whitespace,
-                    literal(api, peg, b"]"),
-                ],
-            ),
-        );
-        let block_header = seq(
-            api,
-            peg,
-            &[
-                star(
-                    api,
-                    seq(
-                        api,
-                        peg,
-                        &[
-                            literal(api, peg, b":"),
-                            rule_ref(api, peg, b"ident\0"),
-                            whitespace,
-                        ],
-                    ),
-                ),
-                literal(api, peg, b"|"),
-            ],
-        );
-        define_rule(
-            api,
-            grammar,
-            b"block\0",
-            seq(
-                api,
-                peg,
-                &[
-                    literal(api, peg, b"["),
-                    whitespace,
-                    block_header,
-                    whitespace,
-                    optional(api, rule_ref(api, peg, b"statements\0")),
-                    whitespace,
-                    literal(api, peg, b"]"),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"vectorLit\0",
-            seq(
-                api,
-                peg,
-                &[
-                    literal(api, peg, b"#["),
-                    whitespace,
-                    star(
-                        api,
-                        seq(api, peg, &[rule_ref(api, peg, b"expr\0"), whitespace]),
-                    ),
-                    literal(api, peg, b"]"),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"mapEntry\0",
-            seq(
-                api,
-                peg,
-                &[
-                    rule_ref(api, peg, b"expr\0"),
-                    whitespace,
-                    literal(api, peg, b"->"),
-                    whitespace,
-                    rule_ref(api, peg, b"expr\0"),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"mapLit\0",
-            seq(
-                api,
-                peg,
-                &[
-                    literal(api, peg, b"{"),
-                    whitespace,
-                    star(
-                        api,
-                        seq(
-                            api,
-                            peg,
-                            &[
-                                rule_ref(api, peg, b"mapEntry\0"),
-                                whitespace,
-                                optional(api, literal(api, peg, b",")),
-                                whitespace,
-                            ],
-                        ),
-                    ),
-                    literal(api, peg, b"}"),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"logicVar\0",
-            seq(
-                api,
-                peg,
-                &[literal(api, peg, b"?"), rule_ref(api, peg, b"ident\0")],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"expr\0",
-            choice(
-                api,
-                peg,
-                &[
-                    rule_ref(api, peg, b"block\0"),
-                    rule_ref(api, peg, b"send\0"),
-                    rule_ref(api, peg, b"vectorLit\0"),
-                    rule_ref(api, peg, b"mapLit\0"),
-                    rule_ref(api, peg, b"logicVar\0"),
-                    rule_ref(api, peg, b"primary\0"),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"letBinding\0",
-            seq(
-                api,
-                peg,
-                &[
-                    literal(api, peg, b"let"),
-                    negate(api, alnum),
-                    whitespace,
-                    rule_ref(api, peg, b"ident\0"),
-                    whitespace,
-                    literal(api, peg, b":="),
-                    whitespace,
-                    rule_ref(api, peg, b"expr\0"),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"statement\0",
-            choice(
-                api,
-                peg,
-                &[
-                    rule_ref(api, peg, b"letBinding\0"),
-                    rule_ref(api, peg, b"expr\0"),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"statements\0",
-            seq(
-                api,
-                peg,
-                &[
-                    rule_ref(api, peg, b"statement\0"),
-                    star(
-                        api,
-                        seq(
-                            api,
-                            peg,
-                            &[
-                                whitespace,
-                                // The separator is optional: every expr form is
-                                // self-delimiting (bracketed group or single
-                                // token) and nothing juxtaposes at statement
-                                // level, so whitespace alone already separates.
-                                optional(api, literal(api, peg, b";")),
-                                whitespace,
-                                rule_ref(api, peg, b"statement\0"),
-                            ],
-                        ),
-                    ),
-                    optional(api, seq(api, peg, &[whitespace, literal(api, peg, b";")])),
-                ],
-            ),
-        );
-        define_rule(
-            api,
-            grammar,
-            b"program\0",
-            seq(
-                api,
-                peg,
-                &[
-                    whitespace,
-                    optional(api, rule_ref(api, peg, b"statements\0")),
-                    whitespace,
-                    eof(api, peg),
-                ],
-            ),
-        );
+        b.keep(object(b.s.id.send_named(
+            r,
+            name(n),
+            &a.iter().copied().map(Operand::object).collect::<Vec<_>>(),
+        )?)?)
     }
-    grammar
 }
-
-unsafe extern "C" fn lang_parse(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { borrowed_oop_args(pointer, count) }
-        .unwrap_or_else(|| abort("Lang parse: received invalid arguments"));
-    if values.len() != 1 {
-        abort("Lang parse: expects one argument");
-    }
-    let runtime = runtime();
-    let api = unsafe { runtime_api(runtime) };
-    let grammar = as_oop(GRAMMAR.load(Ordering::Acquire));
-    if grammar.is_null() {
-        abort("Lang grammar was not initialized");
-    }
-    let root = unsafe { intern(api, b"program\0") };
-    unsafe { send2(api, grammar, b"parse:from:\0", values[0], root) }
+unsafe fn send0(b: &Build<'_>, r: Oop, n: &[u8]) -> Result<Oop, Outcome> {
+    unsafe { send(b, r, n, &[]) }
 }
-
-unsafe extern "C" fn lang_grammar(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { borrowed_oop_args(pointer, count) }
-        .unwrap_or_else(|| abort("Lang grammar received invalid arguments"))
-        .is_empty()
-    {
-        abort("Lang grammar expects no arguments");
-    }
-    as_oop(GRAMMAR.load(Ordering::Acquire))
+unsafe fn send1(b: &Build<'_>, r: Oop, n: &[u8], a: Oop) -> Result<Oop, Outcome> {
+    unsafe { send(b, r, n, &[a]) }
 }
-
-unsafe extern "C" fn lang_furthest_fail(
-    _self_object: Oop,
-    pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    if !unsafe { borrowed_oop_args(pointer, count) }
-        .unwrap_or_else(|| abort("Lang furthestFail received invalid arguments"))
-        .is_empty()
-    {
-        abort("Lang furthestFail expects no arguments");
-    }
-    let runtime = runtime();
-    let api = unsafe { runtime_api(runtime) };
-    let grammar = as_oop(GRAMMAR.load(Ordering::Acquire));
-    unsafe { send0(api, grammar, b"furthestFail\0") }
+unsafe fn send2(b: &Build<'_>, r: Oop, n: &[u8], a: Oop, c: Oop) -> Result<Oop, Outcome> {
+    unsafe { send(b, r, n, &[a, c]) }
 }
-
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1, predecessor: Oop) {
-    if api_pointer.is_null() {
-        abort("native construction received a null IdApi");
-    }
-    let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
-    let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
-    let api = unsafe { &*api_pointer };
-    let runtime = *RUNTIME.get_or_init(|| {
-        let peg = if predecessor.is_null() { unsafe { birnam_abi::namespace_import::import(imports, PEG_NAME.as_ptr().cast::<c_char>()) } } else { predecessor };
-        if peg.is_null() {
-            abort("Lang requires the Peg facade");
-        }
-        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, LANG_NAME.as_ptr().cast::<c_char>()) != 0 };
-        let (lang_vt, lang) = if reloading {
-            let lang_vt = unsafe { birnam_abi::namespace_import::import(imports, LANG_VT_NAME.as_ptr().cast::<c_char>()) };
-            let lang = unsafe { birnam_abi::namespace_import::import(imports, LANG_NAME.as_ptr().cast::<c_char>()) };
-            (lang_vt, lang)
-        } else {
-            let lang_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            let lang = retain(unsafe { (api.alloc)(lang_vt, 0) });
-            (lang_vt, lang)
-        };
-        if lang_vt.is_null() || lang.is_null() {
-            abort("Lang exports were incomplete");
-        }
-        Runtime {
-            api: api_pointer as usize,
-            roots: roots as usize,
-            exports: exports as usize,
-            presence: presence as usize,
-            peg: peg as usize,
-            lang_vt: lang_vt as usize,
-            lang: lang as usize,
-        }
-    });
-    let api = unsafe { runtime_api(&runtime) };
-    let exports = runtime.exports as *const birnam_abi::namespace_export::ApiV1;
-    let presence = runtime.presence as *const birnam_abi::namespace_presence::ApiV1;
-    ROOT_REGISTERED.get_or_init(|| unsafe {
-        birnam_abi::root_registry::register(runtime.roots as *const birnam_abi::root_registry::ApiV1, mark_runtime_roots);
-    });
-    let grammar = unsafe { build_grammar(api, as_oop(runtime.peg)) };
-    GRAMMAR.store(grammar as usize, Ordering::Release);
-    let lang_vt = as_oop(runtime.lang_vt);
+unsafe fn string(b: &Build<'_>, bytes: &[u8]) -> Result<Oop, Outcome> {
     unsafe {
-        (api.method)(lang_vt, intern(api, b"parse:\0"), lang_parse);
-        (api.method)(lang_vt, intern(api, b"grammar\0"), lang_grammar);
-        (api.method)(lang_vt, intern(api, b"furthestFail\0"), lang_furthest_fail);
-        let _ = birnam_abi::namespace_export::export(exports, GRAMMAR_NAME.as_ptr().cast(), grammar);
-        if birnam_abi::namespace_presence::contains(presence, LANG_NAME.as_ptr().cast()) == 0 {
-            let _ = birnam_abi::namespace_export::export(exports, LANG_VT_NAME.as_ptr().cast(), lang_vt);
-            let _ = birnam_abi::namespace_export::export(exports, LANG_NAME.as_ptr().cast(), as_oop(runtime.lang));
+        b.keep(object(b.s.id.send_named(
+            named(b.s, b"String")?,
+            b"fromBytes:",
+            &[Operand::bytes(bytes)],
+        )?)?)
+    }
+}
+unsafe fn integer(b: &Build<'_>, i: usize) -> Result<Oop, Outcome> {
+    unsafe {
+        b.keep(object(b.s.id.send_named(
+            named(b.s, b"Integer")?,
+            b"fromWord:",
+            &[Operand::word(i)],
+        )?)?)
+    }
+}
+unsafe extern "C" fn parse(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
         }
+        let Some([source]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let b = Build {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        b.keep(object(*source)?)?;
+        s.id.send_named(
+            s.grammar.get(),
+            b"parse:from:",
+            &[*source, Operand::object(s.id.intern_name(b"program")?)],
+        )
+    })())
+}
+unsafe extern "C" fn get_grammar(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    if n != 0 {
+        return invalid();
+    }
+    Outcome::loaded(Operand::object(
+        unsafe { &*c.cast::<State>() }.grammar.get(),
+    ))
+}
+unsafe extern "C" fn furthest(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    if n != 0 {
+        return invalid();
+    }
+    let s = unsafe { &*c.cast::<State>() };
+    done(unsafe { s.id.send_named(s.grammar.get(), b"furthestFail", &[]) })
+}
+unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let v = v.as_entry().ok_or_else(invalid)?;
+        for o in [s.ns, s.roots, s.grammar.get()] {
+            if !o.is_null() {
+                v.method.ok_or_else(invalid)?(v.context, s.grammar.get(), &Operand::object(o), 1)
+                    .into_result()?;
+            }
+        }
+        Ok(Operand::unit())
+    })())
+}
+unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let root =
+            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"Roots")?)])?)?;
+        let existing = id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"Lang")?)])?;
+        if existing.kind() == native::OBJECT {
+            return Ok(existing);
+        }
+        let s = Box::leak(Box::new(State {
+            id,
+            ns,
+            roots: root,
+            grammar: Cell::new(core::ptr::null_mut()),
+            thread: std::thread::current().id(),
+        }));
+        let b = Build {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        let grammar = grammar::build_grammar(&b, named(s, b"Peg")?)?;
+        let vt = b.keep(object(id.send_named(
+            named(s, b"ObjectVt")?,
+            b"delegated",
+            &[],
+        )?)?)?;
+        let lang = b.keep(object(id.send_named(
+            named(s, b"ObjectModel")?,
+            b"allocate:bytes:",
+            &[Operand::object(vt), Operand::word(0)],
+        )?)?)?;
+        // Grammar remains rooted in b while the completed instance is published.
+        let context = (s as *const State).cast_mut();
+        s.grammar.set(grammar);
+        for (n, f) in [
+            (b"parse:".as_slice(), parse as Method),
+            (b"grammar", get_grammar),
+            (b"furthestFail", furthest),
+            (b"rootsDo:", roots),
+        ] {
+            id.send_named(
+                vt,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(n)?),
+                    Operand::entry(NativeEntry::new(f, context.cast())),
+                ],
+            )?;
+        }
+        id.send_named(root, b"register:", &[Operand::object(lang)])?;
+        for (n, v) in [
+            (b"Lang".as_slice(), lang),
+            (b"LangVt", vt),
+            (b"BirnamGrammar", grammar),
+        ] {
+            id.send_named(
+                ns,
+                b"at:put:",
+                &[Operand::object(id.intern_name(n)?), Operand::object(v)],
+            )?;
+        }
+        Ok(Operand::object(lang))
     }
 }
-
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_lang_rust_identity() -> *const c_char {
-    RUST_LANG_IDENTITY.as_ptr().cast()
-}
-
-/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
-    1
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{RUST_LANG_IDENTITY, birnam_lang_rust_identity};
-    use std::ffi::CStr;
-
-    #[test]
-    fn identity_is_a_terminated_static_string() {
-        // SAFETY: the export points to immutable crate storage for process life.
-        let identity = unsafe { CStr::from_ptr(birnam_lang_rust_identity()) };
-        assert_eq!(identity.to_bytes_with_nul(), RUST_LANG_IDENTITY);
-    }
-}
-
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    let Some([api, presence, imports, exports, roots, integer, string, predecessor]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(integer), Some(string)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), integer.as_word(), string.as_word()) else { return invalid_native(); };
-    let api = api as *mut IdApi;
-    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
-    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
-    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
-        || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports) && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
-    let Some(predecessor) = predecessor.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
-    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
-    if RUNTIME.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(runtime().lang as Oop)), _ => return invalid_native(),
-    }
-    unsafe { bring_up(api, presence, imports, exports, (*roots).api, roots, predecessor); }
-    NATIVE_PHASE.store(2, Ordering::Release);
-    Outcome::loaded(Operand::object(runtime().lang as Oop))
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        construct(*id, object(*ns)?)
+    })())
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: 1,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};

@@ -300,6 +300,16 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 Operand::object(namespace),
             ],
         )?;
+        for name in ["peg", "lang", "tcc", "codegen_runtime"] {
+            id.send_named(
+                receiver,
+                b"loadNative:",
+                &[
+                    Operand::bytes(&module_path(directory, name)),
+                    Operand::object(namespace),
+                ],
+            )?;
+        }
         INSTANCE.store(state, Ordering::Release);
         Ok(Operand::object(namespace))
     }

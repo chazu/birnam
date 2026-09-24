@@ -1,1328 +1,680 @@
-//! Rust PEG matcher and transient CST.
-//!
-//! N3.3 ports the ordered matcher, rule memoization, diagnostics, and transient
-//! CST over the N3.2 pattern/grammar representation. The explicit dylib remains
-//! an oracle until downstream language parity is proven.
-
-use birnam_abi::{IdApi, Oop};
-use core::ffi::c_char;
-use core::mem::size_of;
-use core::ptr;
-use std::collections::HashMap;
-use std::slice;
-use std::sync::{Mutex, OnceLock};
-
-const RUST_PEG_IDENTITY: &[u8] = b"rust-peg-n3.3-matcher\0";
-const PEG_NAME: &[u8] = b"Peg\0";
-const PEG_VT_NAME: &[u8] = b"PegFacadeVt\0";
-const PATTERN_VT_NAME: &[u8] = b"PegPatternVt\0";
-const GRAMMAR_VT_NAME: &[u8] = b"PegGrammarVt\0";
-const CST_VT_NAME: &[u8] = b"PegCstVt\0";
-
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq)]
-enum Kind {
-    Literal = 0,
-    Any = 1,
-    Eof = 2,
-    Charset = 3,
-    Seq = 4,
-    Choice = 5,
-    Star = 6,
-    Plus = 7,
-    Opt = 8,
-    And = 9,
-    Not = 10,
-    RuleRef = 11,
-}
-
-#[repr(C)]
-#[derive(Clone)]
-struct Range {
-    lo: u8,
-    hi: u8,
-}
-
-#[repr(C)]
-#[derive(Clone)]
-struct PatternState {
-    kind: Kind,
-    literal: Vec<u8>,
-    children: Vec<Oop>,
-    ranges: Vec<Range>,
-    rule_name: Oop,
-}
-
-struct Rule {
-    name: Oop,
-    pattern: Oop,
-}
-
-struct GrammarState {
-    rules: Vec<Rule>,
-    furthest_fail: usize,
-}
-
-impl GrammarState {
-    fn new() -> Self {
-        Self {
-            rules: Vec::new(),
-            furthest_fail: 0,
-        }
-    }
-}
-
-struct TempNode {
-    rule: Oop,
-    start: usize,
-    end: usize,
-    children: Vec<usize>,
-}
-
-#[derive(Clone)]
-struct MatchResult {
-    end: usize,
-    children: Vec<usize>,
-}
-
-#[derive(Clone)]
-struct MemoEntry {
-    ok: bool,
-    end: usize,
-    children: Vec<usize>,
-    in_progress: bool,
-}
-
-/// Hashing for the parse-local tables keyed by pattern/rule addresses and
-/// memo positions. These keys are process-local integers; the default SipHash
-/// cost per pattern visit measured +6.5 ms on every stdlib boot (Design 71
-/// acceptance repeat, 2026-09-09). The tables are discarded after each parse,
-/// so no cross-process hash stability is needed.
-#[derive(Default)]
-struct KeyHasher(u64);
-
-impl std::hash::Hasher for KeyHasher {
-    fn finish(&self) -> u64 {
-        self.0
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        for byte in bytes {
-            self.0 = (self.0 ^ u64::from(*byte)).wrapping_mul(0x100000001b3);
-        }
-    }
-
-    fn write_usize(&mut self, value: usize) {
-        let mixed = (self.0.rotate_left(29) ^ value as u64).wrapping_mul(0x9e3779b97f4a7c15);
-        self.0 = mixed ^ (mixed >> 29);
-    }
-}
-
-type KeyMap<Key, Value> = HashMap<Key, Value, std::hash::BuildHasherDefault<KeyHasher>>;
-
-struct Matcher {
-    source: Vec<u8>,
-    rules: KeyMap<usize, Oop>,
-    patterns: KeyMap<usize, std::rc::Rc<PatternState>>,
-    nodes: Vec<TempNode>,
-    memo: KeyMap<(usize, usize), MemoEntry>,
-    furthest: usize,
-    undefined_rule: Oop,
-    left_recursive_rule: Oop,
-}
-
-#[repr(C)]
-struct CstState {
-    rule: Oop,
-    start: usize,
-    end: usize,
-    children: Vec<Oop>,
-}
-
-impl PatternState {
-    fn new(kind: Kind) -> Self {
-        Self {
-            kind,
-            literal: Vec::new(),
-            children: Vec::new(),
-            ranges: Vec::new(),
-            rule_name: ptr::null_mut(),
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-struct Runtime {
-    api: usize,
-    finalizers: usize,
-    layouts: usize,
-    hooks: usize,
-    imports: usize,
-    pattern_vt: usize,
-    peg_vt: usize,
-    peg: usize,
-    grammar_vt: usize,
-    cst_vt: usize,
-}
-
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static CST_SCRATCH: Mutex<Vec<usize>> = Mutex::new(Vec::new());
-
+//! PEG's existing matcher over production Id-owned pattern, grammar and CST objects.
+use birnam_abi::{
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{cell::RefCell, ffi::c_void, ptr};
+use std::{collections::HashMap, rc::Rc};
+include!("matcher.rs");
 fn abort(message: &str) -> ! {
-    eprintln!("birnam Rust PEG: {message}");
-    std::process::abort();
+    panic!("invalid private PEG graph: {message}")
 }
-
-fn runtime() -> &'static Runtime {
-    RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("module is not initialized"))
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-
-unsafe fn api(runtime: &Runtime) -> &'static IdApi {
-    // SAFETY: native construction records the process-owned IdApi table and the host
-    // keeps the selected floor loaded for the process lifetime.
-    unsafe { &*(runtime.api as *const IdApi) }
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
 }
-
-fn as_oop(value: usize) -> Oop {
-    value as Oop
+fn done(v: Result<Operand, Outcome>) -> Outcome {
+    v.map_or_else(|e| e, Outcome::loaded)
 }
-
-fn oop_address(value: Oop) -> usize {
-    value as usize
+#[derive(Clone)]
+enum Value {
+    Pattern(PatternState),
+    Grammar(Vec<(Oop, Oop)>, usize),
+    Cst(Oop, usize, usize, Vec<Oop>),
 }
-
-unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
-    debug_assert_eq!(name.last(), Some(&0));
-    // SAFETY: all selectors and export names are static NUL-terminated bytes.
-    unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8]) -> Oop {
-    // SAFETY: all import names are static NUL-terminated bytes.
-    unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn state_mut(object: Oop) -> &'static mut PatternState {
-    if object.is_null() {
-        abort("Pattern object was null");
-    }
-    // SAFETY: every Rust Pattern object is allocated with this exact payload.
-    unsafe { &mut *(object.cast::<PatternState>()) }
-}
-
-unsafe fn state_ref(object: Oop) -> &'static PatternState {
-    if object.is_null() {
-        abort("Pattern object was null");
-    }
-    // SAFETY: every Rust Pattern object is allocated with this exact payload.
-    unsafe { &*(object.cast::<PatternState>()) }
-}
-
-unsafe fn grammar_ref(object: Oop) -> &'static GrammarState {
-    if object.is_null() {
-        abort("Grammar object was null");
-    }
-    // SAFETY: every Rust Grammar object is allocated with this exact payload.
-    unsafe { &*(object.cast::<GrammarState>()) }
-}
-
-unsafe fn cst_ref(object: Oop) -> &'static CstState {
-    if object.is_null() {
-        abort("CST object was null");
-    }
-    // SAFETY: every Rust CST object is allocated with this exact payload.
-    unsafe { &*(object.cast::<CstState>()) }
-}
-
-unsafe extern "C" fn trace_pattern(object: Oop, mark: birnam_abi::MarkFn) {
-    let (children, rule_name) = {
-        let state = unsafe { state_ref(object) };
-        (state.children.clone(), state.rule_name)
-    };
-    for child in children {
-        // SAFETY: children are Oop carriers retained by this Pattern.
-        unsafe { mark(child) };
-    }
-    if !rule_name.is_null() {
-        // SAFETY: rule_name is an interned Symbol Oop.
-        unsafe { mark(rule_name) };
-    }
-}
-
-unsafe extern "C" fn finalize_pattern(object: Oop) {
-    if !object.is_null() {
-        // SAFETY: finalization runs once for a live Pattern payload.
-        unsafe { ptr::drop_in_place(object.cast::<PatternState>()) };
-    }
-}
-
-unsafe extern "C" fn trace_grammar(object: Oop, mark: birnam_abi::MarkFn) {
-    let rules = {
-        let state = unsafe { grammar_ref(object) };
-        state
-            .rules
-            .iter()
-            .map(|rule| (rule.name, rule.pattern))
-            .collect::<Vec<_>>()
-    };
-    for (name, pattern) in rules {
-        // SAFETY: grammar rules retain both the interned name and Pattern Oop.
-        unsafe {
-            mark(name);
-            mark(pattern);
-        }
-    }
-}
-
-unsafe extern "C" fn finalize_grammar(object: Oop) {
-    if !object.is_null() {
-        // SAFETY: finalization runs once for a live Grammar payload.
-        unsafe { ptr::drop_in_place(object.cast::<GrammarState>()) };
-    }
-}
-
-unsafe extern "C" fn trace_cst(object: Oop, mark: birnam_abi::MarkFn) {
-    let children = unsafe { cst_ref(object).children.clone() };
-    for child in children {
-        // SAFETY: CST children are retained Oop values.
-        unsafe { mark(child) };
-    }
-}
-
-unsafe extern "C" fn finalize_cst(object: Oop) {
-    if !object.is_null() {
-        // SAFETY: finalization runs once for a live CST payload.
-        unsafe { ptr::drop_in_place(object.cast::<CstState>()) };
-    }
-}
-
-unsafe extern "C" fn cst_scratch_roots(mark: birnam_abi::MarkFn) {
-    if let Some(runtime) = RUNTIME.get() {
-        for value in [
-            runtime.pattern_vt,
-            runtime.peg_vt,
-            runtime.peg,
-            runtime.grammar_vt,
-            runtime.cst_vt,
-        ] {
-            // SAFETY: these are the PEG module's process-owned cached Oops.
-            unsafe { mark(value as Oop) };
-        }
-    }
-    let roots = CST_SCRATCH
-        .lock()
-        .unwrap_or_else(|_| abort("CST scratch root lock poisoned"))
-        .clone();
-    for root in roots.iter().copied() {
-        // SAFETY: scratch entries are live CST Oops retained until conversion ends.
-        unsafe { mark(root as Oop) };
-    }
-}
-
-fn scratch_push(object: Oop) {
-    CST_SCRATCH
-        .lock()
-        .unwrap_or_else(|_| abort("CST scratch root lock poisoned"))
-        .push(object as usize);
-}
-
-fn scratch_clear() {
-    CST_SCRATCH
-        .lock()
-        .unwrap_or_else(|_| abort("CST scratch root lock poisoned"))
-        .clear();
-}
-
-unsafe fn new_pattern(kind: Kind) -> Oop {
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    let object = unsafe { (api.alloc)(as_oop(runtime.pattern_vt), size_of::<PatternState>()) };
-    if object.is_null() {
-        abort("could not allocate Pattern object");
-    }
-    // SAFETY: the IdApi allocation has exactly the requested payload size.
-    unsafe { ptr::write(object.cast::<PatternState>(), PatternState::new(kind)) };
-    unsafe { birnam_abi::finalizers::set(runtime.finalizers as *const birnam_abi::finalizers::ApiV1, object, finalize_pattern) };
-    object
-}
-
-unsafe fn new_grammar() -> Oop {
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    let object = unsafe { (api.alloc)(as_oop(runtime.grammar_vt), size_of::<GrammarState>()) };
-    if object.is_null() {
-        abort("could not allocate Grammar object");
-    }
-    // SAFETY: the IdApi allocation has exactly the requested payload size.
-    unsafe { ptr::write(object.cast::<GrammarState>(), GrammarState::new()) };
-    unsafe { birnam_abi::finalizers::set(runtime.finalizers as *const birnam_abi::finalizers::ApiV1, object, finalize_grammar) };
-    object
-}
-
-unsafe fn string_bytes(_api: &IdApi, object: Oop) -> Vec<u8> {
-    let mut length = 0;
-    // SAFETY: the object is expected to satisfy the existing String protocol.
-    let pointer = unsafe { (birnam_abi::string::bytes)(object, &mut length) };
-    if pointer.is_null() && length != 0 {
-        abort("String protocol returned null bytes");
-    }
-    if length == 0 {
-        return Vec::new();
-    }
-    // SAFETY: IdApi owns the immutable String storage for this call.
-    unsafe { slice::from_raw_parts(pointer, length) }.to_vec()
-}
-
-unsafe fn rule_symbol(api: &IdApi, object: Oop) -> Oop {
-    if unsafe { (api.vtableOf)(object) } != unsafe { birnam_abi::string::behavior() } {
-        return object;
-    }
-    let bytes = unsafe { string_bytes(api, object) };
-    let mut name = bytes;
-    name.push(0);
-    // SAFETY: `name` is NUL-terminated for the duration of intern.
-    unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
-}
-
-fn note(matcher: &mut Matcher, position: usize) {
-    matcher.furthest = matcher.furthest.max(position);
-}
-
-fn index_rules(rules: impl IntoIterator<Item = (Oop, Oop)>) -> KeyMap<usize, Oop> {
-    let mut index = KeyMap::default();
-    for (name, pattern) in rules {
-        index.entry(name as usize).or_insert(pattern);
-    }
-    index
-}
-
-fn named_rule(rules: &KeyMap<usize, Oop>, name: Oop) -> Option<Oop> {
-    rules.get(&(name as usize)).copied()
-}
-
-fn match_pattern(matcher: &mut Matcher, pattern: Oop, position: usize) -> Option<MatchResult> {
-    // Matching never calls the floor or user code. Keep each visited pattern's
-    // immutable data once per parse, while allowing recursive matching to mutate
-    // memo/CST scratch. Rc clones allocate nothing and hold no native-code roots.
-    // The Grammar owns the original graph throughout this synchronous match.
-    let state = std::rc::Rc::clone(
-        matcher
-            .patterns
-            .entry(pattern as usize)
-            .or_insert_with(|| std::rc::Rc::new(unsafe { state_ref(pattern) }.clone())),
-    );
-    let kind = state.kind;
-    let literal = &state.literal;
-    let children = &state.children;
-    let ranges = &state.ranges;
-    let rule_name = state.rule_name;
-    match kind {
-        Kind::Literal => {
-            if position + literal.len() > matcher.source.len()
-                || matcher.source[position..position + literal.len()] != *literal
-            {
-                note(matcher, position);
-                return None;
-            }
-            Some(MatchResult {
-                end: position + literal.len(),
-                children: Vec::new(),
-            })
-        }
-        Kind::Any => {
-            if position >= matcher.source.len() {
-                note(matcher, position);
-                return None;
-            }
-            Some(MatchResult {
-                end: position + 1,
-                children: Vec::new(),
-            })
-        }
-        Kind::Eof => {
-            if position != matcher.source.len() {
-                note(matcher, position);
-                return None;
-            }
-            Some(MatchResult {
-                end: position,
-                children: Vec::new(),
-            })
-        }
-        Kind::Charset => {
-            let byte = matcher.source.get(position).copied();
-            let Some(byte) = byte else {
-                note(matcher, position);
-                return None;
-            };
-            if ranges
+impl Value {
+    fn refs(&self) -> Vec<Oop> {
+        match self {
+            Self::Pattern(p) => p
+                .children
                 .iter()
-                .any(|range| byte >= range.lo && byte <= range.hi)
-            {
-                Some(MatchResult {
-                    end: position + 1,
-                    children: Vec::new(),
-                })
+                .copied()
+                .chain([p.rule_name])
+                .filter(|v| !v.is_null())
+                .collect(),
+            Self::Grammar(r, _) => r.iter().flat_map(|&(n, p)| [n, p]).collect(),
+            Self::Cst(r, _, _, c) => c.iter().copied().chain([*r]).collect(),
+        }
+    }
+}
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    gc: Oop,
+    model: Oop,
+    receiver: Oop,
+    behaviors: [Oop; 3],
+    values: RefCell<HashMap<usize, Value>>,
+    permanent: Vec<Oop>,
+    thread: std::thread::ThreadId,
+}
+struct Scope<'a> {
+    s: &'a State,
+    tokens: RefCell<Vec<usize>>,
+}
+impl Scope<'_> {
+    unsafe fn keep(&self, v: Oop) -> Result<Oop, Outcome> {
+        let t = unsafe {
+            self.s
+                .id
+                .send_named(self.s.roots, b"retain:", &[Operand::object(v)])
+        }?
+        .as_word()
+        .ok_or_else(invalid)?;
+        self.tokens.borrow_mut().push(t);
+        Ok(v)
+    }
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        for t in self.tokens.get_mut().drain(..) {
+            unsafe {
+                self.s
+                    .id
+                    .send_named(self.s.roots, b"release:", &[Operand::word(t)])
+                    .expect("release PEG root");
+            }
+        }
+    }
+}
+impl State {
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Operand, Outcome> {
+        unsafe { self.id.send_named(r, n, a) }
+    }
+    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Outcome> {
+        unsafe { object(self.send(self.ns, b"at:", &[Operand::object(self.id.intern_name(n)?)])?) }
+    }
+    unsafe fn bytes(&self, v: Oop) -> Result<Vec<u8>, Outcome> {
+        unsafe {
+            let b = self
+                .send(v, b"bytes", &[])?
+                .as_bytes()
+                .ok_or_else(invalid)?;
+            Ok(borrowed_bytes(b.pointer, b.length)
+                .ok_or_else(invalid)?
+                .to_vec())
+        }
+    }
+    unsafe fn number(&self, v: usize) -> Result<Operand, Outcome> {
+        unsafe { self.send(self.named(b"Integer")?, b"fromWord:", &[Operand::word(v)]) }
+    }
+    unsafe fn index(&self, v: Operand) -> Result<usize, Outcome> {
+        unsafe { self.send(self.named(b"Integer")?, b"wordOf:", &[v]) }?
+            .as_word()
+            .filter(|v| *v <= isize::MAX as usize)
+            .ok_or_else(invalid)
+    }
+    unsafe fn byte(&self, v: Oop) -> Result<u8, Outcome> {
+        unsafe {
+            let integer = self.send(self.named(b"Integer")?, b"wordOf:", &[Operand::object(v)])?;
+            if let Some(word) = integer.as_word() {
+                return Ok(word as u8);
+            }
+            Ok(self.bytes(v)?.first().copied().unwrap_or(0))
+        }
+    }
+    unsafe fn symbol(&self, v: Oop) -> Result<Oop, Outcome> {
+        unsafe {
+            match self.send(self.id.receiver, b"symbolBytesOf:", &[Operand::object(v)]) {
+                Ok(b) if b.as_bytes().is_some() => Ok(v),
+                _ => self.id.intern_name(&self.bytes(v)?),
+            }
+        }
+    }
+    unsafe fn allocate(&self, scope: &Scope<'_>, v: Value) -> Result<Oop, Outcome> {
+        unsafe {
+            let b = self.behaviors[match v {
+                Value::Pattern(_) => 0,
+                Value::Grammar(..) => 1,
+                Value::Cst(..) => 2,
+            }];
+            let o = scope.keep(object(self.send(
+                self.model,
+                b"allocate:bytes:",
+                &[Operand::object(b), Operand::word(0)],
+            )?)?)?;
+            self.values.borrow_mut().insert(o as usize, v);
+            Ok(o)
+        }
+    }
+    fn value(&self, v: Oop) -> Result<Value, Outcome> {
+        self.values
+            .borrow()
+            .get(&(v as usize))
+            .cloned()
+            .ok_or_else(invalid)
+    }
+    fn pattern(&self, v: Oop) -> Result<PatternState, Outcome> {
+        match self.value(v)? {
+            Value::Pattern(p) => Ok(p),
+            _ => Err(invalid()),
+        }
+    }
+    unsafe fn error(&self, scope: &Scope<'_>, kind: &[u8], msg: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            let m = scope.keep(object(self.send(
+                self.named(b"String")?,
+                b"fromBytes:",
+                &[Operand::bytes(msg)],
+            )?)?)?;
+            self.send(
+                self.named(b"Error")?,
+                b"kind:message:",
+                &[
+                    Operand::object(self.id.intern_name(kind)?),
+                    Operand::object(m),
+                ],
+            )
+        }
+    }
+    unsafe fn cst(&self, scope: &Scope<'_>, m: &Matcher, index: usize) -> Result<Oop, Outcome> {
+        unsafe {
+            let n = &m.nodes[index];
+            let mut children = Vec::new();
+            for &i in &n.children {
+                children.push(self.cst(scope, m, i)?);
+            }
+            self.allocate(scope, Value::Cst(n.rule, n.start, n.end, children))
+        }
+    }
+    unsafe fn parse(
+        &self,
+        scope: &Scope<'_>,
+        grammar: Oop,
+        source: Oop,
+        root: Oop,
+    ) -> Result<Operand, Outcome> {
+        unsafe {
+            let source = self.bytes(source)?;
+            let root = scope.keep(self.symbol(root)?)?;
+            let Value::Grammar(rules, _) = self.value(grammar)? else {
+                return Err(invalid());
+            };
+            let mut m = Matcher {
+                source,
+                rules: index_rules(rules),
+                patterns: KeyMap::default(),
+                nodes: Vec::new(),
+                memo: KeyMap::default(),
+                furthest: 0,
+                undefined_rule: ptr::null_mut(),
+                left_recursive_rule: ptr::null_mut(),
+            };
+            let result = if let Some(p) = named_rule(&m.rules, root) {
+                match_pattern(&mut m, p, 0, &|p| self.pattern(p).ok())
             } else {
-                note(matcher, position);
+                m.undefined_rule = root;
                 None
+            };
+            if let Some(Value::Grammar(_, furthest)) =
+                self.values.borrow_mut().get_mut(&(grammar as usize))
+            {
+                *furthest = m.furthest;
             }
-        }
-        Kind::Seq => {
-            let mut at = position;
-            let mut matched = Vec::new();
-            for child in children.iter().copied() {
-                let result = match_pattern(matcher, child, at)?;
-                matched.extend(result.children);
-                at = result.end;
-            }
-            Some(MatchResult {
-                end: at,
-                children: matched,
-            })
-        }
-        Kind::Choice => {
-            for child in children.iter().copied() {
-                if let Some(result) = match_pattern(matcher, child, position) {
-                    return Some(result);
+            // Matcher snapshots can outlive reentrant grammar replacement during CST allocation.
+            for p in m.patterns.values() {
+                for v in &p.children {
+                    scope.keep(*v)?;
+                }
+                if !p.rule_name.is_null() {
+                    scope.keep(p.rule_name)?;
                 }
             }
-            None
-        }
-        Kind::Star | Kind::Plus => {
-            let child = children
-                .first()
-                .copied()
-                .unwrap_or_else(|| abort("repetition has no child"));
-            let mut at = position;
-            let mut count = 0;
-            let mut matched = Vec::new();
-            while let Some(result) = match_pattern(matcher, child, at) {
-                matched.extend(result.children);
-                if result.end == at {
-                    break;
+            for n in &m.nodes {
+                scope.keep(n.rule)?;
+            }
+            if let Some(r) = result {
+                let i = m.nodes.len();
+                m.nodes.push(TempNode {
+                    rule: root,
+                    start: 0,
+                    end: r.end,
+                    children: r.children,
+                });
+                return Ok(Operand::object(self.cst(scope, &m, i)?));
+            }
+            for (name, kind, prefix) in [
+                (
+                    m.undefined_rule,
+                    b"undefinedRule".as_slice(),
+                    b"undefined rule: ".as_slice(),
+                ),
+                (
+                    m.left_recursive_rule,
+                    b"leftRecursion",
+                    b"left-recursive rule: ",
+                ),
+            ] {
+                if !name.is_null() {
+                    let b = self
+                        .send(
+                            self.id.receiver,
+                            b"symbolBytesOf:",
+                            &[Operand::object(name)],
+                        )?
+                        .as_bytes()
+                        .ok_or_else(invalid)?;
+                    let mut message = prefix.to_vec();
+                    message.extend_from_slice(
+                        borrowed_bytes(b.pointer, b.length).ok_or_else(invalid)?,
+                    );
+                    return self.error(scope, kind, &message);
                 }
-                at = result.end;
-                count += 1;
             }
-            if kind == Kind::Plus && count == 0 {
-                return None;
-            }
-            Some(MatchResult {
-                end: at,
-                children: matched,
-            })
+            let (line, col) = syntax_position(&m.source, m.furthest);
+            self.error(
+                scope,
+                b"syntaxError",
+                format!("syntax error at line {line}, col {col}").as_bytes(),
+            )
         }
-        Kind::Opt => {
-            let child = children
-                .first()
-                .copied()
-                .unwrap_or_else(|| abort("optional has no child"));
-            match match_pattern(matcher, child, position) {
-                Some(result) => Some(result),
-                None => Some(MatchResult {
-                    end: position,
-                    children: Vec::new(),
-                }),
-            }
+    }
+}
+#[derive(Clone, Copy)]
+enum Op {
+    New(Kind),
+    Grammar,
+    Literal,
+    RuleRef,
+    Seq(Kind),
+    Unary(Kind, bool),
+    AnyOf,
+    Range,
+    Add,
+    FromTo,
+    Rule,
+    Parse,
+    Fail,
+    Cst(u8),
+}
+struct Entry {
+    state: *const State,
+    op: Op,
+}
+unsafe extern "C" fn operation(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let e = &*c.cast::<Entry>();
+        let s = &*e.state;
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
         }
-        Kind::And => {
-            let child = children
-                .first()
-                .copied()
-                .unwrap_or_else(|| abort("lookahead has no child"));
-            match_pattern(matcher, child, position).map(|_| MatchResult {
-                end: position,
-                children: Vec::new(),
-            })
+        let a = borrowed_slice(a, n).ok_or_else(invalid)?;
+        let scope = Scope {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        scope.keep(r)?;
+        let a = a
+            .iter()
+            .map(|v| object(*v))
+            .collect::<Result<Vec<_>, _>>()?;
+        for &v in &a {
+            scope.keep(v)?;
         }
-        Kind::Not => {
-            let child = children
-                .first()
-                .copied()
-                .unwrap_or_else(|| abort("negation has no child"));
-            match match_pattern(matcher, child, position) {
-                Some(_) => None,
-                None => Some(MatchResult {
-                    end: position,
-                    children: Vec::new(),
-                }),
-            }
+        s.send(s.gc, b"prepareAllocation", &[])?;
+        let expected = match e.op {
+            Op::New(_) | Op::Grammar | Op::Fail => 0,
+            Op::Unary(_, true) | Op::Cst(0..=4) | Op::Cst(6) => 0,
+            Op::Range | Op::FromTo | Op::Rule | Op::Parse => 2,
+            _ => 1,
+        };
+        if a.len() != expected {
+            return Err(invalid());
         }
-        Kind::RuleRef => {
-            let rule_pattern = named_rule(&matcher.rules, rule_name).unwrap_or_else(|| {
-                matcher.undefined_rule = rule_name;
-                ptr::null_mut()
-            });
-            if rule_pattern.is_null() {
-                return None;
+        let mut p = match e.op {
+            Op::New(k) | Op::Seq(k) | Op::Unary(k, _) => PatternState::new(k),
+            _ => PatternState::new(Kind::Literal),
+        };
+        match e.op {
+            Op::New(_) => {}
+            Op::Grammar => {
+                return Ok(Operand::object(
+                    s.allocate(&scope, Value::Grammar(Vec::new(), 0))?,
+                ));
             }
-            let key = (rule_pattern as usize, position);
-            if let Some(entry) = matcher.memo.get(&key) {
-                if entry.in_progress {
-                    matcher.left_recursive_rule = rule_name;
-                    return None;
+            Op::Literal => p.literal = s.bytes(a[0])?,
+            Op::RuleRef => {
+                p.kind = Kind::RuleRef;
+                p.rule_name = s.symbol(a[0])?
+            }
+            Op::Seq(_) => {
+                let count = scope.keep(object(s.send(a[0], b"size", &[])?)?)?;
+                let count = s.index(Operand::object(count))?;
+                for i in 0..count {
+                    let index = scope.keep(object(s.number(i)?)?)?;
+                    let v =
+                        scope.keep(object(s.send(a[0], b"at:", &[Operand::object(index)])?)?)?;
+                    s.pattern(v)?;
+                    p.children.push(v);
                 }
-                return if entry.ok {
-                    Some(MatchResult {
-                        end: entry.end,
-                        children: entry.children.clone(),
-                    })
+            }
+            Op::Unary(_, own) => {
+                let v = if own { r } else { a[0] };
+                s.pattern(v)?;
+                p.children.push(v)
+            }
+            Op::AnyOf => {
+                p.kind = Kind::Charset;
+                for b in s.bytes(a[0])? {
+                    p.ranges.push(Range { lo: b, hi: b });
+                }
+            }
+            Op::Range | Op::FromTo => {
+                let (lo, hi) = if matches!(e.op, Op::Range) {
+                    (s.byte(a[0])?, s.byte(a[1])?)
                 } else {
-                    None
+                    (
+                        s.index(Operand::object(a[0]))? as u8,
+                        s.index(Operand::object(a[1]))? as u8,
+                    )
+                };
+                if matches!(e.op, Op::FromTo) {
+                    p = s.pattern(r)?;
+                } else {
+                    p.kind = Kind::Charset;
+                }
+                p.ranges.push(Range {
+                    lo: lo as u8,
+                    hi: hi as u8,
+                });
+                if matches!(e.op, Op::FromTo) {
+                    s.values.borrow_mut().insert(r as usize, Value::Pattern(p));
+                    return Ok(Operand::object(r));
+                }
+            }
+            Op::Add => {
+                s.pattern(a[0])?;
+                p = s.pattern(r)?;
+                p.children.push(a[0]);
+                s.values.borrow_mut().insert(r as usize, Value::Pattern(p));
+                return Ok(Operand::object(r));
+            }
+            Op::Rule => {
+                let name = s.symbol(a[0])?;
+                s.pattern(a[1])?;
+                let mut values = s.values.borrow_mut();
+                let Some(Value::Grammar(rules, _)) = values.get_mut(&(r as usize)) else {
+                    return Err(invalid());
+                };
+                if let Some(row) = rules.iter_mut().find(|row| row.0 == name) {
+                    row.1 = a[1]
+                } else {
+                    rules.push((name, a[1]));
+                }
+                return Ok(Operand::object(r));
+            }
+            Op::Parse => return s.parse(&scope, r, a[0], a[1]),
+            Op::Fail => {
+                let Value::Grammar(_, v) = s.value(r)? else {
+                    return Err(invalid());
+                };
+                return s.number(v);
+            }
+            Op::Cst(op) => {
+                let Value::Cst(rule, start, end, children) = s.value(r)? else {
+                    return Err(invalid());
+                };
+                return match op {
+                    0 => Ok(Operand::object(rule)),
+                    1 => {
+                        let b = s
+                            .send(s.id.receiver, b"symbolBytesOf:", &[Operand::object(rule)])?
+                            .as_bytes()
+                            .ok_or_else(invalid)?;
+                        let bytes = borrowed_bytes(b.pointer, b.length)
+                            .ok_or_else(invalid)?
+                            .to_vec();
+                        s.send(
+                            s.named(b"String")?,
+                            b"fromBytes:",
+                            &[Operand::bytes(&bytes)],
+                        )
+                    }
+                    2 => s.number(start),
+                    3 => s.number(end),
+                    4 => s.number(children.len()),
+                    5 => Ok(Operand::object(
+                        children
+                            .get(s.index(Operand::object(a[0]))?)
+                            .copied()
+                            .unwrap_or(s.named(b"nil")?),
+                    )),
+                    6 => {
+                        let mut v =
+                            scope.keep(object(s.send(s.named(b"Vector")?, b"new", &[])?)?)?;
+                        for child in children {
+                            v = scope.keep(object(s.send(
+                                v,
+                                b"add:",
+                                &[Operand::object(child)],
+                            )?)?)?;
+                        }
+                        Ok(Operand::object(v))
+                    }
+                    _ => Err(invalid()),
                 };
             }
-            matcher.memo.insert(
-                key,
-                MemoEntry {
-                    ok: false,
-                    end: position,
-                    children: Vec::new(),
-                    in_progress: true,
-                },
-            );
-            if let Some(inner) = match_pattern(matcher, rule_pattern, position) {
-                let node = matcher.nodes.len();
-                matcher.nodes.push(TempNode {
-                    rule: rule_name,
-                    start: position,
-                    end: inner.end,
-                    children: inner.children,
-                });
-                let wrapped = vec![node];
-                matcher.memo.insert(
-                    key,
-                    MemoEntry {
-                        ok: true,
-                        end: inner.end,
-                        children: wrapped.clone(),
-                        in_progress: false,
-                    },
-                );
-                Some(MatchResult {
-                    end: inner.end,
-                    children: wrapped,
-                })
-            } else {
-                matcher.memo.insert(
-                    key,
-                    MemoEntry {
-                        ok: false,
-                        end: position,
-                        children: Vec::new(),
-                        in_progress: false,
-                    },
-                );
-                None
-            }
         }
-    }
+        Ok(Operand::object(s.allocate(&scope, Value::Pattern(p))?))
+    })())
 }
-
-unsafe fn peg_error(kind: &[u8], message: &[u8]) -> Oop {
-    let api = unsafe { api(runtime()) };
-    let error_facade = unsafe { import(execution_imports(), b"Error\0") };
-    if error_facade.is_null() {
-        return api.nilObj;
-    }
-    let kind_symbol = unsafe { intern(api, kind) };
-    let message_string = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
-    let selector = unsafe { intern(api, b"kind:message:\0") };
-    let values = [kind_symbol, message_string];
-    // SAFETY: values is a live, contiguous argument buffer for this send.
-    unsafe { (api.send)(error_facade, selector, values.as_ptr(), values.len()) }
-}
-
-fn syntax_position(source: &[u8], offset: usize) -> (usize, usize) {
-    let mut line = 1;
-    let mut column = 1;
-    for byte in source.iter().take(offset.min(source.len())) {
-        if *byte == b'\n' {
-            line += 1;
-            column = 1;
-        } else {
-            column += 1;
-        }
-    }
-    (line, column)
-}
-
-unsafe fn temp_to_cst(matcher: &Matcher, node_index: usize) -> Oop {
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    let node = matcher
-        .nodes
-        .get(node_index)
-        .unwrap_or_else(|| abort("CST node index was invalid"));
-    let rule = node.rule;
-    let start = node.start;
-    let end = node.end;
-    let child_indices = node.children.clone();
-    let object = unsafe { (api.alloc)(as_oop(runtime.cst_vt), size_of::<CstState>()) };
-    if object.is_null() {
-        abort("could not allocate CST object");
-    }
-    // Initialize before publishing the object to the scratch root provider; a
-    // child allocation may trigger GC immediately after this point.
-    unsafe {
-        ptr::write(
-            object.cast::<CstState>(),
-            CstState {
-                rule,
-                start,
-                end,
-                children: Vec::new(),
-            },
-        );
-    }
-    scratch_push(object);
-    unsafe { birnam_abi::finalizers::set(runtime.finalizers as *const birnam_abi::finalizers::ApiV1, object, finalize_cst) };
-    let mut children = Vec::with_capacity(child_indices.len());
-    for child in child_indices {
-        children.push(unsafe { temp_to_cst(matcher, child) });
-    }
-    // SAFETY: the allocation has exactly the requested CST payload size.
-    unsafe {
-        (*object.cast::<CstState>()).children = children;
-    }
-    object
-}
-
-unsafe fn parse_grammar(grammar: Oop, source_object: Oop, root_object: Oop) -> Oop {
-    let api = unsafe { api(runtime()) };
-    let source = unsafe { string_bytes(api, source_object) };
-    let root_name = unsafe { rule_symbol(api, root_object) };
-    let rules = {
-        let state = unsafe { grammar_ref(grammar) };
-        index_rules(state.rules.iter().map(|rule| (rule.name, rule.pattern)))
-    };
-    let mut matcher = Matcher {
-        source,
-        rules,
-        patterns: KeyMap::default(),
-        nodes: Vec::new(),
-        memo: KeyMap::default(),
-        furthest: 0,
-        undefined_rule: ptr::null_mut(),
-        left_recursive_rule: ptr::null_mut(),
-    };
-    let Some(root_pattern) = named_rule(&matcher.rules, root_name) else {
-        matcher.undefined_rule = root_name;
-        unsafe { (*grammar.cast::<GrammarState>()).furthest_fail = 0 };
-        return unsafe { peg_error(b"undefinedRule\0", b"undefined rule") };
-    };
-    let result = match_pattern(&mut matcher, root_pattern, 0);
-    if let Some(result) = result {
-        unsafe { (*grammar.cast::<GrammarState>()).furthest_fail = matcher.furthest };
-        let root_index = matcher.nodes.len();
-        matcher.nodes.push(TempNode {
-            rule: root_name,
-            start: 0,
-            end: result.end,
-            children: result.children,
-        });
-        let cst = unsafe { temp_to_cst(&matcher, root_index) };
-        scratch_clear();
-        return cst;
-    }
-    unsafe { (*grammar.cast::<GrammarState>()).furthest_fail = matcher.furthest };
-    if !matcher.undefined_rule.is_null() {
-        let name = unsafe { (api.symbolName)(matcher.undefined_rule) };
-        let mut message = b"undefined rule: ".to_vec();
-        message.extend_from_slice(unsafe { std::ffi::CStr::from_ptr(name.cast()) }.to_bytes());
-        return unsafe { peg_error(b"undefinedRule\0", &message) };
-    }
-    if !matcher.left_recursive_rule.is_null() {
-        let name = unsafe { (api.symbolName)(matcher.left_recursive_rule) };
-        let mut message = b"left-recursive rule: ".to_vec();
-        message.extend_from_slice(unsafe { std::ffi::CStr::from_ptr(name.cast()) }.to_bytes());
-        return unsafe { peg_error(b"leftRecursion\0", &message) };
-    }
-    let (line, column) = syntax_position(&matcher.source, matcher.furthest);
-    let message = format!("syntax error at line {line}, col {column}");
-    unsafe { peg_error(b"syntaxError\0", message.as_bytes()) }
-}
-
-unsafe fn args<'a>(pointer: *const Oop, count: usize) -> &'a [Oop] {
-    // SAFETY: the Method caller supplies the frozen argument-buffer contract.
-    unsafe { birnam_abi::borrowed_oop_args(pointer, count) }
-        .unwrap_or_else(|| abort("invalid PEG method argument buffer"))
-}
-
-unsafe extern "C" fn peg_literal(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("literal: expects one argument");
-    }
-    let runtime = runtime();
-    let api = unsafe { api(runtime) };
-    let object = unsafe { new_pattern(Kind::Literal) };
-    let literal = unsafe { string_bytes(api, values[0]) };
-    unsafe { state_mut(object).literal = literal };
-    object
-}
-
-unsafe extern "C" fn peg_nullary(kind: Kind) -> Oop {
-    unsafe { new_pattern(kind) }
-}
-
-unsafe extern "C" fn peg_any(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("any expects no arguments");
-    }
-    unsafe { peg_nullary(Kind::Any) }
-}
-
-unsafe extern "C" fn peg_eof(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("eof expects no arguments");
-    }
-    unsafe { peg_nullary(Kind::Eof) }
-}
-
-unsafe extern "C" fn peg_charset(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("charset expects no arguments");
-    }
-    unsafe { peg_nullary(Kind::Charset) }
-}
-
-unsafe extern "C" fn peg_rule_ref(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("ruleRef: expects one argument");
-    }
-    let object = unsafe { new_pattern(Kind::RuleRef) };
-    unsafe { state_mut(object).rule_name = values[0] };
-    object
-}
-
-unsafe extern "C" fn peg_seq(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("seq expects no arguments");
-    }
-    unsafe { peg_nullary(Kind::Seq) }
-}
-
-unsafe extern "C" fn peg_choice(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("choice expects no arguments");
-    }
-    unsafe { peg_nullary(Kind::Choice) }
-}
-
-unsafe extern "C" fn peg_grammar(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("grammar expects no arguments");
-    }
-    unsafe { new_grammar() }
-}
-
-unsafe fn vector_children(vector: Oop) -> Vec<Oop> {
-    let api = unsafe { api(runtime()) };
-    let size_selector = unsafe { intern(api, b"size\0") };
-    let at_selector = unsafe { intern(api, b"at:\0") };
-    let empty: [Oop; 0] = [];
-    let size = unsafe { (api.send)(vector, size_selector, empty.as_ptr(), 0) };
-    let count = unsafe { (birnam_abi::integer::value)(size) };
-    if count < 0 {
-        abort("Vector size was negative");
-    }
-    let mut children = Vec::with_capacity(count as usize);
-    for index in 0..count as usize {
-        let argument = [unsafe { (birnam_abi::integer::make)(index as i64) }];
-        children.push(unsafe { (api.send)(vector, at_selector, argument.as_ptr(), 1) });
-    }
-    children
-}
-
-unsafe extern "C" fn peg_seq_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("seqOf: expects one argument");
-    }
-    let object = unsafe { new_pattern(Kind::Seq) };
-    unsafe { state_mut(object).children = vector_children(values[0]) };
-    object
-}
-
-unsafe extern "C" fn peg_choice_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("choiceOf: expects one argument");
-    }
-    let object = unsafe { new_pattern(Kind::Choice) };
-    unsafe { state_mut(object).children = vector_children(values[0]) };
-    object
-}
-
-unsafe extern "C" fn peg_star_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("star: expects one argument");
-    }
-    unsafe { peg_unary(Kind::Star, values[0]) }
-}
-
-unsafe extern "C" fn peg_plus_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("plus: expects one argument");
-    }
-    unsafe { peg_unary(Kind::Plus, values[0]) }
-}
-
-unsafe extern "C" fn peg_opt_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("opt: expects one argument");
-    }
-    unsafe { peg_unary(Kind::Opt, values[0]) }
-}
-
-unsafe extern "C" fn peg_not_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("not: expects one argument");
-    }
-    unsafe { peg_unary(Kind::Not, values[0]) }
-}
-
-unsafe extern "C" fn peg_and_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("and: expects one argument");
-    }
-    unsafe { peg_unary(Kind::And, values[0]) }
-}
-
-unsafe extern "C" fn peg_any_of(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("anyOf: expects one argument");
-    }
-    let api = unsafe { api(runtime()) };
-    let bytes = unsafe { string_bytes(api, values[0]) };
-    let object = unsafe { new_pattern(Kind::Charset) };
-    let state = unsafe { state_mut(object) };
-    state
-        .ranges
-        .extend(bytes.into_iter().map(|byte| Range { lo: byte, hi: byte }));
-    object
-}
-
-unsafe fn byte_argument(api: &IdApi, object: Oop) -> u8 {
-    if unsafe { (api.vtableOf)(object) } == unsafe { birnam_abi::string::behavior() } {
-        return unsafe { string_bytes(api, object) }
-            .first()
-            .copied()
-            .unwrap_or(0);
-    }
-    unsafe { (birnam_abi::integer::value)(object) as u8 }
-}
-
-unsafe extern "C" fn peg_range_to(_self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 2 {
-        abort("range:to: expects two arguments");
-    }
-    let api = unsafe { api(runtime()) };
-    let lo = unsafe { byte_argument(api, values[0]) };
-    let hi = unsafe { byte_argument(api, values[1]) };
-    let object = unsafe { new_pattern(Kind::Charset) };
-    unsafe { state_mut(object).ranges.push(Range { lo, hi }) };
-    object
-}
-
-unsafe extern "C" fn peg_unary(kind: Kind, self_object: Oop) -> Oop {
-    let object = unsafe { new_pattern(kind) };
-    unsafe { state_mut(object).children.push(self_object) };
-    object
-}
-
-unsafe extern "C" fn pattern_star(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("star expects no arguments");
-    }
-    unsafe { peg_unary(Kind::Star, self_object) }
-}
-
-unsafe extern "C" fn pattern_plus(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("plus expects no arguments");
-    }
-    unsafe { peg_unary(Kind::Plus, self_object) }
-}
-
-unsafe extern "C" fn pattern_opt(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("opt expects no arguments");
-    }
-    unsafe { peg_unary(Kind::Opt, self_object) }
-}
-
-unsafe extern "C" fn pattern_negate(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("negate expects no arguments");
-    }
-    unsafe { peg_unary(Kind::Not, self_object) }
-}
-
-unsafe extern "C" fn pattern_lookahead(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("lookahead expects no arguments");
-    }
-    unsafe { peg_unary(Kind::And, self_object) }
-}
-
-unsafe extern "C" fn pattern_add(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("add: expects one argument");
-    }
-    unsafe { state_mut(self_object).children.push(values[0]) };
-    self_object
-}
-
-unsafe extern "C" fn pattern_from_to(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 2 {
-        abort("from:to: expects two arguments");
-    }
-    let _api = unsafe { api(runtime()) };
-    let lo = unsafe { (birnam_abi::integer::value)(values[0]) } as u8;
-    let hi = unsafe { (birnam_abi::integer::value)(values[1]) } as u8;
-    unsafe { state_mut(self_object).ranges.push(Range { lo, hi }) };
-    self_object
-}
-
-unsafe extern "C" fn grammar_rule_is(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 2 {
-        abort("rule:is: expects two arguments");
-    }
-    let api = unsafe { api(runtime()) };
-    let name = unsafe { rule_symbol(api, values[0]) };
-    let state = unsafe { &mut *(self_object.cast::<GrammarState>()) };
-    if let Some(rule) = state.rules.iter_mut().find(|rule| rule.name == name) {
-        rule.pattern = values[1];
-    } else {
-        state.rules.push(Rule {
-            name,
-            pattern: values[1],
-        });
-    }
-    self_object
-}
-
-unsafe extern "C" fn grammar_furthest_fail(
-    self_object: Oop,
-    pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("furthestFail expects no arguments");
-    }
-    let _api = unsafe { api(runtime()) };
-    let state = unsafe { &*(self_object.cast::<GrammarState>()) };
-    unsafe { (birnam_abi::integer::make)(state.furthest_fail as i64) }
-}
-
-unsafe extern "C" fn grammar_parse_from(
-    self_object: Oop,
-    pointer: *const Oop,
-    count: usize,
-) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 2 {
-        abort("parse:from: expects two arguments");
-    }
-    unsafe { parse_grammar(self_object, values[0], values[1]) }
-}
-
-unsafe extern "C" fn cst_rule(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("rule expects no arguments");
-    }
-    unsafe { cst_ref(self_object).rule }
-}
-
-unsafe extern "C" fn cst_rule_name(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("ruleName expects no arguments");
-    }
-    let api = unsafe { api(runtime()) };
-    let rule = unsafe { cst_ref(self_object).rule };
-    let name = unsafe { (api.symbolName)(rule) };
-    let bytes = unsafe { std::ffi::CStr::from_ptr(name.cast()) }
-        .to_bytes()
-        .to_vec();
-    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
-}
-
-unsafe extern "C" fn cst_start(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("start expects no arguments");
-    }
-    let _api = unsafe { api(runtime()) };
-    let start = unsafe { cst_ref(self_object).start };
-    unsafe { (birnam_abi::integer::make)(start as i64) }
-}
-
-unsafe extern "C" fn cst_end(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("end expects no arguments");
-    }
-    let _api = unsafe { api(runtime()) };
-    let end = unsafe { cst_ref(self_object).end };
-    unsafe { (birnam_abi::integer::make)(end as i64) }
-}
-
-unsafe extern "C" fn cst_child_count(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("childCount expects no arguments");
-    }
-    let _api = unsafe { api(runtime()) };
-    let count = unsafe { cst_ref(self_object).children.len() };
-    unsafe { (birnam_abi::integer::make)(count as i64) }
-}
-
-unsafe extern "C" fn cst_child_at(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    let values = unsafe { args(pointer, count) };
-    if values.len() != 1 {
-        abort("childAt: expects one argument");
-    }
-    let api = unsafe { api(runtime()) };
-    let index = unsafe { (birnam_abi::integer::value)(values[0]) };
-    if index < 0 {
-        return api.nilObj;
-    }
-    unsafe {
-        cst_ref(self_object)
-            .children
-            .get(index as usize)
-            .copied()
-            .unwrap_or(api.nilObj)
-    }
-}
-
-unsafe extern "C" fn cst_children(self_object: Oop, pointer: *const Oop, count: usize) -> Oop {
-    if !unsafe { args(pointer, count) }.is_empty() {
-        abort("children expects no arguments");
-    }
-    let api = unsafe { api(runtime()) };
-    let vector = unsafe { import(execution_imports(), b"Vector\0") };
-    if vector.is_null() {
-        return api.nilObj;
-    }
-    let new_selector = unsafe { intern(api, b"new\0") };
-    let add_selector = unsafe { intern(api, b"add:\0") };
-    let empty: [Oop; 0] = [];
-    let mut result = unsafe { (api.send)(vector, new_selector, empty.as_ptr(), 0) };
-    let children = unsafe { cst_ref(self_object).children.clone() };
-    for child in children {
-        let values = [child];
-        result = unsafe { (api.send)(result, add_selector, values.as_ptr(), values.len()) };
-    }
-    result
-}
-
-unsafe fn register_methods(runtime: &Runtime) {
-    let api = unsafe { api(runtime) };
-    let peg_vt = as_oop(runtime.peg_vt);
-    let pattern_vt = as_oop(runtime.pattern_vt);
-    let grammar_vt = as_oop(runtime.grammar_vt);
-    let cst_vt = as_oop(runtime.cst_vt);
-    let peg_methods: &[(&[u8], birnam_abi::Method)] = &[
-        (b"literal:\0", peg_literal),
-        (b"any\0", peg_any),
-        (b"eof\0", peg_eof),
-        (b"charset\0", peg_charset),
-        (b"ruleRef:\0", peg_rule_ref),
-        (b"seq\0", peg_seq),
-        (b"choice\0", peg_choice),
-        (b"grammar\0", peg_grammar),
-        (b"newGrammar\0", peg_grammar),
-        (b"anyByte\0", peg_any),
-        (b"seqOf:\0", peg_seq_of),
-        (b"choiceOf:\0", peg_choice_of),
-        (b"star:\0", peg_star_of),
-        (b"plus:\0", peg_plus_of),
-        (b"opt:\0", peg_opt_of),
-        (b"not:\0", peg_not_of),
-        (b"and:\0", peg_and_of),
-        (b"anyOf:\0", peg_any_of),
-        (b"range:to:\0", peg_range_to),
-    ];
-    for (selector, method) in peg_methods {
-        let selector = unsafe { intern(api, selector) };
-        unsafe { (api.method)(peg_vt, selector, *method) };
-    }
-    let pattern_methods: &[(&[u8], birnam_abi::Method)] = &[
-        (b"star\0", pattern_star),
-        (b"plus\0", pattern_plus),
-        (b"opt\0", pattern_opt),
-        (b"negate\0", pattern_negate),
-        (b"lookahead\0", pattern_lookahead),
-        (b"add:\0", pattern_add),
-        (b"from:to:\0", pattern_from_to),
-    ];
-    for (selector, method) in pattern_methods {
-        let selector = unsafe { intern(api, selector) };
-        unsafe { (api.method)(pattern_vt, selector, *method) };
-    }
-    let grammar_methods: &[(&[u8], birnam_abi::Method)] = &[
-        (b"rule:is:\0", grammar_rule_is),
-        (b"furthestFail\0", grammar_furthest_fail),
-        (b"parse:from:\0", grammar_parse_from),
-    ];
-    for (selector, method) in grammar_methods {
-        let selector = unsafe { intern(api, selector) };
-        unsafe { (api.method)(grammar_vt, selector, *method) };
-    }
-    let cst_methods: &[(&[u8], birnam_abi::Method)] = &[
-        (b"rule\0", cst_rule),
-        (b"ruleName\0", cst_rule_name),
-        (b"start\0", cst_start),
-        (b"end\0", cst_end),
-        (b"childCount\0", cst_child_count),
-        (b"childAt:\0", cst_child_at),
-        (b"children\0", cst_children),
-    ];
-    for (selector, method) in cst_methods {
-        let selector = unsafe { intern(api, selector) };
-        unsafe { (api.method)(cst_vt, selector, *method) };
-    }
-    unsafe {
-        birnam_abi::payload_layout::set(runtime.layouts as *const birnam_abi::payload_layout::ApiV1, pattern_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
-        birnam_abi::trace_hooks::set(runtime.hooks as *const birnam_abi::trace_hooks::ApiV1, pattern_vt, trace_pattern);
-        birnam_abi::payload_layout::set(runtime.layouts as *const birnam_abi::payload_layout::ApiV1, grammar_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
-        birnam_abi::trace_hooks::set(runtime.hooks as *const birnam_abi::trace_hooks::ApiV1, grammar_vt, trace_grammar);
-        birnam_abi::payload_layout::set(runtime.layouts as *const birnam_abi::payload_layout::ApiV1, cst_vt, ptr::null(), 0, birnam_abi::SLOT_RAW);
-        birnam_abi::trace_hooks::set(runtime.hooks as *const birnam_abi::trace_hooks::ApiV1, cst_vt, trace_cst);
-    }
-}
-
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, hooks: *const birnam_abi::trace_hooks::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) {
-    if api_pointer.is_null() {
-        abort("native construction received a null IdApi");
-    }
-    let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
-    let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
-    let api = unsafe { &*api_pointer };
-    let runtime = *RUNTIME.get_or_init(|| {
-        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, PEG_NAME.as_ptr().cast()) != 0 };
-        let (pattern_vt, peg_vt, peg, grammar_vt, cst_vt) = if reloading {
-            (
-                unsafe { import(imports, PATTERN_VT_NAME) },
-                unsafe { import(imports, PEG_VT_NAME) },
-                unsafe { import(imports, PEG_NAME) },
-                unsafe { import(imports, GRAMMAR_VT_NAME) },
-                unsafe { import(imports, CST_VT_NAME) },
-            )
-        } else {
-            let pattern_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            let peg_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            let grammar_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            let cst_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            let peg = retain(unsafe { (api.alloc)(peg_vt, 0) });
-            (pattern_vt, peg_vt, peg, grammar_vt, cst_vt)
+unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([o, v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
         };
-        if [pattern_vt, peg_vt, peg, grammar_vt, cst_vt]
-            .iter()
-            .any(|value| value.is_null())
-        {
-            abort("PEG exports were incomplete");
+        let entry = v.as_entry().ok_or_else(invalid)?;
+        let refs = s
+            .values
+            .borrow()
+            .get(&(object(*o)? as usize))
+            .map(Value::refs)
+            .unwrap_or_default();
+        for r in refs {
+            entry.method.ok_or_else(invalid)?(entry.context, s.receiver, &Operand::object(r), 1)
+                .into_result()?;
         }
-        Runtime {
-            api: api_pointer as usize, finalizers: finalizers as usize,
-            layouts: layouts as usize,
-            hooks: hooks as usize,
-            imports: imports as usize,
-            pattern_vt: oop_address(pattern_vt),
-            peg_vt: oop_address(peg_vt),
-            peg: oop_address(peg),
-            grammar_vt: oop_address(grammar_vt),
-            cst_vt: oop_address(cst_vt),
+        Ok(Operand::unit())
+    })())
+}
+unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let v = v.as_entry().ok_or_else(invalid)?;
+        for &o in &s.permanent {
+            v.method.ok_or_else(invalid)?(v.context, s.receiver, &Operand::object(o), 1)
+                .into_result()?;
         }
-    });
-    unsafe { register_methods(&runtime) };
-    if unsafe { birnam_abi::namespace_presence::contains(presence, PEG_NAME.as_ptr().cast()) == 0 } {
-        unsafe { birnam_abi::root_registry::register(roots, cst_scratch_roots) };
+        Ok(Operand::unit())
+    })())
+}
+unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let b = v.as_bytes().ok_or_else(invalid)?;
+        let bytes = borrowed_bytes(b.pointer, b.length).ok_or_else(invalid)?;
+        if bytes.len() % size_of::<usize>() != 0 {
+            return Err(invalid());
+        }
+        let mut values = s.values.borrow_mut();
+        for b in bytes.chunks_exact(size_of::<usize>()) {
+            values.remove(&usize::from_ne_bytes(b.try_into().unwrap()));
+        }
+        Ok(Operand::unit())
+    })())
+}
+unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let named =
+            |n: &[u8]| object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(n)?)])?);
+        let existing = id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"Peg")?)])?;
+        if existing.kind() == native::OBJECT {
+            return Ok(existing);
+        }
+        let root = named(b"Roots")?;
+        let model = named(b"ObjectModel")?;
+        let gc = named(b"GC")?;
+        let mut tokens = Vec::new();
+        let mut make = || -> Result<Oop, Outcome> {
+            let v = object(id.send_named(named(b"ObjectVt")?, b"delegated", &[])?)?;
+            tokens.push(
+                id.send_named(root, b"retain:", &[Operand::object(v)])?
+                    .as_word()
+                    .ok_or_else(invalid)?,
+            );
+            Ok(v)
+        };
+        let vt = make()?;
+        let behaviors = [make()?, make()?, make()?];
+        let receiver = object(id.send_named(
+            model,
+            b"allocate:bytes:",
+            &[Operand::object(vt), Operand::word(0)],
+        )?)?;
+        tokens.push(
+            id.send_named(root, b"retain:", &[Operand::object(receiver)])?
+                .as_word()
+                .ok_or_else(invalid)?,
+        );
+        let s = Box::into_raw(Box::new(State {
+            id,
+            ns,
+            roots: root,
+            gc,
+            model,
+            receiver,
+            behaviors,
+            values: RefCell::new(HashMap::new()),
+            permanent: vec![
+                ns,
+                root,
+                gc,
+                model,
+                receiver,
+                vt,
+                behaviors[0],
+                behaviors[1],
+                behaviors[2],
+            ],
+            thread: std::thread::current().id(),
+        }));
+        for (n, f) in [
+            (b"rootsDo:".as_slice(), roots as Method),
+            (b"referencesOf:do:", references),
+            (b"retire:", retire),
+        ] {
+            id.send_named(
+                vt,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(n)?),
+                    Operand::entry(NativeEntry::new(f, s.cast())),
+                ],
+            )?;
+        }
+        let methods: &[(usize, &[u8], Op)] = &[
+            (3, b"literal:", Op::Literal),
+            (3, b"any", Op::New(Kind::Any)),
+            (3, b"anyByte", Op::New(Kind::Any)),
+            (3, b"eof", Op::New(Kind::Eof)),
+            (3, b"charset", Op::New(Kind::Charset)),
+            (3, b"seq", Op::New(Kind::Seq)),
+            (3, b"choice", Op::New(Kind::Choice)),
+            (3, b"grammar", Op::Grammar),
+            (3, b"newGrammar", Op::Grammar),
+            (3, b"ruleRef:", Op::RuleRef),
+            (3, b"seqOf:", Op::Seq(Kind::Seq)),
+            (3, b"choiceOf:", Op::Seq(Kind::Choice)),
+            (3, b"anyOf:", Op::AnyOf),
+            (3, b"range:to:", Op::Range),
+            (3, b"star:", Op::Unary(Kind::Star, false)),
+            (3, b"plus:", Op::Unary(Kind::Plus, false)),
+            (3, b"opt:", Op::Unary(Kind::Opt, false)),
+            (3, b"and:", Op::Unary(Kind::And, false)),
+            (3, b"not:", Op::Unary(Kind::Not, false)),
+            (0, b"star", Op::Unary(Kind::Star, true)),
+            (0, b"plus", Op::Unary(Kind::Plus, true)),
+            (0, b"opt", Op::Unary(Kind::Opt, true)),
+            (0, b"negate", Op::Unary(Kind::Not, true)),
+            (0, b"lookahead", Op::Unary(Kind::And, true)),
+            (0, b"add:", Op::Add),
+            (0, b"from:to:", Op::FromTo),
+            (1, b"rule:is:", Op::Rule),
+            (1, b"parse:from:", Op::Parse),
+            (1, b"furthestFail", Op::Fail),
+            (2, b"rule", Op::Cst(0)),
+            (2, b"ruleName", Op::Cst(1)),
+            (2, b"start", Op::Cst(2)),
+            (2, b"end", Op::Cst(3)),
+            (2, b"childCount", Op::Cst(4)),
+            (2, b"childAt:", Op::Cst(5)),
+            (2, b"children", Op::Cst(6)),
+        ];
+        for &(target, n, op) in methods {
+            let c = Box::into_raw(Box::new(Entry { state: s, op }));
+            id.send_named(
+                if target == 3 { vt } else { behaviors[target] },
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(n)?),
+                    Operand::entry(NativeEntry::new(operation, c.cast())),
+                ],
+            )?;
+        }
+        id.send_named(root, b"register:", &[Operand::object(receiver)])?;
+        id.send_named(gc, b"registerRetirement:", &[Operand::object(receiver)])?;
+        for b in behaviors {
+            id.send_named(
+                gc,
+                b"trace:with:",
+                &[Operand::object(b), Operand::object(receiver)],
+            )?;
+        }
+        for (n, v) in [
+            (b"Peg".as_slice(), receiver),
+            (b"PegFacadeVt", vt),
+            (b"PegPatternVt", behaviors[0]),
+            (b"PegGrammarVt", behaviors[1]),
+            (b"PegCstVt", behaviors[2]),
+        ] {
+            id.send_named(
+                ns,
+                b"at:put:",
+                &[Operand::object(id.intern_name(n)?), Operand::object(v)],
+            )?;
+        }
+        for t in tokens {
+            id.send_named(root, b"release:", &[Operand::word(t)])?;
+        }
+        Ok(Operand::object(receiver))
     }
-    if unsafe { birnam_abi::namespace_presence::contains(presence, PEG_NAME.as_ptr().cast()) == 0 } {
-        unsafe {
-            let _ = birnam_abi::namespace_export::export(exports, PATTERN_VT_NAME.as_ptr().cast(), as_oop(runtime.pattern_vt));
-            let _ = birnam_abi::namespace_export::export(exports, PEG_VT_NAME.as_ptr().cast(), as_oop(runtime.peg_vt));
-            let _ = birnam_abi::namespace_export::export(exports, GRAMMAR_VT_NAME.as_ptr().cast(), as_oop(runtime.grammar_vt));
-            let _ = birnam_abi::namespace_export::export(exports, CST_VT_NAME.as_ptr().cast(), as_oop(runtime.cst_vt));
-            let _ = birnam_abi::namespace_export::export(exports, PEG_NAME.as_ptr().cast(), as_oop(runtime.peg));
+}
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
         }
-    }
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        construct(*id, object(*ns)?)
+    })())
 }
-
-/// Identifies this explicit Rust PEG matcher dylib.
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_peg_rust_identity() -> *const c_char {
-    RUST_PEG_IDENTITY.as_ptr().cast()
-}
-
-/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
-    1
-}
-
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
 #[cfg(test)]
 mod matching_tests;
-
-#[cfg(test)]
-mod tests {
-    use super::{RUST_PEG_IDENTITY, birnam_peg_rust_identity};
-    use std::ffi::CStr;
-
-    #[test]
-    fn pattern_identity_is_a_terminated_static_string() {
-        // SAFETY: the export points to immutable crate storage for the process
-        // lifetime.
-        let identity = unsafe { CStr::from_ptr(birnam_peg_rust_identity()) };
-        assert_eq!(identity.to_bytes_with_nul(), RUST_PEG_IDENTITY);
-    }
-}
-
-fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
-
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-use std::sync::atomic::Ordering;
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    let Some([api, presence, imports, exports, roots, layouts, hooks, finalizers, integer, string, predecessor]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(layouts), Some(hooks), Some(finalizers), Some(integer), Some(string)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), layouts.as_word(), hooks.as_word(), finalizers.as_word(), integer.as_word(), string.as_word()) else { return invalid_native(); };
-    let api = api as *mut IdApi;
-    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
-    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
-    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
-    let hooks = hooks as *const birnam_abi::trace_hooks::ApiV1;
-    let finalizers = finalizers as *const birnam_abi::finalizers::ApiV1;
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
-        || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports) && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots) && birnam_abi::payload_layout::valid(layouts) && birnam_abi::trace_hooks::valid(hooks) && birnam_abi::finalizers::valid(finalizers) } { return invalid_native(); }
-    // The trusted caller supplies the already published Vector predecessor.
-    // Methods continue to resolve Vector through the live namespace.
-    if predecessor.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
-    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
-    if RUNTIME.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(runtime().peg as Oop)), _ => return invalid_native(),
-    }
-    unsafe { bring_up(api, presence, imports, exports, (*roots).api, layouts, hooks, finalizers, roots); }
-    NATIVE_PHASE.store(2, Ordering::Release);
-    Outcome::loaded(Operand::object(runtime().peg as Oop))
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
