@@ -56,7 +56,9 @@ rooted independently of subsequent withdrawal.
 
 This establishes real compiler producers for the native selection path. It does
 not restore frame-region fusion, numeric chain/loop reuse or allocation-elision.
-Those still require their current-owner admission, accounting and recovery work.
+Those still require current-owner semantic guards and generated recovery under
+[Design 90](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history).
+Synthetic allocation accounting and deferred-identity services are not prerequisites.
 Candidate compilation and Method construction are eager and add cold-start cost;
 this functional acceptance makes no performance claim.
 

@@ -1,3 +1,6 @@
+//! Historical allocation-equivalence machinery; do not reconnect in Design 90.
+//! Synthetic charges/dead-object replay are retired. See
+//! docs/design/90-functional-modules.md, optimization contract (2026-09-24).
 //! Integer ownership only: Id decides journal admission, issuance and recovery.
 use core::{cell::Cell, ffi::c_void};
 

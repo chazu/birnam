@@ -133,11 +133,14 @@ allocation-elision and later integration algorithms. Retained source/compiler ac
 passing production tests; see [Runtime's remaining scope](../birnam-runtime/README.md).
 
 By explicit scope decision, allocation-elision moves to batch 2: numeric chain/loop
-reuse, closure/region elision, unboxed/deferred numeric identities, discarded clones
-and virtual aggregates depend on retired allocation-budget/identity protocols and
-real compiler producers. The native candidate contract does not implement or prove
-those algorithms. Batch 2 must supply their owner protocols, generated-code
-registration, portable admission, guarded recovery and real compiled-mapping
+reuse, closure/region elision, unboxed numeric values, discarded clones
+and virtual aggregates need real compiler producers and guarded recovery.
+Their old allocation-budget/deferred-identity dependencies are explicitly retired
+by the [revised optimization contract](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history).
+Recovery describes observable values and aliases; it does not recreate dead
+allocation history. The native candidate contract does not implement or prove
+those algorithms. Batch 2 must supply generated-code registration, necessary
+owner messages, portable admission, guarded recovery and real compiled-mapping
 reclamation. Native fixture recovery does not prove production generated recovery.
 
 The Store-backed Birnam TaskControl/TaskExecutor policy, image/worker integration
@@ -244,7 +247,8 @@ Production Codegen now supplies PC candidates through these same messages. It
 shares each generated body with its baseline, preserves all owner sends, and keeps
 the candidates in the baseline's TCC Unit. See the
 [producer contract](../birnam-codegen-runtime/README.md#generated-pc-candidates).
-This does not restore allocation-elision or its accounting/identity protocols.
+This does not restore allocation-elision; its old accounting/identity protocols
+are not requirements to recreate.
 
 Hot synchronous unary calls ask the live Integer owner to evaluate their exact
 selected function/context through `evaluate:receiver:argument:with:`. Integer

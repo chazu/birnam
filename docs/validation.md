@@ -67,8 +67,8 @@ The script builds TCC with `resource-metrics` for independent allocation evidenc
 
 The compiler test also wraps the actual generated candidate entries at their
 ordinary `fromNative:owner:` construction boundary to prove that hot selection
-enters Codegen output. It checks unchanged Integer construction counts, current
-numeric lookup and PC conversion, collecting conversions, permanent withdrawal
+enters Codegen output. It checks the replaced Integer factory's call effects,
+current numeric lookup and PC conversion, collecting conversions, permanent withdrawal
 after Machine method replacement, and collection during construction and entered
 withdrawal. Capturing Blocks, bounded-emission fallback and rejected candidate
 initialization exercise the same source path. All final Unit/relocated-byte counts
@@ -82,8 +82,13 @@ queries collect or allocate recursively while the outer object remains rooted;
 a subprocess verifies the historical fatal diagnostic for committed overflow.
 `memory_activation` independently sums the existing heap, and the compiler test
 sums new physical Id records across source compilation and execution without using
-the production charge helper. These are accounting/admission proofs; deferred
-allocation and single-charge materialization remain later work.
+the production charge helper. These are actual-allocation accounting/admission
+proofs. Prepaid deferred identities and single-charge materialization are no longer
+requirements. See the
+[revised optimization acceptance contract](design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history).
+Future elision tests compare language behavior, effects, observable identity and
+recovery, and separately measure actual allocation savings. They must not demand
+matching baseline allocation counts or automatic collection/finalizer schedules.
 
 Pure/debug checks: `mise exec -- cargo test --offline -p birnam-codegen
 -p birnam-execution -p birnam-peg -p birnam-native-compiler --lib` runs 97 compiler,

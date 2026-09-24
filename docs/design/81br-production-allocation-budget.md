@@ -1,5 +1,13 @@
 # 81BR — Allocation-byte budget ownership
 
+> **Allocation policy superseded (2026-09-24):**
+> [Design 90](90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
+> prepaid deferred identities. Preserve language effects, observable identity,
+> recovery and actual resource lifetimes. Older algorithms, receipts and commands
+> below record history; they do not require restoring that machinery. See the
+> [Self implementation review](90-self-optimization-review.md).
+
 > **Status:** Implemented and verified after completed 81BQ (`d833d6bb`).
 > Dynamic Siphon startup and compiled/image consumers verified with debug builds.
 > No new language behavior; public IdApi and image encoding unchanged.

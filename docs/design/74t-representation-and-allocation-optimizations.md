@@ -1,5 +1,13 @@
 # 74T — Numeric, loop, aggregate and closure optimization
 
+> **Allocation policy superseded (2026-09-24):**
+> [Design 90](90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
+> prepaid deferred identities. Preserve language effects, observable identity,
+> recovery and actual resource lifetimes. Older algorithms, receipts and commands
+> below record history; they do not require restoring that machinery. See the
+> [Self implementation review](90-self-optimization-review.md).
+
 Current implementation/default decisions: [74AK](74ak-bounded-qualification-and-defaults.md).
 Current validation commands: [validation guide](../validation.md). Dated
 experiment and queue status below is retained as historical evidence.
@@ -43,10 +51,10 @@ The existing code establishes two constraints that govern implementation:
   addition, subtraction and multiplication, then checks the signed 64-bit range.
   Division also checks zero and range; mixed arithmetic converts to floating
   point. Error operands and operator redefinition remain ordinary behavior.
-- The floor exposes live allocation counts and triggers automatic collection
-  using allocated bytes. Non-escape alone cannot authorize allocation removal.
-  Removing an allocation must preserve observations at subsequent boundaries,
-  including GC timing and finalizers; suppressing collection is not a proof.
+- Non-escape alone does not prove that a replaced constructor/clone method or
+  finalizer is effect-free. Establish the semantics of the selected implementation.
+  Allocation statistics and automatic GC timing describe actual execution and may
+  differ after elision; the old equivalence policy below is retired by Design 90.
 
 ## Implementation sequence and completion evidence
 
@@ -55,7 +63,7 @@ The existing code establishes two constraints that govern implementation:
 | Shared recovery | Validated acyclic identity graphs, existing Oop inputs, exact numeric bits, one materialization per virtual identity; roots survive collecting materialization and publication stays atomic | Invalid and stale recipes; repeated aliases versus equal distinct objects; GC between construction steps; Id-authored recipes; capture/restore and native retirement |
 | Unboxed arithmetic | Derive numeric chains from current admitted implementations; carry raw intermediate values with exact overflow/error rules and materialize at observation boundaries | Integer extrema, zero division, mixed numeric/error operands, changed operators and lookup, forced exits at every supported point; separate arithmetic and allocation accounting |
 | Loop optimization | Recognize actual Id control behavior; remove invariant work within bounded execution intervals, preserving ordinary mutation and stackless transition boundaries | Representative loop, effects once and in order, invariant invalidation, suspension/capture responsiveness, guard overhead and profitable execution |
-| Temporary-object elimination | Derive escape, identity and allocation-observation proofs for acyclic aggregates; scalar-replace private fields and materialize before exposure | Actual allocation savings, shared graph identity, reflective/native escape, collection during materialization, finalizer/collection threshold counterexamples |
+| Temporary-object elimination | Derive escape, identity and effect proofs for acyclic aggregates; scalar-replace private fields and materialize before exposure | Actual allocation savings, shared graph identity, reflective/native escape, collection during materialization, effectful finalizer refusal and collecting recovery |
 | Closure/capture elimination | Derive a directly invoked private closure and substitute its environment into the admitted body; retain shared mutable Cells | Actual closure allocation savings, multiple uses and escaping fallbacks, shared Cell updates, method replacement, native observation and continuation capture |
 
 These are implementation obligations, not a claim that every source program is
@@ -506,7 +514,7 @@ This delivers the first loop-entry consumer; general loop dataflow and broader
 application/cold/memory acceptance are still open. Aggregate and closure object
 elimination are not supplied by removing these private host scratch lists.
 
-## Allocation-elimination implementation contract
+## Historical allocation-elimination implementation (policy retired)
 
 The first experimental aggregate consumer removes a discarded clone of a proven all-Oop
 aggregate in a bounded, observation-free body. Eligibility follows the actual
@@ -661,6 +669,10 @@ objects alone do not discharge that requirement. Direct closure/environment
 substitution and the remaining full-family acceptance obligations are also open.
 
 ## Live aggregate field replacement and recovery
+
+The prepaid-capability and allocation-budget mechanism described in this historical
+consumer is retired. Retain its useful escape/alias analysis; materialize required
+values through ordinary current-owner construction and recovery instead.
 
 The next consumer analyzes a bounded prefix of ordinary Calls. Clone identities
 are virtual values; an admitted native field projection substitutes the existing

@@ -85,9 +85,14 @@ is no separate Allocation Budget module, descriptor, setter or native service AP
 
 `canAllocate:` is a momentary observation, not a promise that later messages cannot
 allocate, collect or change policy. Optimizers must preserve current dispatch and
-revalidate, recover or decline across observing calls. This slice supplies exact
-accounting/admission only: deferred identities, already-charged materialization,
-dead-allocation journals and their optimizer consumers remain unconnected.
+revalidate, recover or decline across observing calls. It is not a mandatory
+optimizer admission step. Under Design 90's
+[optimization contract](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history),
+only actual construction is charged. Eliminated allocations require no synthetic
+charges, deferred identities or dead-payload journal. Recovery construction uses
+ordinary accounting. Optimization may change allocation diagnostics, automatic
+collection timing and reclaimed counts; the actual heap's root and finalization
+obligations remain.
 
 Marking and finalization reject guarded allocation, delegation and new Symbols.
 Nested collection returns zero. The default native capture retains the existing

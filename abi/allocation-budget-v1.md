@@ -5,6 +5,8 @@
 > [ordinary owner messages](../rust/birnam-collect/README.md#allocation-accounting-and-admission).
 > The factory, service table and legacy validation commands below are not the
 > production prefix. No replacement Allocation Budget library is required.
+> [Design 90's revised optimization contract](../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> also retires synthetic charges and prepaid materialization for elided objects.
 
 Design [81BR](../docs/design/81br-production-allocation-budget.md) moves accumulated
 allocation charges into `libbirnam_allocation_budget`. Each Heap owns one opaque

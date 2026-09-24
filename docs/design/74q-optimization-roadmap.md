@@ -1,5 +1,13 @@
 # 74Q — Optimization roadmap with malleability and recovery
 
+> **Allocation policy superseded (2026-09-24):**
+> [Design 90](90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
+> prepaid deferred identities. Preserve language effects, observable identity,
+> recovery and actual resource lifetimes. Older algorithms, receipts and commands
+> below record history; they do not require restoring that machinery. See the
+> [Self implementation review](90-self-optimization-review.md).
+
 Current implementation/default decisions: [74AK](74ak-bounded-qualification-and-defaults.md).
 Current validation commands: [validation guide](../validation.md). Dated
 experiment status below is historical.

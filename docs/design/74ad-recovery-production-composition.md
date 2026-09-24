@@ -1,5 +1,13 @@
 # 74AD — Compose recovery consumers with scoped controls and String cleanup
 
+> **Allocation policy superseded (2026-09-24):**
+> [Design 90](90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
+> prepaid deferred identities. Preserve language effects, observable identity,
+> recovery and actual resource lifetimes. Older algorithms, receipts and commands
+> below record history; they do not require restoring that machinery. See the
+> [Self implementation review](90-self-optimization-review.md).
+
 Status: isolated implementation; no main integration or default promotion.
 
 The four optimization families need a coherent runtime, not separate experiments

@@ -210,7 +210,10 @@ pub(super) unsafe fn check(h: &mut H) {
         let result = run(h, block);
         assert_eq!(h.integer(result), 42);
         assert_eq!(probe.calls.get(), 0, "cold execution uses the baseline");
-        let cold_allocations = factory.calls.get();
+        // This replacement has a visible call-count effect. Elision must not
+        // bypass it as though it were the ordinary pure constructor. This is
+        // dispatch/effect coverage, not a requirement to match physical heaps.
+        let cold_factory_calls = factory.calls.get();
         for _ in 0..40 {
             let result = run(h, block);
             assert_eq!(h.integer(result), 42);
@@ -224,8 +227,8 @@ pub(super) unsafe fn check(h: &mut H) {
         assert_eq!(h.integer(result), 42);
         assert_eq!(
             factory.calls.get(),
-            cold_allocations,
-            "specialization preserves ordinary Integer construction"
+            cold_factory_calls,
+            "specialization preserves the replaced factory's call effects"
         );
         restore(h, integer_vt, b"fromWord:", factory.entry);
 

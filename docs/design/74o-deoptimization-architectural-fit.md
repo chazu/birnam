@@ -1,5 +1,13 @@
 # 74O — Deoptimization architectural fit
 
+> **Allocation policy superseded (2026-09-24):**
+> [Design 90](90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
+> prepaid deferred identities. Preserve language effects, observable identity,
+> recovery and actual resource lifetimes. Older algorithms, receipts and commands
+> below record history; they do not require restoring that machinery. See the
+> [Self implementation review](90-self-optimization-review.md).
+
 Status: bounded feasibility experiments complete, 2026-09-11. General
 reconstruction is test-only; no production admission or performance claim.
 
@@ -20,8 +28,9 @@ justify treating a general optimizer as already supported.
 
 There are fundamental conflicts with **specific optimizations**: replacing an
 escaped identity, removing an observable native effect, exposing an absent Frame,
-or delaying an allocation beyond an observable finalizer checkpoint changes the
-program. Later reconstruction cannot repair an observation already made. These
+or eliminating a real finalization/resource effect changes the program.
+Matching automatic collection timing and hypothetical heap statistics is no longer
+required (Design 90). Later reconstruction cannot repair an observation already made. These
 are eligibility limits, not evidence that deoptimization itself requires a less
 malleable language. Arbitrary opaque native activations also remain outside the
 reconstructable state: call them with concrete state and preserve entry barriers.

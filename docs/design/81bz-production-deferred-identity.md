@@ -1,5 +1,13 @@
 # 81BZ — Deferred-allocation identity storage
 
+> **Allocation policy superseded (2026-09-24):**
+> [Design 90](90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history)
+> retires baseline allocation/count/GC-timing equivalence, dead-payload replay and
+> prepaid deferred identities. Preserve language effects, observable identity,
+> recovery and actual resource lifetimes. Older algorithms, receipts and commands
+> below record history; they do not require restoring that machinery. See the
+> [Self implementation review](90-self-optimization-review.md).
+
 > **Status:** Completed production extraction after 81BY (`45bdd38f`).
 > Debug validation only; journal admission, charging and recovery stay in Id.
 

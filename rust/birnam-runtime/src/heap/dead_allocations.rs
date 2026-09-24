@@ -1,3 +1,6 @@
+//! Historical allocation-equivalence machinery; do not reconnect in Design 90.
+//! Synthetic charges/dead-object replay are retired. See
+//! docs/design/90-functional-modules.md, optimization contract (2026-09-24).
 //! Accounting for allocations whose unexposed identity is proven dead.
 //! No Oop is published for a journal entry; payload bits are intentionally not roots.
 use super::*;

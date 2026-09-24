@@ -8,20 +8,29 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Revise Design 90's optimization contract after reviewing Self's implementation:
+  preserve late-bound behavior, effects, observable identity and recoverable state;
+  drop baseline allocation/GC-timing equivalence, synthetic charges, dead-payload
+  replay and prepaid deferred identities. Remove those prerequisites from batch 2
+  guidance and mark superseded designs and retained machinery as historical.
+  Actual-allocation accounting remains. The candidate factory-count check covers
+  effects of a replaced method, not physical allocation equivalence.
+
 - Restore checked allocation accounting inside GC and add live owner messages for
   accumulated bytes, checked admission and Id-owned allocation geometry. Preserve
   callback-time collection/recursive allocation, successful-only reset and the
   committed-overflow diagnostic without service tables or layout duplication.
   Validate production allocation/activation and compiled-source totals against
-  independent inventories. Deferred identities and allocation-elision remain next.
+  independent inventories. Allocation-elision remains next under the revised
+  contract above.
 
 - Connect Codegen-produced native PC candidates to Execution through existing
   `fromNative:owner:` and `optimizeWith:` messages. Baselines and specialized
   entries share generated bodies and retain all live sends and allocations.
   Bound optional emission, keep candidates with their actual TCC Unit, and test
   hot selection, replacement/fallback, collecting callbacks, withdrawal and
-  failed-initialization reclamation. Allocation-budget/deferred-identity support
-  and allocation-elision remain subsequent batch 2 work.
+  failed-initialization reclamation. Allocation-elision remains subsequent batch 2
+  work; the allocation-budget/deferred-identity prerequisite is retired above.
 
 - Clarify Design 90's alien-code trust boundary: callers and wrappers own foreign
   state and native contracts. Keep security precautions local and proportionate;
@@ -48,9 +57,9 @@ loader ports are complete.
   context reuse until retired engine generations leave checkpoint, without rooting
   dead owners. Validate 21 Execution tests, 9 Codegen numeric-chain tests and all
   11 production prefix binaries with export/dependency audit. Allocation-elision
-  explicitly moves to batch 2 with compiler producers and its retired allocation-
-  budget/deferred-identity protocols; compiled mappings and generated recovery
-  remain unproven until that integration.
+  explicitly moves to batch 2 with compiler producers; the later contract amendment
+  retires its allocation-budget/deferred-identity prerequisites. Compiled mappings
+  and generated recovery remain unproven until that integration.
 
 - Reconnect Design 90 native pending-call recovery through production Execution.
   Add owned inline candidates with baseline fallback and scoped flat/graph recovery;

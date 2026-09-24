@@ -16,9 +16,12 @@ The remaining integration work is intentionally retained for its actual producer
 
 - `runtime/native_tier.rs` and its children retain compiler construction, region
   kernels and allocation-elision. `runtime/numeric.rs` retains chain/loop compilation
-  and reuse. Batch 2 must reconnect allocation-budget and deferred-identity owner
-  protocols before claiming these optimizers; the native PC candidate interface
-  alone is not evidence for them.
+  and reuse. Reassess these under Design 90's
+  [optimization contract](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history).
+  Do not port dead-allocation journals, synthetic charges, counted index ledgers
+  or the deferred-identity service. They implement a retired equivalence policy.
+  Reuse useful analyses and recovery for observable values; the native PC candidate
+  interface alone is not evidence for these optimizers.
 - Image registration and retirement still await converted producers.
   TCC owns mappings; Execution owns acquired/frame/generation retention.
 - `runtime/task_control_tests.rs`, scheduling/control tests, and the retained

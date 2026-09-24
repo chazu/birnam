@@ -153,6 +153,72 @@ justification for complicating the shared implementation. This clarification
 governs the remaining batches and supersedes broader interpretations of earlier
 native-safety requirements.
 
+## Optimization preserves language behavior, not allocation history
+
+Decision (2026-09-24), following the user's clarification and a
+[review of Self's paper and implementation](90-self-optimization-review.md):
+optimization exists to improve performance while preserving Birnam's late-bound
+behavior. Existing machinery is not evidence that its policy is necessary.
+This decision supersedes allocation-equivalence requirements in earlier designs,
+receipts and migration queues, including 74T/74V/74Y/74AD and 81BR/81BZ.
+
+Keep these obligations:
+
+- Subsequent sends observe current lookup and method replacement. Optimized
+  operations must establish the semantics of the actual selected implementation;
+  a selector name is insufficient. Guard, recover or use ordinary execution when
+  assumptions fail. Preserve effects, errors and their language-defined order.
+- Preserve observable object identity, aliases and shared mutable Cells. An
+  existing object remains that object; equal values do not authorize merging
+  distinct observable identities. Materialize a virtual value when execution,
+  escape, reflection, continuation capture or frame inspection requires it.
+- Reconstruct the values and logical frames required at supported recovery and
+  observation points, including inspectable values no longer used by subsequent
+  computation. Retain roots and active/suspended native code ownership throughout.
+  Recovering current state must not replay effects already performed.
+- Preserve explicit collection operations and real finalization/resource duties.
+  Allocation or finalization with program-visible effects is not pure merely
+  because its result does not escape. Unknown or replaced constructors, clone
+  methods and finalizers require ordinary execution unless their effects are
+  specifically accounted for by the optimization.
+
+Drop these obligations:
+
+- Equal baseline/optimized allocation counts, allocated bytes, reclaimed counts,
+  automatic collection thresholds reached at identical program points, or identical
+  automatic finalizer timing. Memory diagnostics describe the execution that
+  actually occurred; their results may change with optimization.
+- Charging for objects never allocated; journaling dead payloads or counted index
+  boxes; recreating unreachable objects solely to reproduce the baseline heap,
+  finalizer observations of that heap, or collection statistics.
+- Prepaid allocation identities and single-charge materialization as prerequisites
+  for elision. Recovery allocations are real allocations and use normal owner
+  construction/accounting. Support collection and callbacks with rooted state and
+  revalidation where needed; no simulated charge or callback-free service path.
+- Restoring retired allocation-budget/deferred-identity protocols simply because
+  retained optimizers used them. Identity bookkeeping needed by a concrete virtual
+  value belongs in that optimizer's recovery state; it does not require a new
+  global identity owner or cross-module protocol.
+
+An explicitly requested collection still runs over the actual heap with the
+existing root/finalization contract. Its statistics need not describe objects an
+unoptimized execution would have allocated. An optimizer may not discard a real
+cleanup obligation; automatic cleanup timing is not a promise of equivalence to
+the unoptimized allocation schedule.
+
+GC's current checked accounting for actual construction remains useful. Its
+`canAllocate:` query is a momentary observation, not a reservation, callback
+exclusion mechanism or mandatory optimizer admission step. Do not add consumers
+solely to justify that existing query.
+
+Acceptance compares language results, effects, replacement behavior, observable
+identity/aliasing, recovery/control state and lifetime. Collect deliberately at
+supported observation and materialization boundaries. Measure actual allocation
+savings and execution/construction cost separately; do not require old receipts'
+allocation/GC histories or treat a working candidate as evidence of a speedup.
+Inter-owner operations remain late-bound Id messages. Self's VM-private machinery
+does not authorize service tables, foreign-layout access or extra module coupling.
+
 ## Starting point
 
 At commit `0f564c25`, the converted production prefix is Siphon → Id → Bootstrap,
@@ -572,14 +638,15 @@ source task policy awaits Store as described below.
 ### Batch 2: Compilation uses that Execution
 
 Scope amendment (2026-09-23): allocation-elision optimizers move here by explicit
-user decision. Reconnect their allocation-budget and deferred-identity owner
-protocols with their compiler producers; batch 1 does not restore that retired
-machinery. The completion record below identifies the retained algorithms.
+user decision. Reconnect useful compiler analyses and recovery consumers under
+[the revised optimization contract](#optimization-preserves-language-behavior-not-allocation-history).
+Do not restore their retired allocation-budget or deferred-identity machinery.
+The completion record below identifies the retained algorithms for reassessment.
 
 Allocation-elision follows the [alien-code and trust boundary](#alien-code-trust-and-proportionate-protection)
-above. Reuse the existing accounting, identity and recovery algorithms through
-the smallest owner messages required by actual consumers. Do not recreate retired
-service tables or freeze dependencies to obtain a callback-free path. Prove each
+above. Reuse only the identity and recovery algorithms required by actual
+observable behavior, through the smallest owner messages required by consumers.
+Do not recreate retired service tables or freeze dependencies to obtain a callback-free path. Prove each
 optimized region's assumptions against current dispatch; recover or execute the
 ordinary path when those assumptions do not hold.
 
@@ -870,10 +937,10 @@ numeric error behavior, and repeatedly reclaim/register without checkpoints.
 These are native execution proofs, not compiled mapping or speedup claims.
 
 Batch 2 retains compiler-generated PC/region construction, numeric chain/loop
-reuse, closure elision, unboxed/deferred numeric identity, discarded clones and
-virtual aggregates, with their allocation-budget/identity dependencies. It must
-reconnect real producers and owner protocols and prove generated recovery,
-portable admission and compiled-unit reclamation. The native candidate interface
+reuse, closure elision, unboxed numeric values, discarded clones and
+virtual aggregates. Their allocation-equivalence dependencies are retired by the
+2026-09-24 decision above. Reconnect real producers and necessary owner messages
+and prove generated recovery, portable admission and compiled-unit reclamation. The native candidate interface
 does not stand in for these algorithms. Store-backed task policy, Image, workers
 and full CLI startup remain at their previously stated integration gates.
 
@@ -965,17 +1032,18 @@ Candidates compile eagerly in the baseline Unit, so this slice adds construction
 cost and does not claim a measured speedup.
 
 Production acceptance observes the actual compiler-created entries crossing the
-hot gate, unchanged Integer construction counts, fresh numeric replacement and
-collecting PC conversion, guard fallback after Machine replacement, collecting
+hot gate, the replaced Integer factory's call effects, fresh numeric replacement
+and collecting PC conversion, guard fallback after Machine replacement, collecting
 candidate construction, withdrawal while entered, captured values, bounded
 baseline fallback and rejected candidate initialization. Unit counts and libtcc
 relocated bytes return to zero after the final references and checkpoint.
 
 This closes compiler-generated PC candidate construction/installation, not
-allocation-elision. Allocation accounting, deferred identities, fused regions,
-numeric chain/loop reuse, closure and aggregate elision, and their generated
-recovery remain subsequent work. Full Artifact/PortableCode language adapters and
-the previously deferred upper integrations retain their existing scope.
+allocation-elision. Fused regions, numeric chain/loop reuse, closure and aggregate
+elision, and their generated recovery remain subsequent work, subject to the
+revised optimization contract. Deferred accounting identities are not
+prerequisites. Full Artifact/PortableCode language adapters and the previously
+deferred upper integrations retain their existing scope.
 
 ### Batch 2 exact allocation accounting and admission (2026-09-24)
 
@@ -1004,7 +1072,8 @@ recursively. Activation's charge and a complete source compilation/execution cha
 are compared with independently summed Id allocation inventories. These checks
 run with the production owners, including generated candidates and real TCC Units.
 
-This completes the accounting/admission prerequisite. Deferred identities,
-dead-allocation journals, single-charge materialization and actual allocation
-elision remain subsequent work; no allocation-saving or performance claim follows
-from these checks. The broader batch's existing scope remains unchanged.
+This completes actual-allocation accounting and a non-reserving preview query;
+no allocation-saving or performance claim follows from these checks. The later
+2026-09-24 optimization decision removes the proposed deferred identities,
+dead-allocation journals and single-charge materialization from the batch 2 queue.
+Actual elision and generated recovery remain work under that revised contract.
