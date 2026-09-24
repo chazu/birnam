@@ -2,6 +2,8 @@
 mod support;
 #[path = "compiler/candidates.rs"]
 mod candidates;
+#[path = "compiler/accounting.rs"]
+mod accounting;
 use birnam_abi::{
     Oop, borrowed_slice,
     id_protocol::{NativeEntry, Operand, Outcome, Protocol},
@@ -203,6 +205,7 @@ fn source_compiles_and_runs_on_production_execution() {
         collecting_factories(&mut h);
         compiled_recovery(&mut h);
         candidates::check(&mut h);
+        accounting::check(&mut h);
         h.clear();
         h.collect();
         assert_eq!(h.units(), 0);

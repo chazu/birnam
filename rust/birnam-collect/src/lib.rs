@@ -1,5 +1,6 @@
 //! Memory management above Id. All foreign objects are opaque and all service
 //! operations use live Id messages. See README.md for the native protocol.
+mod accounting;
 mod collection;
 mod construction;
 mod native_stack;
@@ -289,6 +290,7 @@ const NAMES: &[&[u8]] = &[
     b"isBehavior:",
     b"parentOf:",
     b"allocationSizeOf:",
+    b"allocationChargeFor:",
     b"rootsDo:",
     b"allocationsDo:",
     b"referencesOf:do:",
@@ -343,6 +345,8 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             (b"referenceOwnerOf:", reference_owner),
             (b"finalize:with:", finalize_with),
             (b"budget:", budget),
+            (b"allocationBytes", accounting::read),
+            (b"canAllocate:", accounting::preview),
         ] {
             id.send_named(
                 behavior,

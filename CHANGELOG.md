@@ -8,6 +8,13 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Restore checked allocation accounting inside GC and add live owner messages for
+  accumulated bytes, checked admission and Id-owned allocation geometry. Preserve
+  callback-time collection/recursive allocation, successful-only reset and the
+  committed-overflow diagnostic without service tables or layout duplication.
+  Validate production allocation/activation and compiled-source totals against
+  independent inventories. Deferred identities and allocation-elision remain next.
+
 - Connect Codegen-produced native PC candidates to Execution through existing
   `fromNative:owner:` and `optimizeWith:` messages. Baselines and specialized
   entries share generated bodies and retain all live sends and allocations.

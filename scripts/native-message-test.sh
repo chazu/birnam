@@ -40,4 +40,4 @@ for module in modules + ["siphon", "abi"]:
     assert dependencies == expected.get(module, {"birnam-abi"}), (module, dependencies)
 print("native boundary audit: exports, install names and dependencies passed")
 PY_AUDIT
-CARGO_PROFILE_DEV_PANIC=unwind cargo test --offline --locked -p birnam-siphon --test modules --test memory --test memory_activation --test object_model --test text_error --test numbers --test numbers_loading --test collections --test roots --test execution_methods --test execution_machines --test compiler -- --include-ignored
+CARGO_PROFILE_DEV_PANIC=unwind cargo test --offline --locked -p birnam-siphon --test modules --test memory --test memory_activation --test allocation_accounting --test object_model --test text_error --test numbers --test numbers_loading --test collections --test roots --test execution_methods --test execution_machines --test compiler -- --include-ignored

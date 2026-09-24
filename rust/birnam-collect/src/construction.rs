@@ -15,7 +15,7 @@ unsafe fn construct(
     let result = (|| unsafe {
         if !nested
             && memory.phase.get() == Phase::Idle
-            && memory.charged.get() >= memory.budget.get()
+            && !memory.fits(0)
         {
             collection::conservative(memory)?;
         }
@@ -26,14 +26,10 @@ unsafe fn construct(
             .send(memory.id.receiver, b"allocationSizeOf:", &[answer])?
             .as_word()
             .ok_or_else(invalid)?;
-        memory.charged.set(
-            memory.charged.get().saturating_add(
-                (bytes
-                    .saturating_add(size_of::<Oop>())
-                    .saturating_add(size_of::<Oop>() - 1))
-                    & !(size_of::<Oop>() - 1),
-            ),
-        );
+        let charge = memory.allocation_charge(bytes)?;
+        // Geometry lookup is a live send and may allocate or collect. Add to
+        // the current total after it returns, never to a cached pre-call total.
+        memory.charged.set(accounting::add(memory.charged.get(), charge));
         Ok(answer)
     })();
     memory.constructing.set(nested);
@@ -177,7 +173,7 @@ pub(super) unsafe extern "C" fn prepare(
         }
         if memory.phase.get() == Phase::Idle
             && !memory.constructing.get()
-            && memory.charged.get() >= memory.budget.get()
+            && !memory.fits(0)
         {
             collection::conservative(memory)?;
         }

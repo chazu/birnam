@@ -24,9 +24,12 @@ singletons still limit this prefix to one domain per process.
 | GC `prepareAllocation` | none | Unit. Enforce the construction phase and budget before an upper mutation, even if it ultimately reuses an object. Caller retains inputs. |
 | GC `registerRetirement:` | owner Object | Unit. Register an instance-owned metadata owner implementing `retire:`; duplicates are ignored. |
 | GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header and padded payload. |
+| GC `allocationBytes` | none | Word accumulated allocation charge. Readable during tracing/finalization; not a live-storage count. |
+| GC `canAllocate:` | Word additional total charge, including header/padding | Word 1 iff idle and checked addition stays strictly below the current threshold; otherwise Word 0. No allocation, collection, charging or reservation. |
 | GC `rootsDo:` | NativeEntry visitor | Unit. Enumerate GC's own objects, selectors, callback owners and temporary construction roots. Registered with Roots during construction. |
 | GC `roots` | none | The Roots Object used by this instance. |
 | Id `memoryManager` | none | This GC Object. Installed by GC, not implemented by Id. |
+| Id `allocationChargeFor:` | Word requested payload bytes | Word total storage charge, or Unit if the size cannot be allocated. Id owns header/padding/layout geometry; the query allocates nothing and has no GC dependency. |
 
 An enumerator sends its visitor one Object operand per reference (null is allowed)
 and returns Unit. Emit valid allocated Oops, not integers or interior pointers.
@@ -62,6 +65,29 @@ allocation policy. Native consumers use the guarded construction messages; direc
 invoking storage primitives must obey the same phase/lifetime contract. Id needs
 no collector callback, dependency table or knowledge of upper modules. Interning an
 existing Symbol remains permitted during collection because it does not allocate.
+
+## Allocation accounting and admission
+
+Activation accounts for the existing Id heap. Each subsequent guarded construction
+charges its actual requested size through current Id `allocationChargeFor:`; GC
+does not duplicate Id's storage geometry. The object stays temporarily rooted
+across this query. A replacement may collect or construct another object, so the
+charge adds to the current total after the query returns. Freeing an allocation
+does not refund accumulated work. Only a successful collection resets the total;
+failed activation does not publish a partial inventory charge, and failed tracing
+does not reset it.
+
+Committed charges use checked addition and preserve the fatal diagnostic
+`birnam-id invariant failed: GC allocation byte counter overflow`. The existing
+construction/`prepareAllocation` threshold check and `canAllocate:` use the same
+private checked preview; an overflowing preview refuses without mutation. There
+is no separate Allocation Budget module, descriptor, setter or native service API.
+
+`canAllocate:` is a momentary observation, not a promise that later messages cannot
+allocate, collect or change policy. Optimizers must preserve current dispatch and
+revalidate, recover or decline across observing calls. This slice supplies exact
+accounting/admission only: deferred identities, already-charged materialization,
+dead-allocation journals and their optimizer consumers remain unconnected.
 
 Marking and finalization reject guarded allocation, delegation and new Symbols.
 Nested collection returns zero. The default native capture retains the existing

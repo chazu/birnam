@@ -734,7 +734,8 @@ Siphon and the shared ABI contain no upper-module catalog. Run
 live method replacement, nested loading, collection and finalization.
 [Roots](rust/birnam-root-registry/README.md) documents retention and root enumeration.
 [GC’s local protocol](rust/birnam-collect/README.md) documents reference owners,
-rooting and native construction. [Object Model](rust/birnam-object-model/README.md)
+rooting, native construction and checked allocation accounting/admission.
+[Object Model](rust/birnam-object-model/README.md)
 adds ordinary cloning, private behaviors and slot storage with GC-safe ownership.
 [String](rust/birnam-string/README.md) owns text and builder buffers;
 [Error](rust/birnam-error/README.md) uses ordinary reference slots.

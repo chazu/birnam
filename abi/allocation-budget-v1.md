@@ -1,5 +1,11 @@
 # Allocation Budget v1
 
+> **Historical ABI, superseded by Design 90:** GC now owns checked allocation
+> accounting directly. Current readers/preflight and Id's geometry query are
+> [ordinary owner messages](../rust/birnam-collect/README.md#allocation-accounting-and-admission).
+> The factory, service table and legacy validation commands below are not the
+> production prefix. No replacement Allocation Budget library is required.
+
 Design [81BR](../docs/design/81br-production-allocation-budget.md) moves accumulated
 allocation charges into `libbirnam_allocation_budget`. Each Heap owns one opaque
 native budget, including heaps created during bootstrap. This scalar counts
@@ -45,7 +51,6 @@ checks. `scripts/allocation-budget-test.sh PREFIX` selects an installed library
 stack; `scripts/allocation-budget-image-smoke.sh PREFIX` checks Siphon startup,
 source-free compiled callers, mapped/rebuilt native Code images and baked apps.
 
-Current production constructs and owns these controls in the early
-[collection-state owner](collection-state-v2.md), then Runtime adopts the same
-context. Normal startup no longer prepares this dependency inside Id. The
-existing factory ABI remains available for legacy clients.
+Before Design 90, the early [collection-state owner](collection-state-v2.md)
+constructed these controls and Runtime adopted the same context. That historical
+construction/factory path does not survive the current message-based integration.

@@ -53,7 +53,7 @@ Allocation-elision is explicitly deferred to batch 2 with its owner protocols an
 compiler producers. Optimizer equivalence/performance and the full retained upper Runtime harness
 remain unproven; its unconverted cases are migration inputs.
 
-The `compiler` binary extends the same suite to 12 integration binaries. It tests
+The suite now includes 13 integration binaries. The `compiler` binary tests
 source literals, threaded sends, conditional and capturing Blocks, named methods,
 replacement with exact captured invocation, syntax/compilation/initialization
 failures and precise GC inside factories. Generated protected-boundary exits
@@ -74,6 +74,16 @@ withdrawal. Capturing Blocks, bounded-emission fallback and rejected candidate
 initialization exercise the same source path. All final Unit/relocated-byte counts
 return to zero. These are candidate-production and dispatch/lifetime checks;
 allocation savings, region fusion and optimizer performance remain unproven.
+
+`allocation_accounting` checks actual GC charges against literal padded-size
+expectations, checked threshold/overflow refusal, unchanged charges after storage
+release and failed tracing, and successful-collection reset. Replaced Id geometry
+queries collect or allocate recursively while the outer object remains rooted;
+a subprocess verifies the historical fatal diagnostic for committed overflow.
+`memory_activation` independently sums the existing heap, and the compiler test
+sums new physical Id records across source compilation and execution without using
+the production charge helper. These are accounting/admission proofs; deferred
+allocation and single-charge materialization remain later work.
 
 Pure/debug checks: `mise exec -- cargo test --offline -p birnam-codegen
 -p birnam-execution -p birnam-peg -p birnam-native-compiler --lib` runs 97 compiler,

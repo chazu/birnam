@@ -113,12 +113,7 @@ pub(super) unsafe fn validate(memory: &Memory) -> Result<usize, Outcome> {
                     return Err(invalid());
                 }
             }
-            charged = charged.saturating_add(
-                a.size
-                    .saturating_add(size_of::<Oop>())
-                    .saturating_add(size_of::<Oop>() - 1)
-                    & !(size_of::<Oop>() - 1),
-            );
+            charged = accounting::add(charged, memory.allocation_charge(a.size)?);
         }
         if let Some(error) = memory.walk.borrow().as_ref().unwrap().failure {
             return Err(error);

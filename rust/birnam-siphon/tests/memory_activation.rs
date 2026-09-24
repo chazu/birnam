@@ -1,12 +1,22 @@
 mod support;
 use birnam_abi::{
-    Oop,
-    id_protocol::{Operand, Outcome},
+    Oop, borrowed_slice,
+    id_protocol::{NativeEntry, Operand, Outcome},
 };
 use core::{ffi::c_void, ptr};
 use support::*;
 unsafe extern "C" fn no_references(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
     Outcome::loaded(Operand::unit())
+}
+unsafe extern "C" fn sum_storage(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let [_, size, _] = borrowed_slice(a, n).unwrap() else {
+            panic!("allocation inventory");
+        };
+        // Independent current-target geometry, not GC/Id's charge helper.
+        *c.cast::<usize>() += (size.as_word().unwrap() + 15) & !7;
+        Outcome::loaded(Operand::unit())
+    }
 }
 #[test]
 #[ignore = "scripts/native-message-test.sh builds the production modules"]
@@ -19,7 +29,16 @@ fn activation_requires_complete_representation_owners_without_replacing_the_heap
         let identity = send(id, id.receiver, b"identityOf:", &[Operand::object(before)]).as_word();
         let token = retain(id, roots, before);
         let gc = load(id, "collect", &[Operand::object(roots)]);
+        assert_eq!(
+            send(id, gc, b"canAllocate:", &[Operand::word(0)]).as_word(),
+            Some(0)
+        );
         assert!(id.send_named(gc, b"activate", &[]).is_err());
+        assert_eq!(
+            send(id, gc, b"allocationBytes", &[]).as_word(),
+            Some(0),
+            "failed activation does not publish a partial charge"
+        );
         assert!(id.send_named(gc, b"collectPrecisely", &[]).is_err());
         assert!(present(id, before));
         let owner_behavior = behavior(id);
@@ -38,7 +57,23 @@ fn activation_requires_complete_representation_owners_without_replacing_the_heap
             &[Operand::object(nodes), Operand::object(owner)],
         );
         send(id, gc, b"activate", &[]);
+        let mut expected = 0usize;
+        send(
+            id,
+            id.receiver,
+            b"allocationsDo:",
+            &[Operand::entry(NativeEntry::new(
+                sum_storage,
+                ptr::from_mut(&mut expected).cast(),
+            ))],
+        );
+        assert_eq!(
+            send(id, gc, b"allocationBytes", &[]).as_word(),
+            Some(expected),
+            "activation accounts for the existing Id heap"
+        );
         collect(id, gc);
+        assert_eq!(send(id, gc, b"allocationBytes", &[]).as_word(), Some(0));
         assert_eq!(
             send(id, id.receiver, b"identityOf:", &[Operand::object(before)]).as_word(),
             identity

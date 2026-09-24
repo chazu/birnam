@@ -27,6 +27,10 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
             b"allocationSizeOf:".as_slice(),
             allocation_size as native::Method,
         ),
+        (
+            b"allocationChargeFor:".as_slice(),
+            allocation_charge as native::Method,
+        ),
         (b"identityOf:".as_slice(), identity as native::Method),
         (b"symbolBytesOf:".as_slice(), symbol_bytes as native::Method),
     ] {
@@ -179,6 +183,24 @@ pub(crate) unsafe extern "C" fn allocation_size(
             .map(|allocation| Operand::word(allocation.requested_size()))
             .unwrap_or_else(Operand::unit),
     )
+}
+/// Storage geometry stays with Id. This is a non-allocating size query, not an
+/// allocation reservation or an upper collector-policy operation.
+unsafe extern "C" fn allocation_charge(
+    _: *mut c_void,
+    _: Oop,
+    args: *const Operand,
+    count: usize,
+) -> Outcome {
+    let Some([size]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
+        return invalid();
+    };
+    let Some(size) = size.as_word() else {
+        return invalid();
+    };
+    let charge = super::ObjectMemory::valid_payload_size(size)
+        .then(|| super::ObjectMemory::allocation_total_size(size).unwrap());
+    Outcome::loaded(charge.map_or_else(Operand::unit, Operand::word))
 }
 unsafe extern "C" fn identity(
     context: *mut c_void,

@@ -976,3 +976,35 @@ allocation-elision. Allocation accounting, deferred identities, fused regions,
 numeric chain/loop reuse, closure and aggregate elision, and their generated
 recovery remain subsequent work. Full Artifact/PortableCode language adapters and
 the previously deferred upper integrations retain their existing scope.
+
+### Batch 2 exact allocation accounting and admission (2026-09-24)
+
+GC's production allocation path now uses checked accumulated charges rather than
+saturation. Id answers `allocationChargeFor:` for a payload-size Word using its
+own storage geometry; GC queries it through current dispatch during activation
+and ordinary construction. The allocated object remains rooted across that send,
+and charging uses the post-callback total so a collecting or allocating replacement
+is observed correctly. Physical freeing does not refund charges. Successful
+collection resets them; failed activation/tracing does not publish/reset accounting.
+Committed overflow retains the established fatal diagnostic.
+
+GC exposes `allocationBytes` and non-mutating `canAllocate:` for current charges
+and checked whole-region preflight. The latter takes an additional total charge
+and answers Word 1 only while idle and strictly below the current threshold.
+Overflow or a non-idle phase refuses. It neither reserves budget nor excludes
+callbacks or explicit collection. Future optimizer consumers must still preserve
+late binding and revalidate/recover/decline as required. The same private preview
+serves ordinary construction and `prepareAllocation`; no helper library, native
+table, dependency capture or foreign-layout knowledge is introduced.
+
+Production checks use literal geometry expectations, exact-threshold and overflow
+refusal, a subprocess fatal-overflow witness, unchanged charges after physical
+freeing and failed tracing, and live Id-query replacements that collect or allocate
+recursively. Activation's charge and a complete source compilation/execution charge
+are compared with independently summed Id allocation inventories. These checks
+run with the production owners, including generated candidates and real TCC Units.
+
+This completes the accounting/admission prerequisite. Deferred identities,
+dead-allocation journals, single-charge materialization and actual allocation
+elision remain subsequent work; no allocation-saving or performance claim follows
+from these checks. The broader batch's existing scope remains unchanged.
