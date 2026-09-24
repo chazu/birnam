@@ -113,3 +113,15 @@ boundary, not by clearing a live Frame slot. Bounded execution declines.
 Owner-local semantic queries now cover the actual clone and allocation path;
 no retired allocation-budget or deferred-identity protocol was restored.
 The other decisions in this reassessment remain in force.
+
+
+## Numeric chains and loops reviewed (2026-09-24)
+
+The [numeric-chain audit](90-numeric-chain-review.md) retains checked arithmetic
+and dataflow, rejects restoration of the legacy boxed fused driver and prediction
+registry as prerequisites, and defers cross-iteration result caching. Consecutive
+tail-loop stamps are optimizer policy, not language semantics; their unused
+production bookkeeping is a cleanup candidate. Examine the first chain together
+with unboxed intermediates, resolving real result-allocation/Frame observation
+before defining an owner message. No new runtime behavior or API is introduced by
+this review.

@@ -1128,3 +1128,15 @@ needs no virtual objects or new deoptimization machinery. The production witness
 removes eight physical allocations per invocation, preserves replacement effects
 and source/answer identity, and releases the actual TCC mappings after final use.
 Broader producers and full workspace/CLI restoration remain outstanding.
+
+
+### Numeric chains and loops reassessed (2026-09-24)
+
+The [numeric-chain review](90-numeric-chain-review.md) separates reusable checked
+arithmetic/dataflow from legacy prediction registries, boxed driver fusion and
+loop caches. Do not restore those integrations automatically. Investigate one
+straight-line chain together with unboxed intermediates; final result construction
+and supported Frame observation require a concrete recovery/fallback design.
+Loop caching stays deferred without current profitability evidence. Optimizer-only
+tail-stamp bookkeeping has no current production consumer and is a cleanup
+candidate; ordinary Frame identity and lifetime mechanisms remain required.
