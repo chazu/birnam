@@ -65,24 +65,23 @@ binding, collects and attempts checkpoint before returning. This proves real
 compiled recovery/mapping lifetime, not the separate allocation-elision emitters.
 The script builds TCC with `resource-metrics` for independent allocation evidence.
 
-The compiler test also wraps the actual generated candidate entries at their
-ordinary `fromNative:owner:` construction boundary to prove that hot selection
-enters Codegen output. It checks the replaced Integer factory's call effects,
-current numeric lookup and PC conversion, collecting conversions, permanent withdrawal
-after Machine method replacement, and collection during construction and entered
-withdrawal. Capturing Blocks, bounded-emission fallback and rejected candidate
-initialization exercise the same source path. All final Unit/relocated-byte counts
-return to zero. These are candidate-production and dispatch/lifetime checks;
-allocation savings, region fusion and optimizer performance remain unproven.
+The compiler test checks ordinary generated execution without automatic PC
+candidates. It rejects speculative native Method construction while compiling
+small/large functions and captured Blocks, exercises repeated execution and
+replaced Integer factory effects, and collects during live Integer conversion and
+Machine slot reads. All final Unit/relocated-byte counts return to zero. Explicit
+candidate hot selection/withdrawal and compiled recovery/lifetime retain separate
+production fixture coverage. This is correctness and construction-path evidence,
+not an allocation-elision or runtime-speedup claim.
 
 `allocation_accounting` checks actual GC charges against literal padded-size
-expectations, checked threshold/overflow refusal, unchanged charges after storage
+expectations, collection at the configured threshold, unchanged charges after storage
 release and failed tracing, and successful-collection reset. Replaced Id geometry
 queries collect or allocate recursively while the outer object remains rooted;
 a subprocess verifies the historical fatal diagnostic for committed overflow.
 `memory_activation` independently sums the existing heap, and the compiler test
 sums new physical Id records across source compilation and execution without using
-the production charge helper. These are actual-allocation accounting/admission
+the production charge helper. These are actual-allocation accounting
 proofs. Prepaid deferred identities and single-charge materialization are no longer
 requirements. See the
 [revised optimization acceptance contract](design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history).

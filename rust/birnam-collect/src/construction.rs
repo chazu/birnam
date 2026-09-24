@@ -13,10 +13,7 @@ unsafe fn construct(
     memory.temporary.borrow_mut().push(root);
     let nested = memory.constructing.replace(true);
     let result = (|| unsafe {
-        if !nested
-            && memory.phase.get() == Phase::Idle
-            && !memory.fits(0)
-        {
+        if !nested && memory.phase.get() == Phase::Idle && !memory.below_threshold() {
             collection::conservative(memory)?;
         }
         let answer = operation()?;
@@ -29,7 +26,9 @@ unsafe fn construct(
         let charge = memory.allocation_charge(bytes)?;
         // Geometry lookup is a live send and may allocate or collect. Add to
         // the current total after it returns, never to a cached pre-call total.
-        memory.charged.set(accounting::add(memory.charged.get(), charge));
+        memory
+            .charged
+            .set(accounting::add(memory.charged.get(), charge));
         Ok(answer)
     })();
     memory.constructing.set(nested);
@@ -173,7 +172,7 @@ pub(super) unsafe extern "C" fn prepare(
         }
         if memory.phase.get() == Phase::Idle
             && !memory.constructing.get()
-            && !memory.fits(0)
+            && !memory.below_threshold()
         {
             collection::conservative(memory)?;
         }

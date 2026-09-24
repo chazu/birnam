@@ -29,10 +29,6 @@ fn activation_requires_complete_representation_owners_without_replacing_the_heap
         let identity = send(id, id.receiver, b"identityOf:", &[Operand::object(before)]).as_word();
         let token = retain(id, roots, before);
         let gc = load(id, "collect", &[Operand::object(roots)]);
-        assert_eq!(
-            send(id, gc, b"canAllocate:", &[Operand::word(0)]).as_word(),
-            Some(0)
-        );
         assert!(id.send_named(gc, b"activate", &[]).is_err());
         assert_eq!(
             send(id, gc, b"allocationBytes", &[]).as_word(),

@@ -206,10 +206,10 @@ unoptimized execution would have allocated. An optimizer may not discard a real
 cleanup obligation; automatic cleanup timing is not a promise of equivalence to
 the unoptimized allocation schedule.
 
-GC's current checked accounting for actual construction remains useful. Its
-`canAllocate:` query is a momentary observation, not a reservation, callback
-exclusion mechanism or mandatory optimizer admission step. Do not add consumers
-solely to justify that existing query.
+GC's checked accounting for actual construction remains useful. The speculative
+`canAllocate:` query was removed in the subsequent reassessment: no production
+consumer needed it. Keep threshold policy private to GC; do not introduce an
+optimizer budget protocol without a concrete semantic need.
 
 Acceptance compares language results, effects, replacement behavior, observable
 identity/aliasing, recovery/control state and lifetime. Collect deliberately at
@@ -1012,6 +1012,9 @@ and full CLI keep their previous later integration gates.
 
 ### Batch 2 compiler-generated PC candidates (2026-09-24)
 
+Historical slice: automatic emission was removed by the reassessment below.
+The following records the delivered experiment, not current compiler behavior.
+
 The first subsequent functional slice connects the retained per-PC specialization
 strategy to the production native backend and Execution's existing candidate
 protocol. Codegen emits a shared body per PC, the ordinary baseline dispatcher,
@@ -1047,6 +1050,9 @@ deferred upper integrations retain their existing scope.
 
 ### Batch 2 exact allocation accounting and admission (2026-09-24)
 
+Subsequent correction: actual-allocation accounting remains; the unused public
+`canAllocate:` preview described in this delivery record was removed below.
+
 GC's production allocation path now uses checked accumulated charges rather than
 saturation. Id answers `allocationChargeFor:` for a payload-size Word using its
 own storage geometry; GC queries it through current dispatch during activation
@@ -1077,3 +1083,30 @@ no allocation-saving or performance claim follows from these checks. The later
 2026-09-24 optimization decision removes the proposed deferred identities,
 dead-allocation journals and single-charge materialization from the batch 2 queue.
 Actual elision and generated recovery remain work under that revised contract.
+
+### Batch 2 optimizer reassessment (2026-09-24)
+
+The [code audit and next consumer](90-optimizer-reassessment.md) replace automatic
+restoration of retained optimizers with decisions based on actual language needs.
+Codegen no longer emits eager per-PC candidates or constructs their Methods and
+Vectors. One resumable entry uses an ordinary switch; the intermediate dispatch
+and per-PC body functions introduced for candidate sharing are also removed.
+Generated operations still use current Id messages. Explicit native candidates
+and their guards/recovery/lifetime contract remain available in Execution.
+
+GC's unused `canAllocate:` message and generalized preview are deleted. Ordinary
+construction and `prepareAllocation` share a private scalar threshold comparison;
+checked real-allocation charges and collection reset behavior remain unchanged.
+
+Production tests preserve source replacement, collecting callbacks, captured
+Blocks and actual code reclamation while requiring zero speculative candidate
+construction. Separate native candidate and compiled recovery fixtures still pass.
+The full 13-binary native-message suite and export/dependency/install-name audits
+pass. This removes known construction work; it is not a measured runtime speedup.
+
+The first allocation-elision case to derive is a discarded ordinary clone with no
+observable result. It requires a compiler proof of dead/non-escaping identity and
+owner-established semantics of the actual clone/allocation path. It requires no
+virtual-object materializer, identity service, journal or region allocation budget.
+The existing clone's nested replaceable allocation path still needs concrete owner
+admission; no placeholder protocol or claim of implemented elision is introduced.

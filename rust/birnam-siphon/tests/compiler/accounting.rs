@@ -57,7 +57,7 @@ pub(super) unsafe fn check(h: &mut H) {
         assert_eq!(
             send(h.id, gc, b"allocationBytes", &[]).as_word(),
             Some(expected),
-            "parsing, generated Method/candidate construction and Machine execution charge their actual allocations"
+            "parsing, generated Method construction and Machine execution charge their actual allocations"
         );
         h.clear();
         h.collect();

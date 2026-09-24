@@ -734,7 +734,7 @@ Siphon and the shared ABI contain no upper-module catalog. Run
 live method replacement, nested loading, collection and finalization.
 [Roots](rust/birnam-root-registry/README.md) documents retention and root enumeration.
 [GC’s local protocol](rust/birnam-collect/README.md) documents reference owners,
-rooting, native construction and checked allocation accounting/admission.
+rooting, native construction and checked allocation accounting.
 [Object Model](rust/birnam-object-model/README.md)
 adds ordinary cloning, private behaviors and slot storage with GC-safe ownership.
 [String](rust/birnam-string/README.md) owns text and builder buffers;
@@ -749,9 +749,10 @@ crate. These collection callbacks need only callable objects, not an Execution t
 [Execution](rust/birnam-execution/README.md) now supplies owned Methods, exact
 invocation, lookup adaptation, frames, Blocks, bounded Machines and continuations.
 [Codegen](rust/birnam-codegen-runtime/README.md) connects PEG/Lang source compilation
-and TCC-owned native code to that Execution. Generated PC candidates use the same
-live messages and existing hot-selection guards; allocation-elision remains
-separate. Production checks cover native control, compiled recovery boundaries,
+and TCC-owned native code to that Execution. Generated entries use live messages;
+eager candidate construction and speculative APIs are reassessed in
+[the optimizer review](docs/design/90-optimizer-reassessment.md). Allocation-elision
+remains separate. Production checks cover native control, compiled recovery boundaries,
 replacement and actual native-code reclamation.
 
 Id owns allocation records, Symbols, behavior dictionaries, dispatch and native

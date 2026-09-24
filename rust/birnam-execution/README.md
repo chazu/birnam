@@ -243,11 +243,12 @@ The selected Method has an independent scoped root: withdrawal during an entered
 step cannot reclaim its code owner before return. Native candidate authors must
 preserve baseline semantics and guard their own body assumptions.
 
-Production Codegen now supplies PC candidates through these same messages. It
-shares each generated body with its baseline, preserves all owner sends, and keeps
-the candidates in the baseline's TCC Unit. See the
-[producer contract](../birnam-codegen-runtime/README.md#generated-pc-candidates).
-This does not restore allocation-elision; its old accounting/identity protocols
+Production Codegen uses ordinary resumable entries; automatic per-PC candidates
+were removed in the [optimizer reassessment](../../docs/design/90-optimizer-reassessment.md).
+Explicit native candidates still use this guarded contract. Their guards protect
+entries that can bypass Machine operations, and entered Methods retain their code.
+The 64-visit threshold is a retained local policy, not a language requirement or a
+mandate for future producers. Allocation-elision's old accounting/identity protocols
 are not requirements to recreate.
 
 Hot synchronous unary calls ask the live Integer owner to evaluate their exact

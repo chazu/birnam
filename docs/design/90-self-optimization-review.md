@@ -71,12 +71,13 @@ The current production prefix already has a suitable starting point:
 - [GC accounting](../../rust/birnam-collect/src/accounting.rs) and its construction
   path account for actual allocations. Keep checked arithmetic and ordinary
   threshold/reset behavior; do not add charges for elided objects. The existing
-  `canAllocate:` preview is neither a reservation nor an optimizer prerequisite.
+  `canAllocate:` preview was subsequently removed as unused; threshold checks
+  remain private to GC.
 - Runtime's [dead-allocation journal](../../rust/birnam-runtime/src/heap/dead_allocations.rs),
   counted-index/numeric ledgers and Storage's deferred-identity helper are retained
   legacy code outside the converted production path. Do not reconnect them.
   Their old integration tests/receipts are historical evidence, not migration gates.
-- The generated-candidate test's replaced Integer factory has a visible call-count
+- The generated-execution test's replaced Integer factory has a visible call-count
   effect. Keep that dispatch/effect check; it does not demand equal physical heaps
   when the selected implementation actually permits elision.
 

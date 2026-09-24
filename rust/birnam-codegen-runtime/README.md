@@ -36,31 +36,17 @@ Block and code Unit have distinct, explicit ownership. Top-level bindings publis
 through Namespace `at:put:`; nested bindings remain lexical. Values and errors use
 their current owners, with temporary generated values retained across callbacks.
 
-## Generated PC candidates
+## Generated execution
 
-For functions with 2–64 PCs and at most 256 KiB of emitted body text, Codegen also
-emits a native entry specialized for each PC. Larger functions and one-PC bodies
-keep the baseline dispatcher. Bodies are shared between the baseline and its
-candidates; specialization does not omit messages, allocations or Machine
-transitions. Each entry still reads its PC through current Integer `wordOf:`.
-If that conversion produces another PC, it dispatches that result just as the
-baseline does, without repeating the conversion.
+Each implementation has one ordinary resumable entry with a PC switch. All owner
+operations remain live Id sends. Automatic per-PC candidates, their Method/Vector
+construction and their size-limit policy have been removed: they retained the same
+work and added construction and guard costs without an established benefit.
+There is no replacement background compiler or candidate service.
 
-The Unit initializer creates all baseline Methods first, then constructs candidate
-Methods through current `Method fromNative:owner:` and attaches their Vector through
-`optimizeWith:`. These entries compile with the baseline in the same TCC Unit;
-there is no extra compiler in Execution or native service import. Execution owns
-the existing hot threshold, live guards and withdrawal. The baseline traces its
-candidate Methods, each of which retains the Unit. An entered candidate remains
-rooted independently of subsequent withdrawal.
-
-This establishes real compiler producers for the native selection path. It does
-not restore frame-region fusion, numeric chain/loop reuse or allocation-elision.
-Those still require current-owner semantic guards and generated recovery under
-[Design 90](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history).
-Synthetic allocation accounting and deferred-identity services are not prerequisites.
-Candidate compilation and Method construction are eager and add cold-start cost;
-this functional acceptance makes no performance claim.
+Explicit candidates and guarded recovery remain available in Execution for actual
+optimizations. Region fusion, numeric reuse and allocation-elision need concrete
+producers and evidence under [Design 90's reassessment](../../docs/design/90-optimizer-reassessment.md).
 
 The production tests cover literals, sends, threaded messages, conditional and
 nested capturing Blocks, named installation/replacement, failed compilation and
@@ -70,12 +56,12 @@ waiting frames release their mappings. A separately authored C candidate
 compiled by TCC recovers into a Codegen baseline, then removes its own binding and
 collects before returning. This proves the compiled recovery boundary and mapping
 lifetime; generated allocation-elision/deoptimization emitters remain separate.
-Generated candidates additionally run past the hot threshold, preserve ordinary
-Integer construction counts, observe replaced numeric methods and collecting
-conversions, and withdraw for changed Machine controls. Tests cover collection
-during candidate construction and after withdrawal while entered, captured values,
-bounded-emission fallback and failed candidate initialization. Actual Unit counts
-and relocated bytes return to zero after the final reference and checkpoint.
+Repeated compiled execution preserves effects of replaced Integer factories,
+current numeric lookup and collecting Integer/Machine operations. Compilation,
+larger functions and captured Blocks work even when speculative native Method
+construction is rejected. Actual Unit counts and relocated bytes return to zero
+after the final reference and checkpoint. Explicit candidate withdrawal/lifetime
+and compiled recovery remain covered by their separate production fixtures.
 
 The full Artifact/PortableCode language adapters, durable publication, embedding,
 Image, Store and CLI workflows are not accepted by these source compiler tests.

@@ -1,4 +1,4 @@
-//! Independent production witnesses for GC charges, geometry and admission.
+//! Independent production witnesses for GC charges, geometry and collection thresholds.
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -10,13 +10,6 @@ use support::*;
 
 unsafe fn bytes(id: Protocol, gc: Oop) -> usize {
     unsafe { send(id, gc, b"allocationBytes", &[]).as_word().unwrap() }
-}
-unsafe fn fits(id: Protocol, gc: Oop, charge: usize) -> usize {
-    unsafe {
-        send(id, gc, b"canAllocate:", &[Operand::word(charge)])
-            .as_word()
-            .unwrap()
-    }
 }
 struct Observer {
     id: Protocol,
@@ -31,11 +24,6 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, _: *const Operand, n: us
         let o = &*c.cast::<Observer>();
         o.visits.set(o.visits.get() + 1);
         o.charge.set(bytes(o.id, o.gc));
-        assert_eq!(
-            fits(o.id, o.gc, 0),
-            0,
-            "marking cannot admit an optimized region"
-        );
         if o.fail.get() {
             Outcome::failed(native::INVALID_REQUEST, 83)
         } else {
@@ -119,8 +107,7 @@ fn production_allocation_accounting() {
         );
         // Intern every test selector before starting the charge witness.
         for name in [
-            b"canAllocate:".as_slice(),
-            b"allocationBytes",
+            b"allocationBytes".as_slice(),
             b"allocationChargeFor:",
             b"detachAllocationAt:",
         ] {
@@ -219,23 +206,8 @@ fn production_allocation_accounting() {
                 .is_err()
         );
         assert!(
-            id.send_named(gc, b"canAllocate:", &[Operand::unit()])
-                .is_err()
-        );
-        assert!(
             id.send_named(gc, b"allocationBytes", &[Operand::word(0)])
                 .is_err()
-        );
-        assert_eq!(bytes(id, gc), expected);
-
-        send(id, gc, b"budget:", &[Operand::word(expected + 8)]);
-        assert_eq!(fits(id, gc, 0), 1);
-        assert_eq!(fits(id, gc, 7), 1);
-        assert_eq!(fits(id, gc, 8), 0, "exact threshold refuses a region");
-        assert_eq!(
-            fits(id, gc, usize::MAX),
-            0,
-            "overflow preview refuses without charging"
         );
         assert_eq!(bytes(id, gc), expected);
 
@@ -288,7 +260,6 @@ fn production_allocation_accounting() {
         allocate(id, behavior, 0);
         send(id, gc, b"budget:", &[Operand::word(8)]);
         assert_eq!(bytes(id, gc), 8);
-        assert_eq!(fits(id, gc, 0), 0);
         send(id, gc, b"prepareAllocation", &[]);
         assert_eq!(bytes(id, gc), 0);
         send(id, gc, b"budget:", &[Operand::word(usize::MAX)]);

@@ -1,7 +1,7 @@
 # Allocation Budget v1
 
 > **Historical ABI, superseded by Design 90:** GC now owns checked allocation
-> accounting directly. Current readers/preflight and Id's geometry query are
+> accounting directly. Its current reader and Id's geometry query are
 > [ordinary owner messages](../rust/birnam-collect/README.md#allocation-accounting-and-admission).
 > The factory, service table and legacy validation commands below are not the
 > production prefix. No replacement Allocation Budget library is required.

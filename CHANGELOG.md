@@ -8,6 +8,15 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove Codegen's eager per-PC candidate emission and speculative Method/Vector
+  construction; generate one ordinary PC switch per resumable entry, retaining
+  live owner sends. Keep explicit Execution candidates and their guard/lifetime
+  contract. Remove unused GC `canAllocate:` and its generalized preview while
+  preserving private thresholds and checked actual-allocation accounting.
+  Reassess the first discarded-clone consumer without journals or virtual identity
+  services. Production source/GC/candidate/recovery tests and dylib audits pass;
+  no runtime speedup or completed allocation-elision claim.
+
 - Revise Design 90's optimization contract after reviewing Self's implementation:
   preserve late-bound behavior, effects, observable identity and recoverable state;
   drop baseline allocation/GC-timing equivalence, synthetic charges, dead-payload

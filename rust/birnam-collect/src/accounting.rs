@@ -4,8 +4,7 @@ use super::*;
 
 pub(super) fn add(current: usize, bytes: usize) -> usize {
     current.checked_add(bytes).unwrap_or_else(|| {
-        // Preserve the established fatal policy for a committed charge. Preview
-        // refuses overflow instead; it must not mutate the allocation budget.
+        // A committed allocation charge must not wrap or silently saturate.
         eprintln!("birnam-id invariant failed: GC allocation byte counter overflow");
         std::process::abort()
     })
@@ -24,11 +23,8 @@ impl Memory {
             .ok_or_else(invalid)
         }
     }
-    pub(super) fn fits(&self, bytes: usize) -> bool {
-        self.charged
-            .get()
-            .checked_add(bytes)
-            .is_some_and(|total| total < self.budget.get())
+    pub(super) fn below_threshold(&self) -> bool {
+        self.charged.get() < self.budget.get()
     }
 }
 
@@ -44,23 +40,5 @@ pub(super) unsafe extern "C" fn read(
             return Err(invalid());
         }
         Ok(Operand::word(m.charged.get()))
-    })())
-}
-
-pub(super) unsafe extern "C" fn preview(
-    c: *mut c_void,
-    _: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    done((|| unsafe {
-        let m = memory(c)?;
-        let Some([bytes]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
-        let bytes = bytes.as_word().ok_or_else(invalid)?;
-        Ok(Operand::word(usize::from(
-            m.phase.get() == Phase::Idle && m.fits(bytes),
-        )))
     })())
 }

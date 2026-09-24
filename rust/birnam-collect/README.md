@@ -25,7 +25,6 @@ singletons still limit this prefix to one domain per process.
 | GC `registerRetirement:` | owner Object | Unit. Register an instance-owned metadata owner implementing `retire:`; duplicates are ignored. |
 | GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header and padded payload. |
 | GC `allocationBytes` | none | Word accumulated allocation charge. Readable during tracing/finalization; not a live-storage count. |
-| GC `canAllocate:` | Word additional total charge, including header/padding | Word 1 iff idle and checked addition stays strictly below the current threshold; otherwise Word 0. No allocation, collection, charging or reservation. |
 | GC `rootsDo:` | NativeEntry visitor | Unit. Enumerate GC's own objects, selectors, callback owners and temporary construction roots. Registered with Roots during construction. |
 | GC `roots` | none | The Roots Object used by this instance. |
 | Id `memoryManager` | none | This GC Object. Installed by GC, not implemented by Id. |
@@ -79,14 +78,12 @@ does not reset it.
 
 Committed charges use checked addition and preserve the fatal diagnostic
 `birnam-id invariant failed: GC allocation byte counter overflow`. The existing
-construction/`prepareAllocation` threshold check and `canAllocate:` use the same
-private checked preview; an overflowing preview refuses without mutation. There
-is no separate Allocation Budget module, descriptor, setter or native service API.
+construction/`prepareAllocation` threshold check compares the accumulated charge
+with the budget privately. The speculative public `canAllocate:` preview was
+removed because no production consumer needed it. There is no separate Allocation
+Budget module, descriptor, setter or native service API.
 
-`canAllocate:` is a momentary observation, not a promise that later messages cannot
-allocate, collect or change policy. Optimizers must preserve current dispatch and
-revalidate, recover or decline across observing calls. It is not a mandatory
-optimizer admission step. Under Design 90's
+Under Design 90's
 [optimization contract](../../docs/design/90-functional-modules.md#optimization-preserves-language-behavior-not-allocation-history),
 only actual construction is charged. Eliminated allocations require no synthetic
 charges, deferred identities or dead-payload journal. Recovery construction uses

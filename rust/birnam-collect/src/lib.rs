@@ -346,7 +346,6 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             (b"finalize:with:", finalize_with),
             (b"budget:", budget),
             (b"allocationBytes", accounting::read),
-            (b"canAllocate:", accounting::preview),
         ] {
             id.send_named(
                 behavior,
