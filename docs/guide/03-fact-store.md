@@ -1,9 +1,14 @@
 # The fact store
 
 Under every birnam program sits `db` — a historied store of
-**entity–attribute–value facts**. It is not a bolted-on database: cells,
-globals, method sources, and docstrings are all facts in the same store, which
-is why the whole system is queryable. This chapter is the query surface.
+**entity–attribute–value facts**. Cells refer to an entity and attribute in that
+store; globals, application state and metadata use the same fact model.
+
+During Design 90, the [native Store and Cell protocol](../../rust/birnam-store/README.md)
+is available through Bootstrap, including compiled source, history and retention.
+Globals retains its `__globals__` facts. Compiler globals integration, relational
+queries and the remaining self-hosted conveniences shown below still await
+integration. Full CLI and image startup are not yet restored.
 
 ## Asserting facts
 
@@ -15,8 +20,10 @@ let alice := [db entity];                       // a fresh entity
 ```
 
 Any value can sit in the value slot — symbols, strings, numbers, other
-entities. Re-asserting an attribute supersedes the previous value (the old one
-stays in history). Re-asserting the *same* value is an idempotent no-op.
+entities. For a cardinality-one attribute, re-assertion supersedes the previous
+value. Retaining its past values requires opting the attribute into history and
+keeping the corresponding retention window. Re-asserting the *same* value is an
+idempotent no-op.
 
 The object-side view of the same store is the **cell**:
 

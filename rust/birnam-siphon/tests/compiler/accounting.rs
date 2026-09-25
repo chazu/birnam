@@ -20,15 +20,7 @@ unsafe extern "C" fn allocation(c: *mut c_void, _: Oop, a: *const Operand, n: us
 unsafe fn inventory(h: &H) -> BTreeMap<usize, usize> {
     unsafe {
         let mut entries = BTreeMap::new();
-        send(
-            h.id,
-            h.id.receiver,
-            b"allocationsDo:",
-            &[Operand::entry(NativeEntry::new(
-                allocation,
-                ptr::from_mut(&mut entries).cast(),
-            ))],
-        );
+        support::inventory(h.id, allocation, ptr::from_mut(&mut entries).cast());
         entries
     }
 }

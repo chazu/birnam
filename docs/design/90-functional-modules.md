@@ -5,6 +5,14 @@
 > migrated. This is a break with extraction-driven modularization, not another
 > installment of it. Implementation progress is recorded below.
 
+**Current priority (2026-09-24):** Pause additional optimization/deoptimization
+work and reconnect the remaining functional modules through Id messages until the
+system as a whole works again. Keep existing correct optimizations and execution
+fallback/recovery/lifetime behavior; unfinished optimizer families are not
+prerequisites for module migration. This supersedes earlier implementation-order
+wording that places those families ahead of upper integration. GC and numeric
+visitors now use receiver sends; optimization remains paused.
+
 ## Decision
 
 Organize modules first by what the code does, then by the irreducible dependencies
@@ -914,7 +922,7 @@ its contract is documented in [Execution](../../rust/birnam-execution/README.md#
 Scalar numeric observation and checked evaluation also run inside the real Machine
 call boundary. Integer validates the exact selected native entry and performs its
 own operand/error handling, including the mixed-number extension, through a live
-owner message. Execution supplies the pure arithmetic visitor; it does not decode
+owner message. Execution supplies the arithmetic receiver; it does not decode
 numeric payloads or cache dependency services. Codegen shares that private operator.
 
 The displaced Runtime language Method, driver, task-control, scheduling and
@@ -1146,10 +1154,37 @@ candidate; ordinary Frame identity and lifetime mechanisms remain required.
 
 The [numeric predicate](90-numeric-predicate.md) implements one arithmetic result
 used only by a comparison, with an explicit final return and no captures. Integer
-owns current operation recognition and raw computation; its borrowed visitor lets
+owns current operation recognition and raw computation; its result message lets
 Execution publish the existing Boolean before root-release callbacks. Bounded
 calls and unsupported shapes run the ordinary baseline. The production witness
 removes the intermediate Integer and 18 generated PC/index boxes. This resolves
 the boundary for an existing Boolean result; general numeric-result allocation
 and recovery remain subsequent work. No old loop cache, alternate driver or
 allocation-history protocol is restored.
+
+### Store and Cells reconnected (2026-09-24)
+
+Bootstrap loads [Store and Cells](../../rust/birnam-store/README.md) before
+Execution/compiler. Fact-log, schema, history, retention, compaction and snapshot
+algorithms are preserved. Owner-private state and rooted snapshots survive
+collecting callbacks; retirement releases dead native state.
+
+Globals retains Store-backed `__globals__` facts. MOP authorization, notification,
+managed installation/removal and mirror backfill remain available through sends;
+Id dictionary changes notify Store through `methodChanged:on:`. Authorizers are
+Object receivers and managed methods are owned Execution Methods. Deferred
+compiler publication/compensation callers still need migration.
+
+GC enumeration now passes Object receivers and sends each reference through
+`visit:`; allocation/binding enumeration also sends to receivers. GC preallocates
+its visitors, preserves traversal and phase rules, and sends Id an explicit
+release request after finalization. Id keeps detached storage until that request;
+no native visitor or release callback crosses the GC boundary. See the
+[protocol and checks](../../rust/birnam-collect/README.md).
+
+Acceptance: ten Store algorithm tests (including the independent snapshot oracle),
+five Id unit tests, all fourteen production integration binaries and dylib audits.
+Tests cover collecting callbacks, hook lifetime/current lookup, Globals history,
+MOP mirrors, resource/phase refusal and owner-level image transfer. Two manual
+timing tests remain ignored. Full Relational, Image, task policy, compiler globals
+integration and Host/CLI startup remain separate work; optimization stays paused.

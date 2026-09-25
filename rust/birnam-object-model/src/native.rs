@@ -175,17 +175,13 @@ unsafe extern "C" fn enumerate_roots(
         let Some([visitor]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
-        let visitor = visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        let visitor = object(*visitor)?;
         let mut roots = vec![m.receiver, m.roots, m.gc, m.truth, m.falsity];
         roots.extend(m.names.values().copied());
         // Ownership/instance/layout keys are weak. Owners are reached only from
         // their live behaviors, never from the module's own root inventory.
         for value in roots {
-            visitor.method.unwrap()(visitor.context, m.receiver, &Operand::object(value), 1)
-                .into_result()?;
+            m.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
         }
         // A clone's payload snapshot remains rooted even if an allocating method
         // changes the source before collecting. Copies are this owner's storage.
@@ -197,13 +193,7 @@ unsafe extern "C" fn enumerate_roots(
                     .send(m.id.receiver, b"allocationAt:", &[Operand::word(word)])?
                     .as_object()
                 {
-                    visitor.method.unwrap()(
-                        visitor.context,
-                        m.receiver,
-                        &Operand::object(value),
-                        1,
-                    )
-                    .into_result()?;
+                    m.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
                 }
             }
         }
@@ -248,12 +238,9 @@ unsafe extern "C" fn references(
             return Err(invalid());
         };
         let value = object(*value)?;
-        let visitor = visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        let visitor = object(*visitor)?;
         let emit = |edge| {
-            visitor.method.unwrap()(visitor.context, value, &Operand::object(edge), 1).into_result()
+            m.id.send_named(visitor, b"visit:", &[Operand::object(edge)])
         };
         if m.is_behavior(value)? {
             if let Some(owner) = m.owner(value)? {

@@ -56,6 +56,7 @@ struct Execution {
     methods: RefCell<HashMap<usize, Box<Callable>>>,
     entries: RefCell<HashMap<usize, Oop>>,
     scoped: RefCell<Vec<Oop>>,
+    binding_visitors: RefCell<Vec<Oop>>,
     depth: Cell<usize>,
     draining: Cell<bool>,
     retired_images: RefCell<Vec<Rc<image::Image>>>,
@@ -105,23 +106,12 @@ unsafe fn state<'a>(context: *mut c_void) -> Result<&'a Execution, Outcome> {
     }
     Ok(s)
 }
-unsafe fn visit(visitor: NativeEntry, value: Oop) -> Result<(), Outcome> {
-    unsafe {
-        visitor.method.ok_or_else(invalid)?(
-            visitor.context,
-            ptr::null_mut(),
-            [Operand::object(value)].as_ptr(),
-            1,
-        )
-    }
-    .into_result()?;
+unsafe fn visit(s: &Execution, visitor: Oop, value: Oop) -> Result<(), Outcome> {
+    unsafe { s.send(visitor, b"visit:", &[Operand::object(value)]) }?;
     Ok(())
 }
-fn visitor(value: Operand) -> Result<NativeEntry, Outcome> {
-    value
-        .as_entry()
-        .filter(|e| e.method.is_some())
-        .ok_or_else(invalid)
+fn native_entry(value: Operand) -> Result<NativeEntry, Outcome> {
+    value.as_entry().filter(|e| e.method.is_some()).ok_or_else(invalid)
 }
 impl Execution {
     fn scope(&self, values: &[Oop]) -> Scope<'_> {
@@ -217,7 +207,7 @@ impl Execution {
                 Ok(value) if value.kind() == native::OBJECT => return Ok(value),
                 Ok(value) if value.kind() == native::UNIT => return Ok(Operand::object(self.nil)),
                 Ok(value) if value.kind() == native::NATIVE_ENTRY => {
-                    return self.capture(visitor(value)?);
+                    return self.capture(native_entry(value)?);
                 }
                 Ok(_) => b"nativeResultRequiresWrapper",
                 Err(error) if error.status == native::INVALID_REQUEST => b"nativeInvalidRequest",
@@ -291,7 +281,7 @@ unsafe extern "C" fn lookup(c: *mut c_void, r: Oop, a: *const Operand, n: usize)
             return Ok(result);
         }
         if result.kind() == native::NATIVE_ENTRY {
-            visitor(result)?;
+            native_entry(result)?;
             return Ok(result);
         }
         let selected = object(result)?;
@@ -309,7 +299,7 @@ unsafe extern "C" fn from_native(c: *mut c_void, _: Oop, a: *const Operand, n: u
         let Some([entry, owner]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        s.make(visitor(*entry)?, object(*owner)?, None)
+        s.make(native_entry(*entry)?, object(*owner)?, None)
     })())
 }
 unsafe extern "C" fn identity(c: *mut c_void, r: Oop, _: *const Operand, n: usize) -> Outcome {
@@ -389,7 +379,7 @@ unsafe extern "C" fn method_for(c: *mut c_void, r: Oop, a: *const Operand, n: us
         if selected.kind() == native::UNIT {
             return Ok(Operand::object(s.nil));
         }
-        s.capture(visitor(selected)?)
+        s.capture(native_entry(selected)?)
     })())
 }
 unsafe extern "C" fn install(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
@@ -417,7 +407,7 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
         let Some([v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        let v = visitor(*v)?;
+        let v = object(*v)?;
         let mut values = vec![
             s.receiver,
             s.roots,
@@ -435,24 +425,19 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
         values.extend(s.machines.borrow().roots());
         values.extend(s.scoped.borrow().iter().copied());
         for value in values {
-            visit(v, value)?;
+            visit(s, v, value)?;
         }
         Ok(Operand::unit())
     })())
 }
-struct Bindings<'a> {
-    execution: &'a Execution,
-    visitor: NativeEntry,
-}
 unsafe extern "C" fn binding(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
-        let b = &*c.cast::<Bindings<'_>>();
-        let Some([_, value, _]) = borrowed_slice(a, n) else {
-            return Err(invalid());
-        };
+        let s = state(c)?;
+        let Some([_, value, _]) = borrowed_slice(a, n) else { return Err(invalid()); };
+        let visitor = s.binding_visitors.borrow().last().copied().ok_or_else(invalid)?;
         if let Some(entry) = value.as_entry() {
-            if let Some(method) = b.execution.selected(entry) {
-                visit(b.visitor, method)?;
+            if let Some(method) = s.selected(entry) {
+                visit(s, visitor, method)?;
             }
         }
         Ok(Operand::unit())
@@ -465,7 +450,7 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
             return Err(invalid());
         };
         let target = object(*target)?;
-        let v = visitor(*v)?;
+        let v = object(*v)?;
         // Copy the owned edge before visiting: a callback may reenter this owner.
         let candidate = s
             .methods
@@ -474,7 +459,7 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
             .and_then(|m| m.candidate.clone());
         if let Some(candidate) = candidate {
             for &method in candidate.references() {
-                visit(v, method)?;
+                visit(s, v, method)?;
             }
         }
         let owner = s.methods.borrow().get(&target.addr()).map(|m| {
@@ -487,54 +472,50 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
         });
         if let Some((owner, implementation, origin, inline_owner)) = owner {
             if let Some(value) = implementation {
-                visit(v, value)?;
+                visit(s, v, value)?;
             }
             if let Some(inline) = inline_owner {
-                visit(v, inline.owner)?;
+                visit(s, v, inline.owner)?;
                 match inline.body {
                     recovery::Body::DiscardedClone(plan) => {
-                        visit(v, plan.selector)?;
-                        visit(v, plan.namespace)?;
+                        visit(s, v, plan.selector)?;
+                        visit(s, v, plan.namespace)?;
                     }
                     recovery::Body::NumericPredicate(plan) => {
-                        visit(v, plan.first)?;
-                        visit(v, plan.then)?;
-                        visit(v, plan.namespace)?;
+                        visit(s, v, plan.first)?;
+                        visit(s, v, plan.then)?;
+                        visit(s, v, plan.namespace)?;
                     }
                     recovery::Body::Native(_) => (),
                 }
             }
-            visit(v, owner)?;
+            visit(s, v, owner)?;
             if let Some(origin) = origin {
-                visit(v, origin)?;
+                visit(s, v, origin)?;
             }
         } else if let Some(edges) = { s.machines.borrow().references(target) } {
             for edge in edges {
-                visit(v, edge)?;
+                visit(s, v, edge)?;
             }
         } else if target != s.prototype {
             s.send(
                 s.model,
                 b"referencesOf:do:",
-                &[Operand::object(target), Operand::entry(v)],
+                &[Operand::object(target), Operand::object(v)],
             )?;
         }
         if s.send(s.id.receiver, b"isBehavior:", &[Operand::object(target)])?
             .as_word()
             == Some(1)
         {
-            let mut b = Bindings {
-                execution: s,
-                visitor: v,
-            };
-            s.send(
-                s.id.receiver,
-                b"bindingsIn:do:",
-                &[
-                    Operand::object(target),
-                    Operand::entry(NativeEntry::new(binding, ptr::from_mut(&mut b).cast())),
-                ],
-            )?;
+            let _roots = s.scope(&[target, v]);
+            s.binding_visitors.borrow_mut().push(v);
+            let result = s.send(
+                s.id.receiver, b"bindingsIn:do:",
+                &[Operand::object(target), Operand::object(s.receiver)],
+            );
+            s.binding_visitors.borrow_mut().pop();
+            result?;
         }
         Ok(Operand::unit())
     })())
@@ -638,6 +619,10 @@ unsafe extern "C" fn checkpoint(c: *mut c_void, _: Oop, _: *const Operand, n: us
 }
 
 const NAMES: &[&[u8]] = &[
+    b"numericOperation:left:right:",
+    b"commitNumericPredicate:",
+    b"visit:",
+    b"binding:value:weak:",
     b"rootsDo:",
     b"referencesOf:do:",
     b"retire:",
@@ -731,6 +716,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             methods: RefCell::new(HashMap::new()),
             entries: RefCell::new(HashMap::new()),
             scoped: RefCell::new(Vec::new()),
+            binding_visitors: RefCell::new(Vec::new()),
             depth: Cell::new(0),
             draining: Cell::new(false),
             retired_images: RefCell::new(Vec::new()),
@@ -739,6 +725,9 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         for (target, name, method) in [
             (behavior, b"rootsDo:".as_slice(), roots as Method),
             (behavior, b"referencesOf:do:", references),
+            (behavior, b"binding:value:weak:", binding),
+            (behavior, b"numericOperation:left:right:", numeric::evaluate),
+            (behavior, b"commitNumericPredicate:", numeric_predicate::commit),
             (behavior, b"retire:", retire),
             (behavior, b"checkpoint", checkpoint),
             (behavior, b"retirementReady", retirement_ready),

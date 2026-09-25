@@ -28,7 +28,6 @@ struct State {
     roots: Oop,
     gc: Oop,
     model: Oop,
-    receiver: Oop,
     unit_vt: Oop,
     permanent: Vec<Oop>,
     units: RefCell<HashMap<usize, Compiled>>,
@@ -233,7 +232,7 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
         let Some([o, v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        let v = v.as_entry().ok_or_else(invalid)?;
+        let v = object(*v)?;
         let refs = s
             .units
             .borrow()
@@ -241,8 +240,7 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
             .map(|u| u.refs.clone())
             .unwrap_or_default();
         for o in refs {
-            v.method.ok_or_else(invalid)?(v.context, s.receiver, &Operand::object(o), 1)
-                .into_result()?;
+            s.id.send_named(v, b"visit:", &[Operand::object(o)])?;
         }
         Ok(Operand::unit())
     })())
@@ -253,10 +251,9 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
         let Some([v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        let v = v.as_entry().ok_or_else(invalid)?;
+        let v = object(*v)?;
         for &o in &s.permanent {
-            v.method.ok_or_else(invalid)?(v.context, s.receiver, &Operand::object(o), 1)
-                .into_result()?;
+            s.id.send_named(v, b"visit:", &[Operand::object(o)])?;
         }
         Ok(Operand::unit())
     })())
@@ -358,7 +355,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             roots: root,
             gc,
             model,
-            receiver,
             unit_vt,
             permanent: vec![ns, root, gc, model, receiver, vt, unit_vt],
             units: RefCell::new(HashMap::new()),

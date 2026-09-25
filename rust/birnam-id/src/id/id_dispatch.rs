@@ -393,6 +393,32 @@ mod tests {
             );
             assert_eq!((error.status, error.detail), (native::INVALID_REQUEST, 2));
         };
+        // A C root owner calls the current visitor method through the real Id
+        // carrier, including replacement and exact native failure propagation.
+        unsafe {
+            let address = dlsym(image, c"birnam_gc_enumerate".as_ptr());
+            assert!(!address.is_null());
+            let enumerate: native::Method = core::mem::transmute(address);
+            let actual = id.protocol.protocol;
+            let roots = intern(&id, b"rootsDo:");
+            let visit = intern(&id, b"visit:");
+            let send = |receiver, selector, args: &[Operand]| {
+                actual.send(receiver, selector, args)
+            };
+            send(id.object_vt, add, &[
+                Operand::object(roots),
+                Operand::entry(NativeEntry::new(enumerate, (&raw const actual).cast_mut().cast())),
+            ]).unwrap();
+            send(id.object_vt, add, &[Operand::object(visit), Operand::entry(foreign)]).unwrap();
+            let result = send(id.object_prototype, roots, &[Operand::object(id.object_prototype)]).unwrap();
+            assert_eq!(result.as_object(), Some(actual.receiver));
+            unsafe extern "C" fn reject(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+                Outcome::failed(native::INVALID_REQUEST, 917)
+            }
+            send(id.object_vt, add, &[Operand::object(visit), Operand::entry(NativeEntry::new(reject, core::ptr::null_mut()))]).unwrap();
+            assert_eq!(send(id.object_prototype, roots, &[Operand::object(id.object_prototype)]).unwrap_err().detail, 917);
+            assert!(send(id.object_prototype, roots, &[Operand::entry(foreign)]).is_err());
+        }
         std::fs::remove_dir_all(directory).unwrap();
     }
 }

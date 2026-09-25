@@ -257,7 +257,7 @@ unsafe fn from_step(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome>
         return Err(invalid());
     }
     let implementation = args.get(4).copied().map(object).transpose()?;
-    let step = visitor(*step)?;
+    let step = native_entry(*step)?;
     let owner = object(*owner)?;
     let copy = |value: Operand, limit: usize| -> Result<Vec<u8>, Outcome> {
         let b = value.as_bytes().ok_or_else(invalid)?;
@@ -580,7 +580,7 @@ pub(super) unsafe fn lookup_target(
     if value.kind() == native::UNIT {
         Ok(None)
     } else {
-        visitor(value).map(Some)
+        native_entry(value).map(Some)
     }
 }
 pub(super) unsafe fn loop_drive(

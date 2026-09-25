@@ -45,7 +45,6 @@ struct State {
     roots: Oop,
     gc: Oop,
     model: Oop,
-    receiver: Oop,
     behaviors: [Oop; 3],
     values: RefCell<HashMap<usize, Value>>,
     permanent: Vec<Oop>,
@@ -467,7 +466,7 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
         let Some([o, v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        let entry = v.as_entry().ok_or_else(invalid)?;
+        let entry = object(*v)?;
         let refs = s
             .values
             .borrow()
@@ -475,8 +474,7 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
             .map(Value::refs)
             .unwrap_or_default();
         for r in refs {
-            entry.method.ok_or_else(invalid)?(entry.context, s.receiver, &Operand::object(r), 1)
-                .into_result()?;
+            s.id.send_named(entry, b"visit:", &[Operand::object(r)])?;
         }
         Ok(Operand::unit())
     })())
@@ -487,10 +485,9 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
         let Some([v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        let v = v.as_entry().ok_or_else(invalid)?;
+        let v = object(*v)?;
         for &o in &s.permanent {
-            v.method.ok_or_else(invalid)?(v.context, s.receiver, &Operand::object(o), 1)
-                .into_result()?;
+            s.id.send_named(v, b"visit:", &[Operand::object(o)])?;
         }
         Ok(Operand::unit())
     })())
@@ -552,7 +549,6 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             roots: root,
             gc,
             model,
-            receiver,
             behaviors,
             values: RefCell::new(HashMap::new()),
             permanent: vec![
@@ -560,8 +556,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 root,
                 gc,
                 model,
-                receiver,
-                vt,
+                    vt,
                 behaviors[0],
                 behaviors[1],
                 behaviors[2],

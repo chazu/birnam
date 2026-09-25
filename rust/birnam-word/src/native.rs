@@ -155,10 +155,7 @@ unsafe extern "C" fn roots(
         let Some([visitor]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
-        let visitor = visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        let visitor = object(*visitor)?;
         let mut values = vec![
             n.roots,
             n.gc,
@@ -174,8 +171,7 @@ unsafe extern "C" fn roots(
         ];
         values.extend(n.names.values().copied());
         for value in values {
-            visitor.method.unwrap()(visitor.context, n.prototype, &Operand::object(value), 1)
-                .into_result()?;
+            n.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
         }
         Ok(Operand::unit())
     })())
@@ -192,10 +188,7 @@ unsafe extern "C" fn references(
             return Err(invalid());
         };
         object(*value)?;
-        visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        object(*visitor)?;
         // This family's raw numeric bits never represent object edges, including
         // instances with private behaviors. No foreign representation is read.
         Ok(Operand::unit())

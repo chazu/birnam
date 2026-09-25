@@ -114,17 +114,13 @@ unsafe extern "C" fn roots(
         let Some([visitor]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
-        let visitor = visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        let visitor = object(*visitor)?;
         let mut values = vec![
             e.roots, e.model, e.string, e.behavior, e.factory, e.truth, e.falsity, e.nil,
         ];
         values.extend(e.names.values().copied());
         for value in values {
-            visitor.method.unwrap()(visitor.context, e.factory, &Operand::object(value), 1)
-                .into_result()?;
+            e.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
         }
         Ok(Operand::unit())
     })())

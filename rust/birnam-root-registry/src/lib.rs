@@ -2,8 +2,8 @@
 //!
 //! `retain:` takes an Object and returns a nonzero Word token; `release:` takes
 //! that token and returns Word 1/0. `register:` adds an Object implementing
-//! `rootsDo:`. `rootsDo:` takes a synchronous NativeEntry visitor, receiving
-//! each root as its sole Object argument. No storage borrow crosses a callback.
+//! `rootsDo:`. `rootsDo:` takes an Object receiving `visit:` for each root.
+//! Enumeration is synchronous. No storage borrow crosses a send.
 use birnam_abi::id_protocol::{
     self as native, Method, Module, NativeEntry, Operand, Outcome, Protocol,
 };
@@ -123,7 +123,7 @@ unsafe extern "C" fn roots(
     let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
         return invalid();
     };
-    let Some(visitor) = argument.as_entry().filter(|v| v.method.is_some()) else {
+    let Some(visitor) = argument.as_object().filter(|o| !o.is_null()) else {
         return invalid();
     };
     let (id, providers, retained) = {
@@ -138,10 +138,10 @@ unsafe extern "C" fn roots(
         .chain(retained.into_iter().map(|(_, o)| o))
     {
         let result = unsafe {
-            visitor.method.unwrap()(visitor.context, receiver, &Operand::object(object), 1)
+            id.send_named(visitor, b"visit:", &[Operand::object(object)])
         };
-        if result.status != native::LOADED {
-            return result;
+        if let Err(error) = result {
+            return error;
         }
     }
     for provider in providers {

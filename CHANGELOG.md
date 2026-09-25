@@ -8,6 +8,23 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Replace numeric native visitors with receiver sends for scalar evaluation and
+  predicate commit. Keep publication before root cleanup using Execution's existing
+  pending-call record. Test live replacement, collecting methods, fallback, exact
+  failures and rejection of inactive/repeated commits and native visitor operands.
+
+- Reconnect Store and Cells through production Id messages, preserving fact-log,
+  cardinality, history, retention and compaction algorithms. Bootstrap publishes
+  Store/db before Execution. Keep Store-backed Globals and restore MOP hooks using
+  message receivers and owned Execution Methods; Id dictionary writes send mirror
+  invalidations to Store. Migrate image-row transfer and retire old native tables.
+  Tests cover collecting callbacks, hook lifetime/current lookup, Globals history,
+  MOP mirrors and resource/phase refusal. Convert GC roots, references, allocation
+  and binding visitors to receiver sends. Id retains detached storage until an
+  explicit release message after finalization; stale handles fail. Test live
+  visitor replacement, failed marking and failed release without freeing payloads. Full Image, Relational and task-policy integration
+  remain separate. Optimization/deoptimization is paused for reconnection.
+
 - Combine a short arithmetic chain with removal of its intermediate Integer when
   the result is consumed only by an owned comparison. Preserve current Id lookup,
   owner factories, error behavior and bounded Frame inspection. Integer delivers

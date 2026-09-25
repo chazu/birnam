@@ -79,7 +79,7 @@ unsafe extern "C" fn trace(
             return Err(invalid());
         };
         let value = value.as_object().ok_or_else(invalid)?;
-        let visitor = visitor.as_entry().ok_or_else(invalid)?;
+        let visitor = visitor.as_object().ok_or_else(invalid)?;
         state.visits.borrow_mut().push(value.addr());
         state.checks()?;
         if state.failure.get() {
@@ -87,7 +87,7 @@ unsafe extern "C" fn trace(
         }
         if state.ignored_failure.get() {
             // Failure is sticky even when a trusted provider accidentally ignores it.
-            (visitor.method.unwrap())(visitor.context, value, &Operand::word(7), 1);
+            let _ = state.id.send_named(visitor, b"visit:", &[Operand::word(7)]);
             return Ok(());
         }
         if value == state.first.get() && !state.switch_behavior.get().is_null() {
@@ -107,8 +107,9 @@ unsafe extern "C" fn trace(
             .cloned()
             .unwrap_or_default();
         for edge in edges {
-            (visitor.method.unwrap())(visitor.context, value, &Operand::object(edge), 1)
-                .into_result()?;
+            state
+                .id
+                .send_named(visitor, b"visit:", &[Operand::object(edge)])?;
         }
         Ok(())
     })())
@@ -206,6 +207,173 @@ unsafe extern "C" fn counted(
     state.calls.set(state.calls.get() + 1);
     unsafe { (state.original.method.unwrap())(state.original.context, receiver, args, count) }
 }
+struct VisitorDispatch {
+    id: Protocol,
+    behavior: Oop,
+    first: Cell<usize>,
+    later: Cell<usize>,
+}
+unsafe extern "C" fn next_visit(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<VisitorDispatch>();
+        p.later.set(p.later.get() + 1);
+        p.id.send_named(r, b"savedGCVisit:", borrowed_slice(a, n).unwrap())
+            .map_or_else(|e| e, Outcome::loaded)
+    }
+}
+unsafe extern "C" fn first_visit(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let p = &*c.cast::<VisitorDispatch>();
+        p.first.set(p.first.get() + 1);
+        install(p.id, p.behavior, b"visit:", next_visit, c);
+        p.id.send_named(r, b"savedGCVisit:", borrowed_slice(a, n).unwrap())
+            .map_or_else(|e| e, Outcome::loaded)
+    }
+}
+unsafe extern "C" fn refuse_visit(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 917)
+}
+unsafe fn visitor_dispatch(id: Protocol, gc: Oop, nodes: Oop) {
+    unsafe {
+        let behavior = object(send(
+            id,
+            id.receiver,
+            b"behaviorOf:",
+            &[Operand::object(gc)],
+        ));
+        let selector = id.intern_name(b"visit:").unwrap();
+        let original = send(id, behavior, b"lookup", &[Operand::object(selector)])
+            .as_entry()
+            .unwrap();
+        install(
+            id,
+            behavior,
+            b"savedGCVisit:",
+            original.method.unwrap(),
+            original.context,
+        );
+        let mut probe = VisitorDispatch {
+            id,
+            behavior,
+            first: Cell::new(0),
+            later: Cell::new(0),
+        };
+        install(
+            id,
+            behavior,
+            b"visit:",
+            first_visit,
+            ptr::from_mut(&mut probe).cast(),
+        );
+        collect(id, gc);
+        assert_eq!(
+            probe.first.get(),
+            1,
+            "lookup occurs for every reported edge"
+        );
+        assert!(probe.later.get() > 1);
+        install(id, behavior, b"visit:", refuse_visit, ptr::null_mut());
+        let dead = allocate(id, nodes, 0);
+        assert_eq!(
+            id.send_named(gc, b"collectPrecisely", &[])
+                .unwrap_err()
+                .detail,
+            917
+        );
+        assert!(present(id, dead), "a failed visitor send prevents sweeping");
+        install(
+            id,
+            behavior,
+            b"visit:",
+            original.method.unwrap(),
+            original.context,
+        );
+        assert!(
+            id.send_named(gc, b"visit:", &[Operand::object(gc)])
+                .is_err(),
+            "visitor inactive outside marking"
+        );
+        assert!(
+            id.send_named(
+                gc,
+                b"allocation:bytes:identity:",
+                &[Operand::object(gc), Operand::word(0), Operand::word(1)]
+            )
+            .is_err()
+        );
+        assert!(
+            id.send_named(gc, b"rootsDo:", &[Operand::entry(original)])
+                .is_err(),
+            "old native callback operands are rejected"
+        );
+        send(
+            id,
+            behavior,
+            b"removeMethod:",
+            &[Operand::object(id.intern_name(b"savedGCVisit:").unwrap())],
+        );
+        collect(id, gc);
+        assert!(!present(id, dead));
+    }
+}
+// Run in a child: retirement failure deliberately leaves this collector terminal.
+unsafe fn release_failure(id: Protocol, gc: Oop, roots: Oop) {
+    unsafe {
+        let vt = behavior(id);
+        retain(id, roots, vt);
+        let selector = id.intern_name(b"releaseDetachedAllocation:").unwrap();
+        let original = send(id, id.receiver, b"lookup", &[Operand::object(selector)])
+            .as_entry()
+            .unwrap();
+        install(
+            id,
+            id.receiver,
+            b"savedRelease:",
+            original.method.unwrap(),
+            original.context,
+        );
+        let at = id.intern_name(b"allocationAt:").unwrap();
+        let collect_selector = id.intern_name(b"collectPrecisely").unwrap();
+        let saved_release = id.intern_name(b"savedRelease:").unwrap();
+        collect(id, gc);
+        let dead = allocate(id, vt, size_of::<usize>());
+        dead.cast::<usize>().write(0xabc123);
+        let identity = send(id, id.receiver, b"identityOf:", &[Operand::object(dead)]);
+        install(
+            id,
+            id.receiver,
+            b"releaseDetachedAllocation:",
+            refuse_visit,
+            ptr::null_mut(),
+        );
+        assert_eq!(
+            id.send_named(gc, b"collectPrecisely", &[])
+                .unwrap_err()
+                .detail,
+            917
+        );
+        assert_eq!(
+            id.send(id.receiver, at, &[Operand::word(dead.addr())])
+                .unwrap()
+                .kind(),
+            native::UNIT
+        );
+        assert_eq!(
+            dead.cast::<usize>().read(),
+            0xabc123,
+            "Id keeps detached storage on failed release send"
+        );
+        assert!(
+            id.send(gc, collect_selector, &[]).is_err(),
+            "retirement failure is terminal"
+        );
+        id.send(id.receiver, saved_release, &[identity]).unwrap();
+        assert!(
+            id.send(id.receiver, saved_release, &[identity]).is_err(),
+            "release handles are one-use"
+        );
+    }
+}
 unsafe fn owner(
     id: Protocol,
     gc: Oop,
@@ -272,9 +440,29 @@ fn bootstrap_memory_preserves_tracing_finalization_and_live_dispatch() {
         };
         let roots = named(b"Roots");
         let gc = named(b"GC");
+        if std::env::var_os("BIRNAM_GC_RELEASE_FAILURE_CHILD").is_some() {
+            release_failure(id, gc, roots);
+            return;
+        }
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--include-ignored",
+                "--exact",
+                "bootstrap_memory_preserves_tracing_finalization_and_live_dispatch",
+            ])
+            .env("BIRNAM_GC_RELEASE_FAILURE_CHILD", "1")
+            .output()
+            .unwrap();
+        assert!(
+            child.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&child.stdout),
+            String::from_utf8_lossy(&child.stderr)
+        );
         assert_eq!(load(id, "collect", &[Operand::object(roots)]), gc);
         let nodes = behavior(id);
         retain(id, roots, nodes);
+        visitor_dispatch(id, gc, nodes);
         let (owner_a, a) = owner(id, gc, roots, nodes, 1);
         let (owner_b, b) = owner(id, gc, roots, nodes, 2);
         send(

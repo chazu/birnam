@@ -9,7 +9,7 @@ unsafe fn run(
     r: Oop,
     args: &[Operand],
     op: usize,
-    visitor: Option<NativeEntry>,
+    visitor: Option<Oop>,
 ) -> Result<Operand, Outcome> {
     unsafe {
         let n = state(m.integer.cast_mut().cast())?;
@@ -19,6 +19,9 @@ unsafe fn run(
         let mut values = vec![r];
         for arg in args {
             values.push(object(*arg)?);
+        }
+        if let Some(visitor) = visitor {
+            values.push(visitor);
         }
         n.rooted(&values, || {
             let left = n.read(r)?;
@@ -202,10 +205,7 @@ pub(super) unsafe fn evaluate(
         }
         let op = operation(n, selected).filter(|op| *op < 4)?;
         Some((|| {
-            let visitor = visitor
-                .as_entry()
-                .filter(|v| v.method.is_some())
-                .ok_or_else(invalid)?;
+            let visitor = object(visitor)?;
             run(&*m, object(left)?, &[right], op, Some(visitor))
         })())
     }

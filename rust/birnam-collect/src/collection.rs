@@ -26,37 +26,61 @@ impl Walk {
         self.marked.contains(&value.addr())
     }
 }
-unsafe extern "C" fn allocation(
+pub(super) struct Inventory {
+    values: Vec<Allocation>,
+    failure: Option<Outcome>,
+}
+pub(super) unsafe extern "C" fn allocation(
     context: *mut c_void,
-    _: Oop,
+    receiver: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
     done((|| unsafe {
-        let Some([value, size, identity]) = borrowed_slice(args, count) else {
-            return Err(invalid());
-        };
-        let value = Allocation {
-            object: object(*value)?,
-            size: size.as_word().ok_or_else(invalid)?,
-            identity: identity.as_word().filter(|n| *n != 0).ok_or_else(invalid)?,
-        };
-        (&mut *context.cast::<Vec<Allocation>>()).push(value);
-        Ok(Operand::unit())
+        let memory = memory(context)?;
+        let mut inventory = memory.inventory.borrow_mut();
+        let inventory = inventory.as_mut().ok_or_else(invalid)?;
+        let result = (|| {
+            if receiver != memory.receiver {
+                return Err(invalid());
+            }
+            let Some([value, size, identity]) = borrowed_slice(args, count) else {
+                return Err(invalid());
+            };
+            inventory.values.push(Allocation {
+                object: object(*value)?,
+                size: size.as_word().ok_or_else(invalid)?,
+                identity: identity.as_word().filter(|n| *n != 0).ok_or_else(invalid)?,
+            });
+            Ok(Operand::unit())
+        })();
+        if let Err(e) = result {
+            inventory.failure.get_or_insert(e);
+        }
+        result
     })())
 }
 pub(super) unsafe fn inventory(memory: &Memory) -> Result<Vec<Allocation>, Outcome> {
-    let mut allocations = Vec::<Allocation>::new();
-    unsafe {
+    if memory.inventory.borrow().is_some() {
+        return Err(invalid());
+    }
+    *memory.inventory.borrow_mut() = Some(Inventory {
+        values: Vec::new(),
+        failure: None,
+    });
+    let result = unsafe {
         memory.send(
             memory.id.receiver,
             b"allocationsDo:",
-            &[Operand::entry(NativeEntry::new(
-                allocation,
-                ptr::from_mut(&mut allocations).cast(),
-            ))],
+            &[Operand::object(memory.receiver)],
         )
-    }?;
+    };
+    let inventory = memory.inventory.borrow_mut().take().unwrap();
+    result?;
+    if let Some(e) = inventory.failure {
+        return Err(e);
+    }
+    let mut allocations = inventory.values;
     // Allocation identity gives stable creation order independent of Id's index.
     allocations.sort_unstable_by_key(|a| a.identity);
     if allocations
@@ -86,10 +110,7 @@ pub(super) unsafe fn validate(memory: &Memory) -> Result<usize, Outcome> {
             pending: Vec::new(),
             failure: None,
         });
-        let visitor = Operand::entry(NativeEntry::new(
-            visit,
-            ptr::from_ref(memory).cast_mut().cast(),
-        ));
+        let visitor = Operand::object(memory.receiver);
         memory.send(memory.id.receiver, b"rootsDo:", &[visitor])?;
         memory.send(memory.roots, b"rootsDo:", &[visitor])?;
         let mut charged = 0usize;
@@ -130,14 +151,20 @@ pub(super) fn emit(memory: &Memory, value: Oop) -> Result<(), Outcome> {
     }
     answer
 }
-unsafe extern "C" fn visit(
+pub(super) unsafe extern "C" fn visit(
     context: *mut c_void,
-    _: Oop,
+    receiver: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    let memory = unsafe { &*context.cast::<Memory>() };
+    let memory = match unsafe { memory(context) } {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
     let answer = (|| unsafe {
+        if receiver != memory.receiver || memory.phase.get() != Phase::Marking {
+            return Err(invalid());
+        }
         let Some([value]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
@@ -146,30 +173,40 @@ unsafe extern "C" fn visit(
     })();
     if let Err(error) = answer {
         if let Some(walk) = memory.walk.borrow_mut().as_mut() {
-            walk.failure = Some(error);
+            walk.failure.get_or_insert(error);
         }
     }
     done(answer)
 }
-struct CoreEdges {
+pub(super) struct CoreEdges {
     values: Vec<Oop>,
-    failed: bool,
+    failure: Option<Outcome>,
 }
-unsafe extern "C" fn core_edge(
+pub(super) unsafe extern "C" fn core_edge(
     context: *mut c_void,
-    _: Oop,
+    receiver: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
-    let edges = unsafe { &mut *context.cast::<CoreEdges>() };
-    if let Some([value]) = unsafe { borrowed_slice(args, count) } {
-        if let Some(value) = value.as_object() {
-            edges.values.push(value);
-            return Outcome::loaded(Operand::unit());
+    done((|| unsafe {
+        let memory = memory(context)?;
+        let mut edges = memory.core_edges.borrow_mut();
+        let edges = edges.as_mut().ok_or_else(invalid)?;
+        let result = (|| {
+            if receiver != memory.core_visitor || memory.phase.get() != Phase::Marking {
+                return Err(invalid());
+            }
+            let Some([value]) = borrowed_slice(args, count) else {
+                return Err(invalid());
+            };
+            edges.values.push(value.as_object().ok_or_else(invalid)?);
+            Ok(Operand::unit())
+        })();
+        if let Err(e) = result {
+            edges.failure.get_or_insert(e);
         }
-    }
-    edges.failed = true;
-    invalid()
+        result
+    })())
 }
 unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Outcome> {
     unsafe {
@@ -203,10 +240,7 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
                 emit(memory, value)?;
             }
         }
-        let visitor = Operand::entry(NativeEntry::new(
-            visit,
-            ptr::from_ref(memory).cast_mut().cast(),
-        ));
+        let visitor = Operand::object(memory.receiver);
         memory.send(memory.id.receiver, b"rootsDo:", &[visitor])?;
         memory.send(memory.roots, b"rootsDo:", &[visitor])?;
         loop {
@@ -214,26 +248,21 @@ unsafe fn mark(memory: &Memory, native: &[usize]) -> Result<Vec<Allocation>, Out
             let Some(value) = next else {
                 break;
             };
-            let mut core = CoreEdges {
+            *memory.core_edges.borrow_mut() = Some(CoreEdges {
                 values: Vec::new(),
-                failed: false,
-            };
-            let kind = memory
-                .send(
-                    memory.id.receiver,
-                    b"referencesOf:do:",
-                    &[
-                        Operand::object(value),
-                        Operand::entry(NativeEntry::new(
-                            core_edge,
-                            ptr::from_mut(&mut core).cast(),
-                        )),
-                    ],
-                )?
-                .as_word()
-                .filter(|k| *k <= 2)
-                .ok_or_else(invalid)?;
-            if core.failed || core.values.len() < if kind == 1 { 2 } else { 1 } {
+                failure: None,
+            });
+            let result = memory.send(
+                memory.id.receiver,
+                b"referencesOf:do:",
+                &[Operand::object(value), Operand::object(memory.core_visitor)],
+            );
+            let core = memory.core_edges.borrow_mut().take().unwrap();
+            let kind = result?.as_word().filter(|k| *k <= 2).ok_or_else(invalid)?;
+            if let Some(e) = core.failure {
+                return Err(e);
+            }
+            if core.values.len() < if kind == 1 { 2 } else { 1 } {
                 return Err(invalid());
             }
             let behavior = core.values[0];
@@ -314,8 +343,8 @@ unsafe fn sweep(memory: &Memory, dead: &[Allocation]) -> Result<usize, Outcome> 
                     b"detachAllocationAt:",
                     &[Operand::word(a.object.addr())],
                 )?
-                .as_entry()
-                .filter(|e| e.method.is_some())
+                .as_word()
+                .filter(|h| *h != 0)
                 .ok_or_else(invalid)?;
             // Detachment is a fresh send and may itself reenter. Select/remove
             // the finalizer only after that call has completed.
@@ -326,8 +355,11 @@ unsafe fn sweep(memory: &Memory, dead: &[Allocation]) -> Result<usize, Outcome> 
                 }
                 memory.send(owner.object, b"finalize:", &[Operand::object(a.object)])?;
             }
-            // This is transferred allocation ownership, not a cached Id method.
-            (release.method.unwrap())(release.context, a.object, ptr::null(), 0).into_result()?;
+            memory.send(
+                memory.id.receiver,
+                b"releaseDetachedAllocation:",
+                &[Operand::word(release)],
+            )?;
         }
         Ok(dead.len())
     }

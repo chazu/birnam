@@ -63,8 +63,10 @@ retires, preventing reuse of a function/context key still in the engine. Its dea
 language edges are not traced: this reservation does not retain owner Objects.
 Active calls
 and partially read argument sequences are rooted through Execution `rootsDo:`.
-Each synchronous callback borrows its NativeEntry visitor only until return;
-no internal mutable borrow crosses a send. Lookup adaptation holds its selected
+GC enumeration accepts visitor Objects and sends `visit:` for each reference.
+Id sends `binding:value:weak:` to Execution's receiver; a scoped target forwards
+owned Method references to the GC visitor. No callback entry crosses that boundary
+and no internal mutable borrow crosses a send. Lookup adaptation holds its selected
 Method across nested lookup, replacement and collection before returning its
 exact entry. Ordinary future sends perform current lookup.
 
@@ -254,7 +256,7 @@ are not requirements to recreate.
 Hot synchronous unary calls ask the live Integer owner to evaluate their exact
 selected function/context through `evaluate:receiver:argument:with:`. Integer
 recognizes only its own arithmetic implementations, validates operands and current
-ErrorVt, and borrows Execution's pure checked-i64 visitor. Unknown entries decline
+ErrorVt, and sends `numericOperation:left:right:` to the Execution receiver. Unknown entries decline
 before operand reads and execute the originally selected entry. Integer owns
 mixed-number handling, ordinary errors and result construction through current
 factories. Execution caches only bounded scalar hotness, never dependency entries
@@ -263,7 +265,7 @@ Codegen; there is no Execution dependency on compiler construction.
 
 Production tests cross both hot gates, replace controls and arithmetic, withdraw
 an entered candidate during a collecting callback, and observe owner reclamation.
-They prove actual numeric visitor calls under precise GC, arithmetic failure and
+They prove numeric receiver sends under precise GC, arithmetic failure and
 live ErrorVt propagation. Repeated registration/collection without intervening
 checkpoints covers the native context-address reuse regression. Fixture results
 are deliberately distinguishable to prove selection; they are not optimization
@@ -319,9 +321,11 @@ comparison and a final return. Extra intermediate bindings and captures decline.
 
 On an eligible unbounded call, Execution sends Integer
 `evaluatePredicate:then:left:right:limit:in:epoch:with:` with the selectors,
-actual input Objects, compilation Namespace, checked epoch and synchronous native
-commit visitor. The visitor uses existing pending-call authority and inline-return
-publication, releases the acquisition and marks the request consumed. Integer
-invokes it before releasing roots. A refusal leaves the ordinary call pending;
+actual input Objects, compilation Namespace, checked epoch and the Execution
+receiver. Integer sends it `commitNumericPredicate:` before releasing roots.
+That method uses the existing pending-call record's target and authority, commits
+the return, releases the acquisition and marks the request consumed. Inactive or
+repeated commits fail. The scalar evaluator similarly receives
+`numericOperation:left:right:` through fresh dispatch. A refusal leaves the ordinary call pending;
 bounded, tail and protected calls use the baseline. No new virtual Frame or
 identity representation is introduced. See [scope and tests](../../docs/design/90-numeric-predicate.md).

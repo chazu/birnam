@@ -65,9 +65,17 @@ after the final reference and checkpoint. Explicit candidate withdrawal/lifetime
 and compiled recovery remain covered by their separate production fixtures.
 
 The full Artifact/PortableCode language adapters, durable publication, embedding,
-Image, Store and CLI workflows are not accepted by these source compiler tests.
+Image and CLI workflows are not accepted by these source compiler tests.
 Their retained migration inputs are not loaded by Bootstrap. Current commands and
 limits are in [validation](../../docs/validation.md).
+
+Store/db and Cells now load through Bootstrap before the compiler. Their separate
+[production suite](../birnam-store/README.md#validation) also exercises compiled
+source consumers and Store-backed Globals. The current compiler still publishes
+globals through Namespace; reconciling that caller remains upper integration work.
+Store MOP hooks now use receiver messages and owned Execution Methods. Staged
+compiler publication/compensation callers in `deferred.rs` still need migration;
+the old Store native tables are gone.
 
 
 ## First allocation-elision producer

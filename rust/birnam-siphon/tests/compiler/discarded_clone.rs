@@ -60,15 +60,7 @@ pub(super) unsafe fn instances(h: &H, behavior: Oop) -> usize {
             behavior,
             count: 0,
         };
-        send(
-            h.id,
-            h.id.receiver,
-            b"allocationsDo:",
-            &[Operand::entry(NativeEntry::new(
-                count,
-                ptr::from_mut(&mut c).cast(),
-            ))],
-        );
+        support::inventory(h.id, count, ptr::from_mut(&mut c).cast());
         c.count
     }
 }

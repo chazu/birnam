@@ -190,21 +190,12 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, count: usi
         let Some([visitor]) = borrowed_slice(a, count) else {
             return Err(invalid());
         };
-        let visitor = visitor
-            .as_entry()
-            .filter(|v| v.method.is_some())
-            .ok_or_else(invalid)?;
+        let visitor = object(*visitor)?;
         let mut values = vec![s.roots, s.model, s.behavior, s.node, s.prototype.get()];
         values.extend(s.values.values().copied());
         values.extend(s.names.values().copied());
         for value in values.into_iter().filter(|v| !v.is_null()) {
-            visitor.method.unwrap()(
-                visitor.context,
-                s.prototype.get(),
-                &Operand::object(value),
-                1,
-            )
-            .into_result()?;
+            s.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
         }
         Ok(Operand::unit())
     })())

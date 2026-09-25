@@ -2,7 +2,7 @@
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
-    id_protocol::{Operand, Outcome},
+    id_protocol::{Operand, Outcome, Protocol},
 };
 use core::{
     cell::{Cell, RefCell},
@@ -11,19 +11,19 @@ use core::{
 use std::os::unix::ffi::OsStrExt;
 use support::*;
 struct Enumerator {
+    id: Protocol,
     ordinal: usize,
     child: Cell<Oop>,
     visits: *const RefCell<Vec<usize>>,
 }
-unsafe extern "C" fn enumerate(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn enumerate(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
     unsafe {
         let e = &*c.cast::<Enumerator>();
         (&*e.visits).borrow_mut().push(e.ordinal);
         let [visitor] = borrowed_slice(a, n).unwrap() else {
             panic!("visitor")
         };
-        let visitor = visitor.as_entry().unwrap();
-        visitor.method.unwrap()(visitor.context, r, &Operand::object(e.child.get()), 1)
+        e.id.send_named(visitor.as_object().unwrap(), b"visit:", &[Operand::object(e.child.get())]).map_or_else(|e| e, Outcome::loaded)
     }
 }
 #[test]
@@ -56,6 +56,7 @@ fn registered_root_enumerators_grow_and_keep_order_and_children_alive() {
             let child = allocate(id, parent, 0);
             let t = retain(id, roots, child);
             let context = Box::leak(Box::new(Enumerator {
+                id,
                 ordinal,
                 child: Cell::new(child),
                 visits,

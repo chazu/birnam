@@ -29,3 +29,7 @@ deleted. Their former descriptions are available in this file at `8735496a`.
 Other retained native fixtures with old construction/header assumptions are
 migration evidence, not runnable acceptance tests. No factory table, saved service
 entry or forward-filled dependency bundle is part of this protocol.
+
+The independent C root enumerator in `entry.c` receives an Object and sends
+`visit:` through the real Id carrier. The Id test replaces that visitor method,
+checks exact failure propagation and rejects an old NativeEntry visitor operand.

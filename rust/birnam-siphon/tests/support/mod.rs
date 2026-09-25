@@ -85,3 +85,38 @@ pub unsafe fn collect(id: Protocol, gc: Oop) -> usize {
         .as_word()
         .unwrap()
 }
+
+// Install a test receiver method for one synchronous inventory. Id is already
+// rooted; this adds no allocations to physical-accounting measurements.
+pub unsafe fn inventory(id: Protocol, method: Method, context: *mut c_void) {
+    unsafe {
+        install(
+            id,
+            id.receiver,
+            b"allocation:bytes:identity:",
+            method,
+            context,
+        );
+        send(
+            id,
+            id.receiver,
+            b"allocationsDo:",
+            &[Operand::object(id.receiver)],
+        );
+        send(
+            id,
+            id.receiver,
+            b"removeMethod:",
+            &[Operand::object(
+                id.intern_name(b"allocation:bytes:identity:").unwrap(),
+            )],
+        );
+    }
+}
+pub unsafe fn visitor(id: Protocol, method: Method, context: *mut c_void) -> Operand {
+    unsafe {
+        let vt = behavior(id);
+        install(id, vt, b"visit:", method, context);
+        Operand::object(allocate(id, vt, 0))
+    }
+}

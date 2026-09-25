@@ -1,5 +1,5 @@
 //! Owner-local arithmetic/comparison over exact Integer inputs. The synchronous
-//! visitor consumes an existing Boolean before any root-release callback runs.
+//! receiver consumes an existing Boolean before any root-release callback runs.
 use super::*;
 fn operation(n: &Number, selected: NativeEntry, c: *mut c_void) -> Option<usize> {
     [add as Method, sub, mul, div, modulo, equal, lt, le, gt, ge]
@@ -29,84 +29,80 @@ pub(super) unsafe extern "C" fn evaluate(
         );
         let namespace = object(*namespace)?;
         let epoch = epoch.as_word().ok_or_else(invalid)?;
-        let visitor = visitor
-            .as_entry()
-            .filter(|v| v.method.is_some())
-            .ok_or_else(invalid)?;
-        n.rooted(&[first, then, left, right, limit, namespace], || {
-            if epoch == usize::MAX
-                || n.send(n.id.receiver, b"usesDefaultAllocation", &[])?
-                    .as_word()
-                    != Some(1)
-                || n.send(n.prototype, b"canOmitIndexing", &[])?.as_word() != Some(1)
-            {
-                return Ok(Operand::unit());
-            }
-            for receiver in [left, n.prototype] {
-                if n.send(
-                    n.id.receiver,
-                    b"usesDefaultLookup:",
-                    &[Operand::object(receiver)],
-                )?
-                .as_word()
-                    != Some(1)
+        let visitor = object(*visitor)?;
+        n.rooted(
+            &[first, then, left, right, limit, namespace, visitor],
+            || {
+                if epoch == usize::MAX
+                    || n.send(n.id.receiver, b"usesDefaultAllocation", &[])?
+                        .as_word()
+                        != Some(1)
+                    || n.send(n.prototype, b"canOmitIndexing", &[])?.as_word() != Some(1)
                 {
                     return Ok(Operand::unit());
                 }
-            }
-            let select = |selector, receiver| -> Result<Option<usize>, Outcome> {
-                Ok(n.send(
-                    n.id.receiver,
-                    b"bind:to:",
-                    &[Operand::object(selector), Operand::object(receiver)],
-                )?
-                .as_entry()
-                .and_then(|entry| operation(n, entry, c)))
-            };
-            let Some(arithmetic @ 0..=4) = select(first, left)? else {
-                return Ok(Operand::unit());
-            };
-            let Some(comparison @ 5..=9) = select(then, n.prototype)? else {
-                return Ok(Operand::unit());
-            };
-            // ErrorVt is a live language binding. If Integer itself is designated
-            // as Error, ordinary propagation must run rather than numeric folding.
-            if n.send(
-                namespace,
-                b"at:",
-                &[Operand::object(n.names[b"Integer".as_slice()])],
-            )?
-            .as_object()
-                != Some(n.prototype)
-                || n.binding(b"ErrorVt")?.as_object() == Some(n.behavior)
-                || n.read(n.prototype)?.is_none()
-                || n.send(n.id.receiver, b"usesDefaultAllocation", &[])?
+                for receiver in [left, n.prototype, visitor] {
+                    if n.send(
+                        n.id.receiver,
+                        b"usesDefaultLookup:",
+                        &[Operand::object(receiver)],
+                    )?
                     .as_word()
-                    != Some(1)
-                || n.send(n.id.receiver, b"behaviorEpoch", &[])?.as_word() != Some(epoch)
-            {
-                return Ok(Operand::unit());
-            }
-            // These reads use the just-validated default Id fact methods; there
-            // are no callbacks between reading mutable inputs and the commit.
-            let (Some(left), Some(right), Some(limit)) =
-                (n.read(left)?, n.read(right)?, n.read(limit)?)
-            else {
-                return Ok(Operand::unit());
-            };
-            let Some(result) =
-                super::arithmetic(left, right, arithmetic).and_then(|v| i64::try_from(v).ok())
-            else {
-                return Ok(Operand::unit());
-            };
-            let answer = super::comparison(result, limit, comparison).ok_or_else(invalid)?;
-            visitor.method.unwrap()(
-                visitor.context,
-                n.prototype,
-                [n.boolean(answer)].as_ptr(),
-                1,
-            )
-            .into_result()
-        })
+                        != Some(1)
+                    {
+                        return Ok(Operand::unit());
+                    }
+                }
+                let select = |selector, receiver| -> Result<Option<usize>, Outcome> {
+                    Ok(n.send(
+                        n.id.receiver,
+                        b"bind:to:",
+                        &[Operand::object(selector), Operand::object(receiver)],
+                    )?
+                    .as_entry()
+                    .and_then(|entry| operation(n, entry, c)))
+                };
+                let Some(arithmetic @ 0..=4) = select(first, left)? else {
+                    return Ok(Operand::unit());
+                };
+                let Some(comparison @ 5..=9) = select(then, n.prototype)? else {
+                    return Ok(Operand::unit());
+                };
+                // ErrorVt is a live language binding. If Integer itself is designated
+                // as Error, ordinary propagation must run rather than numeric folding.
+                if n.send(
+                    namespace,
+                    b"at:",
+                    &[Operand::object(n.names[b"Integer".as_slice()])],
+                )?
+                .as_object()
+                    != Some(n.prototype)
+                    || n.binding(b"ErrorVt")?.as_object() == Some(n.behavior)
+                    || n.read(n.prototype)?.is_none()
+                    || n.send(n.id.receiver, b"usesDefaultAllocation", &[])?
+                        .as_word()
+                        != Some(1)
+                    || n.send(n.id.receiver, b"behaviorEpoch", &[])?.as_word() != Some(epoch)
+                {
+                    return Ok(Operand::unit());
+                }
+                // These reads use the just-validated default Id fact methods; there
+                // are no callbacks between reading mutable inputs and the commit.
+                let (Some(left), Some(right), Some(limit)) =
+                    (n.read(left)?, n.read(right)?, n.read(limit)?)
+                else {
+                    return Ok(Operand::unit());
+                };
+                let Some(result) =
+                    super::arithmetic(left, right, arithmetic).and_then(|v| i64::try_from(v).ok())
+                else {
+                    return Ok(Operand::unit());
+                };
+                let answer = super::comparison(result, limit, comparison).ok_or_else(invalid)?;
+                // Default lookup was guarded above, but method selection is still a
+                // fresh send. The receiver owns publication before our root cleanup.
+                n.send(visitor, b"commitNumericPredicate:", &[n.boolean(answer)])
+            },
+        )
     })())
 }

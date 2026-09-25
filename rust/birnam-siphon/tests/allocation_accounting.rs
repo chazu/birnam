@@ -214,17 +214,15 @@ fn production_allocation_accounting() {
         // Freeing physical storage does not refund accumulated allocation work.
         let (value, token) = objects.pop().unwrap();
         release(id, roots, token);
-        let release_entry = send(
+        let handle = send(
             id,
             id.receiver,
             b"detachAllocationAt:",
             &[Operand::word(value.addr())],
         )
-        .as_entry()
-        .unwrap();
-        release_entry.method.unwrap()(release_entry.context, value, ptr::null(), 0)
-            .into_result()
-            .unwrap();
+        ;
+        send(id, id.receiver, b"releaseDetachedAllocation:", &[handle]);
+        assert!(id.send_named(id.receiver, b"releaseDetachedAllocation:", &[handle]).is_err());
         assert_eq!(bytes(id, gc), expected);
 
         observer.fail.set(true);

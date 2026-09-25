@@ -140,11 +140,10 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
         let Some([v]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        let v = v.as_entry().ok_or_else(invalid)?;
+        let v = object(*v)?;
         for o in [s.ns, s.roots, s.grammar.get()] {
             if !o.is_null() {
-                v.method.ok_or_else(invalid)?(v.context, s.grammar.get(), &Operand::object(o), 1)
-                    .into_result()?;
+                s.id.send_named(v, b"visit:", &[Operand::object(o)])?;
             }
         }
         Ok(Operand::unit())

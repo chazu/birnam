@@ -44,16 +44,19 @@ Execution checks its current Machine controls and compilation Namespace Integer
 binding. Integer roots the inputs, validates the actual operations, current index
 and allocation semantics, live ErrorVt, default Id facts and the same behavior
 epoch. It reads the final inputs only after callback-capable checks. The remaining
-Id fact reads have just been established as default; arithmetic, comparison and
-publication perform no dependency callback or allocation.
+Id fact reads and result receiver lookup have been established as default.
+Arithmetic/comparison allocate nothing; delivery uses a fresh receiver send.
+Custom result-receiver lookup selects baseline execution.
 
-Integer invokes a borrowed synchronous visitor with its existing Boolean.
-Execution's visitor validates pending-call authority, performs the existing atomic
+Integer sends `commitNumericPredicate:` to the supplied Object with its existing
+Boolean. Execution's method validates pending-call authority, performs the existing atomic
 inline-return commit and releases the acquired entry. It marks that request
 consumed. Only then does Integer release temporary roots. Any cleanup callback
 therefore observes the committed caller, not a missing intermediate Frame or an
-unpublished answer. A declined owner calls no visitor and the ordinary driver
-continues. The owner neither retains the visitor nor knows an Execution layout.
+unpublished answer. A declined owner sends no result and the ordinary driver
+continues. Integer roots the receiver through the synchronous send and cleanup;
+it knows no Execution layout. The existing pending-call record holds the commit
+target; inactive/repeated commits fail.
 
 Bounded execution always creates the baseline Frame and its actual intermediate
 Integer. There is no virtual value to reconstruct in the successful unbounded
@@ -71,12 +74,11 @@ synthetic charge or prepaid identity is recorded.
   traced with the captured Method and existing TCC Unit retention.
 - Integer accepts `evaluatePredicate:then:left:right:limit:in:epoch:with:`:
   two Symbol selectors, three operand Objects, compilation Namespace Object,
-  expected native Word behavior epoch and borrowed NativeEntry visitor. It returns
-  Unit without visiting on refusal. On success it synchronously invokes the visitor
-  once with one Boolean Object and returns the visitor's outcome. Execution's
-  visitor returns Unit after publication. Native authors own this callback
-  contract, as with the existing scalar evaluator; no new alien-code guarantee
-  or service table is introduced.
+  expected native Word behavior epoch and result receiver Object. It returns
+  Unit on refusal. On success it sends `commitNumericPredicate:` once with one
+  Boolean Object and returns the send's outcome. Execution answers Unit after
+  publication. Both numeric protocols now use message receivers; NativeEntry
+  visitor operands are rejected.
 
 Existing `usesDefaultAllocation`, `usesDefaultLookup:`, `canOmitIndexing`, allocator
 owner queries and current `bind:to:` sends supply admission. Integer owns numeric
@@ -98,15 +100,17 @@ allocator effects, implementation aliases, live ErrorVt, mixed inputs, a bound
 intermediate and numeric-result fallback. Paused Frame inspection sees the real
 intermediate and retains it through collection. A collecting admission wrapper
 keeps inputs alive; a replacement during admission executes the changed arithmetic
-once. A visitor wrapper collects and inspects the caller *before the Integer
-query returns*, proving that its Boolean is already published. Final release
+once. A replacement commit method collects and inspects the caller *before the Integer
+query returns*, proving that its Boolean is already published. Repeated and
+inactive commits fail, and customized result-receiver lookup selects baseline. Final release
 reclaims every actual TCC Unit and relocated byte. Two compiler tests check the
 producer's dataflow and rejection boundaries.
 
 The local arm64 macOS debug comparison uses six alternating pairs of 30 runs,
 with collection before each group and the automatic budget raised for measurement.
 Compilation, binding changes and collection are outside the timed groups. For
-180 invocations, the final measurement was:
+180 invocations, the original native-visitor measurement was (historical timing;
+not a performance claim for the receiver-message conversion):
 
 | Execution | Total physical allocations | Integer allocations per invocation | Elapsed |
 | --- | ---: | ---: | ---: |

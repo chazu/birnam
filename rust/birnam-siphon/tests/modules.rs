@@ -1,4 +1,5 @@
 //! Production native modules, reached only through Siphon and real Id messages.
+mod support;
 use birnam_abi::{
     Oop,
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
@@ -39,6 +40,15 @@ unsafe extern "C" fn counted(
     state.calls.set(state.calls.get() + 1);
     let original = state.original;
     unsafe { original.method.unwrap()(original.context, receiver, args, count) }
+}
+unsafe extern "C" fn binding_snapshot(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe {
+        let Some([key, value]) = birnam_abi::borrowed_slice(a, n) else {
+            return Outcome::failed(native::INVALID_REQUEST, 0);
+        };
+        (&mut *c.cast::<Vec<(Oop, Oop)>>()).push((object(*key), object(*value)));
+        Outcome::loaded(Operand::unit())
+    }
 }
 struct Snapshot {
     id: Protocol,
@@ -212,7 +222,14 @@ fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
             token: 0,
             objects: Vec::new(),
         };
-        let visitor = Operand::entry(NativeEntry::new(visit, (&raw mut snapshot).cast()));
+        let visitor = support::visitor(snapshot.id, visit, (&raw mut snapshot).cast());
+        let visitor_behavior = support::object(support::send(id, id.receiver, b"behaviorOf:", &[visitor]));
+        let mut bindings = Vec::<(Oop, Oop)>::new();
+        support::install(id, visitor_behavior, b"binding:value:", binding_snapshot, (&raw mut bindings).cast());
+        send(&id, namespace, b"bindingsDo:", &[visitor]);
+        assert!(bindings.contains(&(key, value)));
+        assert!(id.send_named(namespace, b"bindingsDo:", &[Operand::entry(original)]).is_err());
+
         send(&id, roots, b"rootsDo:", &[visitor]);
         assert_eq!(counter.calls.get(), 1);
         assert!(
@@ -571,7 +588,7 @@ unsafe fn bootstrap_retention(id: &Protocol, directory: &std::path::Path, namesp
             token: 0,
             objects: Vec::new(),
         };
-        let visitor = Operand::entry(NativeEntry::new(visit, (&raw mut snapshot).cast()));
+        let visitor = support::visitor(snapshot.id, visit, (&raw mut snapshot).cast());
         send(id, roots, b"rootsDo:", &[visitor]);
         for value in [outer, nested] {
             assert_eq!(

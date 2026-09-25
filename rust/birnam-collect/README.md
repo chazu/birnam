@@ -18,7 +18,7 @@ singletons still limit this prefix to one domain per process.
 | GC `activate` | none | Unit. Validate current roots, Id edges and reference coverage, account for the existing heap, then enable collection. Failure leaves collection disabled and permits construction/registration followed by retry. Repeating successful activation is harmless. |
 | GC `collect` | none | Word reclaimed count. Capture the current native caller's registers and stack, trace declared roots, then retire and reclaim unreachable allocations. |
 | GC `collectPrecisely` | none | Same collection, with **only declared roots**. Native callers must explicitly retain every live Oop. This is not the old language-level precise-payload switch and is not the ordinary allocation path. |
-| GC `trace:with:` | behavior Object, owner Object or Unit | Unit. Attach/replace an inherited reference enumerator; Unit removes the exact attachment. The owner receives `referencesOf:do:` with the ordinary object or behavior and a synchronous NativeEntry visitor. |
+| GC `trace:with:` | behavior Object, owner Object or Unit | Unit. Attach/replace an inherited reference enumerator; Unit removes the exact attachment. The owner receives `referencesOf:do:` with the ordinary object or behavior and a visitor Object. |
 | GC `referenceOwnerOf:` | behavior Object | Current inherited reference owner Object, or Unit if absent. Validates behavior membership and registration identity. Execution graph recovery uses this to require ObjectModel-owned field storage. |
 | GC `finalize:with:` | object Object, owner Object or Unit | Unit. Attach/replace/remove a finalizer. The owner receives `finalize:` with the detached object while its payload is still readable. |
 | GC `canOmitAllocationFor:` | behavior Object | Word 1 only for this GC's current ordinary allocation path while idle, with Id default storage operations and unchanged lookup/epoch; Word 0 otherwise. No charge, reservation or collection. |
@@ -26,17 +26,33 @@ singletons still limit this prefix to one domain per process.
 | GC `registerRetirement:` | owner Object | Unit. Register an instance-owned metadata owner implementing `retire:`; duplicates are ignored. |
 | GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header and padded payload. |
 | GC `allocationBytes` | none | Word accumulated allocation charge. Readable during tracing/finalization; not a live-storage count. |
-| GC `rootsDo:` | NativeEntry visitor | Unit. Enumerate GC's own objects, selectors, callback owners and temporary construction roots. Registered with Roots during construction. |
+| GC `rootsDo:` | Visitor Object | Unit. Enumerate GC's own objects, selectors, callback owners and temporary construction roots. Registered with Roots during construction. |
 | GC `roots` | none | The Roots Object used by this instance. |
 | Id `memoryManager` | none | This GC Object. Installed by GC, not implemented by Id. |
 | Id `allocationChargeFor:` | Word requested payload bytes | Word total storage charge, or Unit if the size cannot be allocated. Id owns header/padding/layout geometry; the query allocates nothing and has no GC dependency. |
 
-An enumerator sends its visitor one Object operand per reference (null is allowed)
-and returns Unit. Emit valid allocated Oops, not integers or interior pointers.
-The entry and its context are borrowed for this synchronous invocation only;
-retaining or invoking it afterwards violates the native contract. An enumerator
-that fails, or ignores a visitor failure, aborts the marking pass without sweeping.
-No foreign registry borrow spans a send or visitor invocation.
+An enumerator sends `visit:` to the supplied Object for every reference (null is
+allowed). Each send performs current Id lookup. Valid references are exact
+allocated Oops, never integers or interior pointers. Enumeration is synchronous:
+providers must not retain the visitor for later use and must propagate failed
+sends. The GC receiver handles marking and allocation inventory; one additional
+receiver buffers Id's core edges to preserve ordering. Both exist before
+activation and are rooted. Their handlers reject use outside the active pass;
+there is no per-edge language allocation or native callback argument. Validation
+failures are sticky even if a provider ignores them. No registry borrow spans a
+send; marking failure prevents sweeping.
+
+| Id selector | Message contract |
+|---|---|
+| `rootsDo:` | Visitor Object; send `visit:` with each root. |
+| `referencesOf:do:` | Object, visitor Object; send `visit:` for each core edge and answer native Word kind (0 ordinary, 1 behavior, 2 Symbol), or Unit for an unknown object. |
+| `allocationsDo:` | Visitor Object; send `allocation:bytes:identity:` with Object, payload-size Word, allocation-identity Word. Enumeration uses a snapshot. |
+| `bindingsIn:do:` | Behavior, visitor Object; send `binding:value:weak:` with selector Object, typed binding operand, weak-key Word. Execution forwards its owned Method edges through `visit:`. |
+| `detachAllocationAt:` | Address Word; remove membership and answer its unique allocation-identity Word as a release handle, or Unit when absent. Id retains the storage privately. |
+| `releaseDetachedAllocation:` | Handle Word; release exactly that detached storage and answer Unit. Invalid/already-released handles fail; identities are never reused. |
+
+NativeEntry visitor operands are rejected. Native entries remain the format for
+installing native method implementations in Id; they are not GC callbacks.
 
 Id enumerates its own headers, behaviors, dictionary keys and Symbols. GC never
 reads those layouts. For behavior objects, GC admits header and parent, then sends
@@ -113,13 +129,13 @@ Bytes, then retires Id's Symbol, behavior and weak-key indexes and GC's dead tra
 attachments before any storage can be reused. Registration is permitted only while
 idle/inactive; GC roots the registered owner objects and holds no registry borrow
 across their retirement messages. For each dead object, GC detaches the allocation, selects its **current**
-finalizer, sends `finalize:`, then invokes the
-one-use release entry transferred by Id. An earlier finalizer may inspect a later
-still-attached dead object or replace its finalizer. Finalizers cannot resurrect
-dead objects, allocate, suspend, or escape the payload. A release entry is ownership
-of that one allocation; it is not a saved service implementation. A failure after
-retirement begins makes the collector terminally failed and leaves unreclaimed
-storage intact; normal language execution must not resume on that heap.
+finalizer, sends `finalize:`, then sends Id `releaseDetachedAllocation:` with the
+handle returned by detachment. An earlier finalizer may inspect a later attached
+dead object or replace its finalizer. Finalizers cannot resurrect dead objects,
+allocate, suspend, or escape the payload. Id's detached-storage map is private
+allocation ownership, with no GC policy or foreign layout exposed. Failure after
+retirement begins makes GC terminally failed and leaves unreclaimed storage
+intact; normal language execution must not resume on that heap.
 
 ## Scope and checks
 
@@ -133,6 +149,9 @@ Run `mise run native-messages`. Its tests build the actual production dylibs and
 load through Siphon and Id, exercising Bootstrap activation, the same heap across
 failed/successful activation, live dispatch, LIFO traversal, failed-trace safety,
 weak retirement, finalizer replacement, native roots and automatic collection.
+Tests also replace `visit:` between two emissions, propagate exact failed visitor
+results without sweeping, reject inactive/native-entry visitors and repeated
+release, and retain detached payloads after a failed release send.
 
 Execution's suspended roots, deferred materialization, code pins and safe code
 retirement algorithms remain in Runtime awaiting their production message

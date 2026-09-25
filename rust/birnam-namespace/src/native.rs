@@ -2,8 +2,8 @@
 //!
 //! Symbol keys: `at:`, `at:put:`, `nameOf:` and `nameAt:`; missing entries return
 //! Unit. `count` and `nameAt:` use native Words until language Integers exist.
-//! `bindingsDo:` passes two Objects to a synchronous NativeEntry visitor;
-//! `rootsDo:` passes one Object. Both snapshot before calling foreign code.
+//! `bindingsDo:` sends `binding:value:` to a visitor Object; `rootsDo:` sends
+//! `visit:` for each root. Both snapshot before sending.
 use super::state::Environment;
 use birnam_abi::id_protocol::{
     self as native, Method, Module, NativeEntry, Operand, Outcome, Protocol,
@@ -143,7 +143,7 @@ unsafe extern "C" fn roots(
     let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
         return invalid();
     };
-    let Some(visitor) = argument.as_entry().filter(|v| v.method.is_some()) else {
+    let Some(visitor) = argument.as_object().filter(|o| !o.is_null()) else {
         return invalid();
     };
     let snapshot = {
@@ -154,24 +154,24 @@ unsafe extern "C" fn roots(
     };
     for object in snapshot.into_iter().filter(|o| !o.is_null()) {
         let result = unsafe {
-            visitor.method.unwrap()(visitor.context, receiver, &Operand::object(object), 1)
+            (&*context.cast::<Namespace>()).id.send_named(visitor, b"visit:", &[Operand::object(object)])
         };
-        if result.status != native::LOADED {
-            return result;
+        if let Err(error) = result {
+            return error;
         }
     }
     Outcome::loaded(Operand::unit())
 }
 unsafe extern "C" fn bindings(
     context: *mut c_void,
-    receiver: Oop,
+    _: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
     let Some([argument]) = (unsafe { borrowed_slice(args, count) }) else {
         return invalid();
     };
-    let Some(visitor) = argument.as_entry().filter(|v| v.method.is_some()) else {
+    let Some(visitor) = argument.as_object().filter(|o| !o.is_null()) else {
         return invalid();
     };
     let snapshot = unsafe { &*context.cast::<Namespace>() }
@@ -182,15 +182,10 @@ unsafe extern "C" fn bindings(
     for binding in snapshot {
         let arguments = [Operand::object(binding.name), value(binding.value)];
         let result = unsafe {
-            visitor.method.unwrap()(
-                visitor.context,
-                receiver,
-                arguments.as_ptr(),
-                arguments.len(),
-            )
+            (&*context.cast::<Namespace>()).id.send_named(visitor, b"binding:value:", &arguments)
         };
-        if result.status != native::LOADED {
-            return result;
+        if let Err(error) = result {
+            return error;
         }
     }
     Outcome::loaded(Operand::unit())

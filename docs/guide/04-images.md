@@ -1,5 +1,11 @@
 # Images: save, boot, bake
 
+During Design 90, full image save/restore remains unavailable. Store's
+[row-transfer protocol](../../rust/birnam-store/README.md#image-transfer-and-remaining-integration)
+is reconnected, including Store-backed globals, but Image still needs migration.
+The workflows below describe the behavior to restore, not current end-to-end
+acceptance.
+
 A Birnam image is the durable Store plus one authoritative dispatch generation.
 The generation contains the exact complete source map and canonical digest; its
 compiled code is an optimization bound to that same digest.

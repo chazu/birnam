@@ -24,13 +24,17 @@ impl Registry {
         *visits >= HOT_CALLS
     }
 }
-unsafe extern "C" fn evaluate(
-    _: *mut c_void,
-    _: Oop,
+pub(super) unsafe extern "C" fn evaluate(
+    c: *mut c_void,
+    r: Oop,
     args: *const Operand,
     count: usize,
 ) -> Outcome {
     done((|| unsafe {
+        let s = state(c)?;
+        if r != s.receiver {
+            return Err(invalid());
+        }
         let Some([op, left, right]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
@@ -78,7 +82,7 @@ pub(super) unsafe fn invoke(
                     Operand::entry(executable),
                     Operand::object(receiver),
                     arguments[0],
-                    Operand::entry(NativeEntry::new(evaluate, ptr::null_mut())),
+                    Operand::object(s.receiver),
                 ],
             )?;
             if answer.kind() != native::UNIT {

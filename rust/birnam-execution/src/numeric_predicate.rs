@@ -1,5 +1,5 @@
 //! One arithmetic result used only by a comparison; commit while Integer still
-//! owns the callback-free verdict. No virtual Oop or allocation history exists.
+//! owns the verdict. Delivery is a fresh send, before Integer releases roots.
 use super::*;
 #[derive(Clone, Copy)]
 pub(super) struct Plan {
@@ -57,18 +57,21 @@ pub(super) unsafe fn attach(
         Ok(value)
     }
 }
-struct Commit<'a> {
-    s: &'a Execution,
-    machine: Oop,
-    slot: usize,
-}
-unsafe extern "C" fn commit(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+pub(super) unsafe extern "C" fn commit(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
     done((|| unsafe {
-        let c = &*c.cast::<Commit<'_>>();
+        let s = state(c)?;
+        if r != s.receiver {
+            return Err(invalid());
+        }
         let Some([value]) = borrowed_slice(a, n) else {
             return Err(invalid());
         };
-        recovery::commit_predicate(c.s, c.machine, c.slot, object(*value)?)?;
+        recovery::commit_predicate(s, object(*value)?)?;
         Ok(Operand::unit())
     })())
 }
@@ -77,7 +80,6 @@ pub(super) unsafe fn try_result(
     machine: Oop,
     plan: Plan,
     args: &[Oop],
-    slot: usize,
 ) -> Result<Operand, Outcome> {
     unsafe {
         let [Some(left), Some(right), Some(limit)] = plan.inputs.map(|i| args.get(i).copied())
@@ -103,9 +105,8 @@ pub(super) unsafe fn try_result(
         {
             return Ok(Operand::unit());
         }
-        let mut target = Commit { s, machine, slot };
-        // Integer checks the same epoch immediately before entering this borrowed
-        // commit visitor. Its root-release callbacks happen after publication.
+        // The pending recovery request holds the commit target. Integer sends
+        // the result to this receiver before running its root-release callbacks.
         s.send(
             s.integer,
             b"evaluatePredicate:then:left:right:limit:in:epoch:with:",
@@ -117,7 +118,7 @@ pub(super) unsafe fn try_result(
                 Operand::object(limit),
                 Operand::object(plan.namespace),
                 Operand::word(epoch),
-                Operand::entry(NativeEntry::new(commit, ptr::from_mut(&mut target).cast())),
+                Operand::object(s.receiver),
             ],
         )
     }

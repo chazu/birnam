@@ -20,6 +20,9 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
         (b"behaviorView".as_slice(), behaviors as native::Method),
         (b"selectorsIn:".as_slice(), selectors as native::Method),
         (b"bindingOf:in:".as_slice(), binding as native::Method),
+        (b"methodChangesTo:".as_slice(), method_changes_to as native::Method),
+        (b"addMethod".as_slice(), dictionary_add as native::Method),
+        (b"removeMethod:".as_slice(), dictionary_remove as native::Method),
         (b"lookup:in:".as_slice(), lookup as native::Method),
         (b"bindingsIn:do:".as_slice(), bindings as native::Method),
         (b"addMethod:to:as:".as_slice(), add_method as native::Method),
@@ -259,14 +262,16 @@ unsafe extern "C" fn add_method(
     let Some(method) = method.as_entry().filter(|entry| entry.method.is_some()) else {
         return invalid();
     };
-    let dictionaries = unsafe { &mut *(*context.cast::<State>()).dictionaries };
-    let Some(behavior) = behavior_address(dictionaries, behavior, false) else {
+    let state = unsafe { &*context.cast::<State>() };
+    let Some(behavior) = behavior_address(unsafe { &*state.dictionaries }, behavior, false) else {
         return invalid();
     };
-    entry(match dictionaries.add_method(behavior, key, method) {
+    let old = match unsafe { (&mut *state.dictionaries).add_method(behavior, key, method) } {
         crate::id::vtable::AddMethod::Added => None,
         crate::id::vtable::AddMethod::Overwrote(entry) => Some(entry),
-    })
+    };
+    if let Err(error) = unsafe { state.method_changed(key, behavior) } { return error; }
+    entry(old)
 }
 unsafe extern "C" fn remove_method(
     context: *mut c_void,
@@ -276,11 +281,15 @@ unsafe extern "C" fn remove_method(
 ) -> Outcome {
     arguments!(args, count, [key, behavior]);
     objects!(key);
-    let dictionaries = unsafe { &mut *(*context.cast::<State>()).dictionaries };
-    let Some(behavior) = behavior_address(dictionaries, behavior, false) else {
+    let state = unsafe { &*context.cast::<State>() };
+    let Some(behavior) = behavior_address(unsafe { &*state.dictionaries }, behavior, false) else {
         return invalid();
     };
-    entry(dictionaries.remove_method(behavior, key))
+    let old = unsafe { (&mut *state.dictionaries).remove_method(behavior, key) };
+    if old.is_some() {
+        if let Err(error) = unsafe { state.method_changed(key, behavior) } { return error; }
+    }
+    entry(old)
 }
 unsafe extern "C" fn add_weak(
     context: *mut c_void,
@@ -290,12 +299,36 @@ unsafe extern "C" fn add_weak(
 ) -> Outcome {
     arguments!(args, count, [key, behavior, value]);
     objects!(key, value);
-    let dictionaries = unsafe { &mut *(*context.cast::<State>()).dictionaries };
-    let Some(behavior) = behavior_address(dictionaries, behavior, false) else {
+    let state = unsafe { &*context.cast::<State>() };
+    let Some(behavior) = behavior_address(unsafe { &*state.dictionaries }, behavior, false) else {
         return invalid();
     };
-    dictionaries.add_weak_opaque_binding(behavior, key, value);
+    unsafe { (&mut *state.dictionaries).add_weak_opaque_binding(behavior, key, value) };
+    if let Err(error) = unsafe { state.method_changed(key, behavior) } { return error; }
     done(Operand::unit())
+}
+
+unsafe extern "C" fn method_changes_to(context: *mut c_void, _: Oop, args: *const Operand, count: usize) -> Outcome {
+    arguments!(args, count, [observer]);
+    let observer = match observer.kind() {
+        native::UNIT => core::ptr::null_mut(),
+        native::OBJECT => match observer.as_object().filter(|o| !o.is_null()) { Some(o) => o, None => return invalid() },
+        _ => return invalid(),
+    };
+    let state = unsafe { &*context.cast::<State>() };
+    if !observer.is_null() && unsafe { (&*state.memory).get(observer.addr()) }.is_none() { return invalid(); }
+    let old = state.method_change_observer.replace(observer);
+    object((!old.is_null()).then_some(old))
+}
+unsafe extern "C" fn dictionary_add(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
+    arguments!(args, count, [key, method]);
+    let result = unsafe { add_method(context, receiver, [*key, Operand::word(receiver.addr()), *method].as_ptr(), 3) };
+    if result.status != native::LOADED { return result; }
+    done(*method)
+}
+unsafe extern "C" fn dictionary_remove(context: *mut c_void, receiver: Oop, args: *const Operand, count: usize) -> Outcome {
+    arguments!(args, count, [key]);
+    unsafe { remove_method(context, receiver, [*key, Operand::word(receiver.addr())].as_ptr(), 2) }
 }
 unsafe extern "C" fn new_behavior(
     context: *mut c_void,
@@ -339,7 +372,7 @@ unsafe extern "C" fn bindings(
 ) -> Outcome {
     arguments!(args, count, [behavior, visitor]);
     objects!(behavior);
-    let Some(visitor) = visitor.as_entry().filter(|entry| entry.method.is_some()) else {
+    let Some(visitor) = visitor.as_object().filter(|o| !o.is_null()) else {
         return invalid();
     };
     let rows: Vec<_> = {
@@ -365,7 +398,7 @@ unsafe extern "C" fn bindings(
     };
     for row in rows {
         let answer =
-            unsafe { visitor.method.unwrap()(visitor.context, behavior, row.as_ptr(), row.len()) };
+            unsafe { (&*context.cast::<State>()).protocol.send(visitor, (&*context.cast::<State>()).visits[2], &row) }.map_or_else(|e| e, Outcome::loaded);
         if answer.status != native::LOADED {
             return answer;
         }

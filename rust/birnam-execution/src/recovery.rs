@@ -21,6 +21,7 @@ pub(super) struct Inline {
 pub(super) struct Request {
     authority: RecoveryAuthority,
     consumed: bool,
+    predicate_target: Option<(Oop, usize)>,
 }
 struct RequestGuard<'a> {
     execution: &'a Execution,
@@ -96,7 +97,7 @@ pub(super) unsafe fn with_inline(
             return Err(invalid());
         };
         let inline = Inline {
-            body: Body::Native(visitor(*entry)?),
+            body: Body::Native(native_entry(*entry)?),
             owner: object(*owner)?,
             return_slot: machine::index(s, *slot)?,
         };
@@ -184,6 +185,8 @@ pub(super) unsafe fn try_inline(
         s.requests.borrow_mut().push(Request {
             authority: a,
             consumed: false,
+            predicate_target: matches!(inline.body, Body::NumericPredicate(_))
+                .then_some((machine, inline.return_slot)),
         });
         let mut request = RequestGuard {
             execution: s,
@@ -202,7 +205,7 @@ pub(super) unsafe fn try_inline(
                 crate::discarded_clone::try_result(s, machine, plan, args)?
             }
             Body::NumericPredicate(plan) => {
-                crate::numeric_predicate::try_result(s, machine, plan, args, inline.return_slot)?
+                crate::numeric_predicate::try_result(s, machine, plan, args)?
             }
         };
         if s.requests.borrow().last().unwrap().consumed {
@@ -243,12 +246,12 @@ pub(super) unsafe fn try_inline(
     }
 }
 
-pub(super) fn commit_predicate(
-    s: &Execution,
-    machine: Oop,
-    slot: usize,
-    value: Oop,
-) -> Result<(), Outcome> {
+pub(super) fn commit_predicate(s: &Execution, value: Oop) -> Result<(), Outcome> {
+    let (machine, slot) = s.requests.borrow()
+        .last()
+        .filter(|r| !r.consumed)
+        .and_then(|r| r.predicate_target)
+        .ok_or_else(invalid)?;
     let cap = machine::cap(s, machine)?;
     let a = authority(s, cap, 0)?;
     {

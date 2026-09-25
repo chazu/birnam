@@ -17,9 +17,13 @@ now compile and execute source through that same path, with real compiled-code
 retention and reclamation. A narrow discarded-clone optimization now removes real
 allocations through current owner checks. A [numeric predicate](docs/design/90-numeric-predicate.md)
 also removes its intermediate Integer; broader allocation-elision remains pending.
-The full workspace,
-Artifact/PortableCode language adapters, Store, Image, workers and CLI still await
-upper integration.
+[Store and Cells](rust/birnam-store/README.md) now run through Id messages too,
+including history, retention, collecting snapshot callbacks and source consumers.
+Globals retains Store-backed facts, and MOP hooks use messages. GC enumeration
+and allocation release now use receiver messages too. Further optimization and
+deoptimization work is on hold while the remaining modules are reconnected.
+The full workspace, Artifact/PortableCode language adapters, Relational, Image,
+workers and CLI still await upper integration.
 The usage documentation below describes the language being preserved.
 
 ## Contents

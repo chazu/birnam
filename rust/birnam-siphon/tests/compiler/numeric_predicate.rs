@@ -108,20 +108,16 @@ struct CommitProbe {
     roots: Oop,
     integer: Oop,
     machine: Oop,
-    original: NativeEntry,
     calls: Cell<usize>,
     expected: Oop,
 }
-struct CommitVisitor<'a> {
-    probe: &'a CommitProbe,
-    original: NativeEntry,
-}
 unsafe extern "C" fn after_commit(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     unsafe {
-        let c = &*c.cast::<CommitVisitor<'_>>();
-        let p = c.probe;
-        let result = c.original.method.unwrap()(c.original.context, r, a, n);
-        assert_eq!(result.into_result().unwrap().kind(), 0);
+        let p = &*c.cast::<CommitProbe>();
+        let args = borrowed_slice(a, n).unwrap();
+        let result = p.id.send_named(r, b"savedPredicateCommit:", args).unwrap();
+        assert_eq!(result.kind(), 0);
+        assert!(p.id.send_named(r, b"savedPredicateCommit:", args).is_err(), "a result is committed only once");
         // Publication precedes owner cleanup: collect and inspect the caller
         // while the Integer query is still entered, before it returns Unit.
         collect(p.id, p.gc);
@@ -142,30 +138,9 @@ unsafe extern "C" fn after_commit(c: *mut c_void, r: Oop, a: *const Operand, n: 
             "Boolean is already published in the caller during owner callback"
         );
         p.calls.set(p.calls.get() + 1);
-        result
+        Outcome::loaded(result)
     }
 }
-unsafe extern "C" fn observe_commit(
-    c: *mut c_void,
-    r: Oop,
-    a: *const Operand,
-    n: usize,
-) -> Outcome {
-    unsafe {
-        let p = &*c.cast::<CommitProbe>();
-        let mut args = borrowed_slice(a, n).unwrap().to_vec();
-        let mut visitor = CommitVisitor {
-            probe: p,
-            original: args[7].as_entry().unwrap(),
-        };
-        args[7] = Operand::entry(NativeEntry::new(
-            after_commit,
-            ptr::from_mut(&mut visitor).cast(),
-        ));
-        p.original.method.unwrap()(p.original.context, r, args.as_ptr(), args.len())
-    }
-}
-
 pub(super) unsafe fn check(h: &mut H) {
     unsafe {
         h.clear();
@@ -355,23 +330,35 @@ pub(super) unsafe fn check(h: &mut H) {
             roots: h.roots,
             integer,
             machine,
-            original: evaluate,
             calls: Cell::new(0),
             expected: truth,
         });
-        install(
-            h.id,
-            integer_vt,
-            EVALUATE,
-            observe_commit,
-            ptr::from_mut(&mut *probe).cast(),
-        );
+        let execution = h.named(b"Execution");
+        let execution_vt = vt(h, execution);
+        let commit = lookup(h, execution, b"commitNumericPredicate:");
+        install(h.id, execution_vt, b"savedPredicateCommit:", commit.method.unwrap(), commit.context);
+        install(h.id, execution_vt, b"commitNumericPredicate:", after_commit, ptr::from_mut(&mut *probe).cast());
+        assert!(h.id.send_named(execution, b"savedPredicateCommit:", &[Operand::object(truth)]).is_err());
         assert_eq!(
             object(send(h.id, machine, b"runBlock:", &[Operand::object(block)])),
             truth
         );
         assert_eq!(probe.calls.get(), 1);
-        restore(h, integer_vt, EVALUATE, evaluate);
+        restore(h, execution_vt, b"commitNumericPredicate:", commit);
+        send(h.id, execution_vt, b"removeMethod:", &[Operand::object(h.id.intern_name(b"savedPredicateCommit:").unwrap())]);
+
+        // Effectful lookup cannot run between the owner's final reads and commit.
+        let execution_lookup = lookup(h, execution_vt, b"lookup");
+        let mut lookup_probe = Forward { id: h.id, gc, original: execution_lookup, calls: Cell::new(0), collect: false, change: None };
+        let old_meta = vt(h, execution_vt);
+        let custom_meta = object(send(h.id, old_meta, b"delegated", &[]));
+        h.keep(custom_meta);
+        install(h.id, custom_meta, b"lookup", forward, ptr::from_mut(&mut lookup_probe).cast());
+        send(h.id, h.id.receiver, b"reassociateBehaviorOf:with:", &[Operand::object(execution_vt), Operand::object(custom_meta)]);
+        let before = instances(h, integer_vt);
+        assert_eq!(run(h, block, false), truth);
+        assert!(instances(h, integer_vt) - before >= ordinary);
+        send(h.id, h.id.receiver, b"reassociateBehaviorOf:with:", &[Operand::object(execution_vt), Operand::object(old_meta)]);
 
         // Live error-family designation must retain ordinary error propagation.
         let error_vt = h.named(b"ErrorVt");

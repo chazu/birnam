@@ -12,6 +12,10 @@ pub(super) unsafe fn install(state: &State, context: *mut c_void, add: Oop) {
             retire_indexes as native::Method,
         ),
         (b"detachAllocationAt:".as_slice(), detach as native::Method),
+        (
+            b"releaseDetachedAllocation:".as_slice(),
+            release as native::Method,
+        ),
     ] {
         let selector =
             unsafe { (&mut *state.symbols).intern(&mut *state.memory, state.symbol_vtable, name) }
@@ -88,38 +92,41 @@ unsafe extern "C" fn detach(
     let Some(allocation) = (unsafe { &mut *state.memory }).detach(address) else {
         return Outcome::loaded(Operand::unit());
     };
-    // Transfer this allocation to a one-use native release entry. The upper
-    // caller retains it through finalization; Id stores no finalizer or GC hook.
-    let allocation = Box::into_raw(Box::new(allocation));
-    Outcome::loaded(Operand::entry(NativeEntry::new(release, allocation.cast())))
+    // Id retains detached storage privately until the explicit release send.
+    // Allocation identities never repeat, so stale handles cannot release reuse.
+    let identity = allocation.identity() as usize;
+    state.detached.borrow_mut().insert(identity, allocation);
+    Outcome::loaded(Operand::word(identity))
 }
 
 unsafe extern "C" fn release(
     context: *mut c_void,
     _: Oop,
-    _: *const Operand,
+    args: *const Operand,
     count: usize,
 ) -> Outcome {
-    if count != 0 {
+    let Some([handle]) = (unsafe { crate::abi::borrowed_slice(args, count) }) else {
         return invalid();
-    }
-    // Native ownership contract: invoke exactly once, after all payload access.
-    unsafe {
-        drop(Box::from_raw(
-            context.cast::<crate::id::object_memory::Allocation>(),
-        ))
     };
+    let Some(handle) = handle.as_word().filter(|h| *h != 0) else {
+        return invalid();
+    };
+    let state = unsafe { &*context.cast::<State>() };
+    let Some(allocation) = state.detached.borrow_mut().remove(&handle) else {
+        return invalid();
+    };
+    drop(allocation);
     Outcome::loaded(Operand::unit())
 }
 
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
-fn visitor(argument: Operand) -> Option<NativeEntry> {
-    argument.as_entry().filter(|entry| entry.method.is_some())
+fn visitor(argument: Operand) -> Option<Oop> {
+    argument.as_object().filter(|o| !o.is_null())
 }
-unsafe fn visit(entry: NativeEntry, receiver: Oop, arguments: &[Operand]) -> Outcome {
-    unsafe { entry.method.unwrap()(entry.context, receiver, arguments.as_ptr(), arguments.len()) }
+unsafe fn visit(state: &State, visitor: Oop, selector: Oop, arguments: &[Operand]) -> Outcome {
+    unsafe { state.protocol.send(visitor, selector, arguments) }.map_or_else(|e| e, Outcome::loaded)
 }
 
 unsafe extern "C" fn roots(
@@ -137,7 +144,7 @@ unsafe extern "C" fn roots(
     let state = unsafe { &*context.cast::<State>() };
     let roots = state.roots();
     for object in roots {
-        let answer = unsafe { visit(visitor, state.protocol.receiver, &[Operand::object(object)]) };
+        let answer = unsafe { visit(state, visitor, state.visits[0], &[Operand::object(object)]) };
         if answer.status != native::LOADED {
             return answer;
         }
@@ -171,7 +178,7 @@ unsafe extern "C" fn allocations(
     // Reentry can allocate or query. The caller keeps these snapshot objects
     // live; later allocations are not retroactively included in this visit.
     for allocation in allocations {
-        let answer = unsafe { visit(visitor, state.protocol.receiver, &allocation) };
+        let answer = unsafe { visit(state, visitor, state.visits[1], &allocation) };
         if answer.status != native::LOADED {
             return answer;
         }
@@ -212,7 +219,7 @@ unsafe extern "C" fn references(
         0
     };
     for edge in edges {
-        let answer = unsafe { visit(visitor, object, &[Operand::object(edge)]) };
+        let answer = unsafe { visit(state, visitor, state.visits[0], &[Operand::object(edge)]) };
         if answer.status != native::LOADED {
             return answer;
         }

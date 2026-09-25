@@ -98,21 +98,15 @@ struct Observer {
     entry: NativeEntry,
     calls: Cell<usize>,
     evaluated: Cell<usize>,
+    execution: Oop,
 }
 unsafe extern "C" fn observe(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     unsafe {
         let c = &*c.cast::<Observer>();
         c.calls.set(c.calls.get() + 1);
         collect(c.id, c.gc);
-        let mut args = borrowed_slice(a, n).unwrap().to_vec();
-        let mut proxy = Proxy {
-            observer: c,
-            entry: args[3].as_entry().unwrap(),
-        };
-        args[3] = Operand::entry(NativeEntry::new(
-            evaluated,
-            ptr::from_mut(&mut proxy).cast(),
-        ));
+        let args = borrowed_slice(a, n).unwrap();
+        assert_eq!(args[3].as_object(), Some(c.execution));
         c.entry.method.unwrap()(c.entry.context, r, args.as_ptr(), args.len())
     }
 }
@@ -142,6 +136,7 @@ unsafe fn numeric(h: &mut H) {
             entry: original,
             calls: Cell::new(0),
             evaluated: Cell::new(0),
+            execution: h.named(b"Execution"),
         }));
         install(
             h.id,
@@ -150,6 +145,11 @@ unsafe fn numeric(h: &mut H) {
             observe,
             ptr::from_mut(observer).cast(),
         );
+        let execution_vt = object(send(h.id, h.id.receiver, b"behaviorOf:", &[Operand::object(observer.execution)]));
+        let evaluation_selector = h.id.intern_name(b"numericOperation:left:right:").unwrap();
+        let evaluator = send(h.id, execution_vt, b"lookup", &[Operand::object(evaluation_selector)]).as_entry().unwrap();
+        install(h.id, execution_vt, b"savedNumericOperation:left:right:", evaluator.method.unwrap(), evaluator.context);
+        install(h.id, execution_vt, b"numericOperation:left:right:", evaluated, ptr::from_mut(observer).cast());
         for (name, left, right, expected) in [
             (b"+".as_slice(), 42i64, 7i64, 49i64),
             (b"-", 42, 7, 35),
@@ -253,21 +253,37 @@ unsafe fn numeric(h: &mut H) {
             b"addMethod",
             &[Operand::object(selector), Operand::entry(original)],
         );
+        let query = [Operand::entry(original_plus), Operand::object(left), Operand::object(right), Operand::object(observer.execution)];
+        install(h.id, execution_vt, b"numericOperation:left:right:", decline_numeric, ptr::null_mut());
+        let answer = send(h.id, integer, b"evaluate:receiver:argument:with:", &query);
+        assert_eq!(h.value(answer), h.value(Operand::object(left)) + h.value(Operand::object(right)));
+        install(h.id, execution_vt, b"numericOperation:left:right:", fail_numeric, ptr::null_mut());
+        assert_eq!(h.id.send_named(integer, b"evaluate:receiver:argument:with:", &query).unwrap_err().detail, 917);
+        let mut old_visitor = query;
+        old_visitor[3] = Operand::entry(evaluator);
+        assert!(h.id.send_named(integer, b"evaluate:receiver:argument:with:", &old_visitor).is_err());
+        install(h.id, execution_vt, b"numericOperation:left:right:", evaluator.method.unwrap(), evaluator.context);
+        send(h.id, execution_vt, b"removeMethod:", &[Operand::object(h.id.intern_name(b"savedNumericOperation:left:right:").unwrap())]);
+
     }
 }
 unsafe extern "C" fn replacement(_: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
     Outcome::loaded(unsafe { borrowed_slice(a, n) }.unwrap()[0])
 }
 
-struct Proxy<'a> {
-    observer: &'a Observer,
-    entry: NativeEntry,
+unsafe extern "C" fn decline_numeric(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+    Outcome::loaded(Operand::unit())
+}
+unsafe extern "C" fn fail_numeric(_: *mut c_void, _: Oop, _: *const Operand, _: usize) -> Outcome {
+    Outcome::failed(birnam_abi::id_protocol::INVALID_REQUEST, 917)
 }
 unsafe extern "C" fn evaluated(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     unsafe {
-        let c = &*c.cast::<Proxy<'_>>();
-        c.observer.evaluated.set(c.observer.evaluated.get() + 1);
-        c.entry.method.unwrap()(c.entry.context, r, a, n)
+        let c = &*c.cast::<Observer>();
+        assert_eq!(r, c.execution);
+        c.evaluated.set(c.evaluated.get() + 1);
+        collect(c.id, c.gc);
+        c.id.send_named(r, b"savedNumericOperation:left:right:", borrowed_slice(a, n).unwrap()).map_or_else(|e| e, Outcome::loaded)
     }
 }
 

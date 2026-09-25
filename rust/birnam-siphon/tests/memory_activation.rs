@@ -1,7 +1,7 @@
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
-    id_protocol::{NativeEntry, Operand, Outcome},
+    id_protocol::{Operand, Outcome},
 };
 use core::{ffi::c_void, ptr};
 use support::*;
@@ -54,15 +54,7 @@ fn activation_requires_complete_representation_owners_without_replacing_the_heap
         );
         send(id, gc, b"activate", &[]);
         let mut expected = 0usize;
-        send(
-            id,
-            id.receiver,
-            b"allocationsDo:",
-            &[Operand::entry(NativeEntry::new(
-                sum_storage,
-                ptr::from_mut(&mut expected).cast(),
-            ))],
-        );
+        support::inventory(id, sum_storage, ptr::from_mut(&mut expected).cast());
         assert_eq!(
             send(id, gc, b"allocationBytes", &[]).as_word(),
             Some(expected),

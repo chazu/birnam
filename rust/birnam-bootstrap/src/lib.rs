@@ -277,7 +277,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             )?;
         }
         release(id, roots, collection_root)?;
-        for name in ["word", "vector", "map", "range"] {
+        for name in ["word", "vector", "map", "range", "store"] {
             id.send_named(
                 receiver,
                 b"loadNative:",

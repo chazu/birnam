@@ -196,10 +196,7 @@ unsafe extern "C" fn roots(
         let Some([visitor]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
-        let visitor = visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        let visitor = object(*visitor)?;
         let mut values = vec![
             t.roots,
             t.gc,
@@ -213,13 +210,7 @@ unsafe extern "C" fn roots(
         ];
         values.extend(t.names.values().copied());
         for value in values.into_iter().filter(|v| !v.is_null()) {
-            visitor.method.unwrap()(
-                visitor.context,
-                t.prototype.get(),
-                &Operand::object(value),
-                1,
-            )
-            .into_result()?;
+            t.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
         }
         // Buffer keys are weak, and bytes contain no language references.
         Ok(Operand::unit())
@@ -237,10 +228,7 @@ unsafe extern "C" fn references(
             return Err(invalid());
         };
         let value = object(*value)?;
-        visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        object(*visitor)?;
         if !t.buffers.borrow().contains_key(&value.addr()) {
             return Err(invalid());
         }

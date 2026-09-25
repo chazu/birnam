@@ -11,7 +11,7 @@ use super::{
     id_dispatch, initial_objects::InitialObjects, object_memory::ObjectMemory, symbol::Symbols,
     vtable::Vtables,
 };
-use core::ffi::c_void;
+use core::{cell::{Cell, RefCell}, ffi::c_void};
 use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 
 pub(crate) struct State {
@@ -26,6 +26,10 @@ pub(crate) struct State {
     object_prototype: Oop,
     lookup: Oop,
     does_not_understand: Oop,
+    method_change_observer: Cell<Oop>,
+    method_changed: Oop,
+    detached: RefCell<std::collections::HashMap<usize, super::object_memory::Allocation>>,
+    visits: [Oop; 3],
     owner: std::thread::ThreadId,
 }
 impl State {
@@ -47,6 +51,9 @@ impl State {
         let load =
             unsafe { (&mut *symbols).intern(&mut *memory, symbol_vtable, b"loadNative:") }.unwrap();
         let add = unsafe { (&*symbols).existing(b"addMethod") }.unwrap();
+        let method_changed = unsafe { (&mut *symbols).intern(&mut *memory, symbol_vtable, b"methodChanged:on:") }.unwrap();
+        let visits = [b"visit:".as_slice(), b"allocation:bytes:identity:", b"binding:value:weak:"]
+            .map(|name| unsafe { (&mut *symbols).intern(&mut *memory, symbol_vtable, name) }.unwrap());
         let mut state = Box::new(Self {
             protocol: Protocol {
                 version: native::VERSION,
@@ -67,6 +74,10 @@ impl State {
             object_prototype,
             lookup,
             does_not_understand,
+            method_change_observer: Cell::new(core::ptr::null_mut()),
+            method_changed,
+            detached: RefCell::new(std::collections::HashMap::new()),
+            visits,
             owner: std::thread::current().id(),
         });
         let context = core::ptr::from_mut(state.as_mut()).cast();
@@ -98,7 +109,7 @@ impl State {
             does_not_understand: self.does_not_understand,
         }
     }
-    pub(crate) fn roots(&self) -> [Oop; 7] {
+    pub(crate) fn roots(&self) -> [Oop; 12] {
         [
             self.protocol.receiver,
             self.protocol.intern,
@@ -107,7 +118,21 @@ impl State {
             self.symbol_vtable,
             self.lookup,
             self.does_not_understand,
+            self.method_change_observer.get(),
+            self.method_changed,
+            self.visits[0],
+            self.visits[1],
+            self.visits[2],
         ]
+    }
+    // Id reports dictionary mutation without knowing Store, execution policy or
+    // native callback addresses. Drop dictionary borrows before this live send.
+    unsafe fn method_changed(&self, selector: Oop, behavior: Oop) -> Result<(), Outcome> {
+        let observer = self.method_change_observer.get();
+        if !observer.is_null() {
+            unsafe { self.protocol.send(observer, self.method_changed, &[Operand::object(selector), Operand::object(behavior)]) }?;
+        }
+        Ok(())
     }
 }
 

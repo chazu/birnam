@@ -165,10 +165,7 @@ unsafe extern "C" fn roots(
         let Some([visitor]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
-        let visitor = visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        let visitor = object(*visitor)?;
         let mut values = vec![
             n.roots,
             n.gc,
@@ -183,8 +180,7 @@ unsafe extern "C" fn roots(
         ];
         values.extend(n.names.values().copied());
         for value in values {
-            visitor.method.unwrap()(visitor.context, n.prototype, &Operand::object(value), 1)
-                .into_result()?;
+            n.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
         }
         Ok(Operand::unit())
     })())
@@ -201,10 +197,7 @@ unsafe extern "C" fn references(
             return Err(invalid());
         };
         object(*value)?;
-        visitor
-            .as_entry()
-            .filter(|e| e.method.is_some())
-            .ok_or_else(invalid)?;
+        object(*visitor)?;
         // This family's raw numeric bits never represent object edges, including
         // instances with private behaviors. No foreign representation is read.
         Ok(Operand::unit())
@@ -237,6 +230,8 @@ macro_rules! entry {
 mod predicate;
 
 const NAMES: &[&[u8]] = &[
+    b"numericOperation:left:right:",
+    b"commitNumericPredicate:",
     b"evaluatePredicate:then:left:right:limit:in:epoch:with:",
     b"usesDefaultAllocation",
     b"canOmitIndexing",
@@ -624,7 +619,7 @@ entry!(collection_hash, 30);
 
 entry!(collection_equal, 31);
 
-// Execution supplies a synchronous pure numeric visitor, not an operation table.
+// Execution supplies an Object receiving a synchronous numeric evaluation send.
 // Integer alone recognizes its exact executable/context and reads its payload.
 unsafe extern "C" fn evaluate_numeric(
     c: *mut c_void,
@@ -649,11 +644,8 @@ unsafe extern "C" fn evaluate_numeric(
         };
         let left = object(*left)?;
         let right = object(*right)?;
-        let visitor = visitor
-            .as_entry()
-            .filter(|v| v.method.is_some())
-            .ok_or_else(invalid)?;
-        n.rooted(&[left, right], || {
+        let visitor = object(*visitor)?;
+        n.rooted(&[left, right, visitor], || {
             let Some(left) = n.read(left)? else {
                 return Ok(Operand::object(n.nil));
             };
@@ -681,7 +673,7 @@ impl Number {
         left: i64,
         right: i64,
         op: usize,
-        visitor: Option<NativeEntry>,
+        visitor: Option<Oop>,
     ) -> Result<Operand, Outcome> {
         unsafe {
             let Some(visitor) = visitor else {
@@ -692,13 +684,7 @@ impl Number {
                 Operand::word(left as usize),
                 Operand::word(right as usize),
             ];
-            let result = visitor.method.ok_or_else(invalid)?(
-                visitor.context,
-                self.prototype,
-                args.as_ptr(),
-                args.len(),
-            )
-            .into_result()?;
+            let result = self.send(visitor, b"numericOperation:left:right:", &args)?;
             if result.kind() == native::UNIT {
                 return self.calculate(left, right, op);
             }

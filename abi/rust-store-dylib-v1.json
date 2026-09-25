@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "scope": "Store fact history, retention, snapshots, Cells and language Globals over Id messages",
+  "install_name": "@rpath/libbirnam_store.dylib",
+  "exported_symbols": [
+    "birnam_native_module_v1",
+    "birnam_symbol_borrow_v1"
+  ]
+}

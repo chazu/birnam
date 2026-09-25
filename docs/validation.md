@@ -43,7 +43,7 @@ publication, and release after recovered-frame completion or abandonment. Run
 `cargo test --offline -p birnam-execution --lib` through mise for the 21
 engine/planner/graph tests. Hot native PC selection tests cover withdrawal,
 replacement and collection while entered. Numeric tests prove execution of the
-pure visitor, live ErrorVt, checked failures and fallback for replaced entries.
+receiver sends, live ErrorVt, checked failures and fallback for replaced entries.
 Registration/GC churn without checkpoints covers retired context-address reuse.
 Run `mise exec -- cargo test --offline -p birnam-codegen numeric_chain` for the 9
 shared arithmetic/lowering tests.
@@ -53,7 +53,7 @@ Allocation-elision is explicitly deferred to batch 2 with its owner protocols an
 compiler producers. Optimizer equivalence/performance and the full retained upper Runtime harness
 remain unproven; its unconverted cases are migration inputs.
 
-The suite now includes 13 integration binaries. The `compiler` binary tests
+The suite now includes 14 integration binaries. The `compiler` binary tests
 source literals, threaded sends, conditional and capturing Blocks, named methods,
 replacement with exact captured invocation, syntax/compilation/initialization
 failures and precise GC inside factories. Generated protected-boundary exits
@@ -95,7 +95,24 @@ Pure/debug checks: `mise exec -- cargo test --offline -p birnam-codegen
 `--features birnam-native-compiler/resource-metrics` runs a second native-owner
 test that checks relocated allocation bytes. Build-tool tests also pass
 with the canonical module filenames. Artifact/PortableCode language admission,
-Image, Store, workers and full CLI acceptance remain separate.
+Image, Relational, workers and full CLI acceptance remain separate.
+
+Store now loads before Execution/compiler in Bootstrap. Its production integration
+binary tests schema/cardinality, prospective history and compaction, Cell retention
+and reclamation under precise GC, current Store/Integer dispatch, destructive
+collecting snapshot callbacks and cleanup on failure, owner-level image transfer,
+mutation rejection during tracing, resource-ceiling refusal/recovery, and compiled
+source using Store, db, Cells and Globals. It also checks Store-backed Globals
+history, MOP authorization/notification, mirror invalidation, hook roots and live
+notification-method replacement. GC visitors and release now use sends, with tests for replacement between
+emissions, failed marking, inactive visitors and failed release payload retention. `mise exec -- cargo test --offline --locked -p birnam-store
+--lib` also runs ten retained algorithm tests, including the independent snapshot
+oracle; two manual timing investigations stay ignored. Full image save/restore and
+self-hosted task-policy acceptance are not implied by Store transfer/Cell tests.
+See [Store's boundary and remaining consumers](../rust/birnam-store/README.md).
+Numeric receiver tests also cover current method replacement, collection during
+evaluation and after predicate commit, Unit fallback, exact failures, inactive/
+repeated commits and custom-lookup fallback. Optimization remains paused.
 
 The obsolete `native-modules` task and installed adoption driver are removed.
 Cached floor-function discovery tests are also retired; they asserted the old

@@ -25,3 +25,17 @@ BirnamOutcome birnam_id_protocol_echo(void *context, BirnamObject receiver, cons
     }
     return (BirnamOutcome){.status=BIRNAM_LOADED,.value=args[0]};
 }
+
+/* Independent owner: the enumeration argument is an Object receiving a send. */
+BirnamOutcome birnam_gc_enumerate(void *context, BirnamObject receiver,
+                                const BirnamOperand *args, size_t count) {
+    (void)receiver;
+    const BirnamProtocol *id = context;
+    if (count != 1 || !args || args[0].kind != BIRNAM_OBJECT || !args[0].data.object)
+        return (BirnamOutcome){.status=BIRNAM_INVALID_REQUEST};
+    const BirnamOperand name = {.kind=BIRNAM_BYTES, .data.bytes={(const uint8_t *)"visit:", 6}};
+    BirnamOutcome selector = id->message(id->context, id->receiver, id->intern, &name, 1);
+    if (selector.status != BIRNAM_LOADED) return selector;
+    const BirnamOperand edge = {.kind=BIRNAM_OBJECT, .data.object=id->receiver};
+    return id->message(id->context, args[0].data.object, selector.value.data.object, &edge, 1);
+}

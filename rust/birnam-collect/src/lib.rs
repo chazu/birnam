@@ -38,6 +38,7 @@ struct Memory {
     id: Protocol,
     receiver: Oop,
     roots: Oop,
+    core_visitor: Oop,
     thread: std::thread::ThreadId,
     selectors: HashMap<&'static [u8], Oop>,
     phase: Cell<Phase>,
@@ -48,6 +49,8 @@ struct Memory {
     charged: Cell<usize>,
     constructing: Cell<bool>,
     walk: RefCell<Option<collection::Walk>>,
+    inventory: RefCell<Option<collection::Inventory>>,
+    core_edges: RefCell<Option<collection::CoreEdges>>,
     retirement: RefCell<Vec<Oop>>,
 }
 fn invalid() -> Outcome {
@@ -120,19 +123,15 @@ unsafe extern "C" fn roots(
         let Some([visitor]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
-        let visitor = visitor
-            .as_entry()
-            .filter(|v| v.method.is_some())
-            .ok_or_else(invalid)?;
-        let mut roots = vec![receiver, memory.roots];
+        let visitor = object(*visitor)?;
+        let mut roots = vec![receiver, memory.roots, memory.core_visitor];
         roots.extend(memory.selectors.values().copied());
         roots.extend(memory.tracers.borrow().values().map(|v| v.object));
         roots.extend(memory.finalizers.borrow().values().map(|v| v.object));
         roots.extend(memory.temporary.borrow().iter().copied());
         roots.extend(memory.retirement.borrow().iter().copied());
         for root in roots {
-            (visitor.method.unwrap())(visitor.context, receiver, &Operand::object(root), 1)
-                .into_result()?;
+            memory.send(visitor, b"visit:", &[Operand::object(root)])?;
         }
         Ok(Operand::unit())
     })())
@@ -285,6 +284,9 @@ unsafe extern "C" fn register_retirement(
     })())
 }
 const NAMES: &[&[u8]] = &[
+    b"visit:",
+    b"allocation:bytes:identity:",
+    b"releaseDetachedAllocation:",
     b"canOmitAllocationFor:",
     b"usesDefaultAllocation",
     b"usesDefaultLookup:",
@@ -323,10 +325,14 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
         let parent = object(id.send_named(id.receiver, b"behaviorOf:", &[prototype])?)?;
         let behavior = object(id.send_named(parent, b"delegated", &[])?)?;
         let receiver = object(id.send_named(behavior, b"allocate", &[Operand::word(0)])?)?;
+        let core_behavior = object(id.send_named(parent, b"delegated", &[])?)?;
+        let core_visitor =
+            object(id.send_named(core_behavior, b"allocate", &[Operand::word(0)])?)?;
         let pointer = Box::into_raw(Box::new(Memory {
             id,
             receiver,
             roots: roots_object,
+            core_visitor,
             thread: std::thread::current().id(),
             selectors,
             phase: Cell::new(Phase::Inactive),
@@ -337,10 +343,14 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             charged: Cell::new(0),
             constructing: Cell::new(false),
             walk: RefCell::new(None),
+            inventory: RefCell::new(None),
+            core_edges: RefCell::new(None),
             retirement: RefCell::new(Vec::new()),
         }));
         for (name, method) in [
             (b"rootsDo:".as_slice(), roots as Method),
+            (b"visit:", collection::visit),
+            (b"allocation:bytes:identity:", collection::allocation),
             (b"roots", root_registry),
             (b"activate", construction::activate),
             (b"prepareAllocation", construction::prepare),
@@ -363,6 +373,14 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
                 ],
             )?;
         }
+        id.send_named(
+            core_behavior,
+            b"addMethod",
+            &[
+                Operand::object((&(*pointer).selectors)[b"visit:".as_slice()]),
+                Operand::entry(NativeEntry::new(collection::core_edge, pointer.cast())),
+            ],
+        )?;
         id.send_named(roots_object, b"register:", &[Operand::object(receiver)])?;
         id.send_named(
             id.receiver,

@@ -59,33 +59,38 @@ public `=`. Private behaviors use identity; see [Map's key contract](../birnam-m
 this Integer instance's arithmetic entries, including its installed mixed-number
 extension. Unknown entries return Unit before inspecting operands. Recognized
 entries use the same validation, live ErrorVt propagation and mixed-number path as
-ordinary arithmetic. Only a pair of exact Integers invokes the borrowed evaluator.
+ordinary arithmetic. Only a pair of exact Integers sends
+`numericOperation:left:right:` to the supplied evaluator Object.
 
 The evaluator receives three native Words: operation (1 add, 2 subtract, 3 multiply,
 4 divide, 5 remainder), left signed-i64 bits and right signed-i64 bits. A Word
 answer is boxed through the current `fromWord:`; Unit requests the ordinary
-checked arithmetic/error path. The callback is synchronous and may not be retained.
-Integer owns all operand decoding and language semantics; Execution supplies only
-the pure arithmetic visitor. No declaration table or foreign service cache is
-introduced. Production Machine tests prove evaluator invocation, precise callback
-GC, overflow/zero division, live ErrorVt and replacement fallback.
+checked arithmetic/error path. Integer roots the evaluator across this synchronous
+send, which uses fresh lookup and propagates failures. Integer owns operand
+decoding and language semantics; Execution supplies arithmetic through its normal
+receiver. No declaration table or foreign service cache is introduced.
+Production Machine tests cover receiver replacement, precise GC during evaluation,
+Unit fallback, exact failure propagation, old NativeEntry operand rejection,
+overflow/zero division, live ErrorVt and replacement fallback.
 
 
 ## Arithmetic predicates
 
 `evaluatePredicate:then:left:right:limit:in:epoch:with:` takes two Symbol selectors,
 three operand Objects, compilation Namespace Object, expected native Word behavior
-epoch and borrowed NativeEntry visitor. For current owned arithmetic followed by
-comparison on exact Integer inputs, it calls the visitor once with an existing
-Boolean Object and returns its outcome. Refusal returns Unit without visiting.
-The visitor is synchronous and never retained; Execution's visitor commits a
-pending inline return and answers Unit.
+epoch and result receiver Object. For current owned arithmetic followed by
+comparison on exact Integer inputs, it sends `commitNumericPredicate:` once with
+an existing Boolean Object and returns the send's outcome. Refusal returns Unit
+without sending. The receiver is rooted through delivery and temporary-root
+cleanup. NativeEntry visitor operands are rejected.
 
 The owner checks current lookup/entries, default index and allocation semantics,
-live ErrorVt and the caller's epoch before its final input reads. Successful
-arithmetic/comparison and visiting introduce no intervening allocation or callback;
-root release follows the visit. Ordinary and optimized paths share the same
-owner-local arithmetic/comparison helpers. Overflow, zero division, mixed inputs
-and replacements decline for baseline behavior. This consumer removes one
-intermediate Integer; it does not construct an optimized numeric result or define
-new guarantees for arbitrary native visitors. [Details and evidence](../../docs/design/90-numeric-predicate.md).
+live ErrorVt and the caller's epoch before its final input reads. The result
+receiver must have default lookup; customized lookup selects baseline execution
+so lookup effects cannot intervene between the final reads and delivery. Delivery
+still selects the receiver's current method. Execution commits the pending inline
+return before Integer releases roots. Both paths share the same owner-local
+arithmetic/comparison helpers. Overflow, zero division, mixed inputs and failed
+guards decline for baseline behavior. This consumer removes one intermediate
+Integer; it does not construct an optimized numeric result.
+[Details and evidence](../../docs/design/90-numeric-predicate.md).
