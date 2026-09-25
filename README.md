@@ -22,7 +22,9 @@ including history, retention, collecting snapshot callbacks and source consumers
 Globals retains Store-backed facts, and MOP hooks use messages. GC enumeration
 and allocation release now use receiver messages too. Further optimization and
 deoptimization work is on hold while the remaining modules are reconnected.
-The full workspace, Artifact/PortableCode language adapters, Relational, Image,
+[Relational](rust/birnam-relational/README.md) now extends Store through Id sends,
+preserving its query, rule, aggregate and pull API.
+The full workspace, Artifact/PortableCode language adapters, Image,
 workers and CLI still await upper integration.
 The usage documentation below describes the language being preserved.
 

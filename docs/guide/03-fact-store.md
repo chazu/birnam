@@ -6,9 +6,10 @@ store; globals, application state and metadata use the same fact model.
 
 During Design 90, the [native Store and Cell protocol](../../rust/birnam-store/README.md)
 is available through Bootstrap, including compiled source, history and retention.
-Globals retains its `__globals__` facts. Compiler globals integration, relational
-queries and the remaining self-hosted conveniences shown below still await
-integration. Full CLI and image startup are not yet restored.
+Globals retains its `__globals__` facts. [Relational queries](../../rust/birnam-relational/README.md)
+also run through Id messages. Compiler globals integration and the remaining
+self-hosted conveniences shown below still await integration. Full CLI and image
+startup are not yet restored.
 
 ## Asserting facts
 

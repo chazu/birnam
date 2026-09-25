@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate Relational's existing language API to Id sends and load it after Store
+  in Bootstrap. Preserve the query evaluator, rules, history windows, aggregates,
+  pull and LogicVar identity. Replace service-table conversions and GC callbacks
+  with owner messages; retain snapshots and output across collecting/reentrant
+  sends. Add production source/API and live-dispatch coverage plus dylib audits.
+
 - Replace numeric native visitors with receiver sends for scalar evaluation and
   predicate commit. Keep publication before root cleanup using Execution's existing
   pending-call record. Test live replacement, collecting methods, fallback, exact

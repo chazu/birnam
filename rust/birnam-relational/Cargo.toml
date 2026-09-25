@@ -8,9 +8,6 @@ publish = false
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
 
-[dev-dependencies]
-birnam-host = { path = "../birnam-host" }
-
 [lib]
 name = "birnam_relational"
 crate-type = ["cdylib", "rlib"]

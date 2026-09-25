@@ -1188,3 +1188,16 @@ Tests cover collecting callbacks, hook lifetime/current lookup, Globals history,
 MOP mirrors, resource/phase refusal and owner-level image transfer. Two manual
 timing tests remain ignored. Full Relational, Image, task policy, compiler globals
 integration and Host/CLI startup remain separate work; optimization stays paused.
+
+### Relational reconnected (2026-09-25)
+
+[Relational](../../rust/birnam-relational/README.md) now loads after Store in
+Bootstrap. Its existing Store selectors, LogicVar/Entity surface, query shapes,
+rule facts, result ordering, history windows and evaluator algorithms are
+preserved. The adapter uses current Store, value, collection and GC messages;
+snapshot collectors receive `value:value:value:`. Invocation roots cover nested
+queries, destructive enumeration and result construction. There is no new query
+API, service table or optimizer work. Production validation uses the real dylib
+and compiled source; the retired installed-floor C probes remain uncompiled
+migration input. Compiler publication, task policy, Image and Host/CLI remain
+separate integration work.

@@ -1,3 +1,5 @@
+//! Deferred installed-floor adapter/fixture; not compiled by this crate.
+//! Production integration is in native.rs and Siphon tests/relational.rs.
 //! One-way IdApi classification for the authority-free query kernel.
 //!
 //! The adapter copies scalar bytes before returning. It never returns a Rust

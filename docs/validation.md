@@ -95,7 +95,7 @@ Pure/debug checks: `mise exec -- cargo test --offline -p birnam-codegen
 `--features birnam-native-compiler/resource-metrics` runs a second native-owner
 test that checks relocated allocation bytes. Build-tool tests also pass
 with the canonical module filenames. Artifact/PortableCode language admission,
-Image, Relational, workers and full CLI acceptance remain separate.
+Image, workers and full CLI acceptance remain separate.
 
 Store now loads before Execution/compiler in Bootstrap. Its production integration
 binary tests schema/cardinality, prospective history and compaction, Cell retention
@@ -208,3 +208,14 @@ rounding; current operation/factory/allocator effects; mixed/error-family fallba
 paused intermediate inspection; collection before and after the atomic result
 commit; and complete native-code reclamation. Its timing output is diagnostic,
 not an acceptance threshold. [Exact scope and commands](design/90-numeric-predicate.md).
+
+
+Relational now loads after Store. `mise run native-messages` includes its real
+module, export/install-name audit and production integration test, bringing the
+suite to fifteen integration binaries. The test covers the unchanged query/rule/
+aggregate/pull/history API, compiled source, live collecting replacements,
+reentrancy and snapshot lifetime. Its 21 evaluator tests pass via
+`mise exec -- cargo test --offline --locked -p birnam-relational --lib`; the
+manual timing test stays ignored. The old `relational-output-test.py` installed-
+floor C probe fixture remains deferred, not current acceptance evidence.
+See [Relational's contract](../rust/birnam-relational/README.md).

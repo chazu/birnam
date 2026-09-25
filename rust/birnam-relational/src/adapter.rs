@@ -1,3 +1,5 @@
+//! Deferred installed-floor adapter/fixture; not compiled by this crate.
+//! Production integration is in native.rs and Siphon tests/relational.rs.
 //! Native Store collection, relational selectors and caller-owned output.
 //! Owns the module API, cached vtables, logic variables and existing root providers.
 use crate::oop;

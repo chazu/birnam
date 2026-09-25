@@ -109,8 +109,9 @@ The existing language transfer protocol is migrated:
   nonnegative/range/Boolean constraints before applying it.
 
 These messages prove Store-owned transfer, not complete image save/restore.
-Relational, Image, full self-hosted task policy, module publication and Host/CLI
-remain separate integration work. No optimizer or deoptimizer is extended here.
+[Relational](../birnam-relational/README.md) now consumes these Store messages.
+Image, full self-hosted task policy, module publication and Host/CLI remain
+separate integration work. No optimizer or deoptimizer is extended here.
 
 ## Validation
 

@@ -276,7 +276,6 @@ name = "birnam-relational"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "birnam-host",
 ]
 
 [[package]]
