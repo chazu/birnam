@@ -8,6 +8,36 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate System file I/O to Id sends. Copy the filename before reading contents,
+  following the approved String lifetime rule; retain binary contents, UTF-8 path
+  checks, the one-GiB read limit, lazy errors and receiver results. Test collecting
+  callbacks that mutate earlier path bytes without redirecting the write.
+
+- Migrate System input and environment lookup to Id sends, preserving binary
+  line handling, EOF, exact String names, Unicode/error policy and lazy Error
+  lookup. Add isolated production tests with collecting/replaced dependencies.
+  Replace direct-native forwarding in the modules/text-error tests with sends,
+  retaining their dispatch and collection coverage.
+
+- Migrate System construction and Object/Symbol printing and stdout output to
+  Id sends. Bootstrap loads the three modules after base-value printing; preserve
+  exact-String conversion, byte output, flushing, receiver results and reload
+  behavior. Add collecting/reentrant production tests and dylib audits; align
+  Prelude's install filename with Bootstrap.
+
+- Route Reflect method installation through Store's existing Id message protocol,
+  including authorization, Method mirrors and notification. Preserve the successful
+  target result and propagate refusals/failures. Test collecting hooks, current
+  lookup, committed observer failures and compiled-code reclamation.
+
+- Reconnect generated source globals to Store-backed Globals through Id sends.
+  Preserve Globals-first lookup with Namespace fallback on nil, lexical nested
+  bindings, and early return on rejected writes. Test history/query visibility,
+  live collecting accessors, exact failures and compiled Block retention.
+
+- Remove the obsolete Relational service-table adapter, C probe fixtures and
+  runner, including stale validation-plan and documentation references.
+
 - Migrate Relational's existing language API to Id sends and load it after Store
   in Bootstrap. Preserve the query evaluator, rules, history windows, aggregates,
   pull and LogicVar identity. Replace service-table conversions and GC callbacks

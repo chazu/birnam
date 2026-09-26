@@ -1198,6 +1198,50 @@ preserved. The adapter uses current Store, value, collection and GC messages;
 snapshot collectors receive `value:value:value:`. Invocation roots cover nested
 queries, destructive enumeration and result construction. There is no new query
 API, service table or optimizer work. Production validation uses the real dylib
-and compiled source; the retired installed-floor C probes remain uncompiled
-migration input. Compiler publication, task policy, Image and Host/CLI remain
+and compiled source. The obsolete service-table adapter, C probes and their
+validation runner have been removed. Compiler publication, task policy, Image and Host/CLI remain
 separate integration work.
+
+### Compiler Globals reconnected (2026-09-25)
+
+Generated source global reads now send `Globals at:` and preserve the old
+Namespace fallback on nil. Top-level writes send `Globals at:put:`; a rejected
+write returns its exact result without executing later effects. Nested bindings
+remain lexical. Store history and queries observe source writes, and compiled
+Blocks observe later replacements through current lookup. The production compiler
+test covers those rules, collecting accessors, exact native failures and compiled
+code retention through Globals. No transaction or optimization policy is added.
+
+### Reflect publication reconnected (2026-09-25)
+
+`Reflect defineMethod:on:as:` now sends the existing `Store addMethod:on:with:`
+protocol with an owned Method. Store handles authorization, mirrors and notification;
+Reflect keeps its target result on success and propagates refusals/failures.
+Production tests cover collecting and replaced hooks, notification after commit,
+and Method/Unit lifetime. Staged publication/compensation remains deferred.
+
+### System construction and printing/output reconnected (2026-09-25)
+
+Prelude, Printing and System Output now load through Bootstrap using Id sends.
+They preserve System identity, Object/Symbol conversion, exact-String output,
+flushing and receiver returns. Production tests cover actual stdout bytes, live
+replacement, collecting conversion and nested output. Native stdout I/O remains
+private to its owner; the old dependency tables are removed. See the
+[contract and validation](../../rust/birnam-system-output/README.md).
+
+### System input and environment reconnected (2026-09-25)
+
+`readLine` and `getEnv:` now load through Bootstrap and use Id sends for their
+language dependencies. Binary input, EOF, exact String names, Unicode errors,
+lazy Error lookup and the existing stdin-lock lifetime are preserved. Isolated
+production tests cover collecting methods and reloads. The modules/text-error
+fixtures now forward through messages rather than invoking saved native entries.
+
+### System file I/O reconnected (2026-09-25)
+
+`readFile:` and `writeFile:contents:` now use Id sends and load through Bootstrap.
+The user-approved filename snapshot is taken before reading contents, replacing
+legacy callback-driven mutation of borrowed paths. Existing binary I/O, UTF-8 path
+checks, one-GiB read limit, error precedence and receiver returns remain. Production
+tests verify the destination cannot be redirected during a collecting contents
+send. See the [contract and checks](../../rust/birnam-file-io/README.md).

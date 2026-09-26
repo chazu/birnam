@@ -27,7 +27,8 @@ unsafe fn load(
     unsafe { id.send(id.receiver, id.load, &request) }.expect("load production module")
 }
 struct Counter {
-    original: NativeEntry,
+    id: Protocol,
+    alias: Oop,
     calls: Cell<usize>,
 }
 unsafe extern "C" fn counted(
@@ -38,10 +39,21 @@ unsafe extern "C" fn counted(
 ) -> Outcome {
     let state = unsafe { &*context.cast::<Counter>() };
     state.calls.set(state.calls.get() + 1);
-    let original = state.original;
-    unsafe { original.method.unwrap()(original.context, receiver, args, count) }
+    unsafe {
+        state.id.send(
+            receiver,
+            state.alias,
+            birnam_abi::borrowed_slice(args, count).unwrap(),
+        )
+    }
+    .map_or_else(|e| e, Outcome::loaded)
 }
-unsafe extern "C" fn binding_snapshot(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+unsafe extern "C" fn binding_snapshot(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
     unsafe {
         let Some([key, value]) = birnam_abi::borrowed_slice(a, n) else {
             return Outcome::failed(native::INVALID_REQUEST, 0);
@@ -154,8 +166,16 @@ fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
         let original = send(&id, id.receiver, b"lookup", &[Operand::object(selector)])
             .as_entry()
             .unwrap();
+        let alias = id.intern_name(b"fixtureOriginal").unwrap();
+        send(
+            &id,
+            id.receiver,
+            b"addMethod",
+            &[Operand::object(alias), Operand::entry(original)],
+        );
         let counter = Box::leak(Box::new(Counter {
-            original,
+            id,
+            alias,
             calls: Cell::new(0),
         }));
         send(
@@ -178,6 +198,12 @@ fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
             b"addMethod",
             &[Operand::object(selector), Operand::entry(original)],
         );
+        send(
+            &id,
+            id.receiver,
+            b"removeMethod:",
+            &[Operand::object(alias)],
+        );
 
         // Root providers are also called by fresh dispatch, after snapshotting.
         let behavior = object(send(
@@ -190,8 +216,16 @@ fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
         let original = send(&id, behavior, b"lookup", &[Operand::object(selector)])
             .as_entry()
             .unwrap();
+        let alias = id.intern_name(b"fixtureOriginal").unwrap();
+        send(
+            &id,
+            behavior,
+            b"addMethod",
+            &[Operand::object(alias), Operand::entry(original)],
+        );
         let counter = Box::leak(Box::new(Counter {
-            original,
+            id,
+            alias,
             calls: Cell::new(0),
         }));
         send(
@@ -223,12 +257,22 @@ fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
             objects: Vec::new(),
         };
         let visitor = support::visitor(snapshot.id, visit, (&raw mut snapshot).cast());
-        let visitor_behavior = support::object(support::send(id, id.receiver, b"behaviorOf:", &[visitor]));
+        let visitor_behavior =
+            support::object(support::send(id, id.receiver, b"behaviorOf:", &[visitor]));
         let mut bindings = Vec::<(Oop, Oop)>::new();
-        support::install(id, visitor_behavior, b"binding:value:", binding_snapshot, (&raw mut bindings).cast());
+        support::install(
+            id,
+            visitor_behavior,
+            b"binding:value:",
+            binding_snapshot,
+            (&raw mut bindings).cast(),
+        );
         send(&id, namespace, b"bindingsDo:", &[visitor]);
         assert!(bindings.contains(&(key, value)));
-        assert!(id.send_named(namespace, b"bindingsDo:", &[Operand::entry(original)]).is_err());
+        assert!(
+            id.send_named(namespace, b"bindingsDo:", &[Operand::entry(original)])
+                .is_err()
+        );
 
         send(&id, roots, b"rootsDo:", &[visitor]);
         assert_eq!(counter.calls.get(), 1);
@@ -258,6 +302,7 @@ fn bootstrap_prefix_uses_live_messages_and_retains_nested_results() {
             b"addMethod",
             &[Operand::object(selector), Operand::entry(original)],
         );
+        send(&id, behavior, b"removeMethod:", &[Operand::object(alias)]);
         boolean_nil(&id, &directory, namespace);
         bootstrap_retention(&id, &directory, namespace);
     }
@@ -419,8 +464,16 @@ unsafe fn boolean_nil(id: &Protocol, directory: &std::path::Path, namespace: Oop
         )
         .as_entry()
         .unwrap();
+        let alias = id.intern_name(b"fixtureOriginal").unwrap();
+        send(
+            &*id,
+            boolean_behavior,
+            b"addMethod",
+            &[Operand::object(alias), Operand::entry(original)],
+        );
         let counter = Box::leak(Box::new(Counter {
-            original,
+            id: *id,
+            alias,
             calls: Cell::new(0),
         }));
         send(
@@ -443,6 +496,18 @@ unsafe fn boolean_nil(id: &Protocol, directory: &std::path::Path, namespace: Oop
         );
         assert_eq!(object(send(id, truth, b"not", &[])), falsity);
         assert_eq!(counter.calls.get(), 1);
+        send(
+            id,
+            boolean_behavior,
+            b"addMethod",
+            &[Operand::object(selector), Operand::entry(original)],
+        );
+        send(
+            id,
+            boolean_behavior,
+            b"removeMethod:",
+            &[Operand::object(alias)],
+        );
     }
 }
 

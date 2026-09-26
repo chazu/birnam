@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "scope": "System construction through Id, ObjectModel, Roots and Namespace messages",
+  "install_name": "@rpath/libbirnam_prelude.dylib",
+  "exported_symbols": [
+    "birnam_native_module_v1",
+    "birnam_symbol_borrow_v1",
+    "birnam_prelude_rust_identity"
+  ]
+}

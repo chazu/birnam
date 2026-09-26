@@ -148,6 +148,11 @@ with eager `&`.
 `,` concatenates (coercing via `printString`), `printString` renders any
 value, and `printNl` prints one and answers it.
 
+`System print:` writes without a newline; `System println:` adds one. Both flush
+stdout and answer the receiver. Strings are written directly; other values receive
+`printString`, which must return a String. An unusable rendering answers nil.
+Object `asString` sends the current `printString`, so replacements take effect.
+
 ```
 [System println: ["answer: " , [42 printString]]];
 [x |> [:v | [v printString]]]      // |> threads the receiver into a block

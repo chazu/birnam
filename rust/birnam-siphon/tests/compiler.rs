@@ -5,8 +5,12 @@ mod accounting;
 mod discarded_clone;
 #[path = "compiler/dispatch.rs"]
 mod dispatch;
+#[path = "compiler/globals.rs"]
+mod globals;
 #[path = "compiler/numeric_predicate.rs"]
 mod numeric_predicate;
+#[path = "compiler/publication.rs"]
+mod publication;
 mod support;
 use birnam_abi::{
     Oop, borrowed_slice,
@@ -90,6 +94,19 @@ impl H {
             send(
                 self.id,
                 self.ns,
+                b"at:put:",
+                &[
+                    Operand::object(self.id.intern_name(n).unwrap()),
+                    Operand::object(o),
+                ],
+            );
+        }
+    }
+    unsafe fn publish(&self, n: &[u8], o: Oop) {
+        unsafe {
+            send(
+                self.id,
+                self.named(b"Globals"),
                 b"at:put:",
                 &[
                     Operand::object(self.id.intern_name(n).unwrap()),
@@ -199,7 +216,7 @@ fn source_compiles_and_runs_on_production_execution() {
             b"removeMethod:",
             &[Operand::object(id.intern_name(b"answer").unwrap())],
         );
-        h.bind(b"adder", h.named(b"nil"));
+        h.publish(b"adder", h.named(b"nil"));
         h.clear();
         h.collect();
         assert_eq!(h.units(), 0, "all initial compiled mappings reclaimed");
@@ -212,6 +229,8 @@ fn source_compiles_and_runs_on_production_execution() {
         discarded_clone::check(&mut h);
         numeric_predicate::check(&mut h);
         accounting::check(&mut h);
+        globals::check(&mut h);
+        publication::check(&mut h);
         h.clear();
         h.collect();
         assert_eq!(h.units(), 0);

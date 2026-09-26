@@ -11,6 +11,12 @@ Method keeps both the code Unit and the implementation Block. Calls perform fres
 `value:` lookup on that implementation; replacement does not rewrite a captured
 Method or a suspended frame. No generated Runtime service catalog is imported.
 
+Installation sends `Store addMethod:on:with:` with the selector, target behavior
+and owned Method. Store runs its existing authorization, mirror and notification
+protocol. Reflect still returns the target on success; refusals and native failures
+propagate unchanged. An observer failure occurs after installation and does not
+undo it. Temporary compilation roots survive collecting hooks.
+
 `deferred.rs` preserves the remaining Image/Store publication, inventories,
 portable materialization and acceptance cases by function. It is not loaded or
 compiled and does not supply compatibility services. Its replaced source facade
@@ -34,8 +40,14 @@ using canonical descriptor and selection Bytes. Blocks copy captures through
 `Block fromMethod:captures:` and Vector messages. Named adapters additionally use
 `Method fromStep:descriptor:selection:owner:implementation:` so their implementation
 Block and code Unit have distinct, explicit ownership. Top-level bindings publish
-through Namespace `at:put:`; nested bindings remain lexical. Values and errors use
-their current owners, with temporary generated values retained across callbacks.
+through Store-backed `Globals at:put:`; nested bindings remain lexical. Generated
+source reads send `Globals at:` first, then use Namespace only when the answer is
+nil, preserving the prior source lookup rule (including a bound nil). Missing
+names answer nil. Compiler machinery still resolves its dependency objects through
+Namespace. A rejected global write returns the setter's exact result and stops
+that evaluation; prior successful ordinary writes remain published. Native send
+failures propagate unchanged. Values and errors use their current owners, with
+temporary generated values retained across callbacks.
 
 ## Generated execution
 
@@ -71,9 +83,9 @@ limits are in [validation](../../docs/validation.md).
 
 Store/db and Cells now load through Bootstrap before the compiler. Their separate
 [production suite](../birnam-store/README.md#validation) also exercises compiled
-source consumers and Store-backed Globals. The current compiler still publishes
-globals through Namespace; reconciling that caller remains upper integration work.
-Store MOP hooks now use receiver messages and owned Execution Methods. Staged
+source consumers and Store-backed Globals. Generated source reads and writes now
+use that same Globals protocol, including Store history and query visibility.
+Reflect now publishes through Store's receiver-based MOP hooks and owned Execution Methods. Staged
 compiler publication/compensation callers in `deferred.rs` still need migration;
 the old Store native tables are gone.
 

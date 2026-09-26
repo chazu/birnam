@@ -256,6 +256,17 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             )?)?;
             id.send_named(value, b"installPrinting:", &[string])?;
         }
+        // Install default Object printing after Boolean/Nil install their own methods.
+        for name in ["prelude", "printing", "system_output", "system_input", "environment", "file_io"] {
+            id.send_named(
+                receiver,
+                b"loadNative:",
+                &[
+                    Operand::bytes(&module_path(directory, name)),
+                    Operand::object(namespace),
+                ],
+            )?;
+        }
         let named = |name: &[u8]| {
             id.send_named(namespace, b"at:", &[Operand::object(id.intern_name(name)?)])
         };

@@ -25,6 +25,9 @@ static A send(Call*c,O receiver,const char*n,const A*a,size_t count){if(c->failu
 static O object(Call*c,A a){if(a.kind!=1||!a.data.object){if(!c->failure.status)c->failure=bad();return 0;}return a.data.object;}
 static O call(Call*c,O receiver,const char*n,const A*a,size_t count){return object(c,send(c,receiver,n,a,count));}
 static O named(Call*c,const char*n){A a=obj(intern(c,n));return call(c,ns,"at:",&a,1);}
+/* Preserve source lookup: Globals first, then bootstrap exports on nil. */
+static O global(Call*c,const char*n){A key=obj(keep(c,intern(c,n)));O nil=named(c,"nil");O value=call(c,named(c,"Globals"),"at:",&key,1);if(c->failure.status||value!=nil)return value;A fallback=send(c,ns,"at:",&key,1);return fallback.kind==0?nil:object(c,fallback);}
+static O global_put(Call*c,const char*n,O value){A a[2]={obj(keep(c,intern(c,n))),obj(value)};return call(c,named(c,"Globals"),"at:put:",a,2);}
 static O integer(Call*c,size_t w){A a=word(w);return call(c,named(c,"Integer"),"fromWord:",&a,1);}
 static O string(Call*c,const void*p,size_t n){A a=bytes(p,n);return call(c,named(c,"String"),"fromBytes:",&a,1);}
 static O float_bits(Call*c,uint64_t w){A a=word(w);return call(c,named(c,"Float"),"fromBits:",&a,1);}

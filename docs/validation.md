@@ -216,6 +216,40 @@ suite to fifteen integration binaries. The test covers the unchanged query/rule/
 aggregate/pull/history API, compiled source, live collecting replacements,
 reentrancy and snapshot lifetime. Its 21 evaluator tests pass via
 `mise exec -- cargo test --offline --locked -p birnam-relational --lib`; the
-manual timing test stays ignored. The old `relational-output-test.py` installed-
-floor C probe fixture remains deferred, not current acceptance evidence.
+manual timing test stays ignored.
 See [Relational's contract](../rust/birnam-relational/README.md).
+
+
+The production compiler test now exercises generated Store-backed Globals:
+publication across evaluations, current reads from previously compiled code,
+Namespace fallback on nil, lexical scope, Store history and query visibility,
+collecting getter/setter replacements, refused-write short-circuiting, exact native
+failures and compiled Block retention/reclamation. Reflect publication coverage
+checks current Store and hook lookup, collecting authorization/notification,
+exact refusals and native failures, committed binding/mirror visibility during
+notification, and adapter reclamation after refusal or removal. Existing captured
+Method and paused-frame tests also run through managed installation. This does not
+claim staged module publication/rollback.
+
+The suite now has sixteen integration binaries. `system_output` loads System,
+Printing and System Output through production Bootstrap and compares actual
+stdout bytes from a subprocess. It covers source sends, binary/UTF-8/empty output,
+receiver identity, exact-String conversion, live replacement, collecting methods,
+nested output and reload preservation. The dylib audit includes all three modules.
+Their retained unit tests and build-tool tests run with
+`cargo test --offline --locked -p birnam-prelude -p birnam-printing -p birnam-system-output -p birnam-build`.
+Full Host/CLI installation and image smoke tests remain deferred.
+
+The input/environment migration extends the suite to seventeen integration
+binaries. `system_services` runs real stdin and environment operations in isolated
+subprocesses, including invalid Unicode, binary/long lines, EOF, failed reads,
+collecting dependencies and lazy Error publication. Both new modules participate
+in the export/install-name/dependency audit. The existing `modules` and `text_error`
+tests retain their assertions and now forward replacements through Id sends.
+
+`system_services` also covers File I/O through Bootstrap: binary round trips,
+empty files/truncation, source sends, errors, live collecting factories, reloads
+and filename snapshots that survive mutation by contents callbacks. File I/O is
+included in the dylib audit. `cargo test --offline --locked -p birnam-file-io --lib`
+checks bounded reads at the limit, one byte over it, and native read errors using
+small fixtures. The production limit remains one GiB.

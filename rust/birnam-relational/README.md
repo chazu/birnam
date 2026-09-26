@@ -53,10 +53,7 @@ the query returns. No native-state borrow spans a send. LogicVars retain their
 existing canonical name cache and one owned reference; their owner reports that
 reference through `referencesOf:do:`.
 
-The old installed-floor C probe adapter (`adapter.rs`, `oop.rs`, and
-`native_output.rs`) is retained as historical test/migration input, but is not
-compiled or exported by the production module. Its old Host/service-table fixture
-is not passing coverage. Production exports follow the same descriptor and
+Production exports follow the same descriptor and
 symbol-borrow convention as Store; there is no compatibility service table.
 
 ## Validation

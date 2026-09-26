@@ -268,7 +268,7 @@ fn function(
                 | Op::EntryArgument { .. }
                 | Op::EntryCapture { .. } => continue,
                 Op::Literal(v) => literal(v)?,
-                Op::GlobalLookup(n) => format!("named(&c,{})", quoted(n)),
+                Op::GlobalLookup(n) => format!("global(&c,{})", quoted(n)),
                 Op::Bind { source, .. } => format!("get(&c,machine,{})", slot(*source)),
                 Op::PortableBlockLiteral {
                     program, captures, ..
@@ -305,7 +305,7 @@ fn function(
             .unwrap();
             if index == 0 && !named {
                 if let Op::Bind { name, .. } = &operation.kind {
-                    writeln!(out,"{{A a[2]={{obj(intern(&c,{})),obj(value_{})}};send(&c,ns,\"at:put:\",a,2);}}",quoted(name),operation.result.0).unwrap();
+                    writeln!(out,"{{O published=global_put(&c,{},value_{});if(c.failure.status)return finish(&c,(A){{0}});if(published!=value_{}){{put(&c,machine,{},published);return finish(&c,obj(action(&c,machine,\"returnAt:\",{})));}}}}",quoted(name),operation.result.0,operation.result.0,slot(operation.result),slot(operation.result)).unwrap();
                 }
             }
         }

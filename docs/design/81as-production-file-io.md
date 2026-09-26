@@ -2,6 +2,9 @@
 
 > **Status:** Implemented, following Environment in 81AR.
 
+> Historical native-table design. The current [Id migration](../../rust/birnam-file-io/README.md)
+> supersedes the borrowed-path rule below: filenames are copied before reading contents.
+
 Move readFile: and writeFile:contents: unchanged from Prelude into File IO.
 Preserve exact borrowed String arguments, binary contents, the one-GiB read
 limit, existing ioError messages and receiver results. Keep the path borrowed

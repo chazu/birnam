@@ -49,9 +49,11 @@ requested fact or advancing the basis. Physical compaction may already have run.
 Globals retains its Store-backed `__globals__` facts. `at:`, `at:put:`,
 `at:ifAbsent:` and `includes:` send to Store's current read/assert/presence methods.
 Global values participate in ordinary Store queries, prospective history and image
-transfer. Missing reads answer nil; bound nil suppresses the fallback. The current
-source compiler still publishes through Namespace; reconnecting that caller to
-Store-backed globals remains upper integration work.
+transfer. Missing reads answer nil; bound nil suppresses the fallback. The source
+compiler publishes top-level bindings through this same `at:put:` protocol. Its
+reads use `at:` and preserve the historical Namespace fallback when the answer is
+nil. This source fallback is separate from `at:ifAbsent:`, which still distinguishes
+a bound nil from absence.
 
 The existing MOP responsibilities are preserved through messages:
 
@@ -72,7 +74,8 @@ failure propagates after the dictionary change; it does not roll the change back
 
 The authorizer now accepts an Object instead of a native function address, and
 managed installation accepts an owned Execution Method instead of a raw entry.
-Deferred compiler callers must adopt those operands. Private compensation
+Reflect's `defineMethod:on:as:` now sends this managed installation protocol.
+Remaining deferred compiler callers must adopt those operands. Private compensation
 algorithms remain tested migration inputs; their retired native table is not
 exported.
 

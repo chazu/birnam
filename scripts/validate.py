@@ -46,10 +46,6 @@ def plan(suite, prefix, output):
         result.append(step('method-unit-lifetime', ['bash', 'scripts/method-unit-lifetime-smoke.sh', prefix],
                            PRODUCTION + ('scripts/method-unit-lifetime-smoke.sh',),
                            depends=('install',), timeout=300))
-    result.append(step('relational-output', ['python3', 'scripts/relational-output-test.py',
-                       '--prefix', prefix, '--output', output/'relational-output.json'],
-                       PRODUCTION + ('scripts/relational-output-test.py',),
-                       depends=('install',), artifacts=(str(output/'relational-output.json'),), timeout=300))
     result.append(step('host-bridge', ['python3', 'scripts/host-bridge-test.py',
                        '--prefix', prefix, '--output', output/'host-bridge.json'],
                        PRODUCTION + ('scripts/host-bridge-test.py',), depends=('install',),

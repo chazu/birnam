@@ -19,11 +19,19 @@ allocations through current owner checks. A [numeric predicate](docs/design/90-n
 also removes its intermediate Integer; broader allocation-elision remains pending.
 [Store and Cells](rust/birnam-store/README.md) now run through Id messages too,
 including history, retention, collecting snapshot callbacks and source consumers.
-Globals retains Store-backed facts, and MOP hooks use messages. GC enumeration
+Globals retains Store-backed facts, and compiled top-level bindings now use its
+read/write messages. Reflect installs Methods through Store's MOP messages. GC enumeration
 and allocation release now use receiver messages too. Further optimization and
 deoptimization work is on hold while the remaining modules are reconnected.
 [Relational](rust/birnam-relational/README.md) now extends Store through Id sends,
 preserving its query, rule, aggregate and pull API.
+[System construction and printing/output](rust/birnam-system-output/README.md)
+also load through Bootstrap using Id sends, including collecting conversions and
+live method replacement.
+[System input and environment](rust/birnam-system-input/README.md) are also
+connected through Id sends, preserving binary stdin and environment/error behavior.
+[File I/O](rust/birnam-file-io/README.md) now uses the same message path and copies
+filenames before reading write contents.
 The full workspace, Artifact/PortableCode language adapters, Image,
 workers and CLI still await upper integration.
 The usage documentation below describes the language being preserved.

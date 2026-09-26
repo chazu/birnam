@@ -1,116 +1,211 @@
-//! System's existing environment getter, constructed through Bootstrap (81AR).
-#![allow(clippy::missing_safety_doc)]
-use birnam_abi::error_value::numeric_error;
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use birnam_abi::text_view::string_bytes;
-use std::{env, str};
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-static READY: AtomicBool = AtomicBool::new(false);
-// Construction supplies the original selection, even when registration reenters
-// with another table before the first environment installation. The host pins it.
-static EXECUTION_API: OnceLock<(usize, usize, usize)> = OnceLock::new();
-
-unsafe fn api_ref() -> &'static IdApi {
-    let pointer = *EXECUTION_API
-        .get()
-        .expect("Environment methods were not installed");
-    unsafe { &*(pointer.0 as *const IdApi) }
+//! System getEnv: through Id messages; preserve exact names and lazy errors.
+use birnam_abi::{
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{ffi::c_void, ptr};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    string_vt: Oop,
+    string: Oop,
+    nil: Oop,
+    thread: std::thread::ThreadId,
 }
-unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
-    // SAFETY: the host owns the argument buffer for the duration of the call.
-    unsafe { borrowed_oop_args(args, count)?.first().copied() }
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static BUSY: AtomicBool = AtomicBool::new(false);
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-
-unsafe extern "C" fn system_get_env(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
+}
+impl State {
+    unsafe fn rooted(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<Operand, Outcome>,
+    ) -> Result<Operand, Outcome> {
+        unsafe {
+            let mut tokens = Vec::new();
+            let result = (|| {
+                for &v in values {
+                    tokens.push(
+                        self.id
+                            .send_named(self.roots, b"retain:", &[Operand::object(v)])?
+                            .as_word()
+                            .ok_or_else(invalid)?,
+                    );
+                }
+                f()
+            })();
+            for t in tokens {
+                self.id
+                    .send_named(self.roots, b"release:", &[Operand::word(t)])?;
+            }
+            result
+        }
     }
-    let Some(name_object) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(name_bytes) = (unsafe { string_bytes(api, name_object) }) else {
-        return api.nilObj;
-    };
-    let Ok(name) = str::from_utf8(name_bytes) else {
-        return unsafe { numeric_error(api, execution_presence(), execution_imports(), b"ioError\0", b"could not read environment") };
-    };
-    match env::var(name) {
-        Ok(value) => unsafe { (birnam_abi::string::make)(value.as_ptr(), value.len()) },
-        Err(env::VarError::NotPresent) => api.nilObj,
-        Err(env::VarError::NotUnicode(_)) => unsafe {
-            numeric_error(api, execution_presence(), execution_imports(), b"ioError\0", b"could not read environment")
-        },
+    unsafe fn bytes(&self, value: Oop) -> Result<Option<Vec<u8>>, Outcome> {
+        unsafe {
+            // Preserve output's exact-String policy, including printString results.
+            if self
+                .id
+                .send_named(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                .as_object()
+                != Some(self.string_vt)
+            {
+                return Ok(None);
+            }
+            let raw = self.id.send_named(value, b"bytes", &[])?;
+            Ok(raw
+                .as_bytes()
+                .and_then(|b| borrowed_bytes(b.pointer, b.length))
+                .map(<[u8]>::to_vec))
+        }
     }
 }
 
-unsafe extern "C" fn install(
-    registration: *const IdApi,
-    execution: *const IdApi,
-    presence: *const birnam_abi::namespace_presence::ApiV1,
-    imports: *const birnam_abi::namespace_import::ApiV1,
-    system_vt: Oop,
-    get_env: Oop,
-) {
-    assert!(
-        READY.load(Ordering::Acquire) && !registration.is_null() && !execution.is_null(),
-        "invalid Environment installation"
-    );
-    EXECUTION_API.get_or_init(|| (execution as usize, presence as usize, imports as usize));
-    let api = unsafe { &*registration };
+impl State {
+    unsafe fn make_string(&self, bytes: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            self.id
+                .send_named(self.string, b"fromBytes:", &[Operand::bytes(bytes)])
+        }
+    }
+    unsafe fn error(&self, message: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            let kind = self.id.intern_name(b"ioError")?;
+            self.rooted(&[kind], || {
+                let message = object(self.make_string(message)?)?;
+                self.rooted(&[message], || {
+                    // Resolve Error after constructing the message, preserving lazy publication.
+                    let factory = self.id.send_named(
+                        self.ns,
+                        b"at:",
+                        &[Operand::object(self.id.intern_name(b"Error")?)],
+                    )?;
+                    let Some(factory) = factory.as_object().filter(|o| !o.is_null()) else {
+                        return Ok(Operand::object(self.nil));
+                    };
+                    self.rooted(&[factory], || {
+                        self.id.send_named(
+                            factory,
+                            b"kind:message:",
+                            &[Operand::object(kind), Operand::object(message)],
+                        )
+                    })
+                })
+            })
+        }
+    }
+}
+unsafe extern "C" fn get_env(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        if n != 1 {
+            return Ok(Operand::object(s.nil));
+        }
+        let [name] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let name = object(*name)?;
+        s.rooted(&[r, name], || {
+            let Some(bytes) = s.bytes(name)? else {
+                return Ok(Operand::object(s.nil));
+            };
+            let Ok(name) = std::str::from_utf8(&bytes) else {
+                return s.error(b"could not read environment");
+            };
+            match std::env::var(name) {
+                Ok(value) => s.make_string(value.as_bytes()),
+                Err(std::env::VarError::NotPresent) => Ok(Operand::object(s.nil)),
+                Err(std::env::VarError::NotUnicode(_)) => s.error(b"could not read environment"),
+            }
+        })
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
+unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
     unsafe {
-        (api.method)(system_vt, get_env, system_get_env);
+        let named = |name: &[u8]| {
+            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+        };
+        let roots = named(b"Roots")?;
+        let nil = named(b"nil")?;
+        let string_vt = named(b"StringVt")?;
+        let string = named(b"String")?;
+        let system = named(b"System")?;
+        for o in [ns, roots, nil, string_vt, string, system] {
+            id.send_named(roots, b"retain:", &[Operand::object(o)])?;
+        }
+        let vt = object(id.send_named(id.receiver, b"behaviorOf:", &[Operand::object(system)])?)?;
+        id.send_named(roots, b"retain:", &[Operand::object(vt)])?;
+        let state = Box::into_raw(Box::new(State {
+            id,
+            ns,
+            roots,
+            string_vt,
+            string,
+            nil,
+            thread: std::thread::current().id(),
+        }));
+        for (name, method) in [(b"getEnv:".as_slice(), get_env as native::Method)] {
+            id.send_named(
+                vt,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::entry(NativeEntry::new(method, state.cast())),
+                ],
+            )?;
+        }
+        INSTANCE.store(state, Ordering::Release);
+        Ok(Operand::unit())
     }
 }
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let ns = object(*ns)?;
+        let existing = INSTANCE.load(Ordering::Acquire);
+        if !existing.is_null() {
+            let s = &*existing;
+            return if s.id.receiver == (*id).receiver
+                && s.ns == ns
+                && s.thread == std::thread::current().id()
+            {
+                Ok(Operand::unit())
+            } else {
+                Err(invalid())
+            };
+        }
+        if BUSY.swap(true, Ordering::AcqRel) {
+            return Err(invalid());
+        }
+        let result = construct(*id, ns);
+        BUSY.store(false, Ordering::Release);
+        result
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: 1,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-
-fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { EXECUTION_API.get().expect("methods not installed").1 as *const birnam_abi::namespace_presence::ApiV1 }
-
-fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { EXECUTION_API.get().expect("module not installed").2 as *const birnam_abi::namespace_import::ApiV1 }
-
-// The native constructor returns only after the System methods are installed.
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-static NATIVE_SELECTION: OnceLock<(usize, usize)> = OnceLock::new();
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    let Some([api, roots, system, presence, imports, string, errors, text]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let Some(api) = api.as_word() else { return invalid_native(); };
-    let Some(roots) = roots.as_word() else { return invalid_native(); };
-    let Some(presence) = presence.as_word() else { return invalid_native(); };
-    let Some(imports) = imports.as_word() else { return invalid_native(); };
-    let Some(string) = string.as_word() else { return invalid_native(); };
-    let Some(errors) = errors.as_word() else { return invalid_native(); };
-    let Some(text) = text.as_word() else { return invalid_native(); };
-    let api = api as *const IdApi;
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    let Some(system) = system.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver || !birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
-    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
-    if !unsafe { birnam_abi::namespace_presence::valid(presence) } { return invalid_native(); }
-    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
-    if !unsafe { birnam_abi::namespace_import::valid(imports) } { return invalid_native(); }
-    if unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
-    if unsafe { birnam_abi::error_value::attach(errors as _) } != 1 { return invalid_native(); }
-    if unsafe { birnam_abi::text_view::attach(text as _) } != 1 { return invalid_native(); }
-    if NATIVE_SELECTION.get().is_some_and(|selected| *selected != (api.addr(), system.addr())) { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::unit()), _ => return invalid_native(),
-    }
-    assert!(NATIVE_SELECTION.set((api.addr(), system.addr())).is_ok());
-    READY.store(true, Ordering::Release);
-    let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
-    let system_vt = unsafe { ((*api).vtableOf)(system) };
-    let s0 = unsafe { retained.keep(((*api).intern)(c"getEnv:".as_ptr())) };
-    unsafe { install(api, api, presence, imports, system_vt, s0) };
-    NATIVE_PHASE.store(2, Ordering::Release);
-    Outcome::loaded(Operand::unit())
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

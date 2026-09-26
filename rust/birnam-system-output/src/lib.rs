@@ -1,32 +1,74 @@
-//! System's existing stdout methods, constructed through Bootstrap (81AL).
-#![allow(clippy::missing_safety_doc)]
-use birnam_abi::text_view::printable_string;
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use std::io::{self, Write};
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-static READY: AtomicBool = AtomicBool::new(false);
-// Construction supplies the original selection, even when registration reenters
-// with another table before the first output installation. The host pins it.
-static EXECUTION_API: OnceLock<usize> = OnceLock::new();
-
-unsafe fn api_ref() -> &'static IdApi {
-    let pointer = *EXECUTION_API
-        .get()
-        .expect("System output methods were not installed");
-    unsafe { &*(pointer as *const IdApi) }
+//! System stdout operations. All language dependencies are current Id sends.
+use birnam_abi::{
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{ffi::c_void, ptr};
+use std::{
+    io::{self, Write},
+    sync::atomic::{AtomicBool, AtomicPtr, Ordering},
+};
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    string_vt: Oop,
+    nil: Oop,
+    thread: std::thread::ThreadId,
 }
-unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
-    // SAFETY: the host owns the argument buffer for the duration of the call.
-    unsafe { borrowed_oop_args(args, count)?.first().copied() }
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static BUSY: AtomicBool = AtomicBool::new(false);
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-
-fn write_system_output(bytes: &[u8], newline: bool) {
-    let mut stdout = io::stdout().lock();
-    let _ = write_system_output_to(&mut stdout, bytes, newline);
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
 }
-
+impl State {
+    unsafe fn rooted(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<Operand, Outcome>,
+    ) -> Result<Operand, Outcome> {
+        unsafe {
+            let mut tokens = Vec::new();
+            let result = (|| {
+                for &v in values {
+                    tokens.push(
+                        self.id
+                            .send_named(self.roots, b"retain:", &[Operand::object(v)])?
+                            .as_word()
+                            .ok_or_else(invalid)?,
+                    );
+                }
+                f()
+            })();
+            for t in tokens {
+                self.id
+                    .send_named(self.roots, b"release:", &[Operand::word(t)])?;
+            }
+            result
+        }
+    }
+    unsafe fn bytes(&self, value: Oop) -> Result<Option<Vec<u8>>, Outcome> {
+        unsafe {
+            // Preserve output's exact-String policy, including printString results.
+            if self
+                .id
+                .send_named(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                .as_object()
+                != Some(self.string_vt)
+            {
+                return Ok(None);
+            }
+            let raw = self.id.send_named(value, b"bytes", &[])?;
+            Ok(raw
+                .as_bytes()
+                .and_then(|b| borrowed_bytes(b.pointer, b.length))
+                .map(<[u8]>::to_vec))
+        }
+    }
+}
 fn write_system_output_to<W: Write>(writer: &mut W, bytes: &[u8], newline: bool) -> io::Result<()> {
     writer.write_all(bytes)?;
     if newline {
@@ -34,53 +76,129 @@ fn write_system_output_to<W: Write>(writer: &mut W, bytes: &[u8], newline: bool)
     }
     writer.flush()
 }
-
-unsafe fn system_output(self_object: Oop, args: *const Oop, count: usize, newline: bool) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(bytes) = (unsafe { printable_string(api, value) }) else {
-        return api.nilObj;
-    };
-    write_system_output(bytes, newline);
-    self_object
+fn write_system_output(bytes: &[u8], newline: bool) {
+    // No language send runs while the OS output lock or a borrowed String is held.
+    let mut stdout = io::stdout().lock();
+    let _ = write_system_output_to(&mut stdout, bytes, newline);
 }
-
-unsafe extern "C" fn system_print(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { system_output(self_object, args, count, false) }
+unsafe fn output(c: *mut c_void, r: Oop, a: *const Operand, n: usize, newline: bool) -> Outcome {
+    (|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        if n != 1 {
+            return Ok(Operand::object(s.nil));
+        }
+        let [value] = borrowed_slice(a, n).ok_or_else(invalid)? else {
+            return Err(invalid());
+        };
+        let value = object(*value)?;
+        s.rooted(&[r, value], || {
+            if let Some(bytes) = s.bytes(value)? {
+                write_system_output(&bytes, newline);
+                return Ok(Operand::object(r));
+            }
+            let rendered = s.id.send_named(value, b"printString", &[])?;
+            let Some(rendered) = rendered.as_object().filter(|o| !o.is_null()) else {
+                return Ok(Operand::object(s.nil));
+            };
+            s.rooted(&[rendered], || {
+                let Some(bytes) = s.bytes(rendered)? else {
+                    return Ok(Operand::object(s.nil));
+                };
+                write_system_output(&bytes, newline);
+                Ok(Operand::object(r))
+            })
+        })
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
 }
-
-unsafe extern "C" fn system_println(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { system_output(self_object, args, count, true) }
+unsafe extern "C" fn print(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { output(c, r, a, n, false) }
 }
-
-unsafe extern "C" fn install(
-    registration: *const IdApi,
-    execution: *const IdApi,
-    system_vt: Oop,
-    print: Oop,
-    println: Oop,
-) {
-    assert!(
-        READY.load(Ordering::Acquire) && !registration.is_null() && !execution.is_null(),
-        "invalid System output installation"
-    );
-    EXECUTION_API.get_or_init(|| execution as usize);
-    let api = unsafe { &*registration };
+unsafe extern "C" fn println(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { output(c, r, a, n, true) }
+}
+unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
     unsafe {
-        (api.method)(system_vt, print, system_print);
-        (api.method)(system_vt, println, system_println);
+        let named = |name: &[u8]| {
+            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+        };
+        let roots = named(b"Roots")?;
+        let nil = named(b"nil")?;
+        let string_vt = named(b"StringVt")?;
+        let system = named(b"System")?;
+        for o in [ns, roots, nil, string_vt, system] {
+            id.send_named(roots, b"retain:", &[Operand::object(o)])?;
+        }
+        let vt = object(id.send_named(id.receiver, b"behaviorOf:", &[Operand::object(system)])?)?;
+        id.send_named(roots, b"retain:", &[Operand::object(vt)])?;
+        let state = Box::into_raw(Box::new(State {
+            id,
+            ns,
+            roots,
+            string_vt,
+            nil,
+            thread: std::thread::current().id(),
+        }));
+        for (name, method) in [
+            (b"print:".as_slice(), print as native::Method),
+            (b"println:", println),
+        ] {
+            id.send_named(
+                vt,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::entry(NativeEntry::new(method, state.cast())),
+                ],
+            )?;
+        }
+        INSTANCE.store(state, Ordering::Release);
+        Ok(Operand::unit())
     }
 }
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let ns = object(*ns)?;
+        let existing = INSTANCE.load(Ordering::Acquire);
+        if !existing.is_null() {
+            let s = &*existing;
+            return if s.id.receiver == (*id).receiver
+                && s.ns == ns
+                && s.thread == std::thread::current().id()
+            {
+                Ok(Operand::unit())
+            } else {
+                Err(invalid())
+            };
+        }
+        if BUSY.swap(true, Ordering::AcqRel) {
+            return Err(invalid());
+        }
+        let result = construct(*id, ns);
+        BUSY.store(false, Ordering::Release);
+        result
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: 1,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-
 #[cfg(test)]
 mod tests {
     use super::write_system_output_to;
@@ -119,36 +237,3 @@ mod tests {
         );
     }
 }
-
-// The native constructor returns only after the System methods are installed.
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-static NATIVE_SELECTION: OnceLock<(usize, usize)> = OnceLock::new();
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    let Some([api, roots, system, text]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let Some(api) = api.as_word() else { return invalid_native(); };
-    let Some(roots) = roots.as_word() else { return invalid_native(); };
-    let Some(text) = text.as_word() else { return invalid_native(); };
-    let api = api as *const IdApi;
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    let Some(system) = system.as_object().filter(|p| !p.is_null()) else { return invalid_native(); };
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver || !birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
-    if unsafe { birnam_abi::text_view::attach(text as _) } != 1 { return invalid_native(); }
-    if NATIVE_SELECTION.get().is_some_and(|selected| *selected != (api.addr(), system.addr())) { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::unit()), _ => return invalid_native(),
-    }
-    assert!(NATIVE_SELECTION.set((api.addr(), system.addr())).is_ok());
-    READY.store(true, Ordering::Release);
-    let mut retained = unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots) };
-    let system_vt = unsafe { ((*api).vtableOf)(system) };
-    let s0 = unsafe { retained.keep(((*api).intern)(c"print:".as_ptr())) };
-    let s1 = unsafe { retained.keep(((*api).intern)(c"println:".as_ptr())) };
-    unsafe { install(api, api, system_vt, s0, s1) };
-    NATIVE_PHASE.store(2, Ordering::Release);
-    Outcome::loaded(Operand::unit())
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

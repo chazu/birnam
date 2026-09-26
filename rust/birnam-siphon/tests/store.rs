@@ -561,8 +561,8 @@ unsafe fn source(h: &H) {
             73
         );
         assert_eq!(
-            h.eval(b"let declaredGlobal := 91; [Globals at: #declaredGlobal]"),
-            h.named(b"nil")
+            h.number(h.eval(b"let declaredGlobal := 91; [Globals at: #declaredGlobal]")),
+            91
         );
         assert_eq!(
             h.eval(b"[Globals at: #boundNil put: nil]; [Globals at: #boundNil ifAbsent: [| 99]]"),

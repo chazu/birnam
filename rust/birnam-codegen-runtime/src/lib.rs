@@ -231,12 +231,21 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
                 b"ensurePrivateVtableFor:",
                 &[a[1]],
             )?)?)?;
-            s.send(
-                behavior,
-                b"addMethod:as:",
-                &[Operand::object(method), Operand::object(selector)],
+            let store = scope.keep(s.named(b"Store")?)?;
+            let result = s.send(
+                store,
+                b"addMethod:on:with:",
+                &[
+                    Operand::object(selector),
+                    Operand::object(behavior),
+                    Operand::object(method),
+                ],
             )?;
-            return Ok(a[1]);
+            return Ok(if result.as_object() == Some(store) {
+                a[1]
+            } else {
+                result
+            });
         }
         let source = object(a[0])?;
         let bytes = s.bytes(source)?;

@@ -1,7 +1,7 @@
 //! Real String/Error libraries loaded by Bootstrap through Siphon and Id.
 mod support;
 use birnam_abi::{
-    Oop, borrowed_bytes,
+    Oop, borrowed_bytes, borrowed_slice,
     id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
 };
 use core::{cell::Cell, ffi::c_void, ptr};
@@ -30,8 +30,35 @@ unsafe fn selected(id: Protocol, behavior: Oop, name: &[u8]) -> NativeEntry {
     .as_entry()
     .unwrap()
 }
+unsafe fn alias(id: Protocol, vt: Oop, name: &[u8], entry: NativeEntry) -> Oop {
+    unsafe {
+        let selector = id.intern_name(name).unwrap();
+        send(
+            id,
+            vt,
+            b"addMethod",
+            &[Operand::object(selector), Operand::entry(entry)],
+        );
+        selector
+    }
+}
+unsafe fn restore(id: Protocol, vt: Oop, name: &[u8], entry: NativeEntry, alias: Oop) {
+    unsafe {
+        send(
+            id,
+            vt,
+            b"addMethod",
+            &[
+                Operand::object(id.intern_name(name).unwrap()),
+                Operand::entry(entry),
+            ],
+        );
+        send(id, vt, b"removeMethod:", &[Operand::object(alias)]);
+    }
+}
 struct Counted {
-    entry: NativeEntry,
+    id: Protocol,
+    alias: Oop,
     calls: Cell<usize>,
 }
 unsafe extern "C" fn counted(
@@ -42,7 +69,10 @@ unsafe extern "C" fn counted(
 ) -> Outcome {
     let c = unsafe { &*context.cast::<Counted>() };
     c.calls.set(c.calls.get() + 1);
-    unsafe { c.entry.method.unwrap()(c.entry.context, receiver, args, count) }
+    unsafe {
+        c.id.send(receiver, c.alias, borrowed_slice(args, count).unwrap())
+    }
+    .map_or_else(|e| e, Outcome::loaded)
 }
 struct Replacement {
     id: Protocol,
@@ -64,7 +94,7 @@ unsafe extern "C" fn replacement(
 struct Allocating {
     id: Protocol,
     gc: Oop,
-    entry: NativeEntry,
+    alias: Oop,
     input: *mut u8,
     calls: Cell<usize>,
 }
@@ -82,12 +112,15 @@ unsafe extern "C" fn allocating(
     if let Err(e) = unsafe { a.id.send_named(a.gc, b"collectPrecisely", &[]) } {
         return e;
     }
-    unsafe { a.entry.method.unwrap()(a.entry.context, receiver, args, count) }
+    unsafe {
+        a.id.send(receiver, a.alias, borrowed_slice(args, count).unwrap())
+    }
+    .map_or_else(|e| e, Outcome::loaded)
 }
 struct Finalized {
     id: Protocol,
     gc: Oop,
-    entry: NativeEntry,
+    alias: Oop,
     calls: Cell<usize>,
     string: Oop,
 }
@@ -114,7 +147,10 @@ unsafe extern "C" fn finalized(
     {
         return Outcome::failed(native::INVALID_REQUEST, 2);
     }
-    unsafe { f.entry.method.unwrap()(f.entry.context, receiver, args, count) }
+    unsafe {
+        f.id.send(receiver, f.alias, borrowed_slice(args, count).unwrap())
+    }
+    .map_or_else(|e| e, Outcome::loaded)
 }
 #[test]
 #[ignore = "scripts/native-message-test.sh builds production dylibs"]
@@ -277,7 +313,8 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         // Every construction by printing/operations observes the current String factory.
         let original = selected(id, svt, b"fromBytes:");
         let counter = Box::leak(Box::new(Counted {
-            entry: original,
+            id,
+            alias: alias(id, svt, b"fixtureFromBytes:", original),
             calls: Cell::new(0),
         }));
         install(
@@ -292,13 +329,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         keep(object(send(id, source, b"trimmed", &[])));
         keep(object(send(id, builder, b"asString", &[])));
         assert_eq!(counter.calls.get(), 4);
-        install(
-            id,
-            svt,
-            b"fromBytes:",
-            original.method.unwrap(),
-            original.context,
-        );
+        restore(id, svt, b"fromBytes:", original, counter.alias);
 
         // Bytes are copied before an allocating callback can mutate their source.
         let allocation = selected(id, id.receiver, b"allocate");
@@ -306,7 +337,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         let alloc = Box::leak(Box::new(Allocating {
             id,
             gc,
-            entry: allocation,
+            alias: alias(id, id.receiver, b"fixtureAllocate", allocation),
             input: input.as_mut_ptr(),
             calls: Cell::new(0),
         }));
@@ -323,13 +354,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         let snapshot = keep(object(send(id, copied, b"clone", &[])));
         assert_eq!(text(id, snapshot), b"abc");
         assert_eq!(alloc.calls.get(), 2);
-        install(
-            id,
-            id.receiver,
-            b"allocate",
-            allocation.method.unwrap(),
-            allocation.context,
-        );
+        restore(id, id.receiver, b"allocate", allocation, alloc.alias);
 
         // A printString callback may collect and reenter String construction.
         let custom_behavior = keep(behavior(id));
@@ -424,12 +449,14 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
             object(send(id, source, b"anotherMissingMethod", &[])),
             fault
         );
-        install(
+        send(
             id,
             evt,
-            b"kind:message:",
-            factory.method.unwrap(),
-            factory.context,
+            b"addMethod",
+            &[
+                Operand::object(id.intern_name(b"kind:message:").unwrap()),
+                Operand::entry(factory),
+            ],
         );
 
         // Native buffers are weak: finalization frees each separately, including
@@ -439,7 +466,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         let finalizer = Box::leak(Box::new(Finalized {
             id,
             gc,
-            entry: fin,
+            alias: alias(id, svt, b"fixtureFinalize:", fin),
             calls: Cell::new(0),
             string,
         }));
@@ -458,7 +485,7 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
             assert!(!present(id, doomed_builder));
         }
         assert_eq!(finalizer.calls.get(), 64);
-        install(id, svt, b"finalize:", fin.method.unwrap(), fin.context);
+        restore(id, svt, b"finalize:", fin, finalizer.alias);
         // Automatic collections across construction, appending and Error slot writes.
         send(id, gc, b"budget:", &[Operand::word(1)]);
         for _ in 0..8 {
@@ -478,12 +505,14 @@ fn owned_text_builders_and_errors_use_live_messages_and_gc() {
         assert!(present(id, sb));
         // Copying a String method to unrelated payload never exposes raw pointers.
         let clone = selected(id, svt, b"clone");
-        install(
+        send(
             id,
             base,
-            b"badStringClone",
-            clone.method.unwrap(),
-            clone.context,
+            b"addMethod",
+            &[
+                Operand::object(id.intern_name(b"badStringClone").unwrap()),
+                Operand::entry(clone),
+            ],
         );
         assert!(
             id.send_named(named(b"Object"), b"badStringClone", &[])
