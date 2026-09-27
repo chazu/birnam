@@ -40,5 +40,5 @@ cargo test --offline --locked -p birnam-system-output --lib
 The install manifest uses `libbirnam_prelude.dylib`, matching Bootstrap's path.
 Input and environment now use the same prefix; see their [contract](../birnam-system-input/README.md).
 [File I/O](../birnam-file-io/README.md) is also connected. Full Host/CLI startup,
-image round trips, System GC controls and loaders remain separate migration work. Historical image smoke tests
+image round trips and loaders remain separate migration work. Historical image smoke tests
 are not evidence for those unfinished paths.

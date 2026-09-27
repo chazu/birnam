@@ -455,12 +455,35 @@ unsafe extern "C" fn references(
     count: usize,
 ) -> Outcome {
     done((|| unsafe {
-        state(c)?;
+        let s = state(c)?;
         let Some([value, visitor]) = borrowed_slice(a, count) else {
             return Err(invalid());
         };
-        object(*value)?;
-        object(*visitor)?;
+        let value = object(*value)?;
+        let visitor = object(*visitor)?;
+        let precise =
+            s.id.send_named(s.values[b"GC".as_slice()], b"precisePayloads", &[])?
+                .as_word()
+                .ok_or_else(invalid)?
+                != 0;
+        if !precise {
+            let bytes =
+                s.id.send_named(
+                    s.id.receiver,
+                    b"allocationSizeOf:",
+                    &[Operand::object(value)],
+                )?
+                .as_word()
+                .ok_or_else(invalid)?;
+            for i in 0..bytes.div_ceil(size_of::<usize>()) {
+                let bits = value.cast::<usize>().add(i).read();
+                let edge =
+                    s.id.send_named(s.id.receiver, b"allocationAt:", &[Operand::word(bits)])?;
+                if edge.as_object().is_some() {
+                    s.id.send_named(visitor, b"visit:", &[edge])?;
+                }
+            }
+        }
         Ok(Operand::unit())
     })())
 }

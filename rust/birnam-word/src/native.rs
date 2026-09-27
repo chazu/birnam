@@ -183,14 +183,38 @@ unsafe extern "C" fn references(
     count: usize,
 ) -> Outcome {
     done((|| unsafe {
-        state(context)?;
+        let n = state(context)?;
         let Some([value, visitor]) = borrowed_slice(args, count) else {
             return Err(invalid());
         };
-        object(*value)?;
-        object(*visitor)?;
-        // This family's raw numeric bits never represent object edges, including
-        // instances with private behaviors. No foreign representation is read.
+        let value = object(*value)?;
+        let visitor = object(*visitor)?;
+        let precise =
+            n.id.send_named(n.gc, b"precisePayloads", &[])?
+                .as_word()
+                .ok_or_else(invalid)?
+                != 0;
+        if !precise {
+            let bytes =
+                n.id.send_named(
+                    n.id.receiver,
+                    b"allocationSizeOf:",
+                    &[Operand::object(value)],
+                )?
+                .as_word()
+                .ok_or_else(invalid)?;
+            // Native callers may use an empty family object as a factory receiver.
+            // Collection scans its actual padded extent; numeric value reads retain
+            // their separate exact-size checks.
+            for i in 0..bytes.div_ceil(size_of::<usize>()) {
+                let bits = value.cast::<usize>().add(i).read();
+                let edge =
+                    n.id.send_named(n.id.receiver, b"allocationAt:", &[Operand::word(bits)])?;
+                if edge.as_object().is_some() {
+                    n.id.send_named(visitor, b"visit:", &[edge])?;
+                }
+            }
+        }
         Ok(Operand::unit())
     })())
 }

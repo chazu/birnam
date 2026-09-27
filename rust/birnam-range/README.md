@@ -21,6 +21,12 @@ Id sends for callbacks. No Block or Execution dependency is needed.
 
 Loop/index arithmetic uses wider intermediates so either signed endpoint works
 without wraparound. Object Model provides shallow cloning. Range's inherited GC
-method declares no references, including through private behaviors. Scoped roots
+method excludes raw bits in precise mode, including through private behaviors. Scoped roots
 protect callback arguments, accumulators and materialized results. Native protocol
 failures propagate. Mutable state is attached to the initialized instance.
+
+Payload enumeration reads GC `precisePayloads` by message before each object.
+In precise mode, raw bits are not references; in conservative mode the owner
+checks its own payload words through Id `allocationAt:` and sends `visit:` for
+matching allocations. Private behaviors keep the same representation ownership.
+See [System GC controls](../birnam-system-gc/README.md).

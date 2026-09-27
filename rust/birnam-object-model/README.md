@@ -62,8 +62,11 @@ These are native construction/access operations. Word indexes and kind codes do
 not introduce dependencies on Integer or a shared API catalog. The copied layout
 algorithm comes from the deleted Payload Layout crate: descriptions are exact,
 never inherited, accept arbitrary byte codes, and distinguish unset from an
-explicitly empty prefix. Code 1 marks an Oop; other explicit codes are not traced.
-An unset description conservatively checks this owner's padded payload words
+explicitly empty prefix. In precise payload mode, code 1 marks an Oop and other
+explicit codes are not traced.
+The owner reads GC `precisePayloads` through a send for each object. When precision
+is off, or the description is unset, it conservatively checks its padded payload
+words
 against Id's allocation membership. Descriptions and ownership records never
 expose borrowed layout pointers or Rust containers to another module.
 
@@ -135,3 +138,7 @@ state, retain inputs across sends and export no native service table. The caller
 must fence callback-time mutation before committing omission. They do not reserve
 memory or replay the omitted allocation's GC timing; see
 [the consumer contract](../../docs/design/90-discarded-clone.md).
+
+Layout replacement remains legal during tracing: it changes owned metadata without
+allocating a language object. A hook can change a later object's layout; allocation,
+cloning and ordinary slot mutation retain their existing phase admission.

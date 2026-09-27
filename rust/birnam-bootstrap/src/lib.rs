@@ -257,7 +257,16 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             id.send_named(value, b"installPrinting:", &[string])?;
         }
         // Install default Object printing after Boolean/Nil install their own methods.
-        for name in ["prelude", "printing", "system_output", "system_input", "environment", "file_io"] {
+        for name in [
+            "prelude",
+            "printing",
+            "system_output",
+            "system_input",
+            "environment",
+            "file_io",
+            "system_gc",
+            "native_loader",
+        ] {
             id.send_named(
                 receiver,
                 b"loadNative:",
@@ -311,7 +320,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 Operand::object(namespace),
             ],
         )?;
-        for name in ["peg", "lang", "tcc", "codegen_runtime"] {
+        for name in ["peg", "lang", "tcc", "codegen_runtime", "source_loader"] {
             id.send_named(
                 receiver,
                 b"loadNative:",

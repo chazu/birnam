@@ -32,6 +32,13 @@ live method replacement.
 connected through Id sends, preserving binary stdin and environment/error behavior.
 [File I/O](rust/birnam-file-io/README.md) now uses the same message path and copies
 filenames before reading write contents.
+[System GC controls](rust/birnam-system-gc/README.md) also use messages, including
+automatic collection and owner-side conservative/precise payload scanning.
+[Native Loader](rust/birnam-native-loader/README.md) now connects System module
+loading through the same messages, preserving its existing API and error mapping.
+[Source Loader](rust/birnam-source-loader/README.md) and Codegen source registration
+also use Id messages, with real file loading through the authored Module manager.
+Embedded files remain on hold; Host/CLI and Image integration are still pending.
 The full workspace, Artifact/PortableCode language adapters, Image,
 workers and CLI still await upper integration.
 The usage documentation below describes the language being preserved.

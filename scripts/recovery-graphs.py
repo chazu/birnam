@@ -290,7 +290,7 @@ def verify_complete_matrices(evidence, include_unboxed=True):
     expected.update(f"joint-{family}-{counting}-{profile}.json"
                     for family in ('sequence', 'budget', 'control', 'inputs')
                     for counting in ('off', 'on') for profile in ('debug', 'release'))
-    expected.update({"evaluator-lifetime.json", "baseline-native-storage.json"})
+    expected.add("baseline-native-storage.json")
     paths = [p for p in Path(evidence).glob("*.json") if p.name in expected]
     if {p.name for p in paths} != expected:
         raise RuntimeError("missing source closure matrix receipts")
@@ -326,17 +326,6 @@ def verify_complete_matrices(evidence, include_unboxed=True):
             check_joint_numeric_closure_pair(family,
                 matrices[f'joint-{family}-off-{profile}.json'],
                 matrices[f'joint-{family}-on-{profile}.json'])
-    lifetime = matrices.pop("evaluator-lifetime.json")
-    expected_lifetime = {(profile, case) for profile in ("debug", "release")
-                         for case in ("probe-root-boundary", "logicvar-original", "error-original",
-                                      "nested-sync", "nested-sync-block", "nested-persisting")}
-    if len(lifetime["rows"]) != 12 or {(r["profile"], r["case"]) for r in lifetime["rows"]} != expected_lifetime:
-        raise RuntimeError("incomplete evaluator/native root lifetime matrix")
-    for profile in ("debug", "release"):
-        floor = ROOT / ".cargo-target/74t-closure-control-target" / profile / "libbirnam_id.dylib"
-        if lifetime["artifacts"].get(str(floor.resolve())) != matrices[f"sequence-{profile}.json"]["floor_sha256"]:
-            raise RuntimeError("evaluator lifetime floor differs from source matrix floor")
-    receipt["evaluator_lifetime_matrix"] = lifetime
     baseline_storage = matrices.pop("baseline-native-storage.json")
     check_baseline_storage_matrix(baseline_storage)
     receipt["baseline_native_storage_matrix"] = baseline_storage

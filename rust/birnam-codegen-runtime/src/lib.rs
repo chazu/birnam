@@ -6,6 +6,7 @@ use birnam_abi::{
 };
 use birnam_codegen::{OwnedCst, lower_program, native as emission};
 use core::{cell::RefCell, ffi::c_void};
+mod source;
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
 }
@@ -20,6 +21,7 @@ struct State {
     ns: Oop,
     roots: Oop,
     permanent: Vec<Oop>,
+    sources: source::Sources,
     thread: std::thread::ThreadId,
 }
 struct Scope<'a> {
@@ -139,12 +141,7 @@ impl State {
             Ok(OwnedCst::new(&rule, start, end, children))
         }
     }
-    unsafe fn native_method(
-        &self,
-        scope: &Scope<'_>,
-        c: &[u8],
-        implementation: Option<Oop>,
-    ) -> Result<Operand, Outcome> {
+    unsafe fn native_unit(&self, scope: &Scope<'_>, c: &[u8]) -> Result<Oop, Outcome> {
         unsafe {
             let source = scope.keep(object(self.send(
                 self.named(b"String")?,
@@ -156,6 +153,17 @@ impl State {
                 b"compile:",
                 &[Operand::object(source)],
             )?)?)?;
+            Ok(unit)
+        }
+    }
+    unsafe fn native_method(
+        &self,
+        scope: &Scope<'_>,
+        c: &[u8],
+        implementation: Option<Oop>,
+    ) -> Result<Operand, Outcome> {
+        unsafe {
+            let unit = self.native_unit(scope, c)?;
             if self.is_error(unit)? {
                 return Ok(Operand::object(unit));
             }
@@ -167,12 +175,29 @@ impl State {
         }
     }
 }
+impl State {
+    unsafe fn run_method(&self, scope: &Scope<'_>, method: Oop) -> Result<Operand, Outcome> {
+        unsafe {
+            let captures =
+                scope.keep(object(self.send(self.named(b"Vector")?, b"new", &[])?)?)?;
+            let block = scope.keep(object(self.send(
+                self.named(b"Block")?,
+                b"fromMethod:captures:",
+                &[Operand::object(method), Operand::object(captures)],
+            )?)?)?;
+            let machine =
+                scope.keep(object(self.send(self.named(b"Machine")?, b"new", &[])?)?)?;
+            self.send(machine, b"runBlock:", &[Operand::object(block)])
+        }
+    }
+}
 #[derive(Clone, Copy)]
 enum Op {
     Emit,
     Compile,
     Eval,
     Define,
+    Source(source::Op),
 }
 struct Entry {
     state: *const State,
@@ -186,7 +211,11 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
             return Err(invalid());
         }
         let a = borrowed_slice(a, n).ok_or_else(invalid)?;
-        let count = if matches!(e.op, Op::Define) { 3 } else { 1 };
+        let count = match e.op {
+            Op::Define => 3,
+            Op::Source(op) => op.count(),
+            _ => 1,
+        };
         if a.len() != count {
             return Err(invalid());
         }
@@ -196,6 +225,9 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         };
         for &v in a {
             scope.keep(object(v)?)?;
+        }
+        if let Op::Source(op) = e.op {
+            return source::operation(s, &scope, op, a);
         }
         if matches!(e.op, Op::Define) {
             let selector = object(a[0])?;
@@ -272,14 +304,7 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         if matches!(e.op, Op::Compile) {
             return Ok(Operand::object(method));
         }
-        let captures = scope.keep(object(s.send(s.named(b"Vector")?, b"new", &[])?)?)?;
-        let block = scope.keep(object(s.send(
-            s.named(b"Block")?,
-            b"fromMethod:captures:",
-            &[Operand::object(method), Operand::object(captures)],
-        )?)?)?;
-        let machine = scope.keep(object(s.send(s.named(b"Machine")?, b"new", &[])?)?)?;
-        s.send(machine, b"runBlock:", &[Operand::object(block)])
+        s.run_method(&scope, method)
     })())
 }
 unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
@@ -289,6 +314,11 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             return Err(invalid());
         };
         let v = object(*v)?;
+        let entries = s.sources.entries.borrow().clone();
+        for (name, source) in entries {
+            s.id.send_named(v, b"visit:", &[Operand::object(name)])?;
+            s.id.send_named(v, b"visit:", &[Operand::object(source)])?;
+        }
         for &o in &s.permanent {
             s.id.send_named(v, b"visit:", &[Operand::object(o)])?;
         }
@@ -339,12 +369,28 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ns,
             roots: root,
             permanent: vec![ns, root, vt, reflect_vt, receiver, reflect],
+            sources: source::Sources::default(),
             thread: std::thread::current().id(),
         }));
         for (target, n, op) in [
             (vt, b"emit:".as_slice(), Op::Emit),
             (vt, b"compile:", Op::Compile),
             (vt, b"eval:", Op::Eval),
+            (vt, b"sourceRevisionOf:", Op::Source(source::Op::Revision)),
+            (
+                vt,
+                b"recordModuleSource:named:",
+                Op::Source(source::Op::Record),
+            ),
+            (vt, b"moduleSourceFor:", Op::Source(source::Op::Find)),
+            (vt, b"sealInitialGeneration", Op::Source(source::Op::Seal)),
+            (vt, b"lastError", Op::Source(source::Op::LastError)),
+            (vt, b"evalPersisting:", Op::Source(source::Op::Eval)),
+            (
+                vt,
+                b"evalPersisting:from:",
+                Op::Source(source::Op::EvalFrom),
+            ),
             (reflect_vt, b"defineMethod:on:as:", Op::Define),
         ] {
             let c = Box::into_raw(Box::new(Entry { state: s, op }));

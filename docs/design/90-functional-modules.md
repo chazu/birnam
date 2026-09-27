@@ -1012,10 +1012,10 @@ initializer admission failures also leave no retained mappings after collection.
 
 The first three areas' source-to-Machine path is complete. The broader batch still
 contains allocation-elision and the full Artifact/PortableCode language adapters.
-Deferred Image/Store publication, semantic inventories, portable materialization
-and their acceptance cases remain in `birnam-codegen-runtime/src/deferred.rs`,
-separated by function from the replaced source facade/bootstrap. They are not
-compiled or counted as passing coverage. Store-backed task policy, Image, workers
+Image/Store publication, semantic inventories and portable materialization
+remain migration work. Their uncompiled legacy implementation and tests were
+subsequently removed; the [compiler migration reference](../../rust/birnam-codegen-runtime/README.md#remaining-migration-reference)
+pins their Git history and outstanding behavior. They are not passing coverage. Store-backed task policy, Image, workers
 and full CLI keep their previous later integration gates.
 
 ### Batch 2 compiler-generated PC candidates (2026-09-24)
@@ -1245,3 +1245,35 @@ legacy callback-driven mutation of borrowed paths. Existing binary I/O, UTF-8 pa
 checks, one-GiB read limit, error precedence and receiver returns remain. Production
 tests verify the destination cannot be redirected during a collecting contents
 send. See the [contract and checks](../../rust/birnam-file-io/README.md).
+
+### System GC controls reconnected (2026-09-25)
+
+The four existing System GC methods use Id sends. GC owns automatic/precision
+flags; representation owners query precision and enumerate their own payloads.
+The conservative default and live mode/layout changes are restored without native
+settings tables, foreign layout access, or changes to the visitor API. Native root
+capture and the current budget remain unchanged. See the bounded
+[contract and validation](../../rust/birnam-system-gc/README.md).
+
+
+### Native Loader reconnected (2026-09-26)
+
+[Native Loader](../../rust/birnam-native-loader/README.md) now loads through
+Bootstrap and uses Id sends for String, Integer, Error, roots and registration.
+The existing System methods, path snapshot, sequence order, initializer results
+and error mapping are preserved. Id retains sole ownership of native loading.
+Production C fixtures and compiled source cover real loading, collecting calls,
+transient arguments, live replacements and reloads. Source Loader, Image and
+Host/CLI integration remain separate work; optimization stays paused.
+
+
+### Source Loader and compiler registration reconnected (2026-09-26)
+
+Codegen's existing revision/registration/readback/seal and loader-facing evaluation
+selectors now use Id messages and explicitly traced source state. System `load:`
+runs through Bootstrap and the authored Module manager executes unchanged in the
+production integration test. Preserve Globals/Namespace separation, registration
+before evaluation, nil/Error behavior and immediate Store MOP publication.
+See the [Source Loader contract](../../rust/birnam-source-loader/README.md).
+Embedding is explicitly on hold; this does not restore its compiler intrinsic,
+artifact activation, generation/Image reconstruction or Host/CLI startup.

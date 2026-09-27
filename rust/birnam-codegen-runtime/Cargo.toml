@@ -5,20 +5,9 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
-[features]
-# Test-module assertion for collection during an active synchronous evaluator.
-test-evaluator-lifetime = []
-
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
-birnam-artifact = { path = "../birnam-artifact", default-features = false }
-birnam-artifact-codec = { path = "../birnam-artifact-codec" }
 birnam-codegen = { path = "../birnam-codegen" }
-
-[build-dependencies]
-
-[dev-dependencies]
-birnam-host = { path = "../birnam-host" }
 
 [lib]
 name = "birnam_codegen_runtime"

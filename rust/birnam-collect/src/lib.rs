@@ -46,6 +46,8 @@ struct Memory {
     finalizers: RefCell<HashMap<usize, Owner>>,
     temporary: RefCell<Vec<Oop>>,
     budget: Cell<usize>,
+    automatic: Cell<bool>,
+    precise_payloads: Cell<bool>,
     charged: Cell<usize>,
     constructing: Cell<bool>,
     walk: RefCell<Option<collection::Walk>>,
@@ -259,6 +261,56 @@ unsafe extern "C" fn budget(
         Ok(Operand::unit())
     })())
 }
+// Settings remain mutable from trace/finalizer sends. Assigning a setting never
+// allocates, collects, resets accounting, or changes the collection phase.
+unsafe fn setting(
+    c: *mut c_void,
+    a: *const Operand,
+    n: usize,
+    precise: bool,
+) -> Result<Operand, Outcome> {
+    let m = unsafe { memory(c)? };
+    let Some([flag]) = (unsafe { borrowed_slice(a, n) }) else {
+        return Err(invalid());
+    };
+    let enabled = flag.as_word().ok_or_else(invalid)? != 0;
+    if precise {
+        m.precise_payloads.set(enabled);
+    } else {
+        m.automatic.set(enabled);
+    }
+    Ok(Operand::unit())
+}
+unsafe extern "C" fn automatic_collection(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done(unsafe { setting(c, a, n, false) })
+}
+unsafe extern "C" fn precise_payloads_set(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done(unsafe { setting(c, a, n, true) })
+}
+unsafe extern "C" fn precise_payloads(
+    c: *mut c_void,
+    _: Oop,
+    _: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| {
+        let m = unsafe { memory(c)? };
+        if n != 0 {
+            return Err(invalid());
+        }
+        Ok(Operand::word(usize::from(m.precise_payloads.get())))
+    })())
+}
 // Metadata owners retire their weak records before Id detaches any allocation.
 unsafe extern "C" fn register_retirement(
     context: *mut c_void,
@@ -340,6 +392,8 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             finalizers: RefCell::new(HashMap::new()),
             temporary: RefCell::new(Vec::new()),
             budget: Cell::new(1 << 20),
+            automatic: Cell::new(true),
+            precise_payloads: Cell::new(false),
             charged: Cell::new(0),
             constructing: Cell::new(false),
             walk: RefCell::new(None),
@@ -361,6 +415,9 @@ unsafe fn construct(id: Protocol, roots_object: Oop) -> Result<Operand, Outcome>
             (b"referenceOwnerOf:", reference_owner),
             (b"finalize:with:", finalize_with),
             (b"budget:", budget),
+            (b"automaticCollection:", automatic_collection),
+            (b"precisePayloads:", precise_payloads_set),
+            (b"precisePayloads", precise_payloads),
             (b"allocationBytes", accounting::read),
             (b"canOmitAllocationFor:", construction::can_omit),
         ] {

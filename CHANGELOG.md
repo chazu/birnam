@@ -8,6 +8,30 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect Codegen source revision/registration/readback/sealing and loader-facing
+  evaluation through Id messages. Migrate System `load:` and Bootstrap construction,
+  preserving registration order, original source identity, nil/error behavior and
+  Globals/Namespace separation. Validate real source loading with the unchanged
+  authored Module manager, collecting/reentrant dependencies and live replacements.
+  Embedding remains on hold; generation/Image and Host/CLI work stay separate.
+
+- Delete the uncompiled legacy compiler orchestration, four orphaned helper/test
+  files, two obsolete test runners and their plan/receipt wiring. Remove unused
+  compiler dependencies and the inactive evaluator feature. Preserve a concise
+  Git-backed inventory of remaining source-loading, publication and Image work;
+  current message-based compiler and lifetime coverage is unchanged.
+
+- Migrate Native Loader's existing System methods to Id sends and production
+  Bootstrap. Preserve path snapshots, sequence ordering, initializer results and
+  error mapping; test real dylibs, collecting dependencies, method replacement
+  and transient argument lifetime.
+
+- Reconnect System GC controls through Id messages. GC owns automatic/precision
+  settings; reference owners preserve conservative and precise payload modes,
+  including live setting/layout changes during tracing. Preserve native roots,
+  accounting, count conversion and the current collection threshold. Add production
+  coverage for both modes, replacements, suppression and failed-trace safety.
+
 - Migrate System file I/O to Id sends. Copy the filename before reading contents,
   following the approved String lifetime rule; retain binary contents, UTF-8 path
   checks, the one-GiB read limit, lazy errors and receiver results. Test collecting

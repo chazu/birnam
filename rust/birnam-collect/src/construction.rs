@@ -13,7 +13,11 @@ unsafe fn construct(
     memory.temporary.borrow_mut().push(root);
     let nested = memory.constructing.replace(true);
     let result = (|| unsafe {
-        if !nested && memory.phase.get() == Phase::Idle && !memory.below_threshold() {
+        if memory.automatic.get()
+            && !nested
+            && memory.phase.get() == Phase::Idle
+            && !memory.below_threshold()
+        {
             collection::conservative(memory)?;
         }
         let answer = operation()?;
@@ -171,6 +175,7 @@ pub(super) unsafe extern "C" fn prepare(
             return Err(invalid());
         }
         if memory.phase.get() == Phase::Idle
+            && memory.automatic.get()
             && !memory.constructing.get()
             && !memory.below_threshold()
         {

@@ -6,7 +6,7 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/.cargo-target/native-message-t
 mkdir -p "$CARGO_TARGET_DIR"
 CARGO_TARGET_DIR=$(cd "$CARGO_TARGET_DIR" && pwd)
 export CARGO_TARGET_DIR
-cargo build --offline --locked --features birnam-tcc/resource-metrics -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-boolean -p birnam-nil -p birnam-bootstrap -p birnam-collect -p birnam-object-model -p birnam-string -p birnam-error -p birnam-integer -p birnam-float -p birnam-word -p birnam-vector -p birnam-map -p birnam-range -p birnam-execution -p birnam-peg -p birnam-lang -p birnam-tcc -p birnam-codegen-runtime -p birnam-store -p birnam-relational -p birnam-prelude -p birnam-printing -p birnam-system-output -p birnam-system-input -p birnam-environment -p birnam-file-io
+cargo build --offline --locked --features birnam-tcc/resource-metrics -p birnam-id -p birnam-root-registry -p birnam-namespace -p birnam-boolean -p birnam-nil -p birnam-bootstrap -p birnam-collect -p birnam-object-model -p birnam-string -p birnam-error -p birnam-integer -p birnam-float -p birnam-word -p birnam-vector -p birnam-map -p birnam-range -p birnam-execution -p birnam-peg -p birnam-lang -p birnam-tcc -p birnam-codegen-runtime -p birnam-store -p birnam-relational -p birnam-prelude -p birnam-printing -p birnam-system-output -p birnam-system-input -p birnam-environment -p birnam-file-io -p birnam-system-gc -p birnam-native-loader -p birnam-source-loader
 export BIRNAM_TEST_MODULE_DIRECTORY="$CARGO_TARGET_DIR/debug"
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
   abi/fixtures/id-protocol-v1/execution_method.c \
@@ -14,13 +14,23 @@ cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
 cc -std=c11 -Wall -Wextra -Werror -dynamiclib -fvisibility=hidden \
   abi/fixtures/id-protocol-v1/execution_machine.c \
   -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_execution_machine_fixture.dylib"
+for variant in target missing incompatible; do
+  flags=()
+  case "$variant" in
+    missing) flags=(-DLOADER_MISSING) ;;
+    incompatible) flags=(-DLOADER_INCOMPATIBLE) ;;
+  esac
+  cc -std=c11 -Wall -Wextra -Werror -dynamiclib "${flags[@]}" \
+    abi/fixtures/id-protocol-v1/native_loader.c \
+    -o "$BIRNAM_TEST_MODULE_DIRECTORY/libbirnam_loader_${variant}_fixture.dylib"
+done
 # Audit the actual converted dylibs; no installed legacy construction graph.
 python3 - "$BIRNAM_TEST_MODULE_DIRECTORY" <<'PY_AUDIT'
 import json
 from pathlib import Path
 import subprocess
 import sys
-modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution peg lang tcc codegen-runtime store relational prelude printing system-output system-input environment file-io".split()
+modules = "id root-registry namespace boolean nil bootstrap collect object-model string error integer float word vector map range execution peg lang tcc codegen-runtime store relational prelude printing system-output system-input environment file-io system-gc native-loader source-loader".split()
 directory = Path(sys.argv[1])
 for module in modules:
     library = directory / ("libbirnam_" + module.replace("-", "_") + ".dylib")
@@ -36,8 +46,8 @@ metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--offline",
 packages = {p["name"]: p for p in metadata["packages"]}
 for module in modules + ["siphon", "abi"]:
     dependencies = {d["name"] for d in packages["birnam-" + module]["dependencies"] if d["kind"] is None}
-    expected = {"abi": set(), "execution": {"birnam-abi", "birnam-artifact-codec"}, "tcc": {"birnam-abi", "birnam-native-compiler"}, "codegen-runtime": {"birnam-abi", "birnam-artifact", "birnam-artifact-codec", "birnam-codegen"}}
+    expected = {"abi": set(), "execution": {"birnam-abi", "birnam-artifact-codec"}, "tcc": {"birnam-abi", "birnam-native-compiler"}, "codegen-runtime": {"birnam-abi", "birnam-codegen"}}
     assert dependencies == expected.get(module, {"birnam-abi"}), (module, dependencies)
 print("native boundary audit: exports, install names and dependencies passed")
 PY_AUDIT
-CARGO_PROFILE_DEV_PANIC=unwind cargo test --offline --locked -p birnam-siphon --test modules --test memory --test memory_activation --test allocation_accounting --test object_model --test text_error --test numbers --test numbers_loading --test collections --test roots --test execution_methods --test execution_machines --test compiler --test store --test relational --test system_output --test system_services -- --include-ignored
+CARGO_PROFILE_DEV_PANIC=unwind cargo test --offline --locked -p birnam-siphon --test modules --test memory --test memory_activation --test allocation_accounting --test object_model --test text_error --test numbers --test numbers_loading --test collections --test roots --test execution_methods --test execution_machines --test compiler --test store --test relational --test system_output --test system_services --test system_gc --test native_loader --test source_loader -- --include-ignored

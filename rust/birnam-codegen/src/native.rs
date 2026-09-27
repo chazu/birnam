@@ -216,6 +216,7 @@ fn function(
     source: &[u8],
     functions: &mut Vec<Function>,
     named: bool,
+    filename: &[u8],
 ) -> Result<usize, Error> {
     let index = functions.len();
     functions.push(Function {
@@ -246,12 +247,7 @@ fn function(
         disposition: Disposition::ResumableRequired,
     };
     let descriptor = resumable_descriptor::compile_descriptor_v2(
-        program,
-        &layout,
-        authority,
-        b"<compiler>",
-        source,
-        1,
+        program, &layout, authority, filename, source, 1,
     )
     .map_err(|_| Error::Descriptor)?;
     let selected = selection::encode_artifact_selection(&[revision], &[authority])
@@ -274,7 +270,7 @@ fn function(
                     program, captures, ..
                 } => {
                     let inner = ir::lower_portable_block(program).map_err(|_| Error::Lower)?;
-                    let child = function(&inner, source, functions, false)?;
+                    let child = function(&inner, source, functions, false, filename)?;
                     let v = operation.result.0;
                     writeln!(
                         out,
@@ -409,22 +405,32 @@ fn module(functions: Vec<Function>) -> Vec<u8> {
 pub fn compile_portable(bytes: &[u8], source: &[u8]) -> Result<Vec<u8>, Error> {
     let logical = ir::lower_portable_block(bytes).map_err(|_| Error::Lower)?;
     let mut functions = Vec::new();
-    function(&logical, source, &mut functions, false)?;
+    function(&logical, source, &mut functions, false, b"<compiler>")?;
     Ok(module(functions))
 }
 pub fn compile_program(program: crate::Program<'_>, source: &[u8]) -> Result<Vec<u8>, Error> {
+    compile_program_from(program, source, b"<compiler>")
+}
+pub fn compile_program_from(
+    program: crate::Program<'_>,
+    source: &[u8],
+    filename: &[u8],
+) -> Result<Vec<u8>, Error> {
     let block = crate::Block {
         params: Vec::new(),
         body: program.body,
     };
     let bytes = crate::portable::encode_block(&block, &[]).map_err(|_| Error::Portable)?;
-    compile_portable(&bytes, source)
+    let logical = ir::lower_portable_block(&bytes).map_err(|_| Error::Lower)?;
+    let mut functions = Vec::new();
+    function(&logical, source, &mut functions, false, filename)?;
+    Ok(module(functions))
 }
 pub fn compile_named(arity: u32) -> Result<Vec<u8>, Error> {
     let selector = b"value:".repeat(arity as usize + 1);
     let logical = ir::lower_named_adapter(arity, &selector).map_err(|_| Error::Lower)?;
     let mut functions = Vec::new();
-    function(&logical, &selector, &mut functions, true)?;
+    function(&logical, &selector, &mut functions, true, b"<compiler>")?;
     Ok(module(functions))
 }
 

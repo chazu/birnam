@@ -248,7 +248,16 @@ unsafe extern "C" fn references(
             }
         } else {
             let bytes = m.extent(value)?;
-            let layout = m.layout(m.behavior(value)?)?;
+            let precise = m
+                .send(m.gc, b"precisePayloads", &[])?
+                .as_word()
+                .ok_or_else(invalid)?
+                != 0;
+            let layout = if precise {
+                m.layout(m.behavior(value)?)?
+            } else {
+                None
+            };
             for index in 0..bytes.div_ceil(size_of::<Oop>()) {
                 let kind = layout.as_ref().map_or(UNKNOWN, |l| l.kind(index));
                 if layout.is_some() && kind != OOP {
@@ -447,7 +456,8 @@ unsafe extern "C" fn set_layout(
             .to_vec();
         let rest = u8::try_from(rest.as_word().ok_or_else(invalid)?).map_err(|_| invalid())?;
         m.rooted(&[behavior], || {
-            m.send(m.gc, b"prepareAllocation", &[])?;
+            // Replacing owned metadata allocates no language object. Trace hooks
+            // may change a later object's layout during the current collection.
             if !m.is_behavior(behavior)? {
                 return Err(invalid());
             }
@@ -615,6 +625,7 @@ const NAMES: &[&[u8]] = &[
     b"addMethod",
     b"register:",
     b"trace:with:",
+    b"precisePayloads",
     b"registerRetirement:",
 ];
 unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {

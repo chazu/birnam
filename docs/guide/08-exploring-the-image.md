@@ -267,4 +267,20 @@ to pass a sequence of explicit Objects to its initializer. `inputs` supplies
 `size` and zero-based `at:`; a Vector is the usual choice. The native initializer
 returns an Object, or Unit to return the receiving System object. It must export
 `birnam_native_module_v1`; the former `module_init` entry is no longer loaded.
-See [native loading](../../abi/native-loading.md) for the native contract and errors.
+See [native loading](../../abi/native-loading.md) for the native contract and errors,
+and [Native Loader](../../rust/birnam-native-loader/README.md) for the current
+message-based integration and validation.
+
+
+## Loading source files
+
+`[System load: path]` reads and evaluates a Birnam source file through Codegen.
+Top-level bindings remain in Globals. Source declarations are registered before
+evaluation; registration and successful Module loaded-state notification are
+separate operations. See [Source Loader](../../rust/birnam-source-loader/README.md)
+for the preserved errors and registration rules.
+
+This path now runs in the migrated native prefix. Files requiring
+`System embedFile:` are outside the current acceptance boundary while embedding's
+message protocol is decided. Full CLI startup and artifact/image loading remain
+separate migrations.

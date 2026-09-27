@@ -577,7 +577,8 @@ fn persistent_collections_use_live_owner_messages_and_survive_gc() {
         assert!(sw.calls.get() > 5 && vw.calls.get() > 5);
         restore(&h, sb, b"fromBytes:", sw.original);
         restore(&h, vb, b"add:", vw.original);
-        // GC does not mistake Word or Range raw bits for references, even after privatization.
+        // Precise payload mode excludes Word/Range bits after privatization.
+        send(id, h.gc, b"precisePayloads:", &[Operand::word(1)]);
         let model = h.named(b"ObjectModel");
         let object_vt = h.named(b"ObjectVt");
         let victim = object(send(

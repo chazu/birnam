@@ -1,5 +1,8 @@
 # Source Loader installation v2
 
+> Historical service-table contract. The current initializer and Id-message
+> implementation are documented in [Source Loader](../rust/birnam-source-loader/README.md).
+
 Design [81AV](../docs/design/81av-production-source-loader.md) moves System load:
 intact from Prelude into `birnam-source-loader`. It depends on Integer, String,
 Text View and Error Value; Prelude drops their now-unused attachments. Source

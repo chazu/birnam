@@ -7,7 +7,7 @@ true, false and nil. Bootstrap then sends Integer `installFloat:` and String
 
 Float owns its f64 interpretation of eight raw payload bytes. Object Model
 allocates and shallow-clones the storage; an inherited GC reference owner treats
-numeric bits as raw, including after private behavior changes. Recognition keeps
+numeric bits as non-references in precise payload mode, including after private behavior changes. Recognition keeps
 the existing exact Float behavior rule. Dependencies and selectors belong to the
 instance; no process singleton, shared table or cached foreign entry remains.
 
@@ -41,3 +41,9 @@ exact-family equality and the existing bit mix, normalizing both signed zeros.
 Identity is tested first by collections, so the same NaN key is retrievable while
 distinct NaNs differ. Private behaviors use identity; public `=` remains separate.
 See [Map's key contract](../birnam-map/README.md#keys).
+
+Payload enumeration reads GC `precisePayloads` by message before each object.
+In precise mode, raw bits are not references; in conservative mode the owner
+checks its own payload words through Id `allocationAt:` and sends `visit:` for
+matching allocations. Private behaviors keep the same representation ownership.
+See [System GC controls](../birnam-system-gc/README.md).

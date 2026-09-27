@@ -17,6 +17,13 @@ recovery registration envelope. Older native fixtures retain their behavioral
 assertions but require message-based setup before execution; do not restore the
 old headers to run them.
 
+The uncompiled legacy compiler and its orphaned cache/binding/finalizer tests are
+now preserved only in Git; see the [migration reference](../rust/birnam-codegen-runtime/README.md#remaining-migration-reference).
+The obsolete `codegen-state` and synchronous `evaluator-lifetime` runners, feature
+flag and plan/receipt requirements are removed. Their removal is not a passing
+result for the remaining Image/publication work or the legacy optimizer matrices.
+The current compiler integration test exercises owned Method/Unit lifetimes.
+
 `mise run siphon` builds only production Id and tests the Siphon handoff, real
 Id interning/loading, and invalid paths. It is available during caller migration.
 The CLI executable and parser tests belong to `birnam-cli`; host-operation
@@ -253,3 +260,31 @@ and filename snapshots that survive mutation by contents callbacks. File I/O is
 included in the dylib audit. `cargo test --offline --locked -p birnam-file-io --lib`
 checks bounded reads at the limit, one byte over it, and native read errors using
 small fixtures. The production limit remains one GiB.
+
+The System GC migration brings the suite to eighteen integration binaries.
+`system_gc` covers the four existing controls, live count/Integer conversion,
+replacement and native failures, conservative/precise payload behavior, live
+mode/layout changes during tracing, native-stack roots in both modes, automatic
+suppression with unchanged accounting, explicit collection and module reloads.
+System GC participates in the dylib boundary audit. Payload-specific exclusions
+in the numeric/collection tests explicitly enable precise mode; the common test
+collector still controls only native-root scanning.
+
+
+Native Loader adds the nineteenth production integration binary, `native_loader`.
+Independent C fixtures exercise Unit/Object/invalid results, collecting
+initializers, missing/incompatible descriptors and initialization failure through
+System's real wrappers. Tests cover path snapshots under mutation, sequence order,
+transient rooting and cleanup, collecting/replaced dependencies, exact dependency
+failures, lazy Error publication, compiled source and reload preservation. The
+existing CLI/image loader smoke is retained for those later migrations.
+
+
+Source Loader adds the twentieth integration binary, `source_loader`, and a dylib
+boundary audit. The test loads the complete authored Module manager through
+`System load:`, checks dependency ordering and Store-backed state, and exercises
+real source files, independent revision digests, source identity/GC retention,
+duplicate and sealed registration, nil/syntax/runtime/file results, collecting
+factories/parsers, registry reentry, path mutation, replacement failures and reloads.
+This is acceptance for the source-loading slice without embedding; it does not
+restore Artifact activation, generation/Image recovery or full Host/CLI startup.

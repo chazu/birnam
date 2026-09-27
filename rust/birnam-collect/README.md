@@ -24,6 +24,9 @@ singletons still limit this prefix to one domain per process.
 | GC `canOmitAllocationFor:` | behavior Object | Word 1 only for this GC's current ordinary allocation path while idle, with Id default storage operations and unchanged lookup/epoch; Word 0 otherwise. No charge, reservation or collection. |
 | GC `prepareAllocation` | none | Unit. Enforce the construction phase and budget before an upper mutation, even if it ultimately reuses an object. Caller retains inputs. |
 | GC `registerRetirement:` | owner Object | Unit. Register an instance-owned metadata owner implementing `retire:`; duplicates are ignored. |
+| GC `automaticCollection:` | Word flag (zero disables, nonzero enables) | Unit. Assign the automatic collection setting; no collection or accounting reset. Initially enabled. |
+| GC `precisePayloads:` | Word flag | Unit. Assign payload precision, initially disabled. May change during tracing/finalization. |
+| GC `precisePayloads` | none | Word 0/1. Owners query before scanning each object; no collection/allocation. |
 | GC `budget:` | nonzero Word bytes | Unit. Change the automatic collection threshold while idle. Accounting includes the header and padded payload. |
 | GC `allocationBytes` | none | Word accumulated allocation charge. Readable during tracing/finalization; not a live-storage count. |
 | GC `rootsDo:` | Visitor Object | Unit. Enumerate GC's own objects, selectors, callback owners and temporary construction roots. Registered with Roots during construction. |
@@ -94,7 +97,7 @@ failed activation does not publish a partial inventory charge, and failed tracin
 does not reset it.
 
 Committed charges use checked addition and preserve the fatal diagnostic
-`birnam-id invariant failed: GC allocation byte counter overflow`. The existing
+`birnam-id invariant failed: GC allocation byte counter overflow`. When automatic collection is enabled, the existing
 construction/`prepareAllocation` threshold check compares the accumulated charge
 with the budget privately. The speculative public `canAllocate:` preview was
 removed because no production consumer needed it. There is no separate Allocation
@@ -166,3 +169,11 @@ not a budget preview. It checks this owner's actual `allocate` and
 facts. It does not promise a collection schedule or authorize a later use after
 callbacks/mutation. Execution fences the complete admission and commits directly;
 see [the consumer](../../docs/design/90-discarded-clone.md).
+
+System's existing GC controls now use these messages; see [System GC](../birnam-system-gc/README.md).
+Payload precision does not change native-root capture. Reference owners query the
+current precision flag by send; conservative candidates are filtered through Id
+`allocationAt:` before sending `visit:`. GC never decodes another owner's payload.
+The default threshold remains one MiB. Turning automatic collection back on does
+not collect until a subsequent allocation admission; explicit collection is
+available while it is off.

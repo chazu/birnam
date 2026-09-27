@@ -228,9 +228,27 @@ unsafe extern "C" fn references(
             return Err(invalid());
         };
         let value = object(*value)?;
-        object(*visitor)?;
-        if !t.buffers.borrow().contains_key(&value.addr()) {
-            return Err(invalid());
+        let visitor = object(*visitor)?;
+        let precise =
+            t.id.send_named(t.gc, b"precisePayloads", &[])?
+                .as_word()
+                .ok_or_else(invalid)?
+                != 0;
+        let words = {
+            let buffers = t.buffers.borrow();
+            let b = buffers.get(&value.addr()).ok_or_else(invalid)?;
+            if b.builder { 3 } else { 2 }
+        };
+        if !precise {
+            // Scan only this owner's payload mirror, never the String's bytes or Rust containers.
+            for i in 0..words {
+                let bits = value.cast::<usize>().add(i).read();
+                let edge =
+                    t.id.send_named(t.id.receiver, b"allocationAt:", &[Operand::word(bits)])?;
+                if edge.as_object().is_some() {
+                    t.id.send_named(visitor, b"visit:", &[edge])?;
+                }
+            }
         }
         Ok(Operand::unit())
     })())

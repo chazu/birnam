@@ -4,7 +4,7 @@ from validation_support import ROOT
 
 PRODUCTION = ('Cargo.toml', 'Cargo.lock', 'rust/**/*', 'src/id/**/*', 'modules/**/*', 'vendor/libtcc-src/**/*')
 TARGET = ROOT / '.cargo-target/74t-closure-control-target'
-FEATURES = 'birnam-runtime/ffi-test-hooks,birnam-codegen-runtime/test-evaluator-lifetime,birnam-tcc/allocation-metrics'
+FEATURES = 'birnam-runtime/ffi-test-hooks,birnam-tcc/allocation-metrics'
 
 
 def closure_plan(prefix, output, suite='exhaustive', installed_dependency=('install',)):
@@ -14,7 +14,6 @@ def closure_plan(prefix, output, suite='exhaustive', installed_dependency=('inst
     def add(name, argv, *, script, artifacts=(), depends=(), timeout=180):
         shared_sources = {
             'scripts/closure-string-cleanup-smoke.py': ('scripts/closure-sequence-smoke.py',),
-            'scripts/evaluator-unit-lifetime-smoke.py': ('scripts/aggregate-source-smoke.py',),
         }.get(script, ())
         steps.append(dict(name=name, argv=[str(a) for a in argv], inputs=PRODUCTION +
                           (script, 'scripts/closure_plan.py', 'scripts/fixtures/*', 'scripts/*_common.py',
@@ -73,12 +72,11 @@ def closure_plan(prefix, output, suite='exhaustive', installed_dependency=('inst
                 if 'measurement' in driver: flags+=['--profile',profile]
                 matrix(label,driver,flags)
     dependencies=installed_dependency+tuple('diagnostics-'+profile for profile in profiles)
-    for label, driver, extra in (
-        ('evaluator-lifetime','evaluator-unit-lifetime-smoke.py',['--floor-root',TARGET]),
-        ('baseline-native-storage','baseline-native-storage-smoke.py',['--heap-accounting'])):
-        receipt=output/(label+'.json')
-        add(label, ['python3','scripts/'+driver,'--prefix',prefix,'--target',TARGET,'--output',receipt,
-                    '--profiles',*profiles,*extra], script='scripts/'+driver, artifacts=(str(receipt),), depends=dependencies)
+    receipt=output/'baseline-native-storage.json'
+    add('baseline-native-storage', ['python3','scripts/baseline-native-storage-smoke.py',
+        '--prefix',prefix,'--target',TARGET,'--output',receipt,
+        '--profiles',*profiles,'--heap-accounting'], script='scripts/baseline-native-storage-smoke.py',
+        artifacts=(str(receipt),), depends=dependencies)
     if suite == 'exhaustive':
         add('complete-matrix-oracle', ['python3','scripts/closure-matrix-verify.py','--directory',output,'--all'],
             script='scripts/closure-matrix-verify.py', depends=tuple(s['name'] for s in steps))

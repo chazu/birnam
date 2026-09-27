@@ -493,7 +493,37 @@ unsafe extern "C" fn references(c: *mut c_void, _: Oop, a: *const Operand, n: us
             if let Some(origin) = origin {
                 visit(s, v, origin)?;
             }
-        } else if let Some(edges) = { s.machines.borrow().references(target) } {
+        } else if s.machines.borrow().storage.family_of(target).is_some() {
+            let precise =
+                s.id.send_named(s.gc, b"precisePayloads", &[])?
+                    .as_word()
+                    .ok_or_else(invalid)?
+                    != 0;
+            if !precise {
+                let count = s
+                    .machines
+                    .borrow()
+                    .storage
+                    .payload_size(target)
+                    .ok_or_else(invalid)?
+                    / size_of::<usize>();
+                for i in 0..count {
+                    let bits = s
+                        .machines
+                        .borrow()
+                        .storage
+                        .read_payload_word(target, i)
+                        .ok_or_else(invalid)?;
+                    let edge =
+                        s.id.send_named(s.id.receiver, b"allocationAt:", &[Operand::word(bits)])?;
+                    if let Some(edge) = edge.as_object() {
+                        visit(s, v, edge)?;
+                    }
+                }
+            }
+            // Required frame/continuation roots survive in both modes. Copy after
+            // candidate sends, since those sends may mutate this owner's state.
+            let edges = { s.machines.borrow().references(target).ok_or_else(invalid)? };
             for edge in edges {
                 visit(s, v, edge)?;
             }

@@ -3007,3 +3007,5 @@ mod literal_emission_contract_tests {
         }
     }
 }
+
+pub mod source_revision;

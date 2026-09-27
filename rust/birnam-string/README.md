@@ -89,3 +89,10 @@ the result through Vector `new` and `add:` messages, rooting each intermediate.
 String also owns its `collectionEquals:` and `collectionHash` implementations;
 see [Map's key protocol](../birnam-map/README.md#keys). They preserve exact-family
 byte comparison and hashing independently of public `=`.
+
+Payload enumeration reads GC `precisePayloads` by message before each object.
+In precise mode, raw bits are not references; in conservative mode the owner
+checks its own payload words through Id `allocationAt:` and sends `visit:` for
+matching allocations. Private behaviors keep the same representation ownership.
+For String/Builder, this covers the payload mirror only, never text bytes or Rust
+containers. See [System GC controls](../birnam-system-gc/README.md).

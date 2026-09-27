@@ -17,12 +17,11 @@ protocol. Reflect still returns the target on success; refusals and native failu
 propagate unchanged. An observer failure occurs after installation and does not
 undo it. Temporary compilation roots survive collecting hooks.
 
-`deferred.rs` preserves the remaining Image/Store publication, inventories,
-portable materialization and acceptance cases by function. It is not loaded or
-compiled and does not supply compatibility services. Its replaced source facade
-and bootstrap were removed. Allocation-elision remains separately retained in
-Runtime and the pure compiler planners. Restoring those branches requires their
-real owners and acceptance tests; a source-compiler pass does not validate them.
+The uncompiled legacy compiler orchestration and its orphaned helpers/tests have
+been deleted. Git retains the historical implementation; it is not current
+validation or a compatibility layer. Remaining behavior is inventoried
+[below](#remaining-migration-reference). Allocation-elision remains separately
+retained in Runtime and the pure compiler planners.
 
 ## Source and generated-code contract
 
@@ -48,6 +47,34 @@ Namespace. A rejected global write returns the setter's exact result and stops
 that evaluation; prior successful ordinary writes remain published. Native send
 failures propagate unchanged. Values and errors use their current owners, with
 temporary generated values retained across callbacks.
+
+## Source Loader protocol
+
+The existing `sourceRevisionOf:`, `recordModuleSource:named:`, `moduleSourceFor:`,
+`sealInitialGeneration`, `lastError`, `evalPersisting:` and `evalPersisting:from:`
+selectors now use the same current owners. Revision analysis remains private pure
+compiler code; its seven-element Vector retains the tag, name, requirements,
+original source and three historical digests and admission rules.
+
+Codegen owns an append-only source/name registry and the existing closed-registration
+flag. Sources remain original Objects and are visited through `rootsDo:` / `visit:`.
+Registry comparisons use current Symbol/String messages, without a state borrow
+across sends; reentrant additions are observed before publication. Identical source
+bytes return the incoming source while retaining the first registered Object.
+Different bytes, mismatched names, malformed revisions and closed registration
+answer nil with the existing diagnostic. `moduleSourceFor:` reads this registry;
+it does not claim to reconstruct an Image's current generation.
+
+Loader-facing evaluation clears `lastError`, preserves nil/diagnostic versus returned
+Error behavior, and uses owned Method/Block/Machine sends. It never calls a generated
+entry address. Top-level Globals writes and Store MOP publication retain their
+existing behavior. The supplied filename reaches generated descriptors, including
+nested Blocks. No GC policy is changed; temporary values remain explicitly rooted.
+
+[Source Loader](../birnam-source-loader/README.md) is wired after Codegen and tested
+with the complete authored Module manager. Compile-time embedding remains on hold:
+there is no restored `System embedFile:` rewrite in this slice. Generation/Image
+activation and compensation remain separate consumers of source registration.
 
 ## Generated execution
 
@@ -78,7 +105,7 @@ and compiled recovery remain covered by their separate production fixtures.
 
 The full Artifact/PortableCode language adapters, durable publication, embedding,
 Image and CLI workflows are not accepted by these source compiler tests.
-Their retained migration inputs are not loaded by Bootstrap. Current commands and
+Their historical implementations do not run in Bootstrap. Current commands and
 limits are in [validation](../../docs/validation.md).
 
 Store/db and Cells now load through Bootstrap before the compiler. Their separate
@@ -86,8 +113,8 @@ Store/db and Cells now load through Bootstrap before the compiler. Their separat
 source consumers and Store-backed Globals. Generated source reads and writes now
 use that same Globals protocol, including Store history and query visibility.
 Reflect now publishes through Store's receiver-based MOP hooks and owned Execution Methods. Staged
-compiler publication/compensation callers in `deferred.rs` still need migration;
-the old Store native tables are gone.
+compiler publication/compensation still needs migration; the old Store native
+tables are gone.
 
 
 ## First allocation-elision producer
@@ -122,3 +149,36 @@ The admitted predicate returns an existing Boolean while avoiding its intermedia
 Integer and callee index boxes. No new C kernel, deferred identities or loop cache
 is emitted. [The production receipt](../../docs/design/90-numeric-predicate.md)
 records current semantics, allocation savings and the local debug comparison.
+
+## Remaining migration reference
+
+Historical source is pinned at commit `3c4765089a016a01245e259e246b90472e76eaa5`.
+These references preserve outstanding behavior, not obsolete native APIs or a
+requirement to restore the old architecture:
+
+- **Source Loader (migrated except embedding):** [revision metadata and source registration](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L2236-L2631),
+  [revision values](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L4865-L4935),
+  [persisting evaluation](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L6658-L6742)
+  and `lastError` (line 10662). Preserve the loader's registration-before-evaluation,
+  exact Error/nil handling and optional Namespace Module notification described in
+  the [historical loader contract](../../abi/source-loader-v2.md). Current generated
+  evaluation already publishes top-level bindings through Globals; nested bindings
+  remain lexical. Filename-aware descriptors and loader-facing errors now use
+  the current compiler; embedding remains on hold.
+- **Embedding:** `embedded_literal_path`, `read_embedded_file`, `rewrite_embedded`
+  and `collect_embedded_paths` (historical lines 2000–2090) retain file-relative
+  resolution and byte handling to examine with the source-file consumer.
+- **Publication, Image and portable materialization:** the historical compiler
+  contains revision/generation projections, staged activation/rollback,
+  compensation and materialization algorithms. Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
+  and sibling `code_bindings.rs`, `materialization_cache.rs`, `state_contract.rs`
+  and `finalizer_tests.rs` remain in the same Git tree. Reconnect only the behavior
+  required by actual consumers and verify it with current owner messages.
+
+Do not restore direct generated-entry calls, service tables, native mark callbacks
+or GC suppression as substitutes for roots. No lock or borrowed foreign bytes may
+span an outgoing send. Publication preserves Store's MOP; executable references
+retain their Method/Unit owners. The deleted synchronous-evaluator and compiler
+state runners were not executing these tests in the current build. Production
+compiler/lifetime coverage remains in `birnam-siphon/tests/compiler.rs`; broader
+Image and publication acceptance still awaits migration.

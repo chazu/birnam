@@ -518,7 +518,8 @@ fn numbers_text_and_live_dependencies_survive_collection() {
             ),
             fault
         );
-        // Raw numeric bits must never retain an object, even through a private behavior.
+        // Precise payload mode excludes numeric bits, including private behaviors.
+        send(id, h.gc, b"precisePayloads:", &[Operand::word(1)]);
         let target = allocate(id, named(b"ObjectVt"), 0);
         let raw = h.i(target.addr() as i64);
         send(

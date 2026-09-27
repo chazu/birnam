@@ -8,7 +8,7 @@ to construct this family.
 
 The instance owns its selectors and family identities. Eight raw payload bytes
 hold an i64; only Integer reads that representation. Object Model allocates and
-shallow-clones the storage. A GC reference owner declares no object edges,
+shallow-clones the storage. In precise payload mode, a GC reference owner declares no object edges,
 including through private behaviors. Recognition preserves the existing exact
 Integer behavior rule: a changed behavior is not an exact Integer. No process
 singleton, service table, foreign layout or cached dependency entry is used.
@@ -94,3 +94,9 @@ arithmetic/comparison helpers. Overflow, zero division, mixed inputs and failed
 guards decline for baseline behavior. This consumer removes one intermediate
 Integer; it does not construct an optimized numeric result.
 [Details and evidence](../../docs/design/90-numeric-predicate.md).
+
+Payload enumeration reads GC `precisePayloads` by message before each object.
+In precise mode, raw bits are not references; in conservative mode the owner
+checks its own payload words through Id `allocationAt:` and sends `visit:` for
+matching allocations. Private behaviors keep the same representation ownership.
+See [System GC controls](../birnam-system-gc/README.md).

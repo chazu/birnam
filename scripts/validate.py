@@ -54,10 +54,6 @@ def plan(suite, prefix, output):
                        'bash', 'scripts/rust-project-check-smoke.sh'],
                        PRODUCTION + ('scripts/rust-project-check-smoke.sh',),
                        depends=('install',), timeout=600))
-    result.append(step('codegen-state', ['python3', 'scripts/codegen-state-test.py',
-                       '--output', output/'codegen-state.json'],
-                       PRODUCTION + ('scripts/codegen-state-test.py',),
-                       artifacts=(str(output/'codegen-state.json'),), timeout=300))
     if suite == 'performance':
         result.append(step('performance', ['python3', 'scripts/performance-smoke.py', '--prefix', prefix,
                            '--output', output/'performance.json'], PRODUCTION +
