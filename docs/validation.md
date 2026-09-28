@@ -288,3 +288,14 @@ duplicate and sealed registration, nil/syntax/runtime/file results, collecting
 factories/parsers, registry reentry, path mutation, replacement failures and reloads.
 This is acceptance for the source-loading slice without embedding; it does not
 restore Artifact activation, generation/Image recovery or full Host/CLI startup.
+
+
+Bytes/embedding adds the twenty-first integration binary, `embedding`. It covers
+all byte values, empty payloads, clone/conversion/indexing, MOP changes, collection
+and dead-object reclamation, collecting/replaced constructors and byte access,
+source-relative paths, current Globals lookup, lexical receiver shadowing, native
+failures and invalid/oversized files. An embedded Block runs after source/asset
+delete. A real system-compiled dylib loads and runs after asset/generated-C delete.
+A retained Bytes also survives actual TCC Unit reclamation, then is itself
+collected after release. This proves native payload self-containment; Image
+round-trip and full project/CLI integration remain separate migration gates.

@@ -1,8 +1,9 @@
-# String and text construction
+# String, Bytes and text construction
 
 `libbirnam_string` takes one Namespace Object and returns String. Bootstrap loads
 it after Object Model. It requires completed Roots, GC, ObjectVt, true, false and
-nil bindings. It publishes String, StringVt, StringBuilder and StringBuilderVt;
+nil bindings. It publishes String, StringVt, StringBuilder, StringBuilderVt,
+Bytes and BytesVt;
 there is no separate builder library. Repeat initialization returns the published
 String without reinstalling methods.
 
@@ -43,7 +44,7 @@ construction phase before changing its buffer.
 
 String implements the existing owner messages `rootsDo:`, `referencesOf:do:` and
 `finalize:`. Its root inventory retains family identities and selectors, not all
-buffer keys. Text contains no object references. GC attaches this owner to String
+buffer keys. Text contains no object references. GC attaches this owner to String, Bytes
 and Builder behaviors, and attaches a finalizer to every constructed buffer.
 Finalization removes the owned buffer after Id detaches the object, without
 consulting detached Id metadata or calling another dependency. Private behaviors
@@ -96,3 +97,28 @@ checks its own payload words through Id `allocationAt:` and sends `visit:` for
 matching allocations. Private behaviors keep the same representation ownership.
 For String/Builder, this covers the payload mirror only, never text bytes or Rust
 containers. See [System GC controls](../birnam-system-gc/README.md).
+
+## Bytes prototype
+
+`Bytes` is an ordinary empty prototype with its own delegated `BytesVt`, not an
+ABI pointer wrapper. It shares this module's private buffer storage, tracing and
+finalization. Its contents are arbitrary bytes, with no text decoding or object
+references. String/Builder/Bytes ownership kinds remain distinct even after
+private behavior changes. Bootstrap publishes Bytes when it loads String; no new
+native module, native export or install step is needed.
+
+| Receiver / selector | Arguments | Result |
+|---|---|---|
+| Bytes `fromBytes:` | borrowed native Bytes operand | New Bytes with an independent copy, made before any outgoing send. |
+| Bytes instance `new`, `clone` | none | New canonical Bytes with a copy of the receiver's contents. |
+| Bytes instance `bytes`, `length` | none | Borrowed native Bytes operand or native Word count, following String's borrow rules. |
+| Bytes instance `size` | none | Integer byte count. |
+| Bytes instance `at:` | Integer | Integer 0–255; nil for a negative/out-of-range/non-Integer index. |
+| Bytes instance `asString` | none | Binary-safe String copy through current `String fromBytes:`. |
+| String instance `asBytes` | none | Bytes copy through current `Bytes fromBytes:`. |
+
+`size` and `at:` install with the existing numeric extension. Normal method
+replacement and Reflect publication apply to Bytes and its clones. The native
+ABI's borrowed `Operand::Bytes` remains distinct from this language prototype.
+The `embedding` production test covers all 256 byte values, conversion, cloning,
+MOP publication, collection/reclamation and live collecting replacements.

@@ -303,7 +303,7 @@ pub(super) unsafe fn operation(
                     s.syntax_error(scope, source)?;
                     return Ok(nil_value);
                 };
-                let program = match lower_program(&tree, &bytes) {
+                let mut program = match lower_program(&tree, &bytes) {
                     Ok(program) => program,
                     Err(error) => {
                         s.sources.note(if error == birnam_codegen::LowerError::ThreadedSpecialForm {
@@ -312,7 +312,11 @@ pub(super) unsafe fn operation(
                         return Ok(nil_value);
                     }
                 };
-                // Embedding remains unresolved and is not rewritten here.
+                if let Some(error) = s.embed_program(scope, &mut program, &path)? {
+                    let message = scope.keep(object(s.send(error, b"message", &[])?)?)?;
+                    s.sources.note(&s.bytes(message)?);
+                    return Ok(nil_value);
+                }
                 let Ok(c) = emission::compile_program_from(program, &bytes, &path) else {
                     s.sources.note(b"RustCodegen could not emit the source");
                     return Ok(nil_value);

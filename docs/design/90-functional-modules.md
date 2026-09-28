@@ -1275,5 +1275,16 @@ runs through Bootstrap and the authored Module manager executes unchanged in the
 production integration test. Preserve Globals/Namespace separation, registration
 before evaluation, nil/Error behavior and immediate Store MOP publication.
 See the [Source Loader contract](../../rust/birnam-source-loader/README.md).
-Embedding is explicitly on hold; this does not restore its compiler intrinsic,
-artifact activation, generation/Image reconstruction or Host/CLI startup.
+The subsequent embedding slice below restores the file consumer. Artifact
+activation, generation/Image reconstruction and Host/CLI startup remain separate.
+
+
+### Bytes and embedding reconnected (2026-09-26)
+
+Bytes is a clonable prototype with its own behavior, sharing String's private
+buffer storage/lifetime machinery. Compile-time embedding sends to current System
+and copies the returned Bytes through messages; generated code retains the payload
+and constructs Bytes through sends. The existing portable codec suffices. No new
+native module or service framework is needed. [Design 56](56-embedded-files.md)
+records the contract and real dylib validation. Image round-trip and project/Host
+reconnection remain deferred by the user's explicit scope decision.

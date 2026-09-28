@@ -1,66 +1,72 @@
 # 56 — Embedded Files
 
-> **Status:** P0 implemented, 2026-07-16. Birnam source can embed one literal
-> file into a compiled module dylib. Image self-containment for source replay
-> remains a follow-up.
+> **Status:** Reconnected through Id messages, 2026-09-26. Compiled native code
+> returns Bytes; native-library self-containment is tested. Image round-trip and
+> project/Host integration remain later migration work.
 
-## 1. Contract
+## Contract
 
-Birnam uses a compiler intrinsic rather than a runtime file lookup:
+```birnam
+let data := [System embedFile: "assets/schema.json"];
+[data size];
+[data at: 0];
+[data asString]
+```
 
-~~~birnam
-[System embedFile: "assets/schema.json"]
-~~~
+The result is an ordinary, clonable **Bytes prototype object**. It contains the
+exact file contents, including NUL and non-UTF-8 bytes. Bytes has its own behavior;
+its [message contract](../../rust/birnam-string/README.md#bytes-prototype) documents
+cloning, indexing, conversions and the separate native borrowed Bytes operand.
 
-The intrinsic returns a normal Birnam `String`. Strings carry an explicit byte
-length, so text and binary files—including NUL bytes—use the same value type.
+The compile-time form requires a literal, non-empty relative String path without
+`.` or `..` components. NUL and non-UTF-8 paths are rejected. Each payload is
+limited to 16 MiB. Empty files are valid. `=>` threading remains disallowed for
+this source-sensitive form. Globs and dynamic compile-time paths are unsupported.
 
-The argument must be a string literal. The path must be non-empty, relative,
-and must not contain `.` or `..` path components. Globs, directory walks, and
-dynamic paths are deliberately not part of this first slice. Embedded files are
-limited to 16 MiB each.
+## Message path and lifetime
 
-Embedding happens while source is compiled or evaluated. The bytes are emitted
-into the generated C as a length-bearing string and therefore into the dylib;
-the loaded dylib does not read the original file at runtime.
+While compiling, Codegen resolves the path and sends `embedFile:` to the current
+System receiver, using Globals-first lookup with Namespace fallback. File IO owns
+the bounded native file read and sends `Bytes fromBytes:`. Codegen sends `bytes`
+to that result and copies the borrow before any further send. Replacing System's
+method, its global binding or the returned object's byte method affects compilation.
+A lexical receiver named System remains an ordinary runtime receiver; the compiler
+does not substitute the global System for it.
 
-## 2. Path context
+The copied payload goes into the existing portable String literal encoding,
+followed by an ordinary `asBytes` send. Generated native code contains the payload
+and constructs the result through current String/Bytes methods. No new literal
+codec, resource catalog, native callback or cached method entry is introduced.
+The String is an internal binary-safe carrier; the default result is Bytes.
+Neither executing compiled code nor loading its dylib rereads the source asset.
+The runtime Bytes owns a copy, independent of the code mapping's lifetime.
 
-The context is explicit at the compiler boundary:
+Compile-time embedding is distinct from sending `embedFile:` dynamically: the
+latter invokes the current method at that time, like other ordinary sends.
 
-- direct source evaluation and `System load:` resolve relative to the loaded
-  source file's directory;
-- project builds resolve relative to the owning project root, so every source
-  fragment in a multi-file module has one stable package-like root;
-- the old context-free `Codegen eval:` and `Codegen compile:output:` selectors
-  remain valid for sources that do not embed files.
+## Path context and errors
 
-The project build entrypoint is `Codegen compile:output:root:`. Source tooling
-uses `eval:from:` and `evalPersisting:from:` when it has a document path.
+`System load:` and `Codegen evalPersisting:from:` resolve literal paths relative
+to the source file's directory. Context-free `emit:`, `compile:`, `eval:` and
+`evalPersisting:` resolve from the process working directory. No mutable global
+compiler path context is used.
 
-## 3. Build invalidation
+Ordinary compiler entrypoints return validation/read Errors. Loader-facing
+persisting evaluation preserves nil plus `lastError`; System load reports its
+usual compilation failure. Native send failures propagate unchanged.
 
-The resolver statically finds distinct literal `System embedFile:` inputs and
-hashes their path and contents into the module's project source digest. A
-changed, removed, or newly unreadable asset therefore invalidates the owning
-module before artifact reuse. Dependencies are still invalidated through the
-existing module graph.
+## Validation and remaining migration
 
-## 4. Why this surface
+`birnam-siphon/tests/embedding.rs` covers binary/empty files, path rejection,
+16 MiB refusal, clones, MOP publication, collection and replaced methods. It loads
+a source-relative embedded Block, removes the source and asset, then executes it.
+It also emits C, compiles a real dylib with the system compiler, removes the asset
+and C, loads the dylib through Id and executes its Method on a Machine. A retained
+Bytes value remains valid after its producing TCC Unit is reclaimed.
 
-This keeps the language grammar unchanged and uses the existing binary-safe
-String and dylib compiler seams. A module method can return an embedded value,
-and the same source works whether the module is one file or an explicitly
-composed set of files. There is deliberately no manifest-level resource catalog:
-the bytes belong to the compiled artifact that consumes them, and artifact
-identity/requirements are already available through its ID descriptor.
-
-## 5. Image recovery boundary
-
-Compiled artifacts are self-contained with respect to embedded bytes. The
-current image source-recovery path records authored module source in
-`__modsrc__`; if recovery must re-evaluate that source, it still needs the
-original asset path. Normal dylib loading and project builds do not have this
-dependency. A future image format may embed the materialized bytes in a checked
-image section. It must remain part of the self-describing image—not an external
-TOML/resource sidecar—and does not change the source intrinsic.
+Project-root compilation and asset-content build invalidation remain contracts
+for the later project-build reconnection; this slice does not restore those APIs.
+Historically Image source replay still needed the original assets. Image migration
+must persist materialized payloads inside the image, without replaying filesystem
+reads or requiring sidecar resources. A working image round-trip is explicitly
+outside this slice's acceptance boundary.

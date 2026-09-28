@@ -241,7 +241,8 @@ files = ["src/json/parser.birnam", "src/json/render.birnam"]
 
 Projects may also declare `[[wrapped]]` native libraries and embed
 project-relative files at compile time with
-`[System embedFile: "assets/schema.json"]`. See
+`[System embedFile: "assets/schema.json"]`, which returns a clonable Bytes object.
+See [embedding and current migration scope](docs/design/56-embedded-files.md), and
 [Project check, build, and run](docs/design/52-project-check-build-and-run.md)
 for the complete manifest and publication contract.
 
@@ -897,7 +898,8 @@ application and build driver.
   source manifest, self-describing local publication, installed descriptor, and
   direct dylib-root workflow.
 - [Embedded files](docs/design/56-embedded-files.md) documents the
-  compile-time `System embedFile:` intrinsic and its project-build contract.
+  message-based compile-time `System embedFile:` form, Bytes prototype and remaining
+  project/Image migration boundaries.
 - [Designs 55, 58, and 59](docs/design/59-digla-adversarial-architecture-review.md)
   preserve the retired Digla application experiment and its architectural
   lessons. Digla is not part of the current runtime, verification graph, or

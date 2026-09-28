@@ -93,8 +93,8 @@ pub enum Expr<'a> {
     /// known Birnam escapes are decoded before the C string is emitted; an
     /// unknown escape keeps its backslash, matching the native emitter.
     StringLiteral(&'a [u8]),
-    /// Bytes resolved from a compiler `System embedFile:` intrinsic. These
-    /// bytes are owned by the CST projection rather than borrowed from the
+    /// Owned literal bytes, including the carrier for `System embedFile:`. These
+    /// bytes are owned by the compiler rather than borrowed from the
     /// authoring source, so generated artifacts remain self-contained.
     StringOwned(Vec<u8>),
     Symbol(&'a [u8]),

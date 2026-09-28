@@ -32,7 +32,7 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
     unsafe {
         let t = state(n.text.cast_mut().cast())?;
         let expected = match op {
-            1 | 2 | 4 | 9 => 1,
+            1 | 2 | 4 | 9 | 11 => 1,
             3 => 2,
             _ => 0,
         };
@@ -45,7 +45,7 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
         }
         t.rooted(&values, || {
             let nil = Operand::object(t.nil);
-            let indices = if matches!(op, 1 | 2 | 3 | 9) {
+            let indices = if matches!(op, 1 | 2 | 3 | 9 | 11) {
                 let mut indices = Vec::new();
                 for arg in args {
                     let Some(v) = n.index(*arg)? else {
@@ -57,22 +57,34 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
             } else {
                 Vec::new()
             };
+            if op == 10 {
+                return n.integer(t.length(r, Kind::Bytes)? as i64);
+            }
+            if op == 11 {
+                let bytes = t.copy(r, Kind::Bytes)?;
+                return match usize::try_from(indices[0]).ok().and_then(|i| bytes.get(i)) {
+                    Some(&byte) => n.integer(i64::from(byte)),
+                    None => Ok(nil),
+                };
+            }
             if op == 0 || op == 8 {
-                return n.integer(t.length(r, op == 8)? as i64);
+                return n.integer(
+                    t.length(r, if op == 8 { Kind::Builder } else { Kind::String })? as i64,
+                );
             }
             if op == 9 {
-                t.length(r, true)?;
+                t.length(r, Kind::Builder)?;
                 t.send(t.gc, b"prepareAllocation", &[])?;
                 let mut buffers = t.buffers.borrow_mut();
                 let b = buffers
                     .get_mut(&r.addr())
-                    .filter(|b| b.builder)
+                    .filter(|b| b.kind == Kind::Builder)
                     .ok_or_else(invalid)?;
                 b.bytes.push(indices[0] as u8);
                 mirror(r, b);
                 return Ok(Operand::object(r));
             }
-            let bytes = t.copy(r, false)?;
+            let bytes = t.copy(r, Kind::String)?;
             match op {
                 1 | 2 => {
                     let index = indices[0];
@@ -93,7 +105,7 @@ unsafe fn run(n: &Numeric, r: Oop, args: &[Operand], op: usize) -> Result<Operan
                     t.string(&bytes[from as usize..to as usize])
                 }
                 4 => {
-                    let Ok(needle) = t.copy(values[1], false) else {
+                    let Ok(needle) = t.copy(values[1], Kind::String) else {
                         return Ok(nil);
                     };
                     let index = if needle.is_empty() {
@@ -165,6 +177,8 @@ numeric!(as_integer, 6);
 numeric!(as_number, 7);
 numeric!(builder_size, 8);
 numeric!(add_byte, 9);
+numeric!(bytes_size, 10);
+numeric!(bytes_at, 11);
 pub(super) unsafe extern "C" fn install(
     c: *mut c_void,
     r: Oop,
@@ -192,6 +206,8 @@ pub(super) unsafe extern "C" fn install(
                 (t.behavior, b"asNumber", as_number),
                 (t.builder_behavior, b"size", builder_size),
                 (t.builder_behavior, b"addByte:", add_byte),
+                (t.bytes_behavior, b"size", bytes_size),
+                (t.bytes_behavior, b"at:", bytes_at),
             ];
             let mut names = HashMap::new();
             for name in [

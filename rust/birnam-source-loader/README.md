@@ -46,8 +46,9 @@ nil/syntax/runtime/file results, live replacements, native failure propagation,
 collecting dependencies, reentrant registration, filename mutation and reloads.
 Replacement methods forward through sends; they never invoke captured entries.
 
-`System embedFile:` is deliberately on hold pending a message-passing design.
-This slice neither restores its compiler rewrite nor claims embedded-file support.
+The [embedding slice](../../docs/design/56-embedded-files.md) now resolves literal
+`System embedFile:` calls relative to this source file and returns Bytes through
+messages. Compiled Blocks retain their payload after the source asset is deleted.
 Full Host/CLI startup, artifact activation and Image recovery are not accepted by
 these tests. Codegen's existing registration and evaluation selectors are described
 [in its contract](../birnam-codegen-runtime/README.md#source-loader-protocol).

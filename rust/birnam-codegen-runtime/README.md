@@ -72,9 +72,9 @@ existing behavior. The supplied filename reaches generated descriptors, includin
 nested Blocks. No GC policy is changed; temporary values remain explicitly rooted.
 
 [Source Loader](../birnam-source-loader/README.md) is wired after Codegen and tested
-with the complete authored Module manager. Compile-time embedding remains on hold:
-there is no restored `System embedFile:` rewrite in this slice. Generation/Image
-activation and compensation remain separate consumers of source registration.
+with the complete authored Module manager. Compile-time embedding now uses the
+message path [below](#embedding). Generation/Image activation and compensation
+remain separate consumers of source registration.
 
 ## Generated execution
 
@@ -156,7 +156,7 @@ Historical source is pinned at commit `3c4765089a016a01245e259e246b90472e76eaa5`
 These references preserve outstanding behavior, not obsolete native APIs or a
 requirement to restore the old architecture:
 
-- **Source Loader (migrated except embedding):** [revision metadata and source registration](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L2236-L2631),
+- **Source Loader (migrated):** [revision metadata and source registration](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L2236-L2631),
   [revision values](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L4865-L4935),
   [persisting evaluation](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L6658-L6742)
   and `lastError` (line 10662). Preserve the loader's registration-before-evaluation,
@@ -164,10 +164,7 @@ requirement to restore the old architecture:
   the [historical loader contract](../../abi/source-loader-v2.md). Current generated
   evaluation already publishes top-level bindings through Globals; nested bindings
   remain lexical. Filename-aware descriptors and loader-facing errors now use
-  the current compiler; embedding remains on hold.
-- **Embedding:** `embedded_literal_path`, `read_embedded_file`, `rewrite_embedded`
-  and `collect_embedded_paths` (historical lines 2000–2090) retain file-relative
-  resolution and byte handling to examine with the source-file consumer.
+  the current compiler, including the embedding path below.
 - **Publication, Image and portable materialization:** the historical compiler
   contains revision/generation projections, staged activation/rollback,
   compensation and materialization algorithms. Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
@@ -182,3 +179,14 @@ retain their Method/Unit owners. The deleted synchronous-evaluator and compiler
 state runners were not executing these tests in the current build. Production
 compiler/lifetime coverage remains in `birnam-siphon/tests/compiler.rs`; broader
 Image and publication acceptance still awaits migration.
+
+## Embedding
+
+The literal `[System embedFile: "relative/path"]` form now sends to current
+System at compile time, then snapshots its Bytes result through `bytes`. Generated
+code stores the payload using the existing binary-safe literal codec and sends
+`asBytes` to construct a Bytes object at execution. Source-relative and cwd-relative
+paths, current method/global lookup, failures and remaining Image/project work are
+specified in [Design 56](../../docs/design/56-embedded-files.md). Filesystem access
+stays with File IO; all owner operations are Id sends. The `embedding` production
+test includes an actual system-compiled dylib loaded after its asset is deleted.

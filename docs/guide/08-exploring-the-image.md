@@ -280,7 +280,19 @@ evaluation; registration and successful Module loaded-state notification are
 separate operations. See [Source Loader](../../rust/birnam-source-loader/README.md)
 for the preserved errors and registration rules.
 
-This path now runs in the migrated native prefix. Files requiring
-`System embedFile:` are outside the current acceptance boundary while embedding's
-message protocol is decided. Full CLI startup and artifact/image loading remain
-separate migrations.
+This path now runs in the migrated native prefix, including compile-time binary
+embedding:
+
+```birnam
+let data := [System embedFile: "assets/data.bin"];
+[data size];
+[data at: 0];
+[data clone];
+[data asString]
+```
+
+`data` is a Bytes object. The literal path is relative to the loaded source file;
+compiled code retains the payload after that file is removed. `["abc" asBytes]`
+also constructs Bytes. See [embedding](../design/56-embedded-files.md) and the
+[Bytes protocol](../../rust/birnam-string/README.md#bytes-prototype). Full CLI
+startup, project artifact loading and image round-trips remain separate migrations.

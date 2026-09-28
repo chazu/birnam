@@ -6,6 +6,7 @@ use birnam_abi::{
 };
 use birnam_codegen::{OwnedCst, lower_program, native as emission};
 use core::{cell::RefCell, ffi::c_void};
+mod embedding;
 mod source;
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -286,10 +287,13 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
             return Ok(Operand::object(cst));
         }
         let cst = s.project(&scope, cst, bytes.len(), 0, &mut 1_000_000)?;
-        let program = match lower_program(&cst, &bytes) {
+        let mut program = match lower_program(&cst, &bytes) {
             Ok(p) => p,
             Err(e) => return s.error(&scope, format!("source lowering: {e:?}").as_bytes()),
         };
+        if let Some(error) = s.embed_program(&scope, &mut program, b"<compiler>")? {
+            return Ok(Operand::object(error));
+        }
         let c = match emission::compile_program(program, &bytes) {
             Ok(c) => c,
             Err(e) => return s.error(&scope, format!("native emission: {e:?}").as_bytes()),

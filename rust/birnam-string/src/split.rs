@@ -14,13 +14,13 @@ unsafe extern "C" fn split(c: *mut c_void, r: Oop, a: *const Operand, count: usi
         };
         let separator = object(*separator)?;
         t.rooted(&[r, separator], || {
-            let bytes = t.copy(r, false)?;
+            let bytes = t.copy(r, Kind::String)?;
             let separator = if t
                 .send(t.id.receiver, b"behaviorOf:", &[Operand::object(separator)])?
                 .as_object()
                 == Some(t.behavior)
             {
-                Some(t.copy(separator, false)?)
+                Some(t.copy(separator, Kind::String)?)
             } else {
                 None
             };

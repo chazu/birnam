@@ -30,7 +30,7 @@ cp "$tmp/expected.dat" "$tmp/asset.dat"
 cp "$tmp/expected.dat" "$work/asset.dat"
 cat >"$src" <<EOF
 [Module named: #tccSmoke requires: #[]];
-[System writeFile: "$work/restored.dat" contents: [[| [System embedFile: "asset.dat"]] value]];
+[System writeFile: "$work/restored.dat" contents: [[[| [System embedFile: "asset.dat"]] value] asString]];
 EOF
 
 (

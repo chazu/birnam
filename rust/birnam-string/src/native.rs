@@ -11,9 +11,15 @@ use std::collections::HashMap;
 
 // Byte ownership never depends on mutable payload words or current behavior.
 // Payload mirrors are diagnostic only; all native access uses this owner's map.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    String,
+    Builder,
+    Bytes,
+}
 struct Buffer {
     bytes: Vec<u8>,
-    builder: bool,
+    kind: Kind,
 }
 struct Text {
     id: Protocol,
@@ -21,8 +27,10 @@ struct Text {
     gc: Oop,
     behavior: Oop,
     builder_behavior: Oop,
+    bytes_behavior: Oop,
     prototype: Cell<Oop>,
     builder: Cell<Oop>,
+    bytes_prototype: Cell<Oop>,
     truth: Oop,
     falsity: Oop,
     nil: Oop,
@@ -82,30 +90,30 @@ impl Text {
         }
         result
     }
-    fn length(&self, value: Oop, builder: bool) -> Result<usize, Outcome> {
+    fn length(&self, value: Oop, kind: Kind) -> Result<usize, Outcome> {
         self.buffers
             .borrow()
             .get(&value.addr())
-            .filter(|b| b.builder == builder)
+            .filter(|b| b.kind == kind)
             .map(|b| b.bytes.len())
             .ok_or_else(invalid)
     }
-    fn copy(&self, value: Oop, builder: bool) -> Result<Vec<u8>, Outcome> {
+    fn copy(&self, value: Oop, kind: Kind) -> Result<Vec<u8>, Outcome> {
         self.buffers
             .borrow()
             .get(&value.addr())
-            .filter(|b| b.builder == builder)
+            .filter(|b| b.kind == kind)
             .map(|b| b.bytes.clone())
             .ok_or_else(invalid)
     }
-    unsafe fn make(&self, bytes: Vec<u8>, builder: bool) -> Result<Operand, Outcome> {
+    unsafe fn make(&self, bytes: Vec<u8>, kind: Kind) -> Result<Operand, Outcome> {
         unsafe {
-            let behavior = if builder {
-                self.builder_behavior
-            } else {
-                self.behavior
+            let behavior = match kind {
+                Kind::String => self.behavior,
+                Kind::Builder => self.builder_behavior,
+                Kind::Bytes => self.bytes_behavior,
             };
-            let extent = if builder { 3 } else { 2 } * size_of::<usize>();
+            let extent = if kind == Kind::Builder { 3 } else { 2 } * size_of::<usize>();
             let value = object(self.send(behavior, b"allocate", &[Operand::word(extent)])?)?;
             self.rooted(&[value], || {
                 if self
@@ -128,7 +136,7 @@ impl Text {
                     let mut buffers = self.buffers.borrow_mut();
                     let b = buffers
                         .entry(value.addr())
-                        .or_insert(Buffer { bytes, builder });
+                        .or_insert(Buffer { bytes, kind });
                     mirror(value, b);
                 }
                 self.send(
@@ -154,7 +162,7 @@ impl Text {
     }
     unsafe fn printable(&self, value: Oop) -> Result<Vec<u8>, Outcome> {
         unsafe {
-            if let Ok(bytes) = self.copy(value, false) {
+            if let Ok(bytes) = self.copy(value, Kind::String) {
                 return Ok(bytes);
             }
             let printed = object(self.send(value, b"printString", &[])?)?;
@@ -180,7 +188,7 @@ unsafe fn mirror(value: Oop, b: &Buffer) {
         let words = value.cast::<usize>();
         words.write(b.bytes.as_ptr().addr());
         words.add(1).write(b.bytes.len());
-        if b.builder {
+        if b.kind == Kind::Builder {
             words.add(2).write(b.bytes.capacity());
         }
     }
@@ -202,6 +210,8 @@ unsafe extern "C" fn roots(
             t.gc,
             t.behavior,
             t.builder_behavior,
+            t.bytes_behavior,
+            t.bytes_prototype.get(),
             t.prototype.get(),
             t.builder.get(),
             t.truth,
@@ -237,7 +247,7 @@ unsafe extern "C" fn references(
         let words = {
             let buffers = t.buffers.borrow();
             let b = buffers.get(&value.addr()).ok_or_else(invalid)?;
-            if b.builder { 3 } else { 2 }
+            if b.kind == Kind::Builder { 3 } else { 2 }
         };
         if !precise {
             // Scan only this owner's payload mirror, never the String's bytes or Rust containers.
@@ -290,7 +300,7 @@ unsafe fn execute(
                 let bytes = borrowed_bytes(raw.pointer, raw.length)
                     .ok_or_else(invalid)?
                     .to_vec();
-                t.rooted(&[receiver], || t.make(bytes, false))
+                t.rooted(&[receiver], || t.make(bytes, Kind::String))
             }
             1 | 2 => {
                 if !args.is_empty() {
@@ -299,7 +309,7 @@ unsafe fn execute(
                 let buffers = t.buffers.borrow();
                 let b = buffers
                     .get(&receiver.addr())
-                    .filter(|b| !b.builder)
+                    .filter(|b| b.kind == Kind::String)
                     .ok_or_else(invalid)?;
                 Ok(if operation == 1 {
                     Operand::bytes(&b.bytes)
@@ -322,54 +332,57 @@ unsafe fn execute(
                 }
                 t.rooted(&objects, || {
                     match operation {
-                        3 => t.make(t.copy(receiver, false)?, false), // independent byte buffer
+                        3 => t.make(t.copy(receiver, Kind::String)?, Kind::String), // independent byte buffer
                         4 => {
-                            t.length(receiver, false)?;
+                            t.length(receiver, Kind::String)?;
                             Ok(Operand::object(receiver))
                         }
                         5 => {
-                            let mut bytes = t.copy(receiver, false)?;
+                            let mut bytes = t.copy(receiver, Kind::String)?;
                             bytes.extend_from_slice(&t.printable(objects[1])?);
                             t.string(&bytes)
                         }
                         6 => {
-                            let left = t.copy(receiver, false)?;
-                            let equal = t.copy(objects[1], false).is_ok_and(|right| left == right);
+                            let left = t.copy(receiver, Kind::String)?;
+                            let equal = t
+                                .copy(objects[1], Kind::String)
+                                .is_ok_and(|right| left == right);
                             Ok(Operand::object(if equal { t.truth } else { t.falsity }))
                         }
-                        7 => t.string(crate::text::trimmed_bytes(&t.copy(receiver, false)?)),
+                        7 => t.string(crate::text::trimmed_bytes(&t.copy(receiver, Kind::String)?)),
                         8 => {
-                            let bytes = t.copy(receiver, false)?;
-                            let (Ok(needle), Ok(replacement)) =
-                                (t.copy(objects[1], false), t.copy(objects[2], false))
-                            else {
+                            let bytes = t.copy(receiver, Kind::String)?;
+                            let (Ok(needle), Ok(replacement)) = (
+                                t.copy(objects[1], Kind::String),
+                                t.copy(objects[2], Kind::String),
+                            ) else {
                                 return Ok(Operand::object(t.nil));
                             };
                             t.string(&crate::text::replace(&bytes, &needle, &replacement))
                         }
                         9 => {
-                            let bytes = t.copy(receiver, false)?;
+                            let bytes = t.copy(receiver, Kind::String)?;
                             let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
                             t.id.send(t.id.receiver, t.id.intern, &[Operand::bytes(&bytes[..end])])
                         }
                         10 => {
-                            t.length(receiver, true)?;
-                            t.make(Vec::new(), true)
+                            t.length(receiver, Kind::Builder)?;
+                            t.make(Vec::new(), Kind::Builder)
                         } // existing builder new/clone empties
                         11 => {
-                            t.length(receiver, true)?;
+                            t.length(receiver, Kind::Builder)?;
                             let bytes = t.printable(objects[1])?;
                             t.send(t.gc, b"prepareAllocation", &[])?;
                             let mut buffers = t.buffers.borrow_mut();
                             let b = buffers
                                 .get_mut(&receiver.addr())
-                                .filter(|b| b.builder)
+                                .filter(|b| b.kind == Kind::Builder)
                                 .ok_or_else(invalid)?;
                             b.bytes.extend_from_slice(&bytes);
                             mirror(receiver, b);
                             Ok(Operand::object(receiver))
                         }
-                        12 => t.string(&t.copy(receiver, true)?),
+                        12 => t.string(&t.copy(receiver, Kind::Builder)?),
                         _ => Err(invalid()),
                     }
                 })
@@ -445,6 +458,9 @@ const NAMES: &[&[u8]] = &[
     b"at:put:",
     b"String",
     b"StringVt",
+    b"asBytes",
+    b"Bytes",
+    b"BytesVt",
     b"StringBuilder",
     b"StringBuilderVt",
 ];
@@ -477,18 +493,21 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         }
         let behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
         let builder_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+        let bytes_behavior = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
         let pointer = Box::into_raw(Box::new(Text {
             id,
             roots,
             gc,
             behavior,
             builder_behavior,
+            bytes_behavior,
             truth,
             falsity,
             nil,
             names,
             prototype: Cell::new(ptr::null_mut()),
             builder: Cell::new(ptr::null_mut()),
+            bytes_prototype: Cell::new(ptr::null_mut()),
             buffers: RefCell::new(HashMap::new()),
             numeric: Cell::new(false),
             thread: std::thread::current().id(),
@@ -502,6 +521,13 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             ),
             (behavior, b"installCollections:", split::install as Method),
             (behavior, b"fromBytes:", from_bytes as Method),
+            (behavior, b"asBytes", binary::from_string),
+            (bytes_behavior, b"fromBytes:", binary::from_bytes),
+            (bytes_behavior, b"bytes", binary::bytes),
+            (bytes_behavior, b"length", binary::length),
+            (bytes_behavior, b"clone", binary::clone),
+            (bytes_behavior, b"new", binary::clone),
+            (bytes_behavior, b"asString", binary::as_string),
             (behavior, b"bytes", bytes),
             (behavior, b"length", length),
             (behavior, b"clone", clone_string),
@@ -555,7 +581,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         t.prototype.set(prototype);
         let b = Buffer {
             bytes: Vec::new(),
-            builder: false,
+            kind: Kind::String,
         };
         mirror(prototype, &b);
         t.buffers.borrow_mut().insert(prototype.addr(), b);
@@ -578,9 +604,20 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             &[Operand::object(prototype), Operand::object(prototype)],
         )?;
         t.send(roots, b"register:", &[Operand::object(prototype)])?;
-        let builder = object(t.make(Vec::new(), true)?)?;
+        t.send(
+            gc,
+            b"trace:with:",
+            &[Operand::object(bytes_behavior), Operand::object(prototype)],
+        )?;
+        let binary = object(t.make(Vec::new(), Kind::Bytes)?)?;
+        t.bytes_prototype.set(binary);
+        let builder = object(t.make(Vec::new(), Kind::Builder)?)?;
         t.builder.set(builder);
-        for (target, owner) in [(behavior, prototype), (builder_behavior, builder)] {
+        for (target, owner) in [
+            (behavior, prototype),
+            (builder_behavior, builder),
+            (bytes_behavior, binary),
+        ] {
             t.send(
                 id.receiver,
                 b"ownerOf:put:",
@@ -592,6 +629,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (b"StringVt", behavior),
             (b"StringBuilder", builder),
             (b"StringBuilderVt", builder_behavior),
+            (b"Bytes", binary),
+            (b"BytesVt", bytes_behavior),
         ] {
             t.send(
                 namespace,
@@ -662,7 +701,7 @@ unsafe extern "C" fn collection_equal(
                     .as_object()
                     == Some(t.behavior)
             {
-                equal = t.copy(r, false)? == t.copy(other, false)?;
+                equal = t.copy(r, Kind::String)? == t.copy(other, Kind::String)?;
             }
             Ok(Operand::object(if equal { t.truth } else { t.falsity }))
         })
@@ -687,7 +726,7 @@ unsafe extern "C" fn collection_hash(
                 return Ok(Operand::word(mix(r.addr() as u64)));
             }
             let mut hash = 2_166_136_261u32;
-            for byte in t.copy(r, false)? {
+            for byte in t.copy(r, Kind::String)? {
                 hash = (hash ^ u32::from(byte)).wrapping_mul(16_777_619);
             }
             Ok(Operand::word(hash as usize))
@@ -703,3 +742,6 @@ fn mix(mut value: u64) -> usize {
 
 #[path = "split.rs"]
 mod split;
+
+#[path = "binary.rs"]
+mod binary;

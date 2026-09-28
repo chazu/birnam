@@ -152,6 +152,43 @@ unsafe extern "C" fn read_file(c: *mut c_void, r: Oop, a: *const Operand, n: usi
     })()
     .map_or_else(|e| e, Outcome::loaded)
 }
+// The compiler sends this operation with a resolved filename. Source-relative
+// validation belongs to the compilation form; this owner only performs bounded I/O.
+unsafe extern "C" fn embed_file(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let Some([path]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let path = object(*path)?;
+        s.rooted(&[r, path], || {
+            let Some(path_bytes) = s.bytes(path)? else {
+                return s.error(b"embedFile: expected a String path");
+            };
+            let Some(path) = path_from_bytes(&path_bytes) else {
+                return s.error(b"embedFile: invalid path");
+            };
+            let Ok(file) = fs::File::open(path) else {
+                return s.error(b"embedFile: could not read the file");
+            };
+            let Ok(bytes) = read_bounded(file, 16 * 1024 * 1024) else {
+                return s.error(b"embedFile: could not read the file within the 16 MiB limit");
+            };
+            let factory = object(s.id.send_named(
+                s.ns,
+                b"at:",
+                &[Operand::object(s.id.intern_name(b"Bytes")?)],
+            )?)?;
+            s.rooted(&[factory], || {
+                s.id.send_named(factory, b"fromBytes:", &[Operand::bytes(&bytes)])
+            })
+        })
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
 unsafe extern "C" fn write_file(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     (|| unsafe {
         let s = &*c.cast::<State>();
@@ -213,6 +250,7 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         }));
         for (name, method) in [
             (b"readFile:".as_slice(), read_file as native::Method),
+            (b"embedFile:", embed_file),
             (b"writeFile:contents:", write_file),
         ] {
             id.send_named(

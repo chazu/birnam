@@ -8,12 +8,19 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Add the ordinary Bytes prototype and restore compile-time file embedding through
+  Id sends. Share existing buffer lifetime machinery, preserve exact binary payloads
+  in the current portable encoding and construct Bytes through live messages.
+  Verify source-relative loading and a real dylib after deleting source assets,
+  plus MOP changes, collecting replacements, errors and native failure propagation.
+  Image round-trip and project/Host migration remain separate.
+
 - Reconnect Codegen source revision/registration/readback/sealing and loader-facing
   evaluation through Id messages. Migrate System `load:` and Bootstrap construction,
   preserving registration order, original source identity, nil/error behavior and
   Globals/Namespace separation. Validate real source loading with the unchanged
   authored Module manager, collecting/reentrant dependencies and live replacements.
-  Embedding remains on hold; generation/Image and Host/CLI work stay separate.
+  Embedding is restored by the subsequent slice above; generation/Image and Host/CLI work stay separate.
 
 - Delete the uncompiled legacy compiler orchestration, four orphaned helper/test
   files, two obsolete test runners and their plan/receipt wiring. Remove unused
