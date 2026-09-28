@@ -1297,3 +1297,12 @@ errors. The missing Block prototype ownership registration is repaired, allowing
 ordinary Reflect publication to reach compiled Blocks. The existing native
 suspension barrier and authored resumable replacement remain distinct; see the
 [contract and production checks](../../rust/birnam-block-loop/README.md).
+
+
+### Artifact inspector reconnected (2026-09-28)
+
+Artifact now loads through Bootstrap and uses Id sends for dependencies, roots
+and ObjectModel descriptor storage. Its existing API, diagnostics and codecs are
+preserved. [Production checks](../../rust/birnam-artifact/README.md) cover collecting
+replacements and inert dylib inspection. PortableCode, activation and Image remain
+separate migration slices.

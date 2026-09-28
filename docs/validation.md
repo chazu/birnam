@@ -309,3 +309,11 @@ checks the native suspension barrier and then installs the unchanged authored
 Boolean/while prefix to prove existing/new Block replacement, suspension/resumption
 and reload preservation. Full authored scheduling policy and Host/Image remain
 outside this slice.
+
+
+Artifact adds the twenty-third integration binary, `artifact`, and joins the
+native boundary audit. It covers every descriptor/list accessor, diagnostic
+mapping and limits, collecting dependency replacements, typed failures, transient
+roots and reclamation, clone/MOP/reload and compiled source. Inspection of a real
+dylib leaves its constructor sentinel untouched. Codecs are unchanged; activation,
+PortableCode, Image and Host/CLI remain separate gates.

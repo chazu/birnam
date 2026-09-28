@@ -322,6 +322,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
         )?;
         for name in [
             "block_loop",
+            "artifact",
             "peg",
             "lang",
             "tcc",

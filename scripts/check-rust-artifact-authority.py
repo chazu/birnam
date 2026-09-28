@@ -77,11 +77,14 @@ def main() -> None:
     # Only the dynamic artifact projection may export Artifact/ArtifactVt and
     # its common native entrypoint.
     for marker in (
-        "const ARTIFACT_VT_NAME",
-        "birnam_abi::namespace_export::export(exports, ARTIFACT_VT_NAME",
+        '(b"ArtifactVt", artifact_vt)',
+        'b"at:put:"',
         "pub static birnam_native_module_v1",
     ):
         require(projection, marker, "ArtifactVt projection")
+    for obsolete in ("IdApi", "namespace_import::", "namespace_export::", "MarkFn", "root_registry::"):
+        if obsolete in projection:
+            fail(f"Artifact projection retains obsolete boundary {obsolete}")
     if len(re.findall(r"pub static birnam_native_module_v1", projection)) != 1:
         fail("ArtifactVt projection does not have exactly one common native entry")
 

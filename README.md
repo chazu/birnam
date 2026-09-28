@@ -41,9 +41,9 @@ also use Id messages, with real file loading through the authored Module manager
 [Embedded files](docs/design/56-embedded-files.md) now produce ordinary Bytes
 objects through compile-time sends. [Block Loop](rust/birnam-block-loop/README.md)
 also runs through Id, with the existing authored replacement path preserved.
-Host/CLI and Image integration are still pending.
-The full workspace, Artifact/PortableCode language adapters, Image,
-workers and CLI still await upper integration.
+[Artifact inspection](rust/birnam-artifact/README.md) also uses Id sends and
+ObjectModel descriptor storage. PortableCode, artifact activation, Image,
+workers and Host/CLI still await upper integration.
 The usage documentation below describes the language being preserved.
 
 ## Contents

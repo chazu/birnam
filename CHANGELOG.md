@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate Artifact inspection to Id sends and production Bootstrap. Preserve its
+  descriptor API, diagnostics and codecs; replace native root callbacks with
+  visitor sends and use ObjectModel for descriptor storage/tracing. Validate
+  collecting dependencies, clone/MOP/reload and inert inspection of a real dylib.
+
 - Migrate bootstrap Block `whileTrue:`/`whileFalse:` to Id sends and load after
   Execution, preserving Boolean/error semantics and the native control boundary.
   Register Block's shared behavior owner so Reflect replacements reach compiled

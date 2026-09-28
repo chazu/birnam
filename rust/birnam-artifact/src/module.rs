@@ -1,148 +1,339 @@
-//! Rust artifact-inspector dylib shell over the allocation-free parser.
-
+//! Artifact inspection. Object storage, dependencies and GC use Id messages.
 use crate as parser;
 use crate::Descriptor as ParsedDescriptor;
-use birnam_abi as abi;
-use core::ffi::c_char;
-use core::mem::size_of;
-use std::ffi::OsStr;
-use std::os::unix::ffi::OsStrExt;
-use std::path::Path;
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{fs, io::Read};
+use birnam_abi::{
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{cell::Cell, ffi::c_void, ptr};
+use std::{
+    ffi::OsStr,
+    fs,
+    io::Read,
+    os::unix::ffi::OsStrExt,
+    path::Path,
+    sync::atomic::{AtomicBool, AtomicPtr, Ordering},
+};
 
-const ARTIFACT_NAME: &[u8] = b"Artifact\0";
-const ARTIFACT_VT_NAME: &[u8] = b"ArtifactVt\0";
-const DESCRIPTOR_VT_NAME: &[u8] = b"ArtifactDescriptorVt\0";
-const VECTOR_NAME: &[u8] = b"Vector\0";
-const NEW_SELECTOR: &[u8] = b"new\0";
-const ADD_SELECTOR: &[u8] = b"add:\0";
-
-#[repr(C)]
-struct DescriptorObject {
-    kind: abi::Oop,
-    identity: abi::Oop,
-    artifact_abi: abi::Oop,
-    target: abi::Oop,
-    source_digest: abi::Oop,
-    revision_digest: abi::Oop,
-    path: abi::Oop,
-    requires: abi::Oop,
-    native_requires: abi::Oop,
-    capabilities: abi::Oop,
-    requires_count: abi::Oop,
-    native_requires_count: abi::Oop,
-    capabilities_count: abi::Oop,
+// Preserve the descriptor's existing thirteen object slots.
+const KIND: usize = 0;
+const IDENTITY: usize = 1;
+const ABI: usize = 2;
+const TARGET: usize = 3;
+const SOURCE: usize = 4;
+const REVISION: usize = 5;
+const PATH: usize = 6;
+const REQUIRES: usize = 7;
+const NATIVE_REQUIRES: usize = 8;
+const CAPABILITIES: usize = 9;
+const REQUIRES_COUNT: usize = 10;
+const NATIVE_REQUIRES_COUNT: usize = 11;
+const CAPABILITIES_COUNT: usize = 12;
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    model: Oop,
+    string: Oop,
+    integer: Oop,
+    string_vt: Oop,
+    integer_vt: Oop,
+    nil: Oop,
+    artifact: Oop,
+    artifact_vt: Oop,
+    descriptor_vt: Oop,
+    last_failure: Cell<Oop>,
+    thread: std::thread::ThreadId,
 }
-
-struct Runtime {
-    api: usize,
-    layouts: usize,
-    roots: usize,
-    exports: usize,
-    imports: usize,
-    presence: usize,
-    artifact_vt: usize,
-    artifact_obj: usize,
-    descriptor_vt: usize,
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static BUSY: AtomicBool = AtomicBool::new(false);
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static ROOT_REGISTERED: OnceLock<()> = OnceLock::new();
-static LAST_FAILURE: AtomicUsize = AtomicUsize::new(0);
-
-unsafe extern "C" fn mark_runtime_roots(mark: abi::MarkFn) {
-    if let Some(runtime) = RUNTIME.get() {
-        for value in [
-            runtime.artifact_vt,
-            runtime.artifact_obj,
-            runtime.descriptor_vt,
-        ] {
-            unsafe { mark(value as abi::Oop) };
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|v| !v.is_null()).ok_or_else(invalid)
+}
+unsafe fn state<'a>(c: *mut c_void) -> Result<&'a State, Outcome> {
+    let s = unsafe { &*c.cast::<State>() };
+    if s.thread != std::thread::current().id() {
+        return Err(invalid());
+    }
+    Ok(s)
+}
+impl State {
+    unsafe fn rooted<T>(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<T, Outcome>,
+    ) -> Result<T, Outcome> {
+        unsafe {
+            let mut tokens = Vec::new();
+            let result = (|| {
+                for &value in values {
+                    tokens.push(
+                        self.id
+                            .send_named(self.roots, b"retain:", &[Operand::object(value)])?
+                            .as_word()
+                            .filter(|t| *t != 0)
+                            .ok_or_else(invalid)?,
+                    );
+                }
+                f()
+            })();
+            for token in tokens {
+                if self
+                    .id
+                    .send_named(self.roots, b"release:", &[Operand::word(token)])?
+                    .as_word()
+                    != Some(1)
+                {
+                    return Err(invalid());
+                }
+            }
+            result
         }
     }
-    let failure = LAST_FAILURE.load(Ordering::Acquire);
-    if failure != 0 {
-        unsafe { mark(failure as abi::Oop) };
+    unsafe fn named(&self, name: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            self.id.send_named(
+                self.ns,
+                b"at:",
+                &[Operand::object(self.id.intern_name(name)?)],
+            )
+        }
+    }
+    unsafe fn slot(&self, r: Oop, index: usize) -> Result<Oop, Outcome> {
+        unsafe {
+            object(self.id.send_named(
+                self.model,
+                b"slotAt:in:",
+                &[Operand::word(index), Operand::object(r)],
+            )?)
+        }
+    }
+    unsafe fn bytes(&self, r: Oop) -> Result<Vec<u8>, Outcome> {
+        unsafe {
+            let b = self
+                .id
+                .send_named(r, b"bytes", &[])?
+                .as_bytes()
+                .ok_or_else(invalid)?;
+            // A String borrow cannot survive another send, including rooting.
+            Ok(borrowed_bytes(b.pointer, b.length)
+                .ok_or_else(invalid)?
+                .to_vec())
+        }
+    }
+    unsafe fn symbol(&self, b: &[u8]) -> Result<Oop, Outcome> {
+        // Preserve the former C-string projection without retaining its native API.
+        let end = b.iter().position(|b| *b == 0).unwrap_or(b.len());
+        unsafe { self.id.intern_name(&b[..end]) }
+    }
+    unsafe fn string(&self, b: &[u8]) -> Result<Oop, Outcome> {
+        unsafe {
+            object(
+                self.id
+                    .send_named(self.string, b"fromBytes:", &[Operand::bytes(b)])?,
+            )
+        }
+    }
+    unsafe fn number(&self, n: usize) -> Result<Oop, Outcome> {
+        unsafe {
+            object(
+                self.id
+                    .send_named(self.integer, b"fromWord:", &[Operand::word(n)])?,
+            )
+        }
+    }
+    unsafe fn word(&self, r: Oop) -> Result<usize, Outcome> {
+        unsafe {
+            self.id
+                .send_named(self.integer, b"wordOf:", &[Operand::object(r)])?
+                .as_word()
+                .ok_or_else(invalid)
+        }
+    }
+    unsafe fn family(&self, r: Oop, vt: Oop) -> Result<bool, Outcome> {
+        unsafe {
+            Ok(object(self.id.send_named(
+                self.id.receiver,
+                b"behaviorOf:",
+                &[Operand::object(r)],
+            )?)? == vt)
+        }
+    }
+    unsafe fn fail(&self, name: &[u8]) -> Result<Operand, Outcome> {
+        self.last_failure.set(unsafe { self.id.intern_name(name)? });
+        Ok(Operand::object(self.nil))
+    }
+    unsafe fn count(&self, r: Oop, kind: ListKind) -> Result<usize, Outcome> {
+        unsafe {
+            let index = match kind {
+                ListKind::Roots => return Ok(1),
+                ListKind::Requires => REQUIRES_COUNT,
+                ListKind::NativeRequires => NATIVE_REQUIRES_COUNT,
+                ListKind::Capabilities => CAPABILITIES_COUNT,
+            };
+            let count = self.slot(r, index)?;
+            self.rooted(&[count], || self.word(count))
+        }
+    }
+    unsafe fn value_at(&self, r: Oop, kind: ListKind, index: usize) -> Result<Oop, Outcome> {
+        unsafe {
+            if index >= self.count(r, kind)? {
+                return Ok(self.nil);
+            }
+            let slot = match kind {
+                ListKind::Roots => return self.slot(r, IDENTITY),
+                ListKind::Requires => REQUIRES,
+                ListKind::NativeRequires => NATIVE_REQUIRES,
+                ListKind::Capabilities => CAPABILITIES,
+            };
+            let buffer = self.slot(r, slot)?;
+            let bytes = self.rooted(&[buffer], || self.bytes(buffer))?;
+            let Some(value) = list_field(&bytes, index) else {
+                return Ok(self.nil);
+            };
+            if kind == ListKind::NativeRequires {
+                self.string(value)
+            } else {
+                self.symbol(value)
+            }
+        }
+    }
+    unsafe fn vector(&self, r: Oop, kind: ListKind) -> Result<Operand, Outcome> {
+        unsafe {
+            let vector = self.named(b"Vector")?;
+            let Some(vector) = vector.as_object().filter(|v| !v.is_null()) else {
+                return Ok(Operand::object(self.nil));
+            };
+            self.rooted(&[vector], || {
+                let mut result = object(self.id.send_named(vector, b"new", &[])?)?;
+                // Replace the accumulator root each iteration; add: may return a new Vector.
+                let mut token = self
+                    .id
+                    .send_named(self.roots, b"retain:", &[Operand::object(result)])?
+                    .as_word()
+                    .ok_or_else(invalid)?;
+                let outcome = (|| {
+                    let count = self.count(r, kind)?;
+                    for index in 0..count {
+                        let value = self.value_at(r, kind, index)?;
+                        let next = self.rooted(&[value], || {
+                            object(self.id.send_named(
+                                result,
+                                b"add:",
+                                &[Operand::object(value)],
+                            )?)
+                        })?;
+                        let next_token = self
+                            .id
+                            .send_named(self.roots, b"retain:", &[Operand::object(next)])?
+                            .as_word()
+                            .ok_or_else(invalid)?;
+                        self.id
+                            .send_named(self.roots, b"release:", &[Operand::word(token)])?;
+                        result = next;
+                        token = next_token;
+                    }
+                    Ok(Operand::object(result))
+                })();
+                self.id
+                    .send_named(self.roots, b"release:", &[Operand::word(token)])?;
+                outcome
+            })
+        }
+    }
+    unsafe fn inspect(&self, args: &[Operand]) -> Result<Operand, Outcome> {
+        unsafe {
+            let [path] = args else {
+                return self.fail(b"artifactPathInvalid");
+            };
+            let Some(path) = path.as_object().filter(|v| !v.is_null()) else {
+                return self.fail(b"artifactPathInvalid");
+            };
+            if !self.family(path, self.string_vt)? {
+                return self.fail(b"artifactPathInvalid");
+            }
+            let path = self.bytes(path)?;
+            let bytes = match read_artifact(path_from_bytes(&path)) {
+                Ok(bytes) => bytes,
+                Err(()) => return self.fail(b"artifactUnavailable"),
+            };
+            let parsed = match parser::inspect(&bytes) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    return self.fail(match error {
+                        parser::Error::AbiMismatch => b"artifactAbiMismatch",
+                        parser::Error::TargetMismatch => b"artifactTargetMismatch",
+                        _ => b"artifactDescriptionMissing",
+                    });
+                }
+            };
+            if !native_requirements_present(parsed, &path) {
+                return self.fail(b"nativeRequirementUnavailable");
+            }
+            self.materialize(parsed, &path)
+        }
+    }
+    unsafe fn materialize(
+        &self,
+        parsed: ParsedDescriptor<'_>,
+        path: &[u8],
+    ) -> Result<Operand, Outcome> {
+        unsafe {
+            let result = object(self.id.send_named(
+                self.model,
+                b"allocate:bytes:",
+                &[
+                    Operand::object(self.descriptor_vt),
+                    Operand::word(13 * size_of::<Oop>()),
+                ],
+            )?)?;
+            self.rooted(&[result], || {
+                // Publish each initialized edge before the next constructor can collect.
+                for index in 0..13 {
+                    let value = match index {
+                        KIND => self.symbol(parsed.kind)?,
+                        IDENTITY => self.symbol(parsed.identity)?,
+                        ABI => self.string(parsed.artifact_abi)?,
+                        TARGET => self.string(parsed.target)?,
+                        SOURCE => self.string(parsed.source_digest)?,
+                        REVISION => self.string(parsed.revision_digest)?,
+                        PATH => self.string(path)?,
+                        REQUIRES => self.string(parsed.requires.encoded_bytes())?,
+                        NATIVE_REQUIRES => self.string(parsed.native_requires.encoded_bytes())?,
+                        CAPABILITIES => self.string(parsed.capabilities.encoded_bytes())?,
+                        REQUIRES_COUNT => self.number(parsed.requires.count())?,
+                        NATIVE_REQUIRES_COUNT => self.number(parsed.native_requires.count())?,
+                        CAPABILITIES_COUNT => self.number(parsed.capabilities.count())?,
+                        _ => unreachable!(),
+                    };
+                    self.rooted(&[value], || {
+                        self.id.send_named(
+                            self.model,
+                            b"slotAt:in:put:",
+                            &[
+                                Operand::word(index),
+                                Operand::object(result),
+                                Operand::object(value),
+                            ],
+                        )
+                    })?;
+                }
+                self.last_failure.set(self.nil);
+                Ok(Operand::object(result))
+            })
+        }
     }
 }
-
-fn abort(message: &str) -> ! {
-    eprintln!("birnam artifact inspector: {message}");
-    std::process::abort();
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ListKind {
+    Roots,
+    Requires,
+    NativeRequires,
+    Capabilities,
 }
-
-fn runtime() -> &'static Runtime {
-    RUNTIME
-        .get()
-        .unwrap_or_else(|| abort("module is not initialized"))
-}
-
-fn api(state: &Runtime) -> &'static abi::IdApi {
-    // SAFETY: native construction stores the process-owned, live IdApi table and the
-    // host keeps that floor dylib loaded for the process lifetime.
-    unsafe { &*(state.api as *const abi::IdApi) }
-}
-
-fn as_oop(value: usize) -> abi::Oop {
-    value as abi::Oop
-}
-
-fn oop_address(value: abi::Oop) -> usize {
-    value as usize
-}
-
-fn c_string(bytes: &[u8]) -> Vec<u8> {
-    let mut result = Vec::with_capacity(bytes.len() + 1);
-    result.extend_from_slice(bytes);
-    result.push(0);
-    result
-}
-
-unsafe fn intern(api: &abi::IdApi, bytes: &[u8]) -> abi::Oop {
-    let value = c_string(bytes);
-    // SAFETY: `value` is NUL-terminated and alive for this synchronous call.
-    unsafe { (api.intern)(value.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn import(imports: *const birnam_abi::namespace_import::ApiV1, name: &[u8]) -> abi::Oop {
-    debug_assert!(name.last() == Some(&0));
-    // SAFETY: all module names are static NUL-terminated strings.
-    unsafe { birnam_abi::namespace_import::import(imports, name.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn fail(api: &abi::IdApi, name: &[u8]) -> abi::Oop {
-    let value = unsafe { intern(api, name) };
-    LAST_FAILURE.store(oop_address(value), Ordering::Release);
-    api.nilObj
-}
-
-unsafe fn failure(api: &abi::IdApi) -> abi::Oop {
-    let value = LAST_FAILURE.load(Ordering::Acquire);
-    if value == 0 {
-        api.nilObj
-    } else {
-        as_oop(value)
-    }
-}
-
-unsafe fn string_bytes<'a>(_api: &abi::IdApi, value: abi::Oop) -> Option<&'a [u8]> {
-    let mut length = 0usize;
-    // SAFETY: the caller supplies an object known to be a String by the vtable
-    // check in the public method; the IdApi returns its stable byte payload.
-    let pointer = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
-    // SAFETY: IdApi's stringBytes contract is the same borrowed byte contract
-    // used by the ABI crate; zero length accepts a null pointer.
-    unsafe { abi::borrowed_bytes(pointer, length) }
-}
-
-unsafe fn mk_string(_api: &abi::IdApi, bytes: &[u8]) -> abi::Oop {
-    // SAFETY: the bytes remain readable for this synchronous call and a zero
-    // length slice carries the ABI's permitted null/count shape.
-    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
-}
-
 fn list_field(bytes: &[u8], index: usize) -> Option<&[u8]> {
     let mut position = 0usize;
     for current in 0..=index {
@@ -189,598 +380,326 @@ fn native_requirements_present(descriptor: ParsedDescriptor<'_>, path: &[u8]) ->
     })
 }
 
-fn parser_failure(api: &abi::IdApi, error: parser::Error) -> abi::Oop {
-    let diagnostic = match error {
-        parser::Error::AbiMismatch => b"artifactAbiMismatch".as_slice(),
-        parser::Error::TargetMismatch => b"artifactTargetMismatch".as_slice(),
-        parser::Error::ArtifactTooLarge
-        | parser::Error::MissingDescriptor
-        | parser::Error::MultipleDescriptors
-        | parser::Error::TruncatedDescriptor
-        | parser::Error::InvalidDescriptor
-        | parser::Error::ListTooLarge
-        | parser::Error::EmptyIdentity => b"artifactDescriptionMissing".as_slice(),
-    };
-    // SAFETY: the API and diagnostic are process-owned and the C string is
-    // created for the duration of the synchronous intern call.
-    unsafe { fail(api, diagnostic) }
-}
-
-unsafe fn descriptor(value: abi::Oop) -> *mut DescriptorObject {
-    // SAFETY: every descriptor object is allocated with this exact payload
-    // shape by `materialize` and only its methods receive the vtable.
-    value.cast::<DescriptorObject>()
-}
-
-unsafe fn value_at(
-    state: &Runtime,
-    object: *mut DescriptorObject,
-    kind: ListKind,
-    index: usize,
-) -> abi::Oop {
-    let api = api(state);
-    if kind == ListKind::Roots {
-        return if index == 0 {
-            unsafe { (*object).identity }
-        } else {
-            api.nilObj
+unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        let s = state(c)?;
+        let Some([visitor]) = borrowed_slice(a, n) else {
+            return Err(invalid());
         };
-    }
-    let (bytes_object, count) = unsafe {
-        match kind {
-            ListKind::Roots => unreachable!(),
-            ListKind::Requires => ((*object).requires, (*object).requires_count),
-            ListKind::NativeRequires => {
-                ((*object).native_requires, (*object).native_requires_count)
+        let visitor = object(*visitor)?;
+        for value in [
+            s.ns,
+            s.roots,
+            s.model,
+            s.string,
+            s.integer,
+            s.string_vt,
+            s.integer_vt,
+            s.nil,
+            s.artifact,
+            s.artifact_vt,
+            s.descriptor_vt,
+            s.last_failure.get(),
+        ] {
+            s.id.send_named(visitor, b"visit:", &[Operand::object(value)])?;
+        }
+        Ok(Operand::unit())
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
+}
+unsafe fn execute(s: &State, r: Oop, args: &[Operand], op: usize) -> Result<Operand, Outcome> {
+    unsafe {
+        match op {
+            0 => s.inspect(args),
+            1 => Ok(Operand::object(s.last_failure.get())),
+            2..=8 => Ok(Operand::object(s.slot(r, op - 2)?)),
+            9..=20 => {
+                let kind = [
+                    ListKind::Roots,
+                    ListKind::Requires,
+                    ListKind::NativeRequires,
+                    ListKind::Capabilities,
+                ][(op - 9) / 3];
+                match (op - 9) % 3 {
+                    0 => s.vector(r, kind),
+                    1 => Ok(Operand::object(s.number(s.count(r, kind)?)?)),
+                    _ => {
+                        let [index] = args else {
+                            return Ok(Operand::object(s.nil));
+                        };
+                        let Some(index) = index.as_object().filter(|v| !v.is_null()) else {
+                            return Ok(Operand::object(s.nil));
+                        };
+                        if !s.family(index, s.integer_vt)? {
+                            return Ok(Operand::object(s.nil));
+                        }
+                        let index = s.word(index)?;
+                        if (index as isize) < 0 {
+                            return Ok(Operand::object(s.nil));
+                        }
+                        Ok(Operand::object(s.value_at(r, kind, index)?))
+                    }
+                }
             }
-            ListKind::Capabilities => ((*object).capabilities, (*object).capabilities_count),
+            _ => Err(invalid()),
+        }
+    }
+}
+macro_rules! entry {
+    ($name:ident, $op:expr) => {
+        unsafe extern "C" fn $name(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+            (|| unsafe {
+                let s = state(c)?;
+                let Some(args) = borrowed_slice(a, n) else {
+                    return if $op == 0 {
+                        s.fail(b"artifactPathInvalid")
+                    } else {
+                        Err(invalid())
+                    };
+                };
+                let mut values = vec![r];
+                values.extend(
+                    args.iter()
+                        .filter_map(|v| v.as_object())
+                        .filter(|v| !v.is_null()),
+                );
+                s.rooted(&values, || execute(s, r, args, $op))
+            })()
+            .map_or_else(|e| e, Outcome::loaded)
         }
     };
-    // SAFETY: descriptor list objects and count carriers were created by this
-    // module; calls are synchronous and do not retain the borrowed slice.
-    let count = unsafe { (birnam_abi::integer::value)(count) };
-    if index >= count as usize {
-        return api.nilObj;
-    }
-    // SAFETY: list objects were created from valid parser wire bytes.
-    let bytes = unsafe { string_bytes(api, bytes_object) }.unwrap_or(&[]);
-    let Some(value) = list_field(bytes, index) else {
-        return api.nilObj;
-    };
-    if kind == ListKind::NativeRequires {
-        // SAFETY: the value points into a String object owned by the floor and
-        // remains valid while mkString copies it.
-        unsafe { mk_string(api, value) }
-    } else {
-        // SAFETY: intern copies the temporary NUL-terminated spelling during
-        // this call.
-        unsafe { intern(api, value) }
-    }
 }
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ListKind {
-    Roots,
-    Requires,
-    NativeRequires,
-    Capabilities,
-}
-
-unsafe fn vector_of(state: &Runtime, receiver: abi::Oop, kind: ListKind) -> abi::Oop {
-    let api = api(state);
-    // SAFETY: Vector is the existing Birnam collection protocol; all selector
-    // strings are static and NUL-terminated.
-    let vector = unsafe { import(execution_imports(), VECTOR_NAME) };
-    if vector.is_null() {
-        return api.nilObj;
-    }
-    let new_selector = unsafe { intern(api, &NEW_SELECTOR[..NEW_SELECTOR.len() - 1]) };
-    let add_selector = unsafe { intern(api, &ADD_SELECTOR[..ADD_SELECTOR.len() - 1]) };
-    let mut result = unsafe { (api.send)(vector, new_selector, core::ptr::null(), 0) };
-    let object = unsafe { descriptor(receiver) };
-    let count = match kind {
-        ListKind::Roots => 1,
-        ListKind::Requires => unsafe { (birnam_abi::integer::value)((*object).requires_count) as usize },
-        ListKind::NativeRequires => unsafe {
-            (birnam_abi::integer::value)((*object).native_requires_count) as usize
-        },
-        ListKind::Capabilities => unsafe {
-            (birnam_abi::integer::value)((*object).capabilities_count) as usize
-        },
-    };
-    for index in 0..count {
-        let value = unsafe { value_at(state, object, kind, index) };
-        result = unsafe { (api.send)(result, add_selector, &value, 1) };
-    }
-    result
-}
-
-unsafe extern "C" fn inspect_method(
-    _receiver: abi::Oop,
-    arguments: *const abi::Oop,
-    count: usize,
-) -> abi::Oop {
-    let state = runtime();
-    let api = api(state);
-    // SAFETY: IdApi method arguments obey the null/count contract.
-    let Some(arguments) = (unsafe { abi::borrowed_oop_args(arguments, count) }) else {
-        return unsafe { fail(api, b"artifactPathInvalid") };
-    };
-    if arguments.len() != 1 || unsafe { (api.vtableOf)(arguments[0]) } != unsafe { birnam_abi::string::behavior() } {
-        return unsafe { fail(api, b"artifactPathInvalid") };
-    }
-    // SAFETY: arguments[0] is a String according to the vtable check.
-    let Some(path_bytes) = (unsafe { string_bytes(api, arguments[0]) }) else {
-        return unsafe { fail(api, b"artifactPathInvalid") };
-    };
-    let path = path_from_bytes(path_bytes);
-    let bytes = match read_artifact(path) {
-        Ok(bytes) => bytes,
-        Err(()) => return unsafe { fail(api, b"artifactUnavailable") },
-    };
-    let parsed = match parser::inspect(&bytes) {
-        Ok(parsed) => parsed,
-        Err(error) => return parser_failure(api, error),
-    };
-    if !native_requirements_present(parsed, path_bytes) {
-        return unsafe { fail(api, b"nativeRequirementUnavailable") };
-    }
-    materialize(state, parsed, path_bytes)
-}
-
-fn materialize(state: &Runtime, parsed: ParsedDescriptor<'_>, path: &[u8]) -> abi::Oop {
-    let api = api(state);
-    // SAFETY: the descriptor vtable has exactly the 13 Oop slots declared in
-    // DescriptorObject and the floor owns the resulting allocation.
-    let result = unsafe { (api.alloc)(as_oop(state.descriptor_vt), size_of::<DescriptorObject>()) };
-    if result.is_null() {
-        abort("descriptor allocation returned null");
-    }
-    let object = result.cast::<DescriptorObject>();
-    let requires = parsed.requires.encoded_bytes();
-    let native_requires = parsed.native_requires.encoded_bytes();
-    let capabilities = parsed.capabilities.encoded_bytes();
-    // SAFETY: all fields are written before the object is published; Oop
-    // values come from this IdApi and bytes are copied by the floor helpers.
+entry!(inspect, 0);
+entry!(last_failure, 1);
+entry!(kind, 2);
+entry!(identity, 3);
+entry!(artifact_abi, 4);
+entry!(target, 5);
+entry!(source_digest, 6);
+entry!(revision_digest, 7);
+entry!(path, 8);
+entry!(roots_list, 9);
+entry!(roots_count, 10);
+entry!(root_at, 11);
+entry!(requires, 12);
+entry!(requires_count, 13);
+entry!(require_at, 14);
+entry!(native_requires, 15);
+entry!(native_requires_count, 16);
+entry!(native_require_at, 17);
+entry!(capabilities, 18);
+entry!(capabilities_count, 19);
+entry!(capability_at, 20);
+unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
     unsafe {
-        (*object) = DescriptorObject {
-            kind: intern(api, parsed.kind),
-            identity: intern(api, parsed.identity),
-            artifact_abi: mk_string(api, parsed.artifact_abi),
-            target: mk_string(api, parsed.target),
-            source_digest: mk_string(api, parsed.source_digest),
-            revision_digest: mk_string(api, parsed.revision_digest),
-            path: mk_string(api, path),
-            requires: mk_string(api, requires),
-            native_requires: mk_string(api, native_requires),
-            capabilities: mk_string(api, capabilities),
-            requires_count: (birnam_abi::integer::make)(parsed.requires.count() as i64),
-            native_requires_count: (birnam_abi::integer::make)(parsed.native_requires.count() as i64),
-            capabilities_count: (birnam_abi::integer::make)(parsed.capabilities.count() as i64),
+        let named = |name: &[u8]| {
+            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(name)?)])?)
         };
-    }
-    LAST_FAILURE.store(oop_address(api.nilObj), Ordering::Release);
-    result
-}
-
-unsafe extern "C" fn last_failure_method(
-    _receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { failure(api(runtime())) }
-}
-
-unsafe extern "C" fn kind_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { (*descriptor(receiver)).kind }
-}
-
-unsafe extern "C" fn identity_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { (*descriptor(receiver)).identity }
-}
-
-unsafe extern "C" fn artifact_abi_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { (*descriptor(receiver)).artifact_abi }
-}
-
-unsafe extern "C" fn target_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { (*descriptor(receiver)).target }
-}
-
-unsafe extern "C" fn source_digest_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { (*descriptor(receiver)).source_digest }
-}
-
-unsafe extern "C" fn revision_digest_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { (*descriptor(receiver)).revision_digest }
-}
-
-unsafe extern "C" fn path_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { (*descriptor(receiver)).path }
-}
-
-unsafe fn count_of(object: *mut DescriptorObject, kind: ListKind) -> usize {
-    let _api = api(runtime());
-    match kind {
-        ListKind::Roots => 1,
-        ListKind::Requires => (unsafe { (birnam_abi::integer::value)((*object).requires_count) }) as usize,
-        ListKind::NativeRequires => {
-            (unsafe { (birnam_abi::integer::value)((*object).native_requires_count) }) as usize
+        let roots = named(b"Roots")?;
+        let mut tokens = Vec::new();
+        let result = (|| {
+            let mut keep = |value| -> Result<Oop, Outcome> {
+                tokens.push(
+                    id.send_named(roots, b"retain:", &[Operand::object(value)])?
+                        .as_word()
+                        .filter(|t| *t != 0)
+                        .ok_or_else(invalid)?,
+                );
+                Ok(value)
+            };
+            keep(ns)?;
+            keep(roots)?;
+            let model = keep(named(b"ObjectModel")?)?;
+            let string = keep(named(b"String")?)?;
+            let integer = keep(named(b"Integer")?)?;
+            let string_vt = keep(named(b"StringVt")?)?;
+            let integer_vt = keep(named(b"IntegerVt")?)?;
+            let nil = keep(named(b"nil")?)?;
+            let parent = keep(named(b"ObjectVt")?)?;
+            let artifact_vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+            let artifact = keep(object(id.send_named(
+                artifact_vt,
+                b"allocate",
+                &[Operand::word(0)],
+            )?)?)?;
+            let descriptor_vt = keep(object(id.send_named(parent, b"delegated", &[])?)?)?;
+            let pointer = Box::into_raw(Box::new(State {
+                id,
+                ns,
+                roots,
+                model,
+                string,
+                integer,
+                string_vt,
+                integer_vt,
+                nil,
+                artifact,
+                artifact_vt,
+                descriptor_vt,
+                last_failure: Cell::new(nil),
+                thread: std::thread::current().id(),
+            }));
+            // Once entries are installed their context must remain valid, even if publication fails.
+            id.send_named(
+                model,
+                b"setLayoutOf:to:rest:",
+                &[
+                    Operand::object(descriptor_vt),
+                    Operand::bytes(&[1; 13]),
+                    Operand::word(0),
+                ],
+            )?;
+            for (vt, name, method) in [
+                (artifact_vt, b"inspect:".as_slice(), inspect as Method),
+                (
+                    artifact_vt,
+                    b"lastFailure".as_slice(),
+                    last_failure as Method,
+                ),
+                (descriptor_vt, b"kind".as_slice(), kind as Method),
+                (descriptor_vt, b"identity".as_slice(), identity as Method),
+                (
+                    descriptor_vt,
+                    b"artifactAbi".as_slice(),
+                    artifact_abi as Method,
+                ),
+                (descriptor_vt, b"target".as_slice(), target as Method),
+                (
+                    descriptor_vt,
+                    b"sourceDigest".as_slice(),
+                    source_digest as Method,
+                ),
+                (
+                    descriptor_vt,
+                    b"revisionDigest".as_slice(),
+                    revision_digest as Method,
+                ),
+                (descriptor_vt, b"path".as_slice(), path as Method),
+                (descriptor_vt, b"roots".as_slice(), roots_list as Method),
+                (
+                    descriptor_vt,
+                    b"rootsCount".as_slice(),
+                    roots_count as Method,
+                ),
+                (descriptor_vt, b"rootAt:".as_slice(), root_at as Method),
+                (descriptor_vt, b"requires".as_slice(), requires as Method),
+                (
+                    descriptor_vt,
+                    b"requiresCount".as_slice(),
+                    requires_count as Method,
+                ),
+                (
+                    descriptor_vt,
+                    b"requireAt:".as_slice(),
+                    require_at as Method,
+                ),
+                (
+                    descriptor_vt,
+                    b"nativeRequires".as_slice(),
+                    native_requires as Method,
+                ),
+                (
+                    descriptor_vt,
+                    b"nativeRequiresCount".as_slice(),
+                    native_requires_count as Method,
+                ),
+                (
+                    descriptor_vt,
+                    b"nativeRequireAt:".as_slice(),
+                    native_require_at as Method,
+                ),
+                (
+                    descriptor_vt,
+                    b"capabilities".as_slice(),
+                    capabilities as Method,
+                ),
+                (
+                    descriptor_vt,
+                    b"capabilitiesCount".as_slice(),
+                    capabilities_count as Method,
+                ),
+                (
+                    descriptor_vt,
+                    b"capabilityAt:".as_slice(),
+                    capability_at as Method,
+                ),
+                (artifact_vt, b"rootsDo:", self::roots as Method),
+            ] {
+                id.send_named(
+                    vt,
+                    b"addMethod",
+                    &[
+                        Operand::object(id.intern_name(name)?),
+                        Operand::entry(NativeEntry::new(method, pointer.cast())),
+                    ],
+                )?;
+            }
+            id.send_named(roots, b"register:", &[Operand::object(artifact)])?;
+            id.send_named(
+                id.receiver,
+                b"ownerOf:put:",
+                &[Operand::object(artifact_vt), Operand::object(artifact)],
+            )?;
+            for (name, value) in [
+                (b"Artifact".as_slice(), artifact),
+                (b"ArtifactVt", artifact_vt),
+                (b"ArtifactDescriptorVt", descriptor_vt),
+            ] {
+                id.send_named(
+                    ns,
+                    b"at:put:",
+                    &[
+                        Operand::object(id.intern_name(name)?),
+                        Operand::object(value),
+                    ],
+                )?;
+            }
+            INSTANCE.store(pointer, Ordering::Release);
+            Ok(Operand::object(artifact))
+        })();
+        for token in tokens {
+            id.send_named(roots, b"release:", &[Operand::word(token)])?;
         }
-        ListKind::Capabilities => {
-            (unsafe { (birnam_abi::integer::value)((*object).capabilities_count) }) as usize
+        result
+    }
+}
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
         }
-    }
-}
-
-unsafe fn list_method(receiver: abi::Oop, kind: ListKind) -> abi::Oop {
-    unsafe { vector_of(runtime(), receiver, kind) }
-}
-
-unsafe fn count_method(receiver: abi::Oop, kind: ListKind) -> abi::Oop {
-    let _api = api(runtime());
-    unsafe { (birnam_abi::integer::make)(count_of(descriptor(receiver), kind) as i64) }
-}
-
-unsafe fn item_method(
-    receiver: abi::Oop,
-    arguments: *const abi::Oop,
-    count: usize,
-    kind: ListKind,
-) -> abi::Oop {
-    let state = runtime();
-    let api = api(state);
-    // SAFETY: IdApi method arguments obey the null/count contract.
-    let Some(arguments) = (unsafe { abi::borrowed_oop_args(arguments, count) }) else {
-        return api.nilObj;
-    };
-    if arguments.len() != 1 || unsafe { (api.vtableOf)(arguments[0]) } != unsafe { birnam_abi::integer::behavior() } {
-        return api.nilObj;
-    }
-    let index = unsafe { (birnam_abi::integer::value)(arguments[0]) };
-    if index < 0 {
-        return api.nilObj;
-    }
-    unsafe { value_at(state, descriptor(receiver), kind, index as usize) }
-}
-
-unsafe extern "C" fn roots_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { list_method(receiver, ListKind::Roots) }
-}
-
-unsafe extern "C" fn roots_count_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { count_method(receiver, ListKind::Roots) }
-}
-
-unsafe extern "C" fn root_at_method(
-    receiver: abi::Oop,
-    arguments: *const abi::Oop,
-    count: usize,
-) -> abi::Oop {
-    unsafe { item_method(receiver, arguments, count, ListKind::Roots) }
-}
-
-unsafe extern "C" fn requires_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { list_method(receiver, ListKind::Requires) }
-}
-
-unsafe extern "C" fn requires_count_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { count_method(receiver, ListKind::Requires) }
-}
-
-unsafe extern "C" fn require_at_method(
-    receiver: abi::Oop,
-    arguments: *const abi::Oop,
-    count: usize,
-) -> abi::Oop {
-    unsafe { item_method(receiver, arguments, count, ListKind::Requires) }
-}
-
-unsafe extern "C" fn native_requires_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { list_method(receiver, ListKind::NativeRequires) }
-}
-
-unsafe extern "C" fn native_requires_count_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { count_method(receiver, ListKind::NativeRequires) }
-}
-
-unsafe extern "C" fn native_require_at_method(
-    receiver: abi::Oop,
-    arguments: *const abi::Oop,
-    count: usize,
-) -> abi::Oop {
-    unsafe { item_method(receiver, arguments, count, ListKind::NativeRequires) }
-}
-
-unsafe extern "C" fn capabilities_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { list_method(receiver, ListKind::Capabilities) }
-}
-
-unsafe extern "C" fn capabilities_count_method(
-    receiver: abi::Oop,
-    _arguments: *const abi::Oop,
-    _count: usize,
-) -> abi::Oop {
-    unsafe { count_method(receiver, ListKind::Capabilities) }
-}
-
-unsafe extern "C" fn capability_at_method(
-    receiver: abi::Oop,
-    arguments: *const abi::Oop,
-    count: usize,
-) -> abi::Oop {
-    unsafe { item_method(receiver, arguments, count, ListKind::Capabilities) }
-}
-
-fn register_methods(state: &Runtime) {
-    let api = api(state);
-    let layout = [abi::SLOT_OOP; 13];
-    // SAFETY: the vtable and selector/method pointers are process-owned and
-    // registration is synchronous through the frozen ABI.
-    unsafe {
-        birnam_abi::payload_layout::set(state.layouts as *const birnam_abi::payload_layout::ApiV1,
-            as_oop(state.descriptor_vt),
-            layout.as_ptr(),
-            layout.len(),
-            abi::SLOT_RAW,
-        );
-        (api.method)(
-            as_oop(state.artifact_vt),
-            intern(api, b"inspect:"),
-            inspect_method,
-        );
-        (api.method)(
-            as_oop(state.artifact_vt),
-            intern(api, b"lastFailure"),
-            last_failure_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"kind"),
-            kind_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"identity"),
-            identity_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"artifactAbi"),
-            artifact_abi_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"target"),
-            target_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"roots"),
-            roots_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"rootsCount"),
-            roots_count_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"rootAt:"),
-            root_at_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"requires"),
-            requires_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"requiresCount"),
-            requires_count_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"requireAt:"),
-            require_at_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"nativeRequires"),
-            native_requires_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"nativeRequiresCount"),
-            native_requires_count_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"nativeRequireAt:"),
-            native_require_at_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"capabilities"),
-            capabilities_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"capabilitiesCount"),
-            capabilities_count_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"capabilityAt:"),
-            capability_at_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"sourceDigest"),
-            source_digest_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"revisionDigest"),
-            revision_digest_method,
-        );
-        (api.method)(
-            as_oop(state.descriptor_vt),
-            intern(api, b"path"),
-            path_method,
-        );
-    }
-}
-
-pub unsafe fn bring_up(api_pointer: *mut abi::IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) {
-    if api_pointer.is_null() {
-        abort("native construction received a null IdApi");
-    }
-    let mut construction_roots = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
-    let mut retain = |object| { if let Some(roots) = &mut construction_roots { unsafe { roots.keep(object) } } else { object } };
-    let state = RUNTIME.get_or_init(|| {
-        // SAFETY: native initializer's caller supplies the live floor table.
-        let api = unsafe { &*api_pointer };
-        let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ARTIFACT_NAME.as_ptr().cast()) != 0 };
-        let (artifact_vt, artifact_obj, descriptor_vt) = if reloading {
-            (
-                unsafe { import(imports, ARTIFACT_VT_NAME) },
-                unsafe { import(imports, ARTIFACT_NAME) },
-                unsafe { import(imports, DESCRIPTOR_VT_NAME) },
-            )
-        } else {
-            let artifact_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            let artifact_obj = retain(unsafe { (api.alloc)(artifact_vt, 0) });
-            let descriptor_vt = retain(unsafe { (api.proto)(api.object_vt) });
-            (artifact_vt, artifact_obj, descriptor_vt)
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
         };
-        Runtime {
-            api: api_pointer as usize,
-            layouts: layouts as usize,
-            roots: roots as usize,
-            exports: exports as usize,
-            imports: imports as usize,
-            presence: presence as usize,
-            artifact_vt: oop_address(artifact_vt),
-            artifact_obj: oop_address(artifact_obj),
-            descriptor_vt: oop_address(descriptor_vt),
+        let ns = object(*ns)?;
+        let existing = INSTANCE.load(Ordering::Acquire);
+        if !existing.is_null() {
+            let s = &*existing;
+            return if s.id.same_contract(&*id)
+                && s.ns == ns
+                && s.thread == std::thread::current().id()
+            {
+                Ok(Operand::object(s.artifact))
+            } else {
+                Err(invalid())
+            };
         }
-    });
-    register_methods(state);
-    let api = api(state);
-    let exports = state.exports as *const birnam_abi::namespace_export::ApiV1;
-    ROOT_REGISTERED.get_or_init(|| unsafe {
-        birnam_abi::root_registry::register(state.roots as *const birnam_abi::root_registry::ApiV1, mark_runtime_roots);
-    });
-    if LAST_FAILURE.load(Ordering::Acquire) == 0 {
-        LAST_FAILURE.store(oop_address(api.nilObj), Ordering::Release);
-    }
-    if !(unsafe { birnam_abi::namespace_presence::contains(execution_presence(), ARTIFACT_NAME.as_ptr().cast()) != 0 }) {
-        // SAFETY: the selected export publishes the three singleton objects exactly as
-        // the native inspector does on its first load.
-        unsafe {
-            let _ = birnam_abi::namespace_export::export(exports, ARTIFACT_VT_NAME.as_ptr().cast(), as_oop(state.artifact_vt));
-            let _ = birnam_abi::namespace_export::export(exports, ARTIFACT_NAME.as_ptr().cast(), as_oop(state.artifact_obj));
-            let _ = birnam_abi::namespace_export::export(exports,
-                DESCRIPTOR_VT_NAME.as_ptr().cast(),
-                as_oop(state.descriptor_vt),
-            );
+        if BUSY.swap(true, Ordering::AcqRel) {
+            return Err(invalid());
         }
-    }
+        let result = construct(*id, ns);
+        BUSY.store(false, Ordering::Release);
+        result
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
 }
-
-/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
 #[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
+#[unsafe(no_mangle)]
+pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-
-fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { RUNTIME.get().expect("module not initialized").presence as *const birnam_abi::namespace_presence::ApiV1 }
-
-fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { RUNTIME.get().expect("module not initialized").imports as *const birnam_abi::namespace_import::ApiV1 }
-
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    let Some([api, presence, imports, exports, roots, layouts, integer, string, predecessor]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let (Some(api), Some(presence), Some(imports), Some(exports), Some(roots), Some(layouts), Some(integer), Some(string)) = (api.as_word(), presence.as_word(), imports.as_word(), exports.as_word(), roots.as_word(), layouts.as_word(), integer.as_word(), string.as_word()) else { return invalid_native(); };
-    let api = api as *mut abi::IdApi;
-    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
-    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
-    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
-        || !unsafe { birnam_abi::namespace_presence::valid(presence) && birnam_abi::namespace_import::valid(imports) && birnam_abi::namespace_export::valid(exports) && birnam_abi::root_registry::valid_owned(roots) && birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
-    // The trusted caller supplies the already published Vector predecessor.
-    // Methods continue to resolve Vector through the live namespace.
-    if predecessor.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
-    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 || unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
-    if RUNTIME.get().is_some_and(|selected| selected.api != api.addr()) { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(runtime().artifact_obj as abi::Oop)), _ => return invalid_native(),
-    }
-    unsafe { bring_up(api, presence, imports, exports, (*roots).api, layouts, roots); }
-    NATIVE_PHASE.store(2, Ordering::Release);
-    Outcome::loaded(Operand::object(runtime().artifact_obj as abi::Oop))
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };

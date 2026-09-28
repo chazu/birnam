@@ -70,7 +70,7 @@ dependencies = [
 name = "birnam-codegen"
 version = "0.0.0"
 dependencies = [
- "birnam-artifact",
+ "birnam-artifact-codec",
  "sha2",
 ]
 
