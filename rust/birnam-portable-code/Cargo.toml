@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
-birnam-artifact = { path = "../birnam-artifact", default-features = false }
+birnam-artifact = { package = "birnam-artifact-codec", path = "../birnam-artifact-codec" }
 sha2.workspace = true
 
 [lib]

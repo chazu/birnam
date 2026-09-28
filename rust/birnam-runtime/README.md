@@ -46,6 +46,6 @@ not be counted as current passing acceptance.
 
 PortableCode's old carrier and raw Block accessors were removed with that
 constructor. Restore `codeObject`, `captureCount` and `captureAt:` through
-Execution during the PortableCode migration, preserving their behavior from
-commit `96e22f29`. PortableCode's ordinary CodeObject/CodeProgram families and the
-canonical codecs are retained; this cleanup does not complete their migration.
+Execution in the next PortableCode integration slice, preserving their behavior from
+commit `96e22f29`. PortableCode's [ordinary families](../birnam-portable-code/README.md) now use Id
+sends; their canonical codecs remain unchanged.

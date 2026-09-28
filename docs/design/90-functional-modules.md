@@ -1306,3 +1306,11 @@ and ObjectModel descriptor storage. Its existing API, diagnostics and codecs are
 preserved. [Production checks](../../rust/birnam-artifact/README.md) cover collecting
 replacements and inert dylib inspection. PortableCode, activation and Image remain
 separate migration slices.
+
+### PortableCode ordinary objects reconnected (2026-09-28)
+
+Bootstrap now loads CodeNode, CodeStatement, CodeProgram, CodeLexicalBinding and
+CodeObject through Id sends, including GC visitors and finalization. Their APIs,
+diagnostics and canonical encoding are preserved; [production checks](../../rust/birnam-portable-code/README.md)
+cover all thirteen golden programs and collecting dependencies. Execution-owned
+Block inspection and Codegen materialization remain a separate migration slice.

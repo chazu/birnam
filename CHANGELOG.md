@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate PortableCode ordinary prototypes to Id sends and production Bootstrap,
+  including roots, GC visitors and finalization. Preserve selectors, diagnostics
+  and canonical encoding; verify all thirteen frozen program digests and
+  collecting dependencies. Block/Codegen reconnection remains separate.
+
 - Remove PortableCode's retired native Block constructors, carrier and admission
   export, along with Runtime discovery plumbing and its ABI-only probe. Retain
   closure analysis/recovery; the legacy optimizer explicitly declines until a
