@@ -24,7 +24,6 @@
     "birnam_id_symbol_compaction_configure_v1",
     "birnam_id_try_acquire_stackless_generation_lease_v1",
     "birnam_id_try_closure_elision_v2",
-    "birnam_id_warm_block_construction_v1",
     "birnam_namespace_count_v1",
     "birnam_namespace_name_at_v1",
     "birnam_native_module_v1",

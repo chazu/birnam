@@ -1,5 +1,5 @@
 //! Measurements use the actual source compiler/consumer and explicit GC batches.
-use super::native_tier::closure_elision::{constructor_discoveries, constructor_queries, counters};
+use super::native_tier::closure_elision::counters;
 use super::*;
 use std::time::Instant;
 
@@ -243,8 +243,6 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         };
         r.gc_collect_for_source_probe();
         let before = counters();
-        let discoveries_before = constructor_discoveries();
-        let queries_before = constructor_queries();
         let completed_before = super::native_tier::closure_elision::completed_calls();
         let prediction_kernels_before = super::numeric::ENTRY_PREDICTION_KERNELS.get();
         let pending = r.closure_pending_resources();
@@ -284,8 +282,6 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         }
         let after = counters();
         assert_eq!(after.3, before.3, "warmed execution derives no new plans");
-        let discoveries = constructor_discoveries() - discoveries_before;
-        let queries = constructor_queries() - queries_before;
         let calls = batches * 128;
         let attempts = after.0 - before.0;
         let hits = after.1 - before.1;
@@ -302,7 +298,6 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
         if let Some((vt, value, method)) = replaced {
             r.add_method(vt, value, method.to_method());
             let previous = counters();
-            let queries_before_restore = constructor_queries();
             let completed_before_restore = super::native_tier::closure_elision::completed_calls();
             invoke();
             let restored = counters();
@@ -310,7 +305,6 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             let expected = usize::from(attempts != 0);
             assert_eq!(restored_hits, expected);
             assert_eq!(restored.2 - previous.2, expected);
-            assert_eq!(constructor_queries() - queries_before_restore, expected);
             assert_eq!(
                 super::native_tier::closure_elision::completed_calls() - completed_before_restore,
                 expected * uses
@@ -318,7 +312,7 @@ pub(super) unsafe extern "C" fn measure(_: Oop, args: *const Oop, count: usize) 
             assert_eq!(EFFECTS.get(), effects);
         }
         println!(
-            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} entry_prediction_kernels={entry_prediction_kernels} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} constructor_discoveries={discoveries} constructor_queries={queries} restored_hits={restored_hits} cold_floor_preparations={cold_preparations} cold_pending_records_before={} cold_pending_bytes_before={} cold_pending_records_after={} cold_pending_bytes_after={} pending_records={} pending_bytes={} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
+            "closure-measure shape={shape} uses={uses} calls={calls} completed_calls={completed_calls} entry_prediction_kernels={entry_prediction_kernels} cold_ns={cold_ns} ns={ns} gc_ns={gc_ns} allocation_bytes={allocation_bytes} physical_saved={physical_saved} journal_peak_bytes={journal_peak_bytes} attempts={attempts} hits={hits} materialized={materialized} effects={effects} restored_hits={restored_hits} cold_floor_preparations={cold_preparations} cold_pending_records_before={} cold_pending_bytes_before={} cold_pending_records_after={} cold_pending_bytes_after={} pending_records={} pending_bytes={} private_native_units={private_native_units} private_relocated_bytes={private_relocated_bytes}",
             cold_pending_before.0,
             cold_pending_before.1,
             cold_pending_after.0,

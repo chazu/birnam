@@ -1,5 +1,9 @@
 # Optional native Block construction declaration, v5
 
+> Historical contract, retired during Design 90. The native export, constructor
+> and discovery interface have been removed. Retained closure elision declines
+> until a guard is implemented against current owner messages.
+
 Design 81BH moves default selector enumeration out of IdApi. The current optional
 producer export is:
 

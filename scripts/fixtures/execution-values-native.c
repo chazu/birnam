@@ -238,7 +238,7 @@ static void check_compiler(const BirnamProtocol *id,const BirnamOperand *path,in
             "birnam_id_retire_stackless_code_generation_v1","birnam_id_stackless_block_vtable_image_reference_v1",
             "birnam_id_stackless_block_vtable_matches_v1","birnam_id_staged_portable_block_vtable_v1",
             "birnam_id_stackless_resumable_manifest_matches_v1",
-            "birnam_id_warm_block_construction_v1","birnam_id_try_closure_elision_v2"};
+            "birnam_id_try_closure_elision_v2"};
         for(size_t i=0;i<sizeof(symbols)/sizeof(symbols[0]);i++)
             assert(compiler->resolve(compiler->context,(const uint8_t *)symbols[i],strlen(symbols[i]))==dlsym(image,symbols[i]));
         assert(!compiler->resolve(compiler->context,(const uint8_t *)"unknown",7));

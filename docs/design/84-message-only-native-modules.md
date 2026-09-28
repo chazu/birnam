@@ -290,6 +290,10 @@ admission checks. Old factory support includes are not restored: these harnesses
 cannot run until they use the new object integration. Rebuilding test setup must
 not recreate a second Id or the retired module APIs.
 
+Subsequent Design 90 cleanup removed `native-block-construction.c` and the old
+constructor/admission interface. Closure analysis and recovery remain retained;
+the legacy consumer now declines until current owner-message guards exist.
+
 This is still a deletion checkpoint, not a completed restoration. Other upper
 consumers, including optimization guards and native entry adapters, still refer
 to removed interfaces. Their presence does not authorize restoring shared tables.

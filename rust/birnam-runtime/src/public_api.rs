@@ -213,33 +213,6 @@ pub(crate) fn numeric_functions(runtime: &Runtime) -> [usize; 12] {
      canonical_numeric_functions().alloc as usize, presence.context as usize, imports.context as usize]
 }
 
-/// Current floor operands for the optional warm Block constructor declaration.
-pub(crate) fn block_construction_context(
-    runtime: &Runtime,
-    symbol_vtable: Oop,
-    metavtable: Oop,
-) -> [usize; 14] {
-    let imports = runtime.canonical_namespace_import();
-    let names = runtime.canonical_namespace_names();
-    let enumeration = runtime.canonical_vtable_enumeration();
-    [
-        canonical_numeric_functions().alloc as usize,
-        imports.import.unwrap() as usize,
-        api_object_payload_size as *const () as usize,
-        canonical_numeric_functions().vtable_of as usize,
-        api_send as *const () as usize,
-        enumeration.selector_at.unwrap() as usize,
-        api_symbol_name as *const () as usize,
-        api_intern as *const () as usize,
-        symbol_vtable as usize,
-        names.name_of.unwrap() as usize,
-        names.context as usize,
-        metavtable as usize,
-        imports.context as usize,
-        enumeration.context as usize,
-    ]
-}
-
 pub(crate) fn closure_codegen_context_matches(api: &IdApi, nil: Oop, integer: &birnam_abi::integer::IntegerApiV1, expected: &birnam_abi::integer::IntegerApiV1) -> bool {
     if !integer.same_contract(expected) { return false; }
     api.send as usize == api_send as *const () as usize

@@ -87,7 +87,6 @@ pub(super) struct Record {
     pub(super) descriptor: Weak<FrameDescriptor>,
     preparation: Preparation,
     visits: Cell<usize>,
-    constructor: Option<Rc<crate::loader::BlockConstructionSummary>>,
 }
 enum Preparation {
     Pending {
@@ -111,9 +110,6 @@ impl Record {
             Preparation::Ready(prepared) => watch.rc("closure-plan", prepared),
             Preparation::Refused => (),
         }
-        if let Some(constructor) = &self.constructor {
-            watch.rc("closure-constructor", constructor);
-        }
     }
 
     pub(super) fn new(
@@ -126,7 +122,6 @@ impl Record {
             descriptor: Arc::downgrade(descriptor),
             preparation: Preparation::Pending { input, expected },
             visits: Cell::new(0),
-            constructor: None,
         })
     }
 
@@ -205,8 +200,6 @@ thread_local! {
 #[cfg(feature = "ffi-test-hooks")]
 thread_local! {
     static ATTEMPTS: Cell<usize> = const { Cell::new(0) };
-    static CONSTRUCTOR_QUERIES: Cell<usize> = const { Cell::new(0) };
-    static CONSTRUCTOR_DISCOVERIES: Cell<usize> = const { Cell::new(0) };
     static PREPARATIONS: Cell<usize> = const { Cell::new(0) };
     static PREPARATION_NS: Cell<u128> = const { Cell::new(0) };
 }
@@ -236,20 +229,12 @@ pub(in crate::runtime) fn counters() -> (usize, usize, usize, usize, u128) {
     )
 }
 
-#[cfg(feature = "ffi-test-hooks")]
-pub(in crate::runtime) fn constructor_discoveries() -> usize {
-    CONSTRUCTOR_DISCOVERIES.get()
-}
 
 #[cfg(feature = "ffi-test-hooks")]
 pub(in crate::runtime) fn completed_calls() -> usize {
     COMPLETED_CALLS.get()
 }
 
-#[cfg(feature = "ffi-test-hooks")]
-pub(in crate::runtime) fn constructor_queries() -> usize {
-    CONSTRUCTOR_QUERIES.get()
-}
 
 #[cfg(feature = "ffi-test-hooks")]
 impl Record {
@@ -267,10 +252,6 @@ impl Record {
         let p = &prepared.plan;
         size_of::<Self>()
             + size_of::<Prepared>()
-            + self
-                .constructor
-                .as_ref()
-                .map_or(0, |_| size_of::<crate::loader::BlockConstructionSummary>())
             + prepared.descriptor.len()
             + p.program.len()
             + size_of_val(p.following.as_slice())
@@ -304,15 +285,12 @@ impl Record {
     }
 }
 
+// The old guard proved facts about deleted service tables and a different Block
+// layout. Keep analysis/recovery as migration inputs, but disable both preparation
+// and invocation until current owner messages support an equivalent proof.
+// Neither developer environment settings nor the legacy test flag enable this.
 pub(super) fn enabled() -> bool {
-    #[cfg(not(test))]
-    {
-        std::env::var_os("BIRNAM_DEV_CLOSURE_ELISION").is_some_and(|v| v == "1")
-    }
-    #[cfg(test)]
-    {
-        ENABLED.get()
-    }
+    false
 }
 
 impl Runtime {
@@ -372,7 +350,7 @@ impl Runtime {
         machine: Oop,
         source_method: *const c_void,
         node_index: u32,
-        constructor: *const c_void,
+        _constructor: *const c_void,
         block_vtable: Oop,
         code_object: Oop,
         captures: &[Oop],
@@ -408,7 +386,7 @@ impl Runtime {
             }
             (frame, descriptor)
         };
-        let (prepared, constructor_summary) = {
+        let prepared = {
             let mut registry = self.compiler().native_tier.borrow_mut();
             let record = registry
                 .closures
@@ -432,7 +410,7 @@ impl Runtime {
                     return None;
                 }
             };
-            (prepared, record.constructor.clone())
+            prepared
         };
         let plan = &prepared.plan;
         plan.continuation.as_ref()?;
@@ -455,50 +433,9 @@ impl Runtime {
                 return None;
             }
         }
-        // Cache only the resident declaration and its native-image pin, never
-        // its answer. The bounded, weak-descriptor record owns one entry; the
-        // selected Rc keeps the image live if that record is replaced/pruned.
-        let summary = if let Some(summary) = constructor_summary.filter(|s| s.matches(constructor))
-        {
-            summary
-        } else {
-            #[cfg(feature = "ffi-test-hooks")]
-            CONSTRUCTOR_DISCOVERIES.set(CONSTRUCTOR_DISCOVERIES.get() + 1);
-            let summary = Rc::new(crate::loader::BlockConstructionSummary::discover(
-                constructor,
-            )?);
-            let previous = {
-                let mut registry = self.compiler().native_tier.borrow_mut();
-                let record = registry
-                    .closures
-                    .get_mut(&(Arc::as_ptr(&descriptor) as usize))?;
-                if !record
-                    .ready()
-                    .is_some_and(|current| Rc::ptr_eq(current, &prepared))
-                {
-                    return None;
-                }
-                record.constructor.replace(summary.clone())
-            };
-            // Release an old native pin outside the registry borrow.
-            drop(previous);
-            summary
-        };
-        #[cfg(feature = "ffi-test-hooks")]
-        CONSTRUCTOR_QUERIES.set(CONSTRUCTOR_QUERIES.get() + 1);
-        if !unsafe {
-            summary.warm(
-                self,
-                block_vtable,
-                code_object,
-                captures.len(),
-                materialization_owner,
-                &plan.program,
-                materialized,
-            )
-        } {
-            return None;
-        }
+        // Constructor admission belongs to the refusal at entry until it is
+        // reimplemented against current owner messages. Do not resume this
+        // retained algorithm merely by enabling its developer controls.
 
         // Oop scratch is deliberately a host Vec, not a conservatively scanned
         // native array. All values remain rooted by the caller/original literal.

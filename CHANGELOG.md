@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Remove PortableCode's retired native Block constructors, carrier and admission
+  export, along with Runtime discovery plumbing and its ABI-only probe. Retain
+  closure analysis/recovery; the legacy optimizer explicitly declines until a
+  replacement guard proves the current message-based construction semantics.
+
 - Migrate Artifact inspection to Id sends and production Bootstrap. Preserve its
   descriptor API, diagnostics and codecs; replace native root callbacks with
   visitor sends and use ObjectModel for descriptor storage/tracing. Validate

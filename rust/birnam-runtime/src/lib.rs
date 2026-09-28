@@ -96,47 +96,6 @@ pub extern "C" fn birnam_id_live_heap_bytes_v1() -> usize {
     public_api::live_heap_bytes()
 }
 
-/// Private native construction admission for compiler/recovery producers.
-/// This validates only the constructor declaration; it does not authorize
-/// allocation removal or execute an optimized continuation.
-///
-/// # Safety
-/// The caller owns the actual constructor image and all supplied live objects
-/// and program bytes through this synchronous query on the runtime owner thread.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn birnam_id_warm_block_construction_v1(
-    constructor: *const core::ffi::c_void,
-    block_vtable: abi::Oop,
-    code_object: abi::Oop,
-    capture_count: usize,
-    materialization_owner: abi::Oop,
-    program: *const u8,
-    length: usize,
-    materialized: u32,
-) -> u32 {
-    if constructor.is_null() || program.is_null() || length > 65_536 || materialized > 1 {
-        return 0;
-    }
-    runtime::with_active_if_present(|runtime| {
-        if !runtime.compiler_available() { return 0; }
-        let Some(summary) = loader::BlockConstructionSummary::discover(constructor) else {
-            return 0;
-        };
-        u32::from(unsafe {
-            summary.warm(
-                runtime,
-                block_vtable,
-                code_object,
-                capture_count,
-                materialization_owner,
-                core::slice::from_raw_parts(program, length),
-                materialized != 0,
-            )
-        })
-    })
-    .unwrap_or(0)
-}
-
 /// Experimental compiler continuation at a validated constructor boundary.
 /// Null declines without mutation. Non-null is the already executed path's
 /// StepAction and must be returned by the generated PC without retrying.

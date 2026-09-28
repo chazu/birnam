@@ -32,3 +32,20 @@ The remaining integration work is intentionally retained for its actual producer
 
 Image, workers and full CLI startup remain later integration. Current acceptance
 commands and their limits are in [validation](../../docs/validation.md).
+
+The legacy Block constructor admission interface (`native-block-construction-v5`)
+is removed. Closure analysis, region execution and recovery remain migration
+inputs, but `try_inline_closure` unconditionally declines before doing work;
+developer controls cannot enable it. Reconnection must prove current constructor
+and invocation meaning, program/capture agreement, code-owner lifetime, and
+replacement/collection behavior through owner messages. Preserve cold refusal,
+changed-constructor/owner refusal, shared capture identity and recovery without
+replaying effects. The historical ABI describes the old proof, not an interface
+to restore. Legacy closure timing/integration fixtures require migration and must
+not be counted as current passing acceptance.
+
+PortableCode's old carrier and raw Block accessors were removed with that
+constructor. Restore `codeObject`, `captureCount` and `captureAt:` through
+Execution during the PortableCode migration, preserving their behavior from
+commit `96e22f29`. PortableCode's ordinary CodeObject/CodeProgram families and the
+canonical codecs are retained; this cleanup does not complete their migration.

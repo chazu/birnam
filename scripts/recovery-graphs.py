@@ -34,7 +34,7 @@ def sources():
               ('compatibility_authority.py', 'compatibility-authority-test.py', 'measurement_archive.py',
                'validation_support.py', 'validation_proof.py')]
     paths += [ROOT / 'scripts/fixtures' / name for name in
-              ('native-block-construction.c', 'closure-api-context.c')]
+              ('closure-api-context.c',)]
     for folder in ('rust', 'src/id', 'modules', 'abi', 'vendor/libtcc-src'):
         paths.extend(p for p in (ROOT / folder).rglob('*') if p.is_file())
     return {str(p.relative_to(ROOT)): sha(p) for p in sorted(set(paths))}
@@ -462,16 +462,7 @@ def main():
                      "-p", "birnam-error", "-p", "birnam-portable-code",
                      "-p", "birnam-codegen-runtime", "-p", "birnam-tcc"]
                     + (["--release"] if profile == "release" else []), profile + "-closure-native-build")
-                fixture = work / (profile + "-block-construction")
-                run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v20",
-                     "scripts/fixtures/native-block-construction.c", "-o", fixture], profile + "-closure-native-fixture")
                 libraries = ROOT / ".cargo-target" / profile
-                run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
-                    ("id", "prelude", "collection", "error", "portable_code")]
-                    + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin"], profile + "-closure-native-admission")
-                run([fixture] + [libraries / ("libbirnam_" + name + ".dylib") for name in
-                    ("id", "prelude", "collection", "error", "portable_code")]
-                    + ["abi/fixtures/portable-code-v1/program-explicit-captures.bin", "without-prelude"], profile + "-closure-native-absent-family")
                 api_fixture = work / (profile + "-closure-api-context")
                 run(["cc", "-Wall", "-Wextra", "-Werror", "-Iabi/fixtures/idapi-v20",
                      "scripts/fixtures/closure-api-context.c", "-o", api_fixture], profile + "-closure-api-fixture")
