@@ -299,3 +299,13 @@ delete. A real system-compiled dylib loads and runs after asset/generated-C dele
 A retained Bytes also survives actual TCC Unit reclamation, then is itself
 collected after release. This proves native payload self-containment; Image
 round-trip and full project/CLI integration remain separate migration gates.
+
+
+Block Loop adds the twenty-second integration binary, `block_loop`, and joins the
+dylib boundary audit. It checks 10,000 native iterations, compiled Store counters,
+both loop directions, exact errors, live callback/factory replacement, native
+failures, transient argument roots and per-iteration result reclamation. It also
+checks the native suspension barrier and then installs the unchanged authored
+Boolean/while prefix to prove existing/new Block replacement, suspension/resumption
+and reload preservation. Full authored scheduling policy and Host/Image remain
+outside this slice.

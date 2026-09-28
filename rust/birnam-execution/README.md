@@ -121,6 +121,12 @@ barriers prevent nested callbacks from parking the caller. GC `prepareAllocation
 admits public mutation and rejects collection-critical reentry. Finalization only
 releases native state; it does not run language cancellation or cleanup policy.
 
+Block's canonical prototype owns its shared behavior through Object Model's
+`ownerOf:put:` protocol. Reflect method replacement therefore reaches existing
+and future compiled Blocks. Bootstrap installs the separate [Block Loop
+module](../birnam-block-loop/README.md) after Execution; authored controls can
+replace those synchronous defaults through normal MOP publication.
+
 ## Remaining migration and acceptance
 
 The canonical frame engine, boundaries, scheduling, tail-entry and recovery

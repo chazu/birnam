@@ -1,149 +1,254 @@
-//! Native Block loops installed after Runtime's Block representation.
-#![allow(clippy::missing_safety_doc)]
-use birnam_abi::error_value::{is_error, numeric_error};
-use birnam_abi::{IdApi, Oop, borrowed_oop_args};
-use core::ffi::c_char;
-use core::ptr;
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-static READY: AtomicBool = AtomicBool::new(false);
-// Installation retains its original selection, even when registration reenters
-// with another table before the first block loop installation. The host pins it.
-static EXECUTION_API: OnceLock<(usize, usize, usize)> = OnceLock::new();
-
-unsafe fn api_ref() -> &'static IdApi {
-    let pointer = *EXECUTION_API
-        .get()
-        .expect("Block Loop methods were not installed");
-    unsafe { &*(pointer.0 as *const IdApi) }
+//! Bootstrap Block loops. Condition/body evaluation and all dependencies use Id
+//! sends; the existing synchronous boundary is replaced by authored control later.
+use birnam_abi::{
+    Oop, borrowed_slice,
+    id_protocol::{self as native, NativeEntry, Operand, Outcome, Protocol},
+};
+use core::{ffi::c_void, ptr};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    string: Oop,
+    truth: Oop,
+    falsity: Oop,
+    nil: Oop,
+    thread: std::thread::ThreadId,
 }
-unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
-    // SAFETY: all callers pass static NUL-terminated selector names.
-    unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
+static INSTANCE: AtomicPtr<State> = AtomicPtr::new(ptr::null_mut());
+static BUSY: AtomicBool = AtomicBool::new(false);
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
 }
-
-unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
-    // SAFETY: the host owns the argument buffer for the duration of the call.
-    unsafe { borrowed_oop_args(args, count)?.first().copied() }
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
 }
-
-unsafe fn send0(api: &IdApi, receiver: Oop, selector: &[u8]) -> Oop {
-    let selector = unsafe { intern(api, selector) };
-    // SAFETY: a zero-count send may carry a null argument pointer under IdApi.
-    unsafe { (api.send)(receiver, selector, ptr::null(), 0) }
-}
-
-unsafe fn block_loop(
-    self_object: Oop,
-    args: *const Oop,
-    count: usize,
-    continue_on_true: bool,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(body) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    loop {
-        let condition = unsafe { send0(api, self_object, b"value\0") };
-        if unsafe { is_error(api, execution_presence(), execution_imports(), condition) } {
-            return condition;
+impl State {
+    unsafe fn rooted(
+        &self,
+        values: &[Oop],
+        f: impl FnOnce() -> Result<Operand, Outcome>,
+    ) -> Result<Operand, Outcome> {
+        unsafe {
+            let mut tokens = Vec::new();
+            let result = (|| {
+                for &value in values {
+                    tokens.push(
+                        self.id
+                            .send_named(self.roots, b"retain:", &[Operand::object(value)])?
+                            .as_word()
+                            .ok_or_else(invalid)?,
+                    );
+                }
+                f()
+            })();
+            for token in tokens {
+                self.id
+                    .send_named(self.roots, b"release:", &[Operand::word(token)])?;
+            }
+            result
         }
-        let is_true = condition == api.trueObj;
-        let is_false = condition == api.falseObj;
-        if !is_true && !is_false {
-            return unsafe {
-                numeric_error(api, execution_presence(), execution_imports(),
-                    b"mustBeBoolean\0",
-                    b"while loop condition must answer true or false",
-                )
+    }
+    unsafe fn named(&self, name: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            self.id.send_named(
+                self.ns,
+                b"at:",
+                &[Operand::object(self.id.intern_name(name)?)],
+            )
+        }
+    }
+    unsafe fn is_error(&self, value: Oop) -> Result<bool, Outcome> {
+        unsafe {
+            // Preserve the bootstrap loop's exact-family recognition and lazy
+            // Error publication; an overridden isError is not a new policy.
+            let family = self.named(b"ErrorVt")?;
+            let Some(family) = family
+                .as_object()
+                .filter(|o| !o.is_null() && *o != self.nil)
+            else {
+                return Ok(false);
+            };
+            let mut found = false;
+            self.rooted(&[family], || {
+                found = self
+                    .id
+                    .send_named(self.id.receiver, b"behaviorOf:", &[Operand::object(value)])?
+                    .as_object()
+                    == Some(family);
+                Ok(Operand::unit())
+            })?;
+            Ok(found)
+        }
+    }
+    unsafe fn must_be_boolean(&self) -> Result<Operand, Outcome> {
+        unsafe {
+            let kind = self.id.intern_name(b"mustBeBoolean")?;
+            self.rooted(&[kind], || {
+                let message = object(self.id.send_named(
+                    self.string,
+                    b"fromBytes:",
+                    &[Operand::bytes(
+                        b"while loop condition must answer true or false",
+                    )],
+                )?)?;
+                self.rooted(&[message], || {
+                    let factory = self.named(b"Error")?;
+                    let Some(factory) = factory
+                        .as_object()
+                        .filter(|o| !o.is_null() && *o != self.nil)
+                    else {
+                        return Ok(Operand::object(self.nil));
+                    };
+                    self.rooted(&[factory], || {
+                        self.id.send_named(
+                            factory,
+                            b"kind:message:",
+                            &[Operand::object(kind), Operand::object(message)],
+                        )
+                    })
+                })
+            })
+        }
+    }
+}
+unsafe fn run(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+    continue_on_true: bool,
+) -> Result<Operand, Outcome> {
+    unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let Some([body]) = borrowed_slice(a, n) else {
+            return Ok(Operand::object(s.nil));
+        };
+        let body = object(*body)?;
+        s.rooted(&[r, body], || {
+            loop {
+                let condition = object(s.id.send_named(r, b"value", &[])?)?;
+                // Per-result roots end every iteration; a long loop does not
+                // accumulate live callback results or retain dead code owners.
+                let mut again = false;
+                let result = s.rooted(&[condition], || {
+                    if s.is_error(condition)? {
+                        return Ok(Operand::object(condition));
+                    }
+                    if condition != s.truth && condition != s.falsity {
+                        return s.must_be_boolean();
+                    }
+                    if (condition == s.truth) != continue_on_true {
+                        return Ok(Operand::object(s.nil));
+                    }
+                    let value = object(s.id.send_named(body, b"value", &[])?)?;
+                    s.rooted(&[value], || {
+                        if s.is_error(value)? {
+                            Ok(Operand::object(value))
+                        } else {
+                            again = true;
+                            Ok(Operand::object(s.nil))
+                        }
+                    })
+                })?;
+                if !again {
+                    return Ok(result);
+                }
+            }
+        })
+    }
+}
+unsafe extern "C" fn while_true(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { run(c, r, a, n, true) }.map_or_else(|e| e, Outcome::loaded)
+}
+unsafe extern "C" fn while_false(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
+    unsafe { run(c, r, a, n, false) }.map_or_else(|e| e, Outcome::loaded)
+}
+unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
+    unsafe {
+        let named = |name: &[u8]| {
+            object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(name)?)])?)
+        };
+        let roots = named(b"Roots")?;
+        let string = named(b"String")?;
+        let truth = named(b"true")?;
+        let falsity = named(b"false")?;
+        let nil = named(b"nil")?;
+        let block = named(b"Block")?;
+        for value in [ns, roots, string, truth, falsity, nil, block] {
+            id.send_named(roots, b"retain:", &[Operand::object(value)])?;
+        }
+        let behavior =
+            object(id.send_named(id.receiver, b"behaviorOf:", &[Operand::object(block)])?)?;
+        id.send_named(roots, b"retain:", &[Operand::object(behavior)])?;
+        let state = Box::into_raw(Box::new(State {
+            id,
+            ns,
+            roots,
+            string,
+            truth,
+            falsity,
+            nil,
+            thread: std::thread::current().id(),
+        }));
+        for (name, method) in [
+            (b"whileTrue:".as_slice(), while_true as native::Method),
+            (b"whileFalse:", while_false),
+        ] {
+            id.send_named(
+                behavior,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::entry(NativeEntry::new(method, state.cast())),
+                ],
+            )?;
+        }
+        INSTANCE.store(state, Ordering::Release);
+        Ok(Operand::unit())
+    }
+}
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    (|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let ns = object(*ns)?;
+        let existing = INSTANCE.load(Ordering::Acquire);
+        if !existing.is_null() {
+            let s = &*existing;
+            return if s.id.same_contract(&*id)
+                && s.ns == ns
+                && s.thread == std::thread::current().id()
+            {
+                Ok(Operand::unit())
+            } else {
+                Err(invalid())
             };
         }
-        if is_true != continue_on_true {
-            return api.nilObj;
+        if BUSY.swap(true, Ordering::AcqRel) {
+            return Err(invalid());
         }
-        let result = unsafe { send0(api, body, b"value\0") };
-        if unsafe { is_error(api, execution_presence(), execution_imports(), result) } {
-            return result;
-        }
-    }
+        let result = construct(*id, ns);
+        BUSY.store(false, Ordering::Release);
+        result
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
 }
-
-unsafe extern "C" fn block_while_true(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { block_loop(self_object, args, count, true) }
-}
-
-unsafe extern "C" fn block_while_false(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    unsafe { block_loop(self_object, args, count, false) }
-}
-
-unsafe extern "C" fn install(
-    registration: *const IdApi,
-    execution: *const IdApi,
-    presence: *const birnam_abi::namespace_presence::ApiV1,
-    imports: *const birnam_abi::namespace_import::ApiV1,
-    block_vt: Oop,
-    while_true: Oop,
-    while_false: Oop,
-) {
-    assert!(
-        READY.load(Ordering::Acquire) && !registration.is_null() && !execution.is_null(),
-        "invalid Block Loop installation"
-    );
-    EXECUTION_API.get_or_init(|| (execution as usize, presence as usize, imports as usize));
-    let api = unsafe { &*registration };
-    unsafe {
-        (api.method)(block_vt, while_true, block_while_true);
-        (api.method)(block_vt, while_false, block_while_false);
-    }
-}
+#[unsafe(no_mangle)]
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: native::VERSION,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};
 #[unsafe(no_mangle)]
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-
-fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { EXECUTION_API.get().expect("methods not installed").1 as *const birnam_abi::namespace_presence::ApiV1 }
-
-fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { EXECUTION_API.get().expect("module not installed").2 as *const birnam_abi::namespace_import::ApiV1 }
-
-unsafe fn mount(api: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1) {
-    assert!(!api.is_null(), "Block Loop received a null IdApi");
-    // Select execution before namespace/intern callbacks can reenter native construction.
-    EXECUTION_API.get_or_init(|| (api as usize, presence as usize, imports as usize));
-    let block_vt = unsafe { birnam_abi::namespace_import::import(imports, c"BlockVt".as_ptr()) };
-    assert!(!block_vt.is_null(), "Block Loop requires Runtime's Block representation");
-    READY.store(true, Ordering::Release);
-    unsafe {
-        let while_true = ((*api).intern)(c"whileTrue:".as_ptr());
-        let while_false = ((*api).intern)(c"whileFalse:".as_ptr());
-        install(api, api, presence, imports, block_vt, while_true, while_false);
-    }
-}
-static NATIVE_BUSY: AtomicBool = AtomicBool::new(false);
-static NATIVE_COMPLETE: AtomicBool = AtomicBool::new(false);
-unsafe extern "C" fn initialize_native(id: *const birnam_abi::id_protocol::Protocol, args: *const birnam_abi::id_protocol::Operand, count: usize) -> birnam_abi::id_protocol::Outcome {
-    use birnam_abi::id_protocol::{self as native, Operand, Outcome};
-    let invalid = || Outcome::failed(native::INVALID_REQUEST, 0);
-    if !unsafe { native::valid_protocol(id) } { return invalid(); }
-    let Some([api, presence, imports, errors]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid(); };
-    let (Some(api), Some(presence), Some(imports), Some(errors)) = (api.as_word(), presence.as_word(), imports.as_word(), errors.as_word()) else { return invalid(); };
-    let api = api as *mut IdApi;
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver }
-        || EXECUTION_API.get().is_some_and(|selected| *selected != (api.addr(), presence, imports))
-        || !unsafe { birnam_abi::namespace_presence::valid(presence as _) && birnam_abi::namespace_import::valid(imports as _) }
-        || unsafe { birnam_abi::error_value::attach(errors as _) } != 1 { return invalid(); }
-    if NATIVE_COMPLETE.load(Ordering::Acquire) { return Outcome::loaded(Operand::unit()); }
-    if NATIVE_BUSY.swap(true, Ordering::AcqRel) { return invalid(); }
-    unsafe { mount(api, presence as _, imports as _) };
-    NATIVE_COMPLETE.store(true, Ordering::Release);
-    NATIVE_BUSY.store(false, Ordering::Release);
-    Outcome::loaded(Operand::unit())
-}
-#[unsafe(no_mangle)]
-pub static birnam_native_module_v1: birnam_abi::id_protocol::Module = birnam_abi::id_protocol::Module {
-    version: 1, byte_size: size_of::<birnam_abi::id_protocol::Module>() as u32,
-    initialize: Some(initialize_native),
-};

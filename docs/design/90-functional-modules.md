@@ -1288,3 +1288,12 @@ and constructs Bytes through sends. The existing portable codec suffices. No new
 native module or service framework is needed. [Design 56](56-embedded-files.md)
 records the contract and real dylib validation. Image round-trip and project/Host
 reconnection remain deferred by the user's explicit scope decision.
+
+
+### Bootstrap Block loops reconnected (2026-09-27)
+
+Block Loop now loads after Execution and uses Id sends for callbacks, roots and
+errors. The missing Block prototype ownership registration is repaired, allowing
+ordinary Reflect publication to reach compiled Blocks. The existing native
+suspension barrier and authored resumable replacement remain distinct; see the
+[contract and production checks](../../rust/birnam-block-loop/README.md).

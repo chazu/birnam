@@ -320,7 +320,14 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 Operand::object(namespace),
             ],
         )?;
-        for name in ["peg", "lang", "tcc", "codegen_runtime", "source_loader"] {
+        for name in [
+            "block_loop",
+            "peg",
+            "lang",
+            "tcc",
+            "codegen_runtime",
+            "source_loader",
+        ] {
             id.send_named(
                 receiver,
                 b"loadNative:",

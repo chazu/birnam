@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate bootstrap Block `whileTrue:`/`whileFalse:` to Id sends and load after
+  Execution, preserving Boolean/error semantics and the native control boundary.
+  Register Block's shared behavior owner so Reflect replacements reach compiled
+  Blocks. Test collecting callbacks, live replacements, long loops and the existing
+  authored methods' suspension/resumption; reload preserves replacements.
+
 - Add the ordinary Bytes prototype and restore compile-time file embedding through
   Id sends. Share existing buffer lifetime machinery, preserve exact binary payloads
   in the current portable encoding and construct Bytes through live messages.

@@ -1,5 +1,9 @@
 # Block Loop installation v2
 
+> Historical service-table contract. The current module accepts Namespace and
+> uses Id sends; see [Block Loop](../rust/birnam-block-loop/README.md). The old
+> reentry/image probes below are not current migration acceptance.
+
 Design [81AT](../docs/design/81at-production-block-loop.md) moves native Block
 whileTrue:, whileFalse: and their common loop body intact from Prelude into
 `birnam-block-loop`. Its sole dependency is Error Value v2; it loads before

@@ -1756,6 +1756,16 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
         scope.keep(block_vtable);
         let block_prototype = allocate(s, block_vtable, 0)?;
         scope.keep(block_prototype);
+        // Reflect must update the shared Block behavior, so existing and future
+        // compiled Blocks observe prototype method replacement.
+        s.id.send_named(
+            s.id.receiver,
+            b"ownerOf:put:",
+            &[
+                Operand::object(block_vtable),
+                Operand::object(block_prototype),
+            ],
+        )?;
         s.machines
             .borrow_mut()
             .roots

@@ -43,3 +43,8 @@ Source files use the separate `[System load: path]` protocol. Its initializer al
 receives Namespace, installs its method through Id and returns Unit. See the
 [Source Loader contract](../rust/birnam-source-loader/README.md) for Codegen
 registration/evaluation and the current embedding and Host/Image boundaries.
+
+
+[Block Loop](../rust/birnam-block-loop/README.md) likewise takes one Namespace and
+returns Unit. Bootstrap loads it after Execution; repeated loading preserves the
+current `whileTrue:`/`whileFalse:` bindings, including authored replacements.

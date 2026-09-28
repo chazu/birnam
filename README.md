@@ -38,7 +38,10 @@ automatic collection and owner-side conservative/precise payload scanning.
 loading through the same messages, preserving its existing API and error mapping.
 [Source Loader](rust/birnam-source-loader/README.md) and Codegen source registration
 also use Id messages, with real file loading through the authored Module manager.
-Embedded files remain on hold; Host/CLI and Image integration are still pending.
+[Embedded files](docs/design/56-embedded-files.md) now produce ordinary Bytes
+objects through compile-time sends. [Block Loop](rust/birnam-block-loop/README.md)
+also runs through Id, with the existing authored replacement path preserved.
+Host/CLI and Image integration are still pending.
 The full workspace, Artifact/PortableCode language adapters, Image,
 workers and CLI still await upper integration.
 The usage documentation below describes the language being preserved.
