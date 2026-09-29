@@ -437,6 +437,12 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             ),
             (vt, b"eval:", Op::Eval),
             (vt, b"sourceRevisionOf:", Op::Source(source::Op::Revision)),
+            (vt, b"moduleMetadataOf:", Op::Source(source::Op::Metadata)),
+            (
+                vt,
+                b"embeddedFilesOf:",
+                Op::Source(source::Op::EmbeddedFiles),
+            ),
             (
                 vt,
                 b"recordModuleSource:named:",

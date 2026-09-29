@@ -13,6 +13,8 @@ pub(super) struct Sources {
 #[derive(Clone, Copy)]
 pub(super) enum Op {
     Revision,
+    Metadata,
+    EmbeddedFiles,
     Record,
     Find,
     Seal,
@@ -203,19 +205,47 @@ pub(super) unsafe fn operation(
                 s.sources.sealed.set(true);
                 Ok(Operand::object(s.named(b"true")?))
             }
-            Op::Revision => {
+            Op::EmbeddedFiles => {
                 let source = object(a[0])?;
-                let Some((_, revision)) = s.revision(scope, source)? else {
+                let mut paths = Vec::new();
+                if let Some(bytes) = s.source_bytes(scope, source)? {
+                    if let Some(tree) = s.source_tree(scope, source, bytes.len())? {
+                        for path in source_revision::embedded_files(&tree, &bytes) {
+                            paths.push(s.text(scope, &path)?);
+                        }
+                    }
+                } else {
                     s.sources.note(b"RustCodegen source was not a String");
+                }
+                Ok(Operand::object(s.vector(scope, &paths)?))
+            }
+            Op::Revision | Op::Metadata => {
+                let source = object(a[0])?;
+                let Some((bytes, revision)) = s.revision(scope, source)? else {
+                    if matches!(op, Op::Revision) {
+                        s.sources.note(b"RustCodegen source was not a String");
+                    }
                     return Ok(nil_value);
                 };
-                let tag = scope.keep(s.id.intern_name(b"sourceRevision")?)?;
+                let tag = scope.keep(s.id.intern_name(if matches!(op, Op::Metadata) {
+                    b"moduleMetadata"
+                } else {
+                    b"sourceRevision"
+                })?)?;
                 let name = scope.keep(s.id.intern_name(&revision.name)?)?;
                 let mut requires = Vec::new();
                 for name in revision.requires {
                     requires.push(scope.keep(s.id.intern_name(&name)?)?);
                 }
                 let requires = s.vector(scope, &requires)?;
+                if matches!(op, Op::Metadata) {
+                    let source_digest = s.text(scope, &source_revision::source_digest(&bytes))?;
+                    let revision_digest = s.text(scope, &revision.revision_digest)?;
+                    return Ok(Operand::object(s.vector(
+                        scope,
+                        &[tag, name, requires, source_digest, revision_digest],
+                    )?));
+                }
                 let non_method = s.text(scope, &revision.non_method_digest)?;
                 let method = s.text(scope, &revision.method_digest)?;
                 let digest = s.text(scope, &revision.revision_digest)?;

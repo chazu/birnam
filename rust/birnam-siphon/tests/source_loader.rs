@@ -146,6 +146,22 @@ fn source_loading_uses_live_owners() {
         );
         let gold = h.string(b"[Module named: #gold requires: #[#dep]]");
         let revision = h.call(codegen, b"sourceRevisionOf:", &[gold]);
+        let metadata = h.call(codegen, b"moduleMetadataOf:", &[gold]);
+        assert_eq!(h.number(h.call(metadata, b"size", &[])), 5);
+        assert_eq!(
+            h.at(metadata, 0),
+            id.intern_name(b"moduleMetadata").unwrap()
+        );
+        assert_eq!(h.at(metadata, 1), id.intern_name(b"gold").unwrap());
+        assert_eq!(h.at(h.at(metadata, 2), 0), id.intern_name(b"dep").unwrap());
+        assert_eq!(h.bytes(h.at(metadata, 4)), h.bytes(h.at(revision, 6)));
+        assert_eq!(h.call(codegen, b"moduleMetadataOf:", &[nil]), nil);
+        let assets = h.call(codegen, b"embeddedFilesOf:", &[nil]);
+        assert_eq!(h.number(h.call(assets, b"size", &[])), 0);
+        assert_eq!(
+            h.call(codegen, b"moduleMetadataOf:", &[h.string(b"42")]),
+            nil
+        );
         assert_eq!(h.number(h.call(revision, b"size", &[])), 7);
         assert_eq!(
             h.at(revision, 0),

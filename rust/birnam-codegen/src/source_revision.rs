@@ -11,6 +11,57 @@ fn sha256_hex(bytes: &[u8]) -> [u8; 64] {
     }
     out
 }
+/// Digest of the original source bytes, before embedding or lowering.
+pub fn source_digest(source: &[u8]) -> [u8; 64] {
+    sha256_hex(source)
+}
+
+/// Historical syntactic asset inventory: literal System embedFile: sends,
+/// including nested blocks, in first-occurrence order. This does not read files
+/// or decide whether a send will execute (or its receiver will be shadowed).
+pub fn embedded_files(tree: &OwnedCst, source: &[u8]) -> Vec<Vec<u8>> {
+    fn path(node: &OwnedCst, source: &[u8]) -> Option<Vec<u8>> {
+        if node.rule() != b"send" || node.child_count() != 2 {
+            return None;
+        }
+        let receiver = skip_cst_wrappers(node.child(0)?)?;
+        if receiver.rule() != b"ident" || source_span(receiver, source)? != b"System" {
+            return None;
+        }
+        let message = skip_cst_wrappers(node.child(1)?)?;
+        if message.rule() != b"keywordMsg"
+            || message.child_count() != 2
+            || source_span(message.child(0)?, source)? != b"embedFile:"
+        {
+            return None;
+        }
+        let argument = skip_cst_wrappers(message.child(1)?)?;
+        if argument.rule() != b"string" {
+            return None;
+        }
+        let literal = source_span(argument, source)?;
+        let body = literal.strip_prefix(b"\"")?.strip_suffix(b"\"")?;
+        Some(crate::literal::decode_body(body))
+    }
+    let mut pending = vec![(tree, 0)];
+    let mut paths = Vec::new();
+    while let Some((node, depth)) = pending.pop() {
+        if depth >= MAX_CST_DEPTH {
+            continue;
+        }
+        if let Some(path) = path(node, source)
+            && !paths.contains(&path)
+        {
+            paths.push(path);
+        }
+        for i in (0..node.child_count()).rev() {
+            if let Some(child) = node.child(i) {
+                pending.push((child, depth + 1));
+            }
+        }
+    }
+    paths
+}
 fn skip_cst_wrappers(mut node: &OwnedCst) -> Option<&OwnedCst> {
     for _ in 0..MAX_CST_DEPTH {
         if matches!(node.rule(), b"expr" | b"primary" | b"message") && node.child_count() == 1 {

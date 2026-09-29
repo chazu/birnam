@@ -1,8 +1,11 @@
 use crate::Resources;
+#[path = "project_source.rs"]
+mod project_source;
 use birnam_abi::{
     Oop, borrowed_bytes,
     id_protocol::{Operand, Outcome, Protocol},
 };
+pub use project_source::{ProjectSourceMetadata, ProjectSourceObservation};
 use std::{
     cell::RefCell, env, fmt, fs, io::Read, marker::PhantomData, os::unix::ffi::OsStrExt,
     path::Path, rc::Rc,
@@ -406,24 +409,30 @@ impl HostRuntime {
         run().map_err(|e| HostError(format!("image main: {e}")))
     }
     pub fn eval_script(&self, path: &Path) -> Result<(), HostError> {
-        let evaluate = || -> Result<(), HostError> {
-            let metadata = fs::metadata(path).map_err(|e| HostError(e.to_string()))?;
-            if !metadata.is_file() {
-                return Err(HostError("source must be a regular file".into()));
-            }
-            let mut source = Vec::new();
-            fs::File::open(path)
-                .and_then(|f| f.take(MAX_SCRIPT_BYTES + 1).read_to_end(&mut source))
-                .map_err(|e| HostError(e.to_string()))?;
-            if source.len() as u64 > MAX_SCRIPT_BYTES {
-                return Err(HostError(format!(
-                    "source exceeds {MAX_SCRIPT_BYTES} bytes"
-                )));
-            }
-            self.scope().evaluate(&source, path, None)
-        };
-        evaluate().map_err(|e| HostError(format!("{}: {e}", path.display())))
+        let source = read_source_file(path)?;
+        self.scope()
+            .evaluate(&source, path, None)
+            .map_err(|e| HostError(format!("{}: {e}", path.display())))
     }
+}
+fn read_source_file(path: &Path) -> Result<Vec<u8>, HostError> {
+    let read = || -> Result<Vec<u8>, HostError> {
+        let metadata = fs::metadata(path).map_err(|e| HostError(e.to_string()))?;
+        if !metadata.is_file() {
+            return Err(HostError("source must be a regular file".into()));
+        }
+        let mut source = Vec::new();
+        fs::File::open(path)
+            .and_then(|f| f.take(MAX_SCRIPT_BYTES + 1).read_to_end(&mut source))
+            .map_err(|e| HostError(e.to_string()))?;
+        if source.len() as u64 > MAX_SCRIPT_BYTES {
+            return Err(HostError(format!(
+                "source exceeds {MAX_SCRIPT_BYTES} bytes"
+            )));
+        }
+        Ok(source)
+    };
+    read().map_err(|e| HostError(format!("{}: {e}", path.display())))
 }
 impl Drop for HostRuntime {
     fn drop(&mut self) {

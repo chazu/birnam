@@ -37,6 +37,14 @@ image and enters Isolate without running global main. Boot errors use the inheri
 channel; Host teardown shuts down child workers. See [Isolate](../birnam-isolate/README.md)
 for request, cancellation and lifecycle acceptance.
 
+The project-source adapter restores `index_project_source`,
+`observe_project_source` and `project_embedded_files`. It reads one bounded file
+snapshot and copies Codegen's metadata and asset inventory through Id messages.
+No source is evaluated or registered, no asset is read, and returned observations
+contain only owned Rust data. Unindexable source answers None; this is static
+discovery, not a syntax or compile check. Project-policy resolution and durable
+artifact production/activation still need reconnection before check/build/run.
+
 REPL, project commands and AOT compilation fail explicitly
 before startup. The uncompiled `interaction.rs`, `project_{data,files,runtime}.rs`
 and `host_bridge_contract.rs` are reference material for those later slices.

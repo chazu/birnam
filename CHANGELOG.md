@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Restore Codegen module metadata and literal embedded-file discovery through Id
+  messages, with bounded, owned Host project-source observations and collecting
+  dependency tests. Project check/build and artifact publication remain deferred.
+
 - Reconnect Isolate value transport, process handles, asynchronous requests and
   task-service cancellation through Id owner messages. Restore installed CLI
   worker startup from images, scoped value roots and orphan-process cleanup.

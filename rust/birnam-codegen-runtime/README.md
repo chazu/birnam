@@ -50,6 +50,17 @@ temporary generated values retained across callbacks.
 
 ## Source Loader protocol
 
+`moduleMetadataOf:` now returns the existing five-element Vector: tag, module
+Symbol, required Symbols, original-source SHA-256 and revision digest. It uses
+the same pure recognition as `sourceRevisionOf:` and returns nil for unindexable
+source. `embeddedFilesOf:` returns unique literal `System embedFile:` paths in
+first-occurrence order, including nested Blocks. This preserves the syntactic
+inventory: it does not resolve shadowing, open assets, evaluate source, or
+register modules. Malformed/non-String input produces an empty asset Vector.
+All parsing and value construction use current owner messages and scoped roots.
+Host's project-source observations consume these selectors; project resolution,
+artifact output/activation and the check/build commands remain separate work.
+
 The existing `sourceRevisionOf:`, `recordModuleSource:named:`, `moduleSourceFor:`,
 `sealInitialGeneration`, `lastError`, `evalPersisting:` and `evalPersisting:from:`
 selectors now use the same current owners. Revision analysis remains private pure

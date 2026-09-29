@@ -12,6 +12,8 @@ python3 scripts/host-cli-test.py "$scratch/original"
 python3 scripts/host-image-test.py "$scratch/relocated"
 python3 scripts/worker-test.py "$scratch/relocated"
 BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
+  cargo test --offline --locked -p birnam-host project_source_observation_uses_live_messages -- --ignored
+BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
   cargo test --offline --locked -p birnam-host startup::tests::host_roots_survive_collecting_sends -- --ignored
 BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
 BIRNAM_TEST_IMAGE="$scratch/image checks/main.image" \
