@@ -10,6 +10,7 @@ name = "birnam"
 path = "src/bin/birnam.rs"
 
 [dependencies]
+serde_json.workspace = true
 birnam-host = { path = "../birnam-host" }
 
 [lints]

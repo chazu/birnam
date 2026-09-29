@@ -1,3 +1,5 @@
+#[path = "project_runtime.rs"]
+mod project_runtime;
 use crate::Resources;
 #[path = "project_source.rs"]
 mod project_source;
@@ -12,7 +14,7 @@ use std::{
 };
 
 pub const MAX_SCRIPT_BYTES: u64 = 16 * 1024 * 1024;
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostError(pub String);
 impl fmt::Display for HostError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

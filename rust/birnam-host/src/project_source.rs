@@ -23,7 +23,7 @@ pub struct ProjectSourceObservation {
 }
 
 impl Scope<'_> {
-    fn exact(&self, value: Oop, family: &[u8]) -> Result<(), HostError> {
+    pub(super) fn exact(&self, value: Oop, family: &[u8]) -> Result<(), HostError> {
         let behavior = self.call(
             self.host.id.receiver,
             b"behaviorOf:",
@@ -37,7 +37,7 @@ impl Scope<'_> {
         }
         Ok(())
     }
-    fn vector_size(&self, value: Oop) -> Result<usize, HostError> {
+    pub(super) fn vector_size(&self, value: Oop) -> Result<usize, HostError> {
         self.exact(value, b"VectorVt")?;
         let count = self.call(value, b"size", &[])?;
         self.host
@@ -50,7 +50,7 @@ impl Scope<'_> {
             .filter(|n| *n <= isize::MAX as usize)
             .ok_or_else(|| HostError("project metadata has an invalid vector size".into()))
     }
-    fn vector_at(&self, value: Oop, index: usize) -> Result<Oop, HostError> {
+    pub(super) fn vector_at(&self, value: Oop, index: usize) -> Result<Oop, HostError> {
         let index = self.call(
             self.host.named(b"Integer")?,
             b"fromWord:",
@@ -58,7 +58,7 @@ impl Scope<'_> {
         )?;
         self.call(value, b"at:", &[Operand::object(index)])
     }
-    fn symbol_text(&self, value: Oop) -> Result<String, HostError> {
+    pub(super) fn symbol_text(&self, value: Oop) -> Result<String, HostError> {
         let bytes = self
             .host
             .send(
@@ -72,7 +72,7 @@ impl Scope<'_> {
             .ok_or_else(|| HostError("invalid Symbol bytes".into()))?;
         Ok(String::from_utf8_lossy(bytes).into_owned())
     }
-    fn string_bytes(&self, value: Oop) -> Result<Vec<u8>, HostError> {
+    pub(super) fn string_bytes(&self, value: Oop) -> Result<Vec<u8>, HostError> {
         self.exact(value, b"StringVt")?;
         let bytes = self
             .host
@@ -83,7 +83,10 @@ impl Scope<'_> {
             .ok_or_else(|| HostError("invalid String bytes".into()))?
             .to_vec())
     }
-    fn source_metadata(&self, source: &[u8]) -> Result<Option<ProjectSourceMetadata>, HostError> {
+    pub(super) fn source_metadata(
+        &self,
+        source: &[u8],
+    ) -> Result<Option<ProjectSourceMetadata>, HostError> {
         let source = self.string(source)?;
         let value = self.call(
             self.host.named(b"Codegen")?,

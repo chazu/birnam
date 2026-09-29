@@ -9,6 +9,7 @@ publish = false
 crate-type = ["rlib"]
 
 [dependencies]
+birnam-artifact = { package = "birnam-artifact-codec", path = "../birnam-artifact-codec" }
 birnam-siphon = { path = "../birnam-siphon" }
 birnam-abi = { path = "../birnam-abi" }
 hex.workspace = true

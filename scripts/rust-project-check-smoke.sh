@@ -44,6 +44,20 @@ json="$(run_from_clean_cwd check "$tmp/project" --format=json)"
 grep -Fq '"schema":"birnam-check-v1"' <<<"$json"
 grep -Fq '"ok":true' <<<"$json"
 grep -Fq '"checkedModules":1' <<<"$json"
+test ! -e "$tmp/project/.birnam"
+
+mkdir -p "$tmp/invalid"
+printf 'name = [\n' >"$tmp/invalid/birnam.toml"
+if run_from_clean_cwd check "$tmp/invalid" --format=json >"$tmp/invalid.json" 2>"$tmp/invalid.err"; then
+  echo "check accepted an invalid manifest" >&2
+  exit 1
+fi
+python3 - "$tmp/invalid.json" <<'PY'
+import json, sys
+result = json.load(open(sys.argv[1]))
+assert result['schema'] == 'birnam-check-v1'
+assert result['ok'] is False and result['diagnostics']
+PY
 
 if run_from_clean_cwd run "$tmp/project" --no-repl >"$tmp/missing-publication.out" 2>&1; then
   echo "run unexpectedly accepted a project without a publication" >&2

@@ -1,12 +1,12 @@
 //! Project data validation, dependency order and publication source construction.
+use crate::{HostError, ProjectSourceObservation};
 use birnam_artifact::digest::sha256_hex;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::io;
-use std::path::{Component, Path, PathBuf};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
-use super::{ArtifactActivationError, ArtifactPreflightError, BootstrapSourceError, ReplError, RuntimeModuleError, ScriptError, SocketReplError};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReplMode {
@@ -28,7 +28,7 @@ pub struct RunOptions {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectPolicyError {
-    Source(BootstrapSourceError),
+    Source(HostError),
     MissingPolicy,
     InvalidSnapshot,
     ResolutionRejected,
@@ -103,18 +103,6 @@ pub struct ProjectFetchResult {
 pub struct ProjectDependencyClosureNode {
     pub root: PathBuf,
     pub dependencies: Vec<ProjectDependencyObservation>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectSourceObservation {
-    pub name: String,
-    pub path: String,
-    pub sources: Vec<String>,
-    pub project_root: String,
-    pub source: Vec<u8>,
-    pub requires: Vec<String>,
-    pub source_digest: String,
-    pub revision_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -327,7 +315,7 @@ pub enum ProjectBuildError {
         expected: String,
         actual: String,
     },
-    Publication(ArtifactPreflightError),
+    Publication(HostError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -365,7 +353,7 @@ pub enum ProjectInstallError {
         path: PathBuf,
         kind: io::ErrorKind,
     },
-    Preflight(ArtifactPreflightError),
+    Preflight(HostError),
     InvalidArtifactPath {
         name: String,
         path: String,
@@ -397,17 +385,17 @@ pub enum ProjectRunError {
     ApplicationUnavailable(PathBuf),
     PublishedConfiguration,
     InvalidReplMode(String),
-    Module(RuntimeModuleError),
+    Module(HostError),
     TestHarnessUnavailable,
     TestSuiteMissing,
     TestFailed,
     NativeDirectoryRejected,
-    ArtifactPreflight(ArtifactPreflightError),
-    ArtifactActivation(ArtifactActivationError),
+    ArtifactPreflight(HostError),
+    ArtifactActivation(HostError),
     ArgumentsRejected,
-    Main(ScriptError),
-    Repl(ReplError),
-    Socket(SocketReplError),
+    Main(HostError),
+    Repl(HostError),
+    Socket(HostError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -697,20 +685,6 @@ pub enum ProjectSourceIndexError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProjectSourceIndexOutcome {
-    Metadata(birnam_abi::Oop),
-    Ignored,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProjectSourceMetadata {
-    pub name: String,
-    pub requires: Vec<String>,
-    pub source_digest: String,
-    pub revision_digest: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectMetadataError {
     NotVector,
     WrongSize,
@@ -722,6 +696,7 @@ pub enum ProjectMetadataError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectManifestDecodeError {
+    Host(HostError),
     NotMap,
     MissingValue(&'static str),
     InvalidString(&'static str),
@@ -1371,16 +1346,6 @@ pub fn validate_project_compiled_artifact(
     Ok(())
 }
 
-pub(super) fn previous_artifact<'a>(
-    publication: &'a ProjectPreviousPublication,
-    name: &str,
-) -> Option<&'a ProjectPreviousPublishedArtifact> {
-    publication
-        .artifacts
-        .iter()
-        .find(|artifact| artifact.name == name)
-}
-
 /// Expand the placeholder protocol used by wrapped build commands without
 /// invoking a shell. Unknown braces are preserved as literal command text.
 pub fn expand_project_wrapped_argument(
@@ -1885,5 +1850,11 @@ mod tests {
                 "/tmp/shared"
             )))
         );
+    }
+}
+
+impl From<HostError> for ProjectManifestDecodeError {
+    fn from(e: HostError) -> Self {
+        Self::Host(e)
     }
 }

@@ -1,4 +1,4 @@
-# Source, image and artifact host over Id
+# Source, image, artifact and project host over Id
 
 The migrated host loads Id through Siphon, then asks Id to load Bootstrap from
 the executable-relative `lib` directory. It uses owner messages for namespace
@@ -42,17 +42,26 @@ The project-source adapter restores `index_project_source`,
 snapshot and copies Codegen's metadata and asset inventory through Id messages.
 No source is evaluated or registered, no asset is read, and returned observations
 contain only owned Rust data. Unindexable source answers None; this is static
-discovery, not a syntax or compile check. Project-policy resolution and publication orchestration still need reconnection
-before check/build/run.
+discovery, not a syntax or compile check.
 
-REPL and project commands fail explicitly
-before startup. The uncompiled `interaction.rs`, `project_{data,files,runtime}.rs`
-and `host_bridge_contract.rs` are reference material for those later slices.
-Their prior orchestration is in commit `cf5a3b1a`; their tests are not current
-acceptance evidence. Whole-workspace migration remains unfinished.
+Project `check`, `build`, `run`, `fetch`, `install` and `test` use scoped Id
+messages with authored TOML, Module composition and ProjectPolicy. Check compiles
+selected modules without activation or publication. Build stages and preflights
+the complete publication before replacing the previous build. Ordinary run uses
+published configuration and bundled application code without reading source;
+`--build` explicitly rebuilds. Only fetch acquires missing pinned Git checkouts.
+Install copies the planned module/native closure. Test launches a fresh worker
+per test source against the published module root, without running application main.
+
+Interactive REPL/socket modes and tooling remain deferred. Projects configured
+for a REPL can run with `--no-repl`. The uncompiled `interaction.rs` and
+`host_bridge_contract.rs` remain reference material, not current acceptance
+evidence. Whole-workspace migration remains unfinished.
 
 Run `mise run host-cli` for a real install, receipt verification, relocation,
-source/stdout/stderr/exit checks, stdlib image recovery and collecting-host tests.
+source/stdout/stderr/exit checks, stdlib image recovery, project workflows and
+collecting-host tests. Project acceptance covers path and pinned Git dependencies,
+reuse, failed-build preservation, wrapped native libraries, install and relocation.
 The image fixture disables compilation and removes global main before collecting
 at its entry; the Host must retain the entered block itself.
 Run `cargo test --offline --locked -p birnam-host -p birnam-cli -p birnam-build`
@@ -69,6 +78,5 @@ Activation failures retain ordinary already-published effects.
 These generated `.dylib` files contain relocatable TCC objects with the
 `id-object-v1` contract, not OS shared libraries. Original source and embedded
 files are unnecessary at activation. Initial-generation selection remains an
-explicitly deferred option; project commands and generation replacement are
-outside this slice. `scripts/artifact-cli-test.py` verifies fresh-process artifact
+explicitly deferred option; generation replacement remains outside this slice. `scripts/artifact-cli-test.py` verifies fresh-process artifact
 execution as part of the installed, relocated Host suite.
