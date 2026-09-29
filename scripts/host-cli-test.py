@@ -8,7 +8,7 @@ import sys
 
 prefix = Path(sys.argv[1]).resolve()
 receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
-assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'help', 'version']
+assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'help', 'version']
 assert receipt['stage1_modules'] == []
 for relative, digest in receipt['staged_manifest'].items():
     assert hashlib.sha256((prefix / relative).read_bytes()).hexdigest() == digest, relative
@@ -61,7 +61,7 @@ with large.open('wb') as file:
     file.truncate(16 * 1024 * 1024 + 1)
 result = run([large])
 assert result.returncode == 1 and b'exceeds' in result.stderr
-for args in [[], ['--repl'], ['run'], ['--worker']]:
+for args in [[], ['--repl'], ['run']]:
     result = run(args, extra={'BIRNAM_ID_DYLIB': '/missing/id.dylib'})
     assert result.returncode == 1 and b'awaits Host migration' in result.stderr, result
 result = run(['nil.birnam', 'extra'])

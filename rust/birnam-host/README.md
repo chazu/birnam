@@ -32,7 +32,12 @@ nil and false results succeed. Images without native code retain Image's existin
 rebuild behavior; compatible saved code loads without compilation. Image arguments
 and REPL fallback are not yet supported.
 
-REPL, project commands, AOT compilation and workers fail explicitly
+The private `--worker IMAGE RECEIVER SELECTOR --channel-fd FD` entry restores an
+image and enters Isolate without running global main. Boot errors use the inherited
+channel; Host teardown shuts down child workers. See [Isolate](../birnam-isolate/README.md)
+for request, cancellation and lifecycle acceptance.
+
+REPL, project commands and AOT compilation fail explicitly
 before startup. The uncompiled `interaction.rs`, `project_{data,files,runtime}.rs`
 and `host_bridge_contract.rs` are reference material for those later slices.
 Their prior orchestration is in commit `cf5a3b1a`; their tests are not current

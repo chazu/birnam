@@ -42,8 +42,11 @@ also use Id messages, with real file loading through the authored Module manager
 objects through compile-time sends. [Block Loop](rust/birnam-block-loop/README.md)
 also runs through Id, with the existing authored replacement path preserved.
 [Artifact inspection](rust/birnam-artifact/README.md) also uses Id sends and
-ObjectModel descriptor storage. PortableCode, artifact activation, Image,
-workers and Host/CLI still await upper integration.
+ObjectModel descriptor storage. [PortableCode](rust/birnam-portable-code/README.md),
+[Image](rust/birnam-image/README.md), [Alien](rust/birnam-alien/README.md),
+[Isolate workers](rust/birnam-isolate/README.md), and installed
+[Host/CLI source and image execution](rust/birnam-host/README.md) now use Id messages.
+REPL, project commands, executable baking and broader generation replacement remain.
 The usage documentation below describes the language being preserved.
 
 ## Contents

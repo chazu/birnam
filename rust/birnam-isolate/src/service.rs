@@ -24,23 +24,6 @@ pub(super) fn request_payload(payload: &[u8]) -> Result<Option<Vec<u8>>, CodecEr
     }
 }
 
-pub(super) unsafe extern "C" fn start(_: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = runtime_api();
-    let Some(args) = (unsafe { birnam_abi::borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    if args.len() != 2 {
-        return make_failure(
-            api,
-            b"encode",
-            b"invalidArguments",
-            b"startService expects receiver and image",
-        );
-    }
-    let selector = unsafe { (api.intern)(c"handle:".as_ptr()) };
-    unsafe { start_worker([args[0], selector, args[1]].as_ptr(), 3, true) }
-}
-
 struct Control {
     stream: UnixStream,
     request: u64,
@@ -139,8 +122,7 @@ impl Control {
     }
 }
 
-pub(super) unsafe extern "C" fn poll_control(_: Oop, _: *const Oop, _: usize) -> Oop {
-    let api = runtime_api();
+pub(super) fn poll_control() -> i32 {
     let status = CONTROL.with(|slot| {
         let mut slot = slot.borrow_mut();
         let Some(control) = slot.as_mut() else {
@@ -162,11 +144,7 @@ pub(super) unsafe extern "C" fn poll_control(_: Oop, _: *const Oop, _: usize) ->
             }
         }
     });
-    match status {
-        1 => api.trueObj,
-        2 => unsafe { (api.intern)(c"ownerLost".as_ptr()) },
-        _ => api.nilObj,
-    }
+    status
 }
 
 #[cfg(test)]

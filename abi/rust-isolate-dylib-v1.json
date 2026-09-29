@@ -1,0 +1,1 @@
+{"schema_version":1,"scope":"Isolate process workers over Id messages and wire-v1","install_name":"@rpath/libbirnam_isolate.dylib","exported_symbols":["birnam_native_module_v1"]}

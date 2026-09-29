@@ -9,7 +9,7 @@ fn run() -> Result<(), String> {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
     match classify_command(&args).map_err(|e| format!("{e:?}"))? {
         CommandKind::Help => println!(
-            "birnam — Rust host\nUsage: birnam <file.birnam> | <file.image> | --help | --version\n\nSource execution uses the Id message runtime and source stdlib.\nImages restore and run global main.\nREPL, project commands and workers await Host migration."
+            "birnam — Rust host\nUsage: birnam <file.birnam> | <file.image> | --help | --version\n\nSource execution uses the Id message runtime and source stdlib.\nImages restore and run global main.\nREPL and project commands await Host migration."
         ),
         CommandKind::Version => println!("{}", VERSION.trim()),
         CommandKind::Script(path) => {
@@ -37,6 +37,19 @@ fn run() -> Result<(), String> {
                     .map_err(|e| e.to_string())?;
             host.run_image_main()
                 .map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+        CommandKind::Worker => {
+            let worker = command::parse_worker_args(&args[1..]).map_err(|e| format!("{e:?}"))?;
+            let resources = resolve().map_err(|e| e.to_string())?;
+            HostRuntime::run_worker(
+                &resources,
+                StartupPolicy::from_environment(),
+                &worker.image,
+                &worker.receiver,
+                &worker.selector,
+                worker.channel_fd,
+            )
+            .map_err(|e| e.to_string())?;
         }
         command => {
             return Err(format!(

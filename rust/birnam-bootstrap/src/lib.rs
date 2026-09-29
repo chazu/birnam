@@ -331,6 +331,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "source_loader",
             "image",
             "alien",
+            "isolate",
         ] {
             id.send_named(
                 receiver,

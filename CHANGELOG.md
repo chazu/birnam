@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect Isolate value transport, process handles, asynchronous requests and
+  task-service cancellation through Id owner messages. Restore installed CLI
+  worker startup from images, scoped value roots and orphan-process cleanup.
+
 - Reconnect Alien library loading, foreign buffers, generated C wrappers and
   callbacks through Id messages. Bootstrap and installed Host include Alien;
   TCC Units retain executable code, with collection and callback re-entry tests.
