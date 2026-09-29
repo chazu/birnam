@@ -58,8 +58,8 @@ first-occurrence order, including nested Blocks. This preserves the syntactic
 inventory: it does not resolve shadowing, open assets, evaluate source, or
 register modules. Malformed/non-String input produces an empty asset Vector.
 All parsing and value construction use current owner messages and scoped roots.
-Host's project-source observations consume these selectors; project resolution,
-artifact output/activation and the check/build commands remain separate work.
+Host's project-source observations consume these selectors; project resolution
+and the project check/build commands remain separate work.
 
 The existing `sourceRevisionOf:`, `recordModuleSource:named:`, `moduleSourceFor:`,
 `sealInitialGeneration`, `lastError`, `evalPersisting:` and `evalPersisting:from:`
@@ -115,10 +115,9 @@ construction is rejected. Actual Unit counts and relocated bytes return to zero
 after the final reference and checkpoint. Explicit candidate withdrawal/lifetime
 and compiled recovery remain covered by their separate production fixtures.
 
-The full Artifact/PortableCode language adapters, durable publication, embedding,
-Image and CLI workflows are not accepted by these source compiler tests.
-Their historical implementations do not run in Bootstrap. Current commands and
-limits are in [validation](../../docs/validation.md).
+Separate Artifact, PortableCode, embedding, Image and Host tests cover their
+current message paths; compiler tests alone do not establish those workflows.
+Current commands and limits are in [validation](../../docs/validation.md).
 
 Store/db and Cells now load through Bootstrap before the compiler. Their separate
 [production suite](../birnam-store/README.md#validation) also exercises compiled
@@ -229,3 +228,36 @@ sends; eviction leaves live Blocks and suspended frames holding their code owner
 Failed construction publishes no cache entry. Production `materialization` tests
 cover these behaviors, collecting replacements and final Unit reclamation. Image
 uses the same canonical programs and code owners; optimizer work remains separate.
+
+## Durable module artifacts
+
+`compile:output:`, `compile:output:from:` and `compile:output:root:` write a
+TCC relocatable native object through System File IO without evaluating source.
+The filename/root variants preserve source-relative embedding. The object stores
+the existing inert Artifact descriptor, original source, embedded payloads and
+current generated Methods. It advertises `id-object-v1`. The historical `.dylib`
+suffix remains for Module resolution; this payload is an ELF object for TCC,
+not an OS-loadable Mach-O library. Native kernel dylibs keep their separate ABI.
+
+`load:` reads one snapshot and sends `Artifact inspectBytes:from:` before passing
+those same bytes to `TCC loadObject:`. It checks kind, capability and already-loaded
+requirements, initializes an owned Method/source record, validates source identity
+and digests, and runs the Method on a Machine. Successfully activated, revision-indexable modules enter
+Codegen's source registry. Artifact dependency discovery preserves the broader
+historical syntactic declaration scan, independently of revision admission. Conflicting sources and sealed registration fail before
+user initialization. Errors and native failures propagate; nil means unsuccessful
+activation. Ordinary user initialization is not a rollback transaction.
+
+The source is parsed for registry validation but its original program is not
+recompiled during loading. Reflect installations can compile their normal named
+adapters. Blocks and Methods retain the TCC Unit across collection; the mapping
+is reclaimed after the final executable reference and an idle checkpoint.
+The `artifact_activation` production test disables both TCC compilation methods,
+removes source/assets, forces collecting inspection/relocation, preserves typed
+failures, and checks actual Unit reclamation. Installed artifact tests exercise
+Module's complete dependency preflight, registry rules and CLI diagnostics.
+Project publication policy and generation replacement remain separate work.
+
+Module filename construction uses restored `Reflect nameOf:`: Symbols return
+their Id-owned name bytes as a String; other objects use Namespace's reverse
+lookup and return nil when unnamed. Both lookups remain live owner messages.

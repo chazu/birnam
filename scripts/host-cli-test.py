@@ -8,7 +8,7 @@ import sys
 
 prefix = Path(sys.argv[1]).resolve()
 receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
-assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'help', 'version']
+assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'help', 'version']
 assert receipt['stage1_modules'] == []
 for relative, digest in receipt['staged_manifest'].items():
     assert hashlib.sha256((prefix / relative).read_bytes()).hexdigest() == digest, relative

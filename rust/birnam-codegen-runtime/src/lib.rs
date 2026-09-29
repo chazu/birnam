@@ -6,6 +6,7 @@ use birnam_abi::{
 };
 use birnam_codegen::{OwnedCst, lower_program, native as emission};
 use core::{cell::RefCell, ffi::c_void};
+mod artifact;
 mod embedding;
 mod image;
 mod materialization;
@@ -203,9 +204,11 @@ enum Op {
     Compile,
     Eval,
     Define,
+    NameOf,
     Source(source::Op),
     Materialize(materialization::Op),
     Image(image::Op),
+    Artifact(artifact::Op),
 }
 struct Entry {
     state: *const State,
@@ -224,6 +227,7 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
             Op::Source(op) => op.count(),
             Op::Materialize(op) => op.count(),
             Op::Image(op) => op.count(),
+            Op::Artifact(op) => op.count(),
             _ => 1,
         };
         if a.len() != count {
@@ -239,11 +243,32 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         if let Op::Image(op) = e.op {
             return image::operation(s, &scope, op, a);
         }
+        if let Op::Artifact(op) = e.op {
+            return artifact::operation(s, &scope, op, a);
+        }
         if let Op::Materialize(op) = e.op {
             return materialization::operation(s, &scope, op, a);
         }
         if let Op::Source(op) = e.op {
             return source::operation(s, &scope, op, a);
+        }
+        if matches!(e.op, Op::NameOf) {
+            let mut name = object(a[0])?;
+            if !s.exact(&scope, name, b"SymbolVt")? {
+                let found = s.send(s.ns, b"nameOf:", a)?;
+                if found.kind() == native::UNIT {
+                    return Ok(Operand::object(s.named(b"nil")?));
+                }
+                name = scope.keep(object(found)?)?;
+            }
+            let bytes = s
+                .send(s.id.receiver, b"symbolBytesOf:", &[Operand::object(name)])?
+                .as_bytes()
+                .ok_or_else(invalid)?;
+            let bytes = borrowed_bytes(bytes.pointer, bytes.length)
+                .ok_or_else(invalid)?
+                .to_vec();
+            return Ok(Operand::object(s.text(&scope, &bytes)?));
         }
         if matches!(e.op, Op::Define) {
             let selector = object(a[0])?;
@@ -414,7 +439,20 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         }));
         for (target, n, op) in [
             (vt, b"emit:".as_slice(), Op::Emit),
+            (reflect_vt, b"nameOf:", Op::NameOf),
             (vt, b"compile:", Op::Compile),
+            (vt, b"compile:output:", Op::Artifact(artifact::Op::Compile)),
+            (
+                vt,
+                b"compile:output:from:",
+                Op::Artifact(artifact::Op::From),
+            ),
+            (
+                vt,
+                b"compile:output:root:",
+                Op::Artifact(artifact::Op::Root),
+            ),
+            (vt, b"load:", Op::Artifact(artifact::Op::Load)),
             (
                 vt,
                 b"materializeSynchronous:captures:",

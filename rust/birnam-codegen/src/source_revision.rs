@@ -20,18 +20,35 @@ pub fn source_digest(source: &[u8]) -> [u8; 64] {
 /// including nested blocks, in first-occurrence order. This does not read files
 /// or decide whether a send will execute (or its receiver will be shadowed).
 pub fn embedded_files(tree: &OwnedCst, source: &[u8]) -> Vec<Vec<u8>> {
-    fn path(node: &OwnedCst, source: &[u8]) -> Option<Vec<u8>> {
+    literal_paths(tree, source, b"System", b"embedFile:")
+}
+/// Literal native-library requirements retain their historical syntactic order.
+pub fn native_requirements(tree: &OwnedCst, source: &[u8]) -> Vec<Vec<u8>> {
+    literal_paths(tree, source, b"Alien", b"dlopen:")
+}
+fn literal_paths(
+    tree: &OwnedCst,
+    source: &[u8],
+    receiver_name: &[u8],
+    selector: &[u8],
+) -> Vec<Vec<u8>> {
+    fn path(
+        node: &OwnedCst,
+        source: &[u8],
+        receiver_name: &[u8],
+        selector: &[u8],
+    ) -> Option<Vec<u8>> {
         if node.rule() != b"send" || node.child_count() != 2 {
             return None;
         }
         let receiver = skip_cst_wrappers(node.child(0)?)?;
-        if receiver.rule() != b"ident" || source_span(receiver, source)? != b"System" {
+        if receiver.rule() != b"ident" || source_span(receiver, source)? != receiver_name {
             return None;
         }
         let message = skip_cst_wrappers(node.child(1)?)?;
         if message.rule() != b"keywordMsg"
             || message.child_count() != 2
-            || source_span(message.child(0)?, source)? != b"embedFile:"
+            || source_span(message.child(0)?, source)? != selector
         {
             return None;
         }
@@ -49,7 +66,7 @@ pub fn embedded_files(tree: &OwnedCst, source: &[u8]) -> Vec<Vec<u8>> {
         if depth >= MAX_CST_DEPTH {
             continue;
         }
-        if let Some(path) = path(node, source)
+        if let Some(path) = path(node, source, receiver_name, selector)
             && !paths.contains(&path)
         {
             paths.push(path);
@@ -114,6 +131,41 @@ fn keyword_selector_args<'a>(
         index += 2;
     }
     Some((selector, args))
+}
+
+/// Historical artifact inventory, separate from strict revision admission.
+/// The last syntactic literal Module declaration determines artifact identity,
+/// including declarations nested in Blocks; source registration stays stricter.
+pub fn artifact_module(tree: &OwnedCst, source: &[u8]) -> Option<(Vec<u8>, Vec<Vec<u8>>)> {
+    let mut pending = vec![(tree, 0)];
+    let mut module = None;
+    while let Some((node, depth)) = pending.pop() {
+        if depth >= MAX_CST_DEPTH {
+            continue;
+        }
+        if node.rule() == b"send"
+            && node.child_count() == 2
+            && let Some(receiver) = node.child(0).and_then(skip_cst_wrappers)
+            && receiver.rule() == b"ident"
+            && source_span(receiver, source) == Some(b"Module".as_slice())
+            && let Some((selector, args)) =
+                node.child(1).and_then(|n| keyword_selector_args(n, source))
+            && selector == b"named:requires:"
+            && args.len() == 2
+            && let (Some(name), Some(requires)) = (
+                symbol_literal(args[0], source),
+                vector_symbols(args[1], source),
+            )
+        {
+            module = Some((name, requires));
+        }
+        for index in (0..node.child_count()).rev() {
+            if let Some(child) = node.child(index) {
+                pending.push((child, depth + 1));
+            }
+        }
+    }
+    module
 }
 
 #[derive(Clone)]

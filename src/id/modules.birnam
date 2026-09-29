@@ -163,7 +163,11 @@
         ifTrue: [|
           let identityOk := [[descriptor identity] == name];
           [identityOk
-            ifTrue: [| descriptor]
+            ifTrue: [|
+              [[[[descriptor capabilities] indexOf: ["id-object-v1" asSymbol]] notNil]
+                ifTrue: [| descriptor]
+                ifFalse: [| [Error kind: #artifactAbiMismatch
+                               message: ["artifact has no Id native-object contract: " , p]]]]]
             ifFalse: [| [Error kind: #artifactIdentityMismatch
                            message: ["artifact identity does not match requested module: " , p]]]]]
         ifFalse: [| [Error kind: #artifactKindMismatch

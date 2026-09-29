@@ -9,7 +9,7 @@ remain unchanged; inspection does not load or activate the inspected library.
 Codegen imports the existing provider-free `birnam-artifact-codec` package so
 Cargo feature unification cannot pull Artifact's native exports into Codegen.
 
-The public API is unchanged: `Artifact inspect:` accepts an exact String-family
+`Artifact inspect:` accepts an exact String-family
 path and returns a descriptor or nil. `lastFailure` retains the existing Symbol
 diagnostic and resets to nil after successful inspection. Existing size limits,
 ABI/target checks and adjacent native-requirement checks remain in place. Native
@@ -31,4 +31,11 @@ binary and dylib boundary audit. Tests cover descriptors and all list projection
 diagnostics, collecting/replaced dependencies, typed native failures, transient
 input/result lifetime, clone/MOP/reload, and compiled source. A real dylib with a
 constructor sentinel proves inspection leaves native initialization untouched.
-PortableCode, artifact activation, Image and Host/CLI migration remain separate.
+Codegen activation and installed Host/CLI acceptance have separate tests.
+
+`inspectBytes:from:` inspects supplied byte-bearing contents with an exact String
+path used for descriptor provenance and adjacent native requirements. It shares
+the same parser, compatibility checks and diagnostics as `inspect:` without
+reading the artifact file. Codegen uses this to inspect and relocate one snapshot.
+This selector does not execute or map code. Module preflight requires the
+`id-object-v1` capability before planning a generated module for activation.

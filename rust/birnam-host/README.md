@@ -1,4 +1,4 @@
-# Source and image host over Id
+# Source, image and artifact host over Id
 
 The migrated host loads Id through Siphon, then asks Id to load Bootstrap from
 the executable-relative `lib` directory. It uses owner messages for namespace
@@ -42,10 +42,10 @@ The project-source adapter restores `index_project_source`,
 snapshot and copies Codegen's metadata and asset inventory through Id messages.
 No source is evaluated or registered, no asset is read, and returned observations
 contain only owned Rust data. Unindexable source answers None; this is static
-discovery, not a syntax or compile check. Project-policy resolution and durable
-artifact production/activation still need reconnection before check/build/run.
+discovery, not a syntax or compile check. Project-policy resolution and publication orchestration still need reconnection
+before check/build/run.
 
-REPL, project commands and AOT compilation fail explicitly
+REPL and project commands fail explicitly
 before startup. The uncompiled `interaction.rs`, `project_{data,files,runtime}.rs`
 and `host_bridge_contract.rs` are reference material for those later slices.
 Their prior orchestration is in commit `cf5a3b1a`; their tests are not current
@@ -57,3 +57,18 @@ The image fixture disables compilation and removes global main before collecting
 at its entry; the Host must retain the entered block itself.
 Run `cargo test --offline --locked -p birnam-host -p birnam-cli -p birnam-build`
 for resolver, parser and receipt/publication unit checks.
+
+`birnam --compile-module SOURCE OUTPUT` compiles without source bootstrap or
+source evaluation. `birnam file.dylib` boots the authored Module manager/stdlib,
+sets its library directory beside the selected artifact, validates the complete
+dependency closure, then activates it dependency-first. The root filename may be
+arbitrary; dependencies use `libbirnam_NAME.dylib`. Missing requirements, cycles,
+identity mismatches and legacy capabilities fail before any planned initializer.
+Activation failures retain ordinary already-published effects.
+
+These generated `.dylib` files contain relocatable TCC objects with the
+`id-object-v1` contract, not OS shared libraries. Original source and embedded
+files are unnecessary at activation. Initial-generation selection remains an
+explicitly deferred option; project commands and generation replacement are
+outside this slice. `scripts/artifact-cli-test.py` verifies fresh-process artifact
+execution as part of the installed, relocated Host suite.

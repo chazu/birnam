@@ -704,7 +704,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "admission_contract": {
             "target": "aarch64-macos",
             "id_protocol_version": 1,
-            "host_commands": ["source", "image", "worker", "help", "version"],
+            "host_commands": ["source", "image", "worker", "compile-module", "artifact", "help", "version"],
             "stdlib_loading": "source",
         },
         "source_root": root,

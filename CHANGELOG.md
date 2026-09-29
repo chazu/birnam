@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect durable Codegen artifact compilation and loading through Id, Artifact
+  inspection and TCC-owned code. Restore CLI `--compile-module` and artifact entry,
+  source-relative embedding, dependency preflight and source registration. Generated
+  `.dylib` artifacts now carry the `id-object-v1` relocatable-object contract.
+
 - Restore Codegen module metadata and literal embedded-file discovery through Id
   messages, with bounded, owned Host project-source observations and collecting
   dependency tests. Project check/build and artifact publication remain deferred.

@@ -57,7 +57,7 @@ impl State {
                 == Some(vt))
         }
     }
-    unsafe fn source_bytes(
+    pub(super) unsafe fn source_bytes(
         &self,
         scope: &Scope<'_>,
         value: Oop,
@@ -91,7 +91,7 @@ impl State {
             ))
         }
     }
-    unsafe fn source_tree(
+    pub(super) unsafe fn source_tree(
         &self,
         scope: &Scope<'_>,
         source: Oop,
@@ -125,7 +125,7 @@ impl State {
             Ok(source_revision::inspect(&tree, &bytes).map(|revision| (bytes, revision)))
         }
     }
-    unsafe fn text(&self, scope: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Outcome> {
+    pub(super) unsafe fn text(&self, scope: &Scope<'_>, bytes: &[u8]) -> Result<Oop, Outcome> {
         unsafe {
             let factory = scope.keep(self.named(b"String")?)?;
             scope.keep(object(self.send(
@@ -149,7 +149,11 @@ impl State {
             Ok(result)
         }
     }
-    unsafe fn syntax_error(&self, scope: &Scope<'_>, source: Oop) -> Result<(), Outcome> {
+    pub(super) unsafe fn syntax_error(
+        &self,
+        scope: &Scope<'_>,
+        source: Oop,
+    ) -> Result<(), Outcome> {
         unsafe {
             let lang = scope.keep(self.named(b"Lang")?)?;
             let offset = scope.keep(object(self.send(lang, b"furthestFail", &[])?)?)?;

@@ -260,7 +260,26 @@ impl State {
                 Ok(bytes) => bytes,
                 Err(()) => return self.fail(b"artifactUnavailable"),
             };
-            let parsed = match parser::inspect(&bytes) {
+            self.inspect_bytes(&bytes, &path)
+        }
+    }
+    unsafe fn inspect_snapshot(&self, args: &[Operand]) -> Result<Operand, Outcome> {
+        unsafe {
+            let [bytes, path] = args else {
+                return Err(invalid());
+            };
+            let path = object(*path)?;
+            if !self.family(path, self.string_vt)? {
+                return self.fail(b"artifactPathInvalid");
+            }
+            let path = self.bytes(path)?;
+            let bytes = self.bytes(object(*bytes)?)?;
+            self.inspect_bytes(&bytes, &path)
+        }
+    }
+    unsafe fn inspect_bytes(&self, bytes: &[u8], path: &[u8]) -> Result<Operand, Outcome> {
+        unsafe {
+            let parsed = match parser::inspect(bytes) {
                 Ok(parsed) => parsed,
                 Err(error) => {
                     return self.fail(match error {
@@ -270,10 +289,10 @@ impl State {
                     });
                 }
             };
-            if !native_requirements_present(parsed, &path) {
+            if !native_requirements_present(parsed, path) {
                 return self.fail(b"nativeRequirementUnavailable");
             }
-            self.materialize(parsed, &path)
+            self.materialize(parsed, path)
         }
     }
     unsafe fn materialize(
@@ -411,6 +430,7 @@ unsafe fn execute(s: &State, r: Oop, args: &[Operand], op: usize) -> Result<Oper
     unsafe {
         match op {
             0 => s.inspect(args),
+            21 => s.inspect_snapshot(args),
             1 => Ok(Operand::object(s.last_failure.get())),
             2..=8 => Ok(Operand::object(s.slot(r, op - 2)?)),
             9..=20 => {
@@ -470,6 +490,7 @@ macro_rules! entry {
     };
 }
 entry!(inspect, 0);
+entry!(inspect_snapshot, 21);
 entry!(last_failure, 1);
 entry!(kind, 2);
 entry!(identity, 3);
@@ -551,6 +572,11 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             )?;
             for (vt, name, method) in [
                 (artifact_vt, b"inspect:".as_slice(), inspect as Method),
+                (
+                    artifact_vt,
+                    b"inspectBytes:from:",
+                    inspect_snapshot as Method,
+                ),
                 (
                     artifact_vt,
                     b"lastFailure".as_slice(),
