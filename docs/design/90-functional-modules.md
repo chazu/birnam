@@ -1313,4 +1313,7 @@ Bootstrap now loads CodeNode, CodeStatement, CodeProgram, CodeLexicalBinding and
 CodeObject through Id sends, including GC visitors and finalization. Their APIs,
 diagnostics and canonical encoding are preserved; [production checks](../../rust/birnam-portable-code/README.md)
 cover all thirteen golden programs and collecting dependencies. Execution-owned
-Block inspection and Codegen materialization remain a separate migration slice.
+Block inspection and synchronous/resumable Codegen materialization now also use
+owner messages, including canonical Bytes and capture reads. The production
+`materialization` test covers identity, native control boundaries, bounded cache
+leases and reclamation; Image and optimization remain separate.

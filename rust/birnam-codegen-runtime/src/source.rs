@@ -30,7 +30,10 @@ impl Op {
     }
 }
 impl Sources {
-    fn note(&self, message: &[u8]) {
+    pub(super) fn clear_error(&self) {
+        *self.error.borrow_mut() = None;
+    }
+    pub(super) fn note(&self, message: &[u8]) {
         let mut error = self.error.borrow_mut();
         if error.is_none() {
             *error = Some(message.to_vec());
@@ -38,7 +41,12 @@ impl Sources {
     }
 }
 impl State {
-    unsafe fn exact(&self, scope: &Scope<'_>, value: Oop, family: &[u8]) -> Result<bool, Outcome> {
+    pub(super) unsafe fn exact(
+        &self,
+        scope: &Scope<'_>,
+        value: Oop,
+        family: &[u8],
+    ) -> Result<bool, Outcome> {
         unsafe {
             let vt = scope.keep(self.named(family)?)?;
             Ok(self

@@ -7,6 +7,7 @@ use birnam_abi::{
 use birnam_codegen::{OwnedCst, lower_program, native as emission};
 use core::{cell::RefCell, ffi::c_void};
 mod embedding;
+mod materialization;
 mod source;
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -23,6 +24,7 @@ struct State {
     roots: Oop,
     permanent: Vec<Oop>,
     sources: source::Sources,
+    materializations: RefCell<Vec<materialization::Cached>>,
     thread: std::thread::ThreadId,
 }
 struct Scope<'a> {
@@ -199,6 +201,7 @@ enum Op {
     Eval,
     Define,
     Source(source::Op),
+    Materialize(materialization::Op),
 }
 struct Entry {
     state: *const State,
@@ -215,6 +218,7 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         let count = match e.op {
             Op::Define => 3,
             Op::Source(op) => op.count(),
+            Op::Materialize(op) => op.count(),
             _ => 1,
         };
         if a.len() != count {
@@ -226,6 +230,9 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         };
         for &v in a {
             scope.keep(object(v)?)?;
+        }
+        if let Op::Materialize(op) = e.op {
+            return materialization::operation(s, &scope, op, a);
         }
         if let Op::Source(op) = e.op {
             return source::operation(s, &scope, op, a);
@@ -318,6 +325,15 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             return Err(invalid());
         };
         let v = object(*v)?;
+        let methods: Vec<_> = s
+            .materializations
+            .borrow()
+            .iter()
+            .map(|c| c.method)
+            .collect();
+        for method in methods {
+            s.id.send_named(v, b"visit:", &[Operand::object(method)])?;
+        }
         let entries = s.sources.entries.borrow().clone();
         for (name, source) in entries {
             s.id.send_named(v, b"visit:", &[Operand::object(name)])?;
@@ -374,11 +390,32 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             roots: root,
             permanent: vec![ns, root, vt, reflect_vt, receiver, reflect],
             sources: source::Sources::default(),
+            materializations: RefCell::new(Vec::new()),
             thread: std::thread::current().id(),
         }));
         for (target, n, op) in [
             (vt, b"emit:".as_slice(), Op::Emit),
             (vt, b"compile:", Op::Compile),
+            (
+                vt,
+                b"materializeSynchronous:captures:",
+                Op::Materialize(materialization::Op::Synchronous),
+            ),
+            (
+                vt,
+                b"materializeResumable:captures:",
+                Op::Materialize(materialization::Op::Resumable),
+            ),
+            (
+                vt,
+                b"materializationCount",
+                Op::Materialize(materialization::Op::Count),
+            ),
+            (
+                vt,
+                b"evictMaterializations",
+                Op::Materialize(materialization::Op::Evict),
+            ),
             (vt, b"eval:", Op::Eval),
             (vt, b"sourceRevisionOf:", Op::Source(source::Op::Revision)),
             (

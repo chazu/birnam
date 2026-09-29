@@ -24,6 +24,11 @@ and canonical encoding without linking Artifact's module initializer.
 inspection/reconstruction, constructor errors, collecting replacements, native
 failure propagation, derived prototypes, GC edge retention/reclamation and reload.
 
-Execution-owned Block `codeObject`, `captureCount`, `captureAt:` and Codegen
-materialization remain the next integration slice. Image and optimization work
-are separate; this module does not reconnect the retired Block admission hook.
+`CodeObject canonicalBytesOf:` exports an admitted object's canonical program as
+Bytes; `fromCanonicalBytes:` validates Bytes and constructs a CodeObject with nil
+provenance. Both are ordinary messages. Inspection overrides do not redefine the
+owner's canonical program. Execution now owns Block `codeObject`, `captureCount`
+and `captureAt:`; [Codegen](../birnam-codegen-runtime/README.md) materializes both
+synchronous and resumable Blocks. The `materialization` production test exercises
+these connections. Image and optimization remain separate; the retired native
+Block admission hook is not restored.

@@ -36,6 +36,7 @@ struct Callable {
     image: Option<Rc<image::Image>>,
 }
 struct Execution {
+    namespace: Oop,
     machines: RefCell<machine::State>,
     numeric: RefCell<numeric::Registry>,
     requests: RefCell<Vec<recovery::Request>>,
@@ -422,6 +423,7 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             s.prototype,
         ];
         values.extend(s.names.values().copied());
+        values.push(s.namespace);
         values.extend(s.machines.borrow().roots());
         values.extend(s.scoped.borrow().iter().copied());
         for value in values {
@@ -726,6 +728,7 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             &[Operand::word(0)],
         )?)?)?;
         let s = Box::into_raw(Box::new(Execution {
+            namespace,
             machines: RefCell::new(machine::State::new()),
             numeric: RefCell::new(numeric::Registry::default()),
             requests: RefCell::new(Vec::new()),

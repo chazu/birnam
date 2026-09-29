@@ -891,6 +891,54 @@ fn binding_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Ou
 fn code_method(q: &Scope<'_>, r: Oop, a: &[Oop], op: &[u8]) -> Result<Oop, Outcome> {
     let s = q.state;
     match op {
+        b"canonicalBytesOf:" => {
+            let [value] = a else {
+                return Ok(s.nil);
+            };
+            let Some((program, _)) = s.code(*value) else {
+                return Ok(s.nil);
+            };
+            let bytes = s.program(program).ok_or_else(invalid)?;
+            let factory = q.keep(object(s.named(b"Bytes")?)?)?;
+            return q.keep(object(s.send(
+                factory,
+                b"fromBytes:",
+                &[Operand::bytes(bytes.as_ref())],
+            )?)?);
+        }
+        b"fromCanonicalBytes:" => {
+            let [value] = a else {
+                return q.fail(
+                    Failure::TypeMismatch,
+                    b"fromCanonicalBytes: needs one Bytes",
+                );
+            };
+            if s.behavior(*value)? != object(s.named(b"BytesVt")?)? {
+                return q.fail(Failure::TypeMismatch, b"fromCanonicalBytes: needs a Bytes");
+            }
+            let raw = s.send(*value, b"bytes", &[])?;
+            let raw = raw.as_bytes().ok_or_else(invalid)?;
+            let bytes = unsafe { borrowed_bytes(raw.pointer, raw.length) }
+                .ok_or_else(invalid)?
+                .to_vec();
+            let bytes = match ValidatedProgram::new(bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    return q.fail(
+                        match e {
+                            portable::Error::Quantity => Failure::PortableProgramLimit,
+                            _ => Failure::InvalidPortableProgram,
+                        },
+                        b"CodeObject canonical program validation failed",
+                    );
+                }
+            };
+            let program = q.make(
+                object(s.named(b"CodeProgramVt")?)?,
+                Value::Program(Rc::new(bytes)),
+            )?;
+            return q.code(r, program, s.nil);
+        }
         b"fromProgram:" => {
             let [p] = a else {
                 return q.fail(Failure::TypeMismatch, b"fromProgram: needs one CodeProgram");
@@ -1138,6 +1186,8 @@ entry!(
     b"definingStatementIndex"
 );
 entry!(clone_3, binding_method, b"clone");
+entry!(canonical_bytes, code_method, b"canonicalBytesOf:");
+entry!(admit_bytes, code_method, b"fromCanonicalBytes:");
 entry!(code_object_from_program, code_method, b"fromProgram:");
 entry!(
     code_object_from_program_provenance,
@@ -1242,6 +1292,8 @@ const FAMILIES: &[(&[u8], &[u8], &[(&[u8], Method)])] = &[
         b"CodeObject",
         b"CodeObjectVt",
         &[
+            (b"canonicalBytesOf:", canonical_bytes),
+            (b"fromCanonicalBytes:", admit_bytes),
             (b"fromProgram:", code_object_from_program),
             (
                 b"fromProgram:provenance:",

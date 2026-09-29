@@ -165,9 +165,10 @@ requirement to restore the old architecture:
   evaluation already publishes top-level bindings through Globals; nested bindings
   remain lexical. Filename-aware descriptors and loader-facing errors now use
   the current compiler, including the embedding path below.
-- **Publication, Image and portable materialization:** the historical compiler
+- **Publication and Image:** the historical compiler
   contains revision/generation projections, staged activation/rollback,
-  compensation and materialization algorithms. Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
+  compensation and materialization algorithms. Portable materialization is now
+  reconnected below; publication and Image remain pending. Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
   and sibling `code_bindings.rs`, `materialization_cache.rs`, `state_contract.rs`
   and `finalizer_tests.rs` remain in the same Git tree. Reconnect only the behavior
   required by actual consumers and verify it with current owner messages.
@@ -190,3 +191,27 @@ paths, current method/global lookup, failures and remaining Image/project work a
 specified in [Design 56](../../docs/design/56-embedded-files.md). Filesystem access
 stays with File IO; all owner operations are Id sends. The `embedding` production
 test includes an actual system-compiled dylib loaded after its asset is deleted.
+
+## Portable materialization
+
+`materializeSynchronous:captures:` and `materializeResumable:captures:` accept an
+admitted CodeObject and an exact Vector with the required capture count. Canonical
+Bytes come from PortableCode through a send; construction uses Execution's
+`Block fromMethod:codeObject:captures:`. Source-generated Blocks also carry one
+CodeObject per body, shared across instances; captures remain per Block.
+
+Synchronous emission uses the current native Method ABI and preserves the native
+control boundary. Resumable emission uses the existing PC/Machine path and can
+suspend. Both emit owner operations as Id sends, including synchronous capture
+reads. The historical capture-read order is preserved: before compilation for
+resumable Blocks, after compilation for synchronous Blocks.
+
+The cache compares complete canonical bytes and disposition, retaining at most
+64 Methods, 64 MiB of programs and 128 MiB of generated C, with least-recently-used
+eviction. `materializationCount`, `evictMaterializations` and nil/`lastError`
+validation failures retain their existing contracts. Each returned Block retains
+its supplied CodeObject even when its Method is shared. Cache roots use visitor
+sends; eviction leaves live Blocks and suspended frames holding their code owners.
+Failed construction publishes no cache entry. Production `materialization` tests
+cover these behaviors, collecting replacements and final Unit reclamation. Image
+and optimizer reconnection remain separate.

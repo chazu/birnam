@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect PortableCode to Execution Blocks and synchronous/resumable Codegen
+  materialization through Id sends. Preserve CodeObject/capture identity, native
+  control boundaries, capture-read timing and bounded cache eviction; verify
+  collecting replacements, failed construction and compiled Unit reclamation.
+
 - Migrate PortableCode ordinary prototypes to Id sends and production Bootstrap,
   including roots, GC visitors and finalization. Preserve selectors, diagnostics
   and canonical encoding; verify all thirteen frozen program digests and

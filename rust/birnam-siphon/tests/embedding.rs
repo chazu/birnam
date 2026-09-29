@@ -314,6 +314,7 @@ unsafe extern "C" fn library_retain(
     }
 }
 struct Forward {
+    observed_receiver: Option<Oop>,
     id: Protocol,
     gc: Oop,
     alias: Oop,
@@ -328,7 +329,9 @@ unsafe extern "C" fn forward(c: *mut c_void, r: Oop, a: *const Operand, n: usize
             .first()
             .and_then(|a| a.as_bytes())
             .map(|b| borrowed_bytes(b.pointer, b.length).unwrap().to_vec());
-        f.calls.set(f.calls.get() + 1);
+        if f.observed_receiver.is_none_or(|target| target == r) {
+            f.calls.set(f.calls.get() + 1);
+        }
         f.id.send_named(f.gc, b"collectPrecisely", &[])?;
         // Receiver is retained by the compiler/Machine. No send follows a
         // borrowed result from the alias, so the original borrow rule holds.
@@ -382,6 +385,7 @@ unsafe fn exercise_replacement(h: &H, block: Oop, temp: &std::path::Path) {
             let alias = h.keep(id.intern_name(b"embeddingOriginal:").unwrap());
             set(id, vt, b"embeddingOriginal:", old);
             let f = Forward {
+                observed_receiver: None,
                 id,
                 gc: h.gc,
                 alias,
@@ -423,6 +427,8 @@ unsafe fn exercise_replacement(h: &H, block: Oop, temp: &std::path::Path) {
         let alias = h.keep(id.intern_name(b"embeddingBytes").unwrap());
         set(id, bytes_vt, b"embeddingBytes", old);
         let f = Forward {
+            // Canonical CodeObject admission also reads Bytes during compilation.
+            observed_receiver: Some(value),
             id,
             gc: h.gc,
             alias,
@@ -469,7 +475,11 @@ unsafe fn exercise_replacement(h: &H, block: Oop, temp: &std::path::Path) {
             ],
         );
         assert_eq!(e.calls.get(), 1);
-        assert_eq!(f.calls.get(), 1, "compiler reads Bytes through a send");
+        assert_eq!(
+            f.calls.get(),
+            1,
+            "compiler reads the embedded Bytes once through a send"
+        );
         assert_eq!(
             *e.path.borrow(),
             temp.join("never-created.bin").as_os_str().as_bytes()

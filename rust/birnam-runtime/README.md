@@ -45,7 +45,8 @@ to restore. Legacy closure timing/integration fixtures require migration and mus
 not be counted as current passing acceptance.
 
 PortableCode's old carrier and raw Block accessors were removed with that
-constructor. Restore `codeObject`, `captureCount` and `captureAt:` through
-Execution in the next PortableCode integration slice, preserving their behavior from
-commit `96e22f29`. PortableCode's [ordinary families](../birnam-portable-code/README.md) now use Id
-sends; their canonical codecs remain unchanged.
+constructor. Execution now provides `codeObject`, `captureCount` and `captureAt:`
+through Id sends; Codegen reconnects synchronous and resumable materialization.
+PortableCode's [ordinary families](../birnam-portable-code/README.md) use Id sends;
+their canonical codecs remain unchanged. This does not reconnect the legacy
+closure optimizer.

@@ -22,6 +22,7 @@ pub(super) struct State {
     active: Vec<MachineCapability>,
     pending: HashSet<u64>,
     block_behavior: Oop,
+    block_codes: HashMap<usize, Oop>,
     pub(super) booleans: [Oop; 2],
 }
 impl State {
@@ -35,6 +36,7 @@ impl State {
             pending: HashSet::new(),
             booleans: [ptr::null_mut(); 2],
             block_behavior: ptr::null_mut(),
+            block_codes: HashMap::new(),
         }
     }
     pub fn roots(&self) -> Vec<Oop> {
@@ -55,6 +57,9 @@ impl State {
                     roots.push(ptr::with_exposed_provenance_mut(word));
                 }
             } else if family == self.block_behavior {
+                if let Some(code) = self.block_codes.get(&target.addr()) {
+                    roots.push(*code);
+                }
                 for i in 0..self.storage.payload_size(target).unwrap() / size_of::<usize>() {
                     roots.push(ptr::with_exposed_provenance_mut(
                         self.storage.read_payload_word(target, i).unwrap(),
@@ -80,6 +85,7 @@ impl State {
                         }
                     }
                 }
+                self.block_codes.remove(&address);
                 self.storage.remove(object);
             }
         }
@@ -375,13 +381,18 @@ unsafe fn register_descriptor_with_captures(
     }
 }
 
-unsafe fn new_block(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome> {
-    let [method, captures] = args else {
-        return Err(invalid());
+unsafe fn new_block(s: &Execution, args: &[Operand], portable: bool) -> Result<Operand, Outcome> {
+    let (method, code, captures) = match (portable, args) {
+        (false, [method, captures]) => (*method, None, *captures),
+        (true, [method, code, captures]) => (*method, Some(object(*code)?), *captures),
+        _ => return Err(invalid()),
     };
-    let method = object(*method)?;
-    let roots = s.scope(&[method]);
-    let (arity, expected) = {
+    let method = object(method)?;
+    let roots = s.scope(&[method, object(captures)?]);
+    if let Some(code) = code {
+        roots.keep(code);
+    }
+    let (mut arity, mut expected) = {
         let methods = s.methods.borrow();
         let m = methods.get(&method.addr()).ok_or_else(invalid)?;
         match &m.resumable {
@@ -392,7 +403,38 @@ unsafe fn new_block(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome>
             None => (0, None),
         }
     };
-    let captures = unsafe { sequence(s, object(*captures)?, &roots) }?;
+    if let Some(code) = code {
+        // Canonical meaning comes from its owner through a message, never through
+        // replaceable inspection fields or foreign payload words.
+        let factory = object(unsafe {
+            s.id.send_named(
+                s.namespace,
+                b"at:",
+                &[Operand::object(s.id.intern_name(b"CodeObject")?)],
+            )
+        }?)?;
+        roots.keep(factory);
+        let bytes = object(unsafe {
+            s.id.send_named(factory, b"canonicalBytesOf:", &[Operand::object(code)])
+        }?)?;
+        roots.keep(bytes);
+        let raw = unsafe { s.id.send_named(bytes, b"bytes", &[]) }?
+            .as_bytes()
+            .ok_or_else(invalid)?;
+        let owned = unsafe { borrowed_bytes(raw.pointer, raw.length) }
+            .ok_or_else(invalid)?
+            .to_vec();
+        let program =
+            birnam_artifact_codec::portable_program::inspect(&owned).map_err(|_| invalid())?;
+        if expected.is_some_and(|n| {
+            n != program.capture_count as usize || arity != program.parameter_count as usize
+        }) {
+            return Err(invalid());
+        }
+        arity = program.parameter_count as usize;
+        expected = Some(program.capture_count as usize);
+    }
+    let captures = unsafe { sequence(s, object(captures)?, &roots) }?;
     if expected.is_some_and(|n| n != captures.len()) {
         return Err(invalid());
     }
@@ -420,6 +462,9 @@ unsafe fn new_block(s: &Execution, args: &[Operand]) -> Result<Operand, Outcome>
     roots.keep(block);
     let mut state = s.machines.borrow_mut();
     state.storage.set_family(block, base);
+    if let Some(code) = code {
+        state.block_codes.insert(block.addr(), code);
+    }
     state.storage.write_payload_word(block, 0, method.addr());
     for (i, capture) in captures.iter().enumerate() {
         state
@@ -987,7 +1032,10 @@ enum Op {
     WithNumericPredicate,
     Optimize,
     Recover(bool),
-    Block,
+    Block(bool),
+    BlockCode,
+    BlockCaptureCount,
+    BlockCapture(bool),
     CloneBlock,
     Prepare,
     New,
@@ -1054,7 +1102,61 @@ unsafe extern "C" fn operation(
             Op::WithDiscardedClone => return crate::discarded_clone::attach(s, receiver, args),
             Op::WithNumericPredicate => return crate::numeric_predicate::attach(s, receiver, args),
             Op::Optimize => return crate::native_tier::install(s, receiver, args),
-            Op::Block => return new_block(s, args),
+            Op::Block(portable) => return new_block(s, args, portable),
+            Op::BlockCode | Op::BlockCaptureCount | Op::BlockCapture(_) => {
+                let (target, index) = match (op.kind, args) {
+                    (Op::BlockCode | Op::BlockCaptureCount, []) => (receiver, None),
+                    (Op::BlockCapture(false), [i]) => (receiver, Some(*i)),
+                    (Op::BlockCapture(true), [i, target]) => (object(*target)?, Some(*i)),
+                    _ => return Ok(Operand::object(s.nil)),
+                };
+                let index = if let Some(i) = index {
+                    let n = s.send(s.integer, b"wordOf:", &[i])?;
+                    let Some(n) = n.as_word().filter(|n| *n <= isize::MAX as usize) else {
+                        return Ok(Operand::object(s.nil));
+                    };
+                    Some(n)
+                } else {
+                    None
+                };
+                let value = {
+                    let state = s.machines.borrow();
+                    if state.storage.family_of(target) != Some(state.block_behavior)
+                        || !state.block_codes.contains_key(&target.addr())
+                    {
+                        // These are PortableCode inspection messages. Ordinary
+                        // native Blocks without a CodeObject remain uninspectable.
+                        return Ok(Operand::object(s.nil));
+                    }
+                    let words = state.storage.payload_size(target).unwrap() / size_of::<usize>();
+                    if words == 0 {
+                        return Ok(Operand::object(s.nil));
+                    }
+                    match op.kind {
+                        Op::BlockCode => {
+                            return Ok(Operand::object(
+                                state
+                                    .block_codes
+                                    .get(&target.addr())
+                                    .copied()
+                                    .unwrap_or(s.nil),
+                            ));
+                        }
+                        Op::BlockCaptureCount => words - 1,
+                        _ => {
+                            let i = index.unwrap();
+                            return Ok(Operand::object(if i < words - 1 {
+                                ptr::with_exposed_provenance_mut(
+                                    state.storage.read_payload_word(target, i + 1).unwrap(),
+                                )
+                            } else {
+                                s.nil
+                            }));
+                        }
+                    }
+                };
+                return integer(s, value);
+            }
             Op::New if args.is_empty() => return new_machine(s).map(Operand::object),
             Op::Prepare if args.is_empty() => return Ok(Operand::object(receiver)),
             Op::Disabled if args.is_empty() => return Ok(Operand::object(s.nil)),
@@ -1078,6 +1180,9 @@ unsafe extern "C" fn operation(
                 let mut state = s.machines.borrow_mut();
                 let family = state.block_behavior;
                 state.storage.set_family(value, family);
+                if let Some(code) = state.block_codes.get(&receiver.addr()).copied() {
+                    state.block_codes.insert(value.addr(), code);
+                }
                 for (i, word) in words.iter().enumerate() {
                     state.storage.write_payload_word(value, i, *word);
                 }
@@ -1445,6 +1550,11 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"exitRunnableBoundary:",
     b"failed",
     b"fromMethod:captures:",
+    b"fromMethod:codeObject:captures:",
+    b"codeObject",
+    b"captureCount",
+    b"captureAt:",
+    b"captureAt:of:",
     b"fromStep:descriptor:selection:owner:",
     b"fromStep:descriptor:selection:owner:implementation:",
     b"withDiscardedClone:answer:selector:return:in:",
@@ -1953,7 +2063,17 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
         install_op(s, frame_view_vtable, b"oopAt:", Op::ViewRead)?;
         install_op(s, frame_view_vtable, b"slotKindAt:", Op::ViewKind)?;
         install_op(s, frame_view_vtable, b"clone", Op::Disabled)?;
-        install_op(s, block_vtable, b"fromMethod:captures:", Op::Block)?;
+        install_op(s, block_vtable, b"fromMethod:captures:", Op::Block(false))?;
+        install_op(
+            s,
+            block_vtable,
+            b"fromMethod:codeObject:captures:",
+            Op::Block(true),
+        )?;
+        install_op(s, block_vtable, b"codeObject", Op::BlockCode)?;
+        install_op(s, block_vtable, b"captureCount", Op::BlockCaptureCount)?;
+        install_op(s, block_vtable, b"captureAt:", Op::BlockCapture(false))?;
+        install_op(s, block_vtable, b"captureAt:of:", Op::BlockCapture(true))?;
         install_op(s, block_vtable, b"clone", Op::CloneBlock)?;
         install_op(s, continuation_vtable, b"clone", Op::Disabled)?;
         install_op(s, continue_action_vtable, b"kind", Op::Kind)?;
