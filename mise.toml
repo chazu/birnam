@@ -75,6 +75,10 @@ run = "scripts/siphon-test.sh"
 description = "Build and check production modules using only Id messages"
 run = "scripts/native-message-test.sh"
 
+[tasks.host-cli]
+description = "Install and validate the migrated source Host/CLI"
+run = "bash scripts/host-cli-test.sh"
+
 [tasks.reflection-boundaries]
 description = "Check production namespace admission, native enumeration, typed errors and GC"
 run = "bash scripts/runtime-services-test.sh '' reflection"

@@ -92,7 +92,23 @@ pub enum ProjectTestWorkerParseError {
     InvalidProfile(String),
 }
 
-use birnam_host::{ReplMode, RunOptions};
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplMode {
+    None,
+    Tty,
+    Socket,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunOptions {
+    pub directory: PathBuf,
+    pub build: bool,
+    pub profile: String,
+    pub repl: Option<ReplMode>,
+    pub socket_bind: Option<String>,
+    pub socket_port: Option<u16>,
+    pub arguments: Vec<std::ffi::OsString>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunParseError {

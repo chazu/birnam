@@ -12,88 +12,46 @@ use sha2::{Digest, Sha256};
 
 const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id.dylib",
-    "libbirnam_runtime.dylib",
-    "libbirnam_execution.dylib",
-    "libbirnam_bootstrap.dylib",
+    "libbirnam_root_registry.dylib",
     "libbirnam_namespace.dylib",
-    "libbirnam_storage.dylib",
-    "libbirnam_trace.dylib",
+    "libbirnam_boolean.dylib",
+    "libbirnam_nil.dylib",
+    "libbirnam_bootstrap.dylib",
     "libbirnam_collect.dylib",
+    "libbirnam_object_model.dylib",
+    "libbirnam_string.dylib",
+    "libbirnam_error.dylib",
     "libbirnam_integer.dylib",
     "libbirnam_float.dylib",
     "libbirnam_word.dylib",
-    "libbirnam_object_model.dylib",
-    "libbirnam_method_observation.dylib",
-    "libbirnam_root_registry.dylib",
-    "libbirnam_dispatch_cache.dylib",
-    "libbirnam_id_artifact.dylib",
-    "libbirnam_store.dylib",
+    "libbirnam_vector.dylib",
+    "libbirnam_map.dylib",
+    "libbirnam_range.dylib",
+    "libbirnam_execution.dylib",
     "libbirnam_peg.dylib",
     "libbirnam_lang.dylib",
     "libbirnam_tcc.dylib",
     "libbirnam_codegen_runtime.dylib",
-    "libbirnam_boolean.dylib",
+    "libbirnam_store.dylib",
+    "libbirnam_relational.dylib",
+    "libbirnam_prelude.dylib",
     "libbirnam_printing.dylib",
-    "libbirnam_system_gc.dylib",
     "libbirnam_system_output.dylib",
     "libbirnam_system_input.dylib",
     "libbirnam_environment.dylib",
     "libbirnam_file_io.dylib",
-    "libbirnam_block_loop.dylib",
+    "libbirnam_system_gc.dylib",
     "libbirnam_native_loader.dylib",
     "libbirnam_source_loader.dylib",
-    "libbirnam_prelude.dylib",
-    "libbirnam_nil.dylib",
-    "libbirnam_string.dylib",
-    "libbirnam_vector.dylib",
-    "libbirnam_range.dylib",
-    "libbirnam_map.dylib",
-    "libbirnam_error.dylib",
+    "libbirnam_block_loop.dylib",
+    "libbirnam_artifact.dylib",
     "libbirnam_portable_code.dylib",
-    "libbirnam_id_isolate.dylib",
-    "libbirnam_id_relational.dylib",
-    "libbirnam_id_alien.dylib",
-    "libbirnam_id_image.dylib",
+    "libbirnam_image.dylib",
 ];
 
 const WRAPPED_DYNAMIC_LIBRARIES: &[(&str, &str)] = &[
     ("wrapped/linenoise/liblinenoise.dylib", "liblinenoise.dylib"),
     ("wrapped/termbox2/libtermbox2.dylib", "libtermbox2.dylib"),
-];
-
-const STAGE1_MODULES: &[(&str, &str, bool)] = &[
-    ("src/id/modules.birnam", "modules", false),
-    ("src/id/stdlib.birnam", "stdlib", false),
-    ("src/id/compiled-unit.birnam", "compiledUnit", false),
-    ("src/id/toml.birnam", "toml", false),
-    ("src/id/config.birnam", "config", false),
-    ("src/id/app-config.birnam", "appConfig", false),
-    ("src/id/project-policy.birnam", "projectPolicy", false),
-    ("src/id/isolate.birnam", "isolate", false),
-    ("src/id/stackless-control.birnam", "stacklessControl", true),
-    ("modules/html.birnam", "html", false),
-    ("modules/file.birnam", "file", false),
-    ("modules/json.birnam", "json", false),
-    ("modules/socket.birnam", "socket", false),
-    ("modules/time.birnam", "time", false),
-    ("modules/doc.birnam", "doc", false),
-    ("modules/nativedoc.birnam", "nativedoc", false),
-    ("modules/lsp.birnam", "lsp", false),
-    ("modules/repl.birnam", "repl", false),
-    ("modules/cli.birnam", "cli", false),
-    ("modules/http.birnam", "http", false),
-    ("modules/log.birnam", "log", false),
-    ("modules/markdown.birnam", "markdown", false),
-    ("modules/os.birnam", "os", false),
-    ("modules/process.birnam", "process", false),
-    ("modules/random.birnam", "random", false),
-    ("modules/test.birnam", "test", false),
-    (
-        "modules/compiled-unit-docs.birnam",
-        "compiledUnitDocs",
-        false,
-    ),
-    ("modules/concurrency-docs.birnam", "concurrencyDocs", false),
 ];
 
 fn usage() {
@@ -289,7 +247,11 @@ fn collect_files(
 
 fn source_manifest(root: &Path) -> Result<BTreeMap<String, String>, String> {
     let mut entries = BTreeMap::new();
-    for relative in [Path::new("Cargo.toml"), Path::new("Cargo.lock")] {
+    for relative in [
+        Path::new("Cargo.toml"),
+        Path::new("Cargo.lock"),
+        Path::new("VERSION"),
+    ] {
         if !root.join(relative).is_file() {
             return Err(format!("source root is missing {}", relative.display()));
         }
@@ -299,6 +261,9 @@ fn source_manifest(root: &Path) -> Result<BTreeMap<String, String>, String> {
         );
     }
     collect_files(root, Path::new("rust"), &mut entries, &|_| true)?;
+    collect_files(root, Path::new("vendor/libtcc-src"), &mut entries, &|_| {
+        true
+    })?;
     collect_files(root, Path::new("src/id"), &mut entries, &|path| {
         path.extension().and_then(|value| value.to_str()) == Some("birnam")
     })?;
@@ -515,53 +480,14 @@ fn run_status(command: &mut Command, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn native_library_source(canonical: &str) -> &'static str {
-    match canonical {
-        "libbirnam_id.dylib" => "libbirnam_id.dylib",
-        "libbirnam_runtime.dylib" => "libbirnam_runtime.dylib",
-        "libbirnam_bootstrap.dylib" => "libbirnam_bootstrap.dylib",
-        "libbirnam_namespace.dylib" => "libbirnam_namespace.dylib",
-        "libbirnam_storage.dylib" => "libbirnam_storage.dylib",
-        "libbirnam_trace.dylib" => "libbirnam_trace.dylib",
-        "libbirnam_collect.dylib" => "libbirnam_collect.dylib",
-        "libbirnam_integer.dylib" => "libbirnam_integer.dylib",
-        "libbirnam_float.dylib" => "libbirnam_float.dylib",
-        "libbirnam_word.dylib" => "libbirnam_word.dylib",
-        "libbirnam_execution.dylib" => "libbirnam_execution.dylib",
-        "libbirnam_object_model.dylib" => "libbirnam_object_model.dylib",
-        "libbirnam_method_observation.dylib" => "libbirnam_method_observation.dylib",
-        "libbirnam_root_registry.dylib" => "libbirnam_root_registry.dylib",
-        "libbirnam_dispatch_cache.dylib" => "libbirnam_dispatch_cache.dylib",
-        "libbirnam_id_artifact.dylib" => "libbirnam_artifact.dylib",
-        "libbirnam_store.dylib" => "libbirnam_store.dylib",
-        "libbirnam_peg.dylib" => "libbirnam_peg.dylib",
-        "libbirnam_lang.dylib" => "libbirnam_lang.dylib",
-        "libbirnam_tcc.dylib" => "libbirnam_tcc.dylib",
-        "libbirnam_codegen_runtime.dylib" => "libbirnam_codegen_runtime.dylib",
-        "libbirnam_boolean.dylib" => "libbirnam_boolean.dylib",
-        "libbirnam_printing.dylib" => "libbirnam_printing.dylib",
-        "libbirnam_system_gc.dylib" => "libbirnam_system_gc.dylib",
-        "libbirnam_system_output.dylib" => "libbirnam_system_output.dylib",
-        "libbirnam_system_input.dylib" => "libbirnam_system_input.dylib",
-        "libbirnam_environment.dylib" => "libbirnam_environment.dylib",
-        "libbirnam_file_io.dylib" => "libbirnam_file_io.dylib",
-        "libbirnam_block_loop.dylib" => "libbirnam_block_loop.dylib",
-        "libbirnam_native_loader.dylib" => "libbirnam_native_loader.dylib",
-        "libbirnam_source_loader.dylib" => "libbirnam_source_loader.dylib",
-        "libbirnam_prelude.dylib" => "libbirnam_prelude.dylib",
-        "libbirnam_nil.dylib" => "libbirnam_nil.dylib",
-        "libbirnam_string.dylib" => "libbirnam_string.dylib",
-        "libbirnam_range.dylib" => "libbirnam_range.dylib",
-        "libbirnam_vector.dylib" => "libbirnam_vector.dylib",
-        "libbirnam_map.dylib" => "libbirnam_map.dylib",
-        "libbirnam_error.dylib" => "libbirnam_error.dylib",
-        "libbirnam_portable_code.dylib" => "libbirnam_portable_code.dylib",
-        "libbirnam_id_isolate.dylib" => "libbirnam_isolate.dylib",
-        "libbirnam_id_relational.dylib" => "libbirnam_relational.dylib",
-        "libbirnam_id_alien.dylib" => "libbirnam_alien.dylib",
-        "libbirnam_id_image.dylib" => "libbirnam_image.dylib",
-        _ => unreachable!("canonical dynamic library list is closed"),
-    }
+fn native_packages() -> impl Iterator<Item = String> {
+    CANONICAL_DYNAMIC_LIBRARIES.iter().map(|name| {
+        name.strip_prefix("lib")
+            .unwrap()
+            .strip_suffix(".dylib")
+            .unwrap()
+            .replace('_', "-")
+    })
 }
 
 fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
@@ -662,22 +588,28 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     } else {
         Vec::new()
     };
-    // Development-only cargo features (for example Design 74 E1's
-    // `birnam-runtime/dev-guarded-slots,...`). Recorded in the receipt's cargo
-    // invocation so a dev prefix is never mistaken for an ordinary build.
+    // Explicit Cargo features are recorded in the receipt so diagnostic builds
+    // are distinguishable from ordinary installs.
+    let mut cargo_arguments = vec![
+        "build".to_owned(),
+        "-p".to_owned(),
+        "birnam-cli".to_owned(),
+        "--locked".to_owned(),
+        "--offline".to_owned(),
+    ];
+    cargo_arguments.extend(cargo_profile.iter().map(|value| (*value).to_owned()));
+    for package in native_packages() {
+        cargo_arguments.extend(["-p".to_owned(), package]);
+    }
+    if let Some(features) = &cargo_features {
+        cargo_arguments.extend(["--features".to_owned(), features.clone()]);
+    }
     let mut cargo = Command::new("cargo");
     cargo
         .current_dir(&root)
         .env("CARGO_TARGET_DIR", &target_dir)
-        .arg("build")
-        .arg("--workspace")
-        .arg("--locked")
-        .arg("--offline")
-        .args(&cargo_profile);
-    if let Some(features) = &cargo_features {
-        cargo.arg("--features").arg(features);
-    }
-    run_status(&mut cargo, "cargo Rust workspace build")?;
+        .args(&cargo_arguments);
+    run_status(&mut cargo, "cargo migrated Host and native modules build")?;
 
     let profile_dir = env::var_os("CARGO_BUILD_TARGET")
         .map_or_else(|| target_dir.clone(), |target| target_dir.join(target))
@@ -687,7 +619,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     copy_file(&host_source, &host_destination)?;
     let lib_dir = stage.join("lib");
     for canonical in CANONICAL_DYNAMIC_LIBRARIES {
-        let source = profile_dir.join(native_library_source(canonical));
+        let source = profile_dir.join(canonical);
         copy_file(&source, &lib_dir.join(canonical))?;
     }
     for (relative, name) in WRAPPED_DYNAMIC_LIBRARIES {
@@ -706,29 +638,23 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     copy_file(&root.join("Cargo.toml"), &source_root.join("Cargo.toml"))?;
     copy_file(&root.join("Cargo.lock"), &source_root.join("Cargo.lock"))?;
     copy_tree(&root.join("rust"), &source_root.join("rust"))?;
+    copy_file(&root.join("VERSION"), &source_root.join("VERSION"))?;
+    copy_tree(
+        &root.join("vendor/libtcc-src"),
+        &source_root.join("vendor/libtcc-src"),
+    )?;
     copy_tree_extension(
         &root.join("docs/guide"),
         &stage.join("share/birnam/docs/guide"),
         "md",
     )?;
 
-    for (source, name, initial_generation_resumable) in STAGE1_MODULES {
-        let source = root.join(source);
-        let output = lib_dir.join(format!("libbirnam_{name}.dylib"));
-        let mut compile = Command::new(&host_destination);
-        compile
-            .current_dir(&root)
-            .env_clear()
-            .env("PATH", env::var_os("PATH").unwrap_or_default())
-            .env("BIRNAM_LIB_DIR", &lib_dir)
-            .arg("--compile-module")
-            .arg(&source)
-            .arg(&output);
-        if *initial_generation_resumable {
-            compile.arg("--initial-generation-resumable");
-        }
-        run_status(&mut compile, &format!("stage1 compile {name}"))?;
-    }
+    copy_tree_extension(&root.join("src/id"), &source_root.join("src/id"), "birnam")?;
+    copy_tree_extension(
+        &root.join("modules"),
+        &source_root.join("modules"),
+        "birnam",
+    )?;
 
     let source_after = source_manifest(&root)?;
     let source_after_digest = manifest_digest(&source_after)?;
@@ -743,11 +669,6 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     let expected_libraries = CANONICAL_DYNAMIC_LIBRARIES
         .iter()
         .map(|name| format!("lib/{name}"))
-        .chain(
-            STAGE1_MODULES
-                .iter()
-                .map(|(_, name, _)| format!("lib/libbirnam_{name}.dylib")),
-        )
         .collect::<Vec<_>>();
     for relative in &expected_libraries {
         if !staged_manifest.contains_key(relative) {
@@ -757,18 +678,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         }
     }
     let staged_digest = manifest_digest(&staged_manifest)?;
-    let mut cargo_invocation = vec![
-        "cargo".to_owned(),
-        "build".to_owned(),
-        "--workspace".to_owned(),
-        "--locked".to_owned(),
-        "--offline".to_owned(),
-    ];
-    cargo_invocation.extend(cargo_profile.iter().map(|value| (*value).to_owned()));
-    if let Some(features) = &cargo_features {
-        cargo_invocation.push("--features".to_owned());
-        cargo_invocation.push(features.clone());
-    }
+    let cargo_invocation = std::iter::once("cargo".to_owned())
+        .chain(cargo_arguments)
+        .collect::<Vec<_>>();
 
     let git_commit = command_stdout("git", &["rev-parse", "HEAD"], &root)
         .unwrap_or_else(|| "unavailable".to_owned());
@@ -779,7 +691,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
     )
     .is_some_and(|status| status.is_empty());
     let receipt = serde_json::json!({
-        "schema": 3,
+        "schema": 4,
         "authority": "rust",
         "profile": options.profile,
         "build_mode": if options.build_cache.is_some() { "development-cache" } else { "cold" },
@@ -789,13 +701,9 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         },
         "admission_contract": {
             "target": "aarch64-macos",
-            "image_version": 8,
-            "candidate_envelope_abi": 4,
-            "candidate_manifest_version": 4,
-            "artifact_generation_abi": "birnam-artifact-generation-v1",
-            "runtime_abi_hash": "f57d502f7c1c0437",
-            "portable_code_api_versions": [1, 2, 3],
-            "portable_program_view_api_version": 1,
+            "id_protocol_version": 1,
+            "host_commands": ["source", "help", "version"],
+            "stdlib_loading": "source",
         },
         "source_root": root,
         "source_manifest_sha256": source_digest,
@@ -806,7 +714,8 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         },
         "cargo_invocation": cargo_invocation,
         "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
-        "stage1_modules": STAGE1_MODULES.iter().map(|(_, name, _)| *name).collect::<Vec<_>>(),
+        "stage1_modules": [],
+        "source_bootstrap_modules": ["modules", "stdlib"],
         "staged_manifest_sha256": staged_digest,
         "staged_manifest_files": staged_manifest.len(),
         "staged_manifest": staged_manifest,
@@ -867,10 +776,10 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             .map_err(|error| format!("sync install parent after backup removal: {error}"))?;
     }
     println!(
-        "rust-install: published {} ({} native libraries, {} stage1 modules)",
+        "rust-install: published {} ({} native libraries, {} source bootstrap modules)",
         prefix.display(),
         CANONICAL_DYNAMIC_LIBRARIES.len(),
-        STAGE1_MODULES.len()
+        2
     );
     Ok(())
 }

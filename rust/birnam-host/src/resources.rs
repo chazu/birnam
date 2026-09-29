@@ -1,5 +1,8 @@
 //! Executable-relative resource resolution with the existing lexical and symlink rules.
-use super::*;
+use std::{
+    env, io,
+    path::{Component, Path, PathBuf},
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Overrides<'a> {

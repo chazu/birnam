@@ -8,6 +8,11 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect installed Host/CLI source execution through Siphon, Bootstrap and Id
+  owner messages, with scoped roots, source stdlib and explicit failure diagnostics.
+  Package the migrated native modules through the existing atomic installer.
+  Image entry, REPL, project commands and workers remain deferred.
+
 - Migrate Image save/load to Id owner messages and Bootstrap. Restore shared and
   cyclic objects, Store history/Cells, source registration, executable Blocks and
   embedded Bytes. Compatible loading relocates saved code without compilation;

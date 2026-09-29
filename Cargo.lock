@@ -137,7 +137,6 @@ name = "birnam-host"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "birnam-artifact",
  "birnam-siphon",
  "hex",
  "serde",

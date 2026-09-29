@@ -6,10 +6,7 @@
 // primitives, via `[Reflect defineMethod: #sel on: T as: aBlock]`. It is loaded by
 // default; `BIRNAM_NO_STDLIB=1` runs on the bare native runtime instead.
 //
-// ⚠️ AFTER EDITING THIS FILE: `loadStdlib` PREFERS the compiled dylib
-// (the installed lib/libbirnam_stdlib.dylib) over this embedded source, so a stale dylib
-// will SILENTLY SHADOW your change (the runtime keeps running the OLD code and your
-// tests pass against it). Remove the installed module to force source compilation.
+// The migrated Rust host evaluates this embedded source at startup.
 
 // This module's dependency declaration (stage 3): the self-hosted stdlib sits
 // directly on the native primitives, so it requires no other self-hosted module.
