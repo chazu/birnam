@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Migrate Image save/load to Id owner messages and Bootstrap. Restore shared and
+  cyclic objects, Store history/Cells, source registration, executable Blocks and
+  embedded Bytes. Compatible loading relocates saved code without compilation;
+  rebuilding uses canonical programs. Validate fresh-process round trips,
+  collecting restoration, publication rollback and native Unit reclamation.
+
 - Reconnect PortableCode to Execution Blocks and synchronous/resumable Codegen
   materialization through Id sends. Preserve CodeObject/capture identity, native
   control boundaries, capture-read timing and bounded cache eviction; verify

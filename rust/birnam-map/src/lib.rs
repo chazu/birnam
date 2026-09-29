@@ -221,6 +221,8 @@ macro_rules! entry {
     };
 }
 const NAMES: &[&[u8]] = &[
+    b"parentOf:",
+    b"prepareAllocation",
     b"retain:",
     b"release:",
     b"allocate:bytes:",
@@ -246,6 +248,7 @@ const NAMES: &[&[u8]] = &[
     b"Map",
     b"MapVt",
     b"MapNode",
+    b"rehashImage:",
 ];
 
 unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
@@ -396,7 +399,9 @@ pub static birnam_native_module_v1: native::Module = native::Module {
 pub extern "C" fn birnam_symbol_borrow_v1() -> i32 {
     1
 }
-const DEPENDENCIES: &[&[u8]] = &[b"Integer", b"String", b"nil", b"true", b"false", b"Vector"];
+const DEPENDENCIES: &[&[u8]] = &[
+    b"Integer", b"String", b"nil", b"true", b"false", b"Vector", b"GC",
+];
 const BITS: usize = 5;
 const MASK: u32 = 31;
 const BITMAP: u32 = 0;
@@ -742,7 +747,7 @@ unsafe fn execute(
 ) -> Result<Operand, Outcome> {
     unsafe {
         let arity = match op {
-            1 | 3 | 8 | 10 => 1,
+            1 | 3 | 8 | 10 | 12 => 1,
             2 | 4 | 9 => 2,
             _ => 0,
         };
@@ -751,6 +756,37 @@ unsafe fn execute(
         }
         if op == 0 {
             return Ok(Operand::object(empty(s, scope)?));
+        }
+        if op == 12 {
+            s.send(s.values[b"GC".as_slice()], b"prepareAllocation", &[])?;
+            let behavior =
+                object(s.send(s.id.receiver, b"behaviorOf:", &[Operand::object(args[0])])?)?;
+            if behavior != s.behavior
+                && s.send(s.id.receiver, b"parentOf:", &[Operand::object(behavior)])?
+                    .as_object()
+                    != Some(s.behavior)
+            {
+                return Err(invalid());
+            }
+            let target = args[0];
+            let old = payload(s, target)?;
+            let mut pairs = Vec::new();
+            entries(s, old.root, &mut pairs)?;
+            for &(key, value) in &pairs {
+                scope.keep(key)?;
+                scope.keep(value)?;
+            }
+            let mut root = ptr::null_mut();
+            let mut count = 0;
+            for (key, value) in pairs {
+                let hash = key_hash(s, key)?;
+                let mut added = false;
+                root = assoc(s, scope, root, 0, hash, key, value, &mut added)?;
+                scope.keep(root)?;
+                count += usize::from(added);
+            }
+            target.cast::<Map>().write(Map { root, count });
+            return Ok(Operand::object(target));
         }
         let v = payload(s, r)?;
         scope.keep(v.root)?;
@@ -843,6 +879,7 @@ entry!(includes, 3);
 entry!(absent, 4);
 entry!(size, 5);
 entry!(keys, 6);
+entry!(rehash_image, 12);
 entry!(values, 7);
 entry!(do_each, 8);
 entry!(inject, 9);
@@ -857,6 +894,7 @@ const METHODS: &[(&[u8], Method)] = &[
     (b"at:ifAbsent:", absent),
     (b"size", size),
     (b"keys", keys),
+    (b"rehashImage:", rehash_image),
     (b"values", values),
     (b"do:", do_each),
     (b"inject:into:", inject),

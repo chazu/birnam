@@ -203,6 +203,68 @@ unsafe extern "C" fn initialize_unit(
         result.map(Operand::object)
     })())
 }
+unsafe extern "C" fn compile_object(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let Some([source]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let scope = Scope {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        let source = scope.keep(object(*source)?)?;
+        let source = CString::new(s.bytes(source)?).map_err(|_| invalid())?;
+        let Some(bytes) = Unit::compile_object(&source) else {
+            return s.error(&scope, b"native object compilation failed");
+        };
+        s.send(s.named(b"Bytes")?, b"fromBytes:", &[Operand::bytes(&bytes)])
+    })())
+}
+unsafe extern "C" fn load_object(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
+        }
+        let Some([bytes]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let scope = Scope {
+            s,
+            tokens: RefCell::new(Vec::new()),
+        };
+        let bytes = scope.keep(object(*bytes)?)?;
+        let bytes = s.bytes(bytes)?;
+        let Some(native) = Unit::load_object(&bytes) else {
+            return s.error(&scope, b"native object relocation failed");
+        };
+        let unit = scope.keep(object(s.send(
+            s.model,
+            b"allocate:bytes:",
+            &[Operand::object(s.unit_vt), Operand::word(0)],
+        )?)?)?;
+        s.units.borrow_mut().insert(
+            unit as usize,
+            Compiled {
+                native,
+                refs: vec![s.ns],
+                result: None,
+                initializing: false,
+                implementation: None,
+            },
+        );
+        Ok(Operand::object(unit))
+    })())
+}
 unsafe extern "C" fn keep(c: *mut c_void, r: Oop, a: *const Operand, n: usize) -> Outcome {
     done((|| unsafe {
         let s = &*c.cast::<State>();
@@ -363,6 +425,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         }));
         for (target, n, f) in [
             (vt, b"compile:".as_slice(), compile as Method),
+            (vt, b"compileObject:", compile_object),
+            (vt, b"loadObject:", load_object),
             (vt, b"checkpoint", checkpoint),
             (vt, b"liveNativeUnits", live_units),
             (vt, b"rootsDo:", roots),

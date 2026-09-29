@@ -114,6 +114,42 @@ unsafe fn visit(s: &Execution, visitor: Oop, value: Oop) -> Result<(), Outcome> 
 fn native_entry(value: Operand) -> Result<NativeEntry, Outcome> {
     value.as_entry().filter(|e| e.method.is_some()).ok_or_else(invalid)
 }
+unsafe extern "C" fn method_of_entry(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([entry]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        Ok(s.selected(native_entry(*entry)?)
+            .map_or(Operand::unit(), Operand::object))
+    })())
+}
+unsafe extern "C" fn implementation_of_entry(
+    c: *mut c_void,
+    _: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    done((|| unsafe {
+        let s = state(c)?;
+        let Some([entry]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let entry = native_entry(*entry)?;
+        let value = s.selected(entry).and_then(|method| {
+            s.methods
+                .borrow()
+                .get(&method.addr())
+                .and_then(|m| m.implementation)
+        });
+        Ok(value.map_or(Operand::unit(), Operand::object))
+    })())
+}
 impl Execution {
     fn scope(&self, values: &[Oop]) -> Scope<'_> {
         let scope = Scope {
@@ -223,6 +259,9 @@ impl Execution {
         receiver: Oop,
         args: &[Operand],
     ) -> Result<Operand, Outcome> {
+        if self.machines.borrow().image_pending(receiver) {
+            return Err(invalid());
+        }
         let roots = self.scope(&[method, receiver]);
         for argument in args {
             if let Some(value) = argument.as_object() {
@@ -658,6 +697,8 @@ const NAMES: &[&[u8]] = &[
     b"rootsDo:",
     b"referencesOf:do:",
     b"retire:",
+    b"methodOfEntry:",
+    b"implementationOfEntry:",
     b"fromNative:owner:",
     b"clone",
     b"invokeOn:",
@@ -758,6 +799,8 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
         for (target, name, method) in [
             (behavior, b"rootsDo:".as_slice(), roots as Method),
             (behavior, b"referencesOf:do:", references),
+            (behavior, b"implementationOfEntry:", implementation_of_entry),
+            (behavior, b"methodOfEntry:", method_of_entry),
             (behavior, b"binding:value:weak:", binding),
             (behavior, b"numericOperation:left:right:", numeric::evaluate),
             (behavior, b"commitNumericPredicate:", numeric_predicate::commit),

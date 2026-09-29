@@ -111,6 +111,23 @@ impl Model {
             None => Ok(None),
         }
     }
+    unsafe fn image_layout(&self, value: Oop) -> Result<Layout, Outcome> {
+        unsafe {
+            let behavior = self.behavior(value)?;
+            if let Some(layout) = self.layout(behavior)? {
+                return Ok(layout);
+            }
+            if self.owner(behavior)? == Some(value) {
+                let parent = object(self.send(
+                    self.id.receiver,
+                    b"parentOf:",
+                    &[Operand::object(behavior)],
+                )?)?;
+                return self.layout(parent)?.ok_or_else(invalid);
+            }
+            Err(invalid())
+        }
+    }
     unsafe fn extent(&self, value: Oop) -> Result<usize, Outcome> {
         let record = self.instances.borrow().get(&value.addr()).cloned();
         if let Some(r) = record {
@@ -587,6 +604,68 @@ unsafe extern "C" fn slot_put(
         })
     })())
 }
+// Image transports typed slots; Object Model alone reads its owned storage.
+unsafe extern "C" fn image_size(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        Ok(Operand::word(m.extent(object(*v)?)?))
+    })())
+}
+unsafe extern "C" fn image_slot(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let Some([i, v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let i = i.as_word().ok_or_else(invalid)?;
+        let v = object(*v)?;
+        m.rooted(&[v], || {
+            if i >= m.extent(v)? / size_of::<usize>() {
+                return Err(invalid());
+            }
+            let kind = m.image_layout(v)?.kind(i);
+            let word = v.cast::<usize>().add(i).read();
+            match kind {
+                1 if word == 0 => Ok(Operand::unit()),
+                1 => {
+                    let value = m.send(m.id.receiver, b"allocationAt:", &[Operand::word(word)])?;
+                    object(value)?;
+                    Ok(value)
+                }
+                0 => Ok(Operand::word(word)),
+                _ => Err(invalid()),
+            }
+        })
+    })())
+}
+unsafe extern "C" fn image_put(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let m = model(c)?;
+        let Some([i, v, x]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let i = i.as_word().ok_or_else(invalid)?;
+        let v = object(*v)?;
+        m.rooted(&[v, x.as_object().unwrap_or(ptr::null_mut())], || {
+            m.send(m.gc, b"prepareAllocation", &[])?;
+            if i >= m.extent(v)? / size_of::<usize>() {
+                return Err(invalid());
+            }
+            let kind = m.image_layout(v)?.kind(i);
+            let word = match (kind, x.kind()) {
+                (1, native::OBJECT) => object(*x)?.addr(),
+                (1, native::UNIT) => 0,
+                (0, native::WORD) => x.as_word().ok_or_else(invalid)?,
+                _ => return Err(invalid()),
+            };
+            v.cast::<usize>().add(i).write(word);
+            Ok(Operand::object(v))
+        })
+    })())
+}
 const NAMES: &[&[u8]] = &[
     b"canDiscardClone:of:",
     b"canOmitAllocationFor:",
@@ -606,6 +685,7 @@ const NAMES: &[&[u8]] = &[
     b"prepareAllocation",
     b"allocate",
     b"delegated",
+    b"parentOf:",
     b"ownerOf:",
     b"ownerOf:put:",
     b"prepareBehaviorMutationOf:",
@@ -618,6 +698,9 @@ const NAMES: &[&[u8]] = &[
     b"setLayoutOf:to:rest:",
     b"slotKindOf:at:",
     b"allOopLayoutOf:words:",
+    b"imageSizeOf:",
+    b"imageSlotAt:in:",
+    b"restoreImageSlotAt:in:put:",
     b"slotAt:in:",
     b"slotAt:in:put:",
     b"clone",
@@ -686,6 +769,9 @@ unsafe fn construct(id: Protocol, namespace: Oop) -> Result<Operand, Outcome> {
             (behavior, b"canOmitAllocationFor:", can_omit_allocation),
             (behavior, b"setLayoutOf:to:rest:", set_layout),
             (behavior, b"slotAt:in:", slot_at),
+            (behavior, b"imageSizeOf:", image_size),
+            (behavior, b"imageSlotAt:in:", image_slot),
+            (behavior, b"restoreImageSlotAt:in:put:", image_put),
             (behavior, b"slotAt:in:put:", slot_put),
             (behavior, b"slotKindOf:at:", slot_kind),
             (behavior, b"allOopLayoutOf:words:", all_oop),

@@ -329,6 +329,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "tcc",
             "codegen_runtime",
             "source_loader",
+            "image",
         ] {
             id.send_named(
                 receiver,

@@ -23,6 +23,7 @@ pub(super) struct State {
     pending: HashSet<u64>,
     block_behavior: Oop,
     block_codes: HashMap<usize, Oop>,
+    image_shells: HashSet<usize>,
     pub(super) booleans: [Oop; 2],
 }
 impl State {
@@ -37,7 +38,11 @@ impl State {
             booleans: [ptr::null_mut(); 2],
             block_behavior: ptr::null_mut(),
             block_codes: HashMap::new(),
+            image_shells: HashSet::new(),
         }
+    }
+    pub fn image_pending(&self, value: Oop) -> bool {
+        self.image_shells.contains(&value.addr())
     }
     pub fn roots(&self) -> Vec<Oop> {
         self.roots.clone()
@@ -86,6 +91,7 @@ impl State {
                     }
                 }
                 self.block_codes.remove(&address);
+                self.image_shells.remove(&address);
                 self.storage.remove(object);
             }
         }
@@ -503,6 +509,9 @@ fn acquire(
     args: &[Oop],
 ) -> Result<(ResumableEntryCapability, MaterializedEntry), Outcome> {
     let mut state = s.machines.borrow_mut();
+    if state.image_pending(receiver) {
+        return Err(invalid());
+    }
     let Some(StacklessTarget::Registered { entry }) =
         checked(state.engine.classify_resumable(r.key))?
     else {
@@ -1034,6 +1043,9 @@ enum Op {
     Recover(bool),
     Block(bool),
     BlockCode,
+    BlockSynchronous,
+    RestoreCaptures,
+    BlockShell,
     BlockCaptureCount,
     BlockCapture(bool),
     CloneBlock,
@@ -1103,6 +1115,89 @@ unsafe extern "C" fn operation(
             Op::WithNumericPredicate => return crate::numeric_predicate::attach(s, receiver, args),
             Op::Optimize => return crate::native_tier::install(s, receiver, args),
             Op::Block(portable) => return new_block(s, args, portable),
+            Op::BlockSynchronous if args.is_empty() => {
+                let method = {
+                    let state = s.machines.borrow();
+                    if !state.block_codes.contains_key(&receiver.addr()) {
+                        return Ok(Operand::object(s.nil));
+                    }
+                    state
+                        .storage
+                        .read_payload_word(receiver, 0)
+                        .ok_or_else(invalid)?
+                };
+                let sync = s
+                    .methods
+                    .borrow()
+                    .get(&method)
+                    .ok_or_else(invalid)?
+                    .resumable
+                    .is_none();
+                return boolean(s, sync);
+            }
+            Op::BlockShell => {
+                let [method, code] = args else {
+                    return Err(invalid());
+                };
+                let factory = object(s.id.send_named(
+                    s.namespace,
+                    b"at:",
+                    &[Operand::object(s.id.intern_name(b"CodeObject")?)],
+                )?)?;
+                roots.keep(factory);
+                let encoded = object(s.id.send_named(factory, b"canonicalBytesOf:", &[*code])?)?;
+                roots.keep(encoded);
+                let raw =
+                    s.id.send_named(encoded, b"bytes", &[])?
+                        .as_bytes()
+                        .ok_or_else(invalid)?;
+                let bytes = borrowed_bytes(raw.pointer, raw.length)
+                    .ok_or_else(invalid)?
+                    .to_vec();
+                let count = birnam_artifact_codec::portable_program::inspect(&bytes)
+                    .map_err(|_| invalid())?
+                    .capture_count;
+                let vector = object(s.id.send_named(
+                    s.namespace,
+                    b"at:",
+                    &[Operand::object(s.id.intern_name(b"Vector")?)],
+                )?)?;
+                roots.keep(vector);
+                let mut captures = object(s.id.send_named(vector, b"new", &[])?)?;
+                roots.keep(captures);
+                for _ in 0..count {
+                    captures =
+                        object(s.id.send_named(captures, b"add:", &[Operand::object(s.nil)])?)?;
+                    roots.keep(captures);
+                }
+                let value = new_block(s, &[*method, *code, Operand::object(captures)], true)?;
+                s.machines
+                    .borrow_mut()
+                    .image_shells
+                    .insert(object(value)?.addr());
+                return Ok(value);
+            }
+            Op::RestoreCaptures => {
+                let [captures, target] = args else {
+                    return Err(invalid());
+                };
+                let target = object(*target)?;
+                let values = sequence(s, object(*captures)?, &roots)?;
+                let mut state = s.machines.borrow_mut();
+                if !state.image_shells.contains(&target.addr())
+                    || state.storage.payload_size(target)
+                        != Some((values.len() + 1) * size_of::<usize>())
+                {
+                    return Err(invalid());
+                }
+                for (i, value) in values.iter().enumerate() {
+                    state
+                        .storage
+                        .write_payload_word(target, i + 1, value.addr());
+                }
+                state.image_shells.remove(&target.addr());
+                return Ok(Operand::object(target));
+            }
             Op::BlockCode | Op::BlockCaptureCount | Op::BlockCapture(_) => {
                 let (target, index) = match (op.kind, args) {
                     (Op::BlockCode | Op::BlockCaptureCount, []) => (receiver, None),
@@ -1167,7 +1262,9 @@ unsafe extern "C" fn operation(
             Op::CloneBlock if args.is_empty() => {
                 let (behavior, words) = {
                     let state = s.machines.borrow();
-                    if state.storage.family_of(receiver) != Some(state.block_behavior) {
+                    if state.image_pending(receiver)
+                        || state.storage.family_of(receiver) != Some(state.block_behavior)
+                    {
                         return Err(invalid());
                     }
                     let words = (0..state.storage.payload_size(receiver).unwrap()
@@ -1552,6 +1649,9 @@ pub(super) const NAMES: &[&[u8]] = &[
     b"fromMethod:captures:",
     b"fromMethod:codeObject:captures:",
     b"codeObject",
+    b"isSynchronous",
+    b"imageShellFromMethod:codeObject:",
+    b"restoreImageCaptures:of:",
     b"captureCount",
     b"captureAt:",
     b"captureAt:of:",
@@ -2070,7 +2170,28 @@ pub(super) unsafe fn install(s: &Execution, namespace: Oop) -> Result<(), Outcom
             b"fromMethod:codeObject:captures:",
             Op::Block(true),
         )?;
+        s.id.send_named(
+            namespace,
+            b"at:put:",
+            &[
+                Operand::object(s.id.intern_name(b"BlockVt")?),
+                Operand::object(block_vtable),
+            ],
+        )?;
         install_op(s, block_vtable, b"codeObject", Op::BlockCode)?;
+        install_op(s, block_vtable, b"isSynchronous", Op::BlockSynchronous)?;
+        install_op(
+            s,
+            block_vtable,
+            b"imageShellFromMethod:codeObject:",
+            Op::BlockShell,
+        )?;
+        install_op(
+            s,
+            block_vtable,
+            b"restoreImageCaptures:of:",
+            Op::RestoreCaptures,
+        )?;
         install_op(s, block_vtable, b"captureCount", Op::BlockCaptureCount)?;
         install_op(s, block_vtable, b"captureAt:", Op::BlockCapture(false))?;
         install_op(s, block_vtable, b"captureAt:of:", Op::BlockCapture(true))?;

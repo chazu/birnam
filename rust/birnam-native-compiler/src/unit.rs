@@ -45,6 +45,47 @@ pub struct Unit {
 unsafe extern "C" fn discard_diagnostic(_: *mut c_void, _: *const c_char) {}
 
 impl Unit {
+    /// Compile trusted generated C to a relocatable ELF object.
+    pub fn compile_object(source: &CStr) -> Option<Vec<u8>> {
+        let file = ObjectFile::new()?;
+        let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
+        let state = NonNull::new(unsafe { tcc_new() })?;
+        let raw = state.as_ptr();
+        let ok = unsafe {
+            tcc_set_error_func(raw, core::ptr::null_mut(), Some(discard_diagnostic));
+            tcc_set_output_type(raw, 3) >= 0
+                && tcc_compile_string(raw, source.as_ptr()) >= 0
+                && tcc_output_file(raw, file.name.as_ptr()) >= 0
+        };
+        unsafe { tcc_delete(raw) };
+        ok.then(|| std::fs::read(&file.path).ok()).flatten()
+    }
+    /// Relocate trusted object bytes without invoking the C compiler front end.
+    ///
+    /// # Safety
+    /// The bytes must be trusted native code for this target. Any retrieved
+    /// symbol must be invoked with its declared ABI while this owner is alive.
+    pub unsafe fn load_object(bytes: &[u8]) -> Option<Self> {
+        let file = ObjectFile::new()?;
+        std::fs::write(&file.path, bytes).ok()?;
+        let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
+        let state = NonNull::new(unsafe { tcc_new() })?;
+        let raw = state.as_ptr();
+        let ok = unsafe {
+            tcc_set_error_func(raw, core::ptr::null_mut(), Some(discard_diagnostic));
+            tcc_set_output_type(raw, 1) >= 0
+                && tcc_add_file(raw, file.name.as_ptr()) >= 0
+                && tcc_relocate(raw) >= 0
+        };
+        if !ok {
+            unsafe { tcc_delete(raw) };
+            return None;
+        }
+        #[cfg(feature = "resource-metrics")]
+        metrics::add(unsafe { super::relocated_allocation_bytes(raw) });
+        Some(Self { state })
+    }
+
     /// Compile trusted generated C and retain all relocated executable memory.
     ///
     /// # Safety
@@ -108,6 +149,46 @@ impl Unit {
     }
 }
 
+struct ObjectFile {
+    directory: std::path::PathBuf,
+    path: std::path::PathBuf,
+    name: std::ffi::CString,
+}
+impl ObjectFile {
+    fn new() -> Option<Self> {
+        use std::os::unix::ffi::OsStrExt;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        for _ in 0..100 {
+            let directory = std::env::temp_dir().join(format!(
+                "birnam-native-object-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            match std::fs::create_dir(&directory) {
+                Ok(()) => {
+                    let path = directory.join("unit.o");
+                    let name = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+                    return Some(Self {
+                        directory,
+                        path,
+                        name,
+                    });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(_) => return None,
+            }
+        }
+        None
+    }
+}
+impl Drop for ObjectFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+        let _ = std::fs::remove_dir(&self.directory);
+    }
+}
+
 impl Drop for Unit {
     fn drop(&mut self) {
         let _compiler = COMPILER.lock().unwrap_or_else(|error| error.into_inner());
@@ -128,6 +209,29 @@ mod tests {
 
     unsafe extern "C" fn twice(value: i64) -> i64 {
         value * 2
+    }
+
+    #[test]
+    fn relocatable_object_roundtrip_preserves_code_and_data_ownership() {
+        let _test = TEST_COMPILER.lock().unwrap();
+        #[cfg(feature = "resource-metrics")]
+        let before = Unit::resource_totals();
+        let bytes =
+            Unit::compile_object(c"static long counter=40; long next(void) { return ++counter; }")
+                .unwrap();
+        assert!(bytes.starts_with(b"\x7fELF"));
+        let unit = Rc::new(unsafe { Unit::load_object(&bytes) }.unwrap());
+        let entry: unsafe extern "C" fn() -> i64 =
+            unsafe { core::mem::transmute(unit.symbol(c"next").unwrap().as_ptr()) };
+        let selected = unit.clone();
+        drop(unit);
+        assert_eq!(unsafe { entry() }, 41);
+        assert_eq!(unsafe { entry() }, 42);
+        assert!(unsafe { Unit::load_object(b"not an object") }.is_none());
+        assert!(Unit::compile_object(c"invalid C").is_none());
+        drop(selected);
+        #[cfg(feature = "resource-metrics")]
+        assert_eq!(Unit::resource_totals(), before);
     }
 
     #[test]

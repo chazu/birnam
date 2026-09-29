@@ -301,10 +301,13 @@ enum OpCode {
     CellValue,
     CellSet,
     CellHistory,
+    CellImageField,
+    CellImageRestore,
     ImageFacts,
     ImageBegin,
     ImageAdd,
     ImageEnd,
+    ImageSwap,
     GlobalRead,
     GlobalElse,
     GlobalPut,
@@ -359,6 +362,8 @@ unsafe fn execute(
                 | Compact
                 | Cell
                 | CellSet
+                | CellImageRestore
+                | ImageSwap
                 | ImageBegin
                 | ImageAdd
                 | ImageEnd
@@ -378,6 +383,16 @@ unsafe fn execute(
                 let cell = s.allocate(scope, s.cell_vt)?;
                 s.cells.borrow_mut().insert(cell, [r, a[0], a[1]]);
                 return Ok(Operand::object(cell));
+            }
+            CellImageField => {
+                let index = s.number(a[0])? as usize;
+                let fields = *s.cells.borrow().get(&r).ok_or_else(invalid)?;
+                return Ok(Operand::object(*fields.get(index).ok_or_else(invalid)?));
+            }
+            CellImageRestore => {
+                s.read(a[0], |_| ())?;
+                *s.cells.borrow_mut().get_mut(&r).ok_or_else(invalid)? = [a[0], a[1], a[2]];
+                return Ok(Operand::object(r));
             }
             CellValue | CellSet | CellHistory => {
                 let [store, e, attr] = *s.cells.borrow().get(&r).ok_or_else(invalid)?;
@@ -829,6 +844,18 @@ unsafe fn execute(
                     )?;
                 }
             }
+            ImageSwap => {
+                if r == a[0] {
+                    return Err(invalid());
+                }
+                let mut stores = s.stores.borrow_mut();
+                if !stores.contains_key(&r) || !stores.contains_key(&a[0]) {
+                    return Err(invalid());
+                }
+                let mut staged = stores.remove(&a[0]).ok_or_else(invalid)?;
+                std::mem::swap(stores.get_mut(&r).ok_or_else(invalid)?, &mut staged);
+                stores.insert(a[0], staged);
+            }
             ImageBegin => s.edit(r, |st| {
                 st.facts.clear();
                 st.compensation_reservations.clear();
@@ -929,6 +956,7 @@ entry!(triples_between, TriplesBetween, 3);
 entry!(get_cardinality, Cardinality, 1);
 entry!(image_facts, ImageFacts, 1);
 entry!(image_begin, ImageBegin, 0);
+entry!(image_swap, ImageSwap, 1);
 entry!(image_add, ImageAdd, 6);
 entry!(image_end, ImageEnd, 5);
 entry!(new_store, New, 0);
@@ -936,6 +964,8 @@ entry!(cell, Cell, 2);
 entry!(cell_value, CellValue, 0);
 entry!(cell_set, CellSet, 1);
 entry!(cell_history, CellHistory, 0);
+entry!(cell_image_field, CellImageField, 1);
+entry!(cell_image_restore, CellImageRestore, 3);
 entry!(global_read, GlobalRead, 1);
 entry!(global_else, GlobalElse, 2);
 entry!(global_put, GlobalPut, 2);
@@ -987,12 +1017,15 @@ const STORE_METHODS: &[(&[u8], Method)] = &[
     (b"cardinality:", get_cardinality),
     (b"imageFactsInto:", image_facts),
     (b"imageLoadBegin", image_begin),
+    (b"swapImageStateWith:", image_swap),
     (b"imageAddFact:attr:value:tx:op:historied:", image_add),
     (b"imageLoadEnd:raw:oldest:policy:argument:", image_end),
     (b"new", new_store),
     (b"cellFor:attr:", cell),
 ];
 const CELL_METHODS: &[(&[u8], Method)] = &[
+    (b"imageFieldAt:", cell_image_field),
+    (b"restoreImageStore:entity:attr:", cell_image_restore),
     (b"value", cell_value),
     (b"set:", cell_set),
     (b"history", cell_history),
@@ -1004,6 +1037,8 @@ const GLOBAL_METHODS: &[(&[u8], Method)] = &[
     (b"includes:", global_has),
 ];
 const NAMES: &[&[u8]] = &[
+    b"imageFieldAt:",
+    b"restoreImageStore:entity:attr:",
     b"visit:",
     b"CellVt",
     b"Error",
@@ -1057,6 +1092,7 @@ const NAMES: &[&[u8]] = &[
     b"imageAddFact:attr:value:tx:op:historied:",
     b"imageFactsInto:",
     b"imageLoadBegin",
+    b"swapImageStateWith:",
     b"imageLoadEnd:raw:oldest:policy:argument:",
     b"imageTransient",
     b"includes:",

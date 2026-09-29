@@ -157,7 +157,7 @@ name = "birnam-image"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "birnam-artifact",
+ "birnam-artifact-codec",
  "sha2",
 ]
 

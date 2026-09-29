@@ -7,7 +7,7 @@ use core::cell::Cell;
 #[derive(Default)]
 pub(super) struct Sources {
     pub entries: RefCell<Vec<(Oop, Oop)>>,
-    sealed: Cell<bool>,
+    pub(super) sealed: Cell<bool>,
     error: RefCell<Option<Vec<u8>>>,
 }
 #[derive(Clone, Copy)]

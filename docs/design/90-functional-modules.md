@@ -1317,3 +1317,14 @@ Block inspection and synchronous/resumable Codegen materialization now also use
 owner messages, including canonical Bytes and capture reads. The production
 `materialization` test covers identity, native control boundaries, bounded cache
 leases and reclamation; Image and optimization remain separate.
+
+### Image persistence reconnected (2026-09-29)
+
+Bootstrap Image now restores ordinary graphs, Store facts/history/Cells, source
+registration and owned executable Blocks through Id messages. Compatible loading
+relocates saved objects without compilation; explicit rebuild uses canonical
+programs. Store state exchange and rooted old Methods provide publication
+compensation. [The Image contract](../../rust/birnam-image/README.md) records the
+supported families, additive v8 fields and acceptance evidence, including the
+previously deferred embedded-Bytes round trip. Host/CLI and broader generation
+replacement remain separate; optimization is unchanged.

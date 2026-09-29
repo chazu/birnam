@@ -11,7 +11,7 @@ module = []
 
 [dependencies]
 birnam-abi = { path = "../birnam-abi" }
-birnam-artifact = { path = "../birnam-artifact" }
+birnam-artifact = { package = "birnam-artifact-codec", path = "../birnam-artifact-codec" }
 sha2.workspace = true
 
 [lib]

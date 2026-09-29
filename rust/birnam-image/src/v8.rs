@@ -30,6 +30,7 @@ pub struct ImageSpec<'a> {
     pub heaps: &'a [&'a [u8]],
     pub facts: &'a [&'a [u8]],
     pub code: Option<&'a [u8]>,
+    pub sources: Option<&'a [u8]>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +49,7 @@ pub(crate) struct DecodedImage<'a> {
     pub heaps: Vec<&'a [u8]>,
     pub facts: Vec<&'a [u8]>,
     pub code: Option<&'a [u8]>,
+    pub sources: Option<&'a [u8]>,
 }
 
 #[allow(dead_code)]
@@ -65,8 +67,12 @@ pub(crate) fn decode(
     let mut heaps = Vec::new();
     let mut facts = Vec::new();
     let mut code = None;
+    let mut sources = None;
     while offset < bytes.len() {
         match read_u32(bytes, offset).ok_or(Error::Record)? {
+            10 if heaps.is_empty() && facts.is_empty() && code.is_none() && sources.is_none() => {
+                sources = Some(next_record(bytes, &mut offset, 10)?);
+            }
             3 if facts.is_empty() && code.is_none() => {
                 heaps.push(next_record(bytes, &mut offset, 3)?);
             }
@@ -82,6 +88,7 @@ pub(crate) fn decode(
         heaps,
         facts,
         code,
+        sources,
     })
 }
 
@@ -100,6 +107,7 @@ pub fn compose_stripped(
         selection,
         heaps: &[],
         facts: &[],
+        sources: None,
         code: None,
     })
 }
@@ -130,6 +138,12 @@ pub fn compose(spec: ImageSpec<'_>) -> Result<Vec<u8>, Error> {
             .and_then(|value| value.checked_add(payload.len()))
             .ok_or(Error::Quantity)?;
     }
+    if let Some(sources) = spec.sources {
+        total = total
+            .checked_add(12)
+            .and_then(|n| n.checked_add(sources.len()))
+            .ok_or(Error::Quantity)?;
+    }
     if let Some(unit) = spec.code {
         if unit.is_empty() {
             return Err(Error::Code);
@@ -153,6 +167,9 @@ pub fn compose(spec: ImageSpec<'_>) -> Result<Vec<u8>, Error> {
     push_hashed_record(&mut output, 7, spec.programs)?;
     push_hashed_record(&mut output, 8, spec.bindings)?;
     push_hashed_record(&mut output, 9, spec.selection)?;
+    if let Some(sources) = spec.sources {
+        push_record(&mut output, 10, sources)?;
+    }
     for heap in spec.heaps {
         push_record(&mut output, 3, heap)?;
     }
@@ -216,9 +233,13 @@ pub fn structural_preflight(
     let mut heaps = Vec::new();
     let mut facts = Vec::new();
     let mut code = None;
+    let mut sources = None;
     while offset < bytes.len() {
         let kind = read_u32(bytes, offset).ok_or(Error::Record)?;
         match kind {
+            10 if heaps.is_empty() && facts.is_empty() && code.is_none() && sources.is_none() => {
+                sources = Some(next_record(bytes, &mut offset, 10)?);
+            }
             3 if facts.is_empty() && code.is_none() => {
                 heaps.push(next_record(bytes, &mut offset, 3)?);
             }
@@ -234,6 +255,14 @@ pub fn structural_preflight(
     }
     let (heap_objects, code_objects) =
         validate_heaps(&heaps, &program_inventory, programs, &binding_inventory)?;
+    if let Some(sources) = sources {
+        let mut offset = 0;
+        let reference = parse_field(sources, &mut offset)?;
+        if reference.tag != 7 || offset != sources.len() {
+            return Err(Error::Heap);
+        }
+        validate_field_references(reference, heap_objects)?;
+    }
     for payload in facts {
         validate_facts(payload, heap_objects, &code_objects)?;
     }
@@ -317,12 +346,12 @@ fn validate_heaps(
         let mut offset = 4usize;
         for _ in 0..count {
             let locator = parse_field(payload, &mut offset)?;
-            if !matches!(locator.tag, 9 | 12..=16) {
+            if !matches!(locator.tag, 9 | 12..=18) {
                 return Err(Error::Heap);
             }
             let word_count = read_u32(payload, offset).ok_or(Error::Heap)?;
             offset = offset.checked_add(4).ok_or(Error::Quantity)?;
-            if matches!(locator.tag, 13..=16) && word_count != 0 {
+            if matches!(locator.tag, 13..=17) && word_count != 0 {
                 return Err(Error::Heap);
             }
             if word_count as usize > payload.len().saturating_sub(offset) {
@@ -375,13 +404,13 @@ fn validate_heaps(
             roots.push(program);
         } else {
             visit_slots(object, |field| {
-                if matches!(field.tag, 4 | 6 | 11 | 13..=16) {
+                if matches!(field.tag, 4 | 6 | 11 | 13..=17) {
                     return Err(Error::Heap);
                 }
                 Ok(())
             })?;
         }
-        if object.locator.tag == 12 {
+        if matches!(object.locator.tag, 12 | 18) {
             portable_block_count = portable_block_count.checked_add(1).ok_or(Error::Quantity)?;
             if portable_block_count > 1_048_576 {
                 return Err(Error::Quantity);
@@ -401,7 +430,7 @@ fn validate_heaps(
         })?;
     }
     for object in &objects {
-        if object.locator.tag != 12 {
+        if !matches!(object.locator.tag, 12 | 18) {
             continue;
         }
         let code_object = object.locator.index.ok_or(Error::Heap)? as usize;
@@ -451,7 +480,7 @@ fn validate_block_vtable_target(
     field: Field<'_>,
     code_program_indices: &[Option<u32>],
 ) -> Result<(), Error> {
-    if field.tag == 12
+    if matches!(field.tag, 12 | 18)
         && field.index.is_none_or(|index| {
             code_program_indices
                 .get(index as usize)
@@ -464,7 +493,7 @@ fn validate_block_vtable_target(
 }
 
 fn validate_field_references(field: Field<'_>, heap_count: u32) -> Result<(), Error> {
-    if matches!(field.tag, 7 | 12) && field.index.is_none_or(|index| index >= heap_count) {
+    if matches!(field.tag, 7 | 12 | 18) && field.index.is_none_or(|index| index >= heap_count) {
         return Err(Error::Heap);
     }
     Ok(())
@@ -490,7 +519,7 @@ pub(crate) fn parse_field<'a>(bytes: &'a [u8], offset: &mut usize) -> Result<Fie
                 data: None,
             })
         }
-        7 | 11 | 12 => {
+        7 | 11 | 12 | 18 => {
             let index = read_u32(bytes, *offset).ok_or(Error::Heap)?;
             *offset = offset.checked_add(4).ok_or(Error::Quantity)?;
             Ok(Field {
@@ -499,7 +528,7 @@ pub(crate) fn parse_field<'a>(bytes: &'a [u8], offset: &mut usize) -> Result<Fie
                 data: None,
             })
         }
-        5 | 9 | 16 => {
+        5 | 9 | 16 | 17 => {
             let length = read_u32(bytes, *offset).ok_or(Error::Heap)? as usize;
             *offset = offset.checked_add(4).ok_or(Error::Quantity)?;
             let end = offset.checked_add(length).ok_or(Error::Quantity)?;
@@ -545,9 +574,9 @@ fn validate_facts(payload: &[u8], heap_count: u32, code_objects: &[bool]) -> Res
         for _ in 0..3 {
             let field = parse_field(payload, &mut offset).map_err(|_| Error::Facts)?;
             if !matches!(field.tag, 0 | 1 | 2 | 5 | 7 | 8 | 9 | 12)
-                || (matches!(field.tag, 7 | 12)
+                || (matches!(field.tag, 7 | 12 | 18)
                     && field.index.is_none_or(|index| index >= heap_count))
-                || (field.tag == 12
+                || (matches!(field.tag, 12 | 18)
                     && field
                         .index
                         .is_none_or(|index| code_objects.get(index as usize) != Some(&true)))
@@ -679,6 +708,7 @@ mod tests {
             selection,
             heaps: &heaps,
             facts: &[],
+            sources: None,
             code: None,
         })
         .unwrap();
@@ -727,6 +757,7 @@ mod tests {
             selection,
             heaps: &heaps,
             facts: &[],
+            sources: None,
             code: Some(b"\x7fELFbirnam-v8-fixture"),
         })
         .unwrap();
@@ -790,6 +821,7 @@ mod tests {
             selection,
             heaps: &heaps,
             facts: &fact_sets,
+            sources: None,
             code: None,
         })
         .unwrap();
@@ -841,6 +873,7 @@ mod tests {
             selection,
             heaps: &heaps,
             facts: &[],
+            sources: None,
             code: None,
         })
         .unwrap();
@@ -883,6 +916,7 @@ mod tests {
             selection,
             heaps: &heaps,
             facts: &[],
+            sources: None,
             code: None,
         })
         .unwrap();
@@ -990,6 +1024,7 @@ mod tests {
                 selection,
                 heaps: &[],
                 facts: &[],
+                sources: None,
                 code: Some(&unit),
             })
             .unwrap();
@@ -1008,6 +1043,63 @@ mod tests {
                 .is_ok()
             );
         }
+    }
+
+    #[test]
+    fn bytes_synchronous_blocks_and_source_registry_are_additive() {
+        let original =
+            include_bytes!("../../../abi/fixtures/portable-code-v1/image-mixed-stripped.bin");
+        let decoded = super::decode(original, 1, 0xcdb6_41f9_7854_0d45).unwrap();
+        let mut heap = mixed_heap();
+        // The second object is a capture-free Block referring to CodeObject 0.
+        let mut offset = 4;
+        super::parse_field(&heap, &mut offset).unwrap();
+        offset += 4;
+        super::parse_field(&heap, &mut offset).unwrap();
+        super::parse_field(&heap, &mut offset).unwrap();
+        assert_eq!(heap[offset], 12);
+        heap[offset] = 18;
+        heap[..4].copy_from_slice(&13u32.to_le_bytes());
+        push_named(&mut heap, 17, b"\0\xffbytes");
+        heap.extend_from_slice(&0u32.to_le_bytes());
+        let mut source = Vec::new();
+        push_indexed(&mut source, 7, 11);
+        let spec = super::ImageSpec {
+            architecture: 1,
+            runtime_abi: 0xcdb6_41f9_7854_0d45,
+            programs: decoded.programs,
+            bindings: decoded.bindings,
+            selection: decoded.selection,
+            heaps: &[&heap],
+            facts: &[],
+            code: None,
+            sources: Some(&source),
+        };
+        let image = super::compose(spec).unwrap();
+        assert_eq!(
+            super::decode(&image, 1, 0xcdb6_41f9_7854_0d45)
+                .unwrap()
+                .sources,
+            Some(source.as_slice())
+        );
+        let invalid = [7, 13, 0, 0, 0];
+        assert!(
+            super::compose(super::ImageSpec {
+                sources: Some(&invalid),
+                ..spec
+            })
+            .is_err()
+        );
+        let mut damaged = heap.clone();
+        damaged.push(0);
+        assert!(
+            super::compose(super::ImageSpec {
+                heaps: &[&damaged],
+                sources: None,
+                ..spec
+            })
+            .is_err()
+        );
     }
 
     fn mixed_heap() -> Vec<u8> {

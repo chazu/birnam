@@ -8,6 +8,8 @@ registry borrow survives a native initializer or language callback.
 | Receiver / selector | Input | Result |
 |---|---|---|
 | TCC `compile:` | Trusted generated C String | Unit, or compileError. |
+| TCC `compileObject:` | Trusted generated C String | Bytes containing a relocatable object, or compileError. |
+| TCC `loadObject:` | Trusted relocatable object Bytes | Unit, or compileError; no C compilation. |
 | Unit `initialize` | none | Captured result of the unit's existing native Module initializer. |
 | Unit `initializeWith:` | Implementation Object | Same initializer with an additional rooted operand. |
 | Unit `retain:` | Object | Same Object, traced whenever the Unit is live. Used for generated Methods and native-context references. |
@@ -31,9 +33,9 @@ language cleanup or unmaps code from a finalizer. An idle checkpoint drops detac
 private Units after Execution retires their registrations.
 
 The old function-address owner registration, floor-symbol retirement cache and
-Unit-address-derived vtable cache are deleted. Source-free materialization policy
-and Image/Store orchestration remain separate integration, preserved in the
-compiler's deferred sources; allocation-elision is not restored here.
+Unit-address-derived vtable cache are deleted. Source-free materialization and
+[Image/Store orchestration](../birnam-image/README.md) use these same owners;
+allocation-elision is not restored here.
 
 `mise run native-messages` enables resource metrics and proves binding-only,
 captured, entered, suspended and recovery lifetimes with real TCC mappings. Both

@@ -1,0 +1,91 @@
+# Image persistence over Id
+
+Bootstrap loads Image after Source Loader. System `saveImage:` writes image-v8
+through a same-directory temporary file and atomic rename. `loadImage:`,
+`loadImage:rebuild:` and `loadImageBytes:rebuild:` restore through current owner
+messages. Successful mapped loading answers true; rebuilding answers false.
+Image validation/file failures answer nil with `imageSaveReport` status/detail;
+dependency native failures propagate unchanged. Failed saves preserve the existing
+destination. `imageCompositionIdentity` is nil before loading and the existing
+64-character composition digest after a successful load.
+
+The graph retains identity, shared and cyclic references, typed ordinary slots,
+boxed numbers, Strings and Bytes, persistent collections, Store Cells, CodeObjects
+and synchronous/resumable Blocks. CodeObjects retain canonical meaning and source
+provenance; Blocks retain their captures. Facts preserve the Store basis, retention
+policy and history. Source registration preserves original source objects and the
+closed-registration flag. Loading does not evaluate source or rerun initializers.
+
+Image reads ObjectModel-owned slots using `imageSizeOf:` and `imageSlotAt:in:`;
+the owner distinguishes raw words from object edges. Restoration uses
+`restoreImageSlotAt:in:put:`. Private ordinary Object layouts are reconstructed
+from those typed fields. Store owns Cell projection/restoration and its fact
+state. Execution owns Block shells and capture restoration; unfinished shells
+cannot execute. Map rebuilds address-dependent hashes through `rehashImage:`
+after method publication, preserving each restored Map's identity.
+
+Unsupported native state, including Machines and noncanonical capability objects,
+is rejected. This slice supports exported object families and their private
+behaviors; it does not invent persistence for arbitrary prototype hierarchies or
+replace unsupported references with nil. Namespace exports resolve against the
+resident modules in the receiving process.
+
+## Staging and native ownership
+
+Codegen projects named implementations from current Id dictionaries through
+Execution. `portableImageBindings` and `portableImageSources` supply the two
+snapshots. Its image stage validates canonical program/binding/selection inventories
+and prepares Methods before publication. The relevant operations are:
+
+| Operation | Purpose |
+|---|---|
+| `compilePortableImageCode:bindings:selection:` | Produce a private bundle of relocatable native objects for saving. |
+| `beginPortableImageMapped:programs:bindings:selection:` | Relocate the saved objects without C emission or compilation. |
+| `beginPortableImageRebuild:bindings:selection:` | Compile canonical programs using the existing native backend. |
+| `portableImageBlockMethod:synchronous:` | Obtain a staged Method with the saved Block disposition. |
+| `preparePortableImageBinding:implementation:` | Initialize an owned adapter for the restored implementation Block. |
+| `preparePortableImageSources:` / `swapPortableImageSources` | Prepare and exchange the source registry, retaining its predecessor. |
+| `finishPortableImageUnit` | Admit complete binding preparation. |
+| `installPortableImageBinding:on:as:source:` | Publish through Store's ordinary method protocol. |
+| `cancelPortableImageUnit` | Release staging roots. Published Blocks/Methods retain their Units. |
+
+Every generated object is owned by the existing TCC Unit. The private bundle
+binds its object count and contents' ordering to the three inventories' digest;
+image-v8 additionally checksums the bundle. Compatible loading uses TCC
+`loadObject:`. Explicit rebuilding uses `compile:`. Saving uses `compileObject:`.
+These are trusted native artifacts, with the same ABI and code-ownership contract
+as generated in-memory code.
+
+Image builds facts in an independent Store, roots old callable Methods, then
+exchanges Store state using `swapImageStateWith:`. Method publication retains
+Store's authorization and observation hooks, including removal of later source
+bindings on resident exports that are absent from the snapshot. Failure restores attempted bindings,
+the prior source registry and the complete previous Store state. This compensation
+does not consume additional fact capacity or reevaluate source. Ordinary external
+effects performed by observer callbacks are outside that state compensation.
+
+No service table, foreign payload access, global GC suppression or candidate
+framework is introduced. Roots survive collecting owner calls; entered, suspended
+and captured code continues to use Execution/TCC's existing lifetime mechanism.
+
+## Format and validation
+
+Frozen v8 fixtures retain their exact bytes. Additive heap locator 17 stores boxed
+Bytes; locator 18 identifies a synchronous Block with the existing CodeObject and
+capture representation. Optional record 10, before heap/fact records, references
+the ordinary source-registration snapshot. The runtime ABI marker distinguishes
+message-based native artifacts from the retired shim ABI. The private `BIRNAMO1`
+bundle belongs to Codegen; Image transports its bytes without reading native code.
+
+`mise run native-messages` includes the production `image` test. It saves once,
+loads mapped and rebuilt in fresh processes, then saves the rebuilt state and
+loads that file in another fresh process. Mapped tests disable both compilation
+entry points. Checks cover shared/cyclic objects, captures, Cells, history, named
+methods, identity-keyed Maps, and binary embedding after deleting the source asset.
+Collection runs after every restored ordinary slot. Partial mapping failure and
+post-write publication failure exercise cleanup and exact Store/source/binding
+compensation. Final removal of references returns the restored Unit count to zero.
+Codec tests retain all frozen fixtures and reject malformed references/bundles.
+
+Host/CLI startup, executable baking, broader source-generation replacement and
+optimizer work remain separate migration consumers.

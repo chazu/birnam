@@ -7,6 +7,7 @@ use birnam_abi::{
 use birnam_codegen::{OwnedCst, lower_program, native as emission};
 use core::{cell::RefCell, ffi::c_void};
 mod embedding;
+mod image;
 mod materialization;
 mod source;
 fn invalid() -> Outcome {
@@ -25,6 +26,8 @@ struct State {
     permanent: Vec<Oop>,
     sources: source::Sources,
     materializations: RefCell<Vec<materialization::Cached>>,
+    image_stage: RefCell<Option<image::Stage>>,
+    image_busy: core::cell::Cell<bool>,
     thread: std::thread::ThreadId,
 }
 struct Scope<'a> {
@@ -202,6 +205,7 @@ enum Op {
     Define,
     Source(source::Op),
     Materialize(materialization::Op),
+    Image(image::Op),
 }
 struct Entry {
     state: *const State,
@@ -219,6 +223,7 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
             Op::Define => 3,
             Op::Source(op) => op.count(),
             Op::Materialize(op) => op.count(),
+            Op::Image(op) => op.count(),
             _ => 1,
         };
         if a.len() != count {
@@ -230,6 +235,9 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         };
         for &v in a {
             scope.keep(object(v)?)?;
+        }
+        if let Op::Image(op) = e.op {
+            return image::operation(s, &scope, op, a);
         }
         if let Op::Materialize(op) = e.op {
             return materialization::operation(s, &scope, op, a);
@@ -325,6 +333,15 @@ unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) 
             return Err(invalid());
         };
         let v = object(*v)?;
+        let image_roots = s
+            .image_stage
+            .borrow()
+            .as_ref()
+            .map(|st| st.roots())
+            .unwrap_or_default();
+        for value in image_roots {
+            s.id.send_named(v, b"visit:", &[Operand::object(value)])?;
+        }
         let methods: Vec<_> = s
             .materializations
             .borrow()
@@ -391,6 +408,8 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
             permanent: vec![ns, root, vt, reflect_vt, receiver, reflect],
             sources: source::Sources::default(),
             materializations: RefCell::new(Vec::new()),
+            image_stage: RefCell::new(None),
+            image_busy: core::cell::Cell::new(false),
             thread: std::thread::current().id(),
         }));
         for (target, n, op) in [
@@ -432,6 +451,50 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 b"evalPersisting:from:",
                 Op::Source(source::Op::EvalFrom),
             ),
+            (vt, b"portableImageBindings", Op::Image(image::Op::Bindings)),
+            (vt, b"portableImageSources", Op::Image(image::Op::Sources)),
+            (
+                vt,
+                b"preparePortableImageSources:",
+                Op::Image(image::Op::PrepareSources),
+            ),
+            (
+                vt,
+                b"swapPortableImageSources",
+                Op::Image(image::Op::SwapSources),
+            ),
+            (
+                vt,
+                b"compilePortableImageCode:bindings:selection:",
+                Op::Image(image::Op::Compile),
+            ),
+            (
+                vt,
+                b"beginPortableImageRebuild:bindings:selection:",
+                Op::Image(image::Op::Rebuild),
+            ),
+            (
+                vt,
+                b"beginPortableImageMapped:programs:bindings:selection:",
+                Op::Image(image::Op::Mapped),
+            ),
+            (
+                vt,
+                b"portableImageBlockMethod:synchronous:",
+                Op::Image(image::Op::Method),
+            ),
+            (
+                vt,
+                b"preparePortableImageBinding:implementation:",
+                Op::Image(image::Op::Prepare),
+            ),
+            (
+                vt,
+                b"installPortableImageBinding:on:as:source:",
+                Op::Image(image::Op::Install),
+            ),
+            (vt, b"finishPortableImageUnit", Op::Image(image::Op::Finish)),
+            (vt, b"cancelPortableImageUnit", Op::Image(image::Op::Cancel)),
             (reflect_vt, b"defineMethod:on:as:", Op::Define),
         ] {
             let c = Box::into_raw(Box::new(Entry { state: s, op }));

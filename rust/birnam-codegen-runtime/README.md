@@ -62,8 +62,9 @@ Registry comparisons use current Symbol/String messages, without a state borrow
 across sends; reentrant additions are observed before publication. Identical source
 bytes return the incoming source while retaining the first registered Object.
 Different bytes, mismatched names, malformed revisions and closed registration
-answer nil with the existing diagnostic. `moduleSourceFor:` reads this registry;
-it does not claim to reconstruct an Image's current generation.
+answer nil with the existing diagnostic. `moduleSourceFor:` reads this registry.
+Image now restores it and its closed-registration flag through a staged owner
+exchange; broader source-generation replacement remains separate.
 
 Loader-facing evaluation clears `lastError`, preserves nil/diagnostic versus returned
 Error behavior, and uses owned Method/Block/Machine sends. It never calls a generated
@@ -73,8 +74,8 @@ nested Blocks. No GC policy is changed; temporary values remain explicitly roote
 
 [Source Loader](../birnam-source-loader/README.md) is wired after Codegen and tested
 with the complete authored Module manager. Compile-time embedding now uses the
-message path [below](#embedding). Generation/Image activation and compensation
-remain separate consumers of source registration.
+message path [below](#embedding). [Image activation and compensation](../birnam-image/README.md)
+use the same source objects and current Store/Execution owners.
 
 ## Generated execution
 
@@ -168,7 +169,9 @@ requirement to restore the old architecture:
 - **Publication and Image:** the historical compiler
   contains revision/generation projections, staged activation/rollback,
   compensation and materialization algorithms. Portable materialization is now
-  reconnected below; publication and Image remain pending. Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
+  reconnected below, and Image now stages owned Methods and source registration
+  with Store-state compensation. Broader generation replacement remains pending.
+  Its [acceptance cases](https://github.com/chazu/birnam/blob/3c4765089a016a01245e259e246b90472e76eaa5/rust/birnam-codegen-runtime/src/deferred.rs#L11675-L12555)
   and sibling `code_bindings.rs`, `materialization_cache.rs`, `state_contract.rs`
   and `finalizer_tests.rs` remain in the same Git tree. Reconnect only the behavior
   required by actual consumers and verify it with current owner messages.
@@ -178,8 +181,8 @@ or GC suppression as substitutes for roots. No lock or borrowed foreign bytes ma
 span an outgoing send. Publication preserves Store's MOP; executable references
 retain their Method/Unit owners. The deleted synchronous-evaluator and compiler
 state runners were not executing these tests in the current build. Production
-compiler/lifetime coverage remains in `birnam-siphon/tests/compiler.rs`; broader
-Image and publication acceptance still awaits migration.
+compiler/lifetime coverage remains in `birnam-siphon/tests/compiler.rs`; Image
+acceptance is in `birnam-siphon/tests/image.rs` and its linked contract above.
 
 ## Embedding
 
@@ -214,4 +217,4 @@ its supplied CodeObject even when its Method is shared. Cache roots use visitor
 sends; eviction leaves live Blocks and suspended frames holding their code owners.
 Failed construction publishes no cache entry. Production `materialization` tests
 cover these behaviors, collecting replacements and final Unit reclamation. Image
-and optimizer reconnection remain separate.
+uses the same canonical programs and code owners; optimizer work remains separate.
