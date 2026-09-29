@@ -47,6 +47,7 @@ const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_artifact.dylib",
     "libbirnam_portable_code.dylib",
     "libbirnam_image.dylib",
+    "libbirnam_alien.dylib",
 ];
 
 const WRAPPED_DYNAMIC_LIBRARIES: &[(&str, &str)] = &[

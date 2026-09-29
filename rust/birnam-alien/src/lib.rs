@@ -1,9 +1,5 @@
-//! Rust Alien/FFI rung.
-//!
-//! The parser, ABI classifier, code generator, and loader remain independently
-//! testable. The live runtime module owns only the frozen Alien family and the
-//! closeable dynamic-library protocol in this checkpoint; TCC wrappers and
-//! callbacks are added in later bounded slices.
+//! Alien foreign-call owner over Id messages. Signature parsing, ABI classification,
+//! C marshalling and native library ownership remain local to this module.
 
 pub mod abi;
 pub mod codegen;

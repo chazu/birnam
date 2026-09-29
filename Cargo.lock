@@ -11,7 +11,6 @@ name = "birnam-alien"
 version = "0.0.0"
 dependencies = [
  "birnam-abi",
- "birnam-tcc",
 ]
 
 [[package]]

@@ -197,6 +197,15 @@ impl HostRuntime {
             b"precisePayloads:",
             &[Operand::word(usize::from(precise_gc))],
         )?;
+        {
+            let scope = host.scope();
+            let directory = scope.string(resources.lib_dir.as_os_str().as_bytes())?;
+            scope.call(
+                host.named(b"Alien")?,
+                b"libraryDir:",
+                &[Operand::object(directory)],
+            )?;
+        }
         Ok(host)
     }
     pub fn start(resources: &Resources, policy: StartupPolicy) -> Result<Self, HostError> {
@@ -240,6 +249,7 @@ impl HostRuntime {
                 "error",
                 "relational",
                 "image",
+                "alien",
             ] {
                 let symbol = unsafe { host.id.intern_name(name.as_bytes()) }
                     .map_err(|e| native_error("intern kernel module", e))?;

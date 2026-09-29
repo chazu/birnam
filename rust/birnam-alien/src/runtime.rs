@@ -1,1342 +1,809 @@
-//! Live Alien owner seam over the frozen IdApi.
-//!
-//! The integrated Rust owner keeps the `AlienVt`/`Alien` family, dynamic-library
-//! protocol, generated wrappers, callbacks, and raw-buffer boundary over the
-//! frozen IdApi. TCC remains the compiler/relocation authority and the host
-//! remains the object, collection, and GC authority.
-
-#![allow(clippy::missing_safety_doc)]
-
-use crate::codegen::{emit_callback, emit_shim};
-use crate::loader::{LibraryRegistry, LoaderError};
-use crate::parse_signature;
+//! Alien owns foreign addresses, library handles and C marshalling. Dependencies
+//! are selected through Id messages; executable mappings belong to TCC Units.
+use crate::{codegen::emit_native, loader::LibraryRegistry, parse_signature};
 use birnam_abi::{
-    IdApi, MarkFn, Oop, borrowed_oop_args,
-    foreign_address::{self, KIND_ALIEN_MALLOC, KIND_BORROWED},
+    Oop, borrowed_bytes, borrowed_slice,
+    id_protocol::{self as native, Method, NativeEntry, Operand, Outcome, Protocol},
 };
-use core::ffi::{c_char, c_void};
-use core::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, Once, OnceLock};
+use core::{cell::RefCell, ffi::c_void, ptr};
+use std::collections::HashMap;
 
+type Answer = Result<Operand, Outcome>;
+fn invalid() -> Outcome {
+    Outcome::failed(native::INVALID_REQUEST, 0)
+}
+fn object(v: Operand) -> Result<Oop, Outcome> {
+    v.as_object().filter(|o| !o.is_null()).ok_or_else(invalid)
+}
+fn done(r: Answer) -> Outcome {
+    r.map_or_else(|e| e, Outcome::loaded)
+}
 unsafe extern "C" {
-    fn malloc(size: usize) -> *mut c_void;
-    fn free(pointer: *mut c_void);
+    fn malloc(n: usize) -> *mut c_void;
+    fn free(p: *mut c_void);
 }
-
-const RUST_ALIEN_IDENTITY: &[u8] = b"rust-alien-r5-loader\0";
-const ALIEN_VT_NAME: &[u8] = b"AlienVt\0";
-const ALIEN_NAME: &[u8] = b"Alien\0";
-
-static API: OnceLock<(usize, usize, usize, usize, usize, usize, usize)> = OnceLock::new();
-static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-static REGISTRY: OnceLock<Mutex<LibraryRegistry>> = OnceLock::new();
-static CALLBACKS: OnceLock<Mutex<Vec<CallbackEntry>>> = OnceLock::new();
-static CALLBACK_ROOTS: Once = Once::new();
-static LIVE_WRAPPERS: AtomicUsize = AtomicUsize::new(0);
-
-#[derive(Clone, Copy)]
-struct Runtime {
-    api: usize,
-    alien_vt: usize,
-    alien_obj: usize,
+struct Address {
+    pointer: usize,
+    owned: bool,
 }
-
-/// A live callback keeps both the block it dispatches to and the TCC unit that
-/// owns its executable code alive.  Raw Oops are stored as integer addresses so
-/// this registry can be protected by a process-wide mutex without inventing a
-/// Rust ownership authority for heap objects.
-#[derive(Clone, Copy)]
-struct CallbackEntry {
-    block: usize,
-    unit: usize,
-    address: usize,
-}
-
-fn abort(message: &str) -> ! {
-    eprintln!("birnam Rust Alien: {message}");
-    std::process::abort();
-}
-
-/// Test-only proof that an Alien panic cannot unwind across its C ABI.
-#[cfg(feature = "ffi-test-hooks")]
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_alien_test_panic_across_ffi() {
-    panic!("intentional Rust Alien FFI panic");
-}
-
-/// Test-only proof of Alien's fatal invariant boundary.
-#[cfg(feature = "ffi-test-hooks")]
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_alien_test_invariant_abort() {
-    abort("intentional Rust Alien FFI invariant failure");
-}
-
-unsafe fn api_ref() -> &'static IdApi {
-    let Some(address) = API.get() else {
-        abort("module is not initialized");
-    };
-    // SAFETY: native construction records the process-owned IdApi address and the host
-    // retains that table for the lifetime of the loaded floor.
-    unsafe { &*(address.0 as *const IdApi) }
-}
-
-unsafe fn intern(api: &IdApi, name: &[u8]) -> Oop {
-    // SAFETY: all current callers pass static NUL-terminated selector names.
-    unsafe { (api.intern)(name.as_ptr().cast::<c_char>()) }
-}
-
-unsafe fn argument(args: *const Oop, count: usize) -> Option<Oop> {
-    // SAFETY: the host owns the argument buffer for the synchronous method call.
-    unsafe { borrowed_oop_args(args, count)?.first().copied() }
-}
-
-unsafe fn string_bytes(_api: &IdApi, value: Oop) -> Option<Vec<u8>> {
-    if value.is_null() {
-        return None;
-    }
-    let mut length = 0usize;
-    // SAFETY: `value` is expected to be a String; the IdApi returns a borrowed
-    // byte span valid until the current send returns.
-    let pointer = unsafe { (birnam_abi::string::bytes)(value, &mut length) };
-    if length != 0 && pointer.is_null() {
-        return None;
-    }
-    // SAFETY: the host's stringBytes contract supplies the borrowed extent.
-    Some(unsafe { core::slice::from_raw_parts(pointer, length) }.to_vec())
-}
-
-unsafe fn symbol_name(api: &IdApi, value: Oop) -> Option<Vec<u8>> {
-    if value.is_null() {
-        return None;
-    }
-    let pointer = unsafe { (api.symbolName)(value) };
-    if pointer.is_null() {
-        return None;
-    }
-    Some(
-        unsafe { std::ffi::CStr::from_ptr(pointer) }
-            .to_bytes()
-            .to_vec(),
-    )
-}
-
-unsafe fn store_entity(api: &IdApi, name: &[u8]) -> Option<(Oop, Oop)> {
-    let store = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Store".as_ptr()) };
-    if store.is_null() || store == api.nilObj {
-        return None;
-    }
-    Some((store, unsafe { intern(api, name) }))
-}
-
-unsafe fn find_alien_source(api: &IdApi, store: Oop, entity: Oop, source: &[u8]) -> bool {
-    let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [entity].as_ptr(), 1) };
-    if unsafe { (birnam_abi::integer::is_integer)(count) } == 0 {
-        return false;
-    }
-    let count = unsafe { (birnam_abi::integer::value)(count) };
-    for index in 0..count {
-        let attr = unsafe {
-            (api.send)(
-                store,
-                intern(api, b"attrAt:index:\0"),
-                [entity, (birnam_abi::integer::make)(index)].as_ptr(),
-                2,
-            )
-        };
-        let value = unsafe {
-            (api.send)(
-                store,
-                intern(api, b"currentValue:attr:\0"),
-                [entity, attr].as_ptr(),
-                2,
-            )
-        };
-        if unsafe { string_bytes(api, value) }.as_deref() == Some(source) {
-            return true;
+impl Drop for Address {
+    fn drop(&mut self) {
+        if self.owned && self.pointer != 0 {
+            unsafe { free(self.pointer as *mut c_void) };
         }
     }
-    false
 }
-
-unsafe fn record_alien_source(api: &IdApi, source: &[u8]) {
-    let Some((store, entity)) = (unsafe { store_entity(api, b"__aliens__\0") }) else {
-        return;
-    };
-    if unsafe { find_alien_source(api, store, entity, source) } {
-        return;
-    }
-    let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [entity].as_ptr(), 1) };
-    if unsafe { (birnam_abi::integer::is_integer)(count) } == 0 {
-        return;
-    }
-    let count = unsafe { (birnam_abi::integer::value)(count) };
-    let mut next = 0i64;
-    for index in 0..count {
-        let attr = unsafe {
-            (api.send)(
-                store,
-                intern(api, b"attrAt:index:\0"),
-                [entity, (birnam_abi::integer::make)(index)].as_ptr(),
-                2,
-            )
-        };
-        let Some(name) = (unsafe { symbol_name(api, attr) }) else {
-            continue;
-        };
-        let Some(suffix) = name.strip_prefix(b"__alien_") else {
-            continue;
-        };
-        if let Some(index) = core::str::from_utf8(suffix)
-            .ok()
-            .and_then(|value| value.parse::<i64>().ok())
-        {
-            next = next.max(index + 1);
+struct State {
+    id: Protocol,
+    ns: Oop,
+    roots: Oop,
+    model: Oop,
+    gc: Oop,
+    receiver: Oop,
+    address_vt: Oop,
+    permanent: Vec<Oop>,
+    addresses: RefCell<HashMap<usize, Address>>,
+    // Wrapper Units are weak keys: their Methods and active invocations retain them.
+    wrappers: RefCell<Vec<usize>>,
+    callbacks: RefCell<HashMap<usize, (Oop, usize)>>,
+    libraries: RefCell<LibraryRegistry>,
+    thread: std::thread::ThreadId,
+}
+struct Scope<'a> {
+    s: &'a State,
+    tokens: RefCell<Vec<usize>>,
+}
+impl Scope<'_> {
+    unsafe fn keep(&self, o: Oop) -> Result<Oop, Outcome> {
+        unsafe {
+            let t = self
+                .s
+                .send(self.s.roots, b"retain:", &[Operand::object(o)])?
+                .as_word()
+                .ok_or_else(invalid)?;
+            self.tokens.borrow_mut().push(t);
+            Ok(o)
         }
     }
-    let key = format!("__alien_{next}");
-    let key = unsafe { intern(api, [key.as_bytes(), b"\0"].concat().as_slice()) };
-    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
+    unsafe fn call(&self, r: Oop, n: &[u8], a: &[Operand]) -> Answer {
+        unsafe {
+            let v = self.s.send(r, n, a)?;
+            if let Some(o) = v.as_object() {
+                self.keep(o)?;
+            }
+            Ok(v)
+        }
+    }
+    unsafe fn obj(&self, r: Oop, n: &[u8], a: &[Operand]) -> Result<Oop, Outcome> {
+        object(unsafe { self.call(r, n, a) }?)
+    }
+    unsafe fn named(&self, n: &[u8]) -> Result<Oop, Outcome> {
+        unsafe {
+            let key = self.keep(self.s.id.intern_name(n)?)?;
+            self.obj(self.s.ns, b"at:", &[Operand::object(key)])
+        }
+    }
+    unsafe fn string(&self, b: &[u8]) -> Result<Oop, Outcome> {
+        unsafe { self.obj(self.named(b"String")?, b"fromBytes:", &[Operand::bytes(b)]) }
+    }
+    unsafe fn integer(&self, w: usize) -> Result<Oop, Outcome> {
+        unsafe { self.obj(self.named(b"Integer")?, b"fromWord:", &[Operand::word(w)]) }
+    }
+    unsafe fn word(&self, o: Oop) -> Result<Option<usize>, Outcome> {
+        unsafe {
+            Ok(self
+                .call(self.named(b"Integer")?, b"wordOf:", &[Operand::object(o)])?
+                .as_word())
+        }
+    }
+    unsafe fn bytes(&self, o: Oop) -> Result<Option<Vec<u8>>, Outcome> {
+        unsafe {
+            if self
+                .call(self.s.id.receiver, b"behaviorOf:", &[Operand::object(o)])?
+                .as_object()
+                != Some(self.named(b"StringVt")?)
+            {
+                return Ok(None);
+            }
+            let b = self
+                .call(o, b"bytes", &[])?
+                .as_bytes()
+                .ok_or_else(invalid)?;
+            Ok(Some(
+                borrowed_bytes(b.pointer, b.length)
+                    .ok_or_else(invalid)?
+                    .to_vec(),
+            ))
+        }
+    }
+    unsafe fn error(&self, kind: &[u8], text: &[u8]) -> Answer {
+        unsafe {
+            let kind = self.keep(self.s.id.intern_name(kind)?)?;
+            let text = self.string(text)?;
+            self.call(
+                self.named(b"Error")?,
+                b"kind:message:",
+                &[Operand::object(kind), Operand::object(text)],
+            )
+        }
+    }
+    unsafe fn nil(&self) -> Answer {
+        unsafe { Ok(Operand::object(self.named(b"nil")?)) }
+    }
+    unsafe fn boolean(&self, v: bool) -> Answer {
+        unsafe {
+            Ok(Operand::object(self.named(if v {
+                b"true"
+            } else {
+                b"false"
+            })?))
+        }
+    }
+    unsafe fn is_error(&self, o: Oop) -> Result<bool, Outcome> {
+        unsafe {
+            Ok(self
+                .call(self.s.id.receiver, b"behaviorOf:", &[Operand::object(o)])?
+                .as_object()
+                == Some(self.named(b"ErrorVt")?))
+        }
+    }
+}
+impl Drop for Scope<'_> {
+    fn drop(&mut self) {
+        for t in self.tokens.get_mut().drain(..).rev() {
+            unsafe {
+                self.s
+                    .send(self.s.roots, b"release:", &[Operand::word(t)])
+                    .expect("release Alien root");
+            }
+        }
+    }
+}
+impl State {
+    unsafe fn send(&self, r: Oop, n: &[u8], a: &[Operand]) -> Answer {
+        unsafe { self.id.send_named(r, n, a) }
+    }
+    unsafe fn address(&self, scope: &Scope<'_>, pointer: usize, owned: bool) -> Answer {
+        unsafe {
+            let allocation = Address { pointer, owned };
+            let o = scope.obj(
+                self.model,
+                b"allocate:bytes:",
+                &[Operand::object(self.address_vt), Operand::word(0)],
+            )?;
+            self.addresses.borrow_mut().insert(o.addr(), allocation);
+            Ok(Operand::object(o))
+        }
+    }
+    fn pointer(&self, o: Oop) -> Option<usize> {
+        self.addresses.borrow().get(&o.addr()).map(|a| a.pointer)
+    }
+}
+#[derive(Clone, Copy)]
+enum Op {
+    LibraryDir,
+    Open,
+    Close,
+    Wrap,
+    Callback,
+    ReleaseCallback,
+    Alloc,
+    Free,
+    IsNull,
+    Equal,
+    Print,
+    PeekInt,
+    PeekByte,
+    PeekPtr,
+    PeekDouble,
+    PeekString,
+    PokeInt,
+    PokeByte,
+    PokePtr,
+    PokeDouble,
+}
+unsafe fn run(s: &State, scope: &Scope<'_>, r: Oop, a: &[Oop], op: Op) -> Answer {
     unsafe {
-        (api.send)(
+        use Op::*;
+        let expected = match op {
+            Wrap => 4,
+            Callback | Equal => {
+                if matches!(op, Callback) {
+                    2
+                } else {
+                    1
+                }
+            }
+            Free | IsNull | Print => 0,
+            PokeInt | PokeByte | PokePtr | PokeDouble => 2,
+            _ => 1,
+        };
+        if a.len() != expected {
+            return scope.nil();
+        }
+        match op {
+            LibraryDir | Open | Close => {
+                let Some(path) = scope.bytes(a[0])? else {
+                    return scope.nil();
+                };
+                if matches!(op, Close)
+                    && !s.wrappers.borrow().is_empty()
+                    && s.libraries.borrow().open_count(&path) > 0
+                {
+                    return scope.error(
+                        b"inUse",
+                        b"dlclose: a live wrapper may still call this library",
+                    );
+                }
+                let result = {
+                    let mut libs = s.libraries.borrow_mut();
+                    match op {
+                        LibraryDir => libs.set_library_dir(&path),
+                        Open => libs.open(&path),
+                        _ => libs.close(&path),
+                    }
+                };
+                match result {
+                    Ok(()) => {
+                        if matches!(op, LibraryDir) {
+                            Ok(Operand::object(r))
+                        } else {
+                            scope.boolean(true)
+                        }
+                    }
+                    Err(e) => {
+                        if matches!(op, Close) {
+                            scope.error(b"notFound", e.to_string().as_bytes())
+                        } else {
+                            scope.nil()
+                        }
+                    }
+                }
+            }
+            Alloc => {
+                let Some(n) = scope.word(a[0])? else {
+                    return scope.error(b"typeMismatch", b"alloc: needs an Integer byte count");
+                };
+                if (n as isize) <= 0 {
+                    return scope.error(b"badArgument", b"alloc: needs a positive byte count");
+                }
+                let p = malloc(n);
+                if p.is_null() {
+                    return scope.error(b"outOfMemory", b"alloc: malloc failed");
+                };
+                ptr::write_bytes(p.cast::<u8>(), 0, n);
+                s.address(scope, p.addr(), true)
+            }
+            Free => {
+                let state = s
+                    .addresses
+                    .borrow()
+                    .get(&r.addr())
+                    .map(|v| (v.pointer, v.owned));
+                match state {
+                    None => scope.error(b"typeMismatch", b"free needs a ForeignAddress"),
+                    Some((_, false)) => scope.error(
+                        b"notOwned",
+                        b"free only accepts an address returned by Alien alloc:",
+                    ),
+                    Some((0, true)) => {
+                        scope.error(b"alreadyFreed", b"the address was already freed")
+                    }
+                    Some((p, true)) => {
+                        s.addresses.borrow_mut().get_mut(&r.addr()).unwrap().pointer = 0;
+                        free(p as *mut c_void);
+                        scope.nil()
+                    }
+                }
+            }
+            IsNull => scope.boolean(s.pointer(r) == Some(0)),
+            Equal => scope.boolean(s.pointer(r).is_some() && s.pointer(r) == s.pointer(a[0])),
+            Print => {
+                let Some(p) = s.pointer(r) else {
+                    return scope.nil();
+                };
+                Ok(Operand::object(
+                    scope.string(format!("ForeignAddress(0x{p:x})").as_bytes())?,
+                ))
+            }
+            Wrap | Callback => {
+                let (function, signature, block) = if matches!(op, Wrap) {
+                    let Some(name) = scope.bytes(a[0])? else {
+                        return scope.nil();
+                    };
+                    let Some(sig) = scope.bytes(a[1])? else {
+                        return scope.nil();
+                    };
+                    let address = s.libraries.borrow().symbol_default(&name);
+                    let address = match address {
+                        Ok(p) => p.as_ptr().addr(),
+                        Err(e) => return scope.error(b"symbolNotFound", e.to_string().as_bytes()),
+                    };
+                    (Some((name, address)), sig, None)
+                } else {
+                    let Some(sig) = scope.bytes(a[1])? else {
+                        return scope.nil();
+                    };
+                    (None, sig, Some(a[0]))
+                };
+                let signature = match parse_signature(&signature) {
+                    Ok(v) => v,
+                    Err(e) => return scope.error(b"badSignature", e.to_string().as_bytes()),
+                };
+                let c = match emit_native(
+                    function.as_ref().map(|(n, p)| (n.as_slice(), *p)),
+                    &signature,
+                ) {
+                    Ok(c) => c,
+                    Err(e) => return scope.error(b"badSignature", e.to_string().as_bytes()),
+                };
+                let source = scope.string(c.as_bytes())?;
+                let unit = scope.obj(
+                    scope.named(b"TCC")?,
+                    b"compile:",
+                    &[Operand::object(source)],
+                )?;
+                if scope.is_error(unit)? {
+                    return Ok(Operand::object(unit));
+                }
+                let value = if let Some(block) = block {
+                    scope.obj(unit, b"initializeWith:", &[Operand::object(block)])?
+                } else {
+                    scope.obj(unit, b"initialize", &[])?
+                };
+                if matches!(op, Wrap) {
+                    // Unit is live before publication; collecting authorizers can re-enter Alien.
+                    s.wrappers.borrow_mut().push(unit.addr());
+                    let behavior = scope.obj(
+                        s.id.receiver,
+                        b"ensurePrivateVtableFor:",
+                        &[Operand::object(a[3])],
+                    )?;
+                    let store = scope.named(b"Store")?;
+                    let result = scope.call(
+                        store,
+                        b"addMethod:on:with:",
+                        &[
+                            Operand::object(a[2]),
+                            Operand::object(behavior),
+                            Operand::object(value),
+                        ],
+                    )?;
+                    if result.as_object() == Some(store) {
+                        record_wrap(scope, a)?;
+                        Ok(Operand::object(a[3]))
+                    } else {
+                        Ok(result)
+                    }
+                } else {
+                    let address = s.pointer(value).ok_or_else(invalid)?;
+                    let token = s
+                        .send(s.roots, b"retain:", &[Operand::object(unit)])?
+                        .as_word()
+                        .ok_or_else(invalid)?;
+                    s.callbacks.borrow_mut().insert(address, (unit, token));
+                    Ok(Operand::object(value))
+                }
+            }
+            ReleaseCallback => {
+                let Some(address) = s.pointer(a[0]) else {
+                    return scope.error(b"typeMismatch", b"releaseCallback: needs a ForeignAddress");
+                };
+                let removed = s.callbacks.borrow_mut().remove(&address);
+                if let Some((_, token)) = removed {
+                    s.send(s.roots, b"release:", &[Operand::word(token)])?;
+                    s.addresses
+                        .borrow_mut()
+                        .get_mut(&a[0].addr())
+                        .unwrap()
+                        .pointer = 0;
+                    scope.nil()
+                } else {
+                    scope.error(b"notFound", b"callback is not registered")
+                }
+            }
+            _ => {
+                let offset = a[if a.len() == 2 { 1 } else { 0 }];
+                let Some(offset) = scope.word(offset)? else {
+                    return scope.error(b"typeMismatch", b"the offset must be an Integer");
+                };
+                // Convert the value before observing the receiver address: conversions may re-enter/free it.
+                let value = if a.len() == 2 {
+                    match op {
+                        PokePtr => s.pointer(a[0]),
+                        PokeDouble => scope
+                            .call(scope.named(b"Float")?, b"bitsOf:", &[Operand::object(a[0])])?
+                            .as_word(),
+                        _ => scope.word(a[0])?,
+                    }
+                } else {
+                    Some(0)
+                };
+                let Some(value) = value else {
+                    return scope.error(b"typeMismatch", b"invalid value for foreign memory write");
+                };
+                let Some(base) = s.pointer(r) else {
+                    return scope.error(
+                        b"typeMismatch",
+                        b"memory access needs a ForeignAddress receiver",
+                    );
+                };
+                if base == 0 {
+                    return scope.error(b"nullPointer", b"cannot peek/poke through a null pointer");
+                };
+                let p = base.wrapping_add(offset);
+                match op {
+                    PeekInt => Ok(Operand::object(
+                        scope.integer(ptr::read_unaligned(p as *const usize))?,
+                    )),
+                    PeekByte => Ok(Operand::object(
+                        scope.integer(ptr::read(p as *const u8) as usize)?,
+                    )),
+                    PeekPtr => s.address(scope, ptr::read_unaligned(p as *const usize), false),
+                    PeekDouble => scope.call(
+                        scope.named(b"Float")?,
+                        b"fromBits:",
+                        &[Operand::word(ptr::read_unaligned(p as *const usize))],
+                    ),
+                    PeekString => {
+                        let b = std::ffi::CStr::from_ptr(p as *const _).to_bytes().to_vec();
+                        Ok(Operand::object(scope.string(&b)?))
+                    }
+                    PokeByte => {
+                        ptr::write(p as *mut u8, value as u8);
+                        Ok(Operand::object(r))
+                    }
+                    _ => {
+                        ptr::write_unaligned(p as *mut usize, value);
+                        Ok(Operand::object(r))
+                    }
+                }
+            }
+        }
+    }
+}
+// Keep the existing authored replay facts, using Store and Namespace owner messages.
+unsafe fn record_wrap(q: &Scope<'_>, a: &[Oop]) -> Result<(), Outcome> {
+    unsafe {
+        let target = q.call(q.s.ns, b"nameOf:", &[Operand::object(a[3])])?;
+        let target = if let Some(o) = target.as_object() {
+            Some(o)
+        } else {
+            let store = q.named(b"Store")?;
+            let globals = q.keep(q.s.id.intern_name(b"__globals__")?)?;
+            let count = q.obj(store, b"attrCount:", &[Operand::object(globals)])?;
+            let count = q.word(count)?.unwrap_or(0);
+            let mut found = None;
+            for i in 0..count {
+                let i = q.integer(i)?;
+                let key = q.obj(
+                    store,
+                    b"attrAt:index:",
+                    &[Operand::object(globals), Operand::object(i)],
+                )?;
+                if q.call(
+                    store,
+                    b"currentValue:attr:",
+                    &[Operand::object(globals), Operand::object(key)],
+                )?
+                .as_object()
+                    == Some(a[3])
+                {
+                    found = Some(key);
+                    break;
+                }
+            }
+            found
+        };
+        let Some(target) = target else { return Ok(()) };
+        let symbol_bytes = |o| -> Result<Vec<u8>, Outcome> {
+            let b = q
+                .call(q.s.id.receiver, b"symbolBytesOf:", &[Operand::object(o)])?
+                .as_bytes()
+                .ok_or_else(invalid)?;
+            Ok(borrowed_bytes(b.pointer, b.length)
+                .ok_or_else(invalid)?
+                .to_vec())
+        };
+        let target = symbol_bytes(target)?;
+        let selector = symbol_bytes(a[2])?;
+        let Some(function) = q.bytes(a[0])? else {
+            return Ok(());
+        };
+        let Some(signature) = q.bytes(a[1])? else {
+            return Ok(());
+        };
+        if function.contains(&b'"') || signature.contains(&b'"') {
+            return Ok(());
+        }
+        let source = format!(
+            "[Alien wrap: \"{}\" signature: \"{}\" as: #{} on: {}]",
+            String::from_utf8_lossy(&function),
+            String::from_utf8_lossy(&signature),
+            String::from_utf8_lossy(&selector),
+            String::from_utf8_lossy(&target)
+        );
+        let store = q.named(b"Store")?;
+        let entity = q.keep(q.s.id.intern_name(b"__aliens__")?)?;
+        let count = q.obj(store, b"attrCount:", &[Operand::object(entity)])?;
+        let count = q.word(count)?.unwrap_or(0);
+        let mut next = 0;
+        for i in 0..count {
+            let i = q.integer(i)?;
+            let key = q.obj(
+                store,
+                b"attrAt:index:",
+                &[Operand::object(entity), Operand::object(i)],
+            )?;
+            let v = q.obj(
+                store,
+                b"currentValue:attr:",
+                &[Operand::object(entity), Operand::object(key)],
+            )?;
+            if q.bytes(v)?.as_deref() == Some(source.as_bytes()) {
+                return Ok(());
+            };
+            let name = symbol_bytes(key)?;
+            if let Some(n) = name
+                .strip_prefix(b"__alien_")
+                .and_then(|n| std::str::from_utf8(n).ok())
+                .and_then(|n| n.parse::<usize>().ok())
+            {
+                next = next.max(n + 1)
+            }
+        }
+        let key = q.keep(q.s.id.intern_name(format!("__alien_{next}").as_bytes())?)?;
+        let source = q.string(source.as_bytes())?;
+        q.call(
             store,
-            intern(api, b"assert:attr:value:\0"),
-            [entity, key, source_object].as_ptr(),
-            3,
-        );
+            b"assert:attr:value:",
+            &[
+                Operand::object(entity),
+                Operand::object(key),
+                Operand::object(source),
+            ],
+        )?;
+        Ok(())
     }
 }
-
-unsafe fn global_name(api: &IdApi, target: Oop) -> Option<Vec<u8>> {
-    let exported = unsafe { (birnam_abi::namespace_names::name_of)(target) };
-    if !exported.is_null() {
-        return Some(
-            unsafe { std::ffi::CStr::from_ptr(exported) }
-                .to_bytes()
-                .to_vec(),
-        );
-    }
-    let (store, globals) = unsafe { store_entity(api, b"__globals__\0") }?;
-    let count = unsafe { (api.send)(store, intern(api, b"attrCount:\0"), [globals].as_ptr(), 1) };
-    if unsafe { (birnam_abi::integer::is_integer)(count) } == 0 {
-        return None;
-    }
-    let count = unsafe { (birnam_abi::integer::value)(count) };
-    for index in 0..count {
-        let attr = unsafe {
-            (api.send)(
-                store,
-                intern(api, b"attrAt:index:\0"),
-                [globals, (birnam_abi::integer::make)(index)].as_ptr(),
-                2,
-            )
-        };
-        let value = unsafe {
-            (api.send)(
-                store,
-                intern(api, b"currentValue:attr:\0"),
-                [globals, attr].as_ptr(),
-                2,
-            )
-        };
-        if value == target {
-            return unsafe { symbol_name(api, attr) };
+macro_rules! methods{($(($f:ident,$op:ident)),*$(,)?)=>{$(unsafe extern "C" fn $f(c:*mut c_void,r:Oop,a:*const Operand,n:usize)->Outcome{done((||unsafe{let s=&*c.cast::<State>();if s.thread!=std::thread::current().id(){return Err(invalid())}let q=Scope{s,tokens:RefCell::new(Vec::new())};q.keep(r)?;let a=borrowed_slice(a,n).ok_or_else(invalid)?.iter().map(|a|q.keep(object(*a)?)).collect::<Result<Vec<_>,_>>()?;run(s,&q,r,&a,Op::$op)})())})*};}
+methods!(
+    (library_dir, LibraryDir),
+    (open, Open),
+    (close, Close),
+    (wrap, Wrap),
+    (callback, Callback),
+    (release_callback, ReleaseCallback),
+    (alloc, Alloc),
+    (free_address, Free),
+    (is_null, IsNull),
+    (equal, Equal),
+    (print, Print),
+    (peek_int, PeekInt),
+    (peek_byte, PeekByte),
+    (peek_ptr, PeekPtr),
+    (peek_double, PeekDouble),
+    (peek_string, PeekString),
+    (poke_int, PokeInt),
+    (poke_byte, PokeByte),
+    (poke_ptr, PokePtr),
+    (poke_double, PokeDouble)
+);
+unsafe extern "C" fn address_of(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
         }
-    }
-    None
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        Ok(s.pointer(object(*v)?)
+            .map(Operand::word)
+            .unwrap_or_else(Operand::unit))
+    })())
 }
-
-unsafe fn record_alien_wrap(api: &IdApi, arguments: &[Oop]) {
-    if arguments.len() != 4 {
-        return;
-    }
-    let Some(target) = (unsafe { global_name(api, arguments[3]) }) else {
-        return;
-    };
-    let Some(function) = (unsafe { string_bytes(api, arguments[0]) }) else {
-        return;
-    };
-    let Some(signature) = (unsafe { string_bytes(api, arguments[1]) }) else {
-        return;
-    };
-    let Some(selector) = (unsafe { symbol_name(api, arguments[2]) }) else {
-        return;
-    };
-    if function.contains(&b'"') || signature.contains(&b'"') {
-        return;
-    }
-    let mut source =
-        Vec::with_capacity(function.len() + signature.len() + target.len() + selector.len() + 48);
-    source.extend_from_slice(b"[Alien wrap: \"");
-    source.extend_from_slice(&function);
-    source.extend_from_slice(b"\" signature: \"");
-    source.extend_from_slice(&signature);
-    source.extend_from_slice(b"\" as: #");
-    source.extend_from_slice(&selector);
-    source.extend_from_slice(b" on: ");
-    source.extend_from_slice(&target);
-    source.push(b']');
-    unsafe { record_alien_source(api, &source) };
-}
-
-unsafe fn is_error_object(api: &IdApi, value: Oop) -> bool {
-    let error_vt = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"ErrorVt".as_ptr()) };
-    !error_vt.is_null() && unsafe { (api.vtableOf)(value) } == error_vt
-}
-
-unsafe fn make_error(api: &IdApi, kind: &[u8], message: &[u8]) -> Oop {
-    let factory = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Error".as_ptr()) };
-    if factory.is_null() {
-        return api.nilObj;
-    }
-    let kind = unsafe { intern(api, kind) };
-    let message = unsafe { (birnam_abi::string::make)(message.as_ptr(), message.len()) };
-    if kind.is_null() || message.is_null() {
-        return api.nilObj;
-    }
-    let selector = unsafe { intern(api, b"kind:message:\0") };
-    let arguments = [kind, message];
-    // SAFETY: all arguments are process-owned Oops retained for this call.
-    unsafe { (api.send)(factory, selector, arguments.as_ptr(), arguments.len()) }
-}
-
-fn loader_error(api: &IdApi, error: LoaderError, operation: &[u8]) -> Oop {
-    let kind = match error {
-        LoaderError::NotOpen => b"notFound\0".as_slice(),
-        LoaderError::EmptyPath
-        | LoaderError::EmbeddedNul
-        | LoaderError::EmptySymbol
-        | LoaderError::SymbolEmbeddedNul => b"typeMismatch\0".as_slice(),
-        LoaderError::OpenFailed => b"loadFailed\0".as_slice(),
-        LoaderError::SymbolNotFound => b"symbolNotFound\0".as_slice(),
-    };
-    let mut message = Vec::with_capacity(operation.len() + 32);
-    message.extend_from_slice(operation);
-    message.extend_from_slice(b": ");
-    message.extend_from_slice(error.to_string().as_bytes());
-    // `api_ref` is process-owned and this method holds no Rust borrow across send.
-    unsafe { make_error(api, kind, &message) }
-}
-
-fn registry() -> &'static Mutex<LibraryRegistry> {
-    REGISTRY.get_or_init(|| Mutex::new(LibraryRegistry::default()))
-}
-
-fn callbacks() -> &'static Mutex<Vec<CallbackEntry>> {
-    CALLBACKS.get_or_init(|| Mutex::new(Vec::new()))
-}
-
-unsafe extern "C" fn callback_roots(mark: MarkFn) {
-    if let Some(runtime) = RUNTIME.get() {
-        // SAFETY: the Alien family and singleton are cached by this loaded
-        // module and are semantic roots for its dispatch surface.
-        unsafe {
-            mark(runtime.alien_vt as Oop);
-            mark(runtime.alien_obj as Oop);
+unsafe extern "C" fn from_address(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        if s.thread != std::thread::current().id() {
+            return Err(invalid());
         }
-    }
-    let live = callbacks()
-        .lock()
-        .unwrap_or_else(|_| abort("Alien callback registry was poisoned"));
-    // `MarkFn` only records a root in the host collector worklist; it cannot
-    // re-enter an Alien method or the Rust registry. Keep the lock while
-    // marking so GC never allocates a temporary Rust snapshot.
-    for entry in live.iter() {
-        // SAFETY: every entry was copied from a live Oop supplied by the host;
-        // the root provider is called synchronously by that same collector.
-        unsafe {
-            mark(entry.block as Oop);
-            mark(entry.unit as Oop);
-        }
-    }
-}
-
-unsafe fn ensure_callback_roots(roots: *const birnam_abi::root_registry::ApiV1) {
-    CALLBACK_ROOTS.call_once(|| {
-        // SAFETY: the host IdApi retains this process-owned root provider for
-        // the lifetime of the floor. Registration occurs once per process.
-        unsafe { birnam_abi::root_registry::register(roots, callback_roots) };
-    });
-}
-
-unsafe fn address_value(api: &IdApi, value: Oop) -> Option<usize> {
-    unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), value) }.map(|(address, _kind)| address)
-}
-
-unsafe fn resolve_buffer_address(api: &IdApi, receiver: Oop, offset: Oop) -> Result<usize, Oop> {
-    let Some((base, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) }) else {
-        return Err(unsafe {
-            make_error(
-                api,
-                b"typeMismatch\0",
-                b"memory access needs a ForeignAddress receiver",
-            )
-        });
-    };
-    if base == 0 {
-        return Err(unsafe {
-            make_error(
-                api,
-                b"nullPointer\0",
-                b"cannot peek/poke through a null pointer",
-            )
-        });
-    }
-    if unsafe { (birnam_abi::integer::is_integer)(offset) } == 0 {
-        return Err(unsafe {
-            make_error(api, b"typeMismatch\0", b"the offset must be an Integer")
-        });
-    }
-    let signed = unsafe { (birnam_abi::integer::value)(offset) } as u64;
-    Ok(base.wrapping_add(signed as usize))
-}
-
-unsafe extern "C" fn alien_alloc(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    if unsafe { (birnam_abi::integer::is_integer)(value) } == 0 {
-        return unsafe {
-            make_error(
-                api,
-                b"typeMismatch\0",
-                b"alloc: needs an Integer byte count",
-            )
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
         };
-    }
-    let size = unsafe { (birnam_abi::integer::value)(value) };
-    if size <= 0 {
-        return unsafe { make_error(api, b"badArgument\0", b"alloc: needs a positive byte count") };
-    }
-    let pointer = unsafe { malloc(size as usize) };
-    if pointer.is_null() {
-        return unsafe { make_error(api, b"outOfMemory\0", b"alloc: malloc failed") };
-    }
-    // SAFETY: malloc returned `size` writable bytes and the slice does not
-    // escape; this is the frozen zero-initialized buffer contract.
-    unsafe { ptr::write_bytes(pointer.cast::<u8>(), 0, size as usize) };
-    let Some(address) =
-        (unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), pointer as usize, KIND_ALIEN_MALLOC) })
-    else {
-        unsafe { free(pointer) };
-        return unsafe {
-            make_error(
-                api,
-                b"outOfMemory\0",
-                b"alloc: could not allocate the ForeignAddress owner",
-            )
+        let q = Scope {
+            s,
+            tokens: RefCell::new(Vec::new()),
         };
-    };
-    unsafe { birnam_abi::finalizers::set(API.get().unwrap().6 as *const birnam_abi::finalizers::ApiV1, address, alien_buffer_finalize) };
-    address
+        s.address(&q, v.as_word().ok_or_else(invalid)?, false)
+    })())
 }
-
-unsafe extern "C" fn alien_free(receiver: Oop, _args: *const Oop, _count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    let Some((address, kind)) = (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) }) else {
-        return unsafe { make_error(api, b"typeMismatch\0", b"free needs a ForeignAddress") };
-    };
-    if kind != KIND_ALIEN_MALLOC {
-        return unsafe {
-            make_error(
-                api,
-                b"notOwned\0",
-                b"free only accepts an address returned by Alien alloc:",
-            )
-        };
-    }
-    if address == 0 {
-        return unsafe { make_error(api, b"alreadyFreed\0", b"the address was already freed") };
-    }
-    unsafe { foreign_address::clear(api, execution_imports(), execution_vtables(), receiver) };
-    unsafe { free(address as *mut c_void) };
-    api.nilObj
-}
-
-unsafe extern "C" fn foreign_address_is_null(
-    receiver: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    match unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) } {
-        Some((0, _kind)) => api.trueObj,
-        Some((_address, _kind)) => api.falseObj,
-        None => api.nilObj,
-    }
-}
-
-unsafe extern "C" fn foreign_address_equal(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    let (Some((left, _left_kind)), Some(other)) =
-        (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) }, unsafe {
-            argument(args, count)
-        })
-    else {
-        return api.nilObj;
-    };
-    match unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), other) } {
-        Some((right, _right_kind)) if left == right => api.trueObj,
-        _ => api.falseObj,
-    }
-}
-
-unsafe extern "C" fn foreign_address_print_string(
-    receiver: Oop,
-    _args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 0 {
-        return api.nilObj;
-    }
-    let Some((address, _kind)) = (unsafe { foreign_address::value(api, execution_imports(), execution_vtables(), receiver) }) else {
-        return api.nilObj;
-    };
-    let text = format!("ForeignAddress(0x{address:x})");
-    unsafe { (birnam_abi::string::make)(text.as_ptr(), text.len()) }
-}
-
-unsafe extern "C" fn alien_buffer_finalize(object: Oop) {
-    // Only Alien-owned buffers receive this finalizer, so reading the fixed
-    // two-word payload does not need an IdApi query during collection.
-    let address = unsafe { object.cast::<usize>().read() };
-    let kind = unsafe { object.cast::<usize>().add(1).read() };
-    if address != 0 && kind == KIND_ALIEN_MALLOC {
-        unsafe { object.cast::<usize>().write(0) };
-        unsafe { free(address as *mut c_void) };
-    }
-}
-
-unsafe extern "C" fn alien_peek_int(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(offset) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    // SAFETY: raw buffer operations intentionally follow the caller's C-memory
-    // contract; unaligned reads match the native `align(1)` implementation.
-    let value = unsafe { ptr::read_unaligned(address as *const i64) };
-    unsafe { (birnam_abi::integer::make)(value) }
-}
-
-unsafe extern "C" fn alien_peek_byte(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(offset) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    let value = unsafe { ptr::read(address as *const u8) };
-    unsafe { (birnam_abi::integer::make)(i64::from(value)) }
-}
-
-unsafe extern "C" fn alien_peek_pointer(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(offset) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    let value = unsafe { ptr::read_unaligned(address as *const usize) };
-    unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), value, KIND_BORROWED) }.unwrap_or(api.nilObj)
-}
-
-unsafe extern "C" fn alien_peek_double(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(offset) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    let value = unsafe { ptr::read_unaligned(address as *const f64) };
-    unsafe { (birnam_abi::float::make)(value) }
-}
-
-unsafe extern "C" fn alien_peek_string(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(offset) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let address = match unsafe { resolve_buffer_address(api, receiver, offset) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    // SAFETY: this operation deliberately adopts the C NUL-terminated string
-    // contract; the result is copied into a managed Birnam String immediately.
-    let bytes = unsafe { std::ffi::CStr::from_ptr(address as *const c_char) }.to_bytes();
-    unsafe { (birnam_abi::string::make)(bytes.as_ptr(), bytes.len()) }
-}
-
-unsafe extern "C" fn alien_poke_int(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    if arguments.len() != 2 || unsafe { (birnam_abi::integer::is_integer)(arguments[0]) } == 0 {
-        return if arguments.len() == 2 {
-            unsafe { make_error(api, b"typeMismatch\0", b"pokeInt: needs an Integer value") }
-        } else {
-            api.nilObj
-        };
-    }
-    let address = match unsafe { resolve_buffer_address(api, receiver, arguments[1]) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    let value = unsafe { (birnam_abi::integer::value)(arguments[0]) };
-    unsafe { ptr::write_unaligned(address as *mut i64, value) };
-    receiver
-}
-
-unsafe extern "C" fn alien_poke_byte(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    if arguments.len() != 2 || unsafe { (birnam_abi::integer::is_integer)(arguments[0]) } == 0 {
-        return if arguments.len() == 2 {
-            unsafe { make_error(api, b"typeMismatch\0", b"pokeByte: needs an Integer value") }
-        } else {
-            api.nilObj
-        };
-    }
-    let address = match unsafe { resolve_buffer_address(api, receiver, arguments[1]) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    let value = unsafe { (birnam_abi::integer::value)(arguments[0]) } as u8;
-    unsafe { ptr::write(address as *mut u8, value) };
-    receiver
-}
-
-unsafe extern "C" fn alien_poke_pointer(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    if arguments.len() != 2 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { address_value(api, arguments[0]) }) else {
-        return unsafe {
-            make_error(
-                api,
-                b"typeMismatch\0",
-                b"pokePtr: needs a ForeignAddress value",
-            )
-        };
-    };
-    let address = match unsafe { resolve_buffer_address(api, receiver, arguments[1]) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    unsafe { ptr::write_unaligned(address as *mut usize, value) };
-    receiver
-}
-
-unsafe extern "C" fn alien_poke_double(receiver: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-        return api.nilObj;
-    };
-    if arguments.len() != 2 || unsafe { (birnam_abi::float::is_float)(arguments[0]) } == 0 {
-        return if arguments.len() == 2 {
-            unsafe { make_error(api, b"typeMismatch\0", b"pokeDouble: needs a Float value") }
-        } else {
-            api.nilObj
-        };
-    }
-    let address = match unsafe { resolve_buffer_address(api, receiver, arguments[1]) } {
-        Ok(address) => address,
-        Err(error) => return error,
-    };
-    let value = unsafe { (birnam_abi::float::value)(arguments[0]) };
-    unsafe { ptr::write_unaligned(address as *mut f64, value) };
-    receiver
-}
-
-unsafe extern "C" fn alien_library_dir(self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(path) = (unsafe { string_bytes(api, value) }) else {
-        return api.nilObj;
-    };
-    let mut registry = registry()
-        .lock()
-        .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
-    if registry.set_library_dir(&path).is_err() {
-        return api.nilObj;
-    }
-    self_object
-}
-
-unsafe extern "C" fn alien_dlopen(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(path) = (unsafe { string_bytes(api, value) }) else {
-        return api.nilObj;
-    };
-    let mut registry = registry()
-        .lock()
-        .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
-    match registry.open(&path) {
-        Ok(()) => api.trueObj,
-        Err(_) => api.nilObj,
-    }
-}
-
-unsafe extern "C" fn alien_dlclose(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(path) = (unsafe { string_bytes(api, value) }) else {
-        return api.nilObj;
-    };
-    let mut registry = registry()
-        .lock()
-        .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
-    if LIVE_WRAPPERS.load(Ordering::Relaxed) != 0 && registry.open_count(&path) != 0 {
-        drop(registry);
-        return unsafe {
-            make_error(
-                api,
-                b"inUse\0",
-                b"dlclose: a live wrapper may still call this library",
-            )
-        };
-    }
-    let result = registry.close(&path);
-    drop(registry);
-    match result {
-        Ok(()) => api.trueObj,
-        Err(error) => loader_error(api, error, b"dlclose"),
-    }
-}
-
-unsafe extern "C" fn alien_wrap(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    let (function_object, signature_object, selector, target) = {
-        let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-            return api.nilObj;
-        };
-        if arguments.len() != 4 {
-            return api.nilObj;
-        }
-        (arguments[0], arguments[1], arguments[2], arguments[3])
-    };
-    let record_arguments = [function_object, signature_object, selector, target];
-    let Some(function_name) = (unsafe { string_bytes(api, function_object) }) else {
-        return api.nilObj;
-    };
-    let Some(signature_bytes) = (unsafe { string_bytes(api, signature_object) }) else {
-        return api.nilObj;
-    };
-    let signature = match parse_signature(&signature_bytes) {
-        Ok(signature) => signature,
-        Err(error) => unsafe {
-            return make_error(api, b"badSignature\0", error.to_string().as_bytes());
-        },
-    };
-    if !signature.aggregates.is_empty() && unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) }.is_null() {
-        return unsafe {
-            make_error(
-                api,
-                b"moduleNotLoaded\0",
-                b"a struct signature needs the collection module",
-            )
-        };
-    }
-    let address_result = {
-        let registry = registry()
-            .lock()
-            .unwrap_or_else(|_| abort("Alien library registry was poisoned"));
-        registry.symbol_default(&function_name)
-    };
-    let address = match address_result {
-        Ok(address) => address.as_ptr() as usize,
-        Err(error) => return loader_error(api, error, b"wrap"),
-    };
-    let source = match emit_shim(&function_name, &signature) {
-        Ok(source) => source,
-        Err(error) => unsafe {
-            return make_error(api, b"badSignature\0", error.to_string().as_bytes());
-        },
-    };
-    let tcc = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Tcc".as_ptr()) };
-    if tcc.is_null() {
-        return unsafe { make_error(api, b"moduleNotLoaded\0", b"Tcc is not loaded") };
-    }
-    let new_selector = unsafe { intern(api, b"new\0") };
-    // SAFETY: all sends below use process-owned selectors and live Oops; no Rust
-    // borrow survives a send or crosses into generated C.
-    let unit = unsafe { (api.send)(tcc, new_selector, ptr::null(), 0) };
-    if unit.is_null() || unit == api.nilObj {
-        return unsafe { make_error(api, b"compileFailed\0", b"could not create a compile unit") };
-    }
-    let compile_selector = unsafe { intern(api, b"compile:\0") };
-    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
-    if source_object.is_null()
-        || unsafe { (api.send)(unit, compile_selector, &source_object, 1) } == api.nilObj
-    {
-        return unsafe {
-            make_error(
-                api,
-                b"compileFailed\0",
-                b"the generated shim C did not compile",
-            )
-        };
-    }
-    let bind_selector = unsafe { intern(api, b"bindRuntime\0") };
-    if unsafe { (api.send)(unit, bind_selector, ptr::null(), 0) } == api.nilObj {
-        return unsafe { make_error(api, b"compileFailed\0", b"TCC runtime binding failed") };
-    }
-    let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
-    let function_name_object =
-        unsafe { (birnam_abi::string::make)(function_name.as_ptr(), function_name.len()) };
-    let Some(address_object) = (unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), address, KIND_BORROWED) })
-    else {
-        return unsafe { make_error(api, b"outOfMemory\0", b"could not box the symbol address") };
-    };
-    let symbol_arguments = [function_name_object, address_object];
-    if unsafe {
-        (api.send)(
-            unit,
-            add_symbol_selector,
-            symbol_arguments.as_ptr(),
-            symbol_arguments.len(),
-        )
-    } == api.nilObj
-    {
-        return unsafe {
-            make_error(
-                api,
-                b"compileFailed\0",
-                b"the wrapped symbol could not be bound",
-            )
-        };
-    }
-    if !signature.aggregates.is_empty() {
-        let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) };
-        let vector_name = unsafe { (birnam_abi::string::make)(c"__vecFactory".as_ptr().cast(), 12) };
-        let Some(vector_address) =
-            (unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), vector as usize, KIND_BORROWED) })
-        else {
-            return unsafe {
-                make_error(api, b"outOfMemory\0", b"could not box the Vector address")
-            };
-        };
-        let vector_arguments = [vector_name, vector_address];
-        if unsafe {
-            (api.send)(
-                unit,
-                add_symbol_selector,
-                vector_arguments.as_ptr(),
-                vector_arguments.len(),
-            )
-        } == api.nilObj
-        {
-            return unsafe {
-                make_error(api, b"compileFailed\0", b"Vector factory binding failed")
-            };
-        }
-    }
-    let relocate_selector = unsafe { intern(api, b"relocate\0") };
-    if unsafe { (api.send)(unit, relocate_selector, ptr::null(), 0) } == api.nilObj {
-        return unsafe { make_error(api, b"relocateFailed\0", b"could not relocate the shim") };
-    }
-    let install_selector = unsafe { intern(api, b"install:as:on:\0") };
-    let shim_name = unsafe { (birnam_abi::string::make)(c"__shim".as_ptr().cast(), 6) };
-    let install_arguments = [shim_name, selector, target];
-    let installed = unsafe {
-        (api.send)(
-            unit,
-            install_selector,
-            install_arguments.as_ptr(),
-            install_arguments.len(),
-        )
-    };
-    if installed == api.nilObj {
-        return unsafe {
-            make_error(
-                api,
-                b"compileFailed\0",
-                b"the shim method could not be installed",
-            )
-        };
-    }
-    if installed != api.nilObj {
-        LIVE_WRAPPERS.fetch_add(1, Ordering::Relaxed);
-        if !unsafe { is_error_object(api, installed) } {
-            unsafe { record_alien_wrap(api, &record_arguments) };
-        }
-    }
-    installed
-}
-
-unsafe extern "C" fn alien_callback(_self_object: Oop, args: *const Oop, count: usize) -> Oop {
-    let api = unsafe { api_ref() };
-    let (block, signature_object) = {
-        let Some(arguments) = (unsafe { borrowed_oop_args(args, count) }) else {
-            return api.nilObj;
-        };
-        if arguments.len() != 2 {
-            return api.nilObj;
-        }
-        (arguments[0], arguments[1])
-    };
-    if block.is_null() || block == api.nilObj {
-        return unsafe { make_error(api, b"typeMismatch\0", b"callback needs a live block") };
-    }
-    let Some(signature_bytes) = (unsafe { string_bytes(api, signature_object) }) else {
-        return unsafe {
-            make_error(
-                api,
-                b"typeMismatch\0",
-                b"callback signature must be a String",
-            )
-        };
-    };
-    let signature = match parse_signature(&signature_bytes) {
-        Ok(signature) => signature,
-        Err(error) => unsafe {
-            return make_error(api, b"badSignature\0", error.to_string().as_bytes());
-        },
-    };
-    if matches!(
-        signature.return_type,
-        crate::Type::Scalar(crate::Scalar::StringPointer)
-    ) {
-        return unsafe { make_error(api, b"badSignature\0", b"a callback cannot return a string") };
-    }
-    if !signature.aggregates.is_empty() && unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) }.is_null() {
-        return unsafe {
-            make_error(
-                api,
-                b"moduleNotLoaded\0",
-                b"a struct signature needs the collection module",
-            )
-        };
-    }
-    let source = match emit_callback(&signature) {
-        Ok(source) => source,
-        Err(error) => unsafe {
-            return make_error(api, b"badSignature\0", error.to_string().as_bytes());
-        },
-    };
-    let tcc = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Tcc".as_ptr()) };
-    if tcc.is_null() {
-        return unsafe { make_error(api, b"moduleNotLoaded\0", b"Tcc is not loaded") };
-    }
-    // SAFETY: this is the same synchronous TCC send sequence used by wrappers;
-    // no Rust borrow survives any send.
-    let unit = unsafe { (api.send)(tcc, intern(api, b"new\0"), ptr::null(), 0) };
-    if unit.is_null() || unit == api.nilObj {
-        return unsafe { make_error(api, b"compileFailed\0", b"could not create a callback unit") };
-    }
-    let source_object = unsafe { (birnam_abi::string::make)(source.as_ptr(), source.len()) };
-    if source_object.is_null()
-        || unsafe { (api.send)(unit, intern(api, b"compile:\0"), &source_object, 1) } == api.nilObj
-    {
-        return unsafe {
-            make_error(
-                api,
-                b"compileFailed\0",
-                b"the generated callback C did not compile",
-            )
-        };
-    }
-    if unsafe { (api.send)(unit, intern(api, b"bindRuntime\0"), ptr::null(), 0) } == api.nilObj {
-        return unsafe { make_error(api, b"compileFailed\0", b"TCC runtime binding failed") };
-    }
-    let add_symbol_selector = unsafe { intern(api, b"addSymbol:value:\0") };
-    let block_name = unsafe { (birnam_abi::string::make)(c"__cbBlock".as_ptr().cast(), 9) };
-    let Some(block_address) =
-        (unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), block as usize, KIND_BORROWED) })
-    else {
-        return unsafe { make_error(api, b"outOfMemory\0", b"could not box the callback block") };
-    };
-    let block_arguments = [block_name, block_address];
-    if unsafe {
-        (api.send)(
-            unit,
-            add_symbol_selector,
-            block_arguments.as_ptr(),
-            block_arguments.len(),
-        )
-    } == api.nilObj
-    {
-        return unsafe { make_error(api, b"compileFailed\0", b"callback block binding failed") };
-    }
-    if !signature.aggregates.is_empty() {
-        let vector = unsafe { birnam_abi::namespace_import::import(execution_imports(), c"Vector".as_ptr()) };
-        let vector_name = unsafe { (birnam_abi::string::make)(c"__vecFactory".as_ptr().cast(), 12) };
-        let Some(vector_address) =
-            (unsafe { foreign_address::allocate(api, execution_layouts(), execution_presence(), execution_imports(), execution_exports(), vector as usize, KIND_BORROWED) })
-        else {
-            return unsafe {
-                make_error(api, b"outOfMemory\0", b"could not box the Vector address")
-            };
-        };
-        let vector_arguments = [vector_name, vector_address];
-        if unsafe {
-            (api.send)(
-                unit,
-                add_symbol_selector,
-                vector_arguments.as_ptr(),
-                vector_arguments.len(),
-            )
-        } == api.nilObj
-        {
-            return unsafe {
-                make_error(api, b"compileFailed\0", b"Vector factory binding failed")
-            };
-        }
-    }
-    if unsafe { (api.send)(unit, intern(api, b"relocate\0"), ptr::null(), 0) } == api.nilObj {
-        return unsafe { make_error(api, b"relocateFailed\0", b"could not relocate the callback") };
-    }
-    let symbol_name = unsafe { (birnam_abi::string::make)(c"__cb".as_ptr().cast(), 4) };
-    let callback_address = unsafe { (api.send)(unit, intern(api, b"symbol:\0"), &symbol_name, 1) };
-    let Some(address) = (unsafe { address_value(api, callback_address) }) else {
-        return unsafe {
-            make_error(
-                api,
-                b"symbolNotFound\0",
-                b"the callback entry symbol was not found",
-            )
-        };
-    };
-    callbacks()
-        .lock()
-        .unwrap_or_else(|_| abort("Alien callback registry was poisoned"))
-        .push(CallbackEntry {
-            block: block as usize,
-            unit: unit as usize,
-            address,
-        });
-    callback_address
-}
-
-unsafe extern "C" fn alien_release_callback(
-    _self_object: Oop,
-    args: *const Oop,
-    count: usize,
-) -> Oop {
-    let api = unsafe { api_ref() };
-    if count != 1 {
-        return api.nilObj;
-    }
-    let Some(value) = (unsafe { argument(args, count) }) else {
-        return api.nilObj;
-    };
-    let Some(address) = (unsafe { address_value(api, value) }) else {
-        return unsafe {
-            make_error(
-                api,
-                b"typeMismatch\0",
-                b"releaseCallback: needs a callback address",
-            )
-        };
-    };
-    let entry = {
-        let mut live = callbacks()
-            .lock()
-            .unwrap_or_else(|_| abort("Alien callback registry was poisoned"));
-        let Some(index) = live.iter().position(|entry| entry.address == address) else {
-            return unsafe {
-                make_error(
-                    api,
-                    b"notFound\0",
-                    b"releaseCallback: no live callback at that address",
-                )
-            };
-        };
-        live.swap_remove(index)
-    };
-    // The caller's explicit release is an unsafe contract: it promises that C
-    // will never invoke the address again. Marking the unit disposable lets the
-    // host reclaim its executable pages once the unit is otherwise unreachable.
-    let _ = unsafe {
-        (api.send)(
-            entry.unit as Oop,
-            intern(api, b"disposable\0"),
-            ptr::null(),
-            0,
-        )
-    };
-    unsafe { foreign_address::clear(api, execution_imports(), execution_vtables(), value) };
-    api.trueObj
-}
-
-unsafe fn bring_up(api_pointer: *mut IdApi, presence: *const birnam_abi::namespace_presence::ApiV1, imports: *const birnam_abi::namespace_import::ApiV1, exports: *const birnam_abi::namespace_export::ApiV1, vtables: *const birnam_abi::vtable_enumeration::ApiV2, roots: *const birnam_abi::root_registry::ApiV1, layouts: *const birnam_abi::payload_layout::ApiV1, finalizers: *const birnam_abi::finalizers::ApiV1, roots_owner: *const birnam_abi::root_registry::OwnedV1) {
-    if api_pointer.is_null() {
-        abort("native construction received a null IdApi");
-    }
-    let address = api_pointer as usize;
-    match API.get() {
-        Some(existing) if existing.0 != address => abort("IdApi was replaced"),
-        Some(_) => {}
-        None => {
-            let _ = API.set((address, presence as usize, imports as usize, exports as usize, vtables as usize, layouts as usize, finalizers as usize));
-        }
-    }
-    let mut retained = if roots_owner.is_null() { None } else { Some(unsafe { birnam_abi::root_registry::ConstructionRoots::new(roots_owner) }) };
-    let api = unsafe { &*api_pointer };
-    let Some((foreign_address_vt, _foreign_address)) =
-        (unsafe { foreign_address::ensure_family_with_roots(api, layouts, presence, imports, exports, retained.as_mut()) })
-    else {
-        abort("ForeignAddress exports were incomplete");
-    };
-    unsafe { ensure_callback_roots(roots) };
-    let mut retain = |object| { if let Some(roots) = &mut retained { unsafe { roots.keep(object) } } else { object } };
-    let reloading = unsafe { birnam_abi::namespace_presence::contains(presence, ALIEN_NAME.as_ptr().cast()) } != 0;
-    let (alien_vt, alien_obj) = if reloading {
-        let alien_vt = unsafe { birnam_abi::namespace_import::import(imports, ALIEN_VT_NAME.as_ptr().cast()) };
-        let alien_obj = unsafe { birnam_abi::namespace_import::import(imports, ALIEN_NAME.as_ptr().cast()) };
-        (alien_vt, alien_obj)
+unsafe extern "C" fn check_thread(c: *mut c_void, _: Oop, _: *const Operand, n: usize) -> Outcome {
+    let s = unsafe { &*c.cast::<State>() };
+    if n == 0 && s.thread == std::thread::current().id() {
+        Outcome::loaded(Operand::word(1))
     } else {
-        let alien_vt = retain(unsafe { (api.proto)(api.object_vt) });
-        let alien_obj = retain(unsafe { (api.alloc)(alien_vt, 0) });
-        (alien_vt, alien_obj)
-    };
-    if alien_vt.is_null() || alien_obj.is_null() {
-        abort("Alien family allocation/import failed");
+        invalid()
     }
-    let runtime = RUNTIME.get_or_init(|| Runtime {
-        api: address,
-        alien_vt: alien_vt as usize,
-        alien_obj: alien_obj as usize,
-    });
-    if runtime.api != address {
-        abort("Alien runtime was initialized with a different IdApi");
-    }
-    unsafe {
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"printString\0"),
-            foreign_address_print_string,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"=\0"),
-            foreign_address_equal,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"isNull\0"),
-            foreign_address_is_null,
-        );
-        (api.method)(
-            runtime.alien_vt as Oop,
-            intern(api, b"libraryDir:\0"),
-            alien_library_dir,
-        );
-        (api.method)(
-            runtime.alien_vt as Oop,
-            intern(api, b"dlopen:\0"),
-            alien_dlopen,
-        );
-        (api.method)(
-            runtime.alien_vt as Oop,
-            intern(api, b"dlclose:\0"),
-            alien_dlclose,
-        );
-        (api.method)(
-            runtime.alien_vt as Oop,
-            intern(api, b"wrap:signature:as:on:\0"),
-            alien_wrap,
-        );
-        (api.method)(
-            runtime.alien_vt as Oop,
-            intern(api, b"callback:signature:\0"),
-            alien_callback,
-        );
-        (api.method)(
-            runtime.alien_vt as Oop,
-            intern(api, b"releaseCallback:\0"),
-            alien_release_callback,
-        );
-        (api.method)(
-            runtime.alien_vt as Oop,
-            intern(api, b"alloc:\0"),
-            alien_alloc,
-        );
-        (api.method)(foreign_address_vt, intern(api, b"free\0"), alien_free);
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"peekIntAt:\0"),
-            alien_peek_int,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"peekByteAt:\0"),
-            alien_peek_byte,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"peekPtrAt:\0"),
-            alien_peek_pointer,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"peekDoubleAt:\0"),
-            alien_peek_double,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"peekStringAt:\0"),
-            alien_peek_string,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"pokeInt:at:\0"),
-            alien_poke_int,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"pokeByte:at:\0"),
-            alien_poke_byte,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"pokePtr:at:\0"),
-            alien_poke_pointer,
-        );
-        (api.method)(
-            foreign_address_vt,
-            intern(api, b"pokeDouble:at:\0"),
-            alien_poke_double,
-        );
-    }
-    if !reloading {
-        unsafe {
-            let _ = birnam_abi::namespace_export::export(exports, ALIEN_VT_NAME.as_ptr().cast(), runtime.alien_vt as Oop);
-            let _ = birnam_abi::namespace_export::export(exports, ALIEN_NAME.as_ptr().cast(), runtime.alien_obj as Oop);
+}
+unsafe extern "C" fn roots(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        for &o in &s.permanent {
+            s.send(object(*v)?, b"visit:", &[Operand::object(o)])?;
         }
+        Ok(Operand::unit())
+    })())
+}
+unsafe extern "C" fn retire(c: *mut c_void, _: Oop, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        let s = &*c.cast::<State>();
+        let Some([v]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        let b = v.as_bytes().ok_or_else(invalid)?;
+        let b = borrowed_bytes(b.pointer, b.length).ok_or_else(invalid)?;
+        if b.len() % size_of::<usize>() != 0 {
+            return Err(invalid());
+        }
+        for chunk in b.chunks_exact(size_of::<usize>()) {
+            let o = usize::from_ne_bytes(chunk.try_into().unwrap());
+            s.addresses.borrow_mut().remove(&o);
+            s.wrappers.borrow_mut().retain(|u| *u != o);
+        }
+        Ok(Operand::unit())
+    })())
+}
+unsafe fn construct(id: Protocol, ns: Oop) -> Answer {
+    unsafe {
+        let named =
+            |n: &[u8]| object(id.send_named(ns, b"at:", &[Operand::object(id.intern_name(n)?)])?);
+        let existing = id.send_named(ns, b"at:", &[Operand::object(id.intern_name(b"Alien")?)])?;
+        if existing.as_object().is_some() {
+            return Ok(existing);
+        }
+        let mut state = Box::new(State {
+            id,
+            ns,
+            roots: named(b"Roots")?,
+            model: named(b"ObjectModel")?,
+            gc: named(b"GC")?,
+            receiver: ptr::null_mut(),
+            address_vt: ptr::null_mut(),
+            permanent: Vec::new(),
+            addresses: RefCell::new(HashMap::new()),
+            wrappers: RefCell::new(Vec::new()),
+            callbacks: RefCell::new(HashMap::new()),
+            libraries: RefCell::new(LibraryRegistry::default()),
+            thread: std::thread::current().id(),
+        });
+        let q = Scope {
+            s: &state,
+            tokens: RefCell::new(Vec::new()),
+        };
+        let vt = q.obj(named(b"ObjectVt")?, b"delegated", &[])?;
+        let av = q.obj(named(b"ObjectVt")?, b"delegated", &[])?;
+        let receiver = q.obj(
+            state.model,
+            b"allocate:bytes:",
+            &[Operand::object(vt), Operand::word(0)],
+        )?;
+        let prototype = q.obj(
+            state.model,
+            b"allocate:bytes:",
+            &[Operand::object(av), Operand::word(0)],
+        )?;
+        // Transfer construction roots to the registered owner before releasing them.
+        let tokens = q.tokens.take();
+        drop(q);
+        state.receiver = receiver;
+        state.address_vt = av;
+        state.permanent = vec![
+            ns,
+            state.roots,
+            state.model,
+            state.gc,
+            vt,
+            av,
+            receiver,
+            prototype,
+        ];
+        state.addresses.borrow_mut().insert(
+            prototype.addr(),
+            Address {
+                pointer: 0,
+                owned: false,
+            },
+        );
+        id.send_named(
+            id.receiver,
+            b"ownerOf:put:",
+            &[Operand::object(vt), Operand::object(receiver)],
+        )?;
+        id.send_named(
+            id.receiver,
+            b"ownerOf:put:",
+            &[Operand::object(av), Operand::object(prototype)],
+        )?;
+        let s = Box::into_raw(state);
+        for (target, name, f) in [
+            (vt, b"libraryDir:".as_slice(), library_dir as Method),
+            (vt, b"dlopen:", open),
+            (vt, b"dlclose:", close),
+            (vt, b"wrap:signature:as:on:", wrap),
+            (vt, b"callback:signature:", callback),
+            (vt, b"releaseCallback:", release_callback),
+            (vt, b"alloc:", alloc),
+            (vt, b"addressOf:", address_of),
+            (vt, b"fromAddress:", from_address),
+            (vt, b"checkThread", check_thread),
+            (vt, b"rootsDo:", roots),
+            (vt, b"retire:", retire),
+            (av, b"free", free_address),
+            (av, b"isNull", is_null),
+            (av, b"=", equal),
+            (av, b"printString", print),
+            (av, b"peekIntAt:", peek_int),
+            (av, b"peekByteAt:", peek_byte),
+            (av, b"peekPtrAt:", peek_ptr),
+            (av, b"peekDoubleAt:", peek_double),
+            (av, b"peekStringAt:", peek_string),
+            (av, b"pokeInt:at:", poke_int),
+            (av, b"pokeByte:at:", poke_byte),
+            (av, b"pokePtr:at:", poke_ptr),
+            (av, b"pokeDouble:at:", poke_double),
+        ] {
+            id.send_named(
+                target,
+                b"addMethod",
+                &[
+                    Operand::object(id.intern_name(name)?),
+                    Operand::entry(NativeEntry::new(f, s.cast())),
+                ],
+            )?;
+        }
+        id.send_named((*s).roots, b"register:", &[Operand::object(receiver)])?;
+        id.send_named(
+            (*s).gc,
+            b"registerRetirement:",
+            &[Operand::object(receiver)],
+        )?;
+        for (n, o) in [
+            (b"Alien".as_slice(), receiver),
+            (b"AlienVt", vt),
+            (b"ForeignAddress", prototype),
+            (b"ForeignAddressVt", av),
+        ] {
+            id.send_named(
+                ns,
+                b"at:put:",
+                &[Operand::object(id.intern_name(n)?), Operand::object(o)],
+            )?;
+        }
+        for t in tokens {
+            id.send_named((*s).roots, b"release:", &[Operand::word(t)])?;
+        }
+        Ok(Operand::object(receiver))
     }
 }
-
-/// Identity of this Rust Alien owner. The value is NUL-terminated for the
-/// existing dynamic-rung diagnostic convention.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_alien_rust_identity() -> *const c_char {
-    RUST_ALIEN_IDENTITY.as_ptr().cast()
-}
-
-/// Declare that this module treats IdApi Symbol-name pointers as borrowed.
-#[unsafe(no_mangle)]
-pub extern "C" fn birnam_symbol_borrow_v1() -> core::ffi::c_int {
-    1
-}
-
-fn execution_presence() -> *const birnam_abi::namespace_presence::ApiV1 { API.get().expect("module not initialized").1 as *const birnam_abi::namespace_presence::ApiV1 }
-
-fn execution_imports() -> *const birnam_abi::namespace_import::ApiV1 { API.get().expect("module not initialized").2 as *const birnam_abi::namespace_import::ApiV1 }
-
-fn execution_exports() -> *const birnam_abi::namespace_export::ApiV1 { API.get().expect("module not initialized").3 as *const birnam_abi::namespace_export::ApiV1 }
-fn execution_layouts() -> *const birnam_abi::payload_layout::ApiV1 { API.get().expect("module not initialized").5 as *const birnam_abi::payload_layout::ApiV1 }
-
-fn execution_vtables() -> *const birnam_abi::vtable_enumeration::ApiV2 { API.get().expect("module not initialized").4 as *const _ }
-
-use birnam_abi::id_protocol::{self as native, Operand, Outcome, Protocol};
-static NATIVE_PHASE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-static NATIVE_RESULT: OnceLock<usize> = OnceLock::new();
-fn invalid_native() -> Outcome { Outcome::failed(native::INVALID_REQUEST, 0) }
-unsafe extern "C" fn initialize_native(id: *const Protocol, args: *const Operand, count: usize) -> Outcome {
-    use std::sync::atomic::Ordering;
-    if !unsafe { native::valid_protocol(id) } { return invalid_native(); }
-    let Some([api, presence, imports, exports, roots, layouts, vtables, finalizers, integer, float, string, names, tcc, store, vector, error]) = (unsafe { birnam_abi::borrowed_slice(args, count) }) else { return invalid_native(); };
-    let Some(api) = api.as_word() else { return invalid_native(); };
-    let Some(presence) = presence.as_word() else { return invalid_native(); };
-    let Some(imports) = imports.as_word() else { return invalid_native(); };
-    let Some(exports) = exports.as_word() else { return invalid_native(); };
-    let Some(roots) = roots.as_word() else { return invalid_native(); };
-    let Some(layouts) = layouts.as_word() else { return invalid_native(); };
-    let Some(vtables) = vtables.as_word() else { return invalid_native(); };
-    let Some(finalizers) = finalizers.as_word() else { return invalid_native(); };
-    let Some(integer) = integer.as_word() else { return invalid_native(); };
-    let Some(float) = float.as_word() else { return invalid_native(); };
-    let Some(string) = string.as_word() else { return invalid_native(); };
-    let Some(names) = names.as_word() else { return invalid_native(); };
-    let api = api as *mut IdApi;
-    if api.is_null() || unsafe { (*api).vtable_vt != (*id).receiver } { return invalid_native(); }
-    let presence = presence as *const birnam_abi::namespace_presence::ApiV1;
-    if !unsafe { birnam_abi::namespace_presence::valid(presence) } { return invalid_native(); }
-    let imports = imports as *const birnam_abi::namespace_import::ApiV1;
-    if !unsafe { birnam_abi::namespace_import::valid(imports) } { return invalid_native(); }
-    let exports = exports as *const birnam_abi::namespace_export::ApiV1;
-    if !unsafe { birnam_abi::namespace_export::valid(exports) } { return invalid_native(); }
-    let roots = roots as *const birnam_abi::root_registry::OwnedV1;
-    if !unsafe { birnam_abi::root_registry::valid_owned(roots) } { return invalid_native(); }
-    let layouts = layouts as *const birnam_abi::payload_layout::ApiV1;
-    if !unsafe { birnam_abi::payload_layout::valid(layouts) } { return invalid_native(); }
-    let vtables = vtables as *const birnam_abi::vtable_enumeration::ApiV2;
-    if !unsafe { birnam_abi::vtable_enumeration::valid(vtables) } { return invalid_native(); }
-    let finalizers = finalizers as *const birnam_abi::finalizers::ApiV1;
-    if !unsafe { birnam_abi::finalizers::valid(finalizers) } { return invalid_native(); }
-    if unsafe { birnam_abi::integer::attach(integer as _) } != 1 { return invalid_native(); }
-    if unsafe { birnam_abi::float::attach(float as _) } != 1 { return invalid_native(); }
-    if unsafe { birnam_abi::string::attach(string as _) } != 1 { return invalid_native(); }
-    if unsafe { birnam_abi::namespace_names::attach(names as _) } != 1 { return invalid_native(); }
-    if tcc.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
-    if store.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
-    if vector.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
-    if error.as_object().filter(|p| !p.is_null()).is_none() { return invalid_native(); }
-    if API.get().is_some_and(|selected| selected.0 != api.addr()) { return invalid_native(); }
-    match NATIVE_PHASE.compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire) {
-        Ok(_) => {}, Err(2) => return Outcome::loaded(Operand::object(*NATIVE_RESULT.get().unwrap() as Oop)), _ => return invalid_native(),
-    }
-    unsafe { bring_up(api, presence, imports, exports, vtables, (*roots).api, layouts, finalizers, roots); }
-    let result = RUNTIME.get().unwrap().alien_obj as Oop;
-    assert!(NATIVE_RESULT.set(result.addr()).is_ok());
-    NATIVE_PHASE.store(2, Ordering::Release);
-    Outcome::loaded(Operand::object(result))
+unsafe extern "C" fn initialize(id: *const Protocol, a: *const Operand, n: usize) -> Outcome {
+    done((|| unsafe {
+        if !native::valid_protocol(id) {
+            return Err(invalid());
+        }
+        let Some([ns]) = borrowed_slice(a, n) else {
+            return Err(invalid());
+        };
+        construct(*id, object(*ns)?)
+    })())
 }
 #[unsafe(no_mangle)]
-pub static birnam_native_module_v1: native::Module = native::Module { version: 1, byte_size: core::mem::size_of::<native::Module>() as u32, initialize: Some(initialize_native) };
+pub static birnam_native_module_v1: native::Module = native::Module {
+    version: 1,
+    byte_size: size_of::<native::Module>() as u32,
+    initialize: Some(initialize),
+};

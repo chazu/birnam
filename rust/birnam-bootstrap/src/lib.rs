@@ -330,6 +330,7 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
             "codegen_runtime",
             "source_loader",
             "image",
+            "alien",
         ] {
             id.send_named(
                 receiver,

@@ -18,6 +18,3 @@ crate-type = ["cdylib", "rlib"]
 
 [lints]
 workspace = true
-
-[dev-dependencies]
-birnam-tcc = { path = "../birnam-tcc" }

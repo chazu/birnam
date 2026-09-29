@@ -8,6 +8,10 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect Alien library loading, foreign buffers, generated C wrappers and
+  callbacks through Id messages. Bootstrap and installed Host include Alien;
+  TCC Units retain executable code, with collection and callback re-entry tests.
+
 - Reconnect CLI image loading and restored global `main` through Id messages,
   without source bootstrap. Preserve load/entry failures and nil/false success,
   rebase the restored Module library directory, and validate collecting entry
