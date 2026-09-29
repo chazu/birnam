@@ -267,7 +267,7 @@ fn image_owner_roundtrip() {
             });
         let filename = h.string(path.as_os_str().as_bytes());
         if let Ok(mode) = std::env::var("BIRNAM_IMAGE_TEST_MODE") {
-            h.eval(b"[Reflect defineMethod: #imageTransient on: Integer as: [:self | #transient]]");
+            h.eval(b"[Reflect defineMethod: #imageTransient on: Integer as: [:self | #transient]]; [Reflect defineMethod: #imageTransientCollection on: Collection as: [:self | #transient]]");
             let model_vt = behavior_of(&h, h.named(b"ObjectModel"));
             let slot_entry = binding(&h, model_vt, b"restoreImageSlotAt:in:put:");
             let slot_alias = h.id.intern_name(b"imageTestRestoreSlot:in:put:").unwrap();
@@ -313,6 +313,27 @@ fn image_owner_roundtrip() {
                     &[
                         Operand::object(h.id.intern_name(b"imageTransient").unwrap()),
                         Operand::object(behavior_of(&h, h.named(b"Integer")))
+                    ]
+                )
+                .kind(),
+                birnam_abi::id_protocol::UNIT
+            );
+            assert_eq!(
+                h.call(
+                    h.call(h.named(b"Vector"), b"new", &[]),
+                    b"imageInherited",
+                    &[]
+                ),
+                h.id.intern_name(b"inherited").unwrap()
+            );
+            assert_eq!(
+                send(
+                    h.id,
+                    h.id.receiver,
+                    b"bindingOf:in:",
+                    &[
+                        Operand::object(h.id.intern_name(b"imageTransientCollection").unwrap()),
+                        Operand::object(h.named(b"Collection"))
                     ]
                 )
                 .kind(),
@@ -432,6 +453,14 @@ fn image_owner_roundtrip() {
                 b"removeMethod:",
                 &[Operand::object(h.id.intern_name(b"imageFixture").unwrap())],
             );
+            send(
+                h.id,
+                h.named(b"Collection"),
+                b"removeMethod:",
+                &[Operand::object(
+                    h.id.intern_name(b"imageInherited").unwrap(),
+                )],
+            );
             h.call(h.named(b"Store"), b"imageLoadBegin", &[]);
             h.clear_from(0);
             h.collect();
@@ -532,6 +561,7 @@ fn image_owner_roundtrip() {
             ],
         );
         std::fs::remove_dir_all(asset_dir).unwrap();
+        h.eval(b"[Reflect defineMethod: #imageInherited on: Collection as: [:self | #inherited]]");
         assert_eq!(h.call(system, b"saveImage:", &[filename]), h.named(b"true"));
         h.collect();
         let before = h.units();
@@ -590,7 +620,7 @@ fn image_owner_roundtrip() {
             later
         );
         h.call(codegen, b"sealInitialGeneration", &[]);
-        h.eval(b"[Reflect defineMethod: #imageFixture on: Integer as: [:self | #before]]; [Reflect defineMethod: #imageTransient on: Integer as: [:self | #transient]]");
+        h.eval(b"[Reflect defineMethod: #imageFixture on: Integer as: [:self | #before]]; [Reflect defineMethod: #imageTransient on: Integer as: [:self | #transient]]; [Reflect defineMethod: #imageInherited on: Collection as: [:self | #beforeInherited]]");
         let codegen = h.named(b"Codegen");
         let codegen_vt = behavior_of(&h, codegen);
         let selector = b"installPortableImageBinding:on:as:source:";
@@ -629,6 +659,14 @@ fn image_owner_roundtrip() {
         assert_eq!(
             h.call(h.int(1), b"imageTransient", &[]),
             h.id.intern_name(b"transient").unwrap()
+        );
+        assert_eq!(
+            h.call(
+                h.call(h.named(b"Vector"), b"new", &[]),
+                b"imageInherited",
+                &[]
+            ),
+            h.id.intern_name(b"beforeInherited").unwrap()
         );
         let original_bytes = std::fs::read(&path).unwrap();
         let machine = h.call(h.named(b"Machine"), b"new", &[]);

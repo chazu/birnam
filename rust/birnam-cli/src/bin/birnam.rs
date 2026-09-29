@@ -9,7 +9,7 @@ fn run() -> Result<(), String> {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
     match classify_command(&args).map_err(|e| format!("{e:?}"))? {
         CommandKind::Help => println!(
-            "birnam — Rust host\nUsage: birnam <file.birnam> | --help | --version\n\nSource execution uses the Id message runtime and source stdlib.\nImage entry, REPL, project commands and workers await Host migration."
+            "birnam — Rust host\nUsage: birnam <file.birnam> | <file.image> | --help | --version\n\nSource execution uses the Id message runtime and source stdlib.\nImages restore and run global main.\nREPL, project commands and workers await Host migration."
         ),
         CommandKind::Version => println!("{}", VERSION.trim()),
         CommandKind::Script(path) => {
@@ -23,6 +23,20 @@ fn run() -> Result<(), String> {
             let host = HostRuntime::start(&resources, StartupPolicy::from_environment())
                 .map_err(|e| e.to_string())?;
             host.eval_script(&path).map_err(|e| e.to_string())?;
+        }
+        CommandKind::Image(path) => {
+            if args.len() != 1 {
+                return Err(
+                    "image execution accepts one file; image arguments are not yet supported"
+                        .into(),
+                );
+            }
+            let resources = resolve().map_err(|e| e.to_string())?;
+            let host =
+                HostRuntime::start_image(&resources, StartupPolicy::from_environment(), &path)
+                    .map_err(|e| e.to_string())?;
+            host.run_image_main()
+                .map_err(|e| format!("{}: {e}", path.display()))?;
         }
         command => {
             return Err(format!(

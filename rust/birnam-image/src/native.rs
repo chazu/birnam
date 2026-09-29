@@ -173,6 +173,16 @@ impl State {
     unsafe fn behavior(&self, o: Oop) -> Result<Oop, Outcome> {
         unsafe { object(self.send(self.id.receiver, b"behaviorOf:", &[Operand::object(o)])?) }
     }
+    // Match ObjectModel ensurePrivateVtableFor: without mutating dictionaries.
+    // A behavior is already its own method target; its behavior is the Id.
+    unsafe fn method_behavior(&self, target: Oop) -> Result<Oop, Outcome> {
+        let behavior = unsafe { self.behavior(target) }?;
+        Ok(if behavior == self.id.receiver {
+            target
+        } else {
+            behavior
+        })
+    }
     unsafe fn is_error(&self, o: Oop) -> Result<bool, Outcome> {
         unsafe { Ok(self.send(o, b"isError", &[])?.as_object() == Some(self.named(b"true")?)) }
     }
@@ -1115,7 +1125,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
             {
                 return Err(bad());
             }
-            let behavior = s.behavior(target)?;
+            let behavior = s.method_behavior(target)?;
             q.keep(behavior)?;
             // Pin the old callable before any dictionary mutation can retire it.
             let old = s.send(
@@ -1151,7 +1161,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
             {
                 continue;
             }
-            let behavior = q.keep(s.behavior(*target)?)?;
+            let behavior = q.keep(s.method_behavior(*target)?)?;
             let old = s.send(
                 s.id.receiver,
                 b"bindingOf:in:",
@@ -1223,7 +1233,7 @@ unsafe fn load(s: &State, q: &Scope<'_>, bytes: &[u8], rebuild: bool) -> Result<
             // state was retained by the staging Store, so rollback cannot exhaust its
             // fact budget or require re-running an initializer.
             for &(_, target, selector, _, behavior, old) in publication[..attempted].iter().rev() {
-                let current = s.behavior(target)?;
+                let current = s.method_behavior(target)?;
                 if current != behavior {
                     s.send(
                         s.id.receiver,

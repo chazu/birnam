@@ -107,6 +107,9 @@ impl Scope<'_> {
         if diagnostic != self.host.named(b"nil")? {
             return Err(HostError(self.text(diagnostic)?));
         }
+        self.check_result(result)
+    }
+    fn check_result(&self, result: Oop) -> Result<(), HostError> {
         if self.call(result, b"isError", &[])? == self.host.named(b"true")? {
             let message = self.call(result, b"message", &[])?;
             return Err(HostError(self.text(message)?));
@@ -149,7 +152,7 @@ impl HostRuntime {
             tokens: RefCell::new(Vec::new()),
         }
     }
-    pub fn start(resources: &Resources, policy: StartupPolicy) -> Result<Self, HostError> {
+    fn start_native(resources: &Resources, precise_gc: bool) -> Result<Self, HostError> {
         let id = birnam_siphon::load(resources.id_dylib.as_os_str().as_bytes()).map_err(
             |(status, detail)| {
                 HostError(format!(
@@ -192,8 +195,12 @@ impl HostRuntime {
         host.send(
             host.named(b"GC")?,
             b"precisePayloads:",
-            &[Operand::word(usize::from(policy.precise_gc))],
+            &[Operand::word(usize::from(precise_gc))],
         )?;
+        Ok(host)
+    }
+    pub fn start(resources: &Resources, policy: StartupPolicy) -> Result<Self, HostError> {
+        let host = Self::start_native(resources, policy.precise_gc)?;
         if !policy.skip_stdlib {
             let scope = host.scope();
             for (name, source) in [
@@ -218,7 +225,7 @@ impl HostRuntime {
             }
             scope.evaluate(b"[Module markLoaded: #stdlib]", Path::new("<host>"), None)?;
             let globals = host.named(b"Globals")?;
-            let name = unsafe { id.intern_name(b"Module") }
+            let name = unsafe { host.id.intern_name(b"Module") }
                 .map_err(|e| native_error("intern Module", e))?;
             let module = scope.call(globals, b"at:", &[Operand::object(name)])?;
             for name in [
@@ -234,7 +241,7 @@ impl HostRuntime {
                 "relational",
                 "image",
             ] {
-                let symbol = unsafe { id.intern_name(name.as_bytes()) }
+                let symbol = unsafe { host.id.intern_name(name.as_bytes()) }
                     .map_err(|e| native_error("intern kernel module", e))?;
                 scope.call(module, b"kernel:", &[Operand::object(symbol)])?;
             }
@@ -242,6 +249,73 @@ impl HostRuntime {
             scope.call(module, b"libDir:", &[Operand::object(lib)])?;
         }
         Ok(host)
+    }
+    /// Restore into the native runtime without evaluating source bootstrap.
+    /// Images own their saved methods, globals and source registry.
+    pub fn start_image(
+        resources: &Resources,
+        policy: StartupPolicy,
+        path: &Path,
+    ) -> Result<Self, HostError> {
+        let host = Self::start_native(resources, policy.precise_gc)?;
+        host.load_image(path)?;
+        // A saved Module manager carries the old prefix. Its runtime library
+        // directory belongs to this executable, not to the saving process.
+        let scope = host.scope();
+        let module = host.global(&scope, b"Module")?;
+        if module != host.named(b"nil")? {
+            let lib = scope.string(resources.lib_dir.as_os_str().as_bytes())?;
+            scope.call(module, b"libDir:", &[Operand::object(lib)])?;
+        }
+        drop(scope);
+        Ok(host)
+    }
+    fn global(&self, scope: &Scope<'_>, name: &[u8]) -> Result<Oop, HostError> {
+        let symbol =
+            unsafe { self.id.intern_name(name) }.map_err(|e| native_error("intern global", e))?;
+        scope.call(self.named(b"Globals")?, b"at:", &[Operand::object(symbol)])
+    }
+    fn load_image(&self, path: &Path) -> Result<(), HostError> {
+        let load = || -> Result<(), HostError> {
+            let metadata = fs::metadata(path).map_err(|e| HostError(e.to_string()))?;
+            if !metadata.is_file() {
+                return Err(HostError("image must be a regular file".into()));
+            }
+            let scope = self.scope();
+            let filename = scope.string(path.as_os_str().as_bytes())?;
+            let system = self.named(b"System")?;
+            let result = scope.call(system, b"loadImage:", &[Operand::object(filename)])?;
+            if result == self.named(b"true")? || result == self.named(b"false")? {
+                return Ok(());
+            }
+            scope.check_result(result)?;
+            let report = scope.call(system, b"imageSaveReport", &[])?;
+            let status = scope.call(report, b"status", &[])?;
+            let status = scope.call(status, b"printString", &[])?;
+            let status = scope.text(status)?;
+            let detail = scope.call(report, b"detail", &[])?;
+            Err(HostError(format!(
+                "image load {status}: {}",
+                scope.text(detail)?
+            )))
+        };
+        load().map_err(|e| HostError(format!("{}: {e}", path.display())))
+    }
+    /// Enter the current global main through ordinary dispatch. Nil and false
+    /// results succeed; missing main and returned Errors are failures.
+    pub fn run_image_main(&self) -> Result<(), HostError> {
+        let run = || -> Result<(), HostError> {
+            let scope = self.scope();
+            let main = self.global(&scope, b"main")?;
+            if main == self.named(b"nil")? {
+                return Err(HostError(
+                    "image has no global main; REPL is not yet supported".into(),
+                ));
+            }
+            let result = scope.call(main, b"value", &[])?;
+            scope.check_result(result)
+        };
+        run().map_err(|e| HostError(format!("image main: {e}")))
     }
     pub fn eval_script(&self, path: &Path) -> Result<(), HostError> {
         let evaluate = || -> Result<(), HostError> {
@@ -415,5 +489,169 @@ mod tests {
             .as_object(),
             Some(temporary)
         );
+    }
+    unsafe extern "C" fn deny_compile(
+        _: *mut c_void,
+        _: Oop,
+        _: *const Operand,
+        _: usize,
+    ) -> Outcome {
+        Outcome::failed(native::UNBOUND, 54321)
+    }
+    struct MainSend {
+        hook: CollectingSend,
+        globals: Oop,
+        name: Oop,
+        nil: Oop,
+    }
+    unsafe extern "C" fn remove_main_and_collect(
+        context: *mut c_void,
+        receiver: Oop,
+        args: *const Operand,
+        count: usize,
+    ) -> Outcome {
+        let state = unsafe { &*context.cast::<MainSend>() };
+        if let Err(error) = unsafe {
+            state.hook.id.send_named(
+                state.globals,
+                b"at:put:",
+                &[Operand::object(state.name), Operand::object(state.nil)],
+            )
+        } {
+            return error;
+        }
+        unsafe {
+            collecting_send(
+                (&state.hook as *const CollectingSend).cast_mut().cast(),
+                receiver,
+                args,
+                count,
+            )
+        }
+    }
+    #[test]
+    #[ignore = "requires installed modules and a saved CLI image; scripts/host-cli-test.sh"]
+    fn image_entry_uses_saved_code_and_roots() {
+        let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+        let path = PathBuf::from(env::var_os("BIRNAM_TEST_IMAGE").unwrap());
+        let resources = crate::resolve_from_exe_dir(
+            Path::new("/unused/bin"),
+            crate::Overrides {
+                lib_dir: Some(&lib),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let host = HostRuntime::start_native(&resources, true).unwrap();
+        let symbol = |name: &[u8]| unsafe { host.id.intern_name(name) }.unwrap();
+        let binding = |vt, name| {
+            host.send(
+                host.id.receiver,
+                b"bindingOf:in:",
+                &[Operand::object(name), Operand::object(vt)],
+            )
+            .unwrap()
+            .as_entry()
+            .unwrap()
+        };
+        let bind = |vt, name, entry| {
+            host.send(
+                vt,
+                b"addMethod",
+                &[Operand::object(name), Operand::entry(entry)],
+            )
+            .unwrap();
+        };
+        let behavior = |o| {
+            object(
+                host.send(host.id.receiver, b"behaviorOf:", &[Operand::object(o)])
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let mut denied = Vec::new();
+        for (receiver, selector) in [
+            (b"TCC".as_slice(), b"compile:".as_slice()),
+            (b"TCC", b"compileObject:"),
+            (b"Codegen", b"evalPersisting:from:"),
+        ] {
+            let vt = behavior(host.named(receiver).unwrap());
+            let name = symbol(selector);
+            denied.push((vt, name, binding(vt, name)));
+            bind(
+                vt,
+                name,
+                NativeEntry::new(deny_compile, core::ptr::null_mut()),
+            );
+        }
+        let model = behavior(host.named(b"ObjectModel").unwrap());
+        let restore = symbol(b"restoreImageSlotAt:in:put:");
+        let mut hook = Box::new(CollectingSend {
+            id: host.id,
+            gc: host.named(b"GC").unwrap(),
+            original: binding(model, restore),
+            calls: Cell::new(0),
+            fail: Cell::new(false),
+        });
+        bind(
+            model,
+            restore,
+            NativeEntry::new(collecting_send, (&mut *hook as *mut CollectingSend).cast()),
+        );
+        host.load_image(&path).unwrap();
+        assert!(hook.calls.get() > 0);
+        bind(model, restore, hook.original);
+        let scope = host.scope();
+        let main = host.global(&scope, b"main").unwrap();
+        let vt = behavior(main);
+        let value = symbol(b"value");
+        let mut main_send = Box::new(MainSend {
+            hook: CollectingSend {
+                id: host.id,
+                gc: host.named(b"GC").unwrap(),
+                original: binding(vt, value),
+                calls: Cell::new(0),
+                fail: Cell::new(true),
+            },
+            globals: host.named(b"Globals").unwrap(),
+            name: symbol(b"main"),
+            nil: host.named(b"nil").unwrap(),
+        });
+        // A native execution failure keeps its status and detail through Host.
+        bind(
+            vt,
+            value,
+            NativeEntry::new(
+                collecting_send,
+                (&mut main_send.hook as *mut CollectingSend).cast(),
+            ),
+        );
+        let error = host.run_image_main().unwrap_err();
+        assert!(error.0.contains("native status=6 detail=12345"), "{error}");
+        main_send.hook.fail.set(false);
+        bind(
+            vt,
+            value,
+            NativeEntry::new(
+                remove_main_and_collect,
+                (&mut *main_send as *mut MainSend).cast(),
+            ),
+        );
+        drop(scope); // The next call must root main itself, before it loses Globals.
+        host.run_image_main().unwrap();
+        // The fixture callback context must stay live until its binding is gone.
+        bind(vt, value, main_send.hook.original);
+        assert_eq!(main_send.hook.calls.get(), 2);
+        for (vt, name, entry) in denied {
+            bind(vt, name, entry);
+        }
+        assert!(
+            host.run_image_main()
+                .unwrap_err()
+                .0
+                .contains("no global main")
+        );
+        host.send(host.named(b"GC").unwrap(), b"collectPrecisely", &[])
+            .unwrap();
     }
 }

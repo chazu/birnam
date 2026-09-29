@@ -8,6 +8,12 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect CLI image loading and restored global `main` through Id messages,
+  without source bootstrap. Preserve load/entry failures and nil/false success,
+  rebase the restored Module library directory, and validate collecting entry
+  with compilation disabled. Include exported behaviors such as Collection in
+  image method snapshots so inherited stdlib methods survive restoration.
+
 - Reconnect installed Host/CLI source execution through Siphon, Bootstrap and Id
   owner messages, with scoped roots, source stdlib and explicit failure diagnostics.
   Package the migrated native modules through the existing atomic installer.

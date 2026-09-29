@@ -487,7 +487,12 @@ unsafe fn execute(
                     if s.send(s.id.receiver, b"ownerOf:", &[Operand::object(behavior)])?
                         .kind()
                         == native::UNIT
+                        && s.send(s.namespace, b"nameOf:", &[Operand::object(behavior)])?
+                            .kind()
+                            == native::UNIT
                     {
+                        // Exported behaviors (for example Collection) are stable
+                        // method targets even without an ordinary owner object.
                         return s.error(b"unstableMethodTarget");
                     }
                     if s.send(
@@ -1113,6 +1118,7 @@ const NAMES: &[&[u8]] = &[
     b"nil",
     b"oldestRetainedBasis",
     b"one",
+    b"nameOf:",
     b"ownerOf:",
     b"ownerOf:put:",
     b"parentOf:",

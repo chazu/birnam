@@ -87,5 +87,10 @@ post-write publication failure exercise cleanup and exact Store/source/binding
 compensation. Final removal of references returns the restored Unit count to zero.
 Codec tests retain all frozen fixtures and reject malformed references/bundles.
 
-Host/CLI startup, executable baking, broader source-generation replacement and
-optimizer work remain separate migration consumers.
+Source-defined methods on exported behaviors such as Collection are included in
+binding inventories even though those behaviors have no ordinary owner. Restoration
+and compensation address their own method dictionaries, preserving inherited methods.
+
+Host/CLI image entry now restores global main; see the [Host contract](../birnam-host/README.md).
+Executable baking, broader source-generation replacement and optimizer work remain
+separate migration consumers.

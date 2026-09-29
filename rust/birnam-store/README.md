@@ -62,7 +62,7 @@ The existing MOP responsibilities are preserved through messages:
 | `setMethodMutationAuthorizer:` | Register one rooted Object receiving `value`; only true authorizes managed mutation. Re-registering the same receiver is allowed. |
 | `setMethodMutationObserver:` | Register one rooted Object receiving `managedMethodChanged:on:` after managed mutation; same one-time registration rule. |
 | `addMethod:on:with:` | Authorize, clear the old mirror, send the behavior `addMethod:as:` with an owned Execution Method, append its Method mirror and notify the observer. |
-| `removeMethod:on:` | Authorize, require an owned behavior and a direct binding, clear its mirror, send `removeMethod:` and notify. |
+| `removeMethod:on:` | Authorize, require an owned or Namespace-exported behavior and a direct binding, clear its mirror, send `removeMethod:` and notify. |
 | `backfillMirror` | Enumerate current Object-derived behaviors/selectors through Id; add missing primitive mirror rows without advancing the basis. |
 | `methodChanged:on:` | Invalidate the selector/behavior mirror after a direct Id dictionary write. |
 

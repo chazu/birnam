@@ -177,12 +177,22 @@ pub(super) unsafe fn operation(
                         b"behaviorAt:",
                         &[Operand::word(i)],
                     )?)?)?;
-                    let Some(target) = s
+                    let target = match s
                         .send(s.id.receiver, b"ownerOf:", &[Operand::object(vt)])?
                         .as_object()
-                    else {
-                        continue;
+                    {
+                        Some(owner) => owner,
+                        None if s
+                            .send(s.ns, b"nameOf:", &[Operand::object(vt)])?
+                            .as_object()
+                            .is_some() =>
+                        {
+                            vt
+                        }
+                        None => continue,
                     };
+                    // Exported behaviors such as Collection host methods directly
+                    // and have no ordinary owner. Their identity is the target.
                     q.keep(target)?;
                     for j in 0..1_048_576usize {
                         let Some(selector) = s

@@ -8,7 +8,7 @@ import sys
 
 prefix = Path(sys.argv[1]).resolve()
 receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
-assert receipt['admission_contract']['host_commands'] == ['source', 'help', 'version']
+assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'help', 'version']
 assert receipt['stage1_modules'] == []
 for relative, digest in receipt['staged_manifest'].items():
     assert hashlib.sha256((prefix / relative).read_bytes()).hexdigest() == digest, relative
@@ -60,7 +60,7 @@ with large.open('wb') as file:
     file.truncate(16 * 1024 * 1024 + 1)
 result = run([large])
 assert result.returncode == 1 and b'exceeds' in result.stderr
-for args in [[], ['--repl'], ['saved.image'], ['run'], ['--worker']]:
+for args in [[], ['--repl'], ['run'], ['--worker']]:
     result = run(args, extra={'BIRNAM_ID_DYLIB': '/missing/id.dylib'})
     assert result.returncode == 1 and b'awaits Host migration' in result.stderr, result
 result = run(['nil.birnam', 'extra'])
@@ -69,6 +69,13 @@ result = run(['nil.birnam'], extra={'BIRNAM_ID_DYLIB': '/missing/id.dylib'})
 assert result.returncode == 1 and b'native status=' in result.stderr
 result = run(['output.birnam'], executable=launcher)
 assert result.returncode == 0 and result.stdout == b'hello world\n' and not result.stderr
-source('stdlib.birnam', b'[System println: [Module isLoaded: #stdlib]]; [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]',
+stdlib_image = work / 'stdlib.image'
+source('stdlib.birnam', b'[System println: [Module isLoaded: #stdlib]]; [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]; '
+       b'[Globals at: #main put: [| [System gc]; [System println: [#[1 2 3] collect: [:x | [x + 1]]]]; [System println: [Module libDir]]]]; '
+       b'[Module libDir: "/old-install/lib"]; [System saveImage: ' + json.dumps(str(stdlib_image)).encode() + b']',
        stdlib=True, output=b'true\n#[2 3 4]\n')
+assert stdlib_image.is_file()
+result = run([stdlib_image], stdlib=True)
+assert result.returncode == 0 and not result.stderr, result
+assert result.stdout == b'#[2 3 4]\n' + os.fsencode(relocated / 'lib') + b'\n', result
 print('installed Host/CLI: receipt, relocation, source, diagnostics, GC, stdlib and deferred commands passed')

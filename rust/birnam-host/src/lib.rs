@@ -1,5 +1,5 @@
-//! Owner-thread source execution through the Id message boundary.
-//! Project, image-entry and interaction adapters remain pending migration.
+//! Owner-thread source and image execution through the Id message boundary.
+//! Project and interaction adapters remain pending migration.
 mod resources;
 pub use resources::{Overrides, Resources, resolve, resolve_from_exe_dir};
 mod startup;
