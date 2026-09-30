@@ -8,6 +8,8 @@ loader ports are complete.
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-09-30
+
 - Complete the Id-message migration and remove the aggregate Runtime, retired
   module tables, obsolete adapters and their unused harnesses. Keep the native
   Id protocol and binary-format evidence beside their owning code.
