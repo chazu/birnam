@@ -42,15 +42,18 @@ let path := ["PATH" getenv];
 // The OTHER direction — C calling back INTO birnam. `[Alien callback: blk
 // signature: sig]` compiles a C function that forwards its arguments to the
 // block (sig read from C's side: return first, then what C passes in) and
-// answers its address. To prove it end to end we compile our own C caller with
-// Tcc right here — birnam's compiler IS a C compiler, after all.
-let cb := [Alien callback: [:x | [x * 2]] signature: "l l"];
-let unit := [Tcc new];
-[unit compile: "extern unsigned long birnam_foreignAddressValue(void*); extern void* birnam_mkSmallInt(long); void* __call(void* self, void** args, long n) { long (*fp)(long) = (long(*)(long))birnam_foreignAddressValue(self); return birnam_mkSmallInt(fp(21)); }"];
-[unit bindRuntime];
-[unit relocate];
-[unit install: "__call" as: #callWith21 on: ForeignAddress];
-[System println: ["C calling a birnam block (21 doubled): " , [[cb callWith21] printString]]];
+// answers its address. libc's qsort calls our comparator with pointers to two
+// elements. On arm64 macOS, each long is eight bytes, as are Alien's Int peeks.
+[Alien wrap: "qsort" signature: "v p l l p" as: #sortCount:width:using: on: ForeignAddress];
+let numbers := [Alien alloc: 24];
+[numbers pokeInt: 21 at: 0];
+[numbers pokeInt: 7 at: 8];
+[numbers pokeInt: 42 at: 16];
+let cb := [Alien callback: [:a :b | [[a peekIntAt: 0] - [b peekIntAt: 0]]] signature: "i p p"];
+[numbers sortCount: 3 width: 8 using: cb];
+[System println: ["C qsort calling a birnam comparator: " , [#[[numbers peekIntAt: 0] [numbers peekIntAt: 8] [numbers peekIntAt: 16]] printString]]];
+[Alien releaseCallback: cb];
+[numbers free];
 
 // Out-params without writing C (§F F4): a ForeignAddress is an explicit,
 // process-local native capability. `[Alien alloc: n]` mints an owned one over

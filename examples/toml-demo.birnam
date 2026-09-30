@@ -3,9 +3,11 @@
 //   birnam examples/toml-demo.birnam        (run from the repo root)
 //
 // `Toml` is a standard self-hosted module (modules/toml.birnam), loaded at boot as
-// a compiled dylib — so it's available with no `[System load:]`. It's a PEG-based
+// a compiled dylib when requested through Module. It's a PEG-based
 // TOML parser written entirely in birnam; `[Toml parse: aString]` answers a Map
 // (nested Maps for [tables], Vectors for arrays).
+
+[Module load: #toml];
 
 let config := "# birnam service config
 name = \"birnam\"

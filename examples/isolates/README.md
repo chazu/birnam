@@ -6,7 +6,7 @@ isolates.
 From the repository root:
 
 ```sh
-scripts/rust-install.sh install --root . --prefix "$HOME/.local" --profile debug
+scripts/rust-install.sh install --root . --prefix "$HOME/.local/opt/birnam" --profile release
 bash examples/isolates/run.sh
 ```
 

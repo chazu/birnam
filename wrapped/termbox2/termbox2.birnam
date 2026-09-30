@@ -5,10 +5,10 @@
 
 [Alien dlopen: "libtermbox2.dylib"];
 
-// Give the wrapper one named singleton with a private copy-on-write vtable.
-// Keeping the interface in Birnam makes the same adapter usable by ordinary
-// scripts and projects; no application-specific IdApi initializer is required.
-let Termbox := [Object clone];
+// Calls with arguments pass the receiver as the adapter's ignored void*.
+// Use an explicit ForeignAddress capability; ordinary Objects cannot marshal
+// as C pointers. Alien reclaims this one-byte marker when the wrapper is gone.
+let Termbox := [Alien alloc: 1];
 
 [Alien wrap: "lg_init"        signature: "i" as: #init       on: Termbox];
 [Alien wrap: "lg_shutdown"    signature: "i" as: #shutdown   on: Termbox];

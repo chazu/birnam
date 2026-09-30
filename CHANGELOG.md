@@ -8,6 +8,17 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Complete the Id-message migration and remove the aggregate Runtime, retired
+  module tables, obsolete adapters and their unused harnesses. Keep the native
+  Id protocol and binary-format evidence beside their owning code.
+
+- Consolidate Birnam sources under `modules/`; move shared binary fixtures to
+  `tests/fixtures/` and each native library's export inventory into its crate.
+
+- Refresh the bank history, TOML loading, FFI callback and Termbox examples. Preserve a
+  ready worker when a request's zero timeout expires before transmission, for
+  both synchronous requests and asynchronous submissions.
+
 - Reconnect Storage/Trace diagnostics through Id, Roots and reference-owner messages.
   Preserve explicit coverage gaps and scoped observation roots; remove retired
   storage tables and deferred identity/index services.

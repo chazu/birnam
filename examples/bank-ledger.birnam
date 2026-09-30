@@ -12,9 +12,8 @@
 // applied transactions, not buried expressions. Time-travel for free: the
 // ledger is just the balance attribute's past.
 
-// Opt the balance attribute into history so its timeline is kept. (The history
-// policy is the symbol #true — a schema value in the store, not the boolean.)
-[db assert: #balance attr: #history value: #true];
+// Opt the balance attribute into history before its first value is written.
+[db assert: #balance attr: #history value: true];
 
 let acct := [db cellFor: #account attr: #balance];
 [acct set: 0];

@@ -2,7 +2,6 @@
 set -euo pipefail
 
 bin="${BIRNAM_BIN:-$HOME/.local/bin/birnam}"
-export BIRNAM_LIB_DIR="${BIRNAM_LIB_DIR:-$HOME/.local/lib}"
 image=/tmp/birnam-isolate-example.image
 trap 'rm -f "$image"' EXIT
 

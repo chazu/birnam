@@ -511,6 +511,16 @@ unsafe fn request(q: &Scope<'_>, r: Oop, a: &[Oop], asynchronous: bool) -> Answe
                     b"task services use submit/poll or Worker request:",
                 ));
             }
+            // No bytes can be sent with an already-expired budget. In
+            // particular, socket timeouts reject Duration::ZERO as an I/O
+            // error; reaching that layer would unnecessarily kill the worker.
+            if timeout == 0 {
+                return Err(Failure::new(
+                    b"timeout",
+                    b"deadline",
+                    b"request deadline expired before transmission",
+                ));
+            }
             let id = e.next_request;
             if id == 0 || id > i64::MAX as u64 {
                 return Err(Failure::new(

@@ -64,6 +64,19 @@ let answer := [db cellFor: [Object clone] attr: #reply];[answer set: nil];
 [System println: [[answer value] size]];[System println: [[answer value] at: 0]];
 [System println: [[w pollRequest: id] kind]];[w stop];
 ''', b'#busy\n1\nnil\n#staleRequest\n')
+    run('zero-budget', f'''
+let w := {start('echo:')};
+[System println: [[w request: 99 timeout: 0] class]];
+[System println: [w state]];
+[System println: [w request: 42]];
+[System println: [[w submit: 99 timeout: 0] class]];
+[System println: [w state]];
+let id := [w submit: 7 timeout: 10000];
+[System println: id];
+let answer := [db cellFor: [Object clone] attr: #reply]; [answer set: nil];
+[[| [[answer value] isNil]] whileTrue: [| [answer set: [w pollRequest: id]]; [Isolate idleFor: 1]]];
+[System println: [[answer value] at: 0]]; [w stop];
+''', b'#timeout\n#ready\n42\n#timeout\n#ready\n2\n7\n')
     # Expected worker failures go over the socket, without protocol bytes on stdout.
     path = work / 'timeout.birnam'
     path.write_text(f'let w := {start("sleep:")};let e := [w request: 200 timeout: 10];[System println: [e class]];[System println: [w state]]')
