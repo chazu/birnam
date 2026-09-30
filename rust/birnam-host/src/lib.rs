@@ -1,5 +1,5 @@
 //! Owner-thread source, image, artifact and project execution through Id messages.
-//! Interactive REPL and tooling adapters remain pending migration.
+//! Console, socket and authored tools share the same scoped owner-thread roots.
 mod resources;
 pub use resources::{Overrides, Resources, resolve, resolve_from_exe_dir};
 mod startup;
@@ -14,3 +14,6 @@ mod receipt_validation;
 pub mod project_data;
 mod project_files;
 pub use project_data::*;
+
+mod baked;
+pub use baked::{bake_executable, baked_image, read_baked_image};

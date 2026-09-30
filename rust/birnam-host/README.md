@@ -20,17 +20,21 @@ modules; `BIRNAM_GC_PRECISE=1` enables precise payload tracing. Host lifetime te
 also force `collectPrecisely`, excluding conservative native-stack roots.
 `BIRNAM_FORCE_SOURCE` is redundant for source files and does not request image rebuilding.
 
-The installer builds only the migrated native modules and CLI. It preserves
+The installer builds the migrated native modules, CLI and authored tooling artifacts. It preserves
 manifest verification, target locking and atomic prefix publication, and records
-source bootstrap in its receipt. It does not compile legacy stage-one dylibs.
+source bootstrap and compiled tool identities in its receipt.
 
 `birnam file.image` boots native modules, restores the image through System, then
 sends `value` to global `main`. It does not evaluate the source stdlib. Restored
-Module managers receive the current executable's library directory. Missing main,
-non-callable main, returned Errors and image admission failures exit unsuccessfully;
+Module managers receive the current executable's library directory. Non-callable
+main, returned Errors and image admission failures exit unsuccessfully;
 nil and false results succeed. Images without native code retain Image's existing
 rebuild behavior; compatible saved code loads without compilation. Image arguments
-and REPL fallback are not yet supported.
+are not yet supported. Images without main enter the console; native-only images
+bootstrap the source stdlib first. `--rebuild` requests recompilation and `--bake`
+appends an image to an executable, recovered through the same System messages.
+Host replays saved Alien wrapper recipes before user entry so foreign addresses
+are resolved in the new process.
 
 The private `--worker IMAGE RECEIVER SELECTOR --channel-fd FD` entry restores an
 image and enters Isolate without running global main. Boot errors use the inherited
@@ -53,10 +57,14 @@ published configuration and bundled application code without reading source;
 Install copies the planned module/native closure. Test launches a fresh worker
 per test source against the published module root, without running application main.
 
-Interactive REPL/socket modes and tooling remain deferred. Projects configured
-for a REPL can run with `--no-repl`. The uncompiled `interaction.rs` and
-`host_bridge_contract.rs` remain reference material, not current acceptance
-evidence. Whole-workspace migration remains unfinished.
+The console keeps a session root plus a fresh scope per turn and checkpoints
+Isolate after evaluation. Project tty/socket entry uses the published context
+without applying caller Config or running main again. Tool loading temporarily
+selects the installed library directory, then restores the project's directory.
+LSP receives scoped Project callbacks, revoked on return or unwinding; retained
+callback receivers fail closed after the Host borrow ends. Doc, docgen, init and
+wrap invoke authored Cli methods directly. Whole-workspace migration and broader
+generation replacement remain unfinished.
 
 Run `mise run host-cli` for a real install, receipt verification, relocation,
 source/stdout/stderr/exit checks, stdlib image recovery, project workflows and

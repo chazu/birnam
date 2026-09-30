@@ -264,6 +264,17 @@ fn persistent_collections_use_live_owner_messages_and_survive_gc() {
             gc: named(b"GC"),
             tokens: RefCell::new(Vec::new()),
         });
+        // String is available before Collection during boot, but must join its
+        // shared protocol once Bootstrap finishes, just like Vector and Map.
+        assert_eq!(
+            object(send(
+                id,
+                id.receiver,
+                b"parentOf:",
+                &[Operand::object(h.named(b"StringVt"))]
+            )),
+            h.named(b"CollectionVt")
+        );
         let nil = h.named(b"nil");
         let truth = h.named(b"true");
         let falsity = h.named(b"false");

@@ -5,12 +5,12 @@ use crate::project_files::*;
 use birnam_artifact::digest::sha256_hex;
 use std::{collections::HashSet, path::PathBuf};
 #[path = "project_values.rs"]
-mod values;
+pub(super) mod values;
 fn project_error(e: impl std::fmt::Debug) -> HostError {
     HostError(format!("{e:?}"))
 }
 impl HostRuntime {
-    fn project_support(&self) -> Result<(), HostError> {
+    pub(super) fn project_support(&self) -> Result<(), HostError> {
         let q = self.scope();
         for (name, global, source) in [
             (
@@ -548,14 +548,6 @@ impl HostRuntime {
         })
     }
     pub fn run_project(&self, options: &RunOptions, version: &str) -> Result<(), HostError> {
-        if options.repl.is_some_and(|mode| mode != ReplMode::None)
-            || options.socket_bind.is_some()
-            || options.socket_port.is_some()
-        {
-            return Err(HostError(
-                "project REPL/socket modes await migration".into(),
-            ));
-        }
         let build = if options.build {
             self.build_project(&ProjectBuildRequest {
                 start: &options.directory,
@@ -571,12 +563,12 @@ impl HostRuntime {
         self.load_artifact(&build.configuration)?;
         let q = self.scope();
         let published = self.global(&q, PROJECT_REPL_GLOBAL.as_bytes())?;
-        if options.repl.is_none() && q.text(published)? != "none" {
-            return Err(HostError(
-                "published project requests a REPL; use --no-repl until interaction migration"
-                    .into(),
-            ));
-        }
+        let repl = options.repl.unwrap_or(match q.text(published)?.as_str() {
+            "none" => ReplMode::None,
+            "tty" => ReplMode::Tty,
+            "socket" => ReplMode::Socket,
+            _ => return Err(HostError("invalid published REPL mode".into())),
+        });
         let mut args = q.call(self.named(b"Vector")?, b"new", &[])?;
         for arg in &options.arguments {
             let value = q.string(arg.as_os_str().as_bytes())?;
@@ -597,7 +589,35 @@ impl HostRuntime {
             &[Operand::object(directory)],
         )?;
         q.check_result(configured)?;
-        self.load_artifact(application)
+        self.load_artifact(application)?;
+        match repl {
+            ReplMode::None => Ok(()),
+            ReplMode::Tty => self.run_repl(false),
+            ReplMode::Socket => {
+                let bind = match &options.socket_bind {
+                    Some(bind) => bind.clone(),
+                    None => q.text(self.global(&q, PROJECT_SOCKET_BIND_GLOBAL.as_bytes())?)?,
+                };
+                let port = match options.socket_port {
+                    Some(port) => port,
+                    None => {
+                        let value = self.global(&q, PROJECT_SOCKET_PORT_GLOBAL.as_bytes())?;
+                        q.exact(value, b"IntegerVt")?;
+                        let port = self
+                            .send(
+                                self.named(b"Integer")?,
+                                b"wordOf:",
+                                &[Operand::object(value)],
+                            )?
+                            .as_word()
+                            .ok_or_else(|| HostError("invalid published socket port".into()))?;
+                        u16::try_from(port)
+                            .map_err(|_| HostError("invalid published socket port".into()))?
+                    }
+                };
+                self.serve_socket(port, &bind)
+            }
+        }
     }
 }
 
@@ -913,7 +933,7 @@ mod tests {
         fs::create_dir(temp.0.join("src")).unwrap();
         fs::write(
             temp.0.join("birnam.toml"),
-            b"name=\"collecting-project\"\nload=[\"example\"]\n[[module]]\nentry=\"src/example.birnam\"\nfiles=[\"src/part.birnam\"]\n",
+            b"name=\"collecting-project\"\nload=[\"example\"]\n[[module]]\nentry=\"src/example.birnam\"\nfiles=[\"src/part.birnam\"]\n\n[run]\nrepl=\"socket\"\nsocket_bind=\"localhost\"\nsocket_port=7777\n",
         )
         .unwrap();
         fs::write(
@@ -968,6 +988,9 @@ mod tests {
         }
         let resolution = host.project_resolution(&snapshot).unwrap();
         assert_eq!(resolution.modules[0].name, "example");
+        assert_eq!(resolution.run.repl, "socket");
+        assert_eq!(resolution.run.socket_bind, "localhost");
+        assert_eq!(resolution.run.socket_port, 7777);
         let request = ProjectArtifactPlanRequest {
             resolution: &resolution,
             previous: None,

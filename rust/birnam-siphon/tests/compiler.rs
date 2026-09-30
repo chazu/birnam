@@ -176,6 +176,14 @@ fn source_compiles_and_runs_on_production_execution() {
             roots,
             tokens: vec![],
         };
+        for source in [
+            b"[[Reflect vtableOf: \"hello\"] == StringVt]".as_slice(),
+            b"[[Reflect globalNamed: #System] == System]",
+            b"[[[[Reflect allGlobalNames] indexOf: #System] isNil] not]",
+            b"[[Reflect allMethodsOf: System] inject: false into: [:found :entry | [found | [[entry at: #selector] == #println:]]]]",
+        ] {
+            assert_eq!(h.eval(source), h.named(b"true"));
+        }
         for (source, expected) in [
             (b"42".as_slice(), 42),
             (b"[35 + 7]", 42),

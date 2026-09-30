@@ -10,6 +10,31 @@ use std::os::unix::fs::PermissionsExt;
 
 use sha2::{Digest, Sha256};
 
+// Authored production tools, compiled through the installed Id artifact path.
+const TOOL_MODULES: &[(&str, &str)] = &[
+    ("stdlib", "src/id/stdlib.birnam"),
+    ("toml", "src/id/toml.birnam"),
+    ("config", "src/id/config.birnam"),
+    ("doc", "modules/doc.birnam"),
+    ("cli", "modules/cli.birnam"),
+    ("file", "modules/file.birnam"),
+    ("html", "modules/html.birnam"),
+    ("http", "modules/http.birnam"),
+    ("json", "modules/json.birnam"),
+    ("log", "modules/log.birnam"),
+    ("lsp", "modules/lsp.birnam"),
+    ("markdown", "modules/markdown.birnam"),
+    ("os", "modules/os.birnam"),
+    ("process", "modules/process.birnam"),
+    ("random", "modules/random.birnam"),
+    ("repl", "modules/repl.birnam"),
+    ("socket", "modules/socket.birnam"),
+    ("time", "modules/time.birnam"),
+    ("nativedoc", "modules/nativedoc.birnam"),
+    ("compiledUnitDocs", "modules/compiled-unit-docs.birnam"),
+    ("concurrencyDocs", "modules/concurrency-docs.birnam"),
+];
+
 const CANONICAL_DYNAMIC_LIBRARIES: &[&str] = &[
     "libbirnam_id.dylib",
     "libbirnam_root_registry.dylib",
@@ -630,6 +655,17 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             copy_file(&source, &lib_dir.join(name))?;
         }
     }
+    for (name, source) in TOOL_MODULES {
+        let mut compile = Command::new(&host_destination);
+        compile
+            .current_dir(&root)
+            .env_remove("BIRNAM_LIB_DIR")
+            .env_remove("BIRNAM_ID_DYLIB")
+            .args(["--compile-module"])
+            .arg(root.join(source))
+            .arg(lib_dir.join(format!("libbirnam_{name}.dylib")));
+        run_status(&mut compile, &format!("compile authored tool {name}"))?;
+    }
     drop(target_lock);
     if options.build_cache.is_none() {
         fs::remove_dir_all(&target_dir)
@@ -704,7 +740,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         "admission_contract": {
             "target": "aarch64-macos",
             "id_protocol_version": 1,
-            "host_commands": ["source", "image", "worker", "compile-module", "artifact", "check", "build", "run", "fetch", "install", "test", "help", "version"],
+            "host_commands": ["source", "image", "worker", "compile-module", "artifact", "check", "build", "run", "fetch", "install", "test", "repl", "listen", "lsp", "doc", "docgen", "init", "wrap", "bake", "rebuild", "help", "version"],
             "stdlib_loading": "source",
         },
         "source_root": root,
@@ -716,7 +752,7 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
         },
         "cargo_invocation": cargo_invocation,
         "dynamic_libraries": CANONICAL_DYNAMIC_LIBRARIES,
-        "stage1_modules": [],
+        "stage1_modules": TOOL_MODULES.iter().map(|(name, _)| name).collect::<Vec<_>>(),
         "source_bootstrap_modules": ["modules", "stdlib"],
         "staged_manifest_sha256": staged_digest,
         "staged_manifest_files": staged_manifest.len(),
@@ -778,10 +814,11 @@ fn install_rust_prefix(options: InstallOptions) -> Result<(), String> {
             .map_err(|error| format!("sync install parent after backup removal: {error}"))?;
     }
     println!(
-        "rust-install: published {} ({} native libraries, {} source bootstrap modules)",
+        "rust-install: published {} ({} native libraries, {} source bootstrap modules, {} authored tools)",
         prefix.display(),
         CANONICAL_DYNAMIC_LIBRARIES.len(),
-        2
+        2,
+        TOOL_MODULES.len()
     );
     Ok(())
 }

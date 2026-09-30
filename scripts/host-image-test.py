@@ -17,7 +17,7 @@ def run(path, *, save=False, extra=()):
     if save:
         env['BIRNAM_NO_STDLIB'] = '1'
     return subprocess.run([binary, path, *extra], cwd=work, env=env,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
+                          input=b":quit\n", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
 
 def snapshot(name, body):
     image = work / (name + '.image')
@@ -43,8 +43,10 @@ for value in [b'nil', b'false']:
     path = snapshot(value.decode(), b'[Globals at: #main put: [| ' + value + b']]')
     result = run(path)
     assert result.returncode == 0 and not result.stdout and not result.stderr, result
+path = snapshot('missing-main', b'nil')
+result = run(path)
+assert result.returncode == 0 and b'birnam>' in result.stdout and not result.stderr, result
 for name, body, diagnostic in [
-    ('missing-main', b'nil', b'no global main'),
     ('invalid-main', b'[Globals at: #main put: 42]', b'image main:'),
     ('wrong-arity', b'[Globals at: #main put: [:arg | arg]]', b'image main:'),
     ('error', b'[Globals at: #main put: [| [System readFile: "/absent/birnam-image-fixture"]]]', b'could not read file'),

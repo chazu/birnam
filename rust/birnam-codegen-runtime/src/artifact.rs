@@ -140,7 +140,13 @@ pub(super) unsafe fn operation(
 unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> {
     unsafe {
         if s.sources.sealed.get() {
-            return fail(s, b"RustCodegen module introduction is not available");
+            return s.send(
+                s.named(b"Error")?,
+                b"kind:",
+                &[Operand::object(
+                    s.id.intern_name(b"moduleIntroductionNotAvailable")?,
+                )],
+            );
         }
         if !s.exact(q, path, b"StringVt")? {
             return fail(s, b"RustCodegen load path was not a String");
@@ -283,7 +289,13 @@ unsafe fn load(s: &State, q: &Scope<'_>, path: Oop) -> Result<Operand, Outcome> 
             }
         }
         if s.sources.sealed.get() {
-            return fail(s, b"RustCodegen module introduction is not available");
+            return s.send(
+                s.named(b"Error")?,
+                b"kind:",
+                &[Operand::object(
+                    s.id.intern_name(b"moduleIntroductionNotAvailable")?,
+                )],
+            );
         }
         let result = q.keep(object(s.run_method(q, method)?)?)?;
         if result == nil || s.is_error(result)? {

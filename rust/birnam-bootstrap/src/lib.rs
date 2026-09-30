@@ -296,6 +296,13 @@ unsafe fn construct(id: Protocol, directory: &[u8]) -> Result<Operand, Outcome> 
                 ],
             )?;
         }
+        // String boots before Collection so namespace/diagnostic text is usable.
+        // Once Collection exists, join the same authored protocol as Vector/Map.
+        id.send_named(
+            id.receiver,
+            b"parentOf:put:",
+            &[named(b"StringVt")?, Operand::object(collection)],
+        )?;
         release(id, roots, collection_root)?;
         for name in ["word", "vector", "map", "range", "store", "relational"] {
             id.send_named(

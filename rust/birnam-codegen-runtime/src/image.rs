@@ -171,12 +171,17 @@ pub(super) unsafe fn operation(
                     .send(s.id.receiver, b"behaviorCount", &[])?
                     .as_word()
                     .ok_or_else(invalid)?;
+                // Root the registry snapshot before building language Vectors:
+                // those allocations can collect and compact the live registry.
+                let mut behaviors = Vec::with_capacity(count);
                 for i in 0..count {
-                    let vt = q.keep(object(s.send(
+                    behaviors.push(q.keep(object(s.send(
                         s.id.receiver,
                         b"behaviorAt:",
                         &[Operand::word(i)],
-                    )?)?)?;
+                    )?)?)?);
+                }
+                for vt in behaviors {
                     let target = match s
                         .send(s.id.receiver, b"ownerOf:", &[Operand::object(vt)])?
                         .as_object()

@@ -81,7 +81,12 @@ impl<'a, 'h> Decoder<'a, 'h> {
         }
         Ok(result)
     }
-    fn run(&self, value: Oop) -> Result<ProjectRunObservation, ProjectManifestDecodeError> {
+    fn run(
+        &self,
+        value: Oop,
+        bind_key: &str,
+        port_key: &str,
+    ) -> Result<ProjectRunObservation, ProjectManifestDecodeError> {
         if value == self.nil {
             return Ok(ProjectRunObservation {
                 repl: "none".to_owned(),
@@ -101,7 +106,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
         if !matches!(repl.as_str(), "none" | "tty" | "socket") {
             return Err(ProjectManifestDecodeError::InvalidRunMode(repl));
         }
-        let bind_value = self.at(value, "socket_bind")?;
+        let bind_value = self.at(value, bind_key)?;
         let socket_bind = if bind_value == self.nil {
             "127.0.0.1".to_owned()
         } else {
@@ -111,7 +116,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
             }
             bind
         };
-        let port_value = self.at(value, "socket_port")?;
+        let port_value = self.at(value, port_key)?;
         let socket_port = if port_value == self.nil {
             4400
         } else if !self.is_integer(port_value)? {
@@ -340,7 +345,7 @@ impl<'a, 'h> Decoder<'a, 'h> {
         Ok(result)
     }
 }
-pub(super) fn decode_manifest(
+pub(in crate::startup) fn decode_manifest(
     q: &Scope<'_>,
     parsed: Oop,
 ) -> Result<ProjectManifestObservation, DecodeError> {
@@ -380,7 +385,7 @@ pub(super) fn decode_manifest(
         return Err(ProjectManifestDecodeError::InvalidPath("source_roots"));
     }
     let loads = decoder.strings(decoder.at(parsed, "load")?, "load", true)?;
-    let run = decoder.run(decoder.at(parsed, "run")?)?;
+    let run = decoder.run(decoder.at(parsed, "run")?, "socket_bind", "socket_port")?;
     let modules = decoder.modules(decoder.at(parsed, "module")?)?;
     let dependencies = decoder.dependencies(decoder.at(parsed, "dependencies")?)?;
     let wrapped = decoder.wrapped(decoder.at(parsed, "wrapped")?)?;
@@ -398,7 +403,7 @@ pub(super) fn decode_manifest(
     })
 }
 
-pub(super) fn decode_resolution(
+pub(in crate::startup) fn decode_resolution(
     q: &Scope<'_>,
     resolution: Oop,
 ) -> Result<ProjectResolutionObservation, DecodeError> {
@@ -415,7 +420,7 @@ pub(super) fn decode_resolution(
     } else {
         Some(decoder.string(main_value, "main")?)
     };
-    let run = decoder.run(decoder.at(resolution, "run")?)?;
+    let run = decoder.run(decoder.at(resolution, "run")?, "socketBind", "socketPort")?;
     let load_roots = decoder.strings(decoder.at(resolution, "loadRoots")?, "loadRoots", false)?;
     let wrapped = decoder.wrapped_artifacts(decoder.at(resolution, "wrapped")?)?;
     let modules_value = decoder.at(resolution, "modules")?;
@@ -474,7 +479,7 @@ pub(super) fn decode_resolution(
     })
 }
 
-pub(super) fn decode_artifact_plan(
+pub(in crate::startup) fn decode_artifact_plan(
     q: &Scope<'_>,
     plan: Oop,
 ) -> Result<ProjectArtifactPlan, DecodeError> {
@@ -536,8 +541,8 @@ pub(super) fn decode_artifact_plan(
     })
 }
 
-pub(super) struct Builder<'a, 'h> {
-    pub(super) q: &'a Scope<'h>,
+pub(in crate::startup) struct Builder<'a, 'h> {
+    pub(in crate::startup) q: &'a Scope<'h>,
 }
 impl Builder<'_, '_> {
     fn new_vector(&self) -> Result<Oop, HostError> {
@@ -614,7 +619,7 @@ impl Builder<'_, '_> {
         self.put(item, "requires", self.strings(&value.requires)?)
     }
 
-    pub(super) fn artifact_plan_input(
+    pub(in crate::startup) fn artifact_plan_input(
         &self,
         request: &ProjectArtifactPlanRequest<'_>,
     ) -> Result<Oop, HostError> {
@@ -731,7 +736,7 @@ impl Builder<'_, '_> {
         self.put(item, "sources", sources)
     }
 
-    pub(super) fn snapshot(&self, value: &ProjectSnapshot) -> Result<Oop, HostError> {
+    pub(in crate::startup) fn snapshot(&self, value: &ProjectSnapshot) -> Result<Oop, HostError> {
         let mut projects = self.new_vector()?;
         for project in &value.projects {
             projects = self.add(projects, self.project(project)?)?;

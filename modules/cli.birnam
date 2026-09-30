@@ -131,8 +131,10 @@
 [Reflect defineMethod: #serveRepl: on: Cli as: [:self :port |
   [self ensure: #socket];
   [self ensure: #repl];
-  [Repl serveOn: port];
-  [self status]] doc:
+  let result := [Repl serveOn: port];
+  [[result isError]
+    ifTrue: [| [self fail: [result printString]]]
+    ifFalse: [| [self status]]]] doc:
   "Loads the socket + repl modules, then blocks in [Repl serveOn: port]; answers the compile status."];
 
 // Evaluate a birnam source file against the live image, reporting a compile

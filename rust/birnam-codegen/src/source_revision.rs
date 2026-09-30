@@ -205,6 +205,53 @@ fn block_parameter_count(node: &OwnedCst) -> Option<usize> {
     )
 }
 
+/// Top-level declarative method definitions, retained verbatim for documentation.
+pub fn method_sources(tree: &OwnedCst, source: &[u8]) -> Vec<Vec<u8>> {
+    let mut result = Vec::new();
+    let Some(program) = skip_cst_wrappers(tree) else {
+        return result;
+    };
+    let Some(statements) = program.child(0) else {
+        return result;
+    };
+    if program.rule() != b"program" || statements.rule() != b"statements" {
+        return result;
+    }
+    for index in 0..statements.child_count() {
+        let Some(node) = statements
+            .child(index)
+            .and_then(|s| s.child(0))
+            .and_then(skip_cst_wrappers)
+        else {
+            continue;
+        };
+        if node.rule() != b"send" {
+            continue;
+        }
+        let Some(receiver) = node.child(0).and_then(skip_cst_wrappers) else {
+            continue;
+        };
+        if receiver.rule() != b"ident" || source_span(receiver, source) != Some(b"Reflect") {
+            continue;
+        }
+        let Some((selector, args)) = node
+            .child(1)
+            .and_then(skip_cst_wrappers)
+            .and_then(|m| keyword_selector_args(m, source))
+        else {
+            continue;
+        };
+        if (selector == b"defineMethod:on:as:" && args.len() == 3)
+            || (selector == b"defineMethod:on:as:doc:" && args.len() == 4)
+        {
+            if let Some(bytes) = source_span(node, source) {
+                result.push(bytes.to_vec());
+            }
+        }
+    }
+    result
+}
+
 pub fn inspect(tree: &OwnedCst, source: &[u8]) -> Option<RevisionMetadata> {
     let program = skip_cst_wrappers(tree)?;
     if program.rule() != b"program" || program.child_count() != 1 {

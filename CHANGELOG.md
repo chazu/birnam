@@ -8,11 +8,17 @@ loader ports are complete.
 
 ## [Unreleased]
 
+- Reconnect console/socket REPLs, project interactive modes, LSP and authored
+  documentation/scaffolding tools through scoped Id messages. Install their
+  compiled artifacts, restore image REPL fallback and executable baking, and
+  revoke LSP Project callbacks when their Host borrow ends. Reconnect tooling
+  reflection, String's Collection parent, lazy parser caches and saved Alien
+  wrapper replay; root behavior enumeration before image construction can collect.
+
 - Reconnect project check/build/run/fetch/install/test through scoped Id messages,
   authored TOML and ProjectPolicy, and self-describing artifact publications.
   Preserve offline dependency observation, atomic build publication, relocated
   execution, native dependency installation and isolated project test workers.
-  Interactive project REPL/socket modes and tooling remain deferred.
 
 - Reconnect durable Codegen artifact compilation and loading through Id, Artifact
   inspection and TCC-owned code. Restore CLI `--compile-module` and artifact entry,

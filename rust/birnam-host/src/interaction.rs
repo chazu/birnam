@@ -1,484 +1,149 @@
-//! CLI, REPL, image entry and worker execution on the existing host runtime.
+//! Synchronous authored tools. Every intermediate stays rooted on the owner thread.
 use super::*;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkerError {
-    Failed(c_int),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkerStartupError {
-    Image(ImageError),
-    EmbeddedNul,
-    MissingDispatchGeneration,
-    InvalidDispatchGeneration,
-    MissingCodegen,
-    InvalidGenerationDigest,
-    WrongArity,
-    MissingGlobals,
-    ReceiverNotFound,
-    SelectorNotFound,
-    Driver(WorkerError),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CliError {
-    Module(RuntimeModuleError),
-    Policy(ProjectPolicyError),
-    Bridge(ProjectBridgeError),
-    MissingCli,
-    MissingVector,
-    NonUtf8Argument(usize),
-    ArgumentVectorRejected,
-    MalformedStatus,
-    Failed(i64),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReplError {
-    Module(RuntimeModuleError),
-    MissingRepl,
-    MissingDispatchGeneration,
-    MissingEvolutionIntent,
-    InitializationRejected,
-    GenerationRejected,
-    Phase(PhaseHookError),
-    ReadyRejected,
-    MalformedStep,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SocketReplError {
-    Module(RuntimeModuleError),
-    MissingRepl,
-    ServeRejected,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReplStep {
-    Done,
-    Evaluated(birnam_abi::Oop),
-    Other,
-}
-
-pub struct ReplSession {
-    repl: birnam_abi::Oop,
-    phases: PhaseHooks,
-    done: bool,
-    finished: bool,
-}
+use std::ffi::OsString;
 
 impl HostRuntime {
-    /// Dispatch one Birnam-owned CLI subcommand through the compiled `Cli`
-    /// module. Rust supplies opaque argv and the installed resource roots;
-    /// subcommand parsing, diagnostics, and module policy remain language
-    /// owned. The CLI caller prepares project-aware LSP policy and the scoped
-    /// Rust `Project` bridge before invoking this operation.
-    ///
-    /// # Safety
-    ///
-    /// The caller must have called [`HostRuntime::prepare_execution`] with a
-    /// live stack anchor and remain on the floor owner thread for all sends.
-    pub unsafe fn run_cli(&self, args: &[OsString]) -> Result<(), CliError> {
-        unsafe { self.load_runtime_module("cli") }.map_err(CliError::Module)?;
-        let api = self.stack.api();
-        let Some(cli) = (unsafe { global_named(api, self.stack.imports(), "Cli") }) else {
-            return Err(CliError::MissingCli);
-        };
-        let values = unsafe { native_os_string_vector(api, self.stack.presence(), self.stack.imports(), args) }?;
-        let rust_workspace = path_bytes(&self.resources.rust_workspace_dir);
-        let guides = path_bytes(&self.resources.guide_dir);
-        let selector = unsafe { (api.intern)(c"run:rustWorkspace:guides:".as_ptr()) };
-        let result = unsafe {
-            (api.send)(
-                cli,
-                selector,
-                [
-                    values,
-                    (birnam_abi::string::make)(rust_workspace.as_ptr(), rust_workspace.len()),
-                    (birnam_abi::string::make)(guides.as_ptr(), guides.len()),
-                ]
-                .as_ptr(),
-                3,
-            )
-        };
-        if unsafe { (birnam_abi::integer::is_integer)(result) } == 0 {
-            return Err(CliError::MalformedStatus);
-        }
-        let status = unsafe { (birnam_abi::integer::value)(result) };
-        if status == 0 {
-            Ok(())
-        } else {
-            Err(CliError::Failed(status))
-        }
+    pub(super) fn load_tool(&self, name: &[u8]) -> Result<(), HostError> {
+        let q = self.scope();
+        let module = self.global(&q, b"Module")?;
+        let previous = q.call(module, b"libDir", &[])?;
+        let directory = q.string(self.resources.lib_dir.as_os_str().as_bytes())?;
+        q.call(module, b"libDir:", &[Operand::object(directory)])?;
+        let loaded = (|| {
+            let name =
+                unsafe { self.id.intern_name(name) }.map_err(|e| native_error("tool name", e))?;
+            let result = q.call(module, b"load:", &[Operand::object(name)])?;
+            q.check_result(result)
+        })();
+        let restored = q.call(module, b"libDir:", &[Operand::object(previous)]);
+        loaded?;
+        q.check_result(restored?)
     }
 
-    /// Initialize a terminal REPL session and enter the runtime's running
-    /// phase. Input/output is still owned by the self-hosted Repl module; Rust
-    /// only drives its frozen lifecycle selectors.
-    ///
-    /// # Safety
-    ///
-    /// The caller must have called [`HostRuntime::prepare_execution`] with a
-    /// live stack anchor and remain on the floor owner thread.
-    pub unsafe fn start_repl(&self) -> Result<ReplSession, ReplError> {
-        unsafe { self.start_repl_mode(false) }
-    }
-
-    /// Run the conventional global `main` block after image recovery. Absence
-    /// answers `false` so the caller can open a REPL; presence enters the
-    /// running phase and sends `value` through ordinary dispatch.
-    ///
-    /// # Safety
-    ///
-    /// The caller must have prepared a live GC anchor and remain on the floor
-    /// owner thread for generation publication, phase transition, and dispatch.
-    pub unsafe fn run_image_main(&self) -> Result<bool, ImageEntryError> {
-        let api = self.stack.api();
-        let Some(main) = (unsafe { global_named(api, self.stack.imports(), "main") }) else {
-            return Ok(false);
-        };
-        let Some(generations) = (unsafe { global_named(api, self.stack.imports(), "DispatchGeneration") }) else {
-            return Err(ImageEntryError::MissingDispatchGeneration);
-        };
-        let initialize_selector = unsafe { (api.intern)(c"initializeCurrent".as_ptr()) };
-        let generation =
-            unsafe { (api.send)(generations, initialize_selector, std::ptr::null(), 0) };
-        if send_is_error(api, self.stack.presence(), generation) {
-            return Err(ImageEntryError::GenerationRejected);
+    /// Project/image entry already established its context; it must not run
+    /// nearest-directory Config or application main again.
+    pub fn run_repl(&self, apply_config: bool) -> Result<(), HostError> {
+        if self.global(&self.scope(), b"Module")? == self.named(b"nil")? {
+            self.bootstrap_source()?;
         }
-        let phases =
-            resolve_phase_hooks(&self.stack, &self.resources).map_err(ImageEntryError::Phase)?;
-        if !phases.enter_running() {
-            return Err(ImageEntryError::Phase(PhaseHookError::InvalidPhase));
-        }
-        let value_selector = unsafe { (api.intern)(c"value".as_ptr()) };
-        let result = unsafe { (api.send)(main, value_selector, std::ptr::null(), 0) };
-        if result.is_null() || send_is_error(api, self.stack.presence(), result) {
-            return Err(ImageEntryError::EvaluationRejected);
-        }
-        Ok(true)
-    }
-
-    /// Start a REPL after image recovery. The image's Module manager may be a
-    /// restored application object, so ordinary `Module load:` is deliberately
-    /// not called here; the host-capability path is the process-local recovery
-    /// boundary and is used only when the restored Repl surface is absent.
-    ///
-    /// # Safety
-    ///
-    /// Same owner-thread and GC-anchor requirements as [`HostRuntime::start_repl`].
-    pub unsafe fn start_repl_after_image(&self) -> Result<ReplSession, ReplError> {
-        unsafe { self.start_repl_mode(true) }
-    }
-
-    unsafe fn start_repl_mode(&self, image_booted: bool) -> Result<ReplSession, ReplError> {
-        // A normal boot can introduce Repl into G0. An image may already have
-        // sealed its application generation, so recover the same process-local
-        // host capability used by the image path when ordinary loading is
-        // rejected.
-        let normal_load_rejected =
-            !image_booted && unsafe { self.load_runtime_module("repl") }.is_err();
-        let init_selector = unsafe { (self.stack.api().intern)(c"consoleHostInit".as_ptr()) };
-        // Image recovery may leave the restored Globals/Module objects in a
-        // partially rebuilt state where even reading `Repl` through the normal
-        // namespace path can recurse. Always refresh this process-local tool
-        // after an image; normal boots retain the selector-surface check.
-        let stale_repl = if image_booted {
-            true
-        } else {
-            unsafe { global_named(self.stack.api(), self.stack.imports(), "Repl") }
-                .map(|repl| unsafe {
-                    !receiver_has_selector(self.stack.api(), self.stack.vtables(), repl, init_selector)
-                })
-                .unwrap_or(true)
-        };
-        if normal_load_rejected || stale_repl {
-            unsafe { self.load_host_runtime_module("repl") }.map_err(ReplError::Module)?;
-        }
-        let api = self.stack.api();
-        let Some(repl) = (unsafe { global_named(api, self.stack.imports(), "Repl") }) else {
-            return Err(ReplError::MissingRepl);
-        };
-        let initialized = unsafe { (api.send)(repl, init_selector, std::ptr::null(), 0) };
-        if send_is_error(api, self.stack.presence(), initialized) {
-            return Err(ReplError::InitializationRejected);
-        }
-        let Some(generations) = (unsafe { global_named(api, self.stack.imports(), "DispatchGeneration") }) else {
-            return Err(ReplError::MissingDispatchGeneration);
-        };
-        let initialize_selector = unsafe { (api.intern)(c"initializeCurrent".as_ptr()) };
-        let generation =
-            unsafe { (api.send)(generations, initialize_selector, std::ptr::null(), 0) };
-        if send_is_error(api, self.stack.presence(), generation) {
-            return Err(ReplError::GenerationRejected);
-        }
-        let phases = resolve_phase_hooks(&self.stack, &self.resources).map_err(ReplError::Phase)?;
-        if !phases.enter_running() {
-            return Err(ReplError::Phase(PhaseHookError::InvalidPhase));
-        }
-        let ready_selector = unsafe { (api.intern)(c"consoleHostReady".as_ptr()) };
-        let ready = unsafe { (api.send)(repl, ready_selector, std::ptr::null(), 0) };
-        if send_is_error(api, self.stack.presence(), ready) {
-            return Err(ReplError::ReadyRejected);
-        }
-        Ok(ReplSession {
+        self.load_tool(b"repl")?;
+        let session = self.scope();
+        let repl = self.global(&session, b"Repl")?;
+        let result = session.call(
             repl,
-            phases,
-            done: false,
-            finished: false,
-        })
-    }
-
-    /// Drive one Repl `hostStep`; the module owns input parsing and output
-    /// policy. An evaluated value is returned as an Oop so callers can handle
-    /// EvolutionIntent/quiescence exactly at the host boundary.
-    ///
-    /// # Safety
-    ///
-    /// `session` must belong to this runtime, and the caller must keep the GC
-    /// anchor from `prepare_execution` live.
-    pub unsafe fn repl_step(&self, session: &mut ReplSession) -> Result<ReplStep, ReplError> {
-        if session.done || session.finished {
-            return Ok(ReplStep::Done);
-        }
-        let api = self.stack.api();
-        let step_selector = unsafe { (api.intern)(c"hostStep".as_ptr()) };
-        let step = unsafe { (api.send)(session.repl, step_selector, std::ptr::null(), 0) };
-        if step == api.nilObj {
-            return Err(ReplError::MalformedStep);
-        }
-        let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
-        let tag = unsafe { (api.send)(step, at_selector, [(birnam_abi::integer::make)(0)].as_ptr(), 1) };
-        if tag == api.nilObj {
-            return Err(ReplError::MalformedStep);
-        }
-        let tag_name = unsafe { (api.symbolName)(tag) };
-        if tag_name.is_null() {
-            return Err(ReplError::MalformedStep);
-        }
-        if unsafe { CStr::from_ptr(tag_name) }.to_bytes() == b"done" {
-            session.done = true;
-            return Ok(ReplStep::Done);
-        }
-        if unsafe { CStr::from_ptr(tag_name) }.to_bytes() == b"evaluated" {
-            let value = unsafe { (api.send)(step, at_selector, [(birnam_abi::integer::make)(1)].as_ptr(), 1) };
-            return Ok(ReplStep::Evaluated(value));
-        }
-        Ok(ReplStep::Other)
-    }
-
-    /// Finish a REPL session and release its running-phase ownership.
-    ///
-    /// # Safety
-    ///
-    /// `session` must belong to this runtime and the caller must remain on the
-    /// floor owner thread.
-    pub unsafe fn finish_repl(&self, session: &mut ReplSession) {
-        if session.finished {
-            return;
-        }
-        let api = self.stack.api();
-        let selector = unsafe { (api.intern)(c"consoleDone".as_ptr()) };
-        unsafe { (api.send)(session.repl, selector, std::ptr::null(), 0) };
-        session.finished = true;
-    }
-
-    /// Quiesce the runtime around an EvolutionIntent fulfillment.
-    ///
-    /// # Safety
-    ///
-    /// The caller must be on the owner thread and invoke `end_quiescence` only
-    /// after a successful `begin_quiescence`.
-    pub unsafe fn begin_quiescence(&self, session: &ReplSession) -> Result<(), ReplError> {
-        if session.phases.begin_quiescence() {
-            Ok(())
-        } else {
-            Err(ReplError::Phase(PhaseHookError::InvalidPhase))
-        }
-    }
-
-    /// # Safety
-    ///
-    /// See [`HostRuntime::begin_quiescence`].
-    pub unsafe fn end_quiescence(&self, session: &ReplSession) -> Result<(), ReplError> {
-        if session.phases.end_quiescence() {
-            Ok(())
-        } else {
-            Err(ReplError::Phase(PhaseHookError::InvalidPhase))
-        }
-    }
-
-    /// Run the complete terminal REPL loop until `hostStep` reports `done`.
-    /// Evolution intents are fulfilled only inside the Codegen quiescence
-    /// phase, and result presentation remains delegated to Repl.
-    ///
-    /// # Safety
-    ///
-    /// `session` must belong to this runtime; the caller must have established
-    /// a live GC anchor and remain on the floor owner thread.
-    pub unsafe fn run_repl(&self, session: &mut ReplSession) -> Result<(), ReplError> {
-        let api = self.stack.api();
-        let Some(intents) = (unsafe { global_named(api, self.stack.imports(), "EvolutionIntent") }) else {
-            return Err(ReplError::MissingEvolutionIntent);
-        };
-        let intent_selector = unsafe { (api.intern)(c"isIntent:".as_ptr()) };
-        let fulfill_selector = unsafe { (api.intern)(c"fulfill".as_ptr()) };
-        let print_selector = unsafe { (api.intern)(c"printHostResult:".as_ptr()) };
-        loop {
-            match unsafe { self.repl_step(session) }? {
-                ReplStep::Done => break,
-                ReplStep::Other => {}
-                ReplStep::Evaluated(mut value) => {
-                    let is_intent =
-                        unsafe { (api.send)(intents, intent_selector, [value].as_ptr(), 1) }
-                            == api.trueObj;
-                    if is_intent {
-                        unsafe { self.begin_quiescence(session) }?;
-                        value = unsafe { (api.send)(value, fulfill_selector, std::ptr::null(), 0) };
-                        unsafe { self.end_quiescence(session) }?;
-                    }
-                    unsafe { (api.send)(session.repl, print_selector, [value].as_ptr(), 1) };
-                }
-            }
-            unsafe { self.drain_isolates() };
-        }
-        unsafe { self.finish_repl(session) };
-        Ok(())
-    }
-
-    /// Serve the socket REPL through the self-hosted `Repl serveOn:bind:`
-    /// protocol. The socket module is loaded before Repl, matching the
-    /// host's runtime-tool dependency order.
-    ///
-    /// # Safety
-    ///
-    /// The runtime must remain on the selected floor's owner thread and the
-    /// bind string must remain valid for the synchronous send.
-    pub unsafe fn serve_socket(&self, port: u16, bind: &str) -> Result<(), SocketReplError> {
-        unsafe { self.load_runtime_module("socket") }.map_err(SocketReplError::Module)?;
-        unsafe { self.load_runtime_module("repl") }.map_err(SocketReplError::Module)?;
-        let api = self.stack.api();
-        let Some(repl) = (unsafe { global_named(api, self.stack.imports(), "Repl") }) else {
-            return Err(SocketReplError::MissingRepl);
-        };
-        let bind = CString::new(bind).map_err(|_| SocketReplError::ServeRejected)?;
-        let bind = unsafe { (birnam_abi::string::make)(bind.as_bytes().as_ptr(), bind.as_bytes().len()) };
-        let selector = unsafe { (api.intern)(c"serveOn:bind:".as_ptr()) };
-        let result = unsafe {
-            (api.send)(
+            if apply_config {
+                b"consoleHostInit"
+            } else {
+                b"consoleHostInitNoConfig"
+            },
+            &[],
+        )?;
+        // Teardown runs after initialization and on every subsequent failure.
+        let run = (|| {
+            session.check_result(result)?;
+            let sealed = session.call(self.named(b"Codegen")?, b"sealInitialGeneration", &[])?;
+            session.check_result(sealed)?;
+            let ready = session.call(
                 repl,
-                selector,
-                [(birnam_abi::integer::make)(i64::from(port)), bind].as_ptr(),
-                2,
-            )
-        };
-        if send_is_error(api, self.stack.presence(), result) {
-            return Err(SocketReplError::ServeRejected);
-        }
-        Ok(())
-    }
-
-    /// Run one isolate worker over an inherited channel descriptor. The driver
-    /// borrows the receiver/selector and never takes ownership of the fd.
-    ///
-    /// # Safety
-    ///
-    /// `fd` must be a live inherited channel owned by the caller; `receiver` and
-    /// `selector` must be live Oops from this runtime; the caller must remain on
-    /// the floor owner thread for the complete worker loop.
-    pub unsafe fn run_worker(
-        &self,
-        fd: c_int,
-        receiver: birnam_abi::Oop,
-        selector: birnam_abi::Oop,
-    ) -> Result<(), WorkerError> {
-        let api = self.stack.api() as *const IdApi as *mut IdApi;
-        let status = unsafe { self.isolate.driver(api, self.stack.imports(), fd, receiver, selector) };
-        if status == 0 {
+                if apply_config {
+                    b"consoleHostReady"
+                } else {
+                    b"consoleHostReadyNoMain"
+                },
+                &[],
+            )?;
+            session.check_result(ready)?;
+            loop {
+                // A per-turn scope prevents retaining the entire session history.
+                let q = self.scope();
+                let step = q.call(repl, b"hostStep", &[])?;
+                q.check_result(step)?;
+                if q.vector_size(step)? != 2 {
+                    return Err(HostError("Repl hostStep: expected two fields".into()));
+                }
+                match q.symbol_text(q.vector_at(step, 0)?)?.as_str() {
+                    "done" => break,
+                    "continue" => {}
+                    "evaluated" => {
+                        let value = q.vector_at(step, 1)?;
+                        let printed =
+                            q.call(repl, b"printHostResult:", &[Operand::object(value)])?;
+                        q.check_result(printed)?;
+                    }
+                    _ => return Err(HostError("Repl hostStep: invalid tag".into())),
+                }
+                self.send(self.named(b"Isolate")?, b"checkpoint", &[])?;
+            }
             Ok(())
-        } else {
-            Err(WorkerError::Failed(status))
-        }
+        })();
+        let finished = session.call(repl, b"consoleDone", &[]);
+        run?;
+        session.check_result(finished?)
     }
 
-    /// Recover one worker image, validate its durable generation, resolve the
-    /// named receiver/selector through Globals/import and the live vtable
-    /// chain, then invoke the retained isolate driver. The inherited channel
-    /// descriptor remains borrowed; the caller owns close/error framing.
-    ///
-    /// # Safety
-    ///
-    /// `fd` must be a live inherited isolate channel, `image` must be readable
-    /// by the selected runtime, and the caller must keep the GC anchor live on
-    /// the floor owner thread for the complete operation.
-    pub unsafe fn run_worker_image(
-        &mut self,
-        image: &Path,
-        receiver_name: &str,
-        selector_name: &str,
-        fd: c_int,
-    ) -> Result<(), WorkerStartupError> {
-        unsafe { load_image(self, image, false) }.map_err(WorkerStartupError::Image)?;
-        let api = self.stack.api();
-        let Some(generations) = (unsafe { global_named(api, self.stack.imports(), "DispatchGeneration") }) else {
-            return Err(WorkerStartupError::MissingDispatchGeneration);
+    pub fn serve_socket(&self, port: u16, bind: &str) -> Result<(), HostError> {
+        self.load_tool(b"socket")?;
+        self.load_tool(b"repl")?;
+        let q = self.scope();
+        let port = q.call(
+            self.named(b"Integer")?,
+            b"fromWord:",
+            &[Operand::word(port as usize)],
+        )?;
+        let bind = q.string(bind.as_bytes())?;
+        let result = q.call(
+            self.global(&q, b"Repl")?,
+            b"serveOn:bind:",
+            &[Operand::object(port), Operand::object(bind)],
+        )?;
+        q.check_result(result)
+    }
+
+    pub fn run_cli(&self, args: &[OsString]) -> Result<(), HostError> {
+        self.load_tool(b"cli")?;
+        let q = self.scope();
+        let mut argv = q.call(self.named(b"Vector")?, b"new", &[])?;
+        for arg in args {
+            let text = q.string(arg.as_os_str().as_bytes())?;
+            argv = q.call(argv, b"add:", &[Operand::object(text)])?;
+        }
+        let workspace = q.string(self.resources.rust_workspace_dir.as_os_str().as_bytes())?;
+        let guides = q.string(self.resources.guide_dir.as_os_str().as_bytes())?;
+        let invoke = || {
+            let status = q.call(
+                self.global(&q, b"Cli")?,
+                b"run:rustWorkspace:guides:",
+                &[
+                    Operand::object(argv),
+                    Operand::object(workspace),
+                    Operand::object(guides),
+                ],
+            )?;
+            q.check_result(status)?;
+            q.exact(status, b"IntegerVt")?;
+            let status = self
+                .send(
+                    self.named(b"Integer")?,
+                    b"wordOf:",
+                    &[Operand::object(status)],
+                )?
+                .as_word()
+                .ok_or_else(|| HostError("Cli returned an invalid status".into()))?;
+            if status == 0 {
+                Ok(())
+            } else {
+                Err(HostError(format!("tool exited with status {status}")))
+            }
         };
-        let current_selector = unsafe { (api.intern)(c"current".as_ptr()) };
-        let current = unsafe { (api.send)(generations, current_selector, std::ptr::null(), 0) };
-        if current == api.nilObj || send_is_error(api, self.stack.presence(), current) {
-            return Err(WorkerStartupError::InvalidDispatchGeneration);
+        if args.first().is_some_and(|arg| arg == "--lsp") {
+            self.with_project_bridge(invoke)
+        } else {
+            invoke()
         }
-        let codegen =
-            unsafe { global_named(api, self.stack.imports(), "Codegen") }.ok_or(WorkerStartupError::MissingCodegen)?;
-        let digest_selector = unsafe { (api.intern)(c"currentGenerationDigest".as_ptr()) };
-        let digest = unsafe { (api.send)(codegen, digest_selector, std::ptr::null(), 0) };
-        if digest == api.nilObj || unsafe { (api.vtableOf)(digest) } != unsafe { birnam_abi::string::behavior() } {
-            return Err(WorkerStartupError::InvalidGenerationDigest);
-        }
-        let mut digest_len = 0usize;
-        let digest_bytes = unsafe { (birnam_abi::string::bytes)(digest, &mut digest_len) };
-        if digest_bytes.is_null() || digest_len != 64 {
-            return Err(WorkerStartupError::InvalidGenerationDigest);
-        }
-        if !selector_has_arity_one(selector_name) {
-            return Err(WorkerStartupError::WrongArity);
-        }
-        let receiver_name =
-            CString::new(receiver_name).map_err(|_| WorkerStartupError::EmbeddedNul)?;
-        let selector_name =
-            CString::new(selector_name).map_err(|_| WorkerStartupError::EmbeddedNul)?;
-        let globals =
-            unsafe { global_named(api, self.stack.imports(), "Globals") }.ok_or(WorkerStartupError::MissingGlobals)?;
-        let receiver_symbol = unsafe { (api.intern)(receiver_name.as_ptr()) };
-        let at_selector = unsafe { (api.intern)(c"at:".as_ptr()) };
-        let mut receiver =
-            unsafe { (api.send)(globals, at_selector, [receiver_symbol].as_ptr(), 1) };
-        if receiver == api.nilObj {
-            receiver = unsafe { birnam_abi::namespace_import::import(self.stack.imports(), receiver_name.as_ptr()) };
-        }
-        if receiver == api.nilObj {
-            return Err(WorkerStartupError::ReceiverNotFound);
-        }
-        let selector = unsafe { (api.intern)(selector_name.as_ptr()) };
-        if receiver == api.nilObj || !unsafe { receiver_has_selector(api, self.stack.vtables(), receiver, selector) } {
-            return Err(WorkerStartupError::SelectorNotFound);
-        }
-        unsafe { self.run_worker(fd, receiver, selector) }.map_err(WorkerStartupError::Driver)
     }
 
-    /// # Safety
-    ///
-    /// The host must remain on the floor owner thread.
-    pub unsafe fn drain_isolates(&self) {
-        unsafe { self.isolate.drain() };
-    }
-
-    /// # Safety
-    ///
-    /// The host must remain on the floor owner thread and must not use this
-    /// runtime's isolate hooks after shutdown.
-    pub unsafe fn shutdown_isolates(&self) {
-        unsafe { self.isolate.shutdown() };
+    pub fn image_has_main(&self) -> Result<bool, HostError> {
+        let q = self.scope();
+        Ok(self.global(&q, b"main")? != self.named(b"nil")?)
     }
 }

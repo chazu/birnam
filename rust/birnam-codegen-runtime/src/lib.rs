@@ -10,6 +10,7 @@ mod artifact;
 mod embedding;
 mod image;
 mod materialization;
+mod reflection;
 mod source;
 fn invalid() -> Outcome {
     Outcome::failed(native::INVALID_REQUEST, 0)
@@ -205,6 +206,7 @@ enum Op {
     Eval,
     Define,
     NameOf,
+    Reflection(reflection::Op),
     Source(source::Op),
     Materialize(materialization::Op),
     Image(image::Op),
@@ -224,6 +226,7 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         let a = borrowed_slice(a, n).ok_or_else(invalid)?;
         let count = match e.op {
             Op::Define => 3,
+            Op::Reflection(op) => op.count(),
             Op::Source(op) => op.count(),
             Op::Materialize(op) => op.count(),
             Op::Image(op) => op.count(),
@@ -251,6 +254,9 @@ unsafe extern "C" fn operation(c: *mut c_void, _: Oop, a: *const Operand, n: usi
         }
         if let Op::Source(op) = e.op {
             return source::operation(s, &scope, op, a);
+        }
+        if let Op::Reflection(op) = e.op {
+            return reflection::operation(s, &scope, op, a);
         }
         if matches!(e.op, Op::NameOf) {
             let mut name = object(a[0])?;
@@ -440,6 +446,26 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
         for (target, n, op) in [
             (vt, b"emit:".as_slice(), Op::Emit),
             (reflect_vt, b"nameOf:", Op::NameOf),
+            (
+                reflect_vt,
+                b"vtableOf:",
+                Op::Reflection(reflection::Op::Behavior),
+            ),
+            (
+                reflect_vt,
+                b"globalNamed:",
+                Op::Reflection(reflection::Op::Global),
+            ),
+            (
+                reflect_vt,
+                b"allGlobalNames",
+                Op::Reflection(reflection::Op::Names),
+            ),
+            (
+                reflect_vt,
+                b"allMethodsOf:",
+                Op::Reflection(reflection::Op::Methods),
+            ),
             (vt, b"compile:", Op::Compile),
             (vt, b"compile:output:", Op::Artifact(artifact::Op::Compile)),
             (
@@ -487,6 +513,11 @@ unsafe fn construct(id: Protocol, ns: Oop) -> Result<Operand, Outcome> {
                 Op::Source(source::Op::Record),
             ),
             (vt, b"moduleSourceFor:", Op::Source(source::Op::Find)),
+            (
+                vt,
+                b"recordedMethodSources",
+                Op::Source(source::Op::MethodSources),
+            ),
             (vt, b"sealInitialGeneration", Op::Source(source::Op::Seal)),
             (vt, b"lastError", Op::Source(source::Op::LastError)),
             (vt, b"evalPersisting:", Op::Source(source::Op::Eval)),

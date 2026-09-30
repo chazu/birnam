@@ -19,13 +19,14 @@ pub(super) enum Op {
     Find,
     Seal,
     LastError,
+    MethodSources,
     Eval,
     EvalFrom,
 }
 impl Op {
     pub fn count(self) -> usize {
         match self {
-            Self::Seal | Self::LastError => 0,
+            Self::Seal | Self::LastError | Self::MethodSources => 0,
             Self::Record | Self::EvalFrom => 2,
             _ => 1,
         }
@@ -198,6 +199,35 @@ pub(super) unsafe fn operation(
         let nil = scope.keep(s.named(b"nil")?)?;
         let nil_value = Operand::object(nil);
         match op {
+            Op::MethodSources => {
+                let entries = s.sources.entries.borrow().clone();
+                for &(name, source) in &entries {
+                    scope.keep(name)?;
+                    scope.keep(source)?;
+                }
+                let mut sources = Vec::new();
+                for (_, source) in entries {
+                    // Retain source snapshots and final text, not every module's
+                    // parse tree for the lifetime of a whole documentation query.
+                    let document = Scope {
+                        s,
+                        tokens: RefCell::new(Vec::new()),
+                    };
+                    let Some(bytes) = s.source_bytes(&document, source)? else {
+                        return Err(invalid());
+                    };
+                    let Some(tree) = s.source_tree(&document, source, bytes.len())? else {
+                        return Err(invalid());
+                    };
+                    let definitions = source_revision::method_sources(&tree, &bytes);
+                    drop(document);
+                    for text in definitions {
+                        sources.push(s.text(scope, &text)?);
+                    }
+                }
+                Ok(Operand::object(s.vector(scope, &sources)?))
+            }
+
             Op::LastError => {
                 let error = s.sources.error.borrow().clone();
                 Ok(match error {

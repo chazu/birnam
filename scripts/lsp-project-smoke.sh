@@ -63,6 +63,8 @@ use Symbol qw(gensym);
 
 my $child_err = gensym;
 my $pid = open3(my $writer, my $reader, $child_err, $ENV{BIRNAM_LSP_BIN}, "--lsp");
+$SIG{ALRM} = sub { kill 'TERM', $pid; die "LSP smoke timed out\n"; };
+alarm($ENV{BIRNAM_LSP_TEST_TIMEOUT} // 600);
 select((select($writer), $| = 1)[0]);
 open my $out, ">", $ENV{BIRNAM_LSP_OUT} or die "open output: $!";
 binmode $out;

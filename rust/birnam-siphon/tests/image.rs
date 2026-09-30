@@ -562,6 +562,7 @@ fn image_owner_roundtrip() {
         );
         std::fs::remove_dir_all(asset_dir).unwrap();
         h.eval(b"[Reflect defineMethod: #imageInherited on: Collection as: [:self | #inherited]]");
+        image_bindings_root_behavior_snapshot_before_allocation(&h);
         assert_eq!(h.call(system, b"saveImage:", &[filename]), h.named(b"true"));
         h.collect();
         let before = h.units();
@@ -712,6 +713,62 @@ fn image_owner_roundtrip() {
         assert_eq!(global(&h, b"ImageShared"), shared);
         std::fs::remove_file(path).unwrap();
     }
+}
+// Collection during Vector construction used to compact Id's behavior registry
+// underneath Codegen's numeric-index enumeration.
+unsafe fn image_bindings_root_behavior_snapshot_before_allocation(h: &H) {
+    unsafe {
+        h.collect();
+        let vector = h.named(b"Vector");
+        let vt = behavior_of(&h, vector);
+        let original = binding(&h, vt, b"new");
+        let alias = h.id.intern_name(b"imageTestVectorNew").unwrap();
+        set(&h, vt, b"imageTestVectorNew", original);
+        let mut hook = CollectingRestore {
+            id: h.id,
+            gc: h.gc,
+            alias,
+            calls: Cell::new(0),
+        };
+        // These behaviors have no persistent owner; collection can retire them.
+        for _ in 0..8 {
+            let o = object(send(h.id, h.named(b"Object"), b"clone", &[]));
+            send(
+                h.id,
+                h.id.receiver,
+                b"ensurePrivateVtableFor:",
+                &[Operand::object(o)],
+            );
+        }
+        set(
+            &h,
+            vt,
+            b"new",
+            NativeEntry::new(
+                collect_before_vector,
+                (&mut hook as *mut CollectingRestore).cast(),
+            ),
+        );
+        let result = h.call(h.named(b"Codegen"), b"portableImageBindings", &[]);
+        set(&h, vt, b"new", original);
+        assert!(hook.calls.get() > 0);
+        assert!(h.number(h.call(result, b"size", &[])) > 0);
+    }
+}
+unsafe extern "C" fn collect_before_vector(
+    c: *mut c_void,
+    r: Oop,
+    a: *const Operand,
+    n: usize,
+) -> Outcome {
+    (|| unsafe {
+        let s = &*c.cast::<CollectingRestore>();
+        if s.calls.replace(s.calls.get() + 1) == 0 {
+            s.id.send_named(s.gc, b"collectPrecisely", &[])?;
+        }
+        s.id.send(r, s.alias, borrowed_slice(a, n).unwrap())
+    })()
+    .map_or_else(|e| e, Outcome::loaded)
 }
 struct FailingPublication {
     id: Protocol,

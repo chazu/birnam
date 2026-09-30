@@ -1,3 +1,10 @@
+#[cfg(test)]
+#[path = "host_bridge_contract.rs"]
+mod host_bridge_contract;
+#[path = "interaction.rs"]
+mod interaction;
+#[path = "project_bridge.rs"]
+mod project_bridge;
 #[path = "project_runtime.rs"]
 mod project_runtime;
 use crate::Resources;
@@ -137,6 +144,7 @@ pub struct HostRuntime {
     namespace: Oop,
     roots: Oop,
     namespace_token: usize,
+    resources: Resources,
     // Protocol owners and loaded native images live for the process. Host
     // operations and root release must stay on the creating thread.
     _owner_thread: PhantomData<Rc<()>>,
@@ -195,6 +203,7 @@ impl HostRuntime {
             namespace,
             roots,
             namespace_token: token,
+            resources: resources.clone(),
             _owner_thread: PhantomData,
         };
         host.send(
@@ -216,55 +225,60 @@ impl HostRuntime {
     pub fn start(resources: &Resources, policy: StartupPolicy) -> Result<Self, HostError> {
         let host = Self::start_native(resources, policy.precise_gc)?;
         if !policy.skip_stdlib {
-            let scope = host.scope();
-            for (name, source) in [
-                (
-                    b"modules".as_slice(),
-                    include_bytes!("../../../src/id/modules.birnam").as_slice(),
-                ),
-                (
-                    b"stdlib".as_slice(),
-                    include_bytes!("../../../src/id/stdlib.birnam").as_slice(),
-                ),
-            ] {
-                scope
-                    .evaluate(
-                        source,
-                        Path::new(&format!("<{}>", String::from_utf8_lossy(name))),
-                        Some(name),
-                    )
-                    .map_err(|e| {
-                        HostError(format!("bootstrap {}: {e}", String::from_utf8_lossy(name)))
-                    })?;
-            }
-            scope.evaluate(b"[Module markLoaded: #stdlib]", Path::new("<host>"), None)?;
-            let globals = host.named(b"Globals")?;
-            let name = unsafe { host.id.intern_name(b"Module") }
-                .map_err(|e| native_error("intern Module", e))?;
-            let module = scope.call(globals, b"at:", &[Operand::object(name)])?;
-            for name in [
-                "artifact",
-                "store",
-                "peg",
-                "lang",
-                "tcc",
-                "codegen",
-                "prelude",
-                "collection",
-                "error",
-                "relational",
-                "image",
-                "alien",
-                "isolate",
-            ] {
-                let symbol = unsafe { host.id.intern_name(name.as_bytes()) }
-                    .map_err(|e| native_error("intern kernel module", e))?;
-                scope.call(module, b"kernel:", &[Operand::object(symbol)])?;
-            }
-            let lib = scope.string(resources.lib_dir.as_os_str().as_bytes())?;
-            scope.call(module, b"libDir:", &[Operand::object(lib)])?;
+            host.bootstrap_source()?;
         }
         Ok(host)
+    }
+    pub(super) fn bootstrap_source(&self) -> Result<(), HostError> {
+        let host = self;
+        let scope = host.scope();
+        for (name, source) in [
+            (
+                b"modules".as_slice(),
+                include_bytes!("../../../src/id/modules.birnam").as_slice(),
+            ),
+            (
+                b"stdlib".as_slice(),
+                include_bytes!("../../../src/id/stdlib.birnam").as_slice(),
+            ),
+        ] {
+            scope
+                .evaluate(
+                    source,
+                    Path::new(&format!("<{}>", String::from_utf8_lossy(name))),
+                    Some(name),
+                )
+                .map_err(|e| {
+                    HostError(format!("bootstrap {}: {e}", String::from_utf8_lossy(name)))
+                })?;
+        }
+        scope.evaluate(b"[Module markLoaded: #stdlib]", Path::new("<host>"), None)?;
+        let globals = host.named(b"Globals")?;
+        let name = unsafe { host.id.intern_name(b"Module") }
+            .map_err(|e| native_error("intern Module", e))?;
+        let module = scope.call(globals, b"at:", &[Operand::object(name)])?;
+        for name in [
+            "artifact",
+            "store",
+            "peg",
+            "lang",
+            "tcc",
+            "codegen",
+            "prelude",
+            "collection",
+            "error",
+            "relational",
+            "image",
+            "alien",
+            "isolate",
+        ] {
+            let symbol = unsafe { host.id.intern_name(name.as_bytes()) }
+                .map_err(|e| native_error("intern kernel module", e))?;
+            scope.call(module, b"kernel:", &[Operand::object(symbol)])?;
+        }
+        let lib = scope.string(self.resources.lib_dir.as_os_str().as_bytes())?;
+        scope.call(module, b"libDir:", &[Operand::object(lib)])?;
+        Ok(())
     }
     /// Restore into the native runtime without evaluating source bootstrap.
     /// Images own their saved methods, globals and source registry.
@@ -278,6 +292,42 @@ impl HostRuntime {
         let scope = host.scope();
         host.rebase_module(&scope, resources)?;
         drop(scope);
+        Ok(host)
+    }
+    pub fn start_image_rebuilding(
+        resources: &Resources,
+        policy: StartupPolicy,
+        path: &Path,
+    ) -> Result<Self, HostError> {
+        let host = Self::start_native(resources, policy.precise_gc)?;
+        host.load_image_mode(path, true)?;
+        host.rebase_module(&host.scope(), resources)?;
+        Ok(host)
+    }
+    pub fn start_image_bytes(
+        resources: &Resources,
+        policy: StartupPolicy,
+        bytes: &[u8],
+    ) -> Result<Self, HostError> {
+        let host = Self::start_native(resources, policy.precise_gc)?;
+        {
+            let q = host.scope();
+            let bytes = q.string(bytes)?;
+            let result = q.call(
+                host.named(b"System")?,
+                b"loadImageBytes:rebuild:",
+                &[
+                    Operand::object(bytes),
+                    Operand::object(host.named(b"false")?),
+                ],
+            )?;
+            if result != host.named(b"true")? && result != host.named(b"false")? {
+                q.check_result(result)?;
+                return Err(HostError("baked image rejected".into()));
+            }
+            host.restore_foreign_wrappers()?;
+            host.rebase_module(&q, resources)?;
+        }
         Ok(host)
     }
     fn rebase_module(&self, scope: &Scope<'_>, resources: &Resources) -> Result<(), HostError> {
@@ -368,7 +418,52 @@ impl HostRuntime {
             unsafe { self.id.intern_name(name) }.map_err(|e| native_error("intern global", e))?;
         scope.call(self.named(b"Globals")?, b"at:", &[Operand::object(symbol)])
     }
+    // Foreign entry addresses belong to the saving process. Alien persists
+    // authored reconstruction recipes as Store facts; replay before user entry.
+    fn restore_foreign_wrappers(&self) -> Result<(), HostError> {
+        let q = self.scope();
+        let entity = unsafe { self.id.intern_name(b"__aliens__") }
+            .map_err(|e| native_error("Alien recipes", e))?;
+        let store = self.named(b"Store")?;
+        let count = q.call(store, b"attrCount:", &[Operand::object(entity)])?;
+        let count = self
+            .send(
+                self.named(b"Integer")?,
+                b"wordOf:",
+                &[Operand::object(count)],
+            )?
+            .as_word()
+            .ok_or_else(|| HostError("invalid Alien recipe count".into()))?;
+        let mut recipes = Vec::new();
+        for i in 0..count {
+            let index = q.call(self.named(b"Integer")?, b"fromWord:", &[Operand::word(i)])?;
+            let key = q.call(
+                store,
+                b"attrAt:index:",
+                &[Operand::object(entity), Operand::object(index)],
+            )?;
+            let recipe = q.call(
+                store,
+                b"currentValue:attr:",
+                &[Operand::object(entity), Operand::object(key)],
+            )?;
+            q.exact(recipe, b"StringVt")?;
+            recipes.push(recipe);
+        }
+        for recipe in recipes {
+            let result = q.call(
+                self.named(b"Codegen")?,
+                b"eval:",
+                &[Operand::object(recipe)],
+            )?;
+            q.check_result(result)?;
+        }
+        Ok(())
+    }
     fn load_image(&self, path: &Path) -> Result<(), HostError> {
+        self.load_image_mode(path, false)
+    }
+    fn load_image_mode(&self, path: &Path, rebuild: bool) -> Result<(), HostError> {
         let load = || -> Result<(), HostError> {
             let metadata = fs::metadata(path).map_err(|e| HostError(e.to_string()))?;
             if !metadata.is_file() {
@@ -377,9 +472,16 @@ impl HostRuntime {
             let scope = self.scope();
             let filename = scope.string(path.as_os_str().as_bytes())?;
             let system = self.named(b"System")?;
-            let result = scope.call(system, b"loadImage:", &[Operand::object(filename)])?;
+            let result = scope.call(
+                system,
+                b"loadImage:rebuild:",
+                &[
+                    Operand::object(filename),
+                    Operand::object(self.named(if rebuild { b"true" } else { b"false" })?),
+                ],
+            )?;
             if result == self.named(b"true")? || result == self.named(b"false")? {
-                return Ok(());
+                return self.restore_foreign_wrappers();
             }
             scope.check_result(result)?;
             let report = scope.call(system, b"imageSaveReport", &[])?;
@@ -401,9 +503,7 @@ impl HostRuntime {
             let scope = self.scope();
             let main = self.global(&scope, b"main")?;
             if main == self.named(b"nil")? {
-                return Err(HostError(
-                    "image has no global main; REPL is not yet supported".into(),
-                ));
+                return Err(HostError("image has no global main".into()));
             }
             let result = scope.call(main, b"value", &[])?;
             scope.check_result(result)

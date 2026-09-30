@@ -205,6 +205,11 @@ fn source_loading_uses_live_owners() {
             ),
             gold
         );
+        let docs = h.call(codegen, b"recordedMethodSources", &[]);
+        assert!(
+            h.bytes(h.at(docs, 0))
+                .starts_with(b"[Reflect defineMethod: #named:requires:")
+        );
         let equal = h.string(b"[Module named: #gold requires: #[#dep]]");
         assert_ne!(equal, gold);
         assert_eq!(

@@ -22,3 +22,8 @@ BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
 BIRNAM_TEST_MODULE_DIRECTORY="$scratch/relocated/lib" \
 BIRNAM_TEST_IMAGE="$scratch/image checks/main.image" \
   cargo test --offline --locked -p birnam-host startup::tests::image_entry_uses_saved_code_and_roots -- --ignored
+
+python3 scripts/host-bridge-test.py --prefix "$scratch/relocated" --output "$scratch/bridge.json"
+python3 scripts/interaction-cli-test.py "$scratch/relocated"
+BIRNAM_BIN="$scratch/relocated/bin/birnam" bash scripts/repl-golden.sh
+BIRNAM_BIN="$scratch/relocated/bin/birnam" bash scripts/lsp-project-smoke.sh

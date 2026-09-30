@@ -1,64 +1,87 @@
-//! Actual bridge callbacks and address-fenced teardown in a fresh process.
+//! Callback rooting, nested ownership and revocation through the real Id runtime.
 use super::*;
-use std::mem::{ManuallyDrop, MaybeUninit};
+use std::path::PathBuf;
 
 #[test]
-#[ignore = "requires an installed prefix and fresh owner-thread process"]
-fn native_bridge_and_address_fence() {
-    unsafe {
-        let prefix = PathBuf::from(env::var_os("BIRNAM_HOST_TEST_PREFIX").unwrap());
-        let resources = resolve_from_exe_dir(&prefix.join("bin"), Overrides::default()).unwrap();
-        assert!(PROJECT_BRIDGE_RUNTIME.load(Ordering::Acquire).is_null());
-        let mut missing = resources.clone();
-        missing.id_dylib = prefix.join("missing-floor-for-bridge-contract.dylib");
-        assert!(matches!(
-            start(missing, StartupPolicy::from_flags(false, false)),
-            Err(RuntimeStartError::Floor(_))
-        ));
-        assert!(PROJECT_BRIDGE_RUNTIME.load(Ordering::Acquire).is_null());
-
-        // Construct before installation and destroy in place: the production
-        // object remains unboxed and no relocation/pinning policy is introduced.
-        let mut runtime =
-            ManuallyDrop::new(start(resources, StartupPolicy::from_flags(false, false)).unwrap());
-        let mut anchor = 0usize;
-        runtime.prepare_execution(&mut anchor);
-        let address = &mut *runtime as *mut HostRuntime;
-        runtime.install_project_bridge().unwrap();
-        assert_eq!(PROJECT_BRIDGE_RUNTIME.load(Ordering::Acquire), address);
-        runtime.install_project_bridge().unwrap();
-        let api = runtime.stack.api();
-        let project = global_named(api, runtime.stack.imports(), "Project").unwrap();
-        let uri = b"file:///tmp/birnam%20bridge/example.birnam";
-        let argument = (birnam_abi::string::make)(uri.as_ptr(), uri.len());
-        let result = (api.send)(project, (api.intern)(c"pathForUri:".as_ptr()), &argument, 1);
+#[ignore = "requires installed modules; scripts/host-cli-test.sh"]
+fn scoped_project_bridge_revokes_retained_callbacks() {
+    let lib = PathBuf::from(env::var_os("BIRNAM_TEST_MODULE_DIRECTORY").unwrap());
+    let resources = crate::resolve_from_exe_dir(
+        Path::new("/unused/bin"),
+        crate::Overrides {
+            lib_dir: Some(&lib),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let host = HostRuntime::start(
+        &resources,
+        StartupPolicy {
+            skip_stdlib: false,
+            precise_gc: true,
+        },
+    )
+    .unwrap();
+    let q = host.scope();
+    let original = host.global(&q, b"Project").unwrap();
+    let mut retained = None;
+    host.with_project_bridge(|| {
+        let project = host.global(&q, b"Project")?;
+        retained = Some(project);
+        let uri = q.string(b"file:///tmp/birnam%20bridge/example.birnam")?;
+        host.send(host.named(b"GC")?, b"collectPrecisely", &[])?;
+        let decoded = q.call(project, b"pathForUri:", &[Operand::object(uri)])?;
         assert_eq!(
-            bridge_string(api, result).as_deref(),
-            Some("/tmp/birnam bridge/example.birnam")
+            q.string_bytes(decoded)?,
+            b"/tmp/birnam bridge/example.birnam"
         );
-        assert_eq!(PROJECT_BRIDGE_RUNTIME.load(Ordering::Acquire), address);
-
-        let mismatch = env::var("BIRNAM_HOST_TEST_MISMATCH").unwrap() == "1";
-        // An address token is sufficient to test compare-exchange fencing.
-        // It is never dereferenced, and no callback runs with this token stored.
-        let mut other = MaybeUninit::<HostRuntime>::uninit();
-        if mismatch {
-            PROJECT_BRIDGE_RUNTIME.store(other.as_mut_ptr(), Ordering::Release);
-            assert_eq!(
-                runtime.install_project_bridge(),
-                Err(ProjectBridgeError::AlreadyOwned)
-            );
-        }
-        ManuallyDrop::drop(&mut runtime);
+        let malformed = q.string(b"https://example.test/not-a-file")?;
+        let rejected = q.call(project, b"pathForUri:", &[Operand::object(malformed)])?;
+        let key = q.string(b"ok")?;
         assert_eq!(
-            PROJECT_BRIDGE_RUNTIME.load(Ordering::Acquire),
-            if mismatch {
-                other.as_mut_ptr()
-            } else {
-                std::ptr::null_mut()
-            }
+            q.call(rejected, b"at:", &[Operand::object(key)])?,
+            host.named(b"false")?
         );
-        PROJECT_BRIDGE_RUNTIME.store(std::ptr::null_mut(), Ordering::Release);
-        println!("host-bridge-contract: native callback and mismatch={mismatch} passed");
-    }
+        assert!(
+            q.call(project, b"pathForUri:", &[])
+                .unwrap_err()
+                .0
+                .contains("detail=411")
+        );
+        let nested: Result<(), HostError> = host.with_project_bridge(|| {
+            assert_ne!(host.global(&q, b"Project")?, project);
+            Err(HostError("fixture error".into()))
+        });
+        assert_eq!(nested.unwrap_err().0, "fixture error");
+        assert_eq!(host.global(&q, b"Project")?, project);
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(host.global(&q, b"Project").unwrap(), original);
+    let uri = q.string(b"file:///tmp/test").unwrap();
+    assert!(
+        q.call(retained.unwrap(), b"pathForUri:", &[Operand::object(uri)])
+            .unwrap_err()
+            .0
+            .contains("detail=410")
+    );
+    let mut unwound = None;
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _: Result<(), HostError> = host.with_project_bridge(|| {
+            unwound = Some(host.global(&q, b"Project")?);
+            panic!("test bridge unwinding")
+        });
+    }));
+    assert!(panic.is_err());
+    assert_eq!(host.global(&q, b"Project").unwrap(), original);
+    assert!(
+        q.call(
+            unwound.unwrap(),
+            b"snapshotForUri:",
+            &[Operand::object(uri)]
+        )
+        .unwrap_err()
+        .0
+        .contains("detail=410")
+    );
 }

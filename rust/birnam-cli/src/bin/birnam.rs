@@ -7,11 +7,89 @@ use command::{CommandKind, classify_command};
 const VERSION: &str = include_str!("../../../../VERSION");
 fn run() -> Result<(), String> {
     let args = env::args_os().skip(1).collect::<Vec<_>>();
+    if args.is_empty() {
+        let executable = env::current_exe().map_err(|e| e.to_string())?;
+        if let Some(bytes) =
+            birnam_host::read_baked_image(&executable).map_err(|e| e.to_string())?
+        {
+            let host = HostRuntime::start_image_bytes(
+                &resolve().map_err(|e| e.to_string())?,
+                StartupPolicy::from_environment(),
+                &bytes,
+            )
+            .map_err(|e| e.to_string())?;
+            return if host.image_has_main().map_err(|e| e.to_string())? {
+                host.run_image_main().map_err(|e| e.to_string())
+            } else {
+                host.run_repl(false).map_err(|e| e.to_string())
+            };
+        }
+    }
     match classify_command(&args).map_err(|e| format!("{e:?}"))? {
         CommandKind::Help => println!(
-            "birnam — Rust host\nUsage: birnam <file.birnam> | <file.image> | <file.dylib> | --help | --version\n\nSource execution uses the Id message runtime and source stdlib.\nImages restore and run global main.\n--compile-module SOURCE OUTPUT creates a durable module artifact; .dylib files activate through Module.\nProject commands: check, build, run, fetch, install, test.\nREPL and tooling commands await migration."
+            "birnam — Rust host\nUsage: birnam <file.birnam> | <file.image> | <file.dylib> | --help | --version\n\nSource execution uses the Id message runtime and source stdlib.\nImages restore and run global main.\n--compile-module SOURCE OUTPUT creates a durable module artifact; .dylib files activate through Module.\nProject commands: check, build, run, fetch, install, test.\nInteractive modes: --repl, --listen PORT [FILE], --lsp.\nTools: doc, docgen, init, wrap, --bake IMAGE EXECUTABLE, --rebuild IMAGE."
         ),
         CommandKind::Version => println!("{}", VERSION.trim()),
+        CommandKind::Bake => {
+            let options = command::parse_bake_args(&args[1..]).map_err(|e| format!("{e:?}"))?;
+            let runtime_path = env::current_exe().map_err(|e| e.to_string())?;
+            let runtime = std::fs::read(&runtime_path).map_err(|e| e.to_string())?;
+            let image = std::fs::read(&options.image).map_err(|e| e.to_string())?;
+            let bytes =
+                birnam_host::bake_executable(&runtime, &image).map_err(|e| format!("{e:?}"))?;
+            std::fs::write(&options.executable, bytes).map_err(|e| e.to_string())?;
+            std::fs::set_permissions(
+                &options.executable,
+                std::fs::metadata(runtime_path)
+                    .map_err(|e| e.to_string())?
+                    .permissions(),
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        CommandKind::Rebuild => {
+            let options = command::parse_rebuild_args(&args[1..]).map_err(|e| format!("{e:?}"))?;
+            let host = HostRuntime::start_image_rebuilding(
+                &resolve().map_err(|e| e.to_string())?,
+                StartupPolicy::from_environment(),
+                &options.image,
+            )
+            .map_err(|e| e.to_string())?;
+            if host.image_has_main().map_err(|e| e.to_string())? {
+                host.run_image_main().map_err(|e| e.to_string())?;
+            } else {
+                host.run_repl(false).map_err(|e| e.to_string())?;
+            }
+        }
+        CommandKind::Repl => {
+            if env::var_os("BIRNAM_NO_STDLIB").is_some() {
+                return Err("the REPL requires the stdlib (unset BIRNAM_NO_STDLIB)".into());
+            }
+            if args.len() > 1 {
+                return Err("usage: birnam --repl".into());
+            }
+            let host = HostRuntime::start(
+                &resolve().map_err(|e| e.to_string())?,
+                StartupPolicy::from_environment(),
+            )
+            .map_err(|e| e.to_string())?;
+            host.run_repl(true).map_err(|e| e.to_string())?;
+        }
+        CommandKind::Listen
+        | CommandKind::Lsp
+        | CommandKind::Doc
+        | CommandKind::Docgen
+        | CommandKind::Init
+        | CommandKind::Wrap => {
+            let host = HostRuntime::start(
+                &resolve().map_err(|e| e.to_string())?,
+                StartupPolicy {
+                    skip_stdlib: false,
+                    ..StartupPolicy::from_environment()
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            host.run_cli(&args).map_err(|e| e.to_string())?;
+        }
         CommandKind::Check => {
             let command::ParseOutcome::Parsed(options) =
                 command::parse_check_args(&args[1..]).map_err(|e| format!("{e:?}"))?
@@ -279,8 +357,12 @@ fn run() -> Result<(), String> {
             let host =
                 HostRuntime::start_image(&resources, StartupPolicy::from_environment(), &path)
                     .map_err(|e| e.to_string())?;
-            host.run_image_main()
-                .map_err(|e| format!("{}: {e}", path.display()))?;
+            if host.image_has_main().map_err(|e| e.to_string())? {
+                host.run_image_main()
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+            } else {
+                host.run_repl(false).map_err(|e| e.to_string())?;
+            }
         }
         CommandKind::Worker => {
             let worker = command::parse_worker_args(&args[1..]).map_err(|e| format!("{e:?}"))?;
@@ -321,11 +403,6 @@ fn run() -> Result<(), String> {
             let host = HostRuntime::start(&resources, StartupPolicy::from_environment())
                 .map_err(|e| e.to_string())?;
             host.load_artifact(&path).map_err(|e| e.to_string())?;
-        }
-        command => {
-            return Err(format!(
-                "{command:?}: command awaits Host migration; use birnam <file.birnam>"
-            ));
         }
     }
     Ok(())

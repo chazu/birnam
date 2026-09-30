@@ -30,7 +30,10 @@
 // and its ruleName drives lowering.
 
 [Module named: #json requires: #[]];
-[Globals at: #jsonGrammar put: [[|
+// PEG handles are process-local. Persist the factory, rebuild the cache lazily.
+[db assert: #imageTransient attr: #cardinality value: #one];
+[db assert: #jsonGrammar attr: #imageTransient value: true];
+[Globals at: #jsonGrammarFactory put: [|
   let g := [Peg newGrammar];
 
   let ws0    := [Peg star: [Peg anyOf: " \t\r\n"]];
@@ -80,7 +83,7 @@
 
   [g rule: #json is: [Peg seqOf: #[ ws0 value ws0 ]]];
 
-  g] value]];
+  g]];
 
 // Register FIRST — doc: entries record under the CURRENT module, so the
 // summary must precede every define (helpers on String/PegCst included).
@@ -184,7 +187,7 @@
 // -- parse entry point --------------------------------------------------------
 
 [Reflect defineMethod: #parseJson on: String as: [:self |
-  let g   := [Globals at: #jsonGrammar];
+  let g   := [Json grammar];
   let cst := [g parse: self from: #json];
   let ok  := [[cst notNil] & [[cst end] = [self size]]];
   let r := [ok
@@ -231,6 +234,15 @@
 // -- the Json namespace object ------------------------------------------------
 
 [Globals at: #Json put: [Object clone]];
+[Reflect defineMethod: #grammar on: Json as: [:self |
+  let cached := [Globals at: #jsonGrammar];
+  [[cached isNil]
+    ifTrue: [|
+      let grammar := [[Globals at: #jsonGrammarFactory] value];
+      [Globals at: #jsonGrammar put: grammar];
+      grammar]
+    ifFalse: [| cached]]]];
+
 [Reflect defineMethod: #parse:     on: Json as: [:self :src | [src parseJson]] doc:
   "Parse JSON `src` into native Map/Vector/String/Integer/Float/true/false/nil, or a #jsonParse error."];
 [Reflect defineMethod: #stringify: on: Json as: [:self :v   | [v asJson]] doc:

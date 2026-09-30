@@ -27,7 +27,10 @@
 // Helper patterns are block-local lets; only the rules referenced by `parse:`
 // (document/table/keyval/key and the typed value rules) produce CST nodes.
 
-[Globals at: #tomlGrammar put: [[|
+// PEG handles are process-local. Persist the factory, rebuild the cache lazily.
+[db assert: #imageTransient attr: #cardinality value: #one];
+[db assert: #tomlGrammar attr: #imageTransient value: true];
+[Globals at: #tomlGrammarFactory put: [|
   let g := [Peg newGrammar];
 
   // whitespace, newlines, comments — all inline (no CST nodes)
@@ -121,7 +124,7 @@
       [Peg star: [Peg seqOf: #[ wsp [Peg literal: ","] wsp [Peg ruleRef: #keyval] ]]] ]]]
     wsp [Peg literal: "}"] ]]];
 
-  g] value]];
+  g]];
 
 // Register FIRST — doc: entries record under the CURRENT module, so the
 // summary must precede every define (helpers on String/PegCst included).
@@ -228,7 +231,7 @@
 // -- the entry point ---------------------------------------------------------
 
 [Reflect defineMethod: #parseToml on: String as: [:self |
-  let g   := [Globals at: #tomlGrammar];
+  let g   := [Toml grammar];
   let cst := [g parse: self from: #document];
   let src := self;
   let step := [:acc :node |
@@ -262,5 +265,14 @@
 // in Globals so birnam code can name `Toml`. The public API forwards to the
 // String workhorse above.
 [Globals at: #Toml put: [Object clone]];
+[Reflect defineMethod: #grammar on: Toml as: [:self |
+  let cached := [Globals at: #tomlGrammar];
+  [[cached isNil]
+    ifTrue: [|
+      let grammar := [[Globals at: #tomlGrammarFactory] value];
+      [Globals at: #tomlGrammar put: grammar];
+      grammar]
+    ifFalse: [| cached]]]];
+
 [Reflect defineMethod: #parse: on: Toml as: [:self :src | [src parseToml]] doc:
   "Parses TOML `src`; answers a Map, or a #tomlParse error if the text isn't valid TOML."]

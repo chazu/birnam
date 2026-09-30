@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check real host bridge callbacks and address-fenced teardown in fresh processes."""
+"""Check real host bridge callbacks and scoped callback revocation in fresh processes."""
 import argparse
 import json
 import os
@@ -22,17 +22,14 @@ def main():
                    and row['target']['name'] == 'birnam_host']
     if len(executables) != 1:
         raise RuntimeError('expected one host test executable')
-    rows = []
-    for mismatch in (0, 1):
-        result = command([executables[0], '--ignored', '--exact',
-                          'host_bridge_contract::native_bridge_and_address_fence', '--nocapture'],
-                         env=dict(os.environ, BIRNAM_HOST_TEST_PREFIX=str(args.prefix.resolve()),
-                                  BIRNAM_HOST_TEST_MISMATCH=str(mismatch)), timeout=60)
-        if result['exit_code'] or '1 passed' not in result['stdout']:
-            raise RuntimeError(result['output'])
-        rows.append(dict(mismatch=bool(mismatch), result=result))
-        print(result['stdout'], end='')
-    save_json(args.output, dict(status='passed', rows=rows))
+    result = command([executables[0], '--ignored', '--exact',
+                      'startup::host_bridge_contract::scoped_project_bridge_revokes_retained_callbacks', '--nocapture'],
+                     env=dict(os.environ, BIRNAM_TEST_MODULE_DIRECTORY=str(args.prefix.resolve() / 'lib')),
+                     timeout=120)
+    if result['exit_code'] or '1 passed' not in result['stdout']:
+        raise RuntimeError(result['output'])
+    print(result['stdout'], end='')
+    save_json(args.output, dict(status='passed', result=result))
 
 
 if __name__ == '__main__':

@@ -129,11 +129,10 @@
       ifFalse: [| acc]]]]] doc:
   "The Globals name whose binding IS `obj` (identity), or \"\" — the reverse of `Globals at:`, for naming prototypes (they print as anObject)."];
 
-// -- source view: derived from the current generation ----------------------------
+// -- source view: derived from recorded module sources ---------------------------
 //
-// The generation's complete authored documents are portable authority. Codegen
-// projects their declarative method spans for documentation; no method-operation
-// journal or module-source mirror participates.
+// Codegen retains authored module sources and projects their declarative method
+// spans for documentation without a method-operation journal.
 
 // The selector token in a `[Reflect defineMethod: #sel on: T as: …]` source string:
 // the `#…` right after the FIRST `defineMethod:`, up to the next space — a keyword
@@ -148,8 +147,8 @@
 
 // Every recorded method-source string, across all loaded modules.
 [Reflect defineMethod: #methodSources on: Doc as: [:self |
-  [Codegen generationMethodSources]] doc:
-  "Every declarative method source in the current generation's authored documents."];
+  [Codegen recordedMethodSources]] doc:
+  "Every declarative method definition in the recorded authored modules."];
 
 // The recorded source(s) of every method whose selector prints as `name` (a String).
 [Reflect defineMethod: #sourcesForSelector: on: Doc as: [:self :name |

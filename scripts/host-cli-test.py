@@ -8,8 +8,8 @@ import sys
 
 prefix = Path(sys.argv[1]).resolve()
 receipt = json.loads((prefix / 'share/birnam/rust-install.json').read_text())
-assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'help', 'version']
-assert receipt['stage1_modules'] == []
+assert receipt['admission_contract']['host_commands'] == ['source', 'image', 'worker', 'compile-module', 'artifact', 'check', 'build', 'run', 'fetch', 'install', 'test', 'repl', 'listen', 'lsp', 'doc', 'docgen', 'init', 'wrap', 'bake', 'rebuild', 'help', 'version']
+assert receipt['stage1_modules'] == ['stdlib', 'toml', 'config', 'doc', 'cli', 'file', 'html', 'http', 'json', 'log', 'lsp', 'markdown', 'os', 'process', 'random', 'repl', 'socket', 'time', 'nativedoc', 'compiledUnitDocs', 'concurrencyDocs']
 for relative, digest in receipt['staged_manifest'].items():
     assert hashlib.sha256((prefix / relative).read_bytes()).hexdigest() == digest, relative
 relocated = prefix.parent / 'relocated'
@@ -63,7 +63,7 @@ result = run([large])
 assert result.returncode == 1 and b'exceeds' in result.stderr
 for args in [[], ['--repl']]:
     result = run(args, extra={'BIRNAM_ID_DYLIB': '/missing/id.dylib'})
-    assert result.returncode == 1 and b'awaits Host migration' in result.stderr, result
+    assert result.returncode == 1 and b'the REPL requires the stdlib' in result.stderr, result
 result = run(['nil.birnam', 'extra'])
 assert result.returncode == 1 and b'one file' in result.stderr
 result = run(['nil.birnam'], extra={'BIRNAM_ID_DYLIB': '/missing/id.dylib'})
@@ -79,4 +79,4 @@ assert stdlib_image.is_file()
 result = run([stdlib_image], stdlib=True)
 assert result.returncode == 0 and not result.stderr, result
 assert result.stdout == b'#[2 3 4]\n' + os.fsencode(relocated / 'lib') + b'\n', result
-print('installed Host/CLI: receipt, relocation, source, diagnostics, GC, stdlib and deferred commands passed')
+print('installed Host/CLI: receipt, relocation, source, diagnostics, GC, stdlib and early mode validation passed')
